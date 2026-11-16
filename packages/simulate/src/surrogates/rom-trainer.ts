@@ -110,7 +110,9 @@ export type ROMWeights =
       type: "mlp";
       layers: { W: number[][]; b: number[] }[];
       activation: string;
-      layerActivations?: ("tanh" | "relu" | "sigmoid" | "linear")[] | undefined;
+      layerActivations?: ("tanh" | "relu" | "sigmoid" | "silu" | "elu" | "linear")[] | undefined;
+      layerNorms?: ({ gamma: number[]; beta: number[]; eps: number } | undefined)[] | undefined;
+      outputClamp?: [number, number] | undefined;
     };
 
 export interface TrainedROM {
@@ -412,6 +414,19 @@ function getActivation(name: string): { fn: ActivationFn; deriv: ActivationDeriv
           const s = 1 / (1 + Math.exp(-x));
           return s * (1 - s);
         },
+      };
+    case "silu":
+      return {
+        fn: (x) => x / (1 + Math.exp(-x)),
+        deriv: (x) => {
+          const s = 1 / (1 + Math.exp(-x));
+          return s + x * s * (1 - s);
+        },
+      };
+    case "elu":
+      return {
+        fn: (x) => (x >= 0 ? x : Math.exp(x) - 1),
+        deriv: (x) => (x >= 0 ? 1 : Math.exp(x)),
       };
     default: // tanh
       return { fn: Math.tanh, deriv: (x) => 1 - Math.tanh(x) ** 2 };
@@ -765,7 +780,19 @@ export function evaluateROM(rom: TrainedROM, rawInput: number[]): number[] {
         for (let i = 0; i < W.length; i++) {
           let z = b[i]!;
           for (let j = 0; j < a.length; j++) z += W[i]![j]! * a[j]!;
-          next.push(layerAct.fn(z));
+          next.push(z);
+        }
+        const ln = w.layerNorms?.[l];
+        if (ln) {
+          const mean = next.reduce((acc, v) => acc + v, 0) / Math.max(1, next.length);
+          const variance = next.reduce((acc, v) => acc + (v - mean) * (v - mean), 0) / Math.max(1, next.length);
+          const invStd = 1 / Math.sqrt(variance + ln.eps);
+          for (let i = 0; i < next.length; i++) {
+            next[i] = (next[i]! - mean) * invStd * (ln.gamma[i] ?? 1.0) + (ln.beta[i] ?? 0.0);
+          }
+        }
+        for (let i = 0; i < next.length; i++) {
+          next[i] = layerAct.fn(next[i]!);
         }
         a = next;
       }
@@ -774,8 +801,13 @@ export function evaluateROM(rom: TrainedROM, rawInput: number[]): number[] {
     }
   }
 
-  // Denormalize output
-  return normOutput.map((v, i) => v * rom.outputScaling[i]!.std + rom.outputScaling[i]!.mean);
+  // Denormalize output and apply optional Clip clamp
+  const denorm = normOutput.map((v, i) => v * rom.outputScaling[i]!.std + rom.outputScaling[i]!.mean);
+  if (rom.weights.type === "mlp" && rom.weights.outputClamp) {
+    const [lo, hi] = rom.weights.outputClamp;
+    return denorm.map((v) => Math.min(hi, Math.max(lo, v)));
+  }
+  return denorm;
 }
 
 function computeMetrics(

@@ -2411,6 +2411,12 @@ export function extractCrossLanguageLinks(params: {
       continue;
     }
 
+    const tggProj = (
+      index as unknown as {
+        tggProjectionTable?: { canResolveAs(lang: string, cand: SymbolEntry): unknown } | undefined;
+      }
+    ).tggProjectionTable;
+
     if (isMemberLikeSymbol(sym)) {
       const childIds = index.childrenOf.get(sym.id) ?? [];
       const typeChild = childIds
@@ -2425,7 +2431,12 @@ export function extractCrossLanguageLinks(params: {
       const rawType = String(typeChild?.name ?? meta["typeSpecifier"] ?? meta["type_specifier"] ?? "").trim();
       if (rawType) {
         const targetEntry = resolveTargetInIndex(index, rawType, normLang);
-        if (targetEntry && isTypeLikeSymbol(targetEntry)) {
+        if (
+          targetEntry &&
+          (isTypeLikeSymbol(targetEntry) ||
+            targetEntry.kind === "Module" ||
+            Boolean(tggProj?.canResolveAs(normLang, targetEntry)))
+        ) {
           pushLink({
             sourceSymbolId: sym.id,
             sourceName: sym.name,
@@ -2438,6 +2449,54 @@ export function extractCrossLanguageLinks(params: {
             targetEntry,
           });
         }
+      }
+    }
+  }
+
+  // 3. Emit TGG-aligned cross-language correspondences discovered by UnifiedWorkspace's TggCorrespondenceIndexer
+  const tggIndexer = index as unknown as {
+    workspace?: { syncTggCorrespondences?(idx: SymbolIndex): unknown } | undefined;
+    tggCorrespondenceIndexer?:
+      | {
+          slotMap: Map<number, number>;
+          hypergraph: {
+            getRecord(slot: number): {
+              relation: number;
+              isRemoved: boolean;
+              domainNodes: Record<number, number>;
+            } | null;
+          };
+        }
+      | undefined;
+  };
+  if (tggIndexer.workspace?.syncTggCorrespondences) {
+    tggIndexer.workspace.syncTggCorrespondences(index);
+  }
+  const corrIdx = tggIndexer.tggCorrespondenceIndexer;
+  if (corrIdx && corrIdx.slotMap.size > 0) {
+    for (const sym of docSymbols) {
+      const slot = corrIdx.slotMap.get(sym.id);
+      if (slot === undefined) continue;
+      const rec = corrIdx.hypergraph.getRecord(slot);
+      if (!rec || rec.isRemoved) continue;
+      const pos = offsetToOneBasedLineCol(text, sym.startOffset);
+      const relKind: DiscoveredCrossLanguageLink["relationKind"] =
+        rec.relation === 1 ? "satisfy" : rec.relation === 3 ? "verify" : rec.relation === 7 ? "allocate" : "twin";
+      for (const peerId of Object.values(rec.domainNodes)) {
+        if (peerId === sym.id) continue;
+        const peer = index.symbols.get(peerId);
+        if (!peer || !peer.language || peer.language.toLowerCase() === normLang) continue;
+        pushLink({
+          sourceSymbolId: sym.id,
+          sourceName: sym.name,
+          sourceLang: normLang,
+          sourceUri: uri,
+          sourceLine: pos.line,
+          sourceColumn: pos.column,
+          targetName: peer.name,
+          relationKind: relKind,
+          targetEntry: peer,
+        });
       }
     }
   }

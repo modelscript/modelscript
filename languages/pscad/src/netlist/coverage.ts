@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { EmtNetlist, PscxModule, PscxProject } from "../types.js";
+import type { EmtNetlist, PscxComponent, PscxModule, PscxProject } from "../types.js";
 import { resolveSubModule } from "./emt-netlist.js";
 
 /** Component kinds that never carry electrical/EMT behavior (graphics, plotting, annotations). */
@@ -73,10 +73,12 @@ function idsInNetlist(netlist: EmtNetlist): Set<string> {
 }
 
 /**
- * Measures how much of a project actually reaches the EMT netlist. A low ratio means the
- * simulation result does not represent the schematic and must not be trusted for studies.
+ * Measures how much of a project actually reaches the EMT netlist and returns the dropped component nodes.
  */
-export function computeSimulationCoverage(project: PscxProject, netlist: EmtNetlist): SimulationCoverage {
+export function analyzeSimulationCoverage(
+  project: PscxProject,
+  netlist: EmtNetlist,
+): SimulationCoverage & { unlowered: PscxComponent[] } {
   const ids = [...idsInNetlist(netlist)];
   const reached = (cmpId: string, instanceName: string) =>
     ids.some(
@@ -93,6 +95,7 @@ export function computeSimulationCoverage(project: PscxProject, netlist: EmtNetl
   let simulatable = 0;
   let lowered = 0;
   const dropped = new Map<string, number>();
+  const unlowered: PscxComponent[] = [];
   // Walk the instantiated hierarchy (root plus every resolvable user module reached from it).
   const seen = new Set<PscxModule>();
   const queue: PscxModule[] = [project.rootModule];
@@ -110,8 +113,12 @@ export function computeSimulationCoverage(project: PscxProject, netlist: EmtNetl
         continue;
       }
       simulatable++;
-      if (reached(cmp.id, cmp.instanceName ?? "")) lowered++;
-      else dropped.set(cmp.definitionName, (dropped.get(cmp.definitionName) ?? 0) + 1);
+      if (reached(cmp.id, cmp.instanceName ?? "")) {
+        lowered++;
+      } else {
+        dropped.set(cmp.definitionName, (dropped.get(cmp.definitionName) ?? 0) + 1);
+        unlowered.push(cmp);
+      }
     }
   }
   return {
@@ -119,5 +126,15 @@ export function computeSimulationCoverage(project: PscxProject, netlist: EmtNetl
     lowered,
     ratio: simulatable === 0 ? 1 : lowered / simulatable,
     dropped: [...dropped].map(([definition, count]) => ({ definition, count })).sort((a, b) => b.count - a.count),
+    unlowered,
   };
+}
+
+/**
+ * Measures how much of a project actually reaches the EMT netlist. A low ratio means the
+ * simulation result does not represent the schematic and must not be trusted for studies.
+ */
+export function computeSimulationCoverage(project: PscxProject, netlist: EmtNetlist): SimulationCoverage {
+  const { simulatable, lowered, ratio, dropped } = analyzeSimulationCoverage(project, netlist);
+  return { simulatable, lowered, ratio, dropped };
 }

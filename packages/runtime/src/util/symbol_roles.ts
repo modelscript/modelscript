@@ -56,6 +56,7 @@ const TYPE_KINDS = new Set<string>([
   "AllocationDefinition",
   "RequirementDefinition",
   "ItemDefinition",
+  "Type",
 ]);
 
 const INSTANCE_KINDS = new Set<string>([
@@ -71,7 +72,15 @@ const INSTANCE_KINDS = new Set<string>([
   "AllocationUsage",
 ]);
 
-const EXTRA_TYPE_RULES = new Set<string>(["pscad_component", "pscad_project", "psse_dyr_case", "psse_raw_case"]);
+const EXTRA_TYPE_RULES = new Set<string>([
+  "pscad_component",
+  "pscad_project",
+  "psse_dyr_case",
+  "psse_raw_case",
+  "step_product",
+  "step_shape",
+  "step_datum",
+]);
 
 /**
  * Classifies a workspace `SymbolEntry` into a normalized `SemanticRole` without

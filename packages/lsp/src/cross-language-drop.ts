@@ -670,13 +670,37 @@ export function resolveCrossLanguageComponentDrop(
   }
 
   // Reconstruct canonical qualified path (`.` vs `::` normalized to target language)
-  const isTypeLike = sym && (sym.kind === "Class" || sym.kind === "Definition" || sym.kind === "Metaclass");
-  const resolvedSegs =
+  const projTable = (
+    index as { tggProjectionTable?: { canResolveAs?: (lang: string, s: SymbolEntry) => boolean } } | null | undefined
+  )?.tggProjectionTable;
+  const isTggCompatible = Boolean(sym && projTable?.canResolveAs?.(targetLang, sym));
+  const isTypeLike =
+    sym &&
+    (sym.kind === "Class" ||
+      sym.kind === "Definition" ||
+      sym.kind === "Metaclass" ||
+      sym.kind === "Module" ||
+      sym.kind === "Package" ||
+      sym.kind === "Type" ||
+      isTggCompatible);
+  const SYNTHETIC_FILE_ROOTS = new Set(["scad_file", "reqif_specification", "qif_document"]);
+  const rawQualSegs =
     isTypeLike && index
-      ? getQualifiedSegmentsFromIndex(index, sym)
-      : inputSegments.length > 0
-        ? inputSegments
-        : [fallbackLeaf];
+      ? (() => {
+          const segs: string[] = [];
+          let cur: SymbolEntry | undefined = sym;
+          const visited = new Set<number>();
+          while (cur && !visited.has(cur.id)) {
+            visited.add(cur.id);
+            if (cur.name && !SYNTHETIC_FILE_ROOTS.has(cur.ruleName ?? "")) {
+              segs.unshift(cur.name);
+            }
+            cur = cur.parentId != null ? index.symbols.get(cur.parentId) : undefined;
+          }
+          return segs.length > 0 ? segs : getQualifiedSegmentsFromIndex(index, sym);
+        })()
+      : [];
+  const resolvedSegs = rawQualSegs.length > 0 ? rawQualSegs : inputSegments.length > 0 ? inputSegments : [fallbackLeaf];
   const leaf = resolvedSegs[resolvedSegs.length - 1] || fallbackLeaf;
   const isCrossLang = Boolean(srcLang && srcLang !== targetLang);
 

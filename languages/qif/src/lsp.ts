@@ -7,6 +7,7 @@
  * completions, go-to-definition, and custom metrology action execution.
  */
 
+import type { SymbolEntry, UnifiedWorkspace } from "@modelscript/runtime";
 import { lintQifDocument } from "./lints/rules.js";
 import { parseQif } from "./parser/index.js";
 import { qifToModelica, qifToSysML2 } from "./projections/index.js";
@@ -470,7 +471,96 @@ export function getQifCompletions(content: string, _offset?: number): LspComplet
   return items;
 }
 
-export function getQifDefinition(content: string, offset: number, uri = "file:///document.qif"): LspLocation | null {
+function qifOffsetToPosition(text: string, offset: number): LspPosition {
+  const clamped = Math.max(0, Math.min(text.length, offset));
+  let line = 0;
+  let lineStart = 0;
+  for (let i = 0; i < clamped; i++) {
+    if (text.charCodeAt(i) === 10) {
+      line++;
+      lineStart = i + 1;
+    }
+  }
+  return { line, character: clamped - lineStart };
+}
+
+function qifSymbolUri(sym: SymbolEntry): string {
+  return sym.resourceId || sym.documentUri || "";
+}
+
+function qifSymbolToLocation(sym: SymbolEntry, workspace: UnifiedWorkspace): LspLocation {
+  const symUri = qifSymbolUri(sym);
+  const docText = workspace.getDocument(symUri)?.text ?? "";
+  const nameRange = sym.fieldRanges?.["name"];
+  const startOff = nameRange?.startOffset ?? sym.startOffset ?? 0;
+  const endOff = nameRange?.endOffset ?? sym.endOffset ?? startOff;
+  return {
+    uri: symUri,
+    range: {
+      start: qifOffsetToPosition(docText, startOff),
+      end: qifOffsetToPosition(docText, Math.max(startOff, endOff)),
+    },
+  };
+}
+
+function findQifWorkspaceCounterparts(
+  workspace: UnifiedWorkspace,
+  uri: string,
+  names: readonly string[],
+  stepEntityId?: string,
+): LspLocation[] {
+  const uIdx = workspace.getIndex();
+  workspace.syncTggCorrespondences(uIdx);
+  const locations: LspLocation[] = [];
+  const seen = new Set<string>();
+  const pushSym = (sym: SymbolEntry) => {
+    const loc = qifSymbolToLocation(sym, workspace);
+    if (!loc.uri) return;
+    const key = `${loc.uri}:${loc.range.start.line}:${loc.range.start.character}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      locations.push(loc);
+    }
+  };
+
+  if (stepEntityId) {
+    const normStep = stepEntityId.startsWith("#") ? stepEntityId : `#${stepEntityId}`;
+    for (const sym of uIdx.symbols.values()) {
+      if (sym.language !== "step") continue;
+      if (sym.metadata?.["stepId"] === normStep || sym.name === normStep) {
+        pushSym(sym);
+      }
+    }
+  }
+
+  const indexer = workspace.tggCorrespondenceIndexer;
+  for (const name of names) {
+    if (!name) continue;
+    for (const qifSymId of uIdx.byName.get(name) ?? []) {
+      const qifSym = uIdx.symbols.get(qifSymId);
+      if (!qifSym || qifSymbolUri(qifSym) !== uri) continue;
+      for (const slot of indexer.getSlotsForSymbol(qifSymId)) {
+        const rec = indexer.hypergraph.getRecord(slot);
+        if (!rec || rec.isRemoved) continue;
+        for (const memberId of Object.values(rec.domainNodes)) {
+          if (typeof memberId === "number" && memberId !== qifSymId) {
+            const peer = uIdx.symbols.get(memberId);
+            if (peer) pushSym(peer);
+          }
+        }
+      }
+    }
+  }
+
+  return locations;
+}
+
+export function getQifDefinition(
+  content: string,
+  offset: number,
+  uri = "file:///document.qif",
+  workspace?: UnifiedWorkspace,
+): LspLocation | null {
   let doc: QifDocument;
   try {
     doc = parseQif(content, uri);
@@ -478,18 +568,45 @@ export function getQifDefinition(content: string, offset: number, uri = "file://
     return null;
   }
 
+  if (workspace && !workspace.getNativeFileIndex(uri)) {
+    workspace.indexDocumentText(uri, content, "qif");
+  }
+
   const word = extractWordAtOffset(content, offset);
+  // Direct STEP `#123` foreign-key jump when cursor is on `#123`
+  if (workspace && word.startsWith("#") && /^#\d+$/.test(word)) {
+    const stepPeers = findQifWorkspaceCounterparts(workspace, uri, [], word);
+    if (stepPeers.length > 0) return stepPeers[0]!;
+  }
+
   if (word) {
     const feat = doc.features.find((f) => f.id === word || f.name === word || f.qpId === word);
     if (feat) {
+      if (workspace && offset >= feat.range.startOffset && offset <= feat.range.endOffset) {
+        const peers = findQifWorkspaceCounterparts(
+          workspace,
+          uri,
+          [feat.name, feat.id, feat.qpId ?? ""],
+          feat.stepEntityId,
+        );
+        if (peers.length > 0) return peers[0]!;
+      }
       return { uri, range: toLspRange(feat.range) };
     }
     const datum = doc.datumDefinitions.find((d) => d.label === word || d.id === word || d.qpId === word);
     if (datum) {
+      if (workspace && offset >= datum.range.startOffset && offset <= datum.range.endOffset) {
+        const peers = findQifWorkspaceCounterparts(workspace, uri, [datum.label, datum.id, datum.qpId ?? ""]);
+        if (peers.length > 0) return peers[0]!;
+      }
       return { uri, range: toLspRange(datum.range) };
     }
     const char = doc.characteristics.find((c) => c.id === word || c.name === word || c.qpId === word);
     if (char) {
+      if (workspace && offset >= char.range.startOffset && offset <= char.range.endOffset) {
+        const peers = findQifWorkspaceCounterparts(workspace, uri, [char.name, char.id, char.qpId ?? ""]);
+        if (peers.length > 0) return peers[0]!;
+      }
       return { uri, range: toLspRange(char.range) };
     }
     const dev = doc.devices.find((d) => d.id === word || d.name === word || d.qpId === word);
@@ -515,9 +632,131 @@ export function getQifDefinition(content: string, offset: number, uri = "file://
   return null;
 }
 
+/**
+ * Finds all intra-file QIF references (`actuals`, `planSteps`, `datumDefinitions`, `characteristics`)
+ * and cross-language TGG counterparts (STEP AP242 entities, SysML v2 requirements) for the QIF element at `offset`.
+ */
+export function getQifReferences(
+  content: string,
+  offset: number,
+  uri = "file:///document.qif",
+  workspace?: UnifiedWorkspace,
+): LspLocation[] {
+  let doc: QifDocument;
+  try {
+    doc = parseQif(content, uri);
+  } catch {
+    return [];
+  }
+
+  if (workspace && !workspace.getNativeFileIndex(uri)) {
+    workspace.indexDocumentText(uri, content, "qif");
+  }
+
+  const results: LspLocation[] = [];
+  const seen = new Set<string>();
+  const pushLoc = (loc: LspLocation) => {
+    const key = `${loc.uri}:${loc.range.start.line}:${loc.range.start.character}:${loc.range.end.line}:${loc.range.end.character}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      results.push(loc);
+    }
+  };
+
+  const word = extractWordAtOffset(content, offset);
+  const feat =
+    (word ? doc.features.find((f) => f.id === word || f.name === word || f.qpId === word) : undefined) ??
+    doc.features.find((f) => offset >= f.range.startOffset && offset <= f.range.endOffset);
+  if (feat) {
+    pushLoc({ uri, range: toLspRange(feat.range) });
+    for (const d of doc.datumDefinitions) {
+      if (d.featureId === feat.id || (feat.qpId && d.featureId === feat.qpId)) {
+        pushLoc({ uri, range: toLspRange(d.range) });
+      }
+    }
+    for (const c of doc.characteristics) {
+      if (c.featureIds.includes(feat.id) || (feat.qpId && c.featureIds.includes(feat.qpId))) {
+        pushLoc({ uri, range: toLspRange(c.range) });
+      }
+    }
+    for (const s of doc.planSteps) {
+      if (s.featureId === feat.id || (feat.qpId && s.featureId === feat.qpId)) {
+        pushLoc({ uri, range: toLspRange(s.range) });
+      }
+    }
+    if (workspace) {
+      for (const peer of findQifWorkspaceCounterparts(
+        workspace,
+        uri,
+        [feat.name, feat.id, feat.qpId ?? ""],
+        feat.stepEntityId,
+      )) {
+        pushLoc(peer);
+      }
+    }
+    return results;
+  }
+
+  const char =
+    (word ? doc.characteristics.find((c) => c.id === word || c.name === word || c.qpId === word) : undefined) ??
+    doc.characteristics.find((c) => offset >= c.range.startOffset && offset <= c.range.endOffset);
+  if (char) {
+    pushLoc({ uri, range: toLspRange(char.range) });
+    for (const act of doc.actuals) {
+      if (act.characteristicId === char.id || (char.qpId && act.characteristicId === char.qpId)) {
+        pushLoc({ uri, range: toLspRange(act.range) });
+      }
+    }
+    for (const s of doc.planSteps) {
+      if (s.characteristicId === char.id || (char.qpId && s.characteristicId === char.qpId)) {
+        pushLoc({ uri, range: toLspRange(s.range) });
+      }
+    }
+    if (workspace) {
+      for (const peer of findQifWorkspaceCounterparts(workspace, uri, [char.name, char.id, char.qpId ?? ""])) {
+        pushLoc(peer);
+      }
+    }
+    return results;
+  }
+
+  const datum =
+    (word ? doc.datumDefinitions.find((d) => d.label === word || d.id === word || d.qpId === word) : undefined) ??
+    doc.datumDefinitions.find((d) => offset >= d.range.startOffset && offset <= d.range.endOffset);
+  if (datum) {
+    pushLoc({ uri, range: toLspRange(datum.range) });
+    for (const c of doc.characteristics) {
+      if (c.datumReferences.some((dr) => dr.datumLabel === datum.label || dr.datumLabel === datum.id)) {
+        pushLoc({ uri, range: toLspRange(c.range) });
+      }
+    }
+    if (workspace) {
+      for (const peer of findQifWorkspaceCounterparts(workspace, uri, [datum.label, datum.id, datum.qpId ?? ""])) {
+        pushLoc(peer);
+      }
+    }
+    return results;
+  }
+
+  const dev =
+    (word ? doc.devices.find((d) => d.id === word || d.name === word || d.qpId === word) : undefined) ??
+    doc.devices.find((d) => offset >= d.range.startOffset && offset <= d.range.endOffset);
+  if (dev) {
+    pushLoc({ uri, range: toLspRange(dev.range) });
+    for (const s of doc.planSteps) {
+      if (s.deviceId === dev.id || (dev.qpId && s.deviceId === dev.qpId)) {
+        pushLoc({ uri, range: toLspRange(s.range) });
+      }
+    }
+    return results;
+  }
+
+  return results;
+}
+
 function extractWordAtOffset(text: string, offset: number): string {
   if (offset < 0 || offset > text.length) return "";
-  const isWordChar = (ch: string | undefined) => Boolean(ch && /[A-Za-z0-9_-]/.test(ch));
+  const isWordChar = (ch: string | undefined) => Boolean(ch && /[A-Za-z0-9_#-]/.test(ch));
   let start = offset;
   while (start > 0 && isWordChar(text[start - 1])) {
     start--;

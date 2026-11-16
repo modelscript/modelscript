@@ -13,6 +13,7 @@ import { getLanguageInfo } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
 import { extractPrimaryModelicaClassName, installDependency } from "../components/morsel/util/lsp-bridge";
 import {
+  buildMorselEmbedHtmlPage,
   compressMorselPayload,
   decompressMorselPayload,
   resolveMorselShortlink,
@@ -932,15 +933,19 @@ export const PlaygroundPage: React.FC = () => {
     return `${window.location.origin}${basePath}#m=${hash}`;
   };
 
-  const getEmbedCode = (format: "iframe" | "custom-tag" | "morsel-tag" = "iframe") => {
-    const isMulti = Boolean(projectFiles && Object.keys(projectFiles).length > 1);
+  const getEmbedCode = (format: "iframe" | "html-page" | "custom-tag" | "morsel-tag" = "iframe") => {
+    const isMulti = Boolean(projectFiles && Object.keys(projectFiles).length > 0);
     const hasParams = Boolean(payload?.params && Object.keys(payload.params).length > 0);
     const hash = compressMorselPayload({
       v: 1,
       lang: currentLang,
       code: currentCode,
       ...(isMulti && projectFiles
-        ? { files: projectFiles, activeFile: activeFile || undefined, isMultiFile: true }
+        ? {
+            files: projectFiles,
+            activeFile: activeFile || undefined,
+            isMultiFile: Object.keys(projectFiles).length > 1,
+          }
         : {}),
       ...(hasParams && payload?.params ? { params: payload.params } : {}),
       title: currentTitle,
@@ -954,6 +959,9 @@ export const PlaygroundPage: React.FC = () => {
         ? "/embed/sketch"
         : "/embed/morsel";
     const embedSrc = `${window.location.origin}${embedBase}#m=${hash}`;
+    if (format === "html-page") {
+      return buildMorselEmbedHtmlPage({ embedSrc, title: currentTitle });
+    }
     if (format === "morsel-tag") {
       return `<script type="module" src="https://cdn.modelscript.org/embed/v1/modelscript-embed.js"></script>\n<modelscript-morsel src="${embedSrc}" height="500px" theme="dark"></modelscript-morsel>`;
     }

@@ -12,6 +12,7 @@ import {
   STUDIO_GRID_VERTEX_SHADER,
   STUDIO_SOFTBOX_LOBES,
   assembly,
+  box,
   classifyAlloyPreset,
   compileAssemblyToStep,
   computeMeshVolumeAndArea,
@@ -21,6 +22,7 @@ import {
   formatFeatureControlFrameText,
   formatMaterialModifierGlyph,
   part,
+  sliceSectionContoursAtPlane,
   subtract,
   synthesizeBrushedAlloyTextures,
 } from "../src/index.js";
@@ -147,6 +149,18 @@ END-ISO-10303-21;`;
     assert.ok(SECTION_CAP_FRAGMENT_SHADER.includes("fwidth(h)"));
     assert.ok(STUDIO_GRID_FRAGMENT_SHADER.includes("uniform float uOpacity"));
     assert.ok(STUDIO_GRID_FRAGMENT_SHADER.includes("fwidth(q)"));
+  });
+
+  it("slices closed box triangle mesh against arbitrary section plane with sliceSectionContoursAtPlane", () => {
+    const boxMesh = ManifoldWorker.evaluateSolid(box({ width: 2, height: 2, depth: 2, name: "unit_box" }));
+    const segs = sliceSectionContoursAtPlane(boxMesh.vertices, boxMesh.indices, [1, 0, 0], 0);
+    assert.ok(
+      segs.length >= 24 && segs.length % 6 === 0,
+      `Expected >=4 contour segments on X=0 cut, got ${segs.length / 6}`,
+    );
+    for (let i = 0; i < segs.length; i += 3) {
+      assert.ok(Math.abs(segs[i]!) < 1e-6, `Expected sliced vertex X == 0, got ${segs[i]}`);
+    }
   });
 
   it("evaluates coaxial CSG shroud ring subtraction via ManifoldWorker with analytical volume parity", () => {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { SymbolEntry, SymbolIndex } from "@modelscript/runtime";
+import type { SymbolEntry, SymbolIndex, TggCorrespondenceIndexer } from "@modelscript/runtime";
 import {
   STANDARD_MATRIX_PRESETS,
   type RtmAnalytics,
@@ -45,7 +45,10 @@ export class RtmIndexEngine {
       rule === "RequirementDefinition" ||
       rule === "RequirementUsage" ||
       rule === "ConcernDefinition" ||
-      rule === "ConcernUsage"
+      rule === "ConcernUsage" ||
+      rule === "reqif_requirement" ||
+      rule === "SpecObject" ||
+      (entry.language === "reqif" && entry.kind === "Class")
     ) {
       return "requirement";
     }
@@ -54,7 +57,8 @@ export class RtmIndexEngine {
       rule === "VerificationCaseDefinition" ||
       rule === "VerificationCaseUsage" ||
       rule === "AnalysisCaseDefinition" ||
-      rule === "AnalysisCaseUsage"
+      rule === "AnalysisCaseUsage" ||
+      rule === "VerificationBlock"
     ) {
       return "verification_case";
     }
@@ -83,6 +87,9 @@ export class RtmIndexEngine {
       entry.metadata?.["category"] === "physical" ||
       rule === "PhysicalComponentDefinition" ||
       rule === "PhysicalComponentUsage" ||
+      rule === "step_product" ||
+      rule === "step_shape" ||
+      (entry.language === "scad" && entry.kind === "Module") ||
       entry.name?.toLowerCase().startsWith("hw_") ||
       entry.name?.toLowerCase().startsWith("phy_")
     ) {
@@ -367,6 +374,94 @@ export class RtmIndexEngine {
       links.push(link);
       linkMap[key] = link;
       linkMap[`${sourceId}|${targetId}`] = link;
+    }
+
+    // Ingest declarative TGG correspondence hypergraph slots (Satisfies / Verifies / AllocatesTo / Aligned)
+    const corrIndexer = (index as SymbolIndex & { tggCorrespondenceIndexer?: TggCorrespondenceIndexer | undefined })
+      .tggCorrespondenceIndexer;
+    if (corrIndexer) {
+      const visitedSlots = new Set<number>();
+      for (const symId of corrIndexer.slotMap.keys()) {
+        const slots = corrIndexer.getSlotsForSymbol(symId);
+        for (const slot of slots) {
+          if (visitedSlots.has(slot)) continue;
+          visitedSlots.add(slot);
+          const slotRec = corrIndexer.hypergraph.getRecord(slot);
+          if (!slotRec || slotRec.isRemoved || !slotRec.domainNodes) continue;
+          const memberEntries: SymbolEntry[] = [];
+          for (const nid of Object.values(slotRec.domainNodes)) {
+            if (typeof nid === "number" && nid > 0) {
+              const sym = index.symbols.get(nid);
+              if (sym) memberEntries.push(sym);
+            }
+          }
+          if (memberEntries.length < 2) continue;
+
+          // ThreadRelation: Satisfies = 1, Verifies = 2, AllocatesTo = 4, Aligned = 5
+          const relCode = slotRec.relation ?? 5;
+          const isStale = corrIndexer.hypergraph.isStale(slot);
+          for (let i = 0; i < memberEntries.length; i++) {
+            for (let j = i + 1; j < memberEntries.length; j++) {
+              const a: SymbolEntry = memberEntries[i]!;
+              const b: SymbolEntry = memberEntries[j]!;
+              const domA = this.classifyDomain(a);
+              const domB = this.classifyDomain(b);
+              if (!domA || !domB) continue;
+
+              // Orient link from implementation/test -> requirement when one side is a requirement
+              const src: SymbolEntry = domA === "requirement" && domB !== "requirement" ? b : a;
+              const tgt: SymbolEntry = domA === "requirement" && domB !== "requirement" ? a : b;
+              const pairKey = `${src.id}|${tgt.id}`;
+              if (linkMap[pairKey]) continue;
+
+              let linkKind: RtmLinkKind = "allocate";
+              if (relCode === 1 || domA === "requirement" || domB === "requirement") {
+                linkKind =
+                  this.classifyDomain(src) === "verification_case" || this.classifyDomain(src) === "qif_characteristic"
+                    ? "verify"
+                    : "satisfy";
+              } else if (relCode === 2 || domA === "qif_characteristic" || domB === "qif_characteristic") {
+                linkKind = "verify";
+              }
+
+              const nameKey = `${src.name}|${tgt.name}`;
+              const evidence = evidenceMap?.get(tgt.name) ?? evidenceMap?.get(nameKey);
+              const suspectInfo = suspectMap?.get(nameKey);
+              const isSuspect = Boolean(suspectInfo?.isSuspect || isStale);
+              const status: RtmLink["status"] = isSuspect
+                ? "suspect"
+                : evidence
+                  ? evidence.isSatisfied
+                    ? "passed"
+                    : "failed"
+                  : "pending";
+
+              const rtmLink: RtmLink = {
+                id: `tgg:${src.id}->${tgt.id}`,
+                linkKind,
+                sourceId: src.id,
+                sourceName: src.name,
+                sourceUri: src.resourceId ?? "",
+                targetId: tgt.id,
+                targetName: tgt.name,
+                targetUri: tgt.resourceId ?? "",
+                status,
+                evidence,
+                isSuspect,
+                suspectReason: suspectInfo?.reason ?? (isStale ? "TGG correspondence slot marked stale" : undefined),
+                declarationUri: src.resourceId ?? "",
+                declarationStartOffset: src.startOffset,
+                declarationEndOffset: src.endOffset,
+              };
+              links.push(rtmLink);
+              linkMap[pairKey] = rtmLink;
+              if (!linkMap[nameKey]) {
+                linkMap[nameKey] = rtmLink;
+              }
+            }
+          }
+        }
+      }
     }
 
     return { links, linkMap };

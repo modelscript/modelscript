@@ -4,6 +4,7 @@ import {
   tggComplement,
   tggDefaultVal,
   tggEq,
+  tggFieldAlias,
   tggForEach,
   tggPhysicalPort,
   tggRule,
@@ -18,9 +19,10 @@ export const modelicaTggRules = [
     targetLang: "sysml2",
     priority: 10,
     source: ($, v) => $["ClassDefinition"]?.({ name: v("className") }),
-    target: ($, v) => $["BlockDefinition"]?.({ declaredName: v("className") }),
+    target: ($, v) => $["PartDefinition"]?.({ declaredName: v("className") }),
     where: (v) => [
       tggEq(v("className"), v("className")),
+      tggFieldAlias("m", "mass"),
       tggDefaultVal(v("isAbstract"), false),
       tggComplement(["isPartial", "encapsulated", "annotations"]),
     ],
@@ -30,6 +32,10 @@ export const modelicaTggRules = [
     sourceLang: "modelica",
     targetLang: "sysml2",
     priority: 10,
+    context: ($, v) => ({
+      source: $["ClassDefinition"]?.({ name: v("ownerName") }),
+      target: $["PartDefinition"]?.({ declaredName: v("ownerName") }),
+    }),
     source: ($, v) =>
       $["ComponentClause"]?.({
         name: v("compName"),
@@ -57,6 +63,10 @@ export const modelicaTggRules = [
     sourceLang: "modelica",
     targetLang: "sysml2",
     priority: 15,
+    context: ($, v) => ({
+      source: $["ClassDefinition"]?.({ name: v("ownerName") }),
+      target: $["PartDefinition"]?.({ declaredName: v("ownerName") }),
+    }),
     source: ($, v) => $["ComponentClause"]?.({ name: v("portName"), typeSpecifier: "Pin" }),
     target: ($, v) => $["PortUsage"]?.({ declaredName: v("portName"), declaredType: "ElectricalPort" }),
     where: (v) => [tggEq(v("portName"), v("portName")), tggPhysicalPort(v("v"), v("i"), "electrical")],
@@ -91,7 +101,7 @@ export const modelicaTggRules = [
 ];
 
 export const modelicaPolyglotConfig: PolyglotConfig = {
-  languages: ["sysml2", "owl2", "csv"],
+  languages: ["sysml2", "scad", "step", "reqif", "qif", "pscad", "psse", "owl2", "csv"],
   typeMaps: {
     sysml2: {
       Real: "ISQ::Real",

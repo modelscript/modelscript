@@ -10,7 +10,7 @@ export interface PlaygroundShareModalProps {
   copyStatus: string | null;
   shareUrl: string;
   embedCode: string;
-  getEmbedCode?: (format: "iframe" | "custom-tag" | "morsel-tag") => string;
+  getEmbedCode?: (format: "iframe" | "html-page" | "custom-tag" | "morsel-tag") => string;
   markdownBadge: string;
   onCopy: (text: string, label: string) => void;
 }
@@ -25,7 +25,7 @@ export const PlaygroundShareModal: React.FC<PlaygroundShareModalProps> = ({
   markdownBadge,
   onCopy,
 }) => {
-  const [embedFormat, setEmbedFormat] = useState<"iframe" | "custom-tag" | "morsel-tag">("iframe");
+  const [embedFormat, setEmbedFormat] = useState<"iframe" | "html-page" | "custom-tag" | "morsel-tag">("iframe");
 
   if (!isOpen) return null;
 
@@ -37,19 +37,45 @@ export const PlaygroundShareModal: React.FC<PlaygroundShareModalProps> = ({
   const origin = typeof window !== "undefined" ? window.location.origin : "https://ansatz.social";
   const defaultMorselTag = `<script src="${origin}/static/embed.js" defer></script>\n<modelscript-morsel src="${embedSrc}" height="480px"></modelscript-morsel>`;
   const defaultCustomTag = `<script src="${origin}/static/embed.js" defer></script>\n<modelscript-viewer src="${embedSrc}" height="480px"></modelscript-viewer>`;
+  const defaultHtmlPage = `<!DOCTYPE html>\n<html lang="en">\n<head><meta charset="utf-8" /><title>ModelScript Embed</title><style>html,body,iframe{margin:0;padding:0;width:100%;height:100%;border:0;overflow:hidden;}</style></head>\n<body><iframe src="${embedSrc}" allow="clipboard-write; fullscreen"></iframe></body>\n</html>`;
   const activeEmbedCode = getEmbedCode
     ? getEmbedCode(embedFormat)
-    : embedFormat === "morsel-tag"
-      ? defaultMorselTag
-      : embedFormat === "custom-tag"
-        ? defaultCustomTag
-        : embedCode;
+    : embedFormat === "html-page"
+      ? defaultHtmlPage
+      : embedFormat === "morsel-tag"
+        ? defaultMorselTag
+        : embedFormat === "custom-tag"
+          ? defaultCustomTag
+          : embedCode;
+
+  const handleDownloadHtml = () => {
+    if (typeof document === "undefined") return;
+    const htmlContent = getEmbedCode ? getEmbedCode("html-page") : defaultHtmlPage;
+    const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "modelscript-embed.html";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <Dialog
       title="Share Interactive Model"
       onClose={onClose}
       footerButtons={[
+        ...(embedFormat === "html-page"
+          ? [
+              {
+                buttonType: "normal" as const,
+                content: "Download .html",
+                onClick: handleDownloadHtml,
+              },
+            ]
+          : []),
         {
           buttonType: "primary",
           content: copyStatus ? `✓ Copied ${copyStatus}!` : "Copy Direct Link",
@@ -142,6 +168,21 @@ export const PlaygroundShareModal: React.FC<PlaygroundShareModalProps> = ({
               </button>
               <button
                 type="button"
+                onClick={() => setEmbedFormat("html-page")}
+                style={{
+                  border: "none",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: embedFormat === "html-page" ? 600 : 400,
+                  cursor: "pointer",
+                  background: embedFormat === "html-page" ? "var(--ms-accent, var(--color-accent-fg))" : "transparent",
+                  color: embedFormat === "html-page" ? "#ffffff" : "var(--color-fg-muted)",
+                }}
+              >
+                HTML
+              </button>
+              <button
+                type="button"
                 onClick={() => setEmbedFormat("morsel-tag")}
                 style={{
                   border: "none",
@@ -202,7 +243,7 @@ export const PlaygroundShareModal: React.FC<PlaygroundShareModalProps> = ({
               aria-label="Copy Embed Code"
               icon={CopyIcon}
               size="small"
-              onClick={() => onCopy(activeEmbedCode, "Embed Code")}
+              onClick={() => onCopy(activeEmbedCode, embedFormat === "html-page" ? "HTML Embed" : "Embed Code")}
             />
           </div>
         </div>

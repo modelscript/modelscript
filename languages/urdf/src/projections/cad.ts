@@ -4,11 +4,11 @@
  * @modelscript/urdf — Projection from URDF Visual/Collision Models to CAD Shapes.
  */
 
-import type { UrdfRobot, Vector3D } from "../types.js";
+import type { UrdfGeometryType, UrdfRobot, Vector3D } from "../types.js";
 
 export interface CadBoundingShape {
   linkName: string;
-  type: "box" | "cylinder" | "sphere" | "mesh";
+  type: UrdfGeometryType;
   origin: Vector3D;
   dimensions: Vector3D;
   color?: { r: number; g: number; b: number; a: number } | undefined;

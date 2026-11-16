@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { Solid } from "@modelscript/cad";
-import { choice, def, field, language, optional, prec, repeat, seq } from "@modelscript/dsl";
+import { choice, def, field, language, optional, prec, ref, repeat, seq } from "@modelscript/dsl";
 import { indexScadDocument } from "./indexing.js";
 import type { ScadCstNode } from "./patcher.js";
 import { scadPolyglotConfig } from "./tgg/index.js";
@@ -725,7 +725,12 @@ export const scadLanguage = language({
     SquarePrimitive: ($) => seq("square", "(", optional(field("args", $["ArgumentList"]!)), ")"),
 
     ModuleInstantiation: ($) =>
-      seq(field("name", $["IDENTIFIER"]!), "(", optional(field("args", $["ArgumentList"]!)), ")"),
+      ref({
+        syntax: seq(field("name", $["IDENTIFIER"]!), "(", optional(field("args", $["ArgumentList"]!)), ")"),
+        name: (self: Record<string, string>) => self["name"] ?? "",
+        targetKinds: ["Module", "Class", "Definition", "Function"],
+        resolve: "lexical",
+      }),
 
     // ── Expressions ────────────────────────────────────────────────────────
 

@@ -103,6 +103,7 @@ export function classKindFromEntry(entry: any): string {
 
 export function isTreeVisible(entry: any): boolean {
   if (entry?.metadata?.isPredefined) return false;
+  if (entry?.kind === "Reference") return false;
   if (entry?.name?.startsWith("'") || entry?.name?.startsWith('"')) return false;
   if (entry?.language) {
     if (entry.language === "owl2") {

@@ -1464,16 +1464,69 @@ export class LSPBridge {
     );
   }
 
-  /** Checks whether a symbol entry is declared at the top-level of a file/workspace (or is predefined). */
+  /** Infers the active language ID of the document bound to this `LSPBridge`. */
+  private getBridgeLanguage(): string {
+    const uriLower = this.documentUri.toLowerCase();
+    if (uriLower.endsWith(".sysml") || uriLower.endsWith(".sysml2")) return "sysml2";
+    if (uriLower.endsWith(".mo") || uriLower.endsWith(".mos")) return "modelica";
+    if (uriLower.endsWith(".scad")) return "scad";
+    if (uriLower.endsWith(".step") || uriLower.endsWith(".stp") || uriLower.endsWith(".p21")) return "step";
+    if (uriLower.endsWith(".reqif") || uriLower.endsWith(".reqifz")) return "reqif";
+    if (uriLower.endsWith(".qif") || uriLower.endsWith(".qif.xml") || uriLower.endsWith(".qif.json")) return "qif";
+    if (/\.(pscx|pslx|pswx|psmx)$/.test(uriLower)) return "pscad";
+    if (/\.(raw|dyr|seq)$/.test(uriLower)) return "psse";
+    for (const id of this.getDocumentSymbolIds()) {
+      const sym = this.index.symbols.get(id);
+      if (sym?.language) return sym.language.toLowerCase();
+    }
+    return "";
+  }
+
+  /** Checks whether a symbol entry is declared at the top-level of a file/workspace (or a synthetic foreign file root). */
   private isTopLevel(entry: SymbolEntry): boolean {
     if (entry.metadata?.["isPredefined"]) return true;
     if (entry.parentId === null || entry.parentId === undefined || entry.parentId === 0) return true;
     const parent = this.index.symbols.get(entry.parentId);
     if (!parent) return true;
-    if (parent.ruleName === "SourceFile" || parent.ruleName === "source_file" || parent.kind === "SourceFile") {
+    const pr = parent.ruleName ?? "";
+    if (
+      pr === "SourceFile" ||
+      pr === "source_file" ||
+      parent.kind === "SourceFile" ||
+      pr === "scad_file" ||
+      pr === "reqif_specification" ||
+      pr === "step_product" ||
+      pr === "pscad_library" ||
+      pr === "pscad_project" ||
+      pr === "qif_document" ||
+      pr === "psse_case" ||
+      pr === "psse_dyr_case"
+    ) {
       return true;
     }
     return false;
+  }
+
+  /** Validates whether a global candidate `entry` is visible/compatible from the current bridge language. */
+  private isCompatibleGlobalCandidate(entry: SymbolEntry): boolean {
+    const entryLang = entry.language?.toLowerCase() ?? "";
+    const bridgeLang = this.getBridgeLanguage();
+    if (!entryLang || !bridgeLang || entryLang === bridgeLang) return true;
+    const projTable = (
+      this.index as {
+        tggProjectionTable?: {
+          getAllRules?: () => unknown[];
+          canResolveAs?: (fromLang: string, target: SymbolEntry) => boolean;
+        };
+      }
+    ).tggProjectionTable;
+    if (projTable && typeof projTable.canResolveAs === "function") {
+      const ruleCount = typeof projTable.getAllRules === "function" ? projTable.getAllRules().length : 1;
+      if (ruleCount > 0) {
+        return projTable.canResolveAs(bridgeLang, entry);
+      }
+    }
+    return true;
   }
 
   /** Computes the dot-separated or `::`-separated qualified name for `entry` by walking its parent chain. */
@@ -1586,14 +1639,20 @@ export class LSPBridge {
         current = parent?.parentId ?? null;
       }
       const globalIds = this.index.byName.get(name) || [];
-      const results: SymbolEntry[] = [];
+      const sameLangResults: SymbolEntry[] = [];
+      const foreignResults: SymbolEntry[] = [];
+      const bridgeLang = this.getBridgeLanguage();
       for (const id of globalIds) {
         const entry = this.index.symbols.get(id);
-        if (entry && this.isDecl(entry) && this.isTopLevel(entry)) {
-          results.push(entry);
+        if (entry && this.isDecl(entry) && this.isTopLevel(entry) && this.isCompatibleGlobalCandidate(entry)) {
+          if (!bridgeLang || !entry.language || entry.language.toLowerCase() === bridgeLang) {
+            sameLangResults.push(entry);
+          } else {
+            foreignResults.push(entry);
+          }
         }
       }
-      return results;
+      return sameLangResults.length > 0 ? sameLangResults : foreignResults;
     } finally {
       this.resolveDepth--;
       this.activeResolveKeys.delete(simpleKey);
@@ -2485,6 +2544,46 @@ export class LSPBridge {
           kind: this.mapSymbolKind(member.kind),
           detail: `${member.kind} (inherited)`,
         });
+      }
+    }
+
+    // Foreign cross-language member projection via TggSymbolProjectionTable
+    const bridgeLang = this.getBridgeLanguage();
+    const projTable = (
+      this.index as {
+        tggProjectionTable?: {
+          projectForeignSignature?: (
+            cand: SymbolEntry,
+            idx: SymbolIndex,
+            tgtLang: string,
+          ) => {
+            members: Array<{
+              name: string;
+              projectedType: string;
+              role: "port" | "parameter" | "attribute" | "component";
+              direction?: string;
+            }>;
+          };
+        };
+      }
+    ).tggProjectionTable;
+    if (
+      projTable?.projectForeignSignature &&
+      typeEntry.language &&
+      bridgeLang &&
+      typeEntry.language.toLowerCase() !== bridgeLang.toLowerCase()
+    ) {
+      const projected = projTable.projectForeignSignature(typeEntry, this.index, bridgeLang);
+      for (const m of projected.members) {
+        if (!seen.has(m.name)) {
+          seen.add(m.name);
+          const dirPrefix = m.direction ? `${m.direction} ` : "";
+          results.push({
+            label: m.name,
+            kind: m.role === "component" || m.role === "port" ? LSPSymbolKind.Property : LSPSymbolKind.Variable,
+            detail: `${dirPrefix}${m.projectedType} (${m.role} · ${typeEntry.language})`,
+          });
+        }
       }
     }
 
@@ -4102,7 +4201,69 @@ export class LSPBridge {
   // textDocument/references & textDocument/rename (Workspace-wide access)
   // =========================================================================
 
-  /** Returns raw symbol entries for references, preserving cross-document resourceIds */
+  /** Collects cross-language counterpart symbol IDs bound to `symbolId` via `WasmQueryEngine` or `TggCorrespondenceIndexer`. */
+  private collectCrossDomainCounterpartIds(symbolId: SymbolId): Set<SymbolId> {
+    const peers = new Set<SymbolId>();
+    const engCross = this.engine as unknown as { crossDomainBinding?(id: SymbolId): Set<SymbolId> } | undefined;
+    if (typeof engCross?.crossDomainBinding === "function") {
+      try {
+        for (const bid of engCross.crossDomainBinding(symbolId)) {
+          if (bid !== symbolId) peers.add(bid);
+        }
+      } catch {
+        // ignore
+      }
+    }
+    const corrIndexer = (
+      this.index as {
+        tggCorrespondenceIndexer?: {
+          getSlotsForSymbol?: (id: SymbolId) => ReadonlySet<number>;
+          hypergraph?: {
+            getRecord?: (slot: number) => { isRemoved?: boolean; domainNodes?: Record<number, number> } | null;
+          };
+        };
+      }
+    ).tggCorrespondenceIndexer;
+    if (corrIndexer && typeof corrIndexer.getSlotsForSymbol === "function") {
+      for (const slot of corrIndexer.getSlotsForSymbol(symbolId)) {
+        const rec = corrIndexer.hypergraph?.getRecord?.(slot);
+        if (!rec || rec.isRemoved || !rec.domainNodes) continue;
+        for (const memberId of Object.values(rec.domainNodes)) {
+          if (typeof memberId === "number" && memberId !== symbolId) {
+            peers.add(memberId);
+          }
+        }
+      }
+    }
+    return peers;
+  }
+
+  /** Returns cross-language counterpart declarations aligned via TGG correspondence for the symbol at `byteOffset`. */
+  counterpartDefinitionsRaw(byteOffset: number): SymbolEntry[] {
+    const entry = this.findEntryAtOffset(byteOffset);
+    if (!entry) return [];
+    let targetDecl = entry;
+    const resolved = this.resolveRef(entry);
+    if (resolved.length > 0) {
+      targetDecl = resolved[0]!;
+    }
+    const peerIds = this.collectCrossDomainCounterpartIds(targetDecl.id);
+    if (entry.id !== targetDecl.id) {
+      for (const pid of this.collectCrossDomainCounterpartIds(entry.id)) {
+        peerIds.add(pid);
+      }
+    }
+    const out: SymbolEntry[] = [];
+    for (const pid of peerIds) {
+      const sym = this.index.symbols.get(pid);
+      if (sym && sym.resourceId && sym.resourceId !== this.documentUri) {
+        out.push(sym);
+      }
+    }
+    return out;
+  }
+
+  /** Returns raw symbol entries for references, preserving cross-document and cross-language resourceIds */
   findReferencesRaw(byteOffset: number): { declaration: SymbolEntry | null; references: SymbolEntry[] } {
     const entry = this.findEntryAtOffset(byteOffset);
     if (!entry) return { declaration: null, references: [] };
@@ -4117,8 +4278,22 @@ export class LSPBridge {
       targetDecl = resolved[0]!;
     }
 
-    // Find all references mapping to the target declaration (workspace-wide)
-    const references = this.findRefs(targetDecl.id);
+    // Find all references mapping to the target declaration (workspace-wide) + cross-domain TGG peers
+    const references = [...this.findRefs(targetDecl.id)];
+    const seenRefIds = new Set<SymbolId>(references.map((r) => r.id));
+    for (const peerId of this.collectCrossDomainCounterpartIds(targetDecl.id)) {
+      const peerDecl = this.index.symbols.get(peerId);
+      if (peerDecl && !seenRefIds.has(peerDecl.id)) {
+        seenRefIds.add(peerDecl.id);
+        references.push(peerDecl);
+      }
+      for (const peerRef of this.findRefs(peerId)) {
+        if (!seenRefIds.has(peerRef.id)) {
+          seenRefIds.add(peerRef.id);
+          references.push(peerRef);
+        }
+      }
+    }
     return { declaration: targetDecl, references };
   }
 

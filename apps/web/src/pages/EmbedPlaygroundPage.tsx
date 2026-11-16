@@ -252,9 +252,33 @@ export const EmbedPlaygroundPage: React.FC = () => {
 
   const handleCodeChange = (nextCode: string) => {
     setCurrentCode(nextCode);
+    setPayload((prev: any) => {
+      if (!prev?.files) return prev;
+      const targetKey =
+        prev.activeFile && prev.files[prev.activeFile] !== undefined ? prev.activeFile : Object.keys(prev.files)[0];
+      if (!targetKey || prev.files[targetKey] === nextCode) return prev;
+      return {
+        ...prev,
+        files: { ...prev.files, [targetKey]: nextCode },
+      };
+    });
     if (typeof window !== "undefined" && window.parent && window.parent !== window) {
       window.parent.postMessage(
         { namespace: "modelscript-embed", type: "CODE_CHANGED", code: nextCode },
+        getTargetOrigin(),
+      );
+    }
+  };
+
+  const handleUpdateProjectFile = (fileName: string, nextContent: string) => {
+    setPayload((prev: any) => {
+      const nextFiles = { ...(prev?.files ?? {}), [fileName]: nextContent };
+      if (prev?.files?.[fileName] === nextContent) return prev;
+      return { ...(prev ?? { v: 1 }), files: nextFiles };
+    });
+    if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+      window.parent.postMessage(
+        { namespace: "modelscript-embed", type: "PROJECT_FILES_CHANGED", fileName, content: nextContent },
         getTargetOrigin(),
       );
     }
@@ -377,11 +401,20 @@ export const EmbedPlaygroundPage: React.FC = () => {
           const cfg = typeof art.view_config === "string" ? safeJsonParse(art.view_config, {}) : art.view_config || {};
           let code: string = cfg.code || cfg.modelicaCode || cfg.source || cfg.content || "";
 
-          if (!code && cfg.files && typeof cfg.files === "object" && !Array.isArray(cfg.files)) {
-            const firstContent = Object.values(cfg.files)[0];
-            if (typeof firstContent === "string") {
-              code = firstContent;
-            }
+          const artifactFiles =
+            cfg.files && typeof cfg.files === "object" && !Array.isArray(cfg.files)
+              ? (cfg.files as Record<string, string>)
+              : undefined;
+          const resolvedActiveFile = artifactFiles
+            ? typeof cfg.activeFile === "string" && typeof artifactFiles[cfg.activeFile] === "string"
+              ? cfg.activeFile
+              : Object.keys(artifactFiles)[0]
+            : typeof cfg.activeFile === "string"
+              ? cfg.activeFile
+              : undefined;
+
+          if (!code && artifactFiles && resolvedActiveFile && typeof artifactFiles[resolvedActiveFile] === "string") {
+            code = artifactFiles[resolvedActiveFile];
           }
 
           if (!code && typeof cfg.url === "string" && cfg.url.trim()) {
@@ -406,10 +439,8 @@ export const EmbedPlaygroundPage: React.FC = () => {
           setPayload({
             title: resolvedTitle,
             lang: dialect,
-            ...(cfg.files && typeof cfg.files === "object" && !Array.isArray(cfg.files)
-              ? { files: cfg.files as Record<string, string> }
-              : {}),
-            ...(typeof cfg.activeFile === "string" ? { activeFile: cfg.activeFile } : {}),
+            ...(artifactFiles ? { files: artifactFiles } : {}),
+            ...(resolvedActiveFile ? { activeFile: resolvedActiveFile } : {}),
           });
           const editorUrl = buildEditorUrlForArtifact({
             artifactId: fromArtifact,
@@ -480,6 +511,7 @@ export const EmbedPlaygroundPage: React.FC = () => {
         simulateTriggerCount={simulateTriggerCount}
         externalParams={externalParams ?? payload?.params}
         onCodeChange={handleCodeChange}
+        onUpdateProjectFile={handleUpdateProjectFile}
         onAnchorClick={handleAnchorClick}
         onSimulationStatus={handleSimulationStatus}
       />

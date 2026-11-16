@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PolyglotConfig, TGGConstraint, TGGRuleOptions } from "../../dsl/language.js";
+import {
+  PolyglotConfig,
+  TGGConstraint,
+  TGGRuleOptions,
+  type TGGForeignKeySpec,
+  type TGGIdentityKey,
+  type TGGRelationRole,
+} from "../../dsl/language.js";
 import type { u32 } from "../../dsl/primitives.js";
 import { invertExpression } from "../analysis/inversion.js";
 import { getDJB2Hash } from "../shared/utils.js";
@@ -17,17 +24,50 @@ export {
   type LosslessnessReport,
 };
 
+export interface TGGFieldAliasEntry {
+  sourceField: string;
+  targetField: string;
+  aliases?: Record<string, string> | undefined;
+}
+
+export interface TGGResolutionRuleManifest {
+  ruleName: string;
+  sourceLang?: string | undefined;
+  targetLang?: string | undefined;
+  sourceNodeType: string;
+  targetNodeType: string;
+  contextSourceType?: string | undefined;
+  contextTargetType?: string | undefined;
+  identityKeys: TGGIdentityKey[];
+  foreignKey?: TGGForeignKeySpec | undefined;
+  fieldAliases: TGGFieldAliasEntry[];
+  allowCrossLanguageRef: boolean;
+  relation: TGGRelationRole;
+  priority: number;
+}
+
+export interface TGGResolutionManifest {
+  rules: TGGResolutionRuleManifest[];
+}
+
 export interface CompiledTGGRulePlan {
   ruleName: string;
   sourceLang?: string | undefined;
   targetLang?: string | undefined;
   sourceNodeType: string;
   targetNodeType: string;
+  contextSourceType?: string | undefined;
+  contextTargetType?: string | undefined;
   sourceTypeId: number;
   targetTypeId: number;
   sourceBindings: Record<string, unknown>;
   targetBindings: Record<string, unknown>;
   constraints: TGGConstraint[];
+  identityKeys: TGGIdentityKey[];
+  foreignKey?: TGGForeignKeySpec | undefined;
+  fieldAliases: TGGFieldAliasEntry[];
+  allowCrossLanguageRef: boolean;
+  relation: TGGRelationRole;
   rule: TGGRuleOptions;
 }
 
@@ -40,6 +80,7 @@ export interface CompiledTGGPlan {
     reports: LosslessnessReport[];
     leakedRuleCount: number;
   };
+  resolutionManifest: TGGResolutionManifest;
 }
 
 export interface CompiledTGGOutput {
@@ -1347,23 +1388,146 @@ export function compileTGGRules(
   code += `  return resolvedCount;\n`;
   code += `}\n`;
 
-  const plan: CompiledTGGPlan = {
-    rules: activeRules.map((r) => ({
+  const deriveIdentityKeys = (
+    rule: TGGRuleOptions,
+    srcB: Record<string, unknown>,
+    tgtB: Record<string, unknown>,
+    cs: TGGConstraint[],
+  ): TGGIdentityKey[] => {
+    if (rule.identityKeys && rule.identityKeys.length > 0) {
+      return [...rule.identityKeys];
+    }
+    const keys: TGGIdentityKey[] = [];
+    const seen = new Set<string>();
+    const pushKey = (k: TGGIdentityKey) => {
+      const sig = `${k.source}->${k.target}:${k.transform ?? "exact"}:${k.prefix ?? ""}`;
+      if (!seen.has(sig)) {
+        seen.add(sig);
+        keys.push(k);
+      }
+    };
+
+    // 1. Direct shared variable bindings across source & target patterns
+    for (const [srcProp, srcVal] of Object.entries(srcB)) {
+      if (typeof srcVal !== "string" || !srcVal.startsWith("__var_")) continue;
+      for (const [tgtProp, tgtVal] of Object.entries(tgtB)) {
+        if (tgtVal === srcVal) {
+          pushKey({ source: srcProp, target: tgtProp, transform: "exact" });
+        }
+      }
+    }
+
+    // 2. Explicit eq(v(a), v(b)) and formatUri(v(id), prefix, v(iri)) constraints
+    for (const c of cs) {
+      if (c.kind === "eq") {
+        const [a, b] = c.args;
+        const srcProp = Object.keys(srcB).find((k) => srcB[k] === a || k === stripVarPrefix(a));
+        const tgtProp = Object.keys(tgtB).find((k) => tgtB[k] === b || k === stripVarPrefix(b));
+        if (srcProp && tgtProp) {
+          pushKey({ source: srcProp, target: tgtProp, transform: "exact" });
+        }
+      } else if (c.kind === "formatUri") {
+        const [idVar, prefix, targetVar] = c.args;
+        const srcProp = Object.keys(srcB).find((k) => srcB[k] === idVar || k === stripVarPrefix(idVar));
+        const tgtProp = Object.keys(tgtB).find((k) => tgtB[k] === targetVar || k === stripVarPrefix(targetVar));
+        if (srcProp && tgtProp) {
+          pushKey({
+            source: srcProp,
+            target: tgtProp,
+            transform: "stripPrefix",
+            prefix: typeof prefix === "string" ? prefix : undefined,
+          });
+        }
+      }
+    }
+    return keys;
+  };
+
+  const extractFieldAliases = (cs: TGGConstraint[]): TGGFieldAliasEntry[] => {
+    const out: TGGFieldAliasEntry[] = [];
+    for (const c of cs) {
+      if (c.kind === "fieldAlias") {
+        const [srcF, tgtF, dict] = c.args;
+        const sourceField = stripVarPrefix(srcF);
+        const targetField = stripVarPrefix(tgtF);
+        if (sourceField && targetField) {
+          out.push({
+            sourceField,
+            targetField,
+            ...(dict && typeof dict === "object" ? { aliases: dict as Record<string, string> } : {}),
+          });
+        }
+      }
+    }
+    return out;
+  };
+
+  const compiledRulePlans: CompiledTGGRulePlan[] = activeRules.map((r) => {
+    const srcBindings = (r.evaluatedSource?.bindings as Record<string, unknown>) || {};
+    const tgtBindings = (r.evaluatedTarget?.bindings as Record<string, unknown>) || {};
+    const rawCtx = typeof r.rule.context === "function" ? r.rule.context($proxy, vProxy) : r.rule.context;
+    const evalCtxNode = (pat: unknown): string | undefined => {
+      if (!pat) return undefined;
+      const evaluated = typeof pat === "function" ? (pat as (...a: unknown[]) => unknown)($proxy, vProxy) : pat;
+      if (evaluated && typeof evaluated === "object" && "nodeType" in evaluated) {
+        const nt = (evaluated as { nodeType?: unknown }).nodeType;
+        return typeof nt === "string" && nt.length > 0 ? nt : undefined;
+      }
+      return undefined;
+    };
+    const contextSourceType = evalCtxNode((rawCtx as { source?: unknown } | undefined)?.source);
+    const contextTargetType = evalCtxNode((rawCtx as { target?: unknown } | undefined)?.target);
+    const identityKeys = deriveIdentityKeys(r.rule, srcBindings, tgtBindings, r.constraints);
+    const fieldAliases = extractFieldAliases(r.constraints);
+    const allowCrossLanguageRef = r.rule.allowCrossLanguageRef ?? true;
+    const relation: TGGRelationRole = r.rule.relation ?? r.rule.foreignKey?.relation ?? "aligned";
+
+    return {
       ruleName: r.ruleName,
       sourceLang: r.sourceLang,
       targetLang: r.targetLang,
       sourceNodeType: r.sourceNodeType,
       targetNodeType: r.targetNodeType,
+      ...(contextSourceType ? { contextSourceType } : {}),
+      ...(contextTargetType ? { contextTargetType } : {}),
       sourceTypeId: getCollisionFreeNodeHash(r.sourceNodeType),
       targetTypeId: getCollisionFreeNodeHash(r.targetNodeType),
-      sourceBindings: (r.evaluatedSource?.bindings as Record<string, unknown>) || {},
-      targetBindings: (r.evaluatedTarget?.bindings as Record<string, unknown>) || {},
+      sourceBindings: srcBindings,
+      targetBindings: tgtBindings,
       constraints: r.constraints,
+      identityKeys,
+      ...(r.rule.foreignKey ? { foreignKey: r.rule.foreignKey } : {}),
+      fieldAliases,
+      allowCrossLanguageRef,
+      relation,
       rule: r.rule,
+    };
+  });
+
+  const resolutionManifest: TGGResolutionManifest = {
+    rules: compiledRulePlans.map((rp) => ({
+      ruleName: rp.ruleName,
+      sourceLang: rp.sourceLang,
+      targetLang: rp.targetLang,
+      sourceNodeType: rp.sourceNodeType,
+      targetNodeType: rp.targetNodeType,
+      ...(rp.contextSourceType ? { contextSourceType: rp.contextSourceType } : {}),
+      ...(rp.contextTargetType ? { contextTargetType: rp.contextTargetType } : {}),
+      identityKeys: rp.identityKeys,
+      ...(rp.foreignKey ? { foreignKey: rp.foreignKey } : {}),
+      fieldAliases: rp.fieldAliases,
+      allowCrossLanguageRef: rp.allowCrossLanguageRef,
+      relation: rp.relation,
+      priority: rp.rule.priority ?? 0,
     })),
+  };
+
+  const plan: CompiledTGGPlan = {
+    rules: compiledRulePlans,
     typeMaps: _typeMaps,
     cpaReport,
     losslessnessReport,
+    resolutionManifest,
   };
 
   return {

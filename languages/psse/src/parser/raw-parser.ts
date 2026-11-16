@@ -11,52 +11,30 @@ import type {
   LoadRecord,
   PsseCase,
   SourceSpan,
+  SubstationRecord,
+  SubstationTerminalRecord,
   SwitchedShuntRecord,
   TransformerRecord,
   TwoTerminalDcRecord,
   VscDcRecord,
 } from "../types.js";
 
+import {
+  extractFieldsFromCstTokens,
+  isPsseSectionTerminator,
+  parsePsseCstDocument,
+  type PsseCstLine,
+} from "./cst-tokens.js";
+
 /**
- * Splits a PSS/E line into token strings, respecting quotes and discarding comments after `/`.
+ * Splits a PSS/E line into field strings using the native WASM GLR parser CST,
+ * respecting quoted strings and ignoring `/` comments.
  */
 export function tokenizeRawLine(line: string): string[] {
-  const tokens: string[] = [];
-  let current = "";
-  let inQuote = false;
-  let quoteChar = "";
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]!;
-
-    if (!inQuote && ch === "/") {
-      // Remainder of line is a comment
-      break;
-    }
-
-    if (ch === "'" || ch === '"') {
-      if (!inQuote) {
-        inQuote = true;
-        quoteChar = ch;
-      } else if (ch === quoteChar) {
-        inQuote = false;
-      } else {
-        current += ch;
-      }
-      continue;
-    }
-
-    if (!inQuote && (ch === "," || ch === "\t")) {
-      tokens.push(current.trim());
-      current = "";
-      continue;
-    }
-
-    current += ch;
-  }
-
-  tokens.push(current.trim());
-  return tokens;
+  const doc = parsePsseCstDocument(line);
+  const first = doc.lines[0];
+  if (!first) return [];
+  return extractFieldsFromCstTokens(first.tokens, line, "delimited").map((f) => f.value);
 }
 
 /**
@@ -73,44 +51,45 @@ function parseNum(val: string | undefined, def = 0): number {
  */
 function parseStr(val: string | undefined, def = ""): string {
   if (val === undefined || val === "") return def;
-  return val.replace(/^['"]|['"]$/g, "").trim();
+  const trimmed = val.trim();
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed[0] === "'" && trimmed[trimmed.length - 1] === "'") ||
+      (trimmed[0] === '"' && trimmed[trimmed.length - 1] === '"'))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
 }
 
-import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { getPsseWasmParser } from "./wasm-loader.js";
-
 /**
- * Parses PSS/E RAW format text into a structured `PsseCase`.
+ * Parses PSS/E RAW format text into a structured `PsseCase` via the native WASM CST.
  */
 export function parseRaw(text: string): PsseCase {
-  const cstTree = getPsseWasmParser().parse(text);
-  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
-  const lines = cstLines.map(({ row, tokens }) => {
-    const start = Math.max(0, (tokens[0]?.startIndex ?? 0) - (tokens[0]?.startPosition?.column ?? 0));
-    const l = cstLineText(text, tokens);
-    const end = tokens[tokens.length - 1]?.endIndex ?? start + l.length;
-    return { line: text.slice(start, end), lineNum: row + 1, startOffset: start, endOffset: end };
-  });
+  const cstDoc = parsePsseCstDocument(text);
+  const lines = cstDoc.lines;
   let lineIdx = 0;
 
-  function nextLine(): { line: string; lineNum: number; startOffset: number; endOffset: number } | null {
+  function nextLine(): PsseCstLine | null {
     if (lineIdx >= lines.length) return null;
     return lines[lineIdx++]!;
   }
 
+  function fieldsOf(info: PsseCstLine | null): string[] {
+    if (!info) return [];
+    return extractFieldsFromCstTokens(info.tokens, text, "delimited").map((f) => f.value);
+  }
+
+  const rawMetadataDetected = lines.some((l) => l.line.trimStart().startsWith("@!"));
+
   // Skip any leading comment lines (@! or /) before the Case Identification header
-  while (lineIdx < lines.length) {
-    const peek = lines[lineIdx]!.line.trim();
-    if (peek === "" || peek.startsWith("@!") || peek.startsWith("/")) {
-      nextLine();
-    } else {
-      break;
-    }
+  while (lineIdx < lines.length && lines[lineIdx]!.isCommentOrBlank) {
+    nextLine();
   }
 
   // 1. Header (Case Identification)
   const headerLineInfo = nextLine();
-  const headerTokens = headerLineInfo ? tokenizeRawLine(headerLineInfo.line) : [];
+  const headerTokens = fieldsOf(headerLineInfo);
   const header: CaseIdentification = {
     ic: parseNum(headerTokens[0], 0),
     sbase: parseNum(headerTokens[1], 100.0),
@@ -118,6 +97,7 @@ export function parseRaw(text: string): PsseCase {
     xfrrat: parseNum(headerTokens[3], 0),
     nxfrat: parseNum(headerTokens[4], 0),
     basfrq: parseNum(headerTokens[5], 60.0),
+    rawMetadataDetected,
     span: headerLineInfo
       ? {
           startOffset: headerLineInfo.startOffset,
@@ -128,14 +108,13 @@ export function parseRaw(text: string): PsseCase {
       : undefined,
   };
 
-  function isLikelyBusRecord(line: string): boolean {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("/") || trimmed.startsWith("@!")) return false;
-    const toks = tokenizeRawLine(trimmed);
-    if (toks.length < 7) return false;
-    const busNum = Number(toks[0]);
-    const baseKv = Number(toks[2]);
-    const ide = Number(toks[3]);
+  function isLikelyBusRecord(info: PsseCstLine): boolean {
+    if (info.isCommentOrBlank) return false;
+    const fields = extractFieldsFromCstTokens(info.tokens, text, "delimited");
+    if (fields.length < 7) return false;
+    const busNum = Number(fields[0]!.value);
+    const baseKv = Number(fields[2]!.value);
+    const ide = Number(fields[3]!.value);
     return (
       Number.isInteger(busNum) &&
       busNum > 0 &&
@@ -147,14 +126,14 @@ export function parseRaw(text: string): PsseCase {
 
   // 2. Title Line 1 (unless the file omits title lines and starts Bus Data immediately)
   let title1 = "";
-  if (lineIdx < lines.length && !isLikelyBusRecord(lines[lineIdx]!.line)) {
+  if (lineIdx < lines.length && !isLikelyBusRecord(lines[lineIdx]!)) {
     const t1 = nextLine();
     title1 = t1 ? t1.line.trim() : "";
   }
 
   // 3. Title Line 2 (unless Bus Data starts on line 3)
   let title2 = "";
-  if (lineIdx < lines.length && !isLikelyBusRecord(lines[lineIdx]!.line)) {
+  if (lineIdx < lines.length && !isLikelyBusRecord(lines[lineIdx]!)) {
     const t2 = nextLine();
     title2 = t2 ? t2.line.trim() : "";
   }
@@ -169,15 +148,25 @@ export function parseRaw(text: string): PsseCase {
   const twoTerminalDc: TwoTerminalDcRecord[] = [];
   const vscDc: VscDcRecord[] = [];
   const switchedShunts: SwitchedShuntRecord[] = [];
+  const substations: SubstationRecord[] = [];
+  let currentSub: SubstationRecord | null = null;
+  let subStage: "header" | "nodes" | "switches" | "terminals" = "header";
+
+  const flushCurrentSub = (): void => {
+    if (currentSub) {
+      substations.push(currentSub);
+      currentSub = null;
+    }
+    subStage = "header";
+  };
 
   // Section codes:
   // 0=Bus, 1=Load, 2=FixedShunt, 3=Gen, 4=Branch, 5=Xfmr, 6=Area, 7=2TermDC, 8=VscDC,
-  // 9=SwitchedShunt (or ImpedanceCorrection in full v33), 10..15=Intermediate v33 sections, 16=SwitchedShunt
+  // 9=SwitchedShunt (or ImpedanceCorrection in full v33), 10..15=Intermediate v33 sections, 16=SwitchedShunt, 18=Substation (v34/v35 Node-Breaker)
   let section = 0;
 
   function resolveSectionFromComment(commentLine: string, currentSec: number): number {
     const upper = commentLine.toUpperCase();
-    if (/^Q(?:\s*,|\s*\/|\s*$)/i.test(commentLine.trim())) return 99;
     if (upper.includes("BEGIN BUS")) return 0;
     if (upper.includes("BEGIN LOAD")) return 1;
     if (upper.includes("BEGIN FIXED SHUNT")) return 2;
@@ -196,29 +185,67 @@ export function parseRaw(text: string): PsseCase {
     if (upper.includes("BEGIN FACTS")) return 15;
     if (upper.includes("BEGIN SWITCHED SHUNT")) return 9;
     if (upper.includes("END OF SWITCHED SHUNT")) return 17;
+    if (upper.includes("BEGIN SUBSTATION")) return 18;
+    if (upper.includes("END OF SUBSTATION DATA")) return 19;
     return currentSec + 1;
   }
+
+  let openSection: { section: number; span?: SourceSpan | undefined } | undefined;
+  let prevLineEndOffset = 0;
 
   while (lineIdx < lines.length) {
     const info = nextLine();
     if (!info) break;
-    const trimmed = info.line.trim();
-    if (trimmed === "" || trimmed.startsWith("/") || trimmed.startsWith("@!")) continue;
+    if (section < 18 && info.startOffset > prevLineEndOffset) {
+      const gap = text.slice(prevLineEndOffset, info.startOffset).toUpperCase();
+      if (gap.includes("BEGIN SUBSTATION")) {
+        flushCurrentSub();
+        openSection = undefined;
+        section = 18;
+      }
+    }
+    prevLineEndOffset = info.endOffset;
+    if (info.isCommentOrBlank) {
+      if ((info.commentText || info.line).toUpperCase().includes("BEGIN SUBSTATION")) {
+        flushCurrentSub();
+        openSection = undefined;
+        section = 18;
+      }
+      continue;
+    }
 
-    // Check for section terminator ('0', '0 / ...', '0, ...', 'Q', 'Q / ...') without matching '0.000'
-    if (/^(?:0(?:\s*,|\s*\/|\s*$)|Q(?:\s*,|\s*\/|\s*$))/i.test(trimmed)) {
-      section = resolveSectionFromComment(trimmed, section);
+    const cstFields = extractFieldsFromCstTokens(info.tokens, text, "delimited");
+    const term = isPsseSectionTerminator(cstFields);
+    if (term === "end_file") {
+      flushCurrentSub();
+      openSection = undefined;
+      break;
+    }
+    if (term === "end_section") {
+      openSection = undefined;
+      const commentUpper = (info.commentText || info.line).toUpperCase().trim();
+      const isEndOfSubstationSection =
+        commentUpper.includes("END OF SUBSTATION DATA") || /END OF SUBSTATION\s*$/.test(commentUpper);
+      if (section === 18 && currentSub !== null && !isEndOfSubstationSection) {
+        if (subStage === "nodes") subStage = "switches";
+        else if (subStage === "switches") subStage = "terminals";
+        else flushCurrentSub();
+        continue;
+      }
+      if (section === 18) flushCurrentSub();
+      section = resolveSectionFromComment(info.commentText || info.line, section);
       if (section >= 99) break;
       continue;
     }
 
-    const toks = tokenizeRawLine(info.line);
+    const toks = cstFields.map((f) => f.value);
     const span: SourceSpan = {
       startOffset: info.startOffset,
       endOffset: info.endOffset,
       line: info.lineNum,
       column: 1,
     };
+    openSection = { section, span };
 
     switch (section) {
       case 0: {
@@ -242,6 +269,10 @@ export function parseRaw(text: string): PsseCase {
             span,
           };
           buses.set(busNum, bus);
+          header.minBusColumnCount =
+            header.minBusColumnCount === undefined ? toks.length : Math.min(header.minBusColumnCount, toks.length);
+          header.maxBusColumnCount =
+            header.maxBusColumnCount === undefined ? toks.length : Math.max(header.maxBusColumnCount, toks.length);
         }
         break;
       }
@@ -360,17 +391,27 @@ export function parseRaw(text: string): PsseCase {
         const jBus = parseNum(toks[1], 0);
         const kBus = parseNum(toks[2], 0);
         if (iBus > 0 && jBus > 0) {
-          const l2 = nextLine();
-          const toks2 = l2 ? tokenizeRawLine(l2.line) : [];
-          const l3 = nextLine();
-          const toks3 = l3 ? tokenizeRawLine(l3.line) : [];
-          const l4 = nextLine();
-          const toks4 = l4 ? tokenizeRawLine(l4.line) : [];
+          const nextDataLine = (): PsseCstLine | null => {
+            while (lineIdx < lines.length && lines[lineIdx]!.isCommentOrBlank) nextLine();
+            return nextLine();
+          };
+          const l2 = nextDataLine();
+          const toks2 = fieldsOf(l2);
+          const l3 = nextDataLine();
+          const toks3 = fieldsOf(l3);
+          const l4 = nextDataLine();
+          const toks4 = fieldsOf(l4);
+          let l5: PsseCstLine | null = null;
           let toks5: string[] = [];
           if (kBus !== 0) {
-            const l5 = nextLine();
-            toks5 = l5 ? tokenizeRawLine(l5.line) : [];
+            l5 = nextDataLine();
+            toks5 = fieldsOf(l5);
           }
+          const lastLine = l5 ?? l4 ?? l3 ?? l2 ?? info;
+          const xfmrSpan: SourceSpan = {
+            ...span,
+            endOffset: lastLine.endOffset,
+          };
 
           transformers.push({
             i: iBus,
@@ -426,7 +467,7 @@ export function parseRaw(text: string): PsseCase {
             rata3: kBus !== 0 ? parseNum(toks5[3], 0.0) : undefined,
             ratb3: kBus !== 0 ? parseNum(toks5[4], 0.0) : undefined,
             ratc3: kBus !== 0 ? parseNum(toks5[5], 0.0) : undefined,
-            span,
+            span: xfmrSpan,
           });
         }
         break;
@@ -451,23 +492,28 @@ export function parseRaw(text: string): PsseCase {
       case 7: {
         // Two-Terminal DC
         const dcNum = parseNum(toks[0], 0);
-        if (dcNum > 0 || toks[0]?.startsWith("'")) {
+        const isQuotedName = cstFields[0]?.tokenType === "QuotedString";
+        if (dcNum > 0 || isQuotedName) {
           const idNum = dcNum > 0 ? dcNum : twoTerminalDc.length + 1;
           let ipr: number | undefined;
           let ipi: number | undefined;
           // Consume optional rectifier/inverter continuation lines if present in 3-line v33 format
-          const peek1 = lines[lineIdx]?.line.trim() ?? "";
-          if (peek1 && !/^(?:0(?:\s*,|\s*\/|\s*$)|Q(?:\s*,|\s*\/|\s*$))/i.test(peek1)) {
-            const p1Toks = tokenizeRawLine(peek1);
-            if (p1Toks.length >= 10 && !peek1.startsWith("'")) {
+          const peek1 = lines[lineIdx];
+          const p1Fields =
+            peek1 && !peek1.isCommentOrBlank ? extractFieldsFromCstTokens(peek1.tokens, text, "delimited") : [];
+          if (
+            p1Fields.length >= 10 &&
+            !isPsseSectionTerminator(p1Fields) &&
+            p1Fields[0]?.tokenType !== "QuotedString"
+          ) {
+            nextLine();
+            ipr = parseNum(p1Fields[0]?.value, 0);
+            const peek2 = lines[lineIdx];
+            const p2Fields =
+              peek2 && !peek2.isCommentOrBlank ? extractFieldsFromCstTokens(peek2.tokens, text, "delimited") : [];
+            if (p2Fields.length > 0 && !isPsseSectionTerminator(p2Fields)) {
               nextLine();
-              ipr = parseNum(p1Toks[0], 0);
-              const peek2 = lines[lineIdx]?.line.trim() ?? "";
-              if (peek2 && !/^(?:0(?:\s*,|\s*\/|\s*$)|Q(?:\s*,|\s*\/|\s*$))/i.test(peek2)) {
-                const p2Toks = tokenizeRawLine(peek2);
-                nextLine();
-                ipi = parseNum(p2Toks[0], 0);
-              }
+              ipi = parseNum(p2Fields[0]?.value, 0);
             }
           }
           twoTerminalDc.push({
@@ -493,16 +539,22 @@ export function parseRaw(text: string): PsseCase {
         if (name) {
           let ibus1: number | undefined;
           let ibus2: number | undefined;
-          const peek1 = lines[lineIdx]?.line.trim() ?? "";
-          if (peek1 && !/^(?:0(?:\s*,|\s*\/|\s*$)|Q(?:\s*,|\s*\/|\s*$))/i.test(peek1) && !peek1.startsWith("'")) {
-            const p1Toks = tokenizeRawLine(peek1);
+          const peek1 = lines[lineIdx];
+          const p1Fields =
+            peek1 && !peek1.isCommentOrBlank ? extractFieldsFromCstTokens(peek1.tokens, text, "delimited") : [];
+          if (p1Fields.length > 0 && !isPsseSectionTerminator(p1Fields) && p1Fields[0]?.tokenType !== "QuotedString") {
             nextLine();
-            ibus1 = parseNum(p1Toks[0], 0);
-            const peek2 = lines[lineIdx]?.line.trim() ?? "";
-            if (peek2 && !/^(?:0(?:\s*,|\s*\/|\s*$)|Q(?:\s*,|\s*\/|\s*$))/i.test(peek2) && !peek2.startsWith("'")) {
-              const p2Toks = tokenizeRawLine(peek2);
+            ibus1 = parseNum(p1Fields[0]?.value, 0);
+            const peek2 = lines[lineIdx];
+            const p2Fields =
+              peek2 && !peek2.isCommentOrBlank ? extractFieldsFromCstTokens(peek2.tokens, text, "delimited") : [];
+            if (
+              p2Fields.length > 0 &&
+              !isPsseSectionTerminator(p2Fields) &&
+              p2Fields[0]?.tokenType !== "QuotedString"
+            ) {
               nextLine();
-              ibus2 = parseNum(p2Toks[0], 0);
+              ibus2 = parseNum(p2Fields[0]?.value, 0);
             }
           }
           vscDc.push({
@@ -543,10 +595,139 @@ export function parseRaw(text: string): PsseCase {
         break;
       }
 
+      case 18: {
+        // PSS/E v34/v35 Node-Breaker Substation Data
+        const kw = String(toks[0] ?? "")
+          .trim()
+          .toUpperCase();
+        if (currentSub && (kw === "NODE" || kw === "SWITCH" || kw === "BREAKER" || kw === "TERMINAL")) {
+          if (kw === "NODE") {
+            currentSub.nodes.push({
+              ni: parseNum(toks[1], 0),
+              name: parseStr(toks[2], `N${toks[1] ?? ""}`),
+              ibus: parseNum(toks[3], 0),
+              status: parseNum(toks[4], 1),
+              span,
+            });
+          } else if (kw === "SWITCH" || kw === "BREAKER") {
+            currentSub.switches.push({
+              ni: parseNum(toks[1], 0),
+              nj: parseNum(toks[2], 0),
+              id: parseStr(toks[3], "1"),
+              x: parseNum(toks[4], 0.0001),
+              rate1: parseNum(toks[5], 0),
+              rate2: parseNum(toks[6], 0),
+              rate3: parseNum(toks[7], 0),
+              status: toks.length <= 6 ? parseNum(toks[4], 1) : parseNum(toks[8], 1),
+              type: parseNum(toks[9], 1),
+              name: parseStr(toks[10], ""),
+              span,
+            });
+          } else if (kw === "TERMINAL") {
+            const rawEq = String(toks[1] ?? "GEN")
+              .trim()
+              .toUpperCase();
+            const eqType: SubstationTerminalRecord["eqType"] =
+              rawEq === "BUS" ||
+              rawEq === "GEN" ||
+              rawEq === "LOAD" ||
+              rawEq === "SHUNT" ||
+              rawEq === "SWSHUNT" ||
+              rawEq === "BRANCH" ||
+              rawEq === "XFMR" ||
+              rawEq === "DC"
+                ? rawEq
+                : "GEN";
+            currentSub.terminals.push({
+              eqType,
+              i: parseNum(toks[2], 0),
+              j: toks[5] !== undefined ? parseNum(toks[3], 0) : undefined,
+              id: parseStr(toks[5] !== undefined ? toks[4] : toks[3], "1"),
+              ni: parseNum(toks[5] !== undefined ? toks[5] : toks[4], 0),
+              span,
+            });
+          }
+          break;
+        }
+
+        if (currentSub === null || subStage === "header") {
+          const is = parseNum(toks[0], 0);
+          if (is > 0) {
+            currentSub = {
+              is,
+              name: parseStr(toks[1], `SUB ${is}`),
+              lati: parseNum(toks[2], 0),
+              long: parseNum(toks[3], 0),
+              sgr: parseNum(toks[4], 0),
+              nodes: [],
+              switches: [],
+              terminals: [],
+              span,
+            };
+            subStage = "nodes";
+          }
+        } else if (subStage === "nodes") {
+          const ni = parseNum(toks[0], 0);
+          if (ni > 0) {
+            currentSub.nodes.push({
+              ni,
+              name: parseStr(toks[1], `NODE ${ni}`),
+              ibus: parseNum(toks[2], 0),
+              status: parseNum(toks[3], 1),
+              span,
+            });
+          }
+        } else if (subStage === "switches") {
+          const ni = parseNum(toks[0], 0);
+          const nj = parseNum(toks[1], 0);
+          if (ni > 0 && nj > 0) {
+            currentSub.switches.push({
+              ni,
+              nj,
+              id: parseStr(toks[2], "1"),
+              x: toks.length <= 5 ? 0.0001 : parseNum(toks[3], 0.0001),
+              rate1: toks.length <= 5 ? 0 : parseNum(toks[4], 0),
+              rate2: toks.length <= 5 ? 0 : parseNum(toks[5], 0),
+              rate3: toks.length <= 5 ? 0 : parseNum(toks[6], 0),
+              status: toks.length <= 5 ? parseNum(toks[3], 1) : parseNum(toks[7], 1),
+              type: parseNum(toks[8], 1),
+              name: parseStr(toks[9], ""),
+              span,
+            });
+          }
+        } else if (subStage === "terminals") {
+          const rawEq = String(toks[0] ?? "GEN")
+            .trim()
+            .toUpperCase();
+          const eqType: SubstationTerminalRecord["eqType"] =
+            rawEq === "BUS" ||
+            rawEq === "GEN" ||
+            rawEq === "LOAD" ||
+            rawEq === "SHUNT" ||
+            rawEq === "SWSHUNT" ||
+            rawEq === "BRANCH" ||
+            rawEq === "XFMR" ||
+            rawEq === "DC"
+              ? rawEq
+              : "GEN";
+          currentSub.terminals.push({
+            eqType,
+            i: parseNum(toks[1], 0),
+            j: toks.length >= 5 ? parseNum(toks[2], 0) : undefined,
+            id: parseStr(toks.length >= 5 ? toks[3] : toks[2], "1"),
+            ni: parseNum(toks.length >= 5 ? toks[4] : toks[3], 0),
+            span,
+          });
+        }
+        break;
+      }
+
       default:
         break;
     }
   }
+
+  flushCurrentSub();
 
   return {
     header,
@@ -562,6 +743,8 @@ export function parseRaw(text: string): PsseCase {
     twoTerminalDc,
     vscDc,
     switchedShunts,
+    ...(substations.length > 0 ? { substations } : {}),
+    ...(openSection ? { unterminatedSection: openSection } : {}),
   };
 }
 
@@ -656,6 +839,32 @@ export function writeRaw(c: PsseCase): string {
     );
   }
   lines.push("0 / END OF SWITCHED SHUNT DATA");
+
+  if (c.substations && c.substations.length > 0) {
+    lines.push("0 / BEGIN SUBSTATION DATA");
+    for (const sub of c.substations) {
+      lines.push(`${sub.is}, '${sub.name}', ${sub.lati.toFixed(4)}, ${sub.long.toFixed(4)}, ${sub.sgr.toFixed(4)}`);
+      for (const n of sub.nodes) {
+        lines.push(`${n.ni}, '${n.name}', ${n.ibus}, ${n.status}`);
+      }
+      lines.push("0 / END OF SUBSTATION NODE DATA");
+      for (const sw of sub.switches) {
+        lines.push(
+          `${sw.ni}, ${sw.nj}, '${sw.id}', ${sw.x.toFixed(5)}, ${sw.rate1.toFixed(2)}, ${sw.rate2.toFixed(2)}, ${sw.rate3.toFixed(2)}, ${sw.status}, ${sw.type}, '${sw.name}'`,
+        );
+      }
+      lines.push("0 / END OF SWITCHING DEVICE DATA");
+      for (const t of sub.terminals) {
+        lines.push(
+          t.j !== undefined
+            ? `'${t.eqType}', ${t.i}, ${t.j}, '${t.id}', ${t.ni}`
+            : `'${t.eqType}', ${t.i}, '${t.id}', ${t.ni}`,
+        );
+      }
+      lines.push("0 / END OF SUBSTATION TERMINALS");
+    }
+    lines.push("0 / END OF SUBSTATION DATA");
+  }
 
   return lines.join("\n") + "\n";
 }

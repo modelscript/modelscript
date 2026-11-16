@@ -188,6 +188,22 @@ export function computeSolidAABB(solid: Solid, currentTransform: Mat4 = IDENTITY
       const local: AABB = { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
       return transformAABB(local, currentTransform);
     }
+    case SolidKind.Revolve: {
+      if (solid.polygon.length === 0) {
+        return { min: [0, 0, 0], max: [0, 0, 0] };
+      }
+      let maxR = 0,
+        minZ = Infinity,
+        maxZ = -Infinity;
+      for (const [r, z] of solid.polygon) {
+        const ar = Math.abs(r);
+        if (ar > maxR) maxR = ar;
+        if (z < minZ) minZ = z;
+        if (z > maxZ) maxZ = z;
+      }
+      const local: AABB = { min: [-maxR, -maxR, minZ], max: [maxR, maxR, maxZ] };
+      return transformAABB(local, currentTransform);
+    }
     case SolidKind.Transform: {
       const nextTransform = mat4Multiply(currentTransform, solid.matrix);
       return computeSolidAABB(solid.child, nextTransform);

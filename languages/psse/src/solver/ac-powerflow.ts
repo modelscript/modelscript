@@ -13,6 +13,8 @@
 import type { FmiLsRmsCompanionInstance } from "@modelscript/exchange";
 import {
   computeAmdOrdering,
+  luFactorFlat,
+  luSolveFlat,
   solveLinearSystemSparse,
   solveSparseCCS,
   sparseLuAnalyze,
@@ -23,10 +25,30 @@ import {
   type SparseCCSMatrix,
   type SparseLU,
 } from "@modelscript/runtime";
+import {
+  verifyCriticalClearingBarrier,
+  verifyPsseTrajectoryStl,
+  type PsseStlVerifyOptions,
+} from "../analysis/formal-grid-checks.js";
 import { instantiateWasmDyrModelsForCase, type PsseLinkedDynamicInstance } from "../catalog/wasm-dyr-loader.js";
-import { extractPowerFlowNetlist } from "../netlist/powerflow-netlist.js";
-import type { PsseCase, PsseConCase, PsseSeqCase } from "../types.js";
+import { reduceNodeBreakerToBuses } from "../netlist/node-breaker.js";
+import {
+  extractPowerFlowNetlist,
+  extractPowerFlowNetlistFromSoa,
+  type PowerFlowNetlist,
+} from "../netlist/powerflow-netlist.js";
+import { parseRaw } from "../parser/raw-parser.js";
+import { allocateWasmSoaArena, parseRawToSoa, type PsseSoaTables } from "../parser/raw-soa.js";
+import type {
+  PsseCase,
+  PsseConCase,
+  PsseDiagnostic,
+  PsseSeqCase,
+  SwitchedShuntRecord,
+  TransformerRecord,
+} from "../types.js";
 import { solveHelmPowerFlow } from "./helm-powerflow.js";
+import { detectElectricalIslands, solveMultiIslandPowerFlow } from "./island-solver.js";
 import type { PsseWasmMachinaDllRunner } from "./usr-dll-runner.js";
 
 export interface PowerFlowOptions {
@@ -38,6 +60,14 @@ export interface PowerFlowOptions {
   tolerance?: number;
   /** Enforce generator reactive power limits (default: true). */
   enforceQLimits?: boolean;
+  /** Enable outer discrete ULTC transformer tap & phase-shifter adjustment loop (default: true). */
+  adjustTaps?: boolean | undefined;
+  /** Enable outer discrete switched-shunt voltage deadband stepping loop (default: true). */
+  adjustSwitchedShunts?: boolean | undefined;
+  /** Distribute slack active-power mismatch proportionally across online non-slack generators (default: false). */
+  distributedSlack?: boolean | undefined;
+  /** Automatically partition multi-island or disconnected grids via island-solver (default: false). */
+  autoIslandPartition?: boolean | undefined;
 }
 
 export interface BusPowerFlowResult {
@@ -81,26 +111,346 @@ export interface PowerFlowSolution {
   totalLossMvar: number;
   buses: BusPowerFlowResult[];
   branches: BranchPowerFlowResult[];
+  controlSummary?:
+    | {
+        tapAdjustments: number;
+        shuntAdjustments: number;
+        distributedSlackPasses: number;
+        islandsSolved?: number | undefined;
+      }
+    | undefined;
 }
 
 /**
- * Solves linear system A * x = b in-place using sparse LU / Gaussian elimination with partial pivoting.
+ * Solves linear system A * x = b in-place using WASM linear-memory dense LU (for n <= 48)
+ * or sparse CCS LU with partial pivoting.
  */
 function solveLinearSystem(A: Float64Array, b: Float64Array, n: number): boolean {
+  if (n > 0 && n <= 48) {
+    try {
+      const fact = luFactorFlat(A.slice(0, n * n), n);
+      luSolveFlat(fact, b);
+      for (let i = 0; i < n; i++) {
+        if (!Number.isFinite(b[i]!)) return false;
+      }
+      return true;
+    } catch {
+      // Fallback to sparse solver on singular or uninitialized WASM kernel
+    }
+  }
   return solveLinearSystemSparse(A, b, n, { sparseThreshold: 30 });
+}
+
+type PowerFlowSource = { kind: "case"; psseCase: PsseCase } | { kind: "soa"; soa: PsseSoaTables };
+
+function cloneCaseForOuterControl(psseCase: PsseCase): {
+  workCase: PsseCase;
+  busMap: Map<number, import("../types.js").BusRecord>;
+  transformers: TransformerRecord[];
+  switchedShunts: SwitchedShuntRecord[];
+  generators: import("../types.js").GeneratorRecord[];
+} {
+  const busMap = new Map<number, import("../types.js").BusRecord>();
+  for (const [k, b] of psseCase.buses) {
+    busMap.set(k, { ...b });
+  }
+  const transformers = psseCase.transformers.map((t) => ({ ...t }));
+  const switchedShunts = psseCase.switchedShunts.map((s) => ({ ...s }));
+  const generators = psseCase.generators.map((g) => ({ ...g }));
+  const workCase: PsseCase = {
+    ...psseCase,
+    buses: busMap,
+    transformers,
+    switchedShunts,
+    generators,
+  };
+  return { workCase, busMap, transformers, switchedShunts, generators };
+}
+
+function collectSwitchedShuntDiscreteSteps(sw: SwitchedShuntRecord): number[] {
+  const blocks: Array<[number, number]> = [
+    [sw.n1, sw.b1],
+    [sw.n2 ?? 0, sw.b2 ?? 0],
+    [sw.n3 ?? 0, sw.b3 ?? 0],
+    [sw.n4 ?? 0, sw.b4 ?? 0],
+    [sw.n5 ?? 0, sw.b5 ?? 0],
+    [sw.n6 ?? 0, sw.b6 ?? 0],
+    [sw.n7 ?? 0, sw.b7 ?? 0],
+    [sw.n8 ?? 0, sw.b8 ?? 0],
+  ];
+  const steps: number[] = [0];
+  for (const [cntRaw, bStep] of blocks) {
+    const cnt = Math.max(0, Math.trunc(cntRaw));
+    if (cnt === 0 || !Number.isFinite(bStep) || Math.abs(bStep) < 1e-9) continue;
+    const prevLen = steps.length;
+    for (let s = 1; s <= cnt; s++) {
+      for (let idx = 0; idx < prevLen; idx++) {
+        steps.push(steps[idx]! + s * bStep);
+      }
+    }
+  }
+  const unique = Array.from(new Set(steps.map((v) => Number(v.toFixed(6))))).sort((a, b) => a - b);
+  return unique.length > 0 ? unique : [sw.binit + sw.n1 * sw.b1];
 }
 
 /**
  * Solves the non-linear AC Power Flow equations for a PSS/E base case.
+ * Includes ZIP low-voltage quadratic regularization, Iwamoto-style backtracking,
+ * outer ULTC/switched-shunt discrete control loops with hysteresis, optional distributed slack,
+ * automatic island partitioning, and automatic HELM fallback when `options.algorithm` is unset.
  */
 export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {}): PowerFlowSolution {
+  if (psseCase.substations && psseCase.substations.length > 0) {
+    psseCase = reduceNodeBreakerToBuses(psseCase).reducedCase;
+  }
   if (options.algorithm === "helm") {
     return solveHelmPowerFlow(psseCase, options);
   }
-  const netlist = extractPowerFlowNetlist(psseCase);
+
+  if (options.autoIslandPartition) {
+    const islands = detectElectricalIslands(psseCase);
+    if (islands.length > 1 || (islands.length === 1 && islands[0]!.slackBusNumber === undefined)) {
+      const multiSol = solveMultiIslandPowerFlow(psseCase, { ...options, autoIslandPartition: false });
+      return {
+        ...multiSol,
+        controlSummary: {
+          tapAdjustments: 0,
+          shuntAdjustments: 0,
+          distributedSlackPasses: 0,
+          islandsSolved: multiSol.activeIslands,
+        },
+      };
+    }
+  }
+
+  const doTaps =
+    (options.adjustTaps ?? true) &&
+    psseCase.transformers.some(
+      (t) => t.stat !== 0 && t.k === 0 && Math.abs(t.cod1) === 1 && t.vma1 > t.vmi1 && t.rma1 > t.rmi1,
+    );
+  const doShunts =
+    (options.adjustSwitchedShunts ?? true) &&
+    psseCase.switchedShunts.some((s) => s.stat === 1 && s.modsw !== 0 && s.vswhi > s.vswlo);
+  const doDistSlack = options.distributedSlack === true;
+
+  if (!doTaps && !doShunts && !doDistSlack) {
+    const netlist = extractPowerFlowNetlist(psseCase);
+    const sol = solvePowerFlowFromNetlist(netlist, options, { kind: "case", psseCase });
+    if (!sol.converged && options.algorithm === undefined) {
+      try {
+        const helmSol = solveHelmPowerFlow(psseCase, options);
+        if (helmSol.converged || helmSol.maxMismatchPu < sol.maxMismatchPu) {
+          return { ...helmSol, algorithm: "newton_raphson+helm_fallback" };
+        }
+      } catch {
+        // Retain NR solution if HELM encounters an ungrounded/disconnected singularity
+      }
+    }
+    return sol;
+  }
+
+  const { workCase, busMap, transformers, switchedShunts, generators } = cloneCaseForOuterControl(psseCase);
+  const sbase = workCase.header.sbase > 0 ? workCase.header.sbase : 100.0;
+  const scheduledSlackGen = new Map<number, number>();
+  if (doDistSlack) {
+    for (const g of generators) {
+      const b = busMap.get(g.i);
+      if (b?.ide === 3 && g.stat === 1) {
+        scheduledSlackGen.set(g.i, (scheduledSlackGen.get(g.i) ?? 0) + g.pg);
+      }
+    }
+  }
+
+  const tapLastDir = new Int8Array(transformers.length);
+  const tapLocked = new Uint8Array(transformers.length);
+  const shuntLastDir = new Int8Array(switchedShunts.length);
+  const shuntLocked = new Uint8Array(switchedShunts.length);
+  const shuntAllowedSteps = switchedShunts.map((s) => collectSwitchedShuntDiscreteSteps(s));
+
+  let tapAdjustments = 0;
+  let shuntAdjustments = 0;
+  let distributedSlackPasses = 0;
+  let sol!: PowerFlowSolution;
+
+  for (let outer = 0; outer < 6; outer++) {
+    const netlist = extractPowerFlowNetlist(workCase);
+    sol = solvePowerFlowFromNetlist(netlist, options, { kind: "case", psseCase: workCase });
+    if (!sol.converged) break;
+
+    // Warm-start bus states from converged solution for fast subsequent outer passes
+    const vmByBus = new Map<number, number>();
+    for (const b of sol.buses) {
+      vmByBus.set(b.busNumber, b.vm);
+      const bRec = busMap.get(b.busNumber);
+      if (bRec) {
+        bRec.vm = b.vm;
+        bRec.va = b.va;
+      }
+    }
+
+    let anyOuterChange = false;
+
+    if (doTaps) {
+      for (let ti = 0; ti < transformers.length; ti++) {
+        const xf = transformers[ti]!;
+        if (xf.stat === 0 || xf.k !== 0 || Math.abs(xf.cod1) !== 1 || tapLocked[ti]) continue;
+        if (!(xf.vma1 > xf.vmi1 && xf.rma1 > xf.rmi1)) continue;
+        const contBus = xf.cont1 !== 0 ? Math.abs(xf.cont1) : xf.cod1 > 0 ? xf.j : xf.i;
+        const vMeas = vmByBus.get(contBus);
+        if (vMeas === undefined) continue;
+        const hyst = outer > 0 ? 0.002 : 0.0;
+        if (vMeas >= xf.vmi1 - hyst && vMeas <= xf.vma1 + hyst) continue;
+
+        const vTarget = 0.5 * (xf.vmi1 + xf.vma1);
+        const stepSize = xf.ntp1 > 1 ? (xf.rma1 - xf.rmi1) / (xf.ntp1 - 1) : 0.00625;
+        const controlsSecondary = contBus === xf.j;
+        const rawSign = vMeas < xf.vmi1 ? (controlsSecondary ? -1 : 1) : controlsSecondary ? 1 : -1;
+        if (tapLastDir[ti] !== 0 && tapLastDir[ti] !== rawSign) {
+          tapLocked[ti] = 1;
+          continue;
+        }
+        const ratioErr = Math.abs(vTarget - vMeas) / Math.max(0.2, vMeas);
+        const stepsToMove = Math.max(1, Math.min(3, Math.round(ratioErr / Math.max(1e-4, stepSize))));
+        const nextWindv1 = Math.max(xf.rmi1, Math.min(xf.rma1, xf.windv1 + rawSign * stepsToMove * stepSize));
+        if (Math.abs(nextWindv1 - xf.windv1) > 1e-6) {
+          xf.windv1 = nextWindv1;
+          tapLastDir[ti] = rawSign;
+          tapAdjustments++;
+          anyOuterChange = true;
+        }
+      }
+    }
+
+    if (doShunts) {
+      for (let si = 0; si < switchedShunts.length; si++) {
+        const sw = switchedShunts[si]!;
+        if (sw.stat !== 1 || sw.modsw === 0 || shuntLocked[si] || !(sw.vswhi > sw.vswlo)) continue;
+        const regBus = sw.swrem > 0 ? sw.swrem : sw.i;
+        const vMeas = vmByBus.get(regBus);
+        if (vMeas === undefined) continue;
+        const hyst = outer > 0 ? 0.002 : 0.0;
+        if (vMeas >= sw.vswlo - hyst && vMeas <= sw.vswhi + hyst) continue;
+
+        const dir = vMeas < sw.vswlo ? 1 : -1;
+        if (shuntLastDir[si] !== 0 && shuntLastDir[si] !== dir) {
+          shuntLocked[si] = 1;
+          continue;
+        }
+        const steps = shuntAllowedSteps[si]!;
+        const currentB = sw.binit + sw.n1 * sw.b1;
+        let closestIdx = 0;
+        let bestDist = Infinity;
+        for (let idx = 0; idx < steps.length; idx++) {
+          const d = Math.abs(steps[idx]! - currentB);
+          if (d < bestDist) {
+            bestDist = d;
+            closestIdx = idx;
+          }
+        }
+        const nextIdx = Math.max(0, Math.min(steps.length - 1, closestIdx + dir));
+        const nextB = steps[nextIdx]!;
+        if (Math.abs(nextB - currentB) > 1e-6) {
+          // Encode exact stepped susceptance cleanly into binit with zero residual n1 multiplier
+          sw.binit = nextB;
+          sw.n1 = 0;
+          shuntLastDir[si] = dir;
+          shuntAdjustments++;
+          anyOuterChange = true;
+        }
+      }
+    }
+
+    if (doDistSlack) {
+      let slackActualMw = 0;
+      let slackSchedMw = 0;
+      for (const b of sol.buses) {
+        if (b.type === "Slack") {
+          slackActualMw += b.pgMw;
+          slackSchedMw += scheduledSlackGen.get(b.busNumber) ?? 0;
+        }
+      }
+      const excessSlackMw = slackActualMw - slackSchedMw;
+      if (Math.abs(excessSlackMw) > Math.max(0.5, (options.tolerance ?? 1e-4) * sbase)) {
+        const participating = generators.filter((g) => g.stat === 1 && busMap.get(g.i)?.ide !== 3 && g.pt > g.pb);
+        const totalWeight = participating.reduce((acc, g) => acc + Math.max(1.0, g.mbase), 0);
+        if (totalWeight > 0) {
+          let movedMw = 0;
+          for (const g of participating) {
+            const share = excessSlackMw * (Math.max(1.0, g.mbase) / totalWeight);
+            const nextPg = Math.max(g.pb, Math.min(g.pt, g.pg + share));
+            if (Math.abs(nextPg - g.pg) > 1e-4) {
+              movedMw += Math.abs(nextPg - g.pg);
+              g.pg = nextPg;
+            }
+          }
+          if (movedMw > 1e-3) {
+            distributedSlackPasses++;
+            anyOuterChange = true;
+          }
+        }
+      }
+    }
+
+    if (!anyOuterChange) break;
+  }
+
+  return {
+    ...sol,
+    controlSummary: {
+      tapAdjustments,
+      shuntAdjustments,
+      distributedSlackPasses,
+    },
+  };
+}
+
+/**
+ * Solves AC Power Flow directly from zero-GC `PsseSoaTables` without allocating `BusRecord`/`BranchRecord` Maps.
+ */
+export function solvePowerFlowFromSoa(soa: PsseSoaTables, options: PowerFlowOptions = {}): PowerFlowSolution {
+  const netlist = extractPowerFlowNetlistFromSoa(soa);
+  return solvePowerFlowFromNetlist(netlist, options, { kind: "soa", soa });
+}
+
+/**
+ * Zero-GC AC Power Flow entry point parsing `.raw` text via `parseRawToSoa` and `@modelscript/runtime` WASM linear-memory arena.
+ * Falls back transparently to full `parseRaw` + `solvePowerFlow` when transformers,
+ * switched shunts, explicit HELM mode, outer controls, or non-converged HELM fallback are needed.
+ */
+export function solvePowerFlowFromRawText(rawText: string, options: PowerFlowOptions = {}): PowerFlowSolution {
+  if (options.algorithm === "helm" || options.autoIslandPartition || options.distributedSlack) {
+    return solvePowerFlow(parseRaw(rawText), options);
+  }
+  const soa = parseRawToSoa(rawText);
+  allocateWasmSoaArena(soa);
+  if (!soa.hasComplexRecords) {
+    const soaSol = solvePowerFlowFromSoa(soa, options);
+    if (soaSol.converged || options.algorithm !== undefined) {
+      return soaSol;
+    }
+    try {
+      const fullCase = parseRaw(rawText);
+      const helmSol = solveHelmPowerFlow(fullCase, options);
+      if (helmSol.converged || helmSol.maxMismatchPu < soaSol.maxMismatchPu) {
+        return { ...helmSol, algorithm: "newton_raphson+helm_fallback" };
+      }
+    } catch {
+      // Keep SoA NR result
+    }
+    return soaSol;
+  }
+  return solvePowerFlow(parseRaw(rawText), options);
+}
+
+function solvePowerFlowFromNetlist(
+  netlist: PowerFlowNetlist,
+  options: PowerFlowOptions,
+  source: PowerFlowSource,
+): PowerFlowSolution {
   const maxIter = options.maxIterations ?? 25;
   const tol = options.tolerance ?? 1e-4;
-  const sbase = psseCase.header.sbase > 0 ? psseCase.header.sbase : 100.0;
+  const rawSbase = source.kind === "soa" ? source.soa.header.sbase : source.psseCase.header.sbase;
+  const sbase = rawSbase > 0 ? rawSbase : 100.0;
   const N = netlist.nBuses;
 
   // Map bus index <-> bus number
@@ -123,46 +473,80 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
   const Qmax = new Float64Array(N);
   const hasGenAtBus = new Uint8Array(N);
 
-  for (let i = 0; i < N; i++) {
-    const bNum = netlist.busNumbers[i]!;
-    const bRecord = psseCase.buses.get(bNum);
-    const ide = bRecord ? bRecord.ide : 1;
-    busTypes[i] = ide;
-
-    // Flat start or existing state
-    Vm[i] = bRecord && bRecord.vm > 0 ? bRecord.vm : 1.0;
-    Va[i] = bRecord ? (bRecord.va * Math.PI) / 180.0 : 0.0;
-    Qmin[i] = 0.0;
-    Qmax[i] = 0.0;
-  }
-
-  // Accumulate ZIP loads into Pload0, Qload0, IloadP, IloadQ, YloadP, YloadQ
-  for (const load of psseCase.loads) {
-    if (load.status === 0) continue;
-    const idx = busIndices.get(load.i);
-    if (idx !== undefined && idx < N) {
-      Pload0[idx] = (Pload0[idx] ?? 0) + load.pl / sbase;
-      Qload0[idx] = (Qload0[idx] ?? 0) + load.ql / sbase;
-      IloadP[idx] = (IloadP[idx] ?? 0) + (load.ip ?? 0) / sbase;
-      IloadQ[idx] = (IloadQ[idx] ?? 0) + (load.iq ?? 0) / sbase;
-      YloadP[idx] = (YloadP[idx] ?? 0) + (load.yp ?? 0) / sbase;
-      YloadQ[idx] = (YloadQ[idx] ?? 0) + (load.yq ?? 0) / sbase;
+  if (source.kind === "soa") {
+    const { soa } = source;
+    for (let i = 0; i < N; i++) {
+      busTypes[i] = soa.busIde[i]!;
+      Vm[i] = soa.busVm[i]! > 0 ? soa.busVm[i]! : 1.0;
+      Va[i] = (soa.busVaDeg[i]! * Math.PI) / 180.0;
     }
-  }
-
-  // Accumulate generators into Pgen, Qgen, and summed Q-limits
-  for (const gen of psseCase.generators) {
-    if (gen.stat === 0) continue;
-    const idx = busIndices.get(gen.i);
-    if (idx !== undefined && idx < N) {
-      Pgen[idx] = (Pgen[idx] ?? 0) + gen.pg / sbase;
-      Qgen[idx] = (Qgen[idx] ?? 0) + gen.qg / sbase;
-      if (gen.vs > 0 && busTypes[idx] !== 3) {
-        Vm[idx] = gen.vs; // Voltage setpoint for PV buses
+    for (let l = 0; l < soa.nLoads; l++) {
+      if (soa.loadStatus[l] === 0) continue;
+      const idx = busIndices.get(soa.loadBus[l]!);
+      if (idx !== undefined && idx < N) {
+        Pload0[idx] = (Pload0[idx] ?? 0) + soa.loadPl[l]! / sbase;
+        Qload0[idx] = (Qload0[idx] ?? 0) + soa.loadQl[l]! / sbase;
+        IloadP[idx] = (IloadP[idx] ?? 0) + soa.loadIp[l]! / sbase;
+        IloadQ[idx] = (IloadQ[idx] ?? 0) + soa.loadIq[l]! / sbase;
+        YloadP[idx] = (YloadP[idx] ?? 0) + soa.loadYp[l]! / sbase;
+        YloadQ[idx] = (YloadQ[idx] ?? 0) + soa.loadYq[l]! / sbase;
       }
-      Qmin[idx] = (Qmin[idx] ?? 0) + gen.qb / sbase;
-      Qmax[idx] = (Qmax[idx] ?? 0) + gen.qt / sbase;
-      hasGenAtBus[idx] = 1;
+    }
+    for (let g = 0; g < soa.nGenerators; g++) {
+      if (soa.genStat[g] === 0) continue;
+      const idx = busIndices.get(soa.genBus[g]!);
+      if (idx !== undefined && idx < N) {
+        Pgen[idx] = (Pgen[idx] ?? 0) + soa.genPg[g]! / sbase;
+        Qgen[idx] = (Qgen[idx] ?? 0) + soa.genQg[g]! / sbase;
+        if (soa.genVs[g]! > 0 && busTypes[idx] !== 3) {
+          Vm[idx] = soa.genVs[g]!;
+        }
+        Qmin[idx] = (Qmin[idx] ?? 0) + soa.genQb[g]! / sbase;
+        Qmax[idx] = (Qmax[idx] ?? 0) + soa.genQt[g]! / sbase;
+        hasGenAtBus[idx] = 1;
+      }
+    }
+  } else {
+    const { psseCase } = source;
+    for (let i = 0; i < N; i++) {
+      const bNum = netlist.busNumbers[i]!;
+      const bRecord = psseCase.buses.get(bNum);
+      const ide = bRecord ? bRecord.ide : 1;
+      busTypes[i] = ide;
+
+      // Flat start or existing state
+      Vm[i] = bRecord && bRecord.vm > 0 ? bRecord.vm : 1.0;
+      Va[i] = bRecord ? (bRecord.va * Math.PI) / 180.0 : 0.0;
+    }
+
+    // Accumulate ZIP loads into Pload0, Qload0, IloadP, IloadQ, YloadP, YloadQ
+    for (const load of psseCase.loads) {
+      if (load.status === 0) continue;
+      const idx = busIndices.get(load.i);
+      if (idx !== undefined && idx < N) {
+        Pload0[idx] = (Pload0[idx] ?? 0) + load.pl / sbase;
+        Qload0[idx] = (Qload0[idx] ?? 0) + load.ql / sbase;
+        IloadP[idx] = (IloadP[idx] ?? 0) + (load.ip ?? 0) / sbase;
+        IloadQ[idx] = (IloadQ[idx] ?? 0) + (load.iq ?? 0) / sbase;
+        YloadP[idx] = (YloadP[idx] ?? 0) + (load.yp ?? 0) / sbase;
+        YloadQ[idx] = (YloadQ[idx] ?? 0) + (load.yq ?? 0) / sbase;
+      }
+    }
+
+    // Accumulate generators into Pgen, Qgen, and summed Q-limits
+    for (const gen of psseCase.generators) {
+      if (gen.stat === 0) continue;
+      const idx = busIndices.get(gen.i);
+      if (idx !== undefined && idx < N) {
+        Pgen[idx] = (Pgen[idx] ?? 0) + gen.pg / sbase;
+        Qgen[idx] = (Qgen[idx] ?? 0) + gen.qg / sbase;
+        if (gen.vs > 0 && busTypes[idx] !== 3) {
+          Vm[idx] = gen.vs; // Voltage setpoint for PV buses
+        }
+        Qmin[idx] = (Qmin[idx] ?? 0) + gen.qb / sbase;
+        Qmax[idx] = (Qmax[idx] ?? 0) + gen.qt / sbase;
+        hasGenAtBus[idx] = 1;
+      }
     }
   }
 
@@ -214,15 +598,26 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
   }
   yRowPtr[N] = yPos;
 
-  // Evaluate ZIP load at bus i for current Vm[i]
+  // Evaluate ZIP load and derivatives at bus i with smooth C0 quadratic regularization below V < 0.5 pu
+  const V_ZIP_REG = 0.5;
   const evalPload = (i: number): number => {
     const v = Vm[i]!;
-    return Pload0[i]! + IloadP[i]! * v + YloadP[i]! * v * v;
+    if (v >= V_ZIP_REG) {
+      return Pload0[i]! + IloadP[i]! * v + YloadP[i]! * v * v;
+    }
+    return (Pload0[i]! * 4.0 + IloadP[i]! * 2.0 + YloadP[i]!) * v * v;
   };
   const evalQload = (i: number): number => {
     const v = Vm[i]!;
-    return Qload0[i]! + IloadQ[i]! * v - YloadQ[i]! * v * v;
+    if (v >= V_ZIP_REG) {
+      return Qload0[i]! + IloadQ[i]! * v - YloadQ[i]! * v * v;
+    }
+    return (Qload0[i]! * 4.0 + IloadQ[i]! * 2.0 - YloadQ[i]!) * v * v;
   };
+  const evalDPloadDv = (i: number, v: number): number =>
+    v >= V_ZIP_REG ? IloadP[i]! + 2.0 * YloadP[i]! * v : 2.0 * (Pload0[i]! * 4.0 + IloadP[i]! * 2.0 + YloadP[i]!) * v;
+  const evalDQloadDv = (i: number, v: number): number =>
+    v >= V_ZIP_REG ? IloadQ[i]! - 2.0 * YloadQ[i]! * v : 2.0 * (Qload0[i]! * 4.0 + IloadQ[i]! * 2.0 - YloadQ[i]!) * v;
 
   // Compute Pcalc and Qcalc in O(nnz) over CSR Ybus
   const Pcalc = new Float64Array(N);
@@ -291,6 +686,8 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
   // Active indices:
   // Non-slack buses participate in delta P / delta theta
   // PQ buses participate in delta Q / delta V
+  const prevVa = new Float64Array(N);
+  const prevVm = new Float64Array(N);
   let converged = false;
   let iter = 0;
   let maxMismatch = 0;
@@ -495,7 +892,7 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
             }
             // Diagonal N_ii = P_i / V_i + G_ii * V_i + ∂Pload/∂V
             if (rP >= 0 && cQ >= 0) {
-              const dPloaddV = IloadP[i]! + 2 * YloadP[i]! * vi;
+              const dPloaddV = evalDPloadDv(i, vi);
               jTriplets.addStructural(rP, nP + cQ, Pcalc[i]! / vi + gii * vi + dPloaddV);
             }
             // Diagonal M_ii = P_i - G_ii * V_i^2
@@ -504,7 +901,7 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
             }
             // Diagonal L_ii = Q_i / V_i - B_ii * V_i + ∂Qload/∂V
             if (rQ >= 0 && cQ >= 0) {
-              const dQloaddV = IloadQ[i]! - 2 * YloadQ[i]! * vi;
+              const dQloaddV = evalDQloadDv(i, vi);
               jTriplets.addStructural(nP + rQ, nP + cQ, Qcalc[i]! / vi - bii * vi + dQloaddV);
             }
           }
@@ -586,12 +983,12 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
             const bii = yDiagB[i]!;
             if (rP >= 0 && cP >= 0) J[rP * nVars + cP] = -Qcalc[i]! - bii * vi * vi;
             if (rP >= 0 && cQ >= 0) {
-              const dPloaddV = IloadP[i]! + 2 * YloadP[i]! * vi;
+              const dPloaddV = evalDPloadDv(i, vi);
               J[rP * nVars + (nP + cQ)] = Pcalc[i]! / vi + gii * vi + dPloaddV;
             }
             if (rQ >= 0 && cP >= 0) J[(nP + rQ) * nVars + cP] = Pcalc[i]! - gii * vi * vi;
             if (rQ >= 0 && cQ >= 0) {
-              const dQloaddV = IloadQ[i]! - 2 * YloadQ[i]! * vi;
+              const dQloaddV = evalDQloadDv(i, vi);
               J[(nP + rQ) * nVars + (nP + cQ)] = Qcalc[i]! / vi - bii * vi + dQloaddV;
             }
           }
@@ -602,21 +999,67 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
 
     if (!solved) break;
 
-    // 5. Update State with adaptive damping
-    for (let m = 0; m < nP; m++) {
-      const idx = nonSlackIndices[m]!;
-      let dTh = delta[m] ?? 0;
-      if (dTh > 0.5) dTh = 0.5;
-      else if (dTh < -0.5) dTh = -0.5;
-      Va[idx] = (Va[idx] ?? 0) + dTh;
-    }
-    for (let m = 0; m < nQ; m++) {
-      const idx = pqIndices[m]!;
-      let dV = delta[nP + m] ?? 0;
-      if (dV > 0.2) dV = 0.2;
-      else if (dV < -0.2) dV = -0.2;
-      const newV = (Vm[idx] ?? 0) + dV;
-      Vm[idx] = Math.max(0.5, Math.min(1.5, newV));
+    const applyStep = (alpha: number): void => {
+      for (let m = 0; m < nP; m++) {
+        const idx = nonSlackIndices[m]!;
+        let dTh = (delta[m] ?? 0) * alpha;
+        if (dTh > 0.5) dTh = 0.5;
+        else if (dTh < -0.5) dTh = -0.5;
+        Va[idx] = (prevVa[idx] ?? 0) + dTh;
+      }
+      for (let m = 0; m < nQ; m++) {
+        const idx = pqIndices[m]!;
+        let dV = (delta[nP + m] ?? 0) * alpha;
+        if (dV > 0.2) dV = 0.2;
+        else if (dV < -0.2) dV = -0.2;
+        const newV = (prevVm[idx] ?? 0) + dV;
+        Vm[idx] = Math.max(0.2, Math.min(1.5, newV));
+      }
+    };
+
+    // 5. Update State with adaptive clamping & Iwamoto-style backtracking when NR step overshoots
+    prevVa.set(Va);
+    prevVm.set(Vm);
+    applyStep(1.0);
+
+    if (!useFastDecoupled && nVars > 0) {
+      const evalStepMismatch = (): number => {
+        computePQCalc(true);
+        let mm = 0;
+        for (let m = 0; m < nP; m++) {
+          const idx = nonSlackIndices[m]!;
+          const dP = Math.abs(Pgen[idx]! - evalPload(idx) - Pcalc[idx]!);
+          if (dP > mm) mm = dP;
+        }
+        for (let m = 0; m < nQ; m++) {
+          const idx = pqIndices[m]!;
+          const dQ = Math.abs(Qgen[idx]! - evalQload(idx) - Qcalc[idx]!);
+          if (dQ > mm) mm = dQ;
+        }
+        return mm;
+      };
+
+      const fullMm = evalStepMismatch();
+      if (!Number.isFinite(fullMm) || fullMm > maxMismatch * 1.05) {
+        let bestAlpha = 1.0;
+        let currentAlpha = 1.0;
+        let bestMm = Number.isFinite(fullMm) ? fullMm : Infinity;
+        for (const alpha of [0.5, 0.25, 0.125]) {
+          currentAlpha = alpha;
+          applyStep(alpha);
+          const mm = evalStepMismatch();
+          if (Number.isFinite(mm) && mm < bestMm) {
+            bestMm = mm;
+            bestAlpha = alpha;
+          }
+          if (Number.isFinite(mm) && mm <= maxMismatch) {
+            break;
+          }
+        }
+        if (bestAlpha !== currentAlpha) {
+          applyStep(bestAlpha);
+        }
+      }
     }
   }
 
@@ -629,9 +1072,18 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
 
   for (let i = 0; i < N; i++) {
     const bNum = netlist.busNumbers[i]!;
-    const bRecord = psseCase.buses.get(bNum);
-    const name = bRecord ? bRecord.name.trim() : `BUS ${bNum}`;
-    const baseKv = bRecord && bRecord.baseKv > 0 ? bRecord.baseKv : 138.0;
+    let name = `BUS ${bNum}`;
+    let baseKv = 138.0;
+    if (source.kind === "soa") {
+      const kv = source.soa.busBaseKv[i] ?? 0;
+      if (kv > 0) baseKv = kv;
+    } else {
+      const bRecord = source.psseCase.buses.get(bNum);
+      if (bRecord) {
+        name = bRecord.name.trim() || name;
+        if (bRecord.baseKv > 0) baseKv = bRecord.baseKv;
+      }
+    }
 
     const pl = evalPload(i) * sbase;
     const ql = evalQload(i) * sbase;
@@ -684,88 +1136,36 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
   let totalLossMw = 0;
   let totalLossMvar = 0;
 
-  for (const br of psseCase.branches) {
-    if (br.st === 0) continue;
-    const fIdx = busIndices.get(br.i);
-    const tIdx = busIndices.get(br.j);
-    if (fIdx === undefined || tIdx === undefined) continue;
-
+  const pushPiBranchFlow = (
+    fromBus: number,
+    toBus: number,
+    ckt: string,
+    fIdx: number,
+    tIdx: number,
+    r: number,
+    x: number,
+    bShunt: number,
+    gi: number,
+    bi: number,
+    gj: number,
+    bj: number,
+    rateA: number,
+  ): void => {
     const vi = Vm[fIdx]!;
     const vj = Vm[tIdx]!;
-    const thetaI = Va[fIdx]!;
-    const thetaJ = Va[tIdx]!;
-    const deltaTheta = thetaI - thetaJ;
-
-    const zMagSq = br.r * br.r + br.x * br.x;
-    if (zMagSq <= 0) continue;
-    const g = br.r / zMagSq;
-    const b = -br.x / zMagSq;
-    const bShuntHalf = br.b / 2;
-
-    // Power flow from i -> j
-    const pFrom = vi * vi * (g + br.gi) - vi * vj * (g * Math.cos(deltaTheta) + b * Math.sin(deltaTheta));
-    const qFrom = -vi * vi * (b + bShuntHalf + br.bi) - vi * vj * (g * Math.sin(deltaTheta) - b * Math.cos(deltaTheta));
-
-    // Power flow from j -> i
-    const pTo = vj * vj * (g + br.gj) - vi * vj * (g * Math.cos(-deltaTheta) + b * Math.sin(-deltaTheta));
-    const qTo = -vj * vj * (b + bShuntHalf + br.bj) - vi * vj * (g * Math.sin(-deltaTheta) - b * Math.cos(-deltaTheta));
-
-    const pFromMw = pFrom * sbase;
-    const qFromMvar = qFrom * sbase;
-    const pToMw = pTo * sbase;
-    const qToMvar = qTo * sbase;
-
-    const lossMw = pFromMw + pToMw;
-    const lossMvar = qFromMvar + qToMvar;
-    totalLossMw += lossMw;
-    totalLossMvar += lossMvar;
-
-    const mvaFlow = Math.sqrt(pFromMw * pFromMw + qFromMvar * qFromMvar);
-    const loadingPercent = br.rateA && br.rateA > 0 ? (mvaFlow / br.rateA) * 100.0 : undefined;
-
-    branchResults.push({
-      fromBus: br.i,
-      toBus: br.j,
-      ckt: br.ckt.trim() || "1",
-      pFromMw,
-      qFromMvar,
-      pToMw,
-      qToMvar,
-      lossMw,
-      lossMvar,
-      mvaFlow,
-      rateMva: br.rateA && br.rateA > 0 ? br.rateA : undefined,
-      loadingPercent,
-    });
-  }
-
-  // Include Two-Winding Transformers in branchResults and loss totals
-  for (const xf of psseCase.transformers) {
-    if (xf.stat === 0) continue;
-    const fIdx = busIndices.get(xf.i);
-    const tIdx = busIndices.get(xf.j);
-    if (fIdx === undefined || tIdx === undefined) continue;
-
-    const vi = Vm[fIdx]!;
-    const vj = Vm[tIdx]!;
-    const thetaI = Va[fIdx]!;
-    const thetaJ = Va[tIdx]!;
-
-    const r = xf.r12;
-    const x = xf.x12 !== 0 ? xf.x12 : 1e-5;
+    const deltaTheta = Va[fIdx]! - Va[tIdx]!;
     const zMagSq = r * r + x * x;
+    if (zMagSq <= 0) return;
+
     const g = r / zMagSq;
     const b = -x / zMagSq;
+    const bShuntHalf = bShunt / 2;
 
-    const a = (xf.windv1 > 0 ? xf.windv1 : 1.0) / (xf.windv2 > 0 ? xf.windv2 : 1.0);
-    const alpha = ((xf.ang1 || 0) * Math.PI) / 180.0;
-    const delta = thetaI - thetaJ - alpha;
+    const pFrom = vi * vi * (g + gi) - vi * vj * (g * Math.cos(deltaTheta) + b * Math.sin(deltaTheta));
+    const qFrom = -vi * vi * (b + bShuntHalf + bi) - vi * vj * (g * Math.sin(deltaTheta) - b * Math.cos(deltaTheta));
 
-    const pFrom = (vi * vi * g) / (a * a) - ((vi * vj) / a) * (g * Math.cos(delta) + b * Math.sin(delta));
-    const qFrom = (-vi * vi * b) / (a * a) - ((vi * vj) / a) * (g * Math.sin(delta) - b * Math.cos(delta));
-
-    const pTo = vj * vj * g - ((vi * vj) / a) * (g * Math.cos(-delta) + b * Math.sin(-delta));
-    const qTo = -vj * vj * b - ((vi * vj) / a) * (g * Math.sin(-delta) - b * Math.cos(-delta));
+    const pTo = vj * vj * (g + gj) - vi * vj * (g * Math.cos(-deltaTheta) + b * Math.sin(-deltaTheta));
+    const qTo = -vj * vj * (b + bShuntHalf + bj) - vi * vj * (g * Math.sin(-deltaTheta) - b * Math.cos(-deltaTheta));
 
     const pFromMw = pFrom * sbase;
     const qFromMvar = qFrom * sbase;
@@ -778,12 +1178,12 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
     totalLossMvar += lossMvar;
 
     const mvaFlow = Math.sqrt(pFromMw * pFromMw + qFromMvar * qFromMvar);
-    const loadingPercent = xf.rata1 && xf.rata1 > 0 ? (mvaFlow / xf.rata1) * 100.0 : undefined;
+    const loadingPercent = rateA > 0 ? (mvaFlow / rateA) * 100.0 : undefined;
 
     branchResults.push({
-      fromBus: xf.i,
-      toBus: xf.j,
-      ckt: xf.ckt.trim() || "T1",
+      fromBus,
+      toBus,
+      ckt,
       pFromMw,
       qFromMvar,
       pToMw,
@@ -791,9 +1191,116 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
       lossMw,
       lossMvar,
       mvaFlow,
-      rateMva: xf.rata1 && xf.rata1 > 0 ? xf.rata1 : undefined,
+      rateMva: rateA > 0 ? rateA : undefined,
       loadingPercent,
     });
+  };
+
+  if (source.kind === "soa") {
+    const { soa } = source;
+    for (let idxB = 0; idxB < soa.nBranches; idxB++) {
+      if (soa.brSt[idxB] === 0) continue;
+      const fromBus = soa.brFrom[idxB]!;
+      const toBus = soa.brTo[idxB]!;
+      const fIdx = busIndices.get(fromBus);
+      const tIdx = busIndices.get(toBus);
+      if (fIdx === undefined || tIdx === undefined) continue;
+      pushPiBranchFlow(
+        fromBus,
+        toBus,
+        "1",
+        fIdx,
+        tIdx,
+        soa.brR[idxB]!,
+        soa.brX[idxB]!,
+        soa.brB[idxB]!,
+        soa.brGi[idxB]!,
+        soa.brBi[idxB]!,
+        soa.brGj[idxB]!,
+        soa.brBj[idxB]!,
+        soa.brRateA[idxB]!,
+      );
+    }
+  } else {
+    const { psseCase } = source;
+    for (const br of psseCase.branches) {
+      if (br.st === 0) continue;
+      const fIdx = busIndices.get(br.i);
+      const tIdx = busIndices.get(br.j);
+      if (fIdx === undefined || tIdx === undefined) continue;
+      pushPiBranchFlow(
+        br.i,
+        br.j,
+        br.ckt.trim() || "1",
+        fIdx,
+        tIdx,
+        br.r,
+        br.x,
+        br.b,
+        br.gi,
+        br.bi,
+        br.gj,
+        br.bj,
+        br.rateA,
+      );
+    }
+
+    // Include Two-Winding Transformers in branchResults and loss totals
+    for (const xf of psseCase.transformers) {
+      if (xf.stat === 0) continue;
+      const fIdx = busIndices.get(xf.i);
+      const tIdx = busIndices.get(xf.j);
+      if (fIdx === undefined || tIdx === undefined) continue;
+
+      const vi = Vm[fIdx]!;
+      const vj = Vm[tIdx]!;
+      const thetaI = Va[fIdx]!;
+      const thetaJ = Va[tIdx]!;
+
+      const r = xf.r12;
+      const x = xf.x12 !== 0 ? xf.x12 : 1e-5;
+      const zMagSq = r * r + x * x;
+      const g = r / zMagSq;
+      const b = -x / zMagSq;
+
+      const a = (xf.windv1 > 0 ? xf.windv1 : 1.0) / (xf.windv2 > 0 ? xf.windv2 : 1.0);
+      const alpha = ((xf.ang1 || 0) * Math.PI) / 180.0;
+      const delta = thetaI - thetaJ - alpha;
+
+      const pFrom = (vi * vi * g) / (a * a) - ((vi * vj) / a) * (g * Math.cos(delta) + b * Math.sin(delta));
+      const qFrom = (-vi * vi * b) / (a * a) - ((vi * vj) / a) * (g * Math.sin(delta) - b * Math.cos(delta));
+
+      const pTo = vj * vj * g - ((vi * vj) / a) * (g * Math.cos(-delta) + b * Math.sin(-delta));
+      const qTo = -vj * vj * b - ((vi * vj) / a) * (g * Math.sin(-delta) - b * Math.cos(-delta));
+
+      const pFromMw = pFrom * sbase;
+      const qFromMvar = qFrom * sbase;
+      const pToMw = pTo * sbase;
+      const qToMvar = qTo * sbase;
+
+      const lossMw = pFromMw + pToMw;
+      const lossMvar = qFromMvar + qToMvar;
+      totalLossMw += lossMw;
+      totalLossMvar += lossMvar;
+
+      const mvaFlow = Math.sqrt(pFromMw * pFromMw + qFromMvar * qFromMvar);
+      const loadingPercent = xf.rata1 && xf.rata1 > 0 ? (mvaFlow / xf.rata1) * 100.0 : undefined;
+
+      branchResults.push({
+        fromBus: xf.i,
+        toBus: xf.j,
+        ckt: xf.ckt.trim() || "T1",
+        pFromMw,
+        qFromMvar,
+        pToMw,
+        qToMvar,
+        lossMw,
+        lossMvar,
+        mvaFlow,
+        rateMva: xf.rata1 && xf.rata1 > 0 ? xf.rata1 : undefined,
+        loadingPercent,
+      });
+    }
   }
 
   return {
@@ -858,6 +1365,14 @@ export interface PsseTransientOptions {
   onStep?:
     | ((t: number, busVoltages: Map<number, { vmPu: number; vaRad: number; vrPu: number; viPu: number }>) => void)
     | undefined;
+  /** Optional post-simulation formal verification (P8004 STL waveform compliance & P8002 critical clearing barrier). */
+  verifyFormal?:
+    | boolean
+    | {
+        stl?: PsseStlVerifyOptions | undefined;
+        criticalClearing?: boolean | undefined;
+      }
+    | undefined;
 }
 
 export interface PsseTransientResult {
@@ -875,6 +1390,15 @@ export interface PsseTransientResult {
     maxFreqDeviationHz: number;
     minBusVoltagePu: number;
   };
+  formalVerification?:
+    | {
+        stl?: { robustness: number; satisfied: boolean; diagnostics: PsseDiagnostic[] } | undefined;
+        clearingBarrier?:
+          | { safe: boolean; minCctSec: number; criticalMachine?: string | undefined; diagnostics: PsseDiagnostic[] }
+          | undefined;
+        diagnostics: PsseDiagnostic[];
+      }
+    | undefined;
 }
 
 /**
@@ -1133,6 +1657,10 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
   }
   const motorLoads: CompositeMotorLoadState[] = [];
   const motorStallShuntB = new Float64Array(N);
+  const wasmInjR = new Float64Array(N);
+  const wasmInjI = new Float64Array(N);
+  const wasmMachTripMult = new Float64Array(M);
+  wasmMachTripMult.fill(1.0);
   if (dyrCase?.loadsByBusId) {
     const seenMotorBuses = new Set<number>();
     for (const [, ldRec] of dyrCase.loadsByBusId) {
@@ -1203,15 +1731,26 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
 
     for (let m = 0; m < M; m++) {
       const mach = machines[m]!;
+      const trip = wasmMachTripMult[m] ?? 1.0;
       const d = deltas[m]!;
       const eqp = eqPrimes[m]!;
       const er = eqp * Math.cos(d);
       const ei = eqp * Math.sin(d);
-      // Norton current I_N = (ygReal + j ygImag) * (er + j ei)
-      const ir = mach.ygReal * er - mach.ygImag * ei;
-      const ii = mach.ygReal * ei + mach.ygImag * er;
+      // Norton current I_N = trip * (ygReal + j ygImag) * (er + j ei)
+      const ir = trip * (mach.ygReal * er - mach.ygImag * ei);
+      const ii = trip * (mach.ygReal * ei + mach.ygImag * er);
       rhs[2 * mach.busIdx] = (rhs[2 * mach.busIdx] ?? 0) + ir;
       rhs[2 * mach.busIdx + 1] = (rhs[2 * mach.busIdx + 1] ?? 0) + ii;
+    }
+
+    // WASM ABI v2 FACTS / SVC / IBR reactive and complex current injections
+    for (let i = 0; i < N; i++) {
+      const wr = wasmInjR[i]!;
+      const wi = wasmInjI[i]!;
+      if (wr !== 0 || wi !== 0) {
+        rhs[2 * i] = (rhs[2 * i] ?? 0) + wr;
+        rhs[2 * i + 1] = (rhs[2 * i + 1] ?? 0) + wi;
+      }
     }
 
     // External boundary current injections from TS-EMT co-simulation
@@ -1414,7 +1953,7 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
       : []),
   ].map((model) => {
     const machIdx = machines.findIndex((m) => m.busNum === model.busNumber);
-    const busIdx = machIdx >= 0 ? machines[machIdx]!.busIdx : -1;
+    const busIdx = machIdx >= 0 ? machines[machIdx]!.busIdx : (netlist.busIndices.get(model.busNumber) ?? -1);
     const eterm0 = busIdx >= 0 ? Vm0[busIdx]! : 1.0;
     const efdInit = machIdx >= 0 ? efd[machIdx]! : 1.0;
     const pmechInit = machIdx >= 0 ? pm[machIdx]! : 0.8;
@@ -1674,27 +2213,49 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
     }
 
     // Step linked FMU / AssemblyScript package.json#modelscript dynamic models
+    wasmInjR.fill(0);
+    wasmInjI.fill(0);
     for (const lm of linkedDynamicModels) {
-      if (lm.machIdx < 0) continue;
+      if (lm.busIdx < 0) continue;
+      const bIdx = lm.busIdx;
+      const vrCur = vr[bIdx] ?? 1.0;
+      const viCur = vi[bIdx] ?? 0.0;
+      const vtCur = Math.max(0.05, Math.hypot(vrCur, viCur));
       const m = lm.machIdx;
-      const mach = machines[m]!;
-      const vrCur = vr[mach.busIdx]!;
-      const viCur = vi[mach.busIdx]!;
-      const vtCur = Math.hypot(vrCur, viCur);
-      const speedCur = dOmega[m]! / omega0;
+      const mach = m >= 0 ? machines[m] : undefined;
+      const speedCur = m >= 0 ? dOmega[m]! / omega0 : 0.0;
+      const efdIn = m >= 0 ? efd[m]! : 1.0;
+      const pmIn = m >= 0 ? pm[m]! : 0.8;
+
       const out = lm.model.doStep(t, dt, {
         eterm: vtCur,
         speedDev: speedCur,
-        efd: efd[m]!,
-        pmech: pm[m]!,
+        efd: efdIn,
+        pmech: pmIn,
         vr: vrCur,
         vi: viCur,
       });
-      if (out.efd !== undefined && Number.isFinite(out.efd)) {
-        efd[m] = Math.min(mach.efdMax, Math.max(mach.efdMin, out.efd));
+
+      const cat = lm.model.category;
+      if (mach && m >= 0) {
+        if ((!cat || cat === "exciter" || cat === "limiter") && out.efd !== undefined && Number.isFinite(out.efd)) {
+          efd[m] = Math.min(mach.efdMax, Math.max(mach.efdMin, out.efd));
+        }
+        if ((!cat || cat === "governor") && out.pmech !== undefined && Number.isFinite(out.pmech)) {
+          pm[m] = Math.min(mach.pMaxPu, Math.max(0.0, out.pmech));
+        }
+        if (cat === "stabilizer" && out.vsPss !== undefined && Number.isFinite(out.vsPss)) {
+          efd[m] = Math.min(mach.efdMax, Math.max(mach.efdMin, efd[m]! + out.vsPss * mach.ka * 0.05));
+        }
+        if (out.tripMult !== undefined && Number.isFinite(out.tripMult) && out.tripMult < 0.5) {
+          wasmMachTripMult[m] = 0.0;
+        }
       }
-      if (out.pmech !== undefined && Number.isFinite(out.pmech)) {
-        pm[m] = Math.min(mach.pMaxPu, Math.max(0.0, out.pmech));
+      if ((cat === "facts" || cat === "load") && out.qSvc !== undefined && Number.isFinite(out.qSvc)) {
+        // Convert reactive power injection Q into complex current I = (-j Q) / V^* -> (Q*Vi, -Q*Vr)/|V|^2
+        const v2 = Math.max(0.01, vrCur * vrCur + viCur * viCur);
+        wasmInjR[bIdx] = (wasmInjR[bIdx] ?? 0) + (out.qSvc * viCur) / v2;
+        wasmInjI[bIdx] = (wasmInjI[bIdx] ?? 0) - (out.qSvc * vrCur) / v2;
       }
     }
 
@@ -1713,7 +2274,7 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
     variables[stateNames[i]!] = ySeries[i]!;
   }
 
-  return {
+  const result: PsseTransientResult = {
     t: tArr,
     states: stateNames,
     y: ySeries,
@@ -1729,6 +2290,29 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
       minBusVoltagePu: Number((minBusVoltagePu === 2.0 ? 1.0 : minBusVoltagePu).toFixed(4)),
     },
   };
+
+  if (options.verifyFormal) {
+    const cfg = typeof options.verifyFormal === "object" ? options.verifyFormal : {};
+    const fNom = psseCase.header.basfrq > 0 ? psseCase.header.basfrq : 60.0;
+    const stl = verifyPsseTrajectoryStl(result, {
+      fNominalHz: fNom,
+      recoveryStartSec: faultClear + 0.5,
+      ...cfg.stl,
+    });
+    const runCct = cfg.criticalClearing ?? Boolean(options.dyr ?? psseCase.dyr);
+    const clearingBarrier = runCct
+      ? verifyCriticalClearingBarrier(options.dyr && !psseCase.dyr ? { ...psseCase, dyr: options.dyr } : psseCase, {
+          clearingTimeSec: Math.max(0.01, faultClear - faultStart),
+        })
+      : undefined;
+    result.formalVerification = {
+      stl,
+      clearingBarrier,
+      diagnostics: [...stl.diagnostics, ...(clearingBarrier?.diagnostics ?? [])],
+    };
+  }
+
+  return result;
 }
 
 /**

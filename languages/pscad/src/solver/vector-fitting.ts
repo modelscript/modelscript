@@ -204,7 +204,12 @@ function solveScaledLeastSquares(A: Float64Array, b: Float64Array, m: number, n:
  * using eigenvalue QR iteration on the arrow/rank-1 companion matrix H = diag(poles) - 1 * cTilde^T
  * and projecting to stable negative real poles.
  */
-function relocatePoles(poles: Float64Array, cTilde: Float64Array, minPoleMag: number, maxPoleMag: number): Float64Array {
+function relocatePoles(
+  poles: Float64Array,
+  cTilde: Float64Array,
+  minPoleMag: number,
+  maxPoleMag: number,
+): Float64Array {
   const n = poles.length;
   // Form H = diag(poles) - ones * cTilde^T
   const H = new Float64Array(n * n);
@@ -319,7 +324,7 @@ export function gustavsenVectorFit(
   }
 
   const nRows = 2 * nFreqs;
-  const nColsReloc = (fitDirect ? 2 * order + 1 : 2 * order);
+  const nColsReloc = fitDirect ? 2 * order + 1 : 2 * order;
   const A = new Float64Array(nRows * nColsReloc);
   const b = new Float64Array(nRows);
 
@@ -431,9 +436,117 @@ export function gustavsenVectorFit(
   return {
     poles,
     residues,
-    d0,
+    d0: enforcePassivity ? enforceRationalPassivity(poles, residues, d0).d0 : d0,
     rmsError,
   };
+}
+
+export interface RationalPassivityReport {
+  passive: boolean;
+  minRealPart: number;
+  worstFreqHz: number;
+  hasUnstablePole: boolean;
+}
+
+/**
+ * Checks strict positive-realness (passivity) of a rational admittance Y(s) = d0 + sum r_m / (s - p_m):
+ * requires all poles p_m < 0 and Re{Y(jω)} >= 0 for all ω >= 0.
+ */
+export function checkRationalPassivity(
+  poles: ArrayLike<number>,
+  residues: ArrayLike<number>,
+  d0 = 0,
+): RationalPassivityReport {
+  const n = Math.min(poles.length, residues.length);
+  for (let m = 0; m < n; m++) {
+    if ((poles[m] ?? 0) >= 0) {
+      return { passive: false, minRealPart: -Infinity, worstFreqHz: 0, hasUnstablePole: true };
+    }
+  }
+  let minReal = d0;
+  let worstW = 0;
+  // Sweep DC + 64 log-spaced frequencies up to 1 MHz plus |p_m| critical corners
+  const testOmegas: number[] = [0];
+  for (let k = 0; k < 64; k++) {
+    testOmegas.push(2 * Math.PI * Math.pow(10, -1 + (7 * k) / 63));
+  }
+  for (let m = 0; m < n; m++) {
+    testOmegas.push(Math.abs(poles[m]!));
+  }
+  for (const w of testOmegas) {
+    let re = d0;
+    for (let m = 0; m < n; m++) {
+      const pm = poles[m]!;
+      const rm = residues[m]!;
+      // Re{r_m / (jω - p_m)} = (-p_m * r_m) / (p_m^2 + ω^2)
+      re += (-pm * rm) / (pm * pm + w * w);
+    }
+    if (re < minReal) {
+      minReal = re;
+      worstW = w;
+    }
+  }
+  return {
+    passive: minReal >= -1e-9,
+    minRealPart: minReal,
+    worstFreqHz: worstW / (2 * Math.PI),
+    hasUnstablePole: false,
+  };
+}
+
+/**
+ * Perturbs negative-real-part violations via minimum-norm iterative active-set residue projection
+ * (preserving high-frequency asymptote `d0` whenever feasible) so `Re{Y(jω)} >= 0` across all `ω >= 0`.
+ */
+export function enforceRationalPassivity(
+  poles: Float64Array,
+  residues: Float64Array,
+  d0: number,
+): { residues: Float64Array; d0: number } {
+  const n = Math.min(poles.length, residues.length);
+  let curD0 = Math.max(0, d0);
+  if (n === 0) {
+    return { residues, d0: curD0 };
+  }
+
+  // Iterative minimum-norm residue projection against the most-violating frequency
+  for (let pass = 0; pass < 16; pass++) {
+    const rep = checkRationalPassivity(poles, residues, curD0);
+    if (rep.passive) {
+      return { residues, d0: curD0 };
+    }
+    if (rep.hasUnstablePole) break;
+
+    const wStar = 2 * Math.PI * rep.worstFreqHz;
+    const deficit = Math.max(0, -rep.minRealPart) + 1e-11;
+    let gNormSq = 0;
+    const g = new Float64Array(n);
+    for (let m = 0; m < n; m++) {
+      const pm = poles[m]!;
+      const gm = -pm / (pm * pm + wStar * wStar);
+      g[m] = gm;
+      gNormSq += gm * gm;
+    }
+
+    if (gNormSq > 1e-24) {
+      const step = deficit / gNormSq;
+      for (let m = 0; m < n; m++) {
+        residues[m] = residues[m]! + step * g[m]!;
+      }
+    } else {
+      curD0 += deficit;
+    }
+  }
+
+  // Final safety guarantee: clamp any remaining negative residues and raise d0 by remaining margin
+  for (let m = 0; m < n; m++) {
+    if (residues[m]! < 0) residues[m] = 0;
+  }
+  const finalRep = checkRationalPassivity(poles, residues, curD0);
+  if (!finalRep.hasUnstablePole && finalRep.minRealPart < 0) {
+    curD0 = curD0 - finalRep.minRealPart + 1e-12;
+  }
+  return { residues, d0: curD0 };
 }
 
 /**

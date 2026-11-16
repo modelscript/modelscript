@@ -31,13 +31,29 @@ export interface UrdfInertial {
   izz: number;
 }
 
-export type UrdfGeometryType = "box" | "cylinder" | "sphere" | "mesh";
+export type UrdfGeometryType = "box" | "cylinder" | "sphere" | "mesh" | "capsule" | "plane";
+
+export interface MjcfContactParams {
+  /** Contact dimensionality: 1 (frictionless), 3 (sliding), 4 (torsional), 6 (full). Default: 3. */
+  condim?: number | undefined;
+  /** MuJoCo friction tuple [sliding, torsional, rolling]. */
+  friction?: [number, number, number] | undefined;
+  /** MuJoCo solver reference [timeconst, dampratio]. */
+  solref?: [number, number] | undefined;
+  /** MuJoCo solver impedance [dmin, dmax, width, midpoint, power]. */
+  solimp?: [number, number, number, number?, number?] | undefined;
+  /** Contact bitmask types. */
+  contype?: number | undefined;
+  conaffinity?: number | undefined;
+  /** Contact margin [m]. */
+  margin?: number | undefined;
+}
 
 export interface UrdfGeometry {
   type: UrdfGeometryType;
   size?: Vector3D | undefined; // For box [m]
-  radius?: number | undefined; // For cylinder, sphere [m]
-  length?: number | undefined; // For cylinder [m]
+  radius?: number | undefined; // For cylinder, sphere, capsule [m]
+  length?: number | undefined; // For cylinder, capsule [m]
   filename?: string | undefined; // For mesh (e.g. package:// or file://)
   scale?: Vector3D | undefined; // For mesh scaling
 }
@@ -66,6 +82,7 @@ export interface UrdfCollision {
   name?: string | undefined;
   origin?: UrdfOrigin | undefined;
   geometry: UrdfGeometry;
+  contact?: MjcfContactParams | undefined;
 }
 
 export interface UrdfLink {
@@ -109,14 +126,42 @@ export interface UrdfJoint {
   range?: SourceRange | undefined;
 }
 
+export interface MjcfActuatorSpec {
+  name: string;
+  kind: "position" | "motor" | "velocity";
+  joint: string;
+  kp?: number | undefined;
+  kv?: number | undefined;
+  ctrlRange?: [number, number] | undefined;
+  forceRange?: [number, number] | undefined;
+  gear?: number | undefined;
+}
+
+export interface MjcfSensorSpec {
+  name: string;
+  kind: "accelerometer" | "gyro" | "framequat" | "jointpos" | "jointvel" | "touch";
+  site?: string | undefined;
+  joint?: string | undefined;
+  linkName?: string | undefined;
+}
+
+export interface MjcfSiteSpec {
+  name: string;
+  linkName: string;
+  origin?: UrdfOrigin | undefined;
+}
+
 export interface UrdfRobot {
   name: string;
   links: Map<string, UrdfLink>;
   joints: Map<string, UrdfJoint>;
   materials: Map<string, UrdfMaterial>;
   duplicateJointNames?: string[] | undefined;
+  actuators?: MjcfActuatorSpec[] | undefined;
+  sensors?: MjcfSensorSpec[] | undefined;
+  sites?: Map<string, MjcfSiteSpec> | undefined;
+  meshAssets?: Map<string, { file: string; scale?: Vector3D | undefined }> | undefined;
 }
-
 
 export interface UrdfDiagnostic {
   code: string;
@@ -170,15 +215,7 @@ export interface DigitalTwinProgramStep {
 export interface DigitalTwinEnvironmentAsset {
   id: string;
   name: string;
-  type:
-    | "mesh"
-    | "box"
-    | "cylinder"
-    | "table"
-    | "vial_rack"
-    | "workstation_cabinet"
-    | "reactor_mixer"
-    | "wash_cup";
+  type: "mesh" | "box" | "cylinder" | "table" | "vial_rack" | "workstation_cabinet" | "reactor_mixer" | "wash_cup";
   url?: string | undefined;
   position: [number, number, number];
   rotation?: [number, number, number] | undefined;
@@ -237,13 +274,14 @@ export interface UrdfDigitalTwinConfig {
   programSteps?: DigitalTwinProgramStep[] | undefined;
   environment?: DigitalTwinEnvironmentAsset[] | undefined;
   toolpaths?: DigitalTwinToolpathTrace[] | undefined;
-  telemetryChannels?: Array<{
-    name: string;
-    unit: string;
-    nominal: number;
-    variableKey?: string | undefined;
-  }> | undefined;
+  telemetryChannels?:
+    | Array<{
+        name: string;
+        unit: string;
+        nominal: number;
+        variableKey?: string | undefined;
+      }>
+    | undefined;
   standalone?: boolean | undefined;
   [key: string]: unknown;
 }
-

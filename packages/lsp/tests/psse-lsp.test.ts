@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  formatPsseDocument,
+  getPsseCodeActions,
   getPsseDocumentSymbols,
   getPsseHover,
+  getPsseInlayHints,
+  getPsseRenameEdits,
   lowerPsseToDae,
   parseRaw,
   psseLanguage,
@@ -131,5 +135,76 @@ describe("PSS/E LSP Integration Suite (@modelscript/lsp)", () => {
     assert.ok(plugin.actionHandlers?.solve_powerflow);
     const pfRes = await plugin.actionHandlers.solve_powerflow({}, { documentText: IEEE_14_RAW });
     assert.ok(pfRes.converged);
+  });
+
+  it("provides bidirectional createPsseDiagramBackend (getData, getComponentProperties, minimal CST applyEdits, getPalette)", async () => {
+    const { createPsseDiagramBackend } = await import("../src/diagrams/index.js");
+    const docs = new Map<string, string>([["file:///workspace/ieee14.raw", IEEE_14_RAW]]);
+    const backend = createPsseDiagramBackend({
+      generic: {
+        deps: {
+          getDocumentText: (u: string) => docs.get(u),
+        },
+      } as any,
+    });
+
+    const data = await backend.getData({ uri: "file:///workspace/ieee14.raw" });
+    assert.ok(data);
+    assert.ok(data.nodes.some((n) => n.id === "bus_1"));
+    assert.ok(data.edges.some((e) => e.id === "branch_1_2_1"));
+
+    const props = await backend.getComponentProperties({
+      uri: "file:///workspace/ieee14.raw",
+      componentName: "gen_2_1",
+    });
+    assert.ok(props);
+    assert.equal(props.values?.["pg"], 40);
+
+    const editRes = await backend.applyEdits({
+      uri: "file:///workspace/ieee14.raw",
+      seq: 7,
+      actions: [{ type: "updateProperty", name: "gen_2_1", key: "pg", value: 55.5 }],
+    });
+    assert.equal(editRes.seq, 7);
+    assert.equal(editRes.renderHint, "immediate");
+    assert.equal(editRes.edits.length, 1);
+    assert.equal(editRes.edits[0]!.range.start.line, 16);
+    assert.ok(editRes.edits[0]!.newText.includes("55.500"));
+
+    const palette = backend.getPalette?.({ uri: "file:///workspace/ieee14.raw" }) as any;
+    assert.ok(palette && palette.categories.length >= 3);
+  });
+
+  it("supports PSS/E inlayHints, multi-file RAW+DYR atomic rename, codeActions, and formatting", async () => {
+    const hints = getPsseInlayHints(IEEE_14_RAW, "file:///workspace/ieee14.raw");
+    assert.ok(hints.length > 0, "Expected field-unit inlay hints on PSS/E RAW records");
+
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const dyrContent = `1 'GENROU' 1 6.5 0.03 0.25 0.05 4.2 0.2 1.8 1.7 0.22 0.16 0.12 0.08 0.35 /\n`;
+    const ws = new UnifiedWorkspace(psseLanguage);
+    ws.setDocument("file:///workspace/ieee14.raw", IEEE_14_RAW);
+    ws.setDocument("file:///workspace/ieee14.dyr", dyrContent);
+
+    const renameEdit = getPsseRenameEdits(
+      IEEE_14_RAW,
+      { line: 3, character: 0 },
+      "101",
+      "file:///workspace/ieee14.raw",
+      ws,
+    );
+    assert.ok(renameEdit?.changes?.["file:///workspace/ieee14.raw"]?.length);
+    assert.ok(renameEdit?.changes?.["file:///workspace/ieee14.dyr"]?.[0]?.newText.startsWith("101 "));
+
+    const formatted = formatPsseDocument(IEEE_14_RAW, "file:///workspace/ieee14.raw");
+    assert.ok(formatted.includes("BUS 1"));
+
+    const diags = validatePsse(IEEE_14_RAW, "file:///workspace/ieee14.raw");
+    const actions = getPsseCodeActions(
+      IEEE_14_RAW,
+      { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+      diags,
+      "file:///workspace/ieee14.raw",
+    );
+    assert.ok(Array.isArray(actions));
   });
 });

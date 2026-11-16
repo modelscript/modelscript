@@ -2,6 +2,8 @@
 
 import type { SyntheticSymbolSpec, WorkspaceIndexingHooks } from "@modelscript/dsl";
 import { PolyglotTransformer, type PolyglotNode } from "../interop/polyglot-transformer.js";
+import { TggCorrespondenceIndexer, TggSymbolProjectionTable } from "../interop/tgg-correspondence-indexer.js";
+import { DigitalThreadHypergraph } from "../interop/thread_hypergraph.js";
 import { WasmOntologyStore } from "../ontology/wasm_ontology.js";
 import {
   getLanguageDomainId,
@@ -1728,6 +1730,10 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   public owl2Store: WasmOntologyStore;
   /** Cross-language type registry used by `PolyglotTransformer` projections. */
   public typeRegistry = new WorkspaceTypeRegistry();
+  /** Declarative TGG metaclass projection and type-mapping table across registered languages. */
+  public tggProjectionTable = new TggSymbolProjectionTable();
+  /** Incremental TGG correspondence indexer aligning symbols into `DigitalThreadHypergraph`. */
+  public tggCorrespondenceIndexer: TggCorrespondenceIndexer;
   /** Map from language identifier (e.g. `"modelica"`, `"sysml2"`) to its `LanguageWorkspaceIndex`. */
   private workspaces = new Map<string, any>();
   /** Map from language identifier to its associated `WasmQueryEngine`. */
@@ -1773,6 +1779,10 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   /** Initializes a new `UnifiedWorkspace` with default CST node, text, and query providers, optionally registering `languages`. */
   constructor(...languages: any[]) {
     this.owl2Store = new WasmOntologyStore(null, this);
+    this.tggCorrespondenceIndexer = new TggCorrespondenceIndexer(
+      this.tggProjectionTable,
+      new DigitalThreadHypergraph(),
+    );
 
     this.cstNodeProvider = (id: SymbolId): unknown | null => {
       const idx = this.getIndex();
@@ -2314,6 +2324,9 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     this.workspaces.set(language, index);
     if (config) {
       this.configs.set(language, config);
+      if (config.polyglot) {
+        this.tggProjectionTable.registerPolyglotConfig(language, config.polyglot);
+      }
       if (config.indexing || config.fileExtensions || config.lsp) {
         this.registerLanguageDef(language, config);
       }
@@ -2490,6 +2503,9 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     this.languageDefs.set(normLang, langDef);
     if (!this.configs.has(normLang)) {
       this.configs.set(normLang, langDef);
+    }
+    if (langDef.polyglot) {
+      this.tggProjectionTable.registerPolyglotConfig(normLang, langDef.polyglot);
     }
 
     const exts = new Set<string>();
@@ -2806,6 +2822,60 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     }
   }
 
+  /** Attaches an external `DigitalThreadHypergraph` (e.g. owned by `WorkspaceManager`) to `this.tggCorrespondenceIndexer`. */
+  public attachHypergraph(
+    hypergraph: DigitalThreadHypergraph,
+    options?: { autoAlignTopLevel?: boolean | undefined },
+  ): TggCorrespondenceIndexer {
+    this.tggCorrespondenceIndexer = new TggCorrespondenceIndexer(this.tggProjectionTable, hypergraph, options);
+    for (const engine of this.queryEngines.values()) {
+      if (engine && typeof engine.setCorrespondenceIndex === "function") {
+        engine.setCorrespondenceIndex(this.tggCorrespondenceIndexer.hypergraph, this.tggCorrespondenceIndexer.slotMap);
+      }
+    }
+    return this.tggCorrespondenceIndexer;
+  }
+
+  /** Incrementally synchronizes TGG correspondences across `index` when multiple languages are present. */
+  public syncTggCorrespondences(
+    index?: SymbolIndex,
+    changedIds?: Iterable<SymbolId> | null,
+    changedNames?: Iterable<string> | null,
+  ): ReturnType<TggCorrespondenceIndexer["syncIndex"]> {
+    const merged = index ?? this.getIndex();
+    if (this.tggProjectionTable.getAllRules().length === 0) {
+      return { slotCount: 0, boundSymbolCount: 0, touchedSlots: [] };
+    }
+    // Zero-cost fast path when workspace only contains symbols from 0 or 1 language
+    let firstLang: string | undefined;
+    let multiLang = false;
+    for (const sym of merged.symbols.values()) {
+      const l = sym.language;
+      if (!l) continue;
+      if (firstLang === undefined) {
+        firstLang = l;
+      } else if (l !== firstLang) {
+        multiLang = true;
+        break;
+      }
+    }
+    if (!multiLang && this.tggCorrespondenceIndexer.slotMap.size === 0) {
+      return { slotCount: 0, boundSymbolCount: 0, touchedSlots: [] };
+    }
+    const summary = this.tggCorrespondenceIndexer.syncIndex(
+      merged,
+      this.version,
+      changedIds ?? undefined,
+      changedNames ?? undefined,
+    );
+    for (const engine of this.queryEngines.values()) {
+      if (engine && typeof engine.setCorrespondenceIndex === "function") {
+        engine.setCorrespondenceIndex(this.tggCorrespondenceIndexer.hypergraph, this.tggCorrespondenceIndexer.slotMap);
+      }
+    }
+    return summary;
+  }
+
   /** Broadcasts merged `SymbolIndex` invalidations to every registered language `QueryEngine`. */
   public updateQueryEngines(
     uri?: string | undefined,
@@ -2813,9 +2883,14 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     structuralChangedIds?: Set<SymbolId> | null | undefined,
     changedNames?: Set<string> | null | undefined,
   ): SymbolIndex {
+    this._version++;
     const merged = this.getIndex();
+    this.syncTggCorrespondences(merged, changedIds, changedNames);
     if (this.queryEngines.size === 0) return merged;
     for (const engine of this.queryEngines.values()) {
+      if (engine && typeof engine.setCorrespondenceIndex === "function") {
+        engine.setCorrespondenceIndex(this.tggCorrespondenceIndexer.hypergraph, this.tggCorrespondenceIndexer.slotMap);
+      }
       if (engine && typeof engine.updateIndex === "function") {
         engine.updateIndex(
           merged,
@@ -2850,6 +2925,9 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   /** Registers a `WasmQueryEngine` instance for `language`. */
   registerQueryEngine(language: string, engine: any): void {
     this.queryEngines.set(language, engine);
+    if (engine && typeof engine.setCorrespondenceIndex === "function") {
+      engine.setCorrespondenceIndex(this.tggCorrespondenceIndexer.hypergraph, this.tggCorrespondenceIndexer.slotMap);
+    }
     this._version++;
   }
 
@@ -2957,10 +3035,17 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return merged;
   }
 
+  private readonly extractingWorkspaces = new Set<any>();
+
   private extractWorkspaceEntries(lang: string, ws: any, eager: boolean, out: [string, SymbolIndex | null][]): void {
-    if (!ws || (ws as any).__delegatesToUnifiedWorkspace === this) return;
+    if (this.isDelegatedSelf(ws) || this.extractingWorkspaces.has(ws)) return;
     if (typeof ws.getIndex === "function") {
-      out.push([lang, ws.getIndex({ eager })]);
+      this.extractingWorkspaces.add(ws);
+      try {
+        out.push([lang, ws.getIndex({ eager })]);
+      } finally {
+        this.extractingWorkspaces.delete(ws);
+      }
       return;
     }
     if (ws.symbols instanceof Map && ws.byName instanceof Map && ws.childrenOf instanceof Map) {
@@ -3060,6 +3145,18 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     Object.defineProperty(merged, "workspace", { value: this, enumerable: false, configurable: true, writable: true });
     Object.defineProperty(merged, "documents", {
       value: this.documents,
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(merged, "tggProjectionTable", {
+      value: this.tggProjectionTable,
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(merged, "tggCorrespondenceIndexer", {
+      value: this.tggCorrespondenceIndexer,
       enumerable: false,
       configurable: true,
       writable: true,

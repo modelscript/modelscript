@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./analysis/formal-grid-checks.js";
 export * from "./builtins.js";
 export * from "./dae/index.js";
 export * from "./errors.js";
@@ -19,13 +20,17 @@ export * from "./compliance/nerc-auditor.js";
 export * from "./compliance/protection-auditor.js";
 export * from "./lsp.js";
 export * from "./netlist/collector-equivalencer.js";
+export * from "./netlist/node-breaker.js";
 export * from "./netlist/powerflow-netlist.js";
 export * from "./parser/con-parser.js";
+export * from "./parser/cst-tokens.js";
 export * from "./parser/dyr-parser.js";
 export * from "./parser/dyr-serializer.js";
+export * from "./parser/dyr-soa.js";
 export * from "./parser/idv-interpreter.js";
 export * from "./parser/raw-parser.js";
 export * from "./parser/raw-serializer.js";
+export * from "./parser/raw-soa.js";
 export * from "./parser/sav-parser.js";
 export * from "./parser/seq-parser.js";
 export * from "./parser/seq-serializer.js";
@@ -36,6 +41,7 @@ export * from "./projections/psse-to-modelica.js";
 export * from "./projections/psse-to-p3743.js";
 export * from "./projections/psse-to-pscad.js";
 export * from "./psspy-shim.js";
+export * from "./schema/index.js";
 export * from "./solver/ac-powerflow.js";
 export * from "./solver/contingency-screener.js";
 export * from "./solver/continuation-powerflow.js";

@@ -665,6 +665,21 @@ export class SimulationPanel {
                 const dt = timeArr.length > 1 ? timeArr[1]! - timeArr[0]! : (res?.settings?.timeStepUs ?? 50) * 1e-6;
                 const tStop = timeArr[timeArr.length - 1] ?? res?.settings?.durationSec ?? 0.25;
 
+                interface PscadActionResponseWithReport extends PscadActionResponse {
+                  simulationReport?: {
+                    status?: "ok" | "degraded" | "rejected" | undefined;
+                    fidelitySummary?: string | undefined;
+                  };
+                  diagnostics?: { code?: string; message?: string; severity?: string }[];
+                }
+                const typedRes = res as PscadActionResponseWithReport | undefined;
+                const fidelityErr =
+                  typedRes?.simulationReport?.status === "rejected"
+                    ? (typedRes.simulationReport.fidelitySummary ??
+                      typedRes.diagnostics?.find((d) => d.code === "P6100" || d.severity === "error")?.message ??
+                      "PSCAD netlist rejected by strict fidelity gate.")
+                    : undefined;
+
                 result = {
                   t: timeArr,
                   y: yMatrix,
@@ -677,7 +692,7 @@ export class SimulationPanel {
                     tolerance: 1e-4,
                     solver: "Dommel Companion (EMT)",
                   },
-                  error: res?.error,
+                  error: res?.error ?? fidelityErr,
                   comtrade: res?.comtrade ?? simRes?.comtrade,
                   pscadOut: res?.pscadOut ?? simRes?.pscadOut,
                   pscadPsout: res?.pscadPsout ?? simRes?.pscadPsout,

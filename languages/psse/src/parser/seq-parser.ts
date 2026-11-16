@@ -21,61 +21,13 @@ import type {
   SeqTransformerRecord,
 } from "../types.js";
 
-function splitSeqLine(line: string): string[] {
-  const commentSlash = line.indexOf("@!");
-  const raw = commentSlash >= 0 ? line.slice(0, commentSlash) : line;
-  const slashIdx = raw.indexOf("/");
-  const clean = slashIdx >= 0 ? raw.slice(0, slashIdx) : raw;
-  const tokens: string[] = [];
-  let cur = "";
-  let inQuotes = false;
-  let qChar = "";
-
-  for (let i = 0; i < clean.length; i++) {
-    const ch = clean[i]!;
-    if (inQuotes) {
-      if (ch === qChar) {
-        inQuotes = false;
-        tokens.push(cur.trim());
-        cur = "";
-      } else {
-        cur += ch;
-      }
-      continue;
-    }
-    if (ch === "'" || ch === '"') {
-      if (cur.trim().length > 0) {
-        tokens.push(cur.trim());
-        cur = "";
-      }
-      inQuotes = true;
-      qChar = ch;
-      continue;
-    }
-    if (ch === "," || ch === " " || ch === "\t") {
-      if (cur.trim().length > 0) {
-        tokens.push(cur.trim());
-        cur = "";
-      }
-      continue;
-    }
-    cur += ch;
-  }
-  if (cur.trim().length > 0) {
-    tokens.push(cur.trim());
-  }
-  return tokens;
-}
-
-import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { getPsseWasmParser } from "./wasm-loader.js";
+import { extractFieldsFromCstTokens, isPsseSectionTerminator, parsePsseCstDocument } from "./cst-tokens.js";
 
 /**
- * Parses a PSS/E `.seq` sequence data file string into a structured `PsseSeqCase`.
+ * Parses a PSS/E `.seq` sequence data file string into a structured `PsseSeqCase` via WASM CST.
  */
 export function parseSeq(source: string): PsseSeqCase {
-  const cstTree = getPsseWasmParser().parse(source);
-  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
+  const cstDoc = parsePsseCstDocument(source);
   const generators: SeqGeneratorRecord[] = [];
   const branches: SeqBranchRecord[] = [];
   const mutuals: SeqMutualRecord[] = [];
@@ -92,18 +44,13 @@ export function parseSeq(source: string): PsseSeqCase {
   let section = 0;
   let seenHeader = false;
 
-  for (const { tokens: cstTokens } of cstLines) {
-    const rawLine = cstLineText(source, cstTokens);
-    const trimmed = rawLine.trim();
-    if (!trimmed || trimmed.startsWith("@!") || trimmed.startsWith("//")) continue;
-    if (/^Q\b/i.test(trimmed)) break;
-
-    const tokens = splitSeqLine(trimmed);
-    if (tokens.length === 0) continue;
-
-    // Detect `0 / END OF ...` section delimiters
-    if (tokens[0] === "0" && (tokens.length === 1 || rawLine.includes("/"))) {
-      if (!seenHeader && rawLine.toUpperCase().includes("SEQ")) {
+  for (const entry of cstDoc.lines) {
+    if (entry.isCommentOrBlank) continue;
+    const fields = extractFieldsFromCstTokens(entry.tokens, source, "delimited");
+    const term = isPsseSectionTerminator(fields);
+    if (term === "end_file") break;
+    if (term === "end_section") {
+      if (!seenHeader && entry.line.toUpperCase().includes("SEQ")) {
         seenHeader = true;
         continue;
       }
@@ -111,8 +58,11 @@ export function parseSeq(source: string): PsseSeqCase {
       continue;
     }
 
-    // Also allow explicit `@! SECTION:` or keyword headers to jump to specific section
-    const upperLine = rawLine.toUpperCase();
+    const tokens = fields.map((f) => f.value);
+    if (tokens.length === 0) continue;
+
+    // Also allow explicit keyword headers to jump to specific section
+    const upperLine = entry.line.toUpperCase();
     if (upperLine.includes("ZERO-SEQUENCE BRANCH") || upperLine.includes("NON-TRANSFORMER BRANCH")) {
       section = 2;
       continue;

@@ -555,6 +555,10 @@ export class WorkspaceManager {
       this.seedDemoThreads();
     }
 
+    if (typeof this.unifiedWorkspace.attachHypergraph === "function") {
+      this.unifiedWorkspace.attachHypergraph(this.hypergraph);
+    }
+
     // Seed default workspace indices and declarative DSL language configs from registered language plugins
     for (const plugin of globalLanguageRegistry.getAllPlugins()) {
       if (plugin.languageDef && typeof (this.unifiedWorkspace as any).registerLanguageDef === "function") {
@@ -1938,6 +1942,114 @@ export class WorkspaceManager {
               domain: "continuous_safety",
               sourceContext: { slot, key: canonA },
             });
+          }
+        }
+      }
+    }
+
+    // Synchronize declarative TGG correspondences (Tier 2: zero-annotation container/child/foreignKey alignment)
+    if (typeof this.unifiedWorkspace.syncTggCorrespondences === "function") {
+      const tggSummary = this.unifiedWorkspace.syncTggCorrespondences(uIdx);
+      const projTable = this.unifiedWorkspace.tggProjectionTable;
+      for (const slot of tggSummary.touchedSlots) {
+        const rec = this.hypergraph.getRecord(slot);
+        if (!rec || rec.isRemoved || !rec.domainNodes) continue;
+        const memberEntries: Array<{ domIdx: number; entry: SymbolEntry; lang: string }> = [];
+        let involvesTargetUri = false;
+        for (const [domKey, nodeId] of Object.entries(rec.domainNodes)) {
+          const domIdx = Number(domKey);
+          if (!Number.isFinite(domIdx) || typeof nodeId !== "number" || nodeId <= 0) continue;
+          const sym = uIdx.symbols.get(nodeId);
+          if (!sym) continue;
+          const symUri = sym.resourceId ?? sym.documentUri ?? "";
+          if (symUri && normUri(symUri) === targetNormUri) {
+            involvesTargetUri = true;
+          }
+          memberEntries.push({
+            domIdx,
+            entry: sym,
+            lang: (sym.language ?? DOMAIN_INDEX_TO_NAME[domIdx] ?? "").toLowerCase(),
+          });
+        }
+        if (!involvesTargetUri || memberEntries.length < 2) continue;
+
+        touchedSlots.add(slot);
+        const extractedByMember: Array<{
+          entry: SymbolEntry;
+          lang: string;
+          symUri: string;
+          props: Record<string, unknown>;
+        }> = [];
+
+        for (const m of memberEntries) {
+          const symUri = m.entry.resourceId ?? m.entry.documentUri ?? "";
+          const symText = symUri && normUri(symUri) === targetNormUri ? text : this.getDocTextForUri(symUri);
+          const pos = symUri ? computeLineCol(symText, m.entry.startOffset) : { line: 1, column: 1 };
+          const props = this.extractNumericScalarProperties(uIdx, m.entry, symText);
+          const domName = DOMAIN_INDEX_TO_NAME[m.domIdx] ?? "unknown";
+          const metaKey = `${domName}:${m.entry.id}`;
+          if (!this.threadMetadataMap.has(metaKey)) {
+            this.threadMetadataMap.set(metaKey, {
+              name: m.entry.name,
+              uri: symUri,
+              line: pos.line,
+              column: pos.column,
+              length: m.entry.name.length,
+              domain: m.lang || domName,
+              properties: props,
+              autoDiscovered: true,
+            });
+            if (symUri && normUri(symUri) === targetNormUri) {
+              ownedMetaKeys.push({ slot, metaKey });
+            }
+          }
+          extractedByMember.push({ entry: m.entry, lang: m.lang, symUri, props });
+        }
+
+        // Assert shared numeric parameter equalities across TGG-aligned containers (including fieldAliases like m <-> mass)
+        const canonicalKey = (k: string) => (k === "m" ? "mass" : k);
+        const threadId = rec.threadId || slot;
+        for (let i = 0; i < extractedByMember.length; i++) {
+          const mA = extractedByMember[i]!;
+          for (let j = i + 1; j < extractedByMember.length; j++) {
+            const mB = extractedByMember[j]!;
+            for (const [kA, vA] of Object.entries(mA.props)) {
+              if (typeof vA !== "number" || !Number.isFinite(vA)) continue;
+              const matchB = Object.entries(mB.props).find(
+                ([kB]) =>
+                  canonicalKey(kA) === canonicalKey(kB) ||
+                  (mA.lang && mB.lang && projTable.areMemberNamesAligned(mA.lang, kA, mB.lang, kB)),
+              );
+              if (matchB && typeof matchB[1] === "number" && Number.isFinite(matchB[1])) {
+                const vB = matchB[1];
+                const canon = canonicalKey(kA);
+                const varA = `${threadId}.${mA.lang}.${mA.entry.name}.${canon}`;
+                const varB = `${threadId}.${mB.lang}.${mB.entry.name}.${canon}`;
+                const vars = slotVarNames.get(slot) ?? [];
+                vars.push(varA, varB, canon, mA.entry.name, mB.entry.name);
+                slotVarNames.set(slot, vars);
+                if (typeof this.coordinator?.assertLiteral === "function") {
+                  assertSlotLiteral(slot, {
+                    predicate: "interval",
+                    args: [varA, vA, vA],
+                    domain: "continuous_safety",
+                    sourceContext: { slot, uri: mA.symUri, name: `${mA.entry.name}.${kA}`, value: vA },
+                  });
+                  assertSlotLiteral(slot, {
+                    predicate: "interval",
+                    args: [varB, vB, vB],
+                    domain: "continuous_safety",
+                    sourceContext: { slot, uri: mB.symUri, name: `${mB.entry.name}.${matchB[0]}`, value: vB },
+                  });
+                  assertSlotLiteral(slot, {
+                    predicate: "equal",
+                    args: [varA, varB],
+                    domain: "continuous_safety",
+                    sourceContext: { slot, key: canon },
+                  });
+                }
+              }
+            }
           }
         }
       }

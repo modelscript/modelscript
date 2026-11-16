@@ -84,6 +84,7 @@ export * from "./interop/reqif.js";
 export * from "./interop/semantic_coordinator_pipeline.js";
 export * from "./interop/shape_refit.js";
 export * from "./interop/simplex_reconciler.js";
+export * from "./interop/tgg-correspondence-indexer.js";
 export * from "./interop/tgg-pattern-interpreter.js";
 export * from "./interop/thread_hypergraph.js";
 export * from "./interop/thread_serializer.js";

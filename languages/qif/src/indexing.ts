@@ -46,7 +46,7 @@ export const qifIndexing: LanguageIndexingConfig = {
 
     // 2. Index Features
     for (const f of doc.features) {
-      ctx.addSymbol(
+      const featSymId = ctx.addSymbol(
         f.name,
         "Component",
         null,
@@ -67,6 +67,18 @@ export const qifIndexing: LanguageIndexingConfig = {
           aliases: f.id && f.id !== f.name ? [f.id] : [],
         },
       );
+      if (f.stepEntityId) {
+        const normStepRef = f.stepEntityId.startsWith("#") ? f.stepEntityId : `#${f.stepEntityId}`;
+        ctx.addSymbol(
+          normStepRef,
+          "Reference",
+          featSymId,
+          f.range.startOffset,
+          f.range.endOffset,
+          { stepEntityId: normStepRef, targetLanguage: "step" },
+          { ruleName: "qif_step_ref", namePath: normStepRef },
+        );
+      }
     }
 
     // 3. Index Characteristics & Child Actuals

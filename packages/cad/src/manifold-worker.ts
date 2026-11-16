@@ -128,6 +128,42 @@ class SurfaceMeshBuilder {
         break;
       }
 
+      case SolidKind.Revolve: {
+        const poly = solid.polygon;
+        if (poly.length >= 3) {
+          let area2 = 0;
+          for (let i = 0; i < poly.length; i++) {
+            const [x0, y0] = poly[i]!;
+            const [x1, y1] = poly[(i + 1) % poly.length]!;
+            area2 += x0 * y1 - x1 * y0;
+          }
+          const ordered = area2 >= 0 ? poly : [...poly].reverse();
+          const M = ordered.length;
+          const steps = Math.max(8, solid.segments ?? 24);
+          const pts: [number, number, number][] = [];
+          const faces: number[][] = [];
+          for (let s = 0; s < steps; s++) {
+            const theta = (s / steps) * Math.PI * 2;
+            const c = Math.cos(theta),
+              sn = Math.sin(theta);
+            for (let k = 0; k < M; k++) {
+              const r = Math.max(1e-4, Math.abs(ordered[k]![0]));
+              pts.push([r * c, r * sn, ordered[k]![1]]);
+            }
+          }
+          for (let s = 0; s < steps; s++) {
+            const r0 = s * M;
+            const r1 = ((s + 1) % steps) * M;
+            for (let k = 0; k < M; k++) {
+              const nk = (k + 1) % M;
+              faces.push([r0 + k, r1 + k, r1 + nk], [r0 + k, r1 + nk, r0 + nk]);
+            }
+          }
+          this.emitPolyhedron(pts, faces, parentMat, activeTag);
+        }
+        break;
+      }
+
       case SolidKind.Union:
       case SolidKind.Subtract:
       case SolidKind.Intersect: {

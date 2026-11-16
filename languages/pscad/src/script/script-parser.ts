@@ -29,24 +29,25 @@ export function parseScriptElement(scriptEl: XmlElement, xmlContent: string): Ma
     const classid = seg.attributes.find((a) => a.name.toLowerCase() === "classid")?.value;
 
     let content = "";
-    if (seg.start !== undefined && seg.end !== undefined) {
-      // Extract inner content inside the <segment>...</segment> tags
-      const raw = xmlContent.slice(seg.start, seg.end);
-      const closeTagIdx = raw.lastIndexOf("</");
-      const openTagIdx = raw.indexOf(">");
-      if (openTagIdx >= 0 && closeTagIdx > openTagIdx) {
-        content = raw.slice(openTagIdx + 1, closeTagIdx);
-      } else {
-        content = seg.text;
+    let bodyStartOffset = seg.openEnd;
+    if (seg.cdata && seg.cdata.length > 0) {
+      bodyStartOffset = seg.cdata[0]!.start;
+      content = seg.cdata.length === 1 ? seg.cdata[0]!.text : seg.cdata.map((c) => c.text).join("");
+    } else if (!seg.selfClosing && seg.openEnd >= 0 && seg.closeStart >= seg.openEnd) {
+      content = xmlContent.slice(seg.openEnd, seg.closeStart);
+      const cdataMatch = /^\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*$/i.exec(content);
+      if (cdataMatch) {
+        const innerOffset = content.toUpperCase().indexOf("<![CDATA[");
+        bodyStartOffset = seg.openEnd + (innerOffset >= 0 ? innerOffset + 9 : 0);
+        content = cdataMatch[1]!;
       }
     } else {
       content = seg.text;
     }
 
-    // Strip CDATA wrapper if present: <![CDATA[ ... ]]>
-    const cdataMatch = /^\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*$/i.exec(content);
-    if (cdataMatch) {
-      content = cdataMatch[1]!;
+    let startLine = 1;
+    for (let i = 0; i < bodyStartOffset && i < xmlContent.length; i++) {
+      if (xmlContent.charCodeAt(i) === 10) startLine++;
     }
 
     segments.set(name.toLowerCase(), {
@@ -54,6 +55,8 @@ export function parseScriptElement(scriptEl: XmlElement, xmlContent: string): Ma
       id,
       classid,
       content,
+      startOffset: bodyStartOffset,
+      startLine,
     });
   }
 

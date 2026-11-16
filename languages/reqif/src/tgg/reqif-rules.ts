@@ -24,6 +24,12 @@ export const reqifTggRules = [
     name: "ReqIfSpecObjectToSysmlRequirementDef",
     sourceLang: "reqif",
     targetLang: "sysml2",
+    relation: "satisfy",
+    identityKeys: [
+      { source: "identifier", target: "reqId", transform: "exact" },
+      { source: "identifier", target: "name", transform: "exact" },
+      { source: "longName", target: "name", transform: "exact" },
+    ],
     source: ($, v) =>
       $["SpecObject"]?.({
         identifier: v("reqId"),
@@ -78,6 +84,7 @@ export const reqifTggRules = [
     name: "ReqIfRelationToSysmlSatisfy",
     sourceLang: "reqif",
     targetLang: "sysml2",
+    relation: "satisfy",
     source: ($, v) =>
       $["SpecRelation"]?.({
         relationType: "satisfies",
@@ -101,6 +108,11 @@ export const reqifTggRules = [
     name: "ReqIfContractToModelicaVerifier",
     sourceLang: "reqif",
     targetLang: "modelica",
+    relation: "verify",
+    identityKeys: [
+      { source: "identifier", target: "name", transform: "exact" },
+      { source: "longName", target: "name", transform: "exact" },
+    ],
     source: ($, v) =>
       $["SpecObject"]?.({
         identifier: v("reqId"),

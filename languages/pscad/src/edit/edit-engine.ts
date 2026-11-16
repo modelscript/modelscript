@@ -80,6 +80,18 @@ export type PscadEditOp =
       oldName: string;
       newName: string;
       definition?: string;
+    }
+  | {
+      type: "copySelection";
+      ids: string[];
+      targetDefinition?: string;
+      dx?: number;
+      dy?: number;
+    }
+  | {
+      type: "syncSubmodulePorts";
+      definition: string;
+      componentId?: string;
     };
 
 export interface PscadEditResult {
@@ -523,6 +535,91 @@ export function planPscadEdits(
         }
         if (count === 0) {
           errors.push(`Wireless net '${op.oldName}' not found.`);
+        }
+        break;
+      }
+      case "copySelection": {
+        const dx = Math.round(op.dx ?? 36);
+        const dy = Math.round(op.dy ?? 36);
+        let cloned = 0;
+        for (const rawId of op.ids) {
+          const el =
+            findElementById(model.root, rawId, new Set(["User", "Component", "Wire", "Bus", "Sticky"])) ??
+            findInstance(model, rawId)?.inst.element;
+          if (!el) {
+            errors.push(`Selection element '${rawId}' not found.`);
+            continue;
+          }
+          const nid = newId(used, seed++);
+          const oldX = Number(attr(el, "x") ?? "0");
+          const oldY = Number(attr(el, "y") ?? "0");
+          const ownerDef =
+            op.targetDefinition ??
+            (() => {
+              let p = el.parent;
+              while (p && p.name.toLowerCase() !== "definition") p = p.parent;
+              return p ? attr(p, "name") : undefined;
+            })();
+          const rawSlice = text.slice(el.start, el.end);
+          const shiftedSlice = rawSlice
+            .replace(/\bid\s*=\s*"([^"]*)"/i, `id="${nid}"`)
+            .replace(/\bx\s*=\s*"(-?\d+(?:\.\d+)?)"/i, `x="${Math.round(oldX + dx)}"`)
+            .replace(/\by\s*=\s*"(-?\d+(?:\.\d+)?)"/i, `y="${Math.round(oldY + dy)}"`);
+          if (insertInto(ownerDef, () => shiftedSlice)) {
+            createdIds.push(nid);
+            cloned++;
+          }
+        }
+        if (cloned === 0 && op.ids.length === 0) {
+          errors.push("copySelection requires at least one element ID.");
+        }
+        break;
+      }
+      case "syncSubmodulePorts": {
+        const cleanTarget = op.definition.includes(":") ? op.definition.split(":").pop()! : op.definition;
+        const targetDef = model.definitions.get(op.definition) ?? model.definitions.get(cleanTarget);
+        if (!targetDef) {
+          errors.push(`Submodule definition '${op.definition}' not found.`);
+          break;
+        }
+        const sch = schematicOf(targetDef);
+        const gfx = childrenNamed(targetDef.element, "graphic")[0];
+        if (!sch || !gfx) {
+          errors.push(`Submodule '${op.definition}' lacks schematic or graphic section.`);
+          break;
+        }
+        // Collect boundary pins/xnodes inside the submodule schematic
+        const desiredPorts: { name: string; x: number; y: number; dim: string; mode: string }[] = [];
+        for (const inst of targetDef.instances) {
+          const shortDef = (
+            inst.defnName.includes(":") ? inst.defnName.split(":").pop()! : inst.defnName
+          ).toLowerCase();
+          if (shortDef !== "xnode" && shortDef !== "pin" && shortDef !== "import" && shortDef !== "export") continue;
+          const pName = (inst.params.get("Name") ?? inst.params.get("name") ?? attr(inst.element, "name") ?? "").trim();
+          if (!pName) continue;
+          const dim = inst.params.get("Dim") ?? inst.params.get("dim") ?? "1";
+          const mode = shortDef === "export" ? "Out" : shortDef === "import" ? "In" : "Electrical";
+          desiredPorts.push({ name: pName, x: -54, y: desiredPorts.length * 18, dim, mode });
+        }
+        const existingPorts = childrenNamed(gfx, "port");
+        const existingByName = new Map(existingPorts.map((p) => [(attr(p, "name") ?? "").trim().toLowerCase(), p]));
+        const desiredNames = new Set(desiredPorts.map((d) => d.name.toLowerCase()));
+        for (const ep of existingPorts) {
+          const nm = (attr(ep, "name") ?? "").trim().toLowerCase();
+          if (nm && !desiredNames.has(nm) && !removed.has(ep.start)) {
+            removed.add(ep.start);
+            splices.push(removeElementSplice(ep, text));
+          }
+        }
+        for (const dp of desiredPorts) {
+          const existing = existingByName.get(dp.name.toLowerCase());
+          if (!existing) {
+            const portXml = `<port name="${escapeAttr(dp.name)}" x="${dp.x}" y="${dp.y}" dim="${escapeAttr(dp.dim)}" mode="${escapeAttr(dp.mode)}" type="" />`;
+            splices.push(appendChildSplice(gfx, portXml, text));
+          } else {
+            writeAttr(existing, "dim", dp.dim);
+            writeAttr(existing, "mode", dp.mode);
+          }
         }
         break;
       }

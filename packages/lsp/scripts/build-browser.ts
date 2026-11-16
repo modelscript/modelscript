@@ -23,7 +23,7 @@ async function run() {
     format: "iife",
     platform: "browser",
     target: "es2022",
-    minify: false,
+    minify: true,
     keepNames: true,
     sourcemap: "linked",
     banner: {

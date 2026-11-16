@@ -237,3 +237,25 @@ export function linearExtrude(
     sourceMetadata: opts?.sourceMetadata,
   });
 }
+
+/**
+ * Create an analytical surface-of-revolution solid from a 2D closed profile `[r, z][]`.
+ */
+export function revolve(
+  polygon: readonly [number, number][],
+  angle = 360,
+  opts?: {
+    segments?: number | undefined;
+    name?: string | undefined;
+    sourceMetadata?: SolidSourceMetadata | undefined;
+  },
+): import("./types.js").RevolveSolid {
+  return Object.freeze({
+    kind: SolidKind.Revolve,
+    name: opts?.name ?? autoName("Revolve"),
+    polygon,
+    angle,
+    segments: opts?.segments,
+    sourceMetadata: opts?.sourceMetadata,
+  });
+}

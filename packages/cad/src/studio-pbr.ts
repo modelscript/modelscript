@@ -413,3 +413,73 @@ void main() {
   if (a < 0.002) discard;
   gl_FragColor = vec4(uColor, a);
 }`;
+
+/**
+ * Extracts planar cross-section contour line segments `[x0, y0, z0, x1, y1, z1, ...]`
+ * where a triangle mesh intersects the plane `normal · p + constant = 0`.
+ */
+export function sliceSectionContoursAtPlane(
+  positions: ArrayLike<number>,
+  indices: ArrayLike<number> | null | undefined,
+  normal: readonly [number, number, number],
+  constant: number,
+  outSegments: number[] = [],
+): number[] {
+  const [nx, ny, nz] = normal;
+  const distAt = (vertIdx: number): number => {
+    const b = vertIdx * 3;
+    return nx * (positions[b] ?? 0) + ny * (positions[b + 1] ?? 0) + nz * (positions[b + 2] ?? 0) + constant;
+  };
+
+  const triCount = indices ? Math.floor(indices.length / 3) : Math.floor(positions.length / 9);
+  for (let t = 0; t < triCount; t++) {
+    const v0 = indices ? indices[t * 3]! : t * 3;
+    const v1 = indices ? indices[t * 3 + 1]! : t * 3 + 1;
+    const v2 = indices ? indices[t * 3 + 2]! : t * 3 + 2;
+
+    const d0 = distAt(v0);
+    const d1 = distAt(v1);
+    const d2 = distAt(v2);
+    if ((d0 > 0 && d1 > 0 && d2 > 0) || (d0 <= 0 && d1 <= 0 && d2 <= 0)) continue;
+
+    let hits = 0;
+    let xA = 0,
+      yA = 0,
+      zA = 0,
+      xB = 0,
+      yB = 0,
+      zB = 0;
+
+    const testEdge = (va: number, da: number, vb: number, db: number) => {
+      if ((da > 0 && db <= 0) || (da <= 0 && db > 0)) {
+        const denom = da - db;
+        if (Math.abs(denom) < 1e-12) return;
+        const frac = da / denom;
+        const ia = va * 3;
+        const ib = vb * 3;
+        const px = (positions[ia] ?? 0) + frac * ((positions[ib] ?? 0) - (positions[ia] ?? 0));
+        const py = (positions[ia + 1] ?? 0) + frac * ((positions[ib + 1] ?? 0) - (positions[ia + 1] ?? 0));
+        const pz = (positions[ia + 2] ?? 0) + frac * ((positions[ib + 2] ?? 0) - (positions[ia + 2] ?? 0));
+        if (hits === 0) {
+          xA = px;
+          yA = py;
+          zA = pz;
+          hits = 1;
+        } else if (hits === 1) {
+          xB = px;
+          yB = py;
+          zB = pz;
+          hits = 2;
+        }
+      }
+    };
+
+    testEdge(v0, d0, v1, d1);
+    testEdge(v1, d1, v2, d2);
+    testEdge(v2, d2, v0, d0);
+    if (hits === 2 && (xA !== xB || yA !== yB || zA !== zB)) {
+      outSegments.push(xA, yA, zA, xB, yB, zB);
+    }
+  }
+  return outSegments;
+}

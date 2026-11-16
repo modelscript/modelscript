@@ -84,7 +84,6 @@ export function findCrossLanguageDefinition(
   if (refEntry?.metadata?.cadBinding) candidates.push(String(refEntry.metadata.cadBinding));
   if (refEntry?.metadata?.typeSpecifier) candidates.push(String(refEntry.metadata.typeSpecifier));
   if (lineHints.twin) candidates.push(lineHints.twin);
-  if (lineHints.partType) candidates.push(lineHints.partType);
   if (lineHints.cadAnyPart) candidates.push(lineHints.cadAnyPart);
   if (word && word !== refEntry?.name) candidates.push(word);
   if (fullToken) candidates.push(fullToken);
@@ -96,6 +95,19 @@ export function findCrossLanguageDefinition(
     seenCand.add(c);
     return true;
   });
+
+  // 0. Direct TGG / Hypergraph counterpart resolution via LSPBridge
+  if (typeof bridge?.counterpartDefinitionsRaw === "function" && !quotedToken && !fullToken.includes("::")) {
+    try {
+      const counterparts = bridge.counterpartDefinitionsRaw(offset);
+      if (Array.isArray(counterparts) && counterparts.length > 0) {
+        for (const cp of counterparts) {
+          const loc = symbolEntryToLocation(cp, documentLSPBridges, documentTrees, documents);
+          if (loc) return loc;
+        }
+      }
+    } catch {}
+  }
 
   // Query engine resolution
   const qe =
@@ -237,7 +249,6 @@ export function findCrossLanguageDefinition(
           cand === refEntry?.metadata?.implements ||
           cand === refEntry?.metadata?.cadBinding ||
           cand === lineHints.twin ||
-          cand === lineHints.partType ||
           cand === lineHints.cadAnyPart;
         if (!isQualified && !isExplicitMeta) continue;
         try {
@@ -254,8 +265,13 @@ export function findCrossLanguageDefinition(
     }
   }
 
-  // C. Search across workspace indices for candidate matches
+  // C. Search across workspace indices for candidate matches (validated against TggSymbolProjectionTable when available)
   const workspaceIndices: any[] = [];
+  const uWorkspace = validationService?.workspaceManager?.unifiedWorkspace;
+  const uIdx = uWorkspace?.getIndex?.();
+  if (uIdx && !workspaceIndices.includes(uIdx)) {
+    workspaceIndices.push(uIdx);
+  }
   if (validationService?.workspaceManager?.allWorkspaceIndices) {
     for (const idx of validationService.workspaceManager.allWorkspaceIndices.values()) {
       if (idx && !workspaceIndices.includes(idx)) workspaceIndices.push(idx);
@@ -267,13 +283,35 @@ export function findCrossLanguageDefinition(
     }
   }
 
+  const docPluginId = globalLanguageRegistry.getPluginForUri(document.uri, text)?.id ?? document.languageId ?? "";
+  const projTable = uWorkspace?.tggProjectionTable ?? uIdx?.tggProjectionTable;
+  const hasProjRules = typeof projTable?.getAllRules === "function" && projTable.getAllRules().length > 0;
+
   for (const cand of uniqueCandidates) {
+    const isExplicitHint =
+      cand === refEntry?.metadata?.twin ||
+      cand === refEntry?.metadata?.counterpart ||
+      cand === refEntry?.metadata?.implements ||
+      cand === refEntry?.metadata?.cadBinding ||
+      cand === lineHints.twin ||
+      cand === lineHints.cadAnyPart ||
+      cand.includes("::") ||
+      cand.includes("//");
     const leaf = extractLeafSymbolName(cand);
     for (const idx of workspaceIndices) {
       const candidatesInIdx = idx.byName?.get(leaf) || idx.byName?.get(cand) || [];
       for (const id of candidatesInIdx) {
         const sym = idx.symbols?.get(id);
-        if (sym && sym.resourceId && sym.resourceId !== document.uri) {
+        if (sym && sym.resourceId && sym.resourceId !== document.uri && sym.kind !== "Reference") {
+          if (
+            !isExplicitHint &&
+            hasProjRules &&
+            docPluginId &&
+            sym.language &&
+            sym.language.toLowerCase() !== docPluginId.toLowerCase()
+          ) {
+            if (!projTable.canResolveAs(docPluginId, sym)) continue;
+          }
           const loc = symbolEntryToLocation(sym, documentLSPBridges, documentTrees, documents);
           if (loc) return loc as any;
         }
@@ -287,6 +325,9 @@ export function findCrossLanguageDefinition(
       const threads = validationService.workspaceManager.getThreadsForUri(document.uri);
       if (threads && threads.length > 0) {
         for (const t of threads) {
+          if (refEntry?.id !== undefined && t.nodeId !== refEntry.id && t.meta?.name !== word) {
+            continue;
+          }
           const aligned = validationService.workspaceManager.findAlignedElementsBySlot(t.slot);
           for (const elem of aligned) {
             if (elem.uri && elem.uri !== document.uri) {
@@ -322,10 +363,16 @@ export function registerDefinitionProvider(
     if (!document) return null;
 
     const offset = document.offsetAt(params.position);
+    const docText = document.getText();
+    const activePlugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri, docText);
 
-    // ── STEP-specific go-to-definition ──
+    // ── STEP-specific go-to-definition (plugin handler first, then fast-path fallback) ──
     if (isStepDocument(document)) {
-      const text = document.getText();
+      if (activePlugin?.customHandlers?.definition) {
+        const stepCustom = activePlugin.customHandlers.definition(offset, docText, document.uri);
+        if (stepCustom) return stepCustom;
+      }
+      const text = docText;
       let start = offset;
       while (start > 0 && isDigitCode(text.charCodeAt(start - 1))) start--;
       if (start > 0 && text[start - 1] === "#") start--;
@@ -381,6 +428,10 @@ export function registerDefinitionProvider(
 
     // ── PSCAD-specific go-to-definition (.pscx / .pslx) ──
     if (isPscadDocument(document)) {
+      if (activePlugin?.customHandlers?.definition) {
+        const pscadCustom = activePlugin.customHandlers.definition(offset, docText, document.uri);
+        if (pscadCustom) return pscadCustom as Definition;
+      }
       const pscadDocs: Array<{ uri: string; text: string }> = [];
       for (const d of documents.all()) {
         if (isPscadDocument(d)) {
@@ -392,14 +443,19 @@ export function registerDefinitionProvider(
           pscadDocs.push({ uri: tUri, text: tTree.text });
         }
       }
-      const pscadLoc = getPscadDefinitionLocation(document.getText(), offset, document.uri, pscadDocs);
+      const pscadLoc = getPscadDefinitionLocation(
+        docText,
+        offset,
+        document.uri,
+        pscadDocs,
+        validationService?.workspaceManager?.unifiedWorkspace,
+      );
       if (pscadLoc) return pscadLoc as Definition;
     }
 
     // ── Standard polyglot go-to-definition ──
     const bridge = documentLSPBridges.get(params.textDocument.uri);
 
-    const docText = document.getText();
     const { token: fullToken } = extractQualifiedTokenAtOffset(docText, offset, true);
 
     // If clicking on a qualified path (e.g. Propulsion::Motor) or URI, resolve the specific target first

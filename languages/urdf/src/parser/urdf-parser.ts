@@ -244,12 +244,7 @@ function parseLink(el: XmlElement, name: string, range: SourceRange): UrdfLink {
       const inertiaEl = child.children.find((c) => c.name.toLowerCase() === "inertia");
 
       const rawMassAttr = massEl ? getAttr(massEl, "value") : undefined;
-      const mass =
-        rawMassAttr !== undefined
-          ? rawMassAttr.trim() === ""
-            ? Number.NaN
-            : Number(rawMassAttr)
-          : 1.0;
+      const mass = rawMassAttr !== undefined ? (rawMassAttr.trim() === "" ? Number.NaN : Number(rawMassAttr)) : 1.0;
       const fallbackMass = Number.isNaN(mass) ? 1.0 : mass;
 
       const getInertiaComp = (attr: string, def: number): number => {
@@ -492,6 +487,10 @@ function serializeGeometry(geom: UrdfGeometry): string {
       return `        <cylinder radius="${geom.radius ?? 0.1}" length="${geom.length ?? 0.2}" />`;
     case "sphere":
       return `        <sphere radius="${geom.radius ?? 0.1}" />`;
+    case "capsule":
+      return `        <cylinder radius="${geom.radius ?? 0.1}" length="${geom.length ?? 0.2}" />`;
+    case "plane":
+      return `        <box size="${geom.size?.x ?? 10} ${geom.size?.y ?? 10} 0.01" />`;
     case "mesh": {
       const scaleStr = geom.scale ? ` scale="${geom.scale.x} ${geom.scale.y} ${geom.scale.z}"` : "";
       return `        <mesh filename="${geom.filename ?? ""}"${scaleStr} />`;

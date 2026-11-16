@@ -205,3 +205,27 @@ export function decompressMorselPayload(rawHash: string): CompressedMorselPayloa
 
   return null;
 }
+
+/**
+ * Wraps a compressed `/embed/morsel` (or playground/sketch) URL inside a self-contained
+ * full-viewport HTML page with an interactive `<iframe>`.
+ */
+export function buildMorselEmbedHtmlPage(options: { embedSrc: string; title?: string | undefined }): string {
+  const safeTitle = (options.title || "ModelScript Model").replace(/[<>&"]/g, "");
+  const safeSrc = options.embedSrc.replace(/"/g, "&quot;");
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${safeTitle} — ModelScript Embed</title>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0d1117; }
+    iframe { border: 0; width: 100%; height: 100%; display: block; }
+  </style>
+</head>
+<body>
+  <iframe src="${safeSrc}" title="${safeTitle}" allow="clipboard-write; fullscreen" loading="eager"></iframe>
+</body>
+</html>`;
+}

@@ -626,9 +626,9 @@ test("PSS/E Phase 2: Lowers .dyr GENROU, EXST1, and TGOV1 dynamic state equation
   parsed.dyr = parseDyr(dyrText);
 
   const dae = lowerPsseToDae(parsed);
-  // Base 5-bus/3-gen IEEE_14_RAW has 5*4 + 3*3 = 29 vars/eqs; adding GENROU (+2: Eqp, Edp), EXST1 (+1: Efd), TGOV1 (+1: Pm) on Gen 1_1 adds 4 states & 4 ODEs -> 33 vars/eqs
-  assert.equal(dae.getVarCount(), 33);
-  assert.equal(dae.getEqCount(), 33);
+  // Full 6th-order GENROU (delta, omega, Id, Iq, Pe, Eqp, Edp, psikd, psikq, Vt_gen, Ifd_gen) + EXST1 + TGOV1 on Gen 1_1 yields 45 vars === 45 eqs
+  assert.equal(dae.getVarCount(), 45);
+  assert.equal(dae.getEqCount(), 45);
   assert.equal(dae.getVarCount(), dae.getEqCount(), "DAE with .dyr GENROU/EXST1/TGOV1 must remain structurally square");
 
   const varNames: string[] = [];
@@ -637,6 +637,8 @@ test("PSS/E Phase 2: Lowers .dyr GENROU, EXST1, and TGOV1 dynamic state equation
   }
   assert.ok(varNames.includes("Eqp_1_1"), "Expected GENROU q-axis transient flux state Eqp_1_1");
   assert.ok(varNames.includes("Edp_1_1"), "Expected GENROU d-axis transient flux state Edp_1_1");
+  assert.ok(varNames.includes("psikd_1_1"), "Expected GENROU d-axis subtransient damper flux state psikd_1_1");
+  assert.ok(varNames.includes("psikq_1_1"), "Expected GENROU q-axis subtransient damper flux state psikq_1_1");
   assert.ok(varNames.includes("Efd_1_1"), "Expected EXST1 exciter field voltage state Efd_1_1");
   assert.ok(varNames.includes("Pm_1_1"), "Expected TGOV1 governor mechanical power state Pm_1_1");
 });

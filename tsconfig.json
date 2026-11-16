@@ -11,8 +11,10 @@
       "@modelscript/dsl/utils": ["./packages/dsl/src/utils/index.ts"],
       "@modelscript/dsl/xml": ["./packages/dsl/src/xml/index.ts"],
       "@modelscript/dsl/bindings": ["./packages/dsl/src/bindings/javascript/index.ts"],
+      "@modelscript/dsl/codegen/analysis/inversion": ["./packages/dsl/src/codegen/analysis/inversion.ts"],
       "@modelscript/dsl/*": ["./packages/dsl/src/*", "./packages/dsl/src/*/index.ts"],
       "@modelscript/runtime": ["./packages/runtime/src/index.ts"],
+      "@modelscript/runtime/benchmark": ["./packages/runtime/src/benchmark.ts"],
       "@modelscript/runtime/*": [
         "./packages/runtime/src/*",
         "./packages/runtime/src/dae/*",

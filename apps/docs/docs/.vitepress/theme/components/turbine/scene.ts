@@ -10,6 +10,7 @@ import {
   classifyAlloyPreset,
   SECTION_CAP_FRAGMENT_SHADER,
   SECTION_CAP_VERTEX_SHADER,
+  sliceSectionContoursAtPlane,
 } from "@modelscript/cad/studio-pbr";
 import * as THREE from "three";
 import {
@@ -561,6 +562,13 @@ export class TurbineScene {
   private compiledStepMeshes: readonly ScadOverlayMesh[] | null = null;
   private compiledStepSpools: readonly StepSpoolBinding[] = [];
   private stepWireHighlight = false;
+  private hideProceduralFallback = false;
+  private stepContourEntries: Array<{
+    lines: THREE.LineSegments;
+    meshes: Array<{ pos: Float32Array; idx: number[] }>;
+  }> = [];
+  private lastStepContourX = Number.NaN;
+  private stepContourDirty = false;
 
   private s = -0.35;
   private time = SWEEP_PERIOD * 0.22;
@@ -963,6 +971,9 @@ export class TurbineScene {
       ...this.stepAlloyMats.values(),
     ]);
     this.stepStencilObjs.length = 0;
+    this.stepContourEntries.length = 0;
+    this.lastStepContourX = Number.NaN;
+    this.stepContourDirty = false;
     for (const grp of [this.stepStaticGroup, this.stepN1Group, this.stepN2Group]) {
       while (grp.children.length > 0) {
         const child = grp.children[0]!;
@@ -1037,9 +1048,14 @@ export class TurbineScene {
     return this.stepStaticGroup;
   }
 
-  setCompiledStepScene(meshes: readonly ScadOverlayMesh[] | null, spools: readonly StepSpoolBinding[] = []): void {
+  setCompiledStepScene(
+    meshes: readonly ScadOverlayMesh[] | null,
+    spools: readonly StepSpoolBinding[] = [],
+    options?: { hideProcedural?: boolean },
+  ): void {
     this.compiledStepMeshes = meshes && meshes.length > 0 ? meshes : null;
     this.compiledStepSpools = spools;
+    this.hideProceduralFallback = Boolean(options?.hideProcedural);
     this.rebuildCompiledStepScene();
   }
 
@@ -1054,7 +1070,7 @@ export class TurbineScene {
     this.clearStepGroups();
     const meshes = this.compiledStepMeshes;
     if (!meshes || meshes.length === 0) {
-      for (const obj of this.proceduralObjs) obj.visible = true;
+      for (const obj of this.proceduralObjs) obj.visible = !this.hideProceduralFallback;
       this.wake();
       return;
     }
@@ -1070,6 +1086,11 @@ export class TurbineScene {
       : null;
 
     const sectionActive = this.section.visible;
+    const contourBuckets = new Map<THREE.Group, Array<{ pos: Float32Array; idx: number[] }>>([
+      [this.stepStaticGroup, []],
+      [this.stepN1Group, []],
+      [this.stepN2Group, []],
+    ]);
     let builtCount = 0;
     for (const m of meshes) {
       if (!m.vertices?.length || !m.indices?.length) continue;
@@ -1131,6 +1152,7 @@ export class TurbineScene {
       }
 
       const targetGroup = this.resolveStepSpoolGroup(name, this.compiledStepSpools);
+      contourBuckets.get(targetGroup)?.push({ pos, idx: m.indices });
       const solidMat = this.selectStepMaterial(name, m.color);
       const solidMesh = new THREE.Mesh(geo, solidMat);
       solidMesh.renderOrder = 0;
@@ -1150,7 +1172,7 @@ export class TurbineScene {
       targetGroup.add(stencilFront);
       this.stepStencilObjs.push(stencilFront);
 
-      const edges = new THREE.EdgesGeometry(geo, 26);
+      const edges = new THREE.EdgesGeometry(geo, this.stepWireHighlight ? 22 : 38);
       targetGroup.add(new THREE.LineSegments(edges, this.mats.wireBody));
       if (highlightWireMat) {
         targetGroup.add(new THREE.LineSegments(edges, highlightWireMat));
@@ -1159,6 +1181,18 @@ export class TurbineScene {
     }
 
     if (builtCount > 0) {
+      for (const [grp, list] of contourBuckets) {
+        if (list.length === 0) continue;
+        const cGeo = new THREE.BufferGeometry();
+        cGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(0), 3));
+        const cLines = new THREE.LineSegments(cGeo, this.mats.contour);
+        cLines.renderOrder = 4;
+        cLines.frustumCulled = false;
+        cLines.visible = sectionActive;
+        grp.add(cLines);
+        this.stepContourEntries.push({ lines: cLines, meshes: list });
+      }
+      this.stepContourDirty = true;
       for (const obj of this.proceduralObjs) obj.visible = false;
       this.stepStaticGroup.visible = true;
       this.stepN1Group.visible = true;
@@ -1422,10 +1456,19 @@ export class TurbineScene {
     const stepActive = Boolean(this.compiledStepMeshes && this.stepStaticGroup.visible);
     if (stepActive) {
       this.proceduralCapMesh.visible = false;
-      this.stencilCapMesh.visible = inside > 0.001;
+      const showSection = inside > 0.001;
+      this.stencilCapMesh.visible = showSection;
       this.stencilCapUniforms.uOpacity.value = inside;
       for (const sObj of this.stepStencilObjs) {
-        sObj.visible = inside > 0.001;
+        sObj.visible = showSection;
+      }
+      for (const entry of this.stepContourEntries) {
+        entry.lines.visible = showSection;
+      }
+      if (showSection && (this.stepContourDirty || Math.abs(s - this.lastStepContourX) > 1e-4)) {
+        this.lastStepContourX = s;
+        this.stepContourDirty = false;
+        this.updateStepSectionContours(s);
       }
       for (const ring of this.contours) {
         ring.visible = false;
@@ -1448,6 +1491,17 @@ export class TurbineScene {
       const r = iv < n ? this.intervals[i]! : 0;
       ring.visible = iv < n && r > 0.02;
       ring.scale.setScalar(r);
+    }
+  }
+
+  private updateStepSectionContours(s: number): void {
+    for (const entry of this.stepContourEntries) {
+      const segs: number[] = [];
+      for (const m of entry.meshes) {
+        sliceSectionContoursAtPlane(m.pos, m.idx, [1, 0, 0], -s, segs);
+      }
+      entry.lines.geometry.setAttribute("position", new THREE.Float32BufferAttribute(segs, 3));
+      entry.lines.geometry.computeBoundingSphere();
     }
   }
 

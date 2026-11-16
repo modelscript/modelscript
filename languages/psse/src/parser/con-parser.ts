@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
 import type {
   ContingencyDefinition,
   MonitoredBranch,
@@ -10,17 +9,17 @@ import type {
   PsseSubCase,
   SubsystemDefinition,
 } from "../types.js";
-import { getPsseWasmParser } from "./wasm-loader.js";
+import { extractFieldsFromCstTokens, parsePsseCstDocument } from "./cst-tokens.js";
 
 /**
- * Checks whether a document string looks like a PSS/E `.con` Contingency Data file.
+ * Checks whether a document string looks like a PSS/E `.con` Contingency Data file via WASM CST.
  */
 export function isLikelyConContent(source: string): boolean {
-  const lines = source.split(/\r?\n/);
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("/") || line.startsWith("@!") || line.startsWith("//")) continue;
-    if (/^CONTINGENCY\b/i.test(line)) {
+  const doc = parsePsseCstDocument(source);
+  for (const line of doc.lines) {
+    if (line.isCommentOrBlank) continue;
+    const fields = extractFieldsFromCstTokens(line.tokens, source, "whitespace");
+    if (fields[0]?.value.toUpperCase() === "CONTINGENCY") {
       return true;
     }
   }
@@ -28,62 +27,45 @@ export function isLikelyConContent(source: string): boolean {
 }
 
 /**
- * Parses a PSS/E `.con` Contingency Specification file into structured definitions.
+ * Parses a PSS/E `.con` Contingency Specification file into structured definitions via WASM CST.
  */
 export function parseCon(source: string): PsseConCase {
-  const cstTree = getPsseWasmParser().parse(source);
-  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
+  const cstDoc = parsePsseCstDocument(source);
   const contingencies: ContingencyDefinition[] = [];
   const byName = new Map<string, ContingencyDefinition>();
 
   let currentDef: ContingencyDefinition | null = null;
 
-  for (const { row: i, tokens: cstTokens } of cstLines) {
-    const rawLine = cstLineText(source, cstTokens);
-    const lineNum = i + 1;
-    const startOffset = Math.max(0, (cstTokens[0]?.startIndex ?? 0) - (cstTokens[0]?.startPosition?.column ?? 0));
-    const endOffset = startOffset + rawLine.length;
+  for (const entry of cstDoc.lines) {
+    if (entry.isCommentOrBlank) continue;
+    const fields = extractFieldsFromCstTokens(entry.tokens, source, "whitespace");
+    if (fields.length === 0) continue;
 
-    const trimmed = rawLine.trim();
-    if (!trimmed || trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.startsWith("@!")) {
-      continue;
-    }
+    const toks = fields.map((f) => f.value);
+    const upper = toks.map((t) => t.toUpperCase());
 
-    // Strip inline comments starting with /
-    let cleanLine = trimmed;
-    const slashIdx = cleanLine.indexOf("/");
-    if (slashIdx >= 0) {
-      cleanLine = cleanLine.slice(0, slashIdx).trim();
-    }
-    if (!cleanLine) continue;
-
-    // Check CONTINGENCY start
-    const contMatch = cleanLine.match(
-      /^CONTINGENCY\s+(?:'([^']+)'|"([^"]+)"|(\S+))(?:\s+(?:'([^']+)'|"([^"]+)"|(\S+)))?/i,
-    );
-    if (contMatch) {
+    if (upper[0] === "CONTINGENCY") {
       if (currentDef) {
         contingencies.push(currentDef);
         byName.set(currentDef.id.toUpperCase(), currentDef);
       }
-      const id = contMatch[1] ?? contMatch[2] ?? contMatch[3] ?? `CONT_${contingencies.length + 1}`;
-      const label = contMatch[4] ?? contMatch[5] ?? contMatch[6];
+      const id = toks[1] ?? `CONT_${contingencies.length + 1}`;
+      const label = toks[2];
       currentDef = {
         id,
         label,
         actions: [],
         span: {
-          startOffset,
-          endOffset,
-          line: lineNum,
+          startOffset: entry.startOffset,
+          endOffset: entry.endOffset,
+          line: entry.lineNum,
           column: 1,
         },
       };
       continue;
     }
 
-    // Check END
-    if (/^END\b/i.test(cleanLine)) {
+    if (upper[0] === "END") {
       if (currentDef) {
         contingencies.push(currentDef);
         byName.set(currentDef.id.toUpperCase(), currentDef);
@@ -94,100 +76,91 @@ export function parseCon(source: string): PsseConCase {
 
     if (!currentDef) continue;
 
-    // Parse Actions within Contingency block:
-    // 1. OPEN BRANCH FROM [BUS] <from> TO [BUS] <to> [CKT <ckt>]
-    const openBrMatch = cleanLine.match(
-      /^OPEN\s+BRANCH\s+(?:FROM\s+)?(?:BUS\s+)?(\d+)\s+(?:TO\s+)?(?:BUS\s+)?(\d+)(?:\s+(?:CKT\s+)?(?:'([^']+)'|"([^"]+)"|(\S+)))?/i,
-    );
-    if (openBrMatch) {
-      const fromBus = Number.parseInt(openBrMatch[1]!, 10);
-      const toBus = Number.parseInt(openBrMatch[2]!, 10);
-      const ckt = (openBrMatch[3] ?? openBrMatch[4] ?? openBrMatch[5] ?? "1").trim();
-      currentDef.actions.push({
-        type: "open_branch",
-        fromBus,
-        toBus,
-        ckt,
-      });
+    // Helper: collect positional integers / keywords in order without regexes
+    const parseFromToCkt = (startIdx: number) => {
+      let idx = startIdx;
+      if (upper[idx] === "FROM") idx++;
+      if (upper[idx] === "BUS") idx++;
+      const fromBus = Number.parseInt(toks[idx++] ?? "", 10);
+      if (upper[idx] === "TO") idx++;
+      if (upper[idx] === "BUS") idx++;
+      const toBus = Number.parseInt(toks[idx++] ?? "", 10);
+      let ckt = "1";
+      let nextIdx = idx;
+      if (upper[idx] === "CKT") {
+        ckt = (toks[idx + 1] ?? "1").trim();
+        nextIdx = idx + 2;
+      } else if (toks[idx] && upper[idx] !== "RATE" && upper[idx] !== "RATEA") {
+        ckt = toks[idx]!.trim();
+        nextIdx = idx + 1;
+      }
+      return { fromBus, toBus, ckt, nextIdx };
+    };
+
+    if ((upper[0] === "OPEN" || upper[0] === "CLOSE") && upper[1] === "BRANCH") {
+      const { fromBus, toBus, ckt } = parseFromToCkt(2);
+      if (Number.isFinite(fromBus) && Number.isFinite(toBus)) {
+        currentDef.actions.push({
+          type: upper[0] === "OPEN" ? "open_branch" : "close_branch",
+          fromBus,
+          toBus,
+          ckt,
+        });
+      }
       continue;
     }
 
-    // 2. CLOSE BRANCH FROM [BUS] <from> TO [BUS] <to> [CKT <ckt>]
-    const closeBrMatch = cleanLine.match(
-      /^CLOSE\s+BRANCH\s+(?:FROM\s+)?(?:BUS\s+)?(\d+)\s+(?:TO\s+)?(?:BUS\s+)?(\d+)(?:\s+(?:CKT\s+)?(?:'([^']+)'|"([^"]+)"|(\S+)))?/i,
-    );
-    if (closeBrMatch) {
-      const fromBus = Number.parseInt(closeBrMatch[1]!, 10);
-      const toBus = Number.parseInt(closeBrMatch[2]!, 10);
-      const ckt = (closeBrMatch[3] ?? closeBrMatch[4] ?? closeBrMatch[5] ?? "1").trim();
-      currentDef.actions.push({
-        type: "close_branch",
-        fromBus,
-        toBus,
-        ckt,
-      });
+    if ((upper[0] === "TRIP" || upper[0] === "DISCONNECT") && upper[1] === "GENERATOR") {
+      let idx = 2;
+      if (upper[idx] === "BUS") idx++;
+      const bus = Number.parseInt(toks[idx++] ?? "", 10);
+      if (upper[idx] === "ID") idx++;
+      const id = (toks[idx] ?? "1").trim();
+      if (Number.isFinite(bus)) {
+        currentDef.actions.push({ type: "trip_generator", bus, id });
+      }
       continue;
     }
 
-    // 3. TRIP / DISCONNECT GENERATOR [BUS] <bus> [ID <id>]
-    const tripGenMatch = cleanLine.match(
-      /^(?:TRIP|DISCONNECT)\s+GENERATOR\s+(?:BUS\s+)?(\d+)(?:\s+(?:ID\s+)?(?:'([^']+)'|"([^"]+)"|(\S+)))?/i,
-    );
-    if (tripGenMatch) {
-      const bus = Number.parseInt(tripGenMatch[1]!, 10);
-      const id = (tripGenMatch[2] ?? tripGenMatch[3] ?? tripGenMatch[4] ?? "1").trim();
-      currentDef.actions.push({
-        type: "trip_generator",
-        bus,
-        id,
-      });
+    if ((upper[0] === "REMOVE" || upper[0] === "DISCONNECT") && upper[1] === "BUS") {
+      const bus = Number.parseInt(toks[2] ?? "", 10);
+      if (Number.isFinite(bus)) {
+        currentDef.actions.push({ type: "disconnect_bus", bus });
+      }
       continue;
     }
 
-    // 4. REMOVE / DISCONNECT BUS <bus>
-    const disBusMatch = cleanLine.match(/^(?:REMOVE|DISCONNECT)\s+BUS\s+(\d+)/i);
-    if (disBusMatch) {
-      const bus = Number.parseInt(disBusMatch[1]!, 10);
-      currentDef.actions.push({
-        type: "disconnect_bus",
-        bus,
-      });
+    if (upper[0] === "CHANGE" && (upper[1] === "RATING" || upper[1] === "BRANCH")) {
+      let idx = 1;
+      if (upper[idx] === "RATING") idx++;
+      if (upper[idx] === "OF") idx++;
+      if (upper[idx] === "BRANCH") idx++;
+      const { fromBus, toBus, ckt, nextIdx } = parseFromToCkt(idx);
+      let rIdx = nextIdx;
+      if (upper[rIdx] === "RATE" || upper[rIdx] === "RATEA") rIdx++;
+      const rateA = Number.parseFloat(toks[rIdx] ?? "");
+      if (Number.isFinite(fromBus) && Number.isFinite(toBus) && Number.isFinite(rateA)) {
+        currentDef.actions.push({ type: "change_rating", fromBus, toBus, ckt, rateA });
+      }
       continue;
     }
 
-    // 5. CHANGE RATING OF BRANCH FROM [BUS] <from> TO [BUS] <to> [CKT <ckt>] RATEA <rate>
-    const chgRateMatch = cleanLine.match(
-      /^CHANGE\s+(?:RATING\s+(?:OF\s+)?)?BRANCH\s+(?:FROM\s+)?(?:BUS\s+)?(\d+)\s+(?:TO\s+)?(?:BUS\s+)?(\d+)(?:\s+(?:CKT\s+)?(?:'([^']+)'|"([^"]+)"|(\S+)))?\s+RATE(?:A)?\s+([0-9.]+)/i,
-    );
-    if (chgRateMatch) {
-      const fromBus = Number.parseInt(chgRateMatch[1]!, 10);
-      const toBus = Number.parseInt(chgRateMatch[2]!, 10);
-      const ckt = (chgRateMatch[3] ?? chgRateMatch[4] ?? chgRateMatch[5] ?? "1").trim();
-      const rateA = Number.parseFloat(chgRateMatch[6]!);
-      currentDef.actions.push({
-        type: "change_rating",
-        fromBus,
-        toBus,
-        ckt,
-        rateA,
-      });
-      continue;
-    }
-
-    // 6. CHANGE GENERATOR [BUS] <bus> [ID <id>] PMAX <val>
-    const chgGenMatch = cleanLine.match(
-      /^CHANGE\s+GENERATOR\s+(?:BUS\s+)?(\d+)(?:\s+(?:ID\s+)?(?:'([^']+)'|"([^"]+)"|(\S+)))?\s+PMAX\s+([0-9.]+)/i,
-    );
-    if (chgGenMatch) {
-      const bus = Number.parseInt(chgGenMatch[1]!, 10);
-      const id = (chgGenMatch[2] ?? chgGenMatch[3] ?? chgGenMatch[4] ?? "1").trim();
-      const pMax = Number.parseFloat(chgGenMatch[5]!);
-      currentDef.actions.push({
-        type: "change_generator_pmax",
-        bus,
-        id,
-        pMax,
-      });
+    if (upper[0] === "CHANGE" && upper[1] === "GENERATOR") {
+      let idx = 2;
+      if (upper[idx] === "BUS") idx++;
+      const bus = Number.parseInt(toks[idx++] ?? "", 10);
+      let id = "1";
+      if (upper[idx] === "ID") {
+        id = (toks[idx + 1] ?? "1").trim();
+        idx += 2;
+      } else if (toks[idx] && upper[idx] !== "PMAX") {
+        id = toks[idx++]!.trim();
+      }
+      if (upper[idx] === "PMAX") idx++;
+      const pMax = Number.parseFloat(toks[idx] ?? "");
+      if (Number.isFinite(bus) && Number.isFinite(pMax)) {
+        currentDef.actions.push({ type: "change_generator_pmax", bus, id, pMax });
+      }
       continue;
     }
   }
@@ -241,7 +214,7 @@ export function writeCon(conCase: PsseConCase): string {
 }
 
 /**
- * Parses a PSS/E `.mon` Monitored Elements file.
+ * Parses a PSS/E `.mon` Monitored Elements file via WASM CST.
  */
 export function parseMon(source: string): PsseMonCase {
   const voltageRanges: MonitoredVoltageRange[] = [];
@@ -249,46 +222,55 @@ export function parseMon(source: string): PsseMonCase {
   const monitoredSubsystems: string[] = [];
   let monitorTieLines = false;
 
-  const lines = source.split(/\r?\n/);
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim();
-    if (!trimmed || trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.startsWith("@!")) continue;
+  const cstDoc = parsePsseCstDocument(source);
+  for (const entry of cstDoc.lines) {
+    if (entry.isCommentOrBlank) continue;
+    const fields = extractFieldsFromCstTokens(entry.tokens, source, "whitespace");
+    const toks = fields.map((f) => f.value);
+    const upper = toks.map((t) => t.toUpperCase());
+    if (upper[0] !== "MONITOR") continue;
 
-    // 1. MONITOR VOLTAGE RANGE BUSES <start> <end> <vmin> <vmax>
-    const vMatch = trimmed.match(
-      /^MONITOR\s+VOLTAGE\s+(?:RANGE\s+)?(?:BUSES?\s+)?(\d+)(?:\s+(\d+))?\s+([0-9.]+)\s+([0-9.]+)/i,
-    );
-    if (vMatch) {
-      const busStart = Number.parseInt(vMatch[1]!, 10);
-      const busEnd = vMatch[2] ? Number.parseInt(vMatch[2], 10) : busStart;
-      const vMin = Number.parseFloat(vMatch[3]!);
-      const vMax = Number.parseFloat(vMatch[4]!);
-      voltageRanges.push({ busStart, busEnd, vMin, vMax });
+    if (upper[1] === "VOLTAGE") {
+      let idx = 2;
+      if (upper[idx] === "RANGE") idx++;
+      if (upper[idx] === "BUS" || upper[idx] === "BUSES") idx++;
+      const busStart = Number.parseInt(toks[idx++] ?? "", 10);
+      let busEnd = busStart;
+      // Optional busEnd if 3 more numeric values remain
+      if (idx + 2 < toks.length && Number.isInteger(Number(toks[idx]))) {
+        busEnd = Number.parseInt(toks[idx++] ?? "", 10);
+      }
+      const vMin = Number.parseFloat(toks[idx++] ?? "");
+      const vMax = Number.parseFloat(toks[idx++] ?? "");
+      if (Number.isFinite(busStart) && Number.isFinite(vMin) && Number.isFinite(vMax)) {
+        voltageRanges.push({ busStart, busEnd, vMin, vMax });
+      }
       continue;
     }
 
-    // 2. MONITOR BRANCH FROM [BUS] <from> TO [BUS] <to> [CKT <ckt>]
-    const brMatch = trimmed.match(
-      /^MONITOR\s+BRANCH\s+(?:FROM\s+)?(?:BUS\s+)?(\d+)\s+(?:TO\s+)?(?:BUS\s+)?(\d+)(?:\s+(?:CKT\s+)?(?:'([^']+)'|"([^"]+)"|(\S+)))?/i,
-    );
-    if (brMatch) {
-      const fromBus = Number.parseInt(brMatch[1]!, 10);
-      const toBus = Number.parseInt(brMatch[2]!, 10);
-      const ckt = brMatch[3] ?? brMatch[4] ?? brMatch[5];
-      monitoredBranches.push({ fromBus, toBus, ckt });
+    if (upper[1] === "BRANCH") {
+      let idx = 2;
+      if (upper[idx] === "FROM") idx++;
+      if (upper[idx] === "BUS") idx++;
+      const fromBus = Number.parseInt(toks[idx++] ?? "", 10);
+      if (upper[idx] === "TO") idx++;
+      if (upper[idx] === "BUS") idx++;
+      const toBus = Number.parseInt(toks[idx++] ?? "", 10);
+      if (upper[idx] === "CKT") idx++;
+      const ckt = toks[idx];
+      if (Number.isFinite(fromBus) && Number.isFinite(toBus)) {
+        monitoredBranches.push({ fromBus, toBus, ckt });
+      }
       continue;
     }
 
-    // 3. MONITOR BRANCHES IN SUBSYSTEM '<name>'
-    const subMatch = trimmed.match(/^MONITOR\s+BRANCHES?\s+IN\s+SUBSYSTEM\s+(?:'([^']+)'|"([^"]+)"|(\S+))/i);
-    if (subMatch) {
-      const subName = subMatch[1] ?? subMatch[2] ?? subMatch[3]!;
-      monitoredSubsystems.push(subName);
+    if ((upper[1] === "BRANCH" || upper[1] === "BRANCHES") && upper[2] === "IN" && upper[3] === "SUBSYSTEM") {
+      const subName = toks[4];
+      if (subName) monitoredSubsystems.push(subName);
       continue;
     }
 
-    // 4. MONITOR TIE LINES
-    if (/^MONITOR\s+TIE\s+LINES/i.test(trimmed)) {
+    if (upper[1] === "TIE" && upper[2] === "LINES") {
       monitorTieLines = true;
       continue;
     }
@@ -303,26 +285,26 @@ export function parseMon(source: string): PsseMonCase {
 }
 
 /**
- * Parses a PSS/E `.sub` Subsystems file.
+ * Parses a PSS/E `.sub` Subsystems file via WASM CST.
  */
 export function parseSub(source: string): PsseSubCase {
   const subsystems = new Map<string, SubsystemDefinition>();
-  const lines = source.split(/\r?\n/);
+  const cstDoc = parsePsseCstDocument(source);
   let currentSub: SubsystemDefinition | null = null;
 
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim();
-    if (!trimmed || trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.startsWith("@!")) continue;
+  for (const entry of cstDoc.lines) {
+    if (entry.isCommentOrBlank) continue;
+    const fields = extractFieldsFromCstTokens(entry.tokens, source, "whitespace");
+    const toks = fields.map((f) => f.value);
+    const upper = toks.map((t) => t.toUpperCase());
+    if (upper.length === 0) continue;
 
-    // SUBSYSTEM '<NAME>'
-    const subStartMatch = trimmed.match(/^SUBSYSTEM\s+(?:'([^']+)'|"([^"]+)"|(\S+))/i);
-    if (subStartMatch) {
+    if (upper[0] === "SUBSYSTEM" && toks[1]) {
       if (currentSub) {
         subsystems.set(currentSub.name.toUpperCase(), currentSub);
       }
-      const name = subStartMatch[1] ?? subStartMatch[2] ?? subStartMatch[3]!;
       currentSub = {
-        name,
+        name: toks[1],
         kvRanges: [],
         buses: [],
         areas: [],
@@ -331,7 +313,7 @@ export function parseSub(source: string): PsseSubCase {
       continue;
     }
 
-    if (/^END\b/i.test(trimmed)) {
+    if (upper[0] === "END") {
       if (currentSub) {
         subsystems.set(currentSub.name.toUpperCase(), currentSub);
         currentSub = null;
@@ -341,32 +323,28 @@ export function parseSub(source: string): PsseSubCase {
 
     if (!currentSub) continue;
 
-    // KV <min> <max>
-    const kvMatch = trimmed.match(/^KV\s+([0-9.]+)\s+([0-9.]+)/i);
-    if (kvMatch) {
-      currentSub.kvRanges.push([Number.parseFloat(kvMatch[1]!), Number.parseFloat(kvMatch[2]!)]);
+    if (upper[0] === "KV" && toks.length >= 3) {
+      const kMin = Number.parseFloat(toks[1]!);
+      const kMax = Number.parseFloat(toks[2]!);
+      if (Number.isFinite(kMin) && Number.isFinite(kMax)) {
+        currentSub.kvRanges.push([kMin, kMax]);
+      }
       continue;
     }
 
-    // BUSES / BUS <bus1> <bus2> ...
-    const busMatch = trimmed.match(/^(?:BUSES?)\s+(.*)/i);
-    if (busMatch) {
-      const nums = busMatch[1]!
-        .split(/\s+/)
-        .map((s) => Number.parseInt(s, 10))
-        .filter((n) => Number.isFinite(n) && n > 0);
-      currentSub.buses.push(...nums);
+    if (upper[0] === "BUS" || upper[0] === "BUSES") {
+      for (let i = 1; i < toks.length; i++) {
+        const n = Number.parseInt(toks[i]!, 10);
+        if (Number.isFinite(n) && n > 0) currentSub.buses.push(n);
+      }
       continue;
     }
 
-    // AREAS / AREA <area1> ...
-    const areaMatch = trimmed.match(/^(?:AREAS?)\s+(.*)/i);
-    if (areaMatch) {
-      const nums = areaMatch[1]!
-        .split(/\s+/)
-        .map((s) => Number.parseInt(s, 10))
-        .filter((n) => Number.isFinite(n) && n > 0);
-      currentSub.areas.push(...nums);
+    if (upper[0] === "AREA" || upper[0] === "AREAS") {
+      for (let i = 1; i < toks.length; i++) {
+        const n = Number.parseInt(toks[i]!, 10);
+        if (Number.isFinite(n) && n > 0) currentSub.areas.push(n);
+      }
       continue;
     }
   }

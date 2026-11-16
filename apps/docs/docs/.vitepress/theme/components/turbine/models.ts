@@ -76,20 +76,39 @@ module coax_ring(x0, len, r_out, r_in) {
             polygon(points = [[0, -0.5], [1, -0.5], [1, 0.5], [0, 0.5]]);
 }
 
-module cambered_blade(x_ax, hub_r, span, chord_hub, taper, stagger_deg, twist_deg) {
-  translate([x_ax, hub_r, 0])
-    rotate([-90, 0, 0])
-      linear_extrude(height = span, twist = twist_deg, scale = taper)
-        scale([chord_hub, chord_hub, 1])
-          rotate([0, 0, -stagger_deg])
-            polygon(points = [
-              [-0.50, 0.00],
-              [0.00, 0.025],
-              [0.50, 0.00],
-              [0.24, 0.085],
-              [0.00, 0.115],
-              [-0.24, 0.085]
-            ]);
+function blade_pt(x_ax, r, c, ang, ux, uy) = [
+  x_ax + (ux * c * cos(ang) - uy * c * sin(ang)),
+  r,
+  ux * c * sin(ang) + uy * c * cos(ang)
+];
+
+function blade_ring(x_ax, hub_r, span, chord_hub, chord_tip, stagger_hub, stagger_tip, u) = [
+  blade_pt(x_ax, hub_r + u * span, chord_hub + (chord_tip - chord_hub) * u, stagger_hub + (stagger_tip - stagger_hub) * u, -0.50,  0.000),
+  blade_pt(x_ax, hub_r + u * span, chord_hub + (chord_tip - chord_hub) * u, stagger_hub + (stagger_tip - stagger_hub) * u, -0.18,  0.055),
+  blade_pt(x_ax, hub_r + u * span, chord_hub + (chord_tip - chord_hub) * u, stagger_hub + (stagger_tip - stagger_hub) * u,  0.18,  0.062),
+  blade_pt(x_ax, hub_r + u * span, chord_hub + (chord_tip - chord_hub) * u, stagger_hub + (stagger_tip - stagger_hub) * u,  0.50,  0.000),
+  blade_pt(x_ax, hub_r + u * span, chord_hub + (chord_tip - chord_hub) * u, stagger_hub + (stagger_tip - stagger_hub) * u,  0.18, -0.024),
+  blade_pt(x_ax, hub_r + u * span, chord_hub + (chord_tip - chord_hub) * u, stagger_hub + (stagger_tip - stagger_hub) * u, -0.18, -0.020)
+];
+
+module cambered_blade(x_ax, hub_r, span, chord_hub, chord_tip, stagger_hub, stagger_tip) {
+  // 4-span x 6-point lofted cambered airfoil with independent hub-to-tip chord and stagger
+  pts = concat(
+    blade_ring(x_ax, hub_r, span, chord_hub, chord_tip, stagger_hub, stagger_tip, 0.00),
+    blade_ring(x_ax, hub_r, span, chord_hub, chord_tip, stagger_hub, stagger_tip, 0.25),
+    blade_ring(x_ax, hub_r, span, chord_hub, chord_tip, stagger_hub, stagger_tip, 0.50),
+    blade_ring(x_ax, hub_r, span, chord_hub, chord_tip, stagger_hub, stagger_tip, 0.75),
+    blade_ring(x_ax, hub_r, span, chord_hub, chord_tip, stagger_hub, stagger_tip, 1.00)
+  );
+  faces = [
+    [0, 6, 7, 1], [1, 7, 8, 2], [2, 8, 9, 3], [3, 9, 10, 4], [4, 10, 11, 5], [5, 11, 6, 0],
+    [6, 12, 13, 7], [7, 13, 14, 8], [8, 14, 15, 9], [9, 15, 16, 10], [10, 16, 17, 11], [11, 17, 12, 6],
+    [12, 18, 19, 13], [13, 19, 20, 14], [14, 20, 21, 15], [15, 21, 22, 16], [16, 22, 23, 17], [17, 23, 18, 12],
+    [18, 24, 25, 19], [19, 25, 26, 20], [20, 26, 27, 21], [21, 27, 28, 22], [22, 28, 29, 23], [23, 29, 24, 18],
+    [5, 4, 3, 2, 1, 0],
+    [24, 25, 26, 27, 28, 29]
+  ];
+  polyhedron(points = pts, faces = faces);
 }
 
 module core_blade(x_ax, hub_r, span, chord_hub, taper, stagger_deg, twist_deg) {
@@ -106,12 +125,12 @@ module core_blade(x_ax, hub_r, span, chord_hub, taper, stagger_deg, twist_deg) {
             ]);
 }
 
-module blade_stage(x_ax, count, hub_r, tip_r, chord_hub, taper, stagger_deg, twist_deg) {
+module blade_stage(x_ax, count, hub_r, tip_r, chord_hub, chord_tip, stagger_hub, stagger_tip) {
   span = tip_r - hub_r;
   step_deg = 360 / count;
   for (i = [0 : count - 1]) {
     rotate([i * step_deg, 0, 0])
-      cambered_blade(x_ax, hub_r, span, chord_hub, taper, stagger_deg, twist_deg);
+      cambered_blade(x_ax, hub_r, span, chord_hub, chord_tip, stagger_hub, stagger_tip);
   }
 }
 
@@ -126,7 +145,7 @@ module core_stage(x_ax, count, hub_r, tip_r, chord_hub, taper, stagger_deg, twis
 
 module intake_nacelle() {
   rotate([0, 90, 0])
-    rotate_extrude(angle = 360, $fn = 24)
+    rotate_extrude(angle = 360, $fn = 32)
       polygon(points = [
         [1.450, -2.960], [1.500, -2.925], [1.560, -2.820], [1.602, -2.580],
         [1.610, -2.050], [1.595, -1.200], [1.540, -0.250], [1.475, 0.250],
@@ -142,13 +161,13 @@ module intake_nacelle() {
     translate([-1.15, -0.42, 0.24])
       cube([0.16, 0.08, 0.08], center = true);
 
-  // Bypass outlet guide vanes (OGV)
-  blade_stage(-0.95, 16, 0.76, 1.39, 0.20, 1.10, -8, 2);
+  // Bypass outlet guide vanes (OGV - 32 static vanes)
+  blade_stage(-0.95, 32, 0.76, 1.39, 0.20, 0.22, -8, -6);
 }
 
 module core_cowl() {
   rotate([0, 90, 0])
-    rotate_extrude(angle = 360, $fn = 20)
+    rotate_extrude(angle = 360, $fn = 28)
       polygon(points = [
         [0.615, -1.40], [0.725, -1.10], [0.815, -0.50], [0.860, 0.45],
         [0.830, 1.45],  [0.755, 2.12],  [0.690, 2.60],  [0.675, 2.60],
@@ -156,18 +175,29 @@ module core_cowl() {
         [0.495, 0.36],  [0.575, -0.60], [0.605, -1.28]
       ]);
 
-  // LPC / HPC / HPT / LPT stator rings
-  core_stage(-0.90, 8, 0.41, 0.60, 0.09, 0.89, -28, -4);
-  for (s = [0 : 2]) {
-    core_stage(-0.40 + s * 0.28, 8, 0.36 + s * 0.010, 0.56 - s * 0.020, 0.055, 0.90, -30, -4);
+  tag_port("HPC_Stage1_7_Shroud", "cylindrical_shroud", [0, 0.96, -0.24])
+    coax_ring(-0.62, 0.08, 0.605, 0.54);
+  tag_port("LPT_Stage1_MountFace", "mounting_plane", [0.35, 0.94, 0])
+    coax_ring(1.45, 0.95, 0.64, 0.52);
+
+  // LPC (2 stages: 48 stator), HPC (7 stages: 56 stator), HPT (2 stages: 36 nozzle), LPT (4 stages: 60 nozzle)
+  for (s = [0 : 1]) {
+    core_stage(-1.05 + s * 0.28, 48, 0.41, 0.60, 0.09, 0.89, -28, -4);
   }
-  core_stage(1.16, 8, 0.38, 0.565, 0.065, 1.00, 48, 2);
-  core_stage(1.66, 8, 0.38, 0.59, 0.075, 1.00, 42, 4);
+  for (s = [0 : 6]) {
+    core_stage(-0.42 + s * 0.12, 56, 0.35 + s * 0.005, 0.565 - s * 0.008, 0.052, 0.90, -30, -4);
+  }
+  for (s = [0 : 1]) {
+    core_stage(1.13 + s * 0.16, 36, 0.38, 0.565, 0.060, 1.00, 48, 2);
+  }
+  for (s = [0 : 3]) {
+    core_stage(1.55 + s * 0.15, 60, 0.38, 0.58 + s * 0.025, 0.070, 1.00, 42, 4);
+  }
 }
 
 module spinner_nose() {
   rotate([0, 90, 0])
-    rotate_extrude(angle = 360, $fn = 20)
+    rotate_extrude(angle = 360, $fn = 24)
       polygon(points = [
         [0.000, -2.620], [0.105, -2.565], [0.210, -2.460], [0.310, -2.280],
         [0.378, -2.070], [0.414, -1.860], [0.425, -1.600], [0.000, -1.600]
@@ -176,11 +206,11 @@ module spinner_nose() {
 
 module fan_lp_stage() {
   coax_ring(-2.12, 0.40, fan_r_hub, 0.12);
-  // 22 Wide-Chord Cambered & Twisted Ti-6Al-4V Fan Blades
-  blade_stage(-1.92, 22, 0.395, 1.365, 0.36, 1.39, 18, -46);
-  // 2-Stage LP Booster Rotors on N1
+  // 22 Wide-Chord Lofted Cambered & Twisted Ti-6Al-4V Fan Blades
+  blade_stage(-1.92, 22, fan_r_hub - 0.005, fan_r_tip - 0.115, 0.36, 0.50, 18, 64);
+  // 2-Stage LP Booster Rotors on N1 (40 blades/stage)
   for (s = [0 : 1]) {
-    core_stage(-1.18 + s * 0.28, 8, 0.40, 0.60, 0.11, 0.82, 38, -14);
+    core_stage(-1.18 + s * 0.28, 40, fan_r_hub, 0.60, 0.11, 0.82, 38, -14);
   }
 }
 
@@ -189,7 +219,7 @@ module hpc_core_drum() {
     coax_ring(-1.90, 3.64, 0.11, 0.04);
 
   rotate([0, 90, 0])
-    rotate_extrude(angle = 360, $fn = 20)
+    rotate_extrude(angle = 360, $fn = 24)
       polygon(points = [
         [0.000, -1.60], [0.415, -1.60], [0.405, -1.25], [0.400, -0.75],
         [0.325, -0.55], [0.400, 0.36],  [0.380, 0.44],  [0.380, 1.06],
@@ -197,23 +227,21 @@ module hpc_core_drum() {
         [0.145, 3.04],  [0.045, 3.18],  [0.000, 3.20]
       ]);
 
-  // Multi-Stage High-Pressure Compressor Rotors on N2
-  for (s = [0 : 3]) {
-    core_stage(-0.48 + s * 0.22, 8, 0.34 + s * 0.012, 0.56 - s * 0.018, 0.065, 0.83, 40, -14);
+  // 7-Stage High-Pressure Compressor Rotors on N2 (44 blades/stage)
+  for (s = [0 : 6]) {
+    core_stage(-0.48 + s * 0.12, 44, 0.34 + s * 0.005, 0.56 - s * 0.008, 0.055, 0.83, 40, -14);
   }
-  tag_port("HPC_Stage1_7_Shroud", "cylindrical_shroud", [0, 0.96, -0.24])
-    coax_ring(-0.62, 0.08, 0.605, 0.54);
 
-  // 2-Stage High-Pressure Turbine Rotors on N2
+  // 2-Stage High-Pressure Turbine Rotors on N2 (48 blades/stage)
   for (s = [0 : 1]) {
-    core_stage(1.20 + s * 0.16, 8, 0.38, 0.56 + s * 0.01, 0.060, 0.91, -50, 8);
+    core_stage(1.20 + s * 0.16, 48, 0.38, 0.56 + s * 0.01, 0.055, 0.91, -50, 8);
   }
 }
 
 module combustor_liner() {
   tag_port("Combustor_AnnularLiner", "thermal_liner", [0, 1, 0])
     rotate([0, 90, 0])
-      rotate_extrude(angle = 360, $fn = 20)
+      rotate_extrude(angle = 360, $fn = 24)
         polygon(points = [
           [0.470, 0.46], [0.430, 0.54], [0.415, 0.94], [0.450, 1.04],
           [0.540, 1.04], [0.575, 0.94], [0.575, 0.54], [0.530, 0.46]
@@ -221,12 +249,9 @@ module combustor_liner() {
 }
 
 module lpt_nozzle_stage() {
-  tag_port("LPT_Stage1_MountFace", "mounting_plane", [0.35, 0.94, 0])
-    coax_ring(1.45, 0.95, 0.64, 0.52);
-
-  // Low-Pressure Turbine Rotors on N1
-  for (s = [0 : 1]) {
-    core_stage(1.62 + s * 0.28, 8, 0.375, 0.58 + s * 0.035, 0.080, 0.93, -46, 10);
+  // 4-Stage Low-Pressure Turbine Rotors on N1 (52 blades/stage)
+  for (s = [0 : 3]) {
+    core_stage(1.62 + s * 0.15, 52, 0.375, 0.58 + s * 0.025, 0.075, 0.93, -46, 10);
   }
 }
 

@@ -25,8 +25,21 @@ export interface PsseLinkedDynamicInstance {
   busNumber: number;
   machineId?: string | undefined;
   modelName: string;
+  category?: string | undefined;
   init(io: PsseDynamicModelIO): void;
-  doStep(tSec: number, dtSec: number, io: PsseDynamicModelIO): { efd?: number | undefined; pmech?: number | undefined };
+  doStep(
+    tSec: number,
+    dtSec: number,
+    io: PsseDynamicModelIO,
+  ): {
+    efd?: number | undefined;
+    pmech?: number | undefined;
+    vsPss?: number | undefined;
+    irInj?: number | undefined;
+    iiInj?: number | undefined;
+    qSvc?: number | undefined;
+    tripMult?: number | undefined;
+  };
 }
 
 const compiledCache = new WeakMap<Uint8Array, WebAssembly.Instance>();
@@ -76,6 +89,63 @@ export async function ensureBuiltInPsseLibraryRegistered(): Promise<void> {
   }
 }
 
+import { resolveDyrModelSchema, type DaeArchetypeId } from "../schema/index.js";
+
+const ARCHETYPE_CODE: Record<DaeArchetypeId, number> = {
+  sync_classical_2o: 0,
+  sync_transient_3o: 1,
+  sync_subtrans_round_6o: 2,
+  sync_subtrans_salient_5o: 3,
+  sync_gentpj_6o: 4,
+  induction_machine_4o: 5,
+  wind_ind_gen_4o: 6,
+  wind_type3_dfag: 7,
+  exc_sexs: 10,
+  exc_scrx: 11,
+  exc_ieee_dc: 12,
+  exc_ieee_ac: 13,
+  exc_ieee_st: 14,
+  exc_st4b_pi: 15,
+  exc_pid: 16,
+  lim_oel: 17,
+  lim_uel: 18,
+  lim_vhz: 19,
+  comp_rc_xc: 19,
+  gov_steam_simple: 20,
+  gov_steam_reheat: 21,
+  gov_lcfb: 22,
+  gov_gast: 23,
+  gov_ggov1_temp: 24,
+  gov_hydro_penstock: 25,
+  gov_hydro_pid: 26,
+  gov_degov: 27,
+  wind_drivetrain_2mass: 28,
+  wind_pitch_torque: 29,
+  pss_single_leadlag: 30,
+  pss_dual_ramptrack: 31,
+  pss_multiband_4b: 32,
+  ibr_regc_converter: 35,
+  ibr_reec_control: 36,
+  ibr_repc_plant: 37,
+  ibr_dera_aggregate: 38,
+  ibr_regfm_vsm: 39,
+  ibr_iec_generic: 40,
+  load_static_zipf: 42,
+  load_complex_clod: 43,
+  load_ind_motor: 44,
+  load_1ph_stall: 45,
+  load_composite_cmpldw: 46,
+  facts_svc: 48,
+  facts_statcom: 49,
+  facts_tcsc: 50,
+  hvdc_lcc_2t: 51,
+  hvdc_vsc_2t: 52,
+  relay_load_shed: 54,
+  relay_gen_trip: 55,
+  relay_branch_dist: 56,
+  meas_bus_freq: 57,
+};
+
 /**
  * Instantiates AssemblyScript `.dyr` dynamic models from any loaded `package.json#modelscript`
  * PSS/E library package (`pkg.wasmBytes`) matching records in `psseCase.dyr`.
@@ -94,74 +164,148 @@ export function instantiateWasmDyrModelsForCase(psseCase: PsseCase): PsseLinkedD
   if (pkgs.length === 0) return [];
 
   const instances: PsseLinkedDynamicInstance[] = [];
-  // Allocate per-instance slots in linear memory starting at 4096 (each slot: 64*8=512B CON, 16*8=128B STATE, 6*8=48B IO)
+  // Allocate 2048-byte aligned slots in linear memory starting at 4096 (supports both v1 and v2 ABI)
   let slotIndex = 0;
 
   for (const rec of records) {
     const safe = sanitizeIdent(rec.model.toUpperCase());
+    const schema = resolveDyrModelSchema(rec.model);
+    const archCode = schema ? ARCHETYPE_CODE[schema.daeArchetype] : undefined;
+
     for (const pkg of pkgs) {
       if (!pkg.wasmBytes) continue;
       const instance = getOrInstantiateWasm(pkg.wasmBytes);
       if (!instance) continue;
       const exports = instance.exports as WasmDyrExports;
-      const initFn = exports[`${safe}_init`] as
+      if (!exports.memory) continue;
+
+      const initFnV1 = exports[`${safe}_init`] as
         | ((conPtr: number, count: number, statePtr: number, ioPtr: number) => void)
         | undefined;
-      const stepFn = exports[`${safe}_step`] as
+      const stepFnV1 = exports[`${safe}_step`] as
         | ((t: number, dt: number, conPtr: number, statePtr: number, ioPtr: number) => void)
         | undefined;
-      if (typeof initFn !== "function" || typeof stepFn !== "function" || !exports.memory) continue;
+
+      const initFnV2 = exports["psseModelInit"] as
+        | ((archetypeId: number, slotPtr: number, iconCount: number, conCount: number) => number)
+        | undefined;
+      const stepFnV2 = exports["psseModelStep"] as
+        | ((archetypeId: number, t: number, dt: number, slotPtr: number, conCount: number) => void)
+        | undefined;
+
+      const useV1 = typeof initFnV1 === "function" && typeof stepFnV1 === "function";
+      const useV2 =
+        !useV1 && archCode !== undefined && typeof initFnV2 === "function" && typeof stepFnV2 === "function";
+      if (!useV1 && !useV2) continue;
 
       const mem = exports.memory;
-      const base = 4096 + slotIndex * 768;
-      if (mem.buffer.byteLength < base + 768) {
-        const neededPages = Math.ceil((base + 768 - mem.buffer.byteLength) / 65536);
+      const base = 4096 + slotIndex * 2048;
+      if (mem.buffer.byteLength < base + 2048) {
+        const neededPages = Math.ceil((base + 2048 - mem.buffer.byteLength) / 65536);
         mem.grow(neededPages);
       }
       slotIndex++;
-      const conPtr = base;
-      const statePtr = base + 512;
-      const ioPtr = base + 640;
+
       const con = rec.con ?? [];
+      const icons = rec.icons ?? [];
 
-      const writeIo = (io: PsseDynamicModelIO) => {
-        const f64 = new Float64Array(mem.buffer);
-        const o = ioPtr >> 3;
-        f64[o + 0] = io.eterm;
-        f64[o + 1] = io.speedDev;
-        f64[o + 2] = io.efd;
-        f64[o + 3] = io.pmech;
-        f64[o + 4] = io.vr;
-        f64[o + 5] = io.vi;
-      };
+      if (useV1) {
+        const conPtr = base;
+        const statePtr = base + 512;
+        const ioPtr = base + 640;
 
-      const readIo = (): { efd?: number | undefined; pmech?: number | undefined } => {
-        const f64 = new Float64Array(mem.buffer);
-        const o = ioPtr >> 3;
-        return {
-          efd: f64[o + 2],
-          pmech: f64[o + 3],
-        };
-      };
-
-      instances.push({
-        busNumber: rec.ibus,
-        machineId: rec.id,
-        modelName: rec.model,
-        init(io: PsseDynamicModelIO) {
+        const writeIo = (io: PsseDynamicModelIO) => {
           const f64 = new Float64Array(mem.buffer);
-          for (let i = 0; i < Math.min(con.length, 64); i++) {
-            f64[(conPtr >> 3) + i] = con[i]!;
-          }
-          writeIo(io);
-          initFn(conPtr, con.length, statePtr, ioPtr);
-        },
-        doStep(tSec: number, dtSec: number, io: PsseDynamicModelIO) {
-          writeIo(io);
-          stepFn(tSec, dtSec, conPtr, statePtr, ioPtr);
-          return readIo();
-        },
-      });
+          const o = ioPtr >> 3;
+          f64[o + 0] = io.eterm;
+          f64[o + 1] = io.speedDev;
+          f64[o + 2] = io.efd;
+          f64[o + 3] = io.pmech;
+          f64[o + 4] = io.vr;
+          f64[o + 5] = io.vi;
+        };
+
+        const readIo = (): { efd?: number | undefined; pmech?: number | undefined } => {
+          const f64 = new Float64Array(mem.buffer);
+          const o = ioPtr >> 3;
+          return { efd: f64[o + 2], pmech: f64[o + 3] };
+        };
+
+        instances.push({
+          busNumber: rec.ibus,
+          machineId: rec.id,
+          modelName: rec.model,
+          category: schema?.category ?? rec.category,
+          init(io: PsseDynamicModelIO) {
+            const f64 = new Float64Array(mem.buffer);
+            for (let i = 0; i < Math.min(con.length, 64); i++) {
+              f64[(conPtr >> 3) + i] = con[i]!;
+            }
+            writeIo(io);
+            initFnV1!(conPtr, con.length, statePtr, ioPtr);
+          },
+          doStep(tSec: number, dtSec: number, io: PsseDynamicModelIO) {
+            writeIo(io);
+            stepFnV1!(tSec, dtSec, conPtr, statePtr, ioPtr);
+            return readIo();
+          },
+        });
+      } else {
+        // ABI v2: ICON[32] @ +0x000, CON[160] @ +0x080, IO[16] @ +0x780
+        const iconPtr = base + 0x000;
+        const conPtr = base + 0x080;
+        const ioPtr = base + 0x780;
+
+        const writeIoV2 = (io: PsseDynamicModelIO) => {
+          const f64 = new Float64Array(mem.buffer);
+          const o = ioPtr >> 3;
+          f64[o + 0] = io.eterm;
+          f64[o + 1] = io.speedDev;
+          f64[o + 2] = io.efd;
+          f64[o + 3] = io.pmech;
+          f64[o + 4] = io.vr;
+          f64[o + 5] = io.vi;
+        };
+
+        const readIoV2 = () => {
+          const f64 = new Float64Array(mem.buffer);
+          const o = ioPtr >> 3;
+          return {
+            efd: f64[o + 2],
+            pmech: f64[o + 3],
+            vsPss: f64[o + 6],
+            irInj: f64[o + 9],
+            iiInj: f64[o + 10],
+            qSvc: f64[o + 11],
+            tripMult: f64[o + 12],
+          };
+        };
+
+        instances.push({
+          busNumber: rec.ibus,
+          machineId: rec.id,
+          modelName: rec.model,
+          category: schema?.category ?? rec.category,
+          init(io: PsseDynamicModelIO) {
+            const i32 = new Int32Array(mem.buffer);
+            const f64 = new Float64Array(mem.buffer);
+            for (let i = 0; i < Math.min(icons.length, 32); i++) {
+              const v = icons[i];
+              i32[(iconPtr >> 2) + i] = typeof v === "number" ? Math.trunc(v) : 0;
+            }
+            for (let i = 0; i < Math.min(con.length, 160); i++) {
+              f64[(conPtr >> 3) + i] = con[i]!;
+            }
+            writeIoV2(io);
+            initFnV2!(archCode!, base, icons.length, con.length);
+          },
+          doStep(tSec: number, dtSec: number, io: PsseDynamicModelIO) {
+            writeIoV2(io);
+            stepFnV2!(archCode!, tSec, dtSec, base, con.length);
+            return readIoV2();
+          },
+        });
+      }
       break;
     }
   }

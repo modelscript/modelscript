@@ -146,6 +146,10 @@ export const pssePolyglotConfig: PolyglotConfig = {
       sourceLang: "psse",
       targetLang: "modelica",
       priority: 10,
+      context: ($, v) => ({
+        source: $["psse_dyr_case"]?.({ name: v("caseName") }),
+        target: $["ClassDefinition"]?.({ name: v("caseName") }),
+      }),
       source: ($, v) =>
         $["psse_dyr_record"]?.({
           name: v("compName"),
@@ -169,6 +173,10 @@ export const pssePolyglotConfig: PolyglotConfig = {
       sourceLang: "psse",
       targetLang: "modelica",
       priority: 15,
+      context: ($, v) => ({
+        source: $["psse_model"]?.({ name: v("parentName") }),
+        target: $["ClassDefinition"]?.({ name: v("parentName") }),
+      }),
       source: ($, v) =>
         $["psse_port"]?.({
           name: v("portName"),
@@ -193,6 +201,10 @@ export const pssePolyglotConfig: PolyglotConfig = {
       sourceLang: "psse",
       targetLang: "modelica",
       priority: 5,
+      context: ($, v) => ({
+        source: $["psse_model"]?.({ name: v("parentName") }),
+        target: $["ClassDefinition"]?.({ name: v("parentName") }),
+      }),
       source: ($, v) =>
         $["psse_parameter"]?.({
           name: v("paramName"),

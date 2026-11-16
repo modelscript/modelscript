@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { DslIndexFileContext } from "@modelscript/dsl";
-import type { SymbolIndex, UnifiedWorkspace } from "@modelscript/runtime";
+import type { SymbolEntry, SymbolIndex, UnifiedWorkspace } from "@modelscript/runtime";
 import { extractStepAssembly } from "./assembly-extractor.js";
 import type { StepAssemblyModel } from "./physical-data.js";
 import { scanStepEntities } from "./schema.js";
@@ -97,10 +97,47 @@ function extractFirstString(entityArgs: string): string | null {
 
 interface StepNameMatch {
   name: string;
+  stepId: string;
+  entityType: string;
   startOffset: number;
   endOffset: number;
   nameStartOffset: number;
   nameEndOffset: number;
+}
+
+const STEP_SURFACE_OR_FEATURE_TYPES = new Set([
+  "MANIFOLD_SOLID_BREP",
+  "BREP_WITH_VOIDS",
+  "FACETED_BREP",
+  "ADVANCED_FACE",
+  "FACE_SURFACE",
+  "CYLINDRICAL_SURFACE",
+  "PLANE",
+  "CONICAL_SURFACE",
+  "SPHERICAL_SURFACE",
+  "TOROIDAL_SURFACE",
+  "SHAPE_ASPECT",
+  "DATUM",
+  "DATUM_FEATURE",
+  "GEOMETRIC_TOLERANCE",
+  "POSITION_TOLERANCE",
+  "FLATNESS_TOLERANCE",
+  "PERPENDICULARITY_TOLERANCE",
+  "PARALLELISM_TOLERANCE",
+  "CYLINDRICITY_TOLERANCE",
+  "CIRCULARITY_TOLERANCE",
+  "TOTAL_RUNOUT_TOLERANCE",
+  "CIRCULAR_RUNOUT_TOLERANCE",
+  "SURFACE_PROFILE_TOLERANCE",
+  "LINE_PROFILE_TOLERANCE",
+]);
+
+function extractDatumIdentification(entityArgs: string): string | null {
+  const matches = Array.from(entityArgs.matchAll(/'([^']*)'/g))
+    .map((m) => m[1]!)
+    .filter(Boolean);
+  if (matches.length === 0) return null;
+  return matches[matches.length - 1] ?? matches[0] ?? null;
 }
 
 function extractStepNames(text: string): {
@@ -109,29 +146,42 @@ function extractStepNames(text: string): {
 } {
   const products: StepNameMatch[] = [];
   const shapes: StepNameMatch[] = [];
+  const allowUnnamedFaces = text.length <= 65_536;
 
   const entities = scanStepEntities(text);
   for (const ent of entities) {
     const entityType = ent.type;
-    if (
-      entityType === "PRODUCT" ||
-      entityType === "MANIFOLD_SOLID_BREP" ||
-      entityType === "BREP_WITH_VOIDS" ||
-      entityType === "FACETED_BREP" ||
-      entityType === "GEOMETRIC_TOLERANCE"
-    ) {
-      const name = extractFirstString(ent.args);
+    if (entityType === "PRODUCT" || STEP_SURFACE_OR_FEATURE_TYPES.has(entityType)) {
+      const rawName = entityType === "DATUM" ? extractDatumIdentification(ent.args) : extractFirstString(ent.args);
+      const name =
+        rawName && rawName.length > 0 ? rawName : allowUnnamedFaces && entityType !== "PRODUCT" ? ent.id : null;
       if (name && name.length > 0) {
         const fullMatch = text.slice(ent.startOffset, ent.endOffset);
         const startOffset = ent.startOffset;
         const endOffset = ent.endOffset;
-        const nameIdx = fullMatch.indexOf(`'${name}'`);
+        const nameIdx = rawName && rawName.length > 0 ? fullMatch.indexOf(`'${name}'`) : -1;
         const nameStart = nameIdx >= 0 ? startOffset + nameIdx + 1 : startOffset;
-        const nameEnd = nameIdx >= 0 ? nameStart + name.length : endOffset;
+        const nameEnd = nameIdx >= 0 ? nameStart + name.length : startOffset + ent.id.length;
         if (entityType === "PRODUCT") {
-          products.push({ name, startOffset, endOffset, nameStartOffset: nameStart, nameEndOffset: nameEnd });
+          products.push({
+            name,
+            stepId: ent.id,
+            entityType,
+            startOffset,
+            endOffset,
+            nameStartOffset: nameStart,
+            nameEndOffset: nameEnd,
+          });
         } else {
-          shapes.push({ name, startOffset, endOffset, nameStartOffset: nameStart, nameEndOffset: nameEnd });
+          shapes.push({
+            name,
+            stepId: ent.id,
+            entityType,
+            startOffset,
+            endOffset,
+            nameStartOffset: nameStart,
+            nameEndOffset: nameEnd,
+          });
         }
       }
     }
@@ -177,7 +227,12 @@ export function indexStepFileSync(ctx: DslIndexFileContext): void {
       null,
       product?.startOffset ?? 0,
       product?.endOffset ?? 0,
-      { stepType: "Product", language: "step" },
+      {
+        stepType: "Product",
+        entityType: product?.entityType ?? "PRODUCT",
+        ...(product?.stepId ? { stepId: product.stepId } : {}),
+        language: "step",
+      },
       {
         ruleName: "step_product",
         namePath: productName,
@@ -185,6 +240,7 @@ export function indexStepFileSync(ctx: DslIndexFileContext): void {
           ? {
               nameStartOffset: product.nameStartOffset,
               nameEndOffset: product.nameEndOffset,
+              aliases: product.stepId ? [product.stepId] : [],
             }
           : {}),
       },
@@ -197,20 +253,29 @@ export function indexStepFileSync(ctx: DslIndexFileContext): void {
 
   const registeredShapes = new Set<string>();
   for (const shape of shapes) {
-    if (registeredShapes.has(shape.name)) continue;
+    const dedupKey = `${shape.name}::${shape.stepId}`;
+    if (registeredShapes.has(dedupKey)) continue;
+    registeredShapes.add(dedupKey);
     registeredShapes.add(shape.name);
+    const isDatum = shape.entityType === "DATUM" || shape.entityType === "DATUM_FEATURE";
     ctx.addSymbol(
       shape.name,
       "Type",
       primaryProductId,
       shape.startOffset,
       shape.endOffset,
-      { stepType: "NamedShape", language: "step" },
       {
-        ruleName: "step_shape",
+        stepType: isDatum ? "DATUM" : shape.entityType.includes("TOLERANCE") ? "TOLERANCE" : "NamedShape",
+        entityType: shape.entityType,
+        stepId: shape.stepId,
+        language: "step",
+      },
+      {
+        ruleName: isDatum ? "step_datum" : "step_shape",
         namePath: `${primaryProductName}::${shape.name}`,
         nameStartOffset: shape.nameStartOffset,
         nameEndOffset: shape.nameEndOffset,
+        aliases: shape.stepId && shape.stepId !== shape.name ? [shape.stepId] : [],
       },
     );
   }
@@ -463,4 +528,250 @@ export function getStepAssemblyModel(
     return workspace.getParsedModel<StepAssemblyModel>(uri, "assembly");
   }
   return workspace.getAllParsedModels<StepAssemblyModel>("assembly").values().next().value;
+}
+
+export interface StepLspLocation {
+  uri: string;
+  range: {
+    start: { line: number; character: number };
+    end: { line: number; character: number };
+  };
+}
+
+function stepOffsetToPosition(text: string, offset: number): { line: number; character: number } {
+  const clamped = Math.max(0, Math.min(text.length, offset));
+  let line = 0;
+  let lineStart = 0;
+  for (let i = 0; i < clamped; i++) {
+    if (text.charCodeAt(i) === 10) {
+      line++;
+      lineStart = i + 1;
+    }
+  }
+  return { line, character: clamped - lineStart };
+}
+
+function stepSymbolUri(sym: SymbolEntry): string {
+  return sym.resourceId || sym.documentUri || "";
+}
+
+function stepSymbolToLocation(sym: SymbolEntry, workspace: UnifiedWorkspace): StepLspLocation {
+  const symUri = stepSymbolUri(sym);
+  const docText = workspace.getDocument(symUri)?.text ?? "";
+  const nameRange = sym.fieldRanges?.["name"];
+  const startOff = nameRange?.startOffset ?? sym.startOffset ?? 0;
+  const endOff = nameRange?.endOffset ?? sym.endOffset ?? startOff;
+  return {
+    uri: symUri,
+    range: {
+      start: stepOffsetToPosition(docText, startOff),
+      end: stepOffsetToPosition(docText, Math.max(startOff, endOff)),
+    },
+  };
+}
+
+function extractStepIdAtOffset(text: string, offset: number): string | null {
+  if (offset < 0 || offset > text.length) return null;
+  let start = offset;
+  while (start > 0 && text.charCodeAt(start - 1) >= 48 && text.charCodeAt(start - 1) <= 57) {
+    start--;
+  }
+  if (start > 0 && text.charCodeAt(start - 1) === 35 /* # */) {
+    start--;
+  } else if (text.charCodeAt(start) !== 35 /* # */) {
+    return null;
+  }
+  let end = start + 1;
+  while (end < text.length && text.charCodeAt(end) >= 48 && text.charCodeAt(end) <= 57) {
+    end++;
+  }
+  return end > start + 1 ? text.slice(start, end) : null;
+}
+
+function collectStepCrossLanguagePeers(
+  workspace: UnifiedWorkspace,
+  uri: string,
+  stepId: string,
+  entityName?: string | null,
+): StepLspLocation[] {
+  const uIdx = workspace.getIndex();
+  workspace.syncTggCorrespondences(uIdx);
+  const out: StepLspLocation[] = [];
+  const seen = new Set<string>();
+  const pushSym = (sym: SymbolEntry) => {
+    const loc = stepSymbolToLocation(sym, workspace);
+    if (!loc.uri) return;
+    const key = `${loc.uri}:${loc.range.start.line}:${loc.range.start.character}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(loc);
+    }
+  };
+
+  const indexer = workspace.tggCorrespondenceIndexer;
+  const lookupKeys = [stepId, ...(entityName ? [entityName] : [])];
+  for (const key of lookupKeys) {
+    for (const symId of uIdx.byName.get(key) ?? []) {
+      const sym = uIdx.symbols.get(symId);
+      if (!sym) continue;
+      if (stepSymbolUri(sym) === uri && sym.language === "step") {
+        for (const slot of indexer.getSlotsForSymbol(symId)) {
+          const rec = indexer.hypergraph.getRecord(slot);
+          if (!rec || rec.isRemoved) continue;
+          for (const memberId of Object.values(rec.domainNodes)) {
+            if (typeof memberId === "number" && memberId !== symId) {
+              const peer = uIdx.symbols.get(memberId);
+              if (peer) pushSym(peer);
+            }
+          }
+        }
+      } else if (key === stepId && sym.kind === "Reference" && sym.language !== "step") {
+        // e.g. QIF `qif_step_ref` referencing `#42` -> jump to or include its owning QIF feature
+        const owner = sym.parentId !== null && sym.parentId !== undefined ? uIdx.symbols.get(sym.parentId) : sym;
+        pushSym(owner ?? sym);
+      }
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Resolves Go-to-Definition in ISO 10303-21 STEP files:
+ * - Clicking `#123` inside entity arguments jumps to `#123 = TYPE(...)` in $O(N)$ via `scanStepEntities`.
+ * - Clicking `#123` or `'Name'` at an entity's own declaration jumps to its TGG cross-language counterpart
+ *   (SysML v2 `part def`, Modelica `model`, OpenSCAD `module`, or QIF `FEATURE`/`DATUM`/`CHARACTERISTIC`).
+ */
+export function getStepDefinition(
+  text: string,
+  offset: number,
+  uri: string,
+  workspace?: UnifiedWorkspace,
+): StepLspLocation | null {
+  if (workspace && !workspace.getNativeFileIndex(uri) && text.length <= 262_144) {
+    workspace.indexDocumentText(uri, text, "step");
+  }
+
+  const entities = scanStepEntities(text);
+  const clickedId = extractStepIdAtOffset(text, offset);
+  const enclosing = entities.find((e) => offset >= e.startOffset && offset <= e.endOffset);
+
+  if (clickedId) {
+    const targetEnt = entities.find((e) => e.id === clickedId);
+    const isAtOwnLhs =
+      targetEnt !== undefined && enclosing?.id === clickedId && offset <= targetEnt.startOffset + targetEnt.id.length;
+    if (targetEnt && !isAtOwnLhs) {
+      return {
+        uri,
+        range: {
+          start: stepOffsetToPosition(text, targetEnt.startOffset),
+          end: stepOffsetToPosition(text, targetEnt.startOffset + targetEnt.id.length),
+        },
+      };
+    }
+    if (targetEnt && workspace) {
+      const entName =
+        targetEnt.type === "DATUM" ? extractDatumIdentification(targetEnt.args) : extractFirstString(targetEnt.args);
+      const peers = collectStepCrossLanguagePeers(workspace, uri, targetEnt.id, entName);
+      if (peers.length > 0) return peers[0]!;
+    }
+    if (targetEnt) {
+      return {
+        uri,
+        range: {
+          start: stepOffsetToPosition(text, targetEnt.startOffset),
+          end: stepOffsetToPosition(text, targetEnt.startOffset + targetEnt.id.length),
+        },
+      };
+    }
+  }
+
+  if (enclosing && workspace) {
+    const entName =
+      enclosing.type === "DATUM" ? extractDatumIdentification(enclosing.args) : extractFirstString(enclosing.args);
+    const peers = collectStepCrossLanguagePeers(workspace, uri, enclosing.id, entName);
+    if (peers.length > 0) return peers[0]!;
+  }
+
+  return null;
+}
+
+/**
+ * Finds all intra-file `#ID` entity references and cross-language TGG counterparts
+ * (SysML v2, Modelica, OpenSCAD, QIF) for the STEP entity at `offset`.
+ */
+export function getStepReferences(
+  text: string,
+  offset: number,
+  uri: string,
+  workspace?: UnifiedWorkspace,
+): StepLspLocation[] {
+  if (workspace && !workspace.getNativeFileIndex(uri) && text.length <= 262_144) {
+    workspace.indexDocumentText(uri, text, "step");
+  }
+
+  const entities = scanStepEntities(text);
+  const clickedId = extractStepIdAtOffset(text, offset);
+  const enclosing = entities.find((e) => offset >= e.startOffset && offset <= e.endOffset);
+  const targetId = clickedId ?? enclosing?.id;
+  if (!targetId) return [];
+
+  const targetEnt = entities.find((e) => e.id === targetId);
+  const results: StepLspLocation[] = [];
+  const seen = new Set<string>();
+  const pushLoc = (loc: StepLspLocation) => {
+    const key = `${loc.uri}:${loc.range.start.line}:${loc.range.start.character}:${loc.range.end.line}:${loc.range.end.character}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      results.push(loc);
+    }
+  };
+
+  if (targetEnt) {
+    pushLoc({
+      uri,
+      range: {
+        start: stepOffsetToPosition(text, targetEnt.startOffset),
+        end: stepOffsetToPosition(text, targetEnt.startOffset + targetEnt.id.length),
+      },
+    });
+  }
+
+  const idNumLen = targetId.length;
+  for (const ent of entities) {
+    if (ent.id === targetId) continue;
+    let searchFrom = 0;
+    while (searchFrom < ent.args.length) {
+      const idx = ent.args.indexOf(targetId, searchFrom);
+      if (idx === -1) break;
+      const afterChar = ent.args.charCodeAt(idx + idNumLen);
+      const isDigitAfter = afterChar >= 48 && afterChar <= 57;
+      if (!isDigitAfter) {
+        const fullSlice = text.slice(ent.startOffset, ent.endOffset);
+        const argsStartInFull = fullSlice.indexOf("(");
+        const absStart = argsStartInFull >= 0 ? ent.startOffset + argsStartInFull + 1 + idx : ent.startOffset;
+        pushLoc({
+          uri,
+          range: {
+            start: stepOffsetToPosition(text, absStart),
+            end: stepOffsetToPosition(text, absStart + idNumLen),
+          },
+        });
+      }
+      searchFrom = idx + idNumLen;
+    }
+  }
+
+  if (workspace) {
+    const entName = targetEnt
+      ? targetEnt.type === "DATUM"
+        ? extractDatumIdentification(targetEnt.args)
+        : extractFirstString(targetEnt.args)
+      : undefined;
+    for (const peer of collectStepCrossLanguagePeers(workspace, uri, targetId, entName)) {
+      pushLoc(peer);
+    }
+  }
+
+  return results;
 }

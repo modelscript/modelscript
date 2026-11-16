@@ -97,7 +97,14 @@ import { getPdbDocumentSymbols, getPdbHover, pdbLanguage, validatePdb } from "@m
 import { getPhreeqcDocumentSymbols, getPhreeqcHover, phreeqcLanguage, validatePhreeqc } from "@modelscript/phreeqc";
 import { getPlcopenDocumentSymbols, getPlcopenHover, plcopenLanguage, validatePlcopen } from "@modelscript/plcopen";
 import { lintPowerFactoryModel, parsePowerFactoryXml, powerFactoryLanguage } from "@modelscript/powerfactory";
-import { pscadLanguage } from "@modelscript/pscad";
+import {
+  getPscadCompletions,
+  getPscadDefinitionLocation,
+  getPscadDocumentSymbols,
+  getPscadHover,
+  getPscadReferences,
+  pscadLanguage,
+} from "@modelscript/pscad";
 import { lintPslfDyd, lintPslfEpc, parsePslfDyd, parsePslfEpc, pslfLanguage } from "@modelscript/pslf";
 import {
   getMergedPsseCase,
@@ -109,13 +116,28 @@ import {
   psseLanguage,
   validatePsse,
 } from "@modelscript/psse";
-import { getQifDocumentSymbols, getQifHover, qifLanguage, validateQif } from "@modelscript/qif";
+import {
+  getQifDefinition,
+  getQifDocumentSymbols,
+  getQifHover,
+  getQifReferences,
+  qifLanguage,
+  validateQif,
+} from "@modelscript/qif";
 import { lintAntennaPatternDeck, parseNsmaAdf, parsePlanetPat, ranLanguage } from "@modelscript/ran";
 import { getRelap5DocumentSymbols, getRelap5Hover, relap5Language, validateRelap5 } from "@modelscript/relap5";
-import { getReqifDocumentSymbols, getReqifHover, reqifLanguage, validateReqif } from "@modelscript/reqif";
+import {
+  getReqifDefinition,
+  getReqifDocumentSymbols,
+  getReqifHover,
+  getReqifReferences,
+  reqifLanguage,
+  validateReqif,
+} from "@modelscript/reqif";
 import { getRocetsDocumentSymbols, getRocetsHover, rocetsLanguage, validateRocets } from "@modelscript/rocets";
 import { getSbmlDocumentSymbols, getSbmlHover, sbmlLanguage, validateSbml } from "@modelscript/sbml";
 import { getSbolDocumentSymbols, getSbolHover, sbolLanguage, validateSbol } from "@modelscript/sbol";
+import { getScadDefinition, getScadReferences } from "@modelscript/scad";
 import scadLangFallback from "@modelscript/scad/language";
 import { getSclDiagnostics, getSclDocumentSymbols, sclLanguage } from "@modelscript/scl";
 import { getSedmlDocumentSymbols, getSedmlHover, sedmlLanguage, validateSedml } from "@modelscript/sedml";
@@ -131,7 +153,7 @@ import {
 import { getSmilesDocumentSymbols, getSmilesHover, smilesLanguage, validateSmiles } from "@modelscript/smiles";
 import { getSpiceDocumentSymbols, getSpiceHover, spiceLanguage, validateSpice } from "@modelscript/spice";
 import { sspLanguage } from "@modelscript/ssp";
-import { stepLanguage } from "@modelscript/step";
+import { getStepDefinition, getStepReferences, stepLanguage } from "@modelscript/step";
 import { getSwmmDocumentSymbols, getSwmmHover, swmmLanguage, validateSwmm } from "@modelscript/swmm";
 import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
@@ -156,6 +178,7 @@ import { getWaterMlDiagnostics, getWaterMlDocumentSymbols, watermlLanguage } fro
 import {
   createOpenDriveDiagramBackend,
   createPscadDiagramBackend,
+  createPsseDiagramBackend,
   createSimulinkDiagramBackend,
   createSpiceDiagramBackend,
   createSspDiagramBackend,
@@ -324,6 +347,12 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     },
     languageDef: stepLanguage,
     handlers: stepLanguage.lsp?.handlers,
+    customHandlers: {
+      definition: (offset: number, text: string, uri?: string) =>
+        getStepDefinition(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
+      references: (offset: number, text: string, uri?: string) =>
+        getStepReferences(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
+    },
   });
 
   globalLanguageRegistry.register({
@@ -441,13 +470,23 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     },
     languageDef: scadLangFallback,
     customHandlers: {
+      definition: (offset: number, text: string, uri?: string) =>
+        getScadDefinition(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
+      references: (offset: number, text: string, uri?: string) =>
+        getScadReferences(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
       validate: async (doc: any) => {
         const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const uri = typeof doc?.uri === "string" ? doc.uri : undefined;
         const { lintScadCst, getScadParser } = await import("@modelscript/scad");
         const parser = parserService?.getParser("scad") ?? (await getScadParser());
         if (!parser) return [];
         const tree = parser.parse(text);
-        return tree?.rootNode ? lintScadCst(tree.rootNode as any, text) : [];
+        return tree?.rootNode
+          ? lintScadCst(tree.rootNode, text, {
+              uri,
+              workspace: workspaceManager.unifiedWorkspace,
+            })
+          : [];
       },
     },
   });
@@ -598,6 +637,15 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
   });
 
   // 3. PSCAD
+  const collectPscadDocs = (): Array<{ uri: string; text: string }> => {
+    const docs: Array<{ uri: string; text: string }> = [];
+    for (const d of (workspaceManager as any).documentManager?.documents?.all?.() ?? []) {
+      if (typeof d?.uri === "string" && /\.(pscx|pslx|pswx|psmx)$/i.test(d.uri) && typeof d.getText === "function") {
+        docs.push({ uri: d.uri, text: d.getText() });
+      }
+    }
+    return docs;
+  };
   globalLanguageRegistry.register({
     id: "pscad",
     name: "PSCAD",
@@ -607,6 +655,16 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       return createPscadDiagramBackend({});
     },
     customHandlers: {
+      symbols: (treeWrapper: any) => {
+        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+        return getPscadDocumentSymbols(text);
+      },
+      hover: (offset: number, text: string) => getPscadHover(text, offset),
+      complete: (offset: number, text: string) => getPscadCompletions(text, offset),
+      definition: (offset: number, text: string, uri?: string) =>
+        getPscadDefinitionLocation(text, offset, uri ?? "", collectPscadDocs(), workspaceManager.unifiedWorkspace),
+      references: (offset: number, text: string, uri?: string) =>
+        getPscadReferences(text, offset, uri ?? "", collectPscadDocs(), workspaceManager.unifiedWorkspace),
       validate: async (doc: any) => {
         const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
         const { parsePscx, lintPscx } = await import("@modelscript/pscad");
@@ -658,9 +716,12 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
             };
           }
         } catch {}
+        const strictNetlist = params?.allowSyntheticFallback ? false : (params?.strictNetlist ?? true);
         return runPscadSimulationPipeline({
           documentText: text,
           runSimulation: true,
+          strictNetlist,
+          strict: params?.strict,
           durationSec: params?.durationSec,
           timeStepSec: params?.timeStepSec,
           verifyIeee2800: Boolean(params?.verifyIeee2800),
@@ -668,6 +729,17 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
           exportOut: params?.exportOut ?? true,
           solverRunner,
         });
+      },
+      run_mrun_sweep: async (
+        ctx: { documentText?: string },
+        params?: { documentText?: string } & import("@modelscript/pscad").MultipleRunOptions,
+      ) => {
+        const text = params?.documentText ?? ctx.documentText;
+        if (!text) return null;
+        const { parsePscx, extractEmtNetlist, runMultipleRunSweep } = await import("@modelscript/pscad");
+        const project = parsePscx(text);
+        const netlist = extractEmtNetlist(project);
+        return runMultipleRunSweep(netlist, params);
       },
     },
     disposables: [],
@@ -680,7 +752,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".ez5", ".ezm", ".ezd", ".eas"],
     languageDef: easy5Language,
     customHandlers: {
-      symbols: (treeWrapper: any) => {
+      symbols: (treeWrapper: string | { text?: string }) => {
         const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
         return getEasy5DocumentSymbols(text);
       },
@@ -839,6 +911,12 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     name: "PSSE",
     extensions: [".raw", ".dyr", ".seq", ".con", ".mon", ".sub", ".sav", ".out"],
     languageDef: psseLanguage,
+    get workspaceIndex() {
+      return workspaceManager.unifiedWorkspace;
+    },
+    get diagramBackend() {
+      return createPsseDiagramBackend({});
+    },
     extractTheoryConstraints: async (text: string) => {
       const { parseRaw } = await import("@modelscript/psse");
       const c = parseRaw(text);
@@ -1561,6 +1639,10 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         }
         return getReqifHover(text, line, offset - lastLineStart);
       },
+      definition: (offset: number, text: string, uri?: string) =>
+        getReqifDefinition(text, offset, uri ?? "file:///requirements.reqif", workspaceManager.unifiedWorkspace),
+      references: (offset: number, text: string, uri?: string) =>
+        getReqifReferences(text, offset, uri ?? "file:///requirements.reqif", workspaceManager.unifiedWorkspace),
       validate: (doc: any) => validateReqif(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     actionHandlers: {
@@ -3401,12 +3483,16 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
   globalLanguageRegistry.register({
     id: "qif",
     name: "QIF",
-    extensions: [".qif", ".qif.json"],
+    extensions: [".qif", ".qif.xml", ".qif.json"],
     languageDef: qifLanguage,
     customHandlers: {
       symbols: (treeWrapper: any) =>
         getQifDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getQifHover(text, offset),
+      definition: (offset: number, text: string, uri?: string) =>
+        getQifDefinition(text, offset, uri ?? "file:///document.qif", workspaceManager.unifiedWorkspace),
+      references: (offset: number, text: string, uri?: string) =>
+        getQifReferences(text, offset, uri ?? "file:///document.qif", workspaceManager.unifiedWorkspace),
       validate: (doc: any) => validateQif(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
     disposables: [],

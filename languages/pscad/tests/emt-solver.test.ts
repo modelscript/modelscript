@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { EmtSolver, runEmtSimulation, type EmtNetlist } from "../src/index.js";
+import { EmtSolver, extractEmtNetlist, parsePscx, runEmtSimulation, type EmtNetlist } from "../src/index.js";
 
 describe("Native Dommel Companion-Circuit EMT Solver with CDA", () => {
   it("should solve a 3-phase AC transmission line with cached LU factorization", () => {
@@ -45,8 +45,8 @@ describe("Native Dommel Companion-Circuit EMT Solver with CDA", () => {
     const result = solver.solve();
 
     assert.equal(result.metrics.totalSteps, 1000);
-    // On static topology without switching, LU factorization is executed only once per 3 phases
-    assert.equal(result.metrics.luFactorizations, 3);
+    // On static topology without switching, LU factorization runs once (1 coupled 3-phase WASM matrix or 3 per-phase TS matrices)
+    assert.ok(result.metrics.luFactorizations === 1 || result.metrics.luFactorizations === 3);
     assert.equal(result.metrics.switchingEvents, 0);
 
     const vBus2 = result.busVoltages.get("Bus2");
@@ -964,5 +964,164 @@ describe("Native Dommel Companion-Circuit EMT Solver with CDA", () => {
     assert.ok(resWithArrester.surgeArresterEnergies !== undefined);
     const energyKj = resWithArrester.surgeArresterEnergies.get("MOV_SUB");
     assert.ok(energyKj !== undefined && energyKj > 0, `Expected positive dissipated energy, got ${energyKj} kJ`);
+  });
+
+  it("reuses topology bitmask LRU LU cache across active faults and fault clearance", () => {
+    const netlist: EmtNetlist = {
+      name: "LuCacheFaultTest",
+      nominalFrequencyHz: 60.0,
+      buses: new Map([
+        ["B1", { id: "B1", baseKv: 230.0, nominalKv: 230.0, connectedBranchIds: ["L12"] }],
+        ["B2", { id: "B2", baseKv: 230.0, nominalKv: 230.0, connectedBranchIds: ["L12", "Load2"] }],
+      ]),
+      sources: [{ id: "S1", bus: "B1", voltageKv: 230.0, frequencyHz: 60.0, rSourceOhm: 0.4, lSourceHenry: 0.004 }],
+      branches: [
+        { id: "L12", fromBus: "B1", toBus: "B2", rOhm: 1.0, lHenry: 0.015, cFarad: 1e-6 },
+        { id: "Load2", fromBus: "B2", toBus: "GND", rOhm: 60.0, lHenry: 0.02, cFarad: 0.0 },
+      ],
+      faults: [{ id: "F1", bus: "B2", faultType: "3PH", startSec: 0.01, endSec: 0.03, rFaultOhm: 0.2 }],
+    };
+
+    const res = runEmtSimulation(netlist, { timeStepSec: 50e-6, durationSec: 0.05 });
+    assert.equal(res.metrics.totalSteps, 1000);
+    // Only 2 distinct topologies exist: fault-off (t < 0.01 & t > 0.03) and fault-on (0.01..0.03).
+    // Without topology bitmask caching, 400 steps during the fault re-factorized on every step!
+    assert.equal(res.metrics.luFactorizations, 6);
+    assert.equal(res.metrics.luCacheHits, 1);
+  });
+
+  it("solves coupled multi-port Surge Arrester Newton-Raphson accurately for electrically adjacent MOVs", () => {
+    const netlist: EmtNetlist = {
+      name: "CoupledMovNrTest",
+      nominalFrequencyHz: 60.0,
+      buses: new Map([
+        ["Src", { id: "Src", baseKv: 500.0, nominalKv: 500.0, connectedBranchIds: ["Sw"] }],
+        ["Send", { id: "Send", baseKv: 500.0, nominalKv: 500.0, connectedBranchIds: ["Sw", "Line1"] }],
+        ["TieA", { id: "TieA", baseKv: 500.0, nominalKv: 500.0, connectedBranchIds: ["Line1", "Tie"] }],
+        ["TieB", { id: "TieB", baseKv: 500.0, nominalKv: 500.0, connectedBranchIds: ["Tie", "TermB"] }],
+      ]),
+      sources: [{ id: "Gen", bus: "Src", voltageKv: 500.0, frequencyHz: 60.0, rSourceOhm: 0.5, lSourceHenry: 0.01 }],
+      switches: [
+        {
+          id: "Sw",
+          fromBus: "Src",
+          toBus: "Send",
+          initialClosed: false,
+          actionTimeSec: 0.005,
+          rClosedOhm: 1e-4,
+          rOpenOhm: 1e6,
+        },
+      ],
+      branches: [
+        { id: "Tie", fromBus: "TieA", toBus: "TieB", rOhm: 0.5, lHenry: 0.002, cFarad: 0.0 },
+        { id: "TermB", fromBus: "TieB", toBus: "GND", rOhm: 1e6, lHenry: 0.0, cFarad: 0.0 },
+      ],
+      transmissionLines: [
+        {
+          id: "Line1",
+          fromBus: "Send",
+          toBus: "TieA",
+          lengthKm: 250.0,
+          rPerKm: 0.025,
+          lPerKm: 0.95e-3,
+          cPerKm: 12.5e-9,
+          modelType: "bergeron",
+        },
+      ],
+      surgeArresters: [
+        { id: "MOV_1", fromBus: "TieA", toBus: "GND", vRefKv: 520.0, rClampOhm: 0.5 },
+        { id: "MOV_2", fromBus: "TieB", toBus: "GND", vRefKv: 520.0, rClampOhm: 0.5 },
+      ],
+    };
+
+    const res = runEmtSimulation(netlist, { timeStepSec: 50e-6, durationSec: 0.03, enableCda: true });
+    assert.ok((res.metrics.coupledNonlinearIterations ?? 0) > 0, "Expected coupled MOV Newton iterations");
+    const vB = res.busVoltages.get("TieB")!;
+    const maxVb = Math.max(...Array.from(vB).map(Math.abs));
+    assert.ok(maxVb < 560e3, `Coupled MOVs should clamp peak below 560 kV, got ${(maxVb / 1e3).toFixed(1)} kV`);
+    assert.ok((res.surgeArresterEnergies?.get("MOV_1") ?? 0) > 0);
+    assert.ok((res.surgeArresterEnergies?.get("MOV_2") ?? 0) > 0);
+  });
+
+  it("supports waitForCurrentZero AC breaker interruption with sub-step zero-crossing interpolation", () => {
+    const netlist: EmtNetlist = {
+      name: "CurrentZeroBreaker",
+      nominalFrequencyHz: 60.0,
+      buses: new Map([
+        ["Src", { id: "Src", baseKv: 138.0, nominalKv: 138.0, connectedBranchIds: ["Brk"] }],
+        ["LoadBus", { id: "LoadBus", baseKv: 138.0, nominalKv: 138.0, connectedBranchIds: ["Brk", "IndLoad"] }],
+      ]),
+      sources: [{ id: "S1", bus: "Src", voltageKv: 138.0, frequencyHz: 60.0, rSourceOhm: 0.3, lSourceHenry: 0.002 }],
+      switches: [
+        {
+          id: "Brk",
+          fromBus: "Src",
+          toBus: "LoadBus",
+          initialClosed: true,
+          actionTimeSec: 0.0155,
+          rClosedOhm: 1e-4,
+          rOpenOhm: 1e6,
+          waitForCurrentZero: true,
+        } as never,
+      ],
+      branches: [{ id: "IndLoad", fromBus: "LoadBus", toBus: "GND", rOhm: 25.0, lHenry: 0.06, cFarad: 0.0 }],
+    };
+
+    const res = runEmtSimulation(netlist, { timeStepSec: 50e-6, durationSec: 0.04, enableCda: true });
+    assert.equal(
+      res.metrics.switchingEvents,
+      3,
+      "Three phases should interrupt sequentially at their respective current zeros",
+    );
+    assert.ok((res.metrics.interpolatedZeroCrossings ?? 0) >= 3);
+    const vLoad = res.busVoltages.get("LoadBus")!;
+    // After all phases interrupt (t > 0.032s), load bus voltage decays near zero without huge chop spikes
+    let maxLateV = 0;
+    for (let k = 680; k < 800; k++) {
+      maxLateV = Math.max(maxLateV, Math.abs(vLoad[k]!));
+    }
+    assert.ok(maxLateV < 5e3, `Expected decayed load voltage after current-zero opening, got ${maxLateV} V`);
+  });
+
+  it("lowers and steps custom <segment name='C'> user-defined model via EmtSolver", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<project name="CUdmTest" version="5.0.0">
+  <param name="time_step" value="50.0"/>
+  <param name="time_duration" value="0.01"/>
+  <definitions>
+    <definition name="CGainBlock" type="module">
+      <ports>
+        <port name="InSig" kind="signal" dim="1"/>
+        <port name="OutSig" kind="signal" dim="1"/>
+      </ports>
+      <script>
+        <segment name="C"><![CDATA[
+double x = $InSig;
+$OutSig = 2.0 * x + 5.0;
+]]></segment>
+      </script>
+    </definition>
+    <definition name="Main" type="module"><schematic>
+      <Bus name="B1" id="B1" x="100" y="100" length="20" vbase="230.0"/>
+      <User classid="UserCmp" defn="CUdmTest:CGainBlock" id="C1" x="200" y="100">
+        <param name="Name" value="C1"/>
+      </User>
+    </schematic></definition>
+  </definitions>
+</project>`;
+    const netlist = extractEmtNetlist(parsePscx(xml));
+    assert.equal(netlist.customFortranBlocks?.length, 1);
+    const blk = netlist.customFortranBlocks![0]!;
+    const out: Record<string, number> = {};
+    blk.step!({
+      inputs: { InSig: 3.5 },
+      outputs: out,
+      storf: new Float64Array(4),
+      stori: new Int32Array(2),
+      time: 0,
+      dt: 50e-6,
+      firstStep: true,
+    });
+    assert.equal(out["OutSig"], 12.0);
   });
 });

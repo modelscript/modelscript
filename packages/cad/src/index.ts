@@ -24,6 +24,7 @@ export type {
   PartEntry,
   PolyhedronOptions,
   PolyhedronSolid,
+  RevolveSolid,
   Solid,
   SolidSourceMetadata,
   SphereOptions,
@@ -47,6 +48,7 @@ export {
   linearExtrude,
   polyhedron,
   resetNameCounter,
+  revolve,
   sphere,
   tagPatch,
   torus,
@@ -260,6 +262,7 @@ export {
   STUDIO_SOFTBOX_LOBES,
   classifyAlloyPreset,
   evaluateStudioDomeColor,
+  sliceSectionContoursAtPlane,
   synthesizeBrushedAlloyTextures,
   type AlloyMaterialSpec,
   type AlloyPresetKey,
@@ -304,3 +307,10 @@ export {
   type SpoolKinematicsSpec,
   type StepProvenanceMeta,
 } from "./step-provenance.js";
+export {
+  buildRobotAnimationBindings,
+  parseObjMesh,
+  parseStlMesh,
+  type LoadedMeshBuffers,
+  type RobotSceneInput,
+} from "./urdf-scene-builder.js";

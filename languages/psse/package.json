@@ -49,12 +49,14 @@
     "assets/**"
   ],
   "scripts": {
-    "build": "node ../../scripts/build-language-parser.js && tsc",
+    "bench:accc": "tsx tests/run-70k-accc.ts",
+    "build": "npm run sync:schemas && node ../../scripts/build-language-parser.js && npm run build:wasm && tsc",
     "build:parser": "node ../../scripts/build-language-parser.js --force",
+    "build:wasm": "node scripts/build-wasm.js",
     "clean": "rimraf dist src-gen as-gen *.wasm",
     "lint": "eslint src tests --no-warn-ignored",
+    "sync:schemas": "tsx scripts/sync-dyr-schemas.ts",
     "test": "node ../../scripts/test-runner.js",
-    "bench:accc": "tsx tests/run-70k-accc.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -63,6 +65,7 @@
     "@modelscript/runtime": "*"
   },
   "devDependencies": {
+    "@modelscript/simulate": "*",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"
   },

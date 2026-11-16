@@ -9,7 +9,10 @@
  * Go-to-Definition, Document Symbols, and 1-click Quick-Fix Code Actions (`M6001–M6008`).
  */
 
+import { getCCompletions, getCHover } from "@modelscript/c";
 import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import { getFortranCompletions, getFortranHover } from "@modelscript/fortran";
+import type { SymbolEntry, UnifiedWorkspace } from "@modelscript/runtime";
 import { lintPscx } from "../lints/index.js";
 import { readDefinitionForm } from "../model/definition-form.js";
 import type { ModelDefinition, ModelPort } from "../model/pscad-model.js";
@@ -354,59 +357,87 @@ export function buildComponentXmlSnippet(
  * Context-aware LSP Completion items for `.pscx` / `.pslx` XML editing.
  */
 export function getPscadCompletions(text: string, offset: number) {
-  const prefix = text.slice(Math.max(0, offset - 300), offset);
-  const currentLineStart = text.lastIndexOf("\n", offset - 1) + 1;
-  const linePrefix = text.slice(currentLineStart, offset);
+  const xmlDoc = parseXml(text);
+  const embedded = resolveEmbeddedSegmentAtOffset(xmlDoc.root, text, offset);
+  if (embedded) {
+    if (embedded.language === "fortran") {
+      return [...PSCAD_FORTRAN_RUNTIME_COMPLETIONS, ...getFortranCompletions(embedded.bodyText, embedded.localPos)];
+    }
+    return [...PSCAD_C_RUNTIME_COMPLETIONS, ...getCCompletions(embedded.bodyText, embedded.localPos)];
+  }
+
+  const elAtCursor = xmlDoc.root ? findElementAtOffset(xmlDoc.root, offset) : undefined;
+
+  // Locate enclosing <User> / <Component> element via XML CST parent chain
+  let enclosingUserEl: XmlElement | undefined = elAtCursor;
+  while (
+    enclosingUserEl &&
+    enclosingUserEl.name.toLowerCase() !== "user" &&
+    enclosingUserEl.name.toLowerCase() !== "component"
+  ) {
+    enclosingUserEl = enclosingUserEl.parent ?? undefined;
+  }
+
+  let enclosingSchema: PscadComponentSchema | undefined;
+  if (enclosingUserEl) {
+    const defAttr = findAttrCI(enclosingUserEl, "defn") ?? findAttrCI(enclosingUserEl, "name");
+    if (defAttr?.value) {
+      enclosingSchema = getMasterComponentSchema(defAttr.value);
+    }
+  }
+
+  const tagLower = elAtCursor?.name.toLowerCase() ?? "";
 
   // 1. Inside `<User ... name="` or `defn="`: suggest all Master Library component definitions
-  if (/<User\b[^>]*?\b(?:name|defn)\s*=\s*["'][^"']*$/i.test(linePrefix)) {
-    return getPscadSchemasFromLibraries()
-      .filter((s) => s.domain !== "bus")
-      .map((s) => ({
-        label: s.className,
-        kind: 7, // CompletionItemKind.Class
-        detail: `${s.label} (${s.category})`,
-        documentation: s.description,
-      }));
-  }
-
-  // Find enclosing `<User ... name="master:...">` block before `offset`
-  const beforeText = text.slice(0, offset);
-  const lastUserOpen = beforeText.lastIndexOf("<User");
-  const lastUserClose = beforeText.lastIndexOf("</User>");
-  let enclosingSchema: PscadComponentSchema | undefined;
-  if (lastUserOpen > lastUserClose) {
-    const userHeader = beforeText.slice(lastUserOpen, Math.min(text.length, lastUserOpen + 250));
-    const defMatch = /\b(?:name|defn)\s*=\s*["']([^"']+)["']/i.exec(userHeader);
-    if (defMatch?.[1]) {
-      enclosingSchema = getMasterComponentSchema(defMatch[1]);
+  if (elAtCursor && (tagLower === "user" || tagLower === "component")) {
+    const defAttr = findAttrCI(elAtCursor, "defn");
+    const nameAttr = findAttrCI(elAtCursor, "name");
+    const inDefAttr = defAttr && offset >= defAttr.valueStart && offset <= defAttr.valueEnd;
+    const inNameAttr = nameAttr && offset >= nameAttr.valueStart && offset <= nameAttr.valueEnd;
+    if (inDefAttr || inNameAttr) {
+      return getPscadSchemasFromLibraries()
+        .filter((s) => s.domain !== "bus")
+        .map((s) => ({
+          label: s.className,
+          kind: 7, // CompletionItemKind.Class
+          detail: `${s.label} (${s.category})`,
+          documentation: s.description,
+        }));
     }
   }
 
-  // 2. Inside `<param name="key" value="...`: suggest enum options if parameter has options
-  const valMatch = /<param\s+name\s*=\s*["']([^"']+)["']\s+value\s*=\s*["'][^"']*$/i.exec(linePrefix);
-  if (valMatch && enclosingSchema) {
-    const paramKey = valMatch[1]!;
-    const pSchema = enclosingSchema.parameters.find(
-      (p) =>
-        p.key.toLowerCase() === paramKey.toLowerCase() ||
-        p.aliases?.some((a) => a.toLowerCase() === paramKey.toLowerCase()),
-    );
-    if (pSchema?.options) {
-      return pSchema.options.map((opt) => ({
-        label: opt.value,
-        kind: 13, // CompletionItemKind.EnumMember
-        detail: opt.label,
-        documentation: `${pSchema.label}: ${opt.label}`,
+  // 2. Inside `<param name="..." value="..."/>`: inspect XML CST attributes directly
+  if (elAtCursor && tagLower === "param") {
+    const nameAttr = findAttrCI(elAtCursor, "name");
+    const valAttr = findAttrCI(elAtCursor, "value");
+    if (valAttr && offset >= valAttr.valueStart && offset <= valAttr.valueEnd && enclosingSchema && nameAttr?.value) {
+      const paramKey = nameAttr.value;
+      const pSchema = enclosingSchema.parameters.find(
+        (p) =>
+          p.key.toLowerCase() === paramKey.toLowerCase() ||
+          p.aliases?.some((a) => a.toLowerCase() === paramKey.toLowerCase()),
+      );
+      if (pSchema?.options) {
+        return pSchema.options.map((opt) => ({
+          label: opt.value,
+          kind: 13, // CompletionItemKind.EnumMember
+          detail: opt.label,
+          documentation: `${pSchema.label}: ${opt.label}`,
+        }));
+      }
+    }
+    if (nameAttr && offset >= nameAttr.valueStart && offset <= nameAttr.valueEnd && enclosingSchema) {
+      return enclosingSchema.parameters.map((p) => ({
+        label: p.key,
+        kind: 10, // CompletionItemKind.Property
+        detail: `${p.label}${p.unit ? ` [${p.unit}]` : ""} (default: ${p.defaultValue})`,
+        documentation: p.description,
       }));
     }
   }
 
-  // 3. Inside `<param name="...`: suggest parameter names for the enclosing component (or project settings)
-  if (
-    /<param\s+name\s*=\s*["'][^"']*$/i.test(linePrefix) ||
-    (prefix.includes("<paramlist") && !linePrefix.includes("<param"))
-  ) {
+  // 3. Inside `<paramlist>` or `<param` without enclosing attribute value: suggest component or project settings parameters
+  if (tagLower === "paramlist" || tagLower === "param") {
     if (enclosingSchema) {
       return enclosingSchema.parameters.map((p) => ({
         label: p.key,
@@ -415,7 +446,6 @@ export function getPscadCompletions(text: string, offset: number) {
         documentation: p.description,
       }));
     }
-    // Project-level settings
     return [
       {
         label: "time_step",
@@ -438,6 +468,21 @@ export function getPscadCompletions(text: string, offset: number) {
     ];
   }
 
+  // Fallback for incomplete tag edits in progress where parser hasn't closed `<User ...` or `<param ...` yet
+  const lineStart = text.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
+  const linePrefix = text.slice(lineStart, offset);
+  const lastUserOpen = linePrefix.lastIndexOf("<User");
+  if (lastUserOpen >= 0 && !linePrefix.slice(lastUserOpen).includes(">")) {
+    return getPscadSchemasFromLibraries()
+      .filter((s) => s.domain !== "bus")
+      .map((s) => ({
+        label: s.className,
+        kind: 7,
+        detail: `${s.label} (${s.category})`,
+        documentation: s.description,
+      }));
+  }
+
   // 4. Default top-level XML/PSCAD completions
   return getPscadSchemasFromLibraries().map((s) => ({
     label: s.className,
@@ -448,14 +493,38 @@ export function getPscadCompletions(text: string, offset: number) {
 }
 
 /**
- * Generates a rich Markdown Hover card with computed electrical impedances & topology for `.pscx` elements.
+ * Generates a rich Markdown Hover card with computed electrical impedances & topology for `.pscx` elements
+ * via the native WASM XML CST (`parseXml`).
  */
 export function getPscadHover(text: string, offset: number): { contents: string; line?: number | undefined } | null {
   try {
+    const xmlDoc = parseXml(text);
+    const embedded = resolveEmbeddedSegmentAtOffset(xmlDoc.root, text, offset);
+    if (embedded) {
+      const hoverWord = extractIdentifierAtPosition(embedded.bodyText, embedded.localPos);
+      const runtimeDoc = hoverWord ? PSCAD_EMBEDDED_RUNTIME_HOVER[hoverWord.toUpperCase()] : undefined;
+      if (runtimeDoc) {
+        return {
+          line: embedded.startLine + embedded.localPos.line + 1,
+          contents: runtimeDoc,
+        };
+      }
+      const delegated =
+        embedded.language === "fortran"
+          ? getFortranHover(embedded.bodyText, embedded.localPos)
+          : getCHover(embedded.bodyText, embedded.localPos);
+      if (delegated) {
+        const md = typeof delegated.contents === "string" ? delegated.contents : delegated.contents.value;
+        return {
+          line: embedded.startLine + embedded.localPos.line + 1,
+          contents: md,
+        };
+      }
+      return null;
+    }
+
     const project = parsePscx(text);
     const netlist = extractEmtNetlist(project);
-    const before = text.slice(0, offset);
-    const cursorLine = before.split(/\r?\n/).length;
 
     const allComponents = [
       ...project.rootModule.components,
@@ -463,37 +532,39 @@ export function getPscadHover(text: string, offset: number): { contents: string;
     ];
     const allBuses = [...project.rootModule.buses, ...Array.from(project.subModules.values()).flatMap((m) => m.buses)];
 
-    // Check if cursor is on or inside a `<Bus>`
-    const bus = allBuses.find(
-      (b) =>
-        b.line === cursorLine ||
-        (b.line && Math.abs(b.line - cursorLine) <= 2 && text.split(/\r?\n/)[cursorLine - 1]?.includes(b.name)),
-    );
-    if (bus) {
-      const netBus = netlist.buses.get(bus.name) ?? netlist.buses.get(bus.id);
-      const connected = netBus?.connectedBranchIds.join(", ") || "None";
-      return {
-        line: bus.line,
-        contents: [
-          `### ⚡ 3-Phase Electrical Busbar \`${bus.name}\``,
-          `- **Nominal Voltage ($V_{\\text{LL,RMS}}$):** \`${bus.voltageBaseKv ?? 230} kV\``,
-          `- **Phase Nodes:** \`${bus.phaseCount}-phase (A, B, C)\``,
-          `- **Connected Apparatus / Branches:** \`${connected}\``,
-        ].join("\n"),
-      };
+    // 1. Check if cursor is on or inside a `<Bus>` XML CST element
+    const busEl = xmlDoc.root ? findAncestorAtOffset(xmlDoc.root, offset, "bus") : undefined;
+    if (busEl) {
+      const busId = findAttrCI(busEl, "id")?.value;
+      const busName = findAttrCI(busEl, "name")?.value;
+      const bus =
+        allBuses.find((b) => b.sourceRange && b.sourceRange.startOffset === busEl.start) ??
+        allBuses.find((b) => (busId && b.id === busId) || (busName && b.name === busName));
+      if (bus) {
+        const netBus = netlist.buses.get(bus.name) ?? netlist.buses.get(bus.id);
+        const connected = netBus?.connectedBranchIds.join(", ") || "None";
+        return {
+          line: bus.line,
+          contents: [
+            `### ⚡ 3-Phase Electrical Busbar \`${bus.name}\``,
+            `- **Nominal Voltage ($V_{\\text{LL,RMS}}$):** \`${bus.voltageBaseKv ?? 230} kV\``,
+            `- **Phase Nodes:** \`${bus.phaseCount}-phase (A, B, C)\``,
+            `- **Connected Apparatus / Branches:** \`${connected}\``,
+          ].join("\n"),
+        };
+      }
     }
 
-    // Check if cursor is on or inside a `<User>` component block
-    for (const cmp of allComponents) {
-      if (!cmp.line) continue;
-      const lines = text.split(/\r?\n/);
-      let endLine = cmp.line;
-      if (!/\/>\s*$/.test(lines[cmp.line - 1] ?? "")) {
-        while (endLine < lines.length && !/<\/(?:User|Component)>/i.test(lines[endLine - 1] ?? "")) {
-          endLine++;
-        }
-      }
-      if (cursorLine >= cmp.line && cursorLine <= endLine) {
+    // 2. Check if cursor is on or inside a `<User>` or `<Component>` XML CST element
+    const cmpEl =
+      (xmlDoc.root ? findAncestorAtOffset(xmlDoc.root, offset, "user") : undefined) ??
+      (xmlDoc.root ? findAncestorAtOffset(xmlDoc.root, offset, "component") : undefined);
+    if (cmpEl) {
+      const cmpId = findAttrCI(cmpEl, "id")?.value;
+      const cmp =
+        allComponents.find((c) => c.sourceRange && c.sourceRange.startOffset === cmpEl.start) ??
+        allComponents.find((c) => cmpId && c.id === cmpId);
+      if (cmp) {
         const defName = cmp.definitionName.includes(":") ? cmp.definitionName.split(":").pop()! : cmp.definitionName;
         const def = project.definitions?.get(defName) ?? project.definitions?.get(cmp.definitionName);
         const schema = getMasterComponentSchema(cmp.definitionName);
@@ -681,6 +752,150 @@ export function getPscadHover(text: string, offset: number): { contents: string;
   return null;
 }
 
+const EMBEDDED_FORTRAN_SEGMENTS = new Set(["fortran", "dsdyn", "dsout", "computations", "checks"]);
+
+const PSCAD_FORTRAN_RUNTIME_COMPLETIONS = [
+  {
+    label: "STORF",
+    kind: 6,
+    detail: "REAL*8 array (EMTDC persistent floating-point storage)",
+    documentation: "EMTDC persistent REAL*8 array indexed by NSTORF.",
+  },
+  {
+    label: "STORI",
+    kind: 6,
+    detail: "INTEGER array (EMTDC persistent integer storage)",
+    documentation: "EMTDC persistent INTEGER array indexed by NSTORI.",
+  },
+  {
+    label: "STORL",
+    kind: 6,
+    detail: "LOGICAL array (EMTDC persistent logical storage)",
+    documentation: "EMTDC persistent LOGICAL array indexed by NSTORL.",
+  },
+  {
+    label: "STORC",
+    kind: 6,
+    detail: "COMPLEX array (EMTDC persistent complex storage)",
+    documentation: "EMTDC persistent COMPLEX array indexed by NSTORC.",
+  },
+  {
+    label: "NSTORF",
+    kind: 6,
+    detail: "INTEGER pointer into STORF()",
+    documentation: "Auto-incremented floating-point storage pointer (advance in DSDYN/DSOUT identically).",
+  },
+  {
+    label: "NSTORI",
+    kind: 6,
+    detail: "INTEGER pointer into STORI()",
+    documentation: "Auto-incremented integer storage pointer.",
+  },
+  {
+    label: "TIME",
+    kind: 6,
+    detail: "REAL*8 current EMT simulation time [s]",
+    documentation: "Current PSCAD/EMTDC simulation elapsed time in seconds.",
+  },
+  {
+    label: "DELT",
+    kind: 6,
+    detail: "REAL*8 fixed EMT simulation step Δt [s]",
+    documentation: "Fixed EMT integration time step in seconds.",
+  },
+  {
+    label: "TIMEZERO",
+    kind: 6,
+    detail: "LOGICAL initial step guard (.TRUE. at t=0)",
+    documentation: "True only during t=0 initialization; guard STORF/STORI initialization with TIMEZERO.",
+  },
+  {
+    label: "FIRSTSTEP",
+    kind: 6,
+    detail: "LOGICAL first time-step flag",
+    documentation: "True on the initial dynamic integration step.",
+  },
+];
+
+const PSCAD_C_RUNTIME_COMPLETIONS = [
+  { label: "STORF", kind: 6, detail: "double STORF[] — EMTDC persistent double storage" },
+  { label: "STORI", kind: 6, detail: "int STORI[] — EMTDC persistent int storage" },
+  { label: "NSTORF", kind: 6, detail: "int NSTORF — floating-point storage pointer" },
+  { label: "NSTORI", kind: 6, detail: "int NSTORI — integer storage pointer" },
+  { label: "TIME", kind: 6, detail: "double TIME — current simulation time [s]" },
+  { label: "DELT", kind: 6, detail: "double DELT — EMT simulation time step [s]" },
+  { label: "TIMEZERO", kind: 6, detail: "int TIMEZERO — non-zero at t=0 initialization" },
+];
+
+const PSCAD_EMBEDDED_RUNTIME_HOVER: Record<string, string> = {
+  STORF:
+    "**`STORF(idx)`** — EMTDC persistent `REAL*8` component instance state array (re-entrant across multiple component instances).",
+  STORI:
+    "**`STORI(idx)`** — EMTDC persistent `INTEGER` component instance state array (re-entrant across multiple component instances).",
+  STORL: "**`STORL(idx)`** — EMTDC persistent `LOGICAL` component instance state array.",
+  STORC: "**`STORC(idx)`** — EMTDC persistent `COMPLEX*16` component instance state array.",
+  NSTORF:
+    "**`NSTORF`** — Storage offset pointer into `STORF()`. Must be incremented identically in `Dsdyn` and `Dsout` segments (`NSTORF = NSTORF + N`).",
+  NSTORI: "**`NSTORI`** — Storage offset pointer into `STORI()` (`NSTORI = NSTORI + N`).",
+  TIME: "**`TIME`** — Current EMTDC simulation time in seconds (`REAL*8`).",
+  DELT: "**`DELT`** — Fixed EMTDC Dommel companion time step $\\Delta t$ in seconds (`REAL*8`).",
+  TIMEZERO:
+    "**`TIMEZERO`** — Logical flag (`LOGICAL`), `.TRUE.` only during $t = 0$ initialization before first integration step.",
+  FIRSTSTEP: "**`FIRSTSTEP`** — Logical flag (`LOGICAL`), `.TRUE.` on the first integration step of the run.",
+};
+
+interface ResolvedEmbeddedSegment {
+  language: "fortran" | "c";
+  segmentName: string;
+  bodyText: string;
+  localPos: { line: number; character: number };
+  startLine: number;
+}
+
+function resolveEmbeddedSegmentAtOffset(
+  xmlRoot: XmlElement | null,
+  text: string,
+  offset: number,
+): ResolvedEmbeddedSegment | null {
+  if (!xmlRoot) return null;
+  const segEl = findAncestorAtOffset(xmlRoot, offset, "segment");
+  if (!segEl || segEl.selfClosing) return null;
+
+  const segName = findAttrCI(segEl, "name")?.value ?? "";
+  const lowerName = segName.toLowerCase();
+  const language: "fortran" | "c" | null =
+    lowerName === "c" ? "c" : EMBEDDED_FORTRAN_SEGMENTS.has(lowerName) ? "fortran" : null;
+  if (!language) return null;
+
+  let bodyStart = -1;
+  let bodyText = "";
+  if (segEl.cdata.length > 0) {
+    const cd = segEl.cdata.find((c) => offset >= c.start && offset <= c.end);
+    if (!cd) return null;
+    bodyStart = cd.start;
+    bodyText = cd.text;
+  } else if (offset >= segEl.openEnd && offset <= segEl.closeStart) {
+    bodyStart = segEl.openEnd;
+    bodyText = text.slice(segEl.openEnd, segEl.closeStart);
+  } else {
+    return null;
+  }
+
+  const localPos = createXmlOffsetMapper(bodyText).toLineCol(Math.max(0, offset - bodyStart));
+  const startLine = createXmlOffsetMapper(text).toLineCol(bodyStart).line;
+  return { language, segmentName: segName, bodyText, localPos, startLine };
+}
+
+function extractIdentifierAtPosition(source: string, pos: { line: number; character: number }): string | null {
+  const lines = source.split(/\r?\n/);
+  const line = lines[pos.line];
+  if (!line) return null;
+  const left = line.slice(0, pos.character).match(/[A-Za-z_]\w*$/);
+  const right = line.slice(pos.character).match(/^[A-Za-z_]\w*/);
+  const word = (left ? left[0] : "") + (right ? right[0] : "");
+  return word || null;
+}
+
 function createXmlOffsetMapper(text: string) {
   const lineStarts: number[] = [0];
   for (let i = 0; i < text.length; i++) {
@@ -737,15 +952,80 @@ function walkXmlElements(el: XmlElement, visitor: (node: XmlElement) => unknown)
   return false;
 }
 
+function pscadSymbolUri(sym: SymbolEntry): string {
+  return sym.resourceId || sym.documentUri || "";
+}
+
+function pscadSymbolToLocation(sym: SymbolEntry, workspace: UnifiedWorkspace) {
+  const symUri = pscadSymbolUri(sym);
+  const docText = workspace.getDocument(symUri)?.text ?? "";
+  const mapper = createXmlOffsetMapper(docText);
+  const nameRange = sym.fieldRanges?.["name"];
+  const startOff = nameRange?.startOffset ?? sym.startOffset ?? 0;
+  const endOff = nameRange?.endOffset ?? sym.endOffset ?? startOff;
+  return {
+    uri: symUri,
+    range: mapper.toRange(startOff, Math.max(startOff, endOff)),
+  };
+}
+
+function collectPscadCrossLanguageCounterparts(
+  workspace: UnifiedWorkspace,
+  uri: string,
+  symbolName: string,
+  parentDefName?: string,
+) {
+  const uIdx = workspace.getIndex();
+  workspace.syncTggCorrespondences(uIdx);
+  const out: {
+    uri: string;
+    range: { start: { line: number; character: number }; end: { line: number; character: number } };
+  }[] = [];
+  const seen = new Set<string>();
+  const pushSym = (sym: SymbolEntry) => {
+    const loc = pscadSymbolToLocation(sym, workspace);
+    if (!loc.uri) return;
+    const key = `${loc.uri}:${loc.range.start.line}:${loc.range.start.character}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(loc);
+    }
+  };
+
+  const indexer = workspace.tggCorrespondenceIndexer;
+  for (const symId of uIdx.byName.get(symbolName) ?? []) {
+    const sym = uIdx.symbols.get(symId);
+    if (!sym || pscadSymbolUri(sym) !== uri || sym.kind === "Reference") continue;
+    if (parentDefName && sym.parentId !== null && sym.parentId !== undefined) {
+      const parentSym = uIdx.symbols.get(sym.parentId);
+      if (parentSym && parentSym.name !== parentDefName) continue;
+    }
+    for (const slot of indexer.getSlotsForSymbol(symId)) {
+      const rec = indexer.hypergraph.getRecord(slot);
+      if (!rec || rec.isRemoved) continue;
+      for (const memberId of Object.values(rec.domainNodes)) {
+        if (typeof memberId === "number" && memberId !== symId) {
+          const peer = uIdx.symbols.get(memberId);
+          if (peer) pushSym(peer);
+        }
+      }
+    }
+  }
+
+  return out;
+}
+
 /**
  * Resolves Go-to-Definition for sub-module `<User name="SubModule">`, library `<User name="my_lib:CustomCmp">`,
- * `<call name="Main">`, wireless net labels (`datalabel`/`xnode`), and `<Bus>` declarations across `.pscx`/`.pslx` files.
+ * `<call name="Main">`, wireless net labels (`datalabel`/`xnode`), `<Bus>` declarations across `.pscx`/`.pslx` files,
+ * and cross-language TGG counterparts in `UnifiedWorkspace`.
  */
 export function getPscadDefinitionLocation(
   text: string,
   offset: number,
   uri: string,
   workspaceDocs?: Iterable<{ uri: string; text: string }>,
+  workspace?: UnifiedWorkspace,
 ): {
   uri: string;
   range: { start: { line: number; character: number }; end: { line: number; character: number } };
@@ -755,8 +1035,14 @@ export function getPscadDefinitionLocation(
   const elAtCursor = findElementAtOffset(xmlDoc.root, offset);
   if (!elAtCursor) return null;
 
+  if (workspace && !workspace.getNativeFileIndex(uri)) {
+    workspace.indexDocumentText(uri, text, "pscad");
+  }
+
+  const tagLower = elAtCursor.name.toLowerCase();
+
   // 1. Check if cursor is on <param name="Name" value="NetOrInstanceName"/>
-  if (elAtCursor.name.toLowerCase() === "param" && findAttrCI(elAtCursor, "name")?.value.toLowerCase() === "name") {
+  if (tagLower === "param" && findAttrCI(elAtCursor, "name")?.value.toLowerCase() === "name") {
     const valAttrAtCursor = findAttrCI(elAtCursor, "value");
     const netName = valAttrAtCursor?.value;
     if (netName) {
@@ -766,7 +1052,7 @@ export function getPscadDefinitionLocation(
         range: { start: { line: number; character: number }; end: { line: number; character: number } };
       } | null = null;
       walkXmlElements(xmlDoc.root, (node) => {
-        if (node.name.toLowerCase() !== "param") return;
+        if (node.name.toLowerCase() !== "param") return false;
         const nAttr = findAttrCI(node, "name");
         const vAttr = findAttrCI(node, "value");
         if (nAttr?.value.toLowerCase() === "name" && vAttr?.value === netName) {
@@ -786,6 +1072,15 @@ export function getPscadDefinitionLocation(
   if (!rawTarget) return null;
   const targetLower = rawTarget.toLowerCase();
 
+  // If cursor is on `<Definition>`, `<port>`, or `<parameter>` declaration, prefer jumping to cross-language TGG peer if present
+  if (workspace && (tagLower === "definition" || tagLower === "port" || tagLower === "parameter")) {
+    const enclosingDef =
+      tagLower === "definition" ? undefined : findAncestorAtOffset(xmlDoc.root, offset, "definition");
+    const parentDefName = enclosingDef ? findAttrCI(enclosingDef, "name")?.value : undefined;
+    const peers = collectPscadCrossLanguageCounterparts(workspace, uri, rawTarget, parentDefName);
+    if (peers.length > 0) return peers[0]!;
+  }
+
   const searchInDocument = (docText: string, docUri: string) => {
     const doc = parseXml(docText);
     if (!doc.root) return null;
@@ -795,9 +1090,9 @@ export function getPscadDefinitionLocation(
       range: { start: { line: number; character: number }; end: { line: number; character: number } };
     } | null = null;
     walkXmlElements(doc.root, (node) => {
-      if (node.name.toLowerCase() !== "definition") return;
+      if (node.name.toLowerCase() !== "definition") return false;
       const nameAttr = findAttrCI(node, "name");
-      if (!nameAttr) return;
+      if (!nameAttr) return false;
       const valLower = nameAttr.value.toLowerCase();
       if (valLower === targetLower || valLower.endsWith(`:${targetLower}`)) {
         const spanEnd = nameAttr.valueEnd;
@@ -822,18 +1117,38 @@ export function getPscadDefinitionLocation(
     }
   }
 
+  // Fallback to UnifiedWorkspace: search PSCAD definitions across indexed files, then TGG-compatible foreign declarations
+  if (workspace) {
+    const uIdx = workspace.getIndex();
+    for (const symId of uIdx.byName.get(rawTarget) ?? []) {
+      const sym = uIdx.symbols.get(symId);
+      if (!sym || sym.kind === "Reference") continue;
+      if (sym.language === "pscad" && pscadSymbolUri(sym) !== uri) {
+        return pscadSymbolToLocation(sym, workspace);
+      }
+    }
+    for (const symId of uIdx.byName.get(rawTarget) ?? []) {
+      const sym = uIdx.symbols.get(symId);
+      if (!sym || sym.language === "pscad" || sym.kind === "Reference") continue;
+      if (workspace.tggProjectionTable.canResolveAs("pscad", sym)) {
+        return pscadSymbolToLocation(sym, workspace);
+      }
+    }
+  }
+
   return null;
 }
 
 /**
  * Finds all references to a PSCAD `<Definition>`, `<User>` component type, wireless net (`datalabel`/`xnode`),
- * or `<Bus>` across the current document and workspace `.pscx`/`.pslx` files.
+ * or `<Bus>` across the current document, workspace `.pscx`/`.pslx` files, and TGG cross-language peers.
  */
 export function getPscadReferences(
   text: string,
   offset: number,
   uri: string,
   workspaceDocs?: Iterable<{ uri: string; text: string }>,
+  workspace?: UnifiedWorkspace,
 ): {
   uri: string;
   range: { start: { line: number; character: number }; end: { line: number; character: number } };
@@ -842,6 +1157,10 @@ export function getPscadReferences(
   if (!curDoc.root) return [];
   const elAtCursor = findElementAtOffset(curDoc.root, offset);
   if (!elAtCursor) return [];
+
+  if (workspace && !workspace.getNativeFileIndex(uri)) {
+    workspace.indexDocumentText(uri, text, "pscad");
+  }
 
   const targetAttrKeys = new Set(["defn", "name", "value", "id"]);
   const quotedAtCursor = elAtCursor.attributes.find(
@@ -864,11 +1183,30 @@ export function getPscadReferences(
     uri: string;
     range: { start: { line: number; character: number }; end: { line: number; character: number } };
   }[] = [];
+  const seen = new Set<string>();
+  const pushLoc = (loc: {
+    uri: string;
+    range: { start: { line: number; character: number }; end: { line: number; character: number } };
+  }) => {
+    const key = `${loc.uri}:${loc.range.start.line}:${loc.range.start.character}:${loc.range.end.line}:${loc.range.end.character}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      results.push(loc);
+    }
+  };
 
   const allDocs: { uri: string; text: string }[] = [{ uri, text }];
   if (workspaceDocs) {
     for (const d of workspaceDocs) {
       if (d.uri !== uri) allDocs.push(d);
+    }
+  } else if (workspace) {
+    for (const docUri of workspace.listDocumentUris()) {
+      if (docUri === uri) continue;
+      if (/\.(pscx|pslx|pswx|psmx)$/i.test(docUri)) {
+        const docText = workspace.getDocument(docUri)?.text;
+        if (docText) allDocs.push({ uri: docUri, text: docText });
+      }
     }
   }
 
@@ -882,13 +1220,23 @@ export function getPscadReferences(
         if (valLower === cleanLower || valLower.endsWith(`:${cleanLower}`)) {
           const spanEnd = attr.valueEnd;
           const spanStart = Math.max(attr.valueStart, spanEnd - cleanSymbol.length);
-          results.push({
+          pushLoc({
             uri: doc.uri,
             range: mapper.toRange(spanStart, spanEnd),
           });
         }
       }
     });
+  }
+
+  if (workspace) {
+    const tagLower = elAtCursor.name.toLowerCase();
+    const enclosingDef =
+      tagLower === "definition" ? undefined : findAncestorAtOffset(curDoc.root, offset, "definition");
+    const parentDefName = enclosingDef ? findAttrCI(enclosingDef, "name")?.value : undefined;
+    for (const peer of collectPscadCrossLanguageCounterparts(workspace, uri, cleanSymbol, parentDefName)) {
+      pushLoc(peer);
+    }
   }
 
   return results;

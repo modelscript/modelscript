@@ -793,7 +793,7 @@ export class ArenaSimulator {
       if (block.eqIdxs.length === 1 && block.vars.length === 1) {
         const eqIdx = block.eqIdxs[0] ?? -1;
         const varIdx = block.vars[0] ?? -1;
-        if (eqIdx !== -1 && varIdx !== -1 && !this.stateVars.has(varIdx)) {
+        if (eqIdx !== -1 && varIdx !== -1 && !this.stateVars.has(varIdx) && !this.derivativeVars.has(varIdx)) {
           singleBlocks.push({ eqIdx, varIdx, blockIdx: i });
         }
       }
@@ -808,6 +808,9 @@ export class ArenaSimulator {
       typeof wasmExports.dae_batchIsolate1x1Blocks === "function" &&
       typeof wasmExports.atomicChunkAlloc === "function"
     ) {
+      if (typeof this.arena.syncWasmStringPool === "function") {
+        this.arena.syncWasmStringPool();
+      }
       const count = singleBlocks.length;
       const bytes = count * 4;
       const eqPtr = wasmExports.atomicChunkAlloc(bytes);

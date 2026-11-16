@@ -1363,15 +1363,18 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  SourceFile = 7,
-  DataRecord = 8,
-  START = 9,
-  _START = 9,
-  NumberNode = 12,
-  Number = 12,
-  QuotedString = 13,
-  Identifier = 14,
-  SymbolPunct = 15,
+  SourceFile = 10,
+  DataRecord = 11,
+  START = 12,
+  _START = 12,
+  SlashTerminator = 15,
+  BangComment = 16,
+  DoubleSlashComment = 17,
+  NumberNode = 18,
+  Number = 18,
+  QuotedString = 19,
+  Identifier = 20,
+  SymbolPunct = 21,
   EOF = 1023,
 }
 
@@ -1391,6 +1394,18 @@ export interface DataRecordNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DataRecord;
 }
 export declare function isDataRecord(node: SyntaxNode | null | undefined): node is DataRecordNode;
+export interface SlashTerminatorNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SlashTerminator;
+}
+export declare function isSlashTerminator(node: SyntaxNode | null | undefined): node is SlashTerminatorNode;
+export interface BangCommentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.BangComment;
+}
+export declare function isBangComment(node: SyntaxNode | null | undefined): node is BangCommentNode;
+export interface DoubleSlashCommentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DoubleSlashComment;
+}
+export declare function isDoubleSlashComment(node: SyntaxNode | null | undefined): node is DoubleSlashCommentNode;
 export interface NumberNodeNode extends SyntaxNode {
   readonly typeId: SyntaxKind.NumberNode;
 }
@@ -1419,6 +1434,21 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DataRecordNode;
+  };
+  export const SlashTerminator: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is SlashTerminatorNode;
+  };
+  export const BangComment: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is BangCommentNode;
+  };
+  export const DoubleSlashComment: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DoubleSlashCommentNode;
   };
   export const NumberNode: {
     readonly typeId: number;

@@ -91,7 +91,7 @@ export interface EmtSolverOptions {
   initialSnapshot?: PscadSnapshot | undefined;
   /** Maximum number of simulation steps. Default: 50,000. */
   maxSteps?: number | undefined;
-  /** Whether to execute via native WebAssembly companion solver kernel. Default: false. */
+  /** Whether to execute via native WebAssembly companion solver kernel when eligible. Default: false. */
   useWasm?: boolean | undefined;
   /** Optional boundary feeds for TS-EMT hybrid co-simulation. */
   boundaryFeeds?: EmtBoundaryFeed[] | undefined;
@@ -117,9 +117,11 @@ export interface EmtSolverOptions {
 export interface EmtSolverMetrics {
   totalSteps: number;
   luFactorizations: number;
+  luCacheHits?: number | undefined;
   switchingEvents: number;
   chatterDampedSteps: number;
   interpolatedZeroCrossings?: number | undefined;
+  coupledNonlinearIterations?: number | undefined;
   executionTimeMs: number;
 }
 
@@ -261,6 +263,8 @@ interface SwitchLike {
   poleActionTimesSec?: [number, number, number] | undefined;
   rClosedOhm?: number | undefined;
   rOpenOhm?: number | undefined;
+  /** When true, opening waits for per-phase current zero crossing to suppress current chop. */
+  waitForCurrentZero?: boolean | undefined;
 }
 
 interface LegacyBranchLike {
@@ -521,6 +525,18 @@ interface SourceInfo {
   gSrc: number;
 }
 
+interface CachedTopologyLu {
+  dense?: { lu: Float64Array; piv: Int32Array } | undefined;
+  sparse?: SparseLUFactors | undefined;
+  zArresterPorts?: Float64Array | undefined;
+  arresterThevenin?:
+    | Array<{
+        zThPhase: [number, number, number];
+        xThPhase: [Float64Array, Float64Array, Float64Array];
+      }>
+    | undefined;
+}
+
 /**
  * High-performance, zero-allocation native Dommel companion-circuit EMT solver.
  * Solves the coupled 3N x 3N phase-domain (abc) nodal conductance system:
@@ -546,6 +562,7 @@ export class EmtSolver {
   private readonly switchStates: SwitchState[] = [];
   private readonly fmuStates: FmuState[] = [];
   private readonly surgeArresters: SurgeArresterState[] = [];
+  private zArresterPorts: Float64Array = new Float64Array(0);
   private readonly busSources = new Map<number, SourceInfo[]>();
   private readonly defaultSrcR: number;
 
@@ -585,6 +602,8 @@ export class EmtSolver {
   private piv3!: Int32Array;
   private v3Step!: Float64Array;
   private luValid: boolean = false;
+  private readonly luCache = new Map<string, CachedTopologyLu>();
+  private activeTopoKey: string = "";
 
   // Sparse CCS conductance formulation for large-scale grids (nPhaseNodes >= 180)
   private useSparse: boolean = false;
@@ -601,9 +620,11 @@ export class EmtSolver {
 
   // Metrics
   private luFactorizationCount: number = 0;
+  private luCacheHitsCount: number = 0;
   private switchingEventCount: number = 0;
   private chatterDampedCount: number = 0;
   private interpolatedZeroCrossingsCount: number = 0;
+  private coupledNonlinearIterationsCount: number = 0;
 
   private readonly useWasm: boolean;
   private readonly options: EmtSolverOptions;
@@ -616,7 +637,7 @@ export class EmtSolver {
     this.omega = 2 * Math.PI * (options.nominalFrequencyHz ?? netlist.nominalFrequencyHz ?? 60.0);
     this.enableCda = options.enableCda ?? true;
     this.enableSwitchingInterpolation = options.enableSwitchingInterpolation ?? true;
-    this.useWasm = options.useWasm ?? false;
+    this.useWasm = options.useWasm ?? true;
 
     const maxSteps = options.maxSteps ?? 50000;
     this.nSteps = Math.max(10, Math.min(maxSteps, Math.floor(this.durationSec / this.timeStepSec)));
@@ -1065,6 +1086,7 @@ export class EmtSolver {
             poleActionTimesSec,
             rClosedOhm: br.rClosedOhm,
             rOpenOhm: br.rOpenOhm,
+            waitForCurrentZero: (br as { waitForCurrentZero?: boolean | undefined }).waitForCurrentZero,
           },
           fromIdx,
           toIdx,
@@ -1528,11 +1550,172 @@ export class EmtSolver {
   }
 
   /**
-   * Precomputes Thévenin driving-point impedances zTh and response vectors xTh = G3^-1 * e_uv
-   * for all registered Metal Oxide Surge Arresters (MOVs) whenever G3 is factorized.
+   * Computes a canonical topology bitmask key for per-phase switches and active faults.
+   * Returns `""` if time-varying boundaryFeeds supply dynamic Thévenin conductances.
+   */
+  private computeTopologyKey(t: number): string {
+    if (this.options?.boundaryFeeds?.some((bf) => Boolean(bf.thevenin))) {
+      return "";
+    }
+    let swKey = "";
+    for (let i = 0; i < this.switchStates.length; i++) {
+      const p = this.switchStates[i]!.phaseClosed;
+      swKey += (p[0] ? "1" : "0") + (p[1] ? "1" : "0") + (p[2] ? "1" : "0");
+    }
+    let fltKey = "";
+    const faults = this.netlist.faults;
+    if (faults && faults.length > 0) {
+      for (let i = 0; i < faults.length; i++) {
+        const flt = faults[i]!;
+        fltKey += t >= flt.startSec && t <= flt.endSec ? "1" : "0";
+      }
+    }
+    return `sw:${swKey}|flt:${fltKey}`;
+  }
+
+  private cloneSparseFactors(f: SparseLUFactors): SparseLUFactors {
+    return {
+      n: f.n,
+      lColPtr: f.lColPtr,
+      lRowIndices: f.lRowIndices,
+      lValues: f.lValues.slice(),
+      uColPtr: f.uColPtr,
+      uRowIndices: f.uRowIndices,
+      uValues: f.uValues.slice(),
+      uDiagInv: f.uDiagInv.slice(),
+      perm: f.perm.slice(),
+      permInv: f.permInv.slice(),
+      colPerm: f.colPerm,
+      scratchY: new Float64Array(f.n),
+      scratchX: f.scratchX ? new Float64Array(f.n) : undefined,
+      hasSymbolicPattern: f.hasSymbolicPattern,
+    };
+  }
+
+  private saveTopologyToCache(key: string): void {
+    if (!key) return;
+    const MAX_ENTRIES = 16;
+    if (this.luCache.has(key)) {
+      this.luCache.delete(key);
+    } else if (this.luCache.size >= MAX_ENTRIES) {
+      const oldest = this.luCache.keys().next().value;
+      if (oldest !== undefined) this.luCache.delete(oldest);
+    }
+
+    const arresterThevenin =
+      this.surgeArresters.length > 0
+        ? this.surgeArresters.map((arr) => ({
+            zThPhase: [arr.zThPhase[0], arr.zThPhase[1], arr.zThPhase[2]] as [number, number, number],
+            xThPhase: [arr.xThPhase[0].slice(), arr.xThPhase[1].slice(), arr.xThPhase[2].slice()] as [
+              Float64Array,
+              Float64Array,
+              Float64Array,
+            ],
+          }))
+        : undefined;
+
+    this.luCache.set(key, {
+      dense: !this.useSparse ? { lu: this.LU3.slice(), piv: this.piv3.slice() } : undefined,
+      sparse: this.useSparse && this.sparseFactors ? this.cloneSparseFactors(this.sparseFactors) : undefined,
+      zArresterPorts: this.zArresterPorts.length > 0 ? this.zArresterPorts.slice() : undefined,
+      arresterThevenin,
+    });
+  }
+
+  private restoreTopologyFromCache(entry: CachedTopologyLu): void {
+    if (entry.dense) {
+      this.LU3.set(entry.dense.lu);
+      this.piv3.set(entry.dense.piv);
+    } else if (entry.sparse) {
+      this.sparseFactors = this.cloneSparseFactors(entry.sparse);
+    }
+    if (entry.zArresterPorts && this.zArresterPorts.length === entry.zArresterPorts.length) {
+      this.zArresterPorts.set(entry.zArresterPorts);
+    }
+    if (entry.arresterThevenin) {
+      for (let i = 0; i < this.surgeArresters.length && i < entry.arresterThevenin.length; i++) {
+        const dst = this.surgeArresters[i]!;
+        const src = entry.arresterThevenin[i]!;
+        dst.zThPhase = [src.zThPhase[0], src.zThPhase[1], src.zThPhase[2]];
+        dst.xThPhase[0].set(src.xThPhase[0]);
+        dst.xThPhase[1].set(src.xThPhase[1]);
+        dst.xThPhase[2].set(src.xThPhase[2]);
+      }
+    }
+  }
+
+  private solveWithCachedLu(entry: CachedTopologyLu, rhs: Float64Array, out: Float64Array): void {
+    if (entry.sparse) {
+      sparseLuSolve(entry.sparse, rhs, out);
+      return;
+    }
+    if (!entry.dense) return;
+    const LU = entry.dense.lu;
+    const piv = entry.dense.piv;
+    const n = this.nPhaseNodes;
+    for (let i = 0; i < n; i++) out[i] = rhs[piv[i]!]!;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < i; j++) out[i] = out[i]! - LU[i * n + j]! * out[j]!;
+    }
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = i + 1; j < n; j++) out[i] = out[i]! - LU[i * n + j]! * out[j]!;
+      const diag = LU[i * n + i]!;
+      out[i] = Math.abs(diag) > 1e-18 ? out[i]! / diag : 0.0;
+    }
+  }
+
+  /**
+   * Solves small dense linear system `A * x = b` (`dim <= 3 * surgeArresters.length`) via partial pivoting.
+   */
+  private solveSmallDenseSystem(A: Float64Array, b: Float64Array, x: Float64Array, dim: number): boolean {
+    for (let p = 0; p < dim; p++) {
+      let maxVal = Math.abs(A[p * dim + p]!);
+      let maxRow = p;
+      for (let r = p + 1; r < dim; r++) {
+        const v = Math.abs(A[r * dim + p]!);
+        if (v > maxVal) {
+          maxVal = v;
+          maxRow = r;
+        }
+      }
+      if (maxVal < 1e-15) return false;
+      if (maxRow !== p) {
+        for (let c = p; c < dim; c++) {
+          const tmp = A[p * dim + c]!;
+          A[p * dim + c] = A[maxRow * dim + c]!;
+          A[maxRow * dim + c] = tmp;
+        }
+        const tmpB = b[p]!;
+        b[p] = b[maxRow]!;
+        b[maxRow] = tmpB;
+      }
+      const piv = A[p * dim + p]!;
+      for (let r = p + 1; r < dim; r++) {
+        const fac = A[r * dim + p]! / piv;
+        if (fac === 0) continue;
+        for (let c = p + 1; c < dim; c++) {
+          A[r * dim + c] = A[r * dim + c]! - fac * A[p * dim + c]!;
+        }
+        b[r] = b[r]! - fac * b[p]!;
+      }
+    }
+    for (let i = dim - 1; i >= 0; i--) {
+      let sum = b[i]!;
+      for (let c = i + 1; c < dim; c++) {
+        sum -= A[i * dim + c]! * x[c]!;
+      }
+      x[i] = sum / A[i * dim + i]!;
+    }
+    return true;
+  }
+
+  /**
+   * Precomputes Thévenin driving-point impedances zTh, response vectors xTh = G3^-1 * e_uv,
+   * and coupled multi-port Z_ports matrix for all registered Metal Oxide Surge Arresters (MOVs).
    */
   private updateSurgeArresterTheveninVectors(): void {
-    if (this.surgeArresters.length === 0) return;
+    const nArr = this.surgeArresters.length;
+    if (nArr === 0) return;
     const n3 = this.nPhaseNodes;
     const e = new Float64Array(n3);
 
@@ -1551,6 +1734,28 @@ export class EmtSolver {
 
         const zTh = (u >= 0 ? x[u]! : 0.0) - (v >= 0 ? x[v]! : 0.0);
         arr.zThPhase[p] = Math.max(1e-4, zTh);
+      }
+    }
+
+    const M = nArr * 3;
+    if (this.zArresterPorts.length !== M * M) {
+      this.zArresterPorts = new Float64Array(M * M);
+    }
+    for (let a = 0; a < nArr; a++) {
+      const arrA = this.surgeArresters[a]!;
+      for (let pA = 0; pA < 3; pA++) {
+        const row = a * 3 + pA;
+        const uA = arrA.fromIdx >= 0 ? 3 * arrA.fromIdx + pA : -1;
+        const vA = arrA.toIdx >= 0 ? 3 * arrA.toIdx + pA : -1;
+        for (let b = 0; b < nArr; b++) {
+          const arrB = this.surgeArresters[b]!;
+          for (let pB = 0; pB < 3; pB++) {
+            const col = b * 3 + pB;
+            const xB = arrB.xThPhase[pB]!;
+            const zAb = (uA >= 0 ? xB[uA]! : 0.0) - (vA >= 0 ? xB[vA]! : 0.0);
+            this.zArresterPorts[row * M + col] = zAb;
+          }
+        }
       }
     }
   }
@@ -1642,13 +1847,23 @@ export class EmtSolver {
       return null;
     }
 
-    // Fall back to TS if mutual branches or closed-loop relays are used
+    // Fall back to TS if features requiring coupled TS physics are active
     if (
       this.companionBranches.some((br) => Math.abs(br.gMut) > 1e-12 || br.windingConnection !== undefined) ||
       (this.netlist.protectionRelays && this.netlist.protectionRelays.length > 0) ||
       (this.netlist.converterBridges && this.netlist.converterBridges.length > 0) ||
+      this.surgeArresters.length > 0 ||
+      this.customBlockStates.length > 0 ||
+      this.csmfEvaluator !== null ||
+      this.ulmLines.length > 0 ||
+      this.bergeronLines.some((b) => b.hasModal) ||
+      (this.options.useWasm !== true &&
+        (this.bergeronLines.length > 0 || (this.netlist.faults?.length ?? 0) > 0 || this.nBuses >= 50)) ||
       this.fmuStates.length > 0 ||
-      Boolean(this.options?.boundaryFeeds?.length)
+      Boolean(this.options?.boundaryFeeds?.length) ||
+      Boolean(this.options?.initializeFromLoadFlow) ||
+      Boolean(this.options?.initialSnapshot) ||
+      (this.options.useWasm !== true && this.switchStates.length > 0)
     ) {
       return null;
     }
@@ -2152,6 +2367,10 @@ export class EmtSolver {
     this.factorize3Phase(this.G3, this.LU3, this.piv3);
     this.luValid = true;
     this.updateSurgeArresterTheveninVectors();
+    this.activeTopoKey = this.computeTopologyKey(0);
+    if (this.activeTopoKey) {
+      this.saveTopologyToCache(this.activeTopoKey);
+    }
 
     for (let step = -preSteps; step < 0; step++) {
       const t = step * this.timeStepSec;
@@ -2586,6 +2805,15 @@ export class EmtSolver {
     const vaPrevStep = new Float64Array(n);
     const vbPrevStep = new Float64Array(n);
     const vcPrevStep = new Float64Array(n);
+    const vPreStep3 = new Float64Array(this.nPhaseNodes);
+    const nArr = this.surgeArresters.length;
+    const arrM = nArr * 3;
+    const v0Step = arrM > 0 ? new Float64Array(this.nPhaseNodes) : null;
+    const arrV0 = arrM > 0 ? new Float64Array(arrM) : null;
+    const arrCurr = arrM > 0 ? new Float64Array(arrM) : null;
+    const arrRes = arrM > 0 ? new Float64Array(arrM) : null;
+    const arrDelta = arrM > 0 ? new Float64Array(arrM) : null;
+    const arrJac = arrM > 0 ? new Float64Array(arrM * arrM) : null;
 
     // Initialize closed-loop protection relay runtime states and control signal buffers
     const relayRuntimeStates = (this.netlist.protectionRelays ?? []).map((relay) => {
@@ -2638,6 +2866,7 @@ export class EmtSolver {
 
     for (let k = 0; k < this.nSteps; k++) {
       const t = this.time[k]!;
+      const prevTopoKey = this.activeTopoKey;
       if (k > 0) {
         vaPrevStep.set(this.vaStep);
         vbPrevStep.set(this.vbStep);
@@ -2645,25 +2874,48 @@ export class EmtSolver {
       }
 
       // 1. Detect switch state toggles & compute sub-step zero-crossing interpolation factor alpha
-      let topologyChanged = false;
       const switchedBusInterpolation = new Map<number, number>();
       for (const swState of this.switchStates) {
         const initClosed = Boolean(swState.sw.initialClosed);
         const poleTimes = swState.sw.poleActionTimesSec;
+        const phaseCurBufs = [swState.ia, swState.ib, swState.ic];
+        const evaluateZeroCrossOpening = (p: number): { canOpen: boolean; alpha: number } => {
+          if (!swState.sw.waitForCurrentZero || k === 0) {
+            return { canOpen: true, alpha: 0.5 };
+          }
+          const iCurr = phaseCurBufs[p]![k - 1] ?? 0;
+          const iPrev = k >= 2 ? (phaseCurBufs[p]![k - 2] ?? iCurr) : iCurr;
+          if (Math.abs(iCurr) <= 1e-6 || iPrev * iCurr <= 0) {
+            const denom = Math.abs(iPrev) + Math.abs(iCurr);
+            const rawA = denom > 1e-12 ? Math.abs(iPrev) / denom : 0.5;
+            return { canOpen: true, alpha: Math.max(0.01, Math.min(0.99, rawA)) };
+          }
+          return { canOpen: false, alpha: 0.5 };
+        };
+
         if (poleTimes) {
           for (let p = 0; p < 3; p++) {
             const actionT = poleTimes[p]!;
-            const isClosed = t >= actionT ? !initClosed : initClosed;
-            if (isClosed !== swState.phaseClosed[p]) {
-              swState.phaseClosed[p] = isClosed;
-              topologyChanged = true;
+            const desiredClosed = t >= actionT ? !initClosed : initClosed;
+            let nextClosed = desiredClosed;
+            let zeroCrossAlpha: number | undefined;
+            if (swState.phaseClosed[p] && !desiredClosed) {
+              const zc = evaluateZeroCrossOpening(p);
+              if (!zc.canOpen) {
+                nextClosed = true;
+              } else if (swState.sw.waitForCurrentZero) {
+                zeroCrossAlpha = zc.alpha;
+              }
+            }
+            if (nextClosed !== swState.phaseClosed[p]) {
+              swState.phaseClosed[p] = nextClosed;
               this.switchingEventCount++;
               if (this.enableCda) {
                 cdaCounter = 2; // Trigger 2 steps of CDA damping
               }
               if (this.enableSwitchingInterpolation) {
                 const tPrev = k > 0 ? this.time[k - 1]! : t - this.timeStepSec;
-                const rawAlpha = (actionT - tPrev) / this.timeStepSec;
+                const rawAlpha = zeroCrossAlpha ?? (actionT - tPrev) / this.timeStepSec;
                 const alpha = rawAlpha > 0.01 && rawAlpha < 0.99 ? rawAlpha : 0.5;
                 this.interpolatedZeroCrossingsCount++;
                 if (swState.fromIdx >= 0) switchedBusInterpolation.set(swState.fromIdx, alpha);
@@ -2675,26 +2927,39 @@ export class EmtSolver {
         } else {
           const overrideClosed = this.csmfBreakerOverrides.get(swState.sw.id);
           const actionT = swState.sw.actionTimeSec;
-          const isClosed = overrideClosed !== undefined ? overrideClosed : t >= actionT ? !initClosed : initClosed;
-          if (isClosed !== swState.currentClosed) {
-            swState.currentClosed = isClosed;
-            swState.phaseClosed[0] = isClosed;
-            swState.phaseClosed[1] = isClosed;
-            swState.phaseClosed[2] = isClosed;
-            topologyChanged = true;
+          const desiredClosed = overrideClosed !== undefined ? overrideClosed : t >= actionT ? !initClosed : initClosed;
+          let anyToggled = false;
+          let toggledZeroAlpha: number | undefined;
+          for (let p = 0; p < 3; p++) {
+            let nextClosed = desiredClosed;
+            if (swState.phaseClosed[p] && !desiredClosed) {
+              const zc = evaluateZeroCrossOpening(p);
+              if (!zc.canOpen) {
+                nextClosed = true;
+              } else if (swState.sw.waitForCurrentZero) {
+                toggledZeroAlpha = zc.alpha;
+              }
+            }
+            if (nextClosed !== swState.phaseClosed[p]) {
+              swState.phaseClosed[p] = nextClosed;
+              anyToggled = true;
+            }
+          }
+          if (anyToggled) {
             this.switchingEventCount++;
             if (this.enableCda) {
-              cdaCounter = 2; // Trigger 2 steps of CDA damping
+              cdaCounter = 2;
             }
             if (this.enableSwitchingInterpolation) {
               const tPrev = k > 0 ? this.time[k - 1]! : t - this.timeStepSec;
-              const rawAlpha = (actionT - tPrev) / this.timeStepSec;
+              const rawAlpha = toggledZeroAlpha ?? (actionT - tPrev) / this.timeStepSec;
               const alpha = rawAlpha > 0.01 && rawAlpha < 0.99 ? rawAlpha : 0.5;
               this.interpolatedZeroCrossingsCount++;
               if (swState.fromIdx >= 0) switchedBusInterpolation.set(swState.fromIdx, alpha);
               if (swState.toIdx >= 0) switchedBusInterpolation.set(swState.toIdx, alpha);
             }
           }
+          swState.currentClosed = swState.phaseClosed[0] || swState.phaseClosed[1] || swState.phaseClosed[2];
         }
       }
 
@@ -2706,8 +2971,18 @@ export class EmtSolver {
         }
       }
 
-      // 3. Assemble coupled 3N x 3N conductance matrix if topology changed or invalid
-      if (!this.luValid || topologyChanged || anyFaultActive) {
+      // 3. Assemble coupled 3N x 3N conductance matrix on topology key miss (cache hit swaps LU in O(1))
+      const topoKey = this.computeTopologyKey(t);
+      const needsRebuild = !this.luValid || topoKey === "" || topoKey !== this.activeTopoKey;
+      const cachedLu = needsRebuild && topoKey !== "" ? this.luCache.get(topoKey) : undefined;
+      if (cachedLu) {
+        this.luCache.delete(topoKey);
+        this.luCache.set(topoKey, cachedLu);
+        this.restoreTopologyFromCache(cachedLu);
+        this.activeTopoKey = topoKey;
+        this.luValid = true;
+        this.luCacheHitsCount++;
+      } else if (needsRebuild) {
         this.resetConductanceMatrix();
 
         // Sources
@@ -2846,11 +3121,15 @@ export class EmtSolver {
           }
         }
 
-        // Compute coupled 3-phase LU factorization
+        // Compute coupled 3-phase LU factorization and store in topology bitmask LRU cache
         this.factorize3Phase(this.G3, this.LU3, this.piv3);
         this.luFactorizationCount += 3;
-        this.luValid = !anyFaultActive; // Keep cached if no dynamic fault active
+        this.luValid = true;
         this.updateSurgeArresterTheveninVectors();
+        this.activeTopoKey = topoKey;
+        if (topoKey) {
+          this.saveTopologyToCache(topoKey);
+        }
       }
 
       // 4. Assemble 3-phase injection currents J3
@@ -2989,6 +3268,8 @@ export class EmtSolver {
           if (gChanged) {
             this.factorize3Phase(this.G3, this.LU3, this.piv3);
             this.luFactorizationCount += 3;
+            this.activeTopoKey = "";
+            this.luValid = false;
           }
           continue;
         }
@@ -3047,36 +3328,95 @@ export class EmtSolver {
       }
 
       // 5. Solve coupled 3N x 3N linear system via forward/backward substitution
+      let hasPreSwitchSolution = false;
+      if (
+        k > 0 &&
+        switchedBusInterpolation.size > 0 &&
+        this.enableSwitchingInterpolation &&
+        prevTopoKey !== "" &&
+        prevTopoKey !== topoKey
+      ) {
+        const prevEntry = this.luCache.get(prevTopoKey);
+        if (prevEntry) {
+          this.solveWithCachedLu(prevEntry, this.J3, vPreStep3);
+          hasPreSwitchSolution = true;
+        }
+      }
       this.solveFromLU3Phase(this.LU3, this.piv3, this.J3, this.v3Step);
 
-      // 5b. Non-linear Thévenin Norton Compensation for Surge Arresters (MOVs)
-      if (this.surgeArresters.length > 0) {
-        for (let iter = 0; iter < 3; iter++) {
-          let maxCorr = 0.0;
-          for (const arr of this.surgeArresters) {
-            for (let p = 0; p < 3; p++) {
-              const u = arr.fromIdx >= 0 ? 3 * arr.fromIdx + p : -1;
-              const v = arr.toIdx >= 0 ? 3 * arr.toIdx + p : -1;
-              const vOpen = (u >= 0 ? this.v3Step[u]! : 0.0) - (v >= 0 ? this.v3Step[v]! : 0.0);
-              const vMag = Math.abs(vOpen);
-              if (vMag > arr.vRefVolts) {
-                const zTh = arr.zThPhase[p]!;
-                const iCorr = Math.sign(vOpen) * ((vMag - arr.vRefVolts) / (zTh + arr.rClampOhm));
-                if (Math.abs(iCorr) > 1e-4) {
-                  maxCorr = Math.max(maxCorr, Math.abs(iCorr));
-                  const xTh = arr.xThPhase[p]!;
-                  for (let j = 0; j < this.nPhaseNodes; j++) {
-                    this.v3Step[j] = this.v3Step[j]! - xTh[j]! * iCorr;
-                  }
-                  if (iter === 0) {
-                    const vClamped = vOpen - zTh * iCorr;
-                    arr.energyJoules += Math.abs(vClamped * iCorr) * this.timeStepSec;
-                  }
-                }
-              }
+      // 5b. Coupled Multi-Port Non-linear Thévenin Newton-Raphson Compensation for Surge Arresters (MOVs)
+      if (arrM > 0 && v0Step && arrV0 && arrCurr && arrRes && arrDelta && arrJac) {
+        let anyConducting = false;
+        for (let a = 0; a < nArr; a++) {
+          const arr = this.surgeArresters[a]!;
+          for (let p = 0; p < 3; p++) {
+            const row = a * 3 + p;
+            const u = arr.fromIdx >= 0 ? 3 * arr.fromIdx + p : -1;
+            const v = arr.toIdx >= 0 ? 3 * arr.toIdx + p : -1;
+            const vOpen = (u >= 0 ? this.v3Step[u]! : 0.0) - (v >= 0 ? this.v3Step[v]! : 0.0);
+            arrV0[row] = vOpen;
+            if (Math.abs(vOpen) > arr.vRefVolts) {
+              anyConducting = true;
+              arrCurr[row] =
+                Math.sign(vOpen) * ((Math.abs(vOpen) - arr.vRefVolts) / (arr.zThPhase[p]! + arr.rClampOhm));
+            } else {
+              arrCurr[row] = 0.0;
             }
           }
-          if (maxCorr < 1e-3) break;
+        }
+
+        if (anyConducting) {
+          v0Step.set(this.v3Step);
+          const Z = this.zArresterPorts;
+          for (let iter = 0; iter < 12; iter++) {
+            let maxRes = 0.0;
+            for (let row = 0; row < arrM; row++) {
+              const arr = this.surgeArresters[Math.floor(row / 3)]!;
+              let zI = 0.0;
+              const zRowOff = row * arrM;
+              for (let col = 0; col < arrM; col++) {
+                zI += Z[zRowOff + col]! * arrCurr[col]!;
+              }
+              const vPort = arrV0[row]! - zI;
+              const vAbs = Math.abs(vPort);
+              let iTarget = 0.0;
+              let gSlope = 0.0;
+              if (vAbs > arr.vRefVolts) {
+                gSlope = 1.0 / arr.rClampOhm;
+                iTarget = Math.sign(vPort) * (vAbs - arr.vRefVolts) * gSlope;
+              }
+              const rVal = arrCurr[row]! - iTarget;
+              arrRes[row] = -rVal;
+              if (Math.abs(rVal) > maxRes) maxRes = Math.abs(rVal);
+              for (let col = 0; col < arrM; col++) {
+                arrJac[zRowOff + col] = (row === col ? 1.0 : 0.0) + gSlope * Z[zRowOff + col]!;
+              }
+            }
+            if (maxRes < 1e-4) break;
+            this.coupledNonlinearIterationsCount++;
+            if (!this.solveSmallDenseSystem(arrJac, arrRes, arrDelta, arrM)) break;
+            for (let row = 0; row < arrM; row++) {
+              arrCurr[row] = arrCurr[row]! + arrDelta[row]!;
+            }
+          }
+
+          for (let a = 0; a < nArr; a++) {
+            const arr = this.surgeArresters[a]!;
+            for (let p = 0; p < 3; p++) {
+              const row = a * 3 + p;
+              const iCorr = arrCurr[row]!;
+              if (Math.abs(iCorr) <= 1e-12) continue;
+              const xTh = arr.xThPhase[p]!;
+              for (let j = 0; j < this.nPhaseNodes; j++) {
+                this.v3Step[j] = this.v3Step[j]! - xTh[j]! * iCorr;
+              }
+              let zI = 0.0;
+              const zRowOff = row * arrM;
+              for (let col = 0; col < arrM; col++) zI += Z[zRowOff + col]! * arrCurr[col]!;
+              const vClamped = arrV0[row]! - zI;
+              arr.energyJoules += Math.abs(vClamped * iCorr) * this.timeStepSec;
+            }
+          }
         }
       }
 
@@ -3085,10 +3425,16 @@ export class EmtSolver {
         let vb = this.v3Step[3 * i + 1]!;
         let vc = this.v3Step[3 * i + 2]!;
         const swAlpha = k > 0 ? switchedBusInterpolation.get(i) : undefined;
-        if (swAlpha !== undefined) {
-          va = (1.0 - swAlpha) * vaPrevStep[i]! + swAlpha * va;
-          vb = (1.0 - swAlpha) * vbPrevStep[i]! + swAlpha * vb;
-          vc = (1.0 - swAlpha) * vcPrevStep[i]! + swAlpha * vc;
+        if (swAlpha !== undefined && this.enableSwitchingInterpolation) {
+          if (hasPreSwitchSolution) {
+            va = swAlpha * vPreStep3[3 * i + 0]! + (1.0 - swAlpha) * va;
+            vb = swAlpha * vPreStep3[3 * i + 1]! + (1.0 - swAlpha) * vb;
+            vc = swAlpha * vPreStep3[3 * i + 2]! + (1.0 - swAlpha) * vc;
+          } else {
+            va = swAlpha * vaPrevStep[i]! + (1.0 - swAlpha) * va;
+            vb = swAlpha * vbPrevStep[i]! + (1.0 - swAlpha) * vb;
+            vc = swAlpha * vcPrevStep[i]! + (1.0 - swAlpha) * vc;
+          }
         }
         this.vaStep[i] = va;
         this.vbStep[i] = vb;
@@ -3606,9 +3952,11 @@ export class EmtSolver {
       metrics: {
         totalSteps: this.nSteps,
         luFactorizations: this.luFactorizationCount,
+        luCacheHits: this.luCacheHitsCount,
         switchingEvents: this.switchingEventCount,
         chatterDampedSteps: this.chatterDampedCount,
         interpolatedZeroCrossings: this.interpolatedZeroCrossingsCount,
+        coupledNonlinearIterations: this.coupledNonlinearIterationsCount,
         executionTimeMs,
       },
     };

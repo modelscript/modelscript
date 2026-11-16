@@ -1977,7 +1977,21 @@ export function resolveSimpleNameHelper(
   }
   return (
     predefined?.find((e) => (e.metadata as any)?.isPredefined) ??
-    predefined?.find((e) => isTypeLikeSymbol(e) && e.parentId === null) ??
+    predefined?.find((e) => isTypeLikeSymbol(e) && e.parentId === null && (!e.language || e.language === "modelica")) ??
+    predefined?.find((e) => {
+      if (!isTypeLikeSymbol(e) && e.kind !== "Module") return false;
+      if (e.parentId === null) return true;
+      if (!e.language || e.language === "modelica") return false;
+      const p = db.symbol(e.parentId);
+      return Boolean(
+        p &&
+        p.parentId === null &&
+        (p.ruleName === "scad_file" ||
+          p.ruleName === "step_product" ||
+          p.ruleName === "pscad_library" ||
+          p.ruleName === "pscad_project"),
+      );
+    }) ??
     null
   );
 }

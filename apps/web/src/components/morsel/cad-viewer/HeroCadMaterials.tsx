@@ -15,6 +15,7 @@ import {
   classifyAlloyPreset,
   evaluateStudioDomeColor,
   formatMaterialModifierGlyph,
+  sliceSectionContoursAtPlane,
   synthesizeBrushedAlloyTextures,
   type AlloyMaterialSpec,
   type GdtCallout3D,
@@ -258,6 +259,42 @@ export const SplitSectionGeometryPasses: React.FC<{
   }, [edgeGeometry]);
 
   const wireColor = dark ? "#22d3ee" : "#0e7490";
+  const contourColor = dark ? "#7dd3fc" : "#0284c7";
+
+  const contourGeometry = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(0), 3));
+    return g;
+  }, []);
+  const lastPlaneKeyRef = useRef<string>("");
+
+  useEffect(() => {
+    lastPlaneKeyRef.current = "";
+  }, [geometry, position[0], position[1], position[2]]);
+
+  useEffect(() => {
+    return () => {
+      contourGeometry.dispose();
+    };
+  }, [contourGeometry]);
+
+  useFrame(() => {
+    if (!showStencilMask || !solidPlane) return;
+    const nx = solidPlane.normal.x;
+    const ny = solidPlane.normal.y;
+    const nz = solidPlane.normal.z;
+    const localC = solidPlane.constant + nx * position[0] + ny * position[1] + nz * position[2];
+    const key = `${nx.toFixed(4)}:${ny.toFixed(4)}:${nz.toFixed(4)}:${localC.toFixed(4)}`;
+    if (key === lastPlaneKeyRef.current) return;
+    lastPlaneKeyRef.current = key;
+
+    const posAttr = geometry.getAttribute("position");
+    if (!posAttr?.array) return;
+    const idxAttr = geometry.getIndex();
+    const segs = sliceSectionContoursAtPlane(posAttr.array, idxAttr?.array, [nx, ny, nz], localC);
+    contourGeometry.setAttribute("position", new THREE.Float32BufferAttribute(segs, 3));
+    contourGeometry.computeBoundingSphere();
+  });
 
   return (
     <group position={position}>
@@ -291,6 +328,9 @@ export const SplitSectionGeometryPasses: React.FC<{
               stencilZPass={THREE.DecrementWrapStencilOp}
             />
           </mesh>
+          <lineSegments geometry={contourGeometry} renderOrder={4} frustumCulled={false}>
+            <lineBasicMaterial color={contourColor} transparent opacity={0.92} depthWrite={false} />
+          </lineSegments>
         </>
       )}
 

@@ -276,8 +276,18 @@ function substituteAlgebraicDefinitions(
   exprId: number,
   algVarDefs: Map<number, number>,
   depth = 0,
+  memoByDepth: Array<Map<number, number>> = [],
 ): number {
   if (exprId < 0 || algVarDefs.size === 0 || depth > 8) return exprId;
+  let memo = memoByDepth[depth];
+  if (!memo) {
+    memo = new Map<number, number>();
+    memoByDepth[depth] = memo;
+  }
+  const cached = memo.get(exprId);
+  if (cached !== undefined) return cached;
+
+  let res = exprId;
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.Name) {
     const nameId = arena.getExprData1(exprId);
@@ -285,53 +295,60 @@ function substituteAlgebraicDefinitions(
     if (varIdx >= 0) {
       const defExpr = algVarDefs.get(varIdx);
       if (defExpr !== undefined) {
-        return substituteAlgebraicDefinitions(arena, defExpr, algVarDefs, depth + 1);
+        res = substituteAlgebraicDefinitions(arena, defExpr, algVarDefs, depth + 1, memoByDepth);
       }
     }
-    return exprId;
+    memo.set(exprId, res);
+    return res;
   }
   switch (kind) {
     case ExprKind.Binary: {
       const l = arena.getExprLeft(exprId);
       const r = arena.getExprRight(exprId);
-      const nl = substituteAlgebraicDefinitions(arena, l, algVarDefs, depth);
-      const nr = substituteAlgebraicDefinitions(arena, r, algVarDefs, depth);
-      return nl !== l || nr !== r ? arena.addBinaryExpr(arena.getExprData1(exprId), nl, nr) : exprId;
+      const nl = substituteAlgebraicDefinitions(arena, l, algVarDefs, depth, memoByDepth);
+      const nr = substituteAlgebraicDefinitions(arena, r, algVarDefs, depth, memoByDepth);
+      res = nl !== l || nr !== r ? arena.addBinaryExpr(arena.getExprData1(exprId), nl, nr) : exprId;
+      break;
     }
     case ExprKind.Negate: {
       const l = arena.getExprLeft(exprId);
-      const nl = substituteAlgebraicDefinitions(arena, l, algVarDefs, depth);
-      return nl !== l ? arena.addNegateExpr(nl) : exprId;
+      const nl = substituteAlgebraicDefinitions(arena, l, algVarDefs, depth, memoByDepth);
+      res = nl !== l ? arena.addNegateExpr(nl) : exprId;
+      break;
     }
     case ExprKind.Unary: {
       const l = arena.getExprLeft(exprId);
-      const nl = substituteAlgebraicDefinitions(arena, l, algVarDefs, depth);
-      return nl !== l ? arena.addUnaryExpr(arena.getExprData1(exprId), nl) : exprId;
+      const nl = substituteAlgebraicDefinitions(arena, l, algVarDefs, depth, memoByDepth);
+      res = nl !== l ? arena.addUnaryExpr(arena.getExprData1(exprId), nl) : exprId;
+      break;
     }
     case ExprKind.Der: {
       const inner = arena.getExprData1(exprId);
-      const nInner = substituteAlgebraicDefinitions(arena, inner, algVarDefs, depth);
-      return nInner !== inner ? arena.addDerExpr(nInner) : exprId;
+      const nInner = substituteAlgebraicDefinitions(arena, inner, algVarDefs, depth, memoByDepth);
+      res = nInner !== inner ? arena.addDerExpr(nInner) : exprId;
+      break;
     }
     case ExprKind.Pre: {
       const inner = arena.getExprData1(exprId);
-      const nInner = substituteAlgebraicDefinitions(arena, inner, algVarDefs, depth);
-      return nInner !== inner ? arena.addPreExpr(nInner) : exprId;
+      const nInner = substituteAlgebraicDefinitions(arena, inner, algVarDefs, depth, memoByDepth);
+      res = nInner !== inner ? arena.addPreExpr(nInner) : exprId;
+      break;
     }
     case ExprKind.IfElse: {
       const c = arena.getExprData1(exprId);
       const l = arena.getExprLeft(exprId);
       const r = arena.getExprRight(exprId);
-      const nc = substituteAlgebraicDefinitions(arena, c, algVarDefs, depth);
-      const nl = substituteAlgebraicDefinitions(arena, l, algVarDefs, depth);
-      const nr = substituteAlgebraicDefinitions(arena, r, algVarDefs, depth);
-      return nc !== c || nl !== l || nr !== r ? arena.addExpression(ExprKind.IfElse, nc, nl, nr) : exprId;
+      const nc = substituteAlgebraicDefinitions(arena, c, algVarDefs, depth, memoByDepth);
+      const nl = substituteAlgebraicDefinitions(arena, l, algVarDefs, depth, memoByDepth);
+      const nr = substituteAlgebraicDefinitions(arena, r, algVarDefs, depth, memoByDepth);
+      res = nc !== c || nl !== l || nr !== r ? arena.addExpression(ExprKind.IfElse, nc, nl, nr) : exprId;
+      break;
     }
     case ExprKind.Call: {
       const funcNameId = arena.getExprData1(exprId);
       const firstArg = arena.getExprLeft(exprId);
       const count = arena.getExprRight(exprId);
-      if (count <= 0 || firstArg < 0) return exprId;
+      if (count <= 0 || firstArg < 0) break;
       let changed = false;
       const newArgs: number[] = [];
       for (let j = 0; j < count; j++) {
@@ -342,21 +359,22 @@ function substituteAlgebraicDefinitions(
             : slotIdx < arena.exprCount && arena.getExprKind(slotIdx) === ExprKind.Tuple
               ? arena.getExprLeft(slotIdx)
               : firstArg + j;
-        const substArg = substituteAlgebraicDefinitions(arena, origArg, algVarDefs, depth);
+        const substArg = substituteAlgebraicDefinitions(arena, origArg, algVarDefs, depth, memoByDepth);
         if (substArg !== origArg) changed = true;
         newArgs.push(substArg);
       }
-      if (!changed) return exprId;
+      if (!changed) break;
       const callId = arena.addExpression(ExprKind.Call, funcNameId, newArgs[0]!, count);
       for (let j = 1; j < count; j++) {
         arena.addExpression(ExprKind.Tuple, 0, newArgs[j]!, 0);
       }
-      return callId;
+      res = callId;
+      break;
     }
     case ExprKind.Subscript: {
       const baseExpr = arena.getExprData1(exprId);
       const subCount = Math.max(1, arena.getExprRight(exprId));
-      const nBase = substituteAlgebraicDefinitions(arena, baseExpr, algVarDefs, depth);
+      const nBase = substituteAlgebraicDefinitions(arena, baseExpr, algVarDefs, depth, memoByDepth);
       let changed = nBase !== baseExpr;
       const newSubs: number[] = [];
       for (let j = 0; j < subCount; j++) {
@@ -367,11 +385,12 @@ function substituteAlgebraicDefinitions(
             : slotIdx < arena.exprCount && arena.getExprKind(slotIdx) === ExprKind.Tuple
               ? arena.getExprLeft(slotIdx)
               : arena.getExprLeft(exprId + j);
-        const nSub = substituteAlgebraicDefinitions(arena, origSub, algVarDefs, depth);
+        const nSub = substituteAlgebraicDefinitions(arena, origSub, algVarDefs, depth, memoByDepth);
         if (nSub !== origSub) changed = true;
         newSubs.push(nSub);
       }
-      return changed ? arena.addSubscriptExpr(nBase, newSubs) : exprId;
+      res = changed ? arena.addSubscriptExpr(nBase, newSubs) : exprId;
+      break;
     }
     case ExprKind.ArrayCtor:
     case ExprKind.Tuple: {
@@ -379,7 +398,7 @@ function substituteAlgebraicDefinitions(
       const data1Val = arena.getExprData1(exprId);
       const count = rightVal > 0 ? rightVal : data1Val;
       const first = arena.getExprLeft(exprId);
-      if (count <= 0 || first < 0) return exprId;
+      if (count <= 0 || first < 0) break;
       let changed = false;
       const newElems: number[] = [];
       for (let j = 0; j < count; j++) {
@@ -390,31 +409,37 @@ function substituteAlgebraicDefinitions(
             : slotIdx < arena.exprCount && arena.getExprKind(slotIdx) === ExprKind.Tuple
               ? arena.getExprLeft(slotIdx)
               : first + j;
-        const substElem = substituteAlgebraicDefinitions(arena, origElem, algVarDefs, depth);
+        const substElem = substituteAlgebraicDefinitions(arena, origElem, algVarDefs, depth, memoByDepth);
         if (substElem !== origElem) changed = true;
         newElems.push(substElem);
       }
-      if (!changed) return exprId;
+      if (!changed) break;
       const headId = arena.addExpression(kind, count, newElems[0]!, count);
       for (let j = 1; j < count; j++) {
         arena.addExpression(ExprKind.Tuple, 0, newElems[j]!, 0);
       }
-      return headId;
+      res = headId;
+      break;
     }
     case ExprKind.Range: {
       const startExpr = arena.getExprData1(exprId);
       const stepExpr = arena.getExprLeft(exprId);
       const stopExpr = arena.getExprRight(exprId);
-      const nStart = substituteAlgebraicDefinitions(arena, startExpr, algVarDefs, depth);
-      const nStep = stepExpr >= 0 ? substituteAlgebraicDefinitions(arena, stepExpr, algVarDefs, depth) : stepExpr;
-      const nStop = substituteAlgebraicDefinitions(arena, stopExpr, algVarDefs, depth);
-      return nStart !== startExpr || nStep !== stepExpr || nStop !== stopExpr
-        ? arena.addExpression(ExprKind.Range, nStart, nStep, nStop)
-        : exprId;
+      const nStart = substituteAlgebraicDefinitions(arena, startExpr, algVarDefs, depth, memoByDepth);
+      const nStep =
+        stepExpr >= 0 ? substituteAlgebraicDefinitions(arena, stepExpr, algVarDefs, depth, memoByDepth) : stepExpr;
+      const nStop = substituteAlgebraicDefinitions(arena, stopExpr, algVarDefs, depth, memoByDepth);
+      res =
+        nStart !== startExpr || nStep !== stepExpr || nStop !== stopExpr
+          ? arena.addExpression(ExprKind.Range, nStart, nStep, nStop)
+          : exprId;
+      break;
     }
     default:
-      return exprId;
+      break;
   }
+  memo.set(exprId, res);
+  return res;
 }
 
 function isSkipArenaEq(arena: DAEBuilder, eqIdx: number): boolean {
@@ -1404,7 +1429,7 @@ export function pantelidesIndexReductionArena(
           const isoDeps = new Set<number>();
           collectArenaExprDeps(arena, substIsolated, isoDeps);
           if (!isoDeps.has(vIdx)) {
-            algVarDefs.set(vIdx, substIsolated);
+            algVarDefs.set(vIdx, isolated);
             algDefEqIndices.add(i);
             break;
           }

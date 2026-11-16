@@ -482,7 +482,7 @@ export function solveMultiIslandPowerFlow(
     }
 
     const subCase = createIslandSubCase(island, psCase);
-    const sol = solvePowerFlow(subCase, options);
+    const sol = solvePowerFlow(subCase, { ...options, autoIslandPartition: false });
 
     if (!sol.converged) {
       overallConverged = false;

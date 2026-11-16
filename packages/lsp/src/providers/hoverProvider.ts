@@ -63,6 +63,14 @@ function getDomainName(domainId: number, resourceId?: string): string {
       return "ModelScript";
     case LanguageDomainId.SCAD:
       return "OpenSCAD";
+    case LanguageDomainId.PSCAD:
+      return "PSCAD";
+    case LanguageDomainId.PSSE:
+      return "PSS/E";
+    case LanguageDomainId.ReqIF:
+      return "ReqIF";
+    case LanguageDomainId.QIF:
+      return "QIF";
     case LanguageDomainId.CSV:
       return "Tabular Dataset";
     default:
@@ -70,6 +78,11 @@ function getDomainName(domainId: number, resourceId?: string): string {
         if (/\.(sysml|kerml)$/i.test(resourceId)) return "SysML v2";
         if (/\.(step|stp|p21)$/i.test(resourceId)) return "STEP CAD";
         if (/\.mo$/i.test(resourceId)) return "Modelica";
+        if (/\.scad$/i.test(resourceId)) return "OpenSCAD";
+        if (/\.(pscx|pslx)$/i.test(resourceId)) return "PSCAD";
+        if (/\.(raw|dyr)$/i.test(resourceId)) return "PSS/E";
+        if (/\.reqifz?$/i.test(resourceId)) return "ReqIF";
+        if (/\.qif(\.xml)?$/i.test(resourceId)) return "QIF";
         if (/\.(owl|ttl|ofn)$/i.test(resourceId)) return "OWL2 Ontology";
       }
       return "Polyglot";
@@ -84,6 +97,16 @@ function domainToLang(domainName: string): string {
       return "modelica";
     case "STEP CAD":
       return "step";
+    case "OpenSCAD":
+      return "scad";
+    case "PSCAD":
+      return "pscad";
+    case "PSS/E":
+      return "psse";
+    case "ReqIF":
+      return "reqif";
+    case "QIF":
+      return "qif";
     case "OWL2 Ontology":
       return "owl";
     default:
@@ -112,13 +135,7 @@ function enhanceWithDigitalThreadTwin(
   const refEntry = bridge?.findEntryAtOffset?.(offset) || bridge?.findScopeAtOffset?.(offset);
   const lineHints = extractCrossDomainLineHints(lineText);
 
-  const twinCand =
-    refEntry?.metadata?.twin ||
-    refEntry?.metadata?.counterpart ||
-    refEntry?.metadata?.implements ||
-    lineHints.twin ||
-    lineHints.partType;
-
+  const uw = validationService?.workspaceManager?.unifiedWorkspace;
   const qe =
     bridge?.engine ??
     bridge?.getQueryEngine?.() ??
@@ -143,7 +160,34 @@ function enhanceWithDigitalThreadTwin(
     } catch {}
   }
 
-  // 2. Check twinCand via Salsa resolvePolyglotSymbol
+  // 1b. Check TggCorrespondenceIndexer + DigitalThreadHypergraph directly (zero-@twin correspondences)
+  if (!counterpartEntry && refEntry?.id !== undefined && uw?.tggCorrespondenceIndexer) {
+    try {
+      const uIdx = typeof uw.getIndex === "function" ? uw.getIndex() : undefined;
+      if (uIdx) uw.syncTggCorrespondences?.(uIdx);
+      const slots: number[] = uw.tggCorrespondenceIndexer.getSlotsForSymbol?.(refEntry.id) ?? [];
+      for (const slot of slots) {
+        const rec = uw.tggCorrespondenceIndexer.hypergraph?.getRecord?.(slot);
+        if (!rec || rec.isRemoved) continue;
+        for (const memberId of Object.values(rec.domainNodes)) {
+          if (typeof memberId === "number" && memberId !== refEntry.id) {
+            const sym = uIdx?.symbols?.get(memberId);
+            if (sym) {
+              counterpartEntry = sym;
+              counterpartDomain = getDomainName(getSymbolDomain(sym.id), sym.resourceId || sym.documentUri);
+              break;
+            }
+          }
+        }
+        if (counterpartEntry) break;
+      }
+    } catch {}
+  }
+
+  // 2. Fallback: Check explicit twin metadata / legacy lineHints via Salsa resolvePolyglotSymbol
+  const twinCand =
+    refEntry?.metadata?.twin || refEntry?.metadata?.counterpart || refEntry?.metadata?.implements || lineHints.twin;
+
   if (!counterpartEntry && twinCand && typeof qe?.resolvePolyglotSymbol === "function") {
     try {
       const symId = qe.resolvePolyglotSymbol(String(twinCand));
@@ -156,7 +200,7 @@ function enhanceWithDigitalThreadTwin(
     } catch {}
   }
 
-  // 3. Check digital thread hypergraph
+  // 3. Check workspace digital thread records
   let threadElem: any = null;
   if (!counterpartEntry && validationService?.workspaceManager?.getThreadsForUri) {
     try {

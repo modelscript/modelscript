@@ -3,6 +3,7 @@
 import {
   createOpenDriveDiagramBackend,
   createPscadDiagramBackend,
+  createPsseDiagramBackend,
   createSimulinkDiagramBackend,
   createSpiceDiagramBackend,
   createSspDiagramBackend,
@@ -2760,6 +2761,9 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
     }
     if (uri.endsWith(".xodr") || uri.endsWith(".opendrive")) {
       return backends.opendrive ?? createOpenDriveDiagramBackend(backends);
+    }
+    if (uri.endsWith(".raw") || uri.endsWith(".dyr")) {
+      return createPsseDiagramBackend(backends);
     }
     const readKinematicSource = async (targetUri: string): Promise<string | null> => {
       const memText =

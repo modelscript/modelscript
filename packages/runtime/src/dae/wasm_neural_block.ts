@@ -21,6 +21,7 @@ export enum ActivationKind {
   Sigmoid = 2,
   ReLU = 3,
   SiLU = 4,
+  ELU = 5,
 }
 
 export interface NeuralBlockConfig {
@@ -198,6 +199,19 @@ export class ArenaNeuralBlock {
             const oneLit = arena.addRealLiteral(1.0);
             const sigmoid = arena.addBinaryExpr(BinOp.Mul, halfLit, arena.addBinaryExpr(BinOp.Add, oneLit, tanhVal));
             actExpr = arena.addBinaryExpr(BinOp.Mul, sumExpr, sigmoid);
+            break;
+          }
+          case ActivationKind.ELU: {
+            // Smooth C1 ELU: pos(z) + (exp(neg(z)) - 1)
+            const halfLit = arena.addRealLiteral(0.5);
+            const epsLit = arena.addRealLiteral(1e-6);
+            const sqrtTerm = arena.addCallExpr("sqrt", [
+              arena.addBinaryExpr(BinOp.Add, arena.addBinaryExpr(BinOp.Mul, sumExpr, sumExpr), epsLit),
+            ]);
+            const posZ = arena.addBinaryExpr(BinOp.Mul, halfLit, arena.addBinaryExpr(BinOp.Add, sumExpr, sqrtTerm));
+            const negZ = arena.addBinaryExpr(BinOp.Mul, halfLit, arena.addBinaryExpr(BinOp.Sub, sumExpr, sqrtTerm));
+            const expNeg = arena.addBinaryExpr(BinOp.Sub, arena.addCallExpr("exp", [negZ]), arena.addRealLiteral(1.0));
+            actExpr = arena.addBinaryExpr(BinOp.Add, posZ, expNeg);
             break;
           }
         }
@@ -390,6 +404,8 @@ export class ArenaNeuralBlock {
         return Math.max(0, z);
       case ActivationKind.SiLU:
         return z * (0.5 * (1 + Math.tanh(0.5 * z)));
+      case ActivationKind.ELU:
+        return z >= 0 ? z : Math.exp(z) - 1;
       case ActivationKind.Linear:
       default:
         return z;
@@ -412,6 +428,8 @@ export class ArenaNeuralBlock {
         const s = 0.5 * (1 + Math.tanh(0.5 * z));
         return s + z * s * (1 - s);
       }
+      case ActivationKind.ELU:
+        return z >= 0 ? 1 : Math.exp(z);
       case ActivationKind.Linear:
       default:
         return 1.0;
@@ -512,6 +530,17 @@ function buildActivationDaeExpr(arena: DAEBuilder, sumExpr: number, act: Activat
       const sigmoid = arena.addBinaryExpr(BinOp.Mul, halfLit, arena.addBinaryExpr(BinOp.Add, oneLit, tanhVal));
       return arena.addBinaryExpr(BinOp.Mul, sumExpr, sigmoid);
     }
+    case ActivationKind.ELU: {
+      const halfLit = arena.addRealLiteral(0.5);
+      const epsLit = arena.addRealLiteral(1e-6);
+      const sqrtTerm = arena.addCallExpr("sqrt", [
+        arena.addBinaryExpr(BinOp.Add, arena.addBinaryExpr(BinOp.Mul, sumExpr, sumExpr), epsLit),
+      ]);
+      const posZ = arena.addBinaryExpr(BinOp.Mul, halfLit, arena.addBinaryExpr(BinOp.Add, sumExpr, sqrtTerm));
+      const negZ = arena.addBinaryExpr(BinOp.Mul, halfLit, arena.addBinaryExpr(BinOp.Sub, sumExpr, sqrtTerm));
+      const expNeg = arena.addBinaryExpr(BinOp.Sub, arena.addCallExpr("exp", [negZ]), arena.addRealLiteral(1.0));
+      return arena.addBinaryExpr(BinOp.Add, posZ, expNeg);
+    }
     default:
       return sumExpr;
   }
@@ -529,6 +558,8 @@ function evalActivationScalar(z: number, act: ActivationKind): number {
       const s = 0.5 * (1 + Math.tanh(0.5 * z));
       return z * s;
     }
+    case ActivationKind.ELU:
+      return z >= 0 ? z : Math.exp(z) - 1;
     case ActivationKind.Linear:
     default:
       return z;

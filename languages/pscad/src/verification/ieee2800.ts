@@ -14,6 +14,7 @@
  * - Clause 7.3.2: Frequency, RoCoF (>= 5 Hz/s), and Phase-Angle Jump (>= 25 deg) Ride-Through
  */
 
+import { evaluateIeee2800StlRobustness, type Ieee2800StlReport } from "../analysis/formal-emt-checks.js";
 import type { EmtNetlist } from "../types.js";
 
 /**
@@ -60,6 +61,8 @@ export interface Ieee2800FaultSpec {
   maxIndividualHarmonicPercent?: number | undefined;
   /** Whether to evaluate Clause 7.2.2.3.4 Negative-Sequence Reactive Current Droop k2. */
   evaluateNegativeSequenceDroop?: boolean | undefined;
+  /** Whether to compute quantitative STL robustness margins (M6083) over POI voltage, active power, and frequency. */
+  evaluateStlRobustness?: boolean | undefined;
 }
 
 /**
@@ -127,6 +130,8 @@ export interface Ieee2800ComplianceReport {
   checks: Ieee2800CheckResult[];
   /** Optional symmetrical component phasor trajectories when extended sequence checks are run. */
   sequencePhasors?: SequencePhasorTrajectory | undefined;
+  /** Optional STL quantitative robustness margins (M6083) over voltage, active power, and frequency trajectories. */
+  stlRobustness?: Ieee2800StlReport | undefined;
   /** Multi-line human-readable summary of all evaluated clauses. */
   summary: string;
 }
@@ -899,6 +904,28 @@ export function verifyIeee2800Compliance(
     });
   }
 
+  let stlRobustness: Ieee2800StlReport | undefined;
+  if ((faultSpec.evaluateStlRobustness || faultSpec.evaluateExtendedClauses) && n >= 2) {
+    const vPoiPu = new Float64Array(n);
+    const pPoiPu = new Float64Array(n);
+    const fTraj = new Float64Array(n);
+    const denomV = Math.max(1e-3, vBase);
+    const denomI = Math.max(1e-3, iPreFault > 0 ? iPreFault : iBase);
+    for (let i = 0; i < n; i++) {
+      const vMag = sequencePhasors ? sequencePhasors.v1[i]! : Math.abs(vPoi[i]!);
+      vPoiPu[i] = vMag / denomV;
+      const pVal = sequencePhasors
+        ? (sequencePhasors.v1[i]! * sequencePhasors.i1d[i]!) / (denomV * denomI)
+        : envelopes[i]! / denomI;
+      pPoiPu[i] = Number.isFinite(pVal) ? Math.max(0, pVal) : 0;
+      fTraj[i] = sequencePhasors ? sequencePhasors.frequencyHz[i]! : freqHz;
+    }
+    stlRobustness = evaluateIeee2800StlRobustness(time, vPoiPu, pPoiPu, fTraj, {
+      faultClearSec: faultEnd,
+      fNominalHz: freqHz,
+    });
+  }
+
   const overallStatus = checks.every((c) => c.status === "PASS") ? "PASS" : "FAIL";
 
   const summary =
@@ -906,7 +933,10 @@ export function verifyIeee2800Compliance(
     `  Overall Result: [${overallStatus}]\n` +
     checks
       .map((c) => `  • [${c.status}] Clause ${c.clause} (${c.title}): ${c.measuredValue} [Limit: ${c.requiredLimit}]`)
-      .join("\n");
+      .join("\n") +
+    (stlRobustness
+      ? `\n  STL Formal Robustness (M6083): rho=${stlRobustness.overallRobustness.toFixed(4)} (${stlRobustness.satisfied ? "SATISFIED" : "VIOLATED"})`
+      : "");
 
   return {
     projectName,
@@ -914,6 +944,7 @@ export function verifyIeee2800Compliance(
     evaluatedAt: new Date().toISOString(),
     checks,
     sequencePhasors,
+    stlRobustness,
     summary,
   };
 }

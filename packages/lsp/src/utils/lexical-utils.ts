@@ -245,7 +245,6 @@ export interface CrossDomainLineHints {
   cadCallPart?: string | undefined;
   cadAnyPart?: string | undefined;
   twin?: string | undefined;
-  partType?: string | undefined;
 }
 
 export function isAsciiUpperCode(code: number): boolean {
@@ -458,59 +457,21 @@ export function extractNamedCallAttr(
 }
 
 /**
- * Zero-regex extractor for CAD annotations (`CAD(...)`, `CADPort(...)`, `__modelscript_cad(...)`),
- * `twin`/`counterpart`/`implements` attributes, and SysML `part foo : Type` declarations on a line.
+ * Zero-regex extractor for CAD visual viewer annotations (`CAD(...)`)
+ * and deprecated explicit `twin`/`counterpart`/`implements` override attributes on a line.
  */
 export function extractCrossDomainLineHints(lineText: string): CrossDomainLineHints {
   const hints: CrossDomainLineHints = {};
 
-  // 1. CAD(...) / CADPort(...) / __modelscript_cad(...)
-  const callVal =
-    extractNamedCallAttr(lineText, "cadport", ["feature", "part"]) ??
-    extractNamedCallAttr(lineText, "cad", ["feature", "part"]) ??
-    extractNamedCallAttr(lineText, "__modelscript_cad", ["part"]);
+  // 1. CAD(uri="...", feature/part="...") visual asset / explicit CAD annotation
+  const callVal = extractNamedCallAttr(lineText, "cad", ["feature", "part"]);
   if (callVal) {
     hints.cadCallPart = callVal;
     hints.cadAnyPart = callVal;
   }
 
-  if (!hints.cadAnyPart) {
-    hints.cadAnyPart = readQuotedAttrInSpan(lineText, ["part"], lineText.length);
-  }
-
-  // 2. twin="..." / counterpart="..." / implements="..."
+  // 2. Legacy explicit twin="..." / counterpart="..." / implements="..." override
   hints.twin = readQuotedAttrInSpan(lineText, ["twin", "counterpart", "implements"], lineText.length);
-
-  // 3. part <ident> : <Type::Path>
-  let scan = 0;
-  while (scan < lineText.length) {
-    const idx = lineText.indexOf("part", scan);
-    if (idx === -1) break;
-    const prevOk = idx === 0 || !isIdentContCode(lineText.charCodeAt(idx - 1));
-    const nextPos = idx + 4;
-    if (prevOk && nextPos < lineText.length && isWsCode(lineText.charCodeAt(nextPos))) {
-      const ws1 = skipWs(lineText, nextPos);
-      const nameTok = readIdentAt(lineText, ws1);
-      if (nameTok) {
-        const ws2 = skipWs(lineText, nameTok.next);
-        if (lineText[ws2] === ":") {
-          const ws3 = skipWs(lineText, ws2 + 1);
-          let typeEnd = ws3;
-          while (
-            typeEnd < lineText.length &&
-            (isIdentContCode(lineText.charCodeAt(typeEnd)) || lineText.charCodeAt(typeEnd) === 58)
-          ) {
-            typeEnd++;
-          }
-          if (typeEnd > ws3) {
-            hints.partType = lineText.slice(ws3, typeEnd);
-            break;
-          }
-        }
-      }
-    }
-    scan = nextPos;
-  }
 
   return hints;
 }

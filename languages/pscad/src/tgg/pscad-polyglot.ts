@@ -157,6 +157,10 @@ export const pscadPolyglotConfig: PolyglotConfig = {
       sourceLang: "pscad",
       targetLang: "modelica",
       priority: 15,
+      context: ($, v) => ({
+        source: $["pscad_component"]?.({ name: v("parentName") }),
+        target: $["ClassDefinition"]?.({ name: v("parentName") }),
+      }),
       source: ($, v) =>
         $["pscad_port"]?.({
           name: v("portName"),
@@ -174,11 +178,36 @@ export const pscadPolyglotConfig: PolyglotConfig = {
       ],
     }),
 
+    // Map a PSCAD port node to a SysML v2 PortUsage
+    tggRule({
+      name: "PscadPortToSysmlPort",
+      sourceLang: "pscad",
+      targetLang: "sysml2",
+      priority: 12,
+      context: ($, v) => ({
+        source: $["pscad_component"]?.({ name: v("parentName") }),
+        target: $["PartDefinition"]?.({ declaredName: v("parentName") }),
+      }),
+      source: ($, v) =>
+        $["pscad_port"]?.({
+          name: v("portName"),
+        }),
+      target: ($, v) =>
+        $["PortUsage"]?.({
+          declaredName: v("portName"),
+        }),
+      where: (v) => [tggEq(v("portName"), v("portName")), tggComplement(["direction", "dimension", "typeSpecifier"])],
+    }),
+
     // Map a PSCAD parameter to a Modelica parameter component
     tggRule({
       name: "PscadParamToModelicaComponent",
       sourceLang: "pscad",
       targetLang: "modelica",
+      context: ($, v) => ({
+        source: $["pscad_component"]?.({ name: v("parentName") }),
+        target: $["ClassDefinition"]?.({ name: v("parentName") }),
+      }),
       source: ($, v) =>
         $["pscad_parameter"]?.({
           name: v("paramName"),

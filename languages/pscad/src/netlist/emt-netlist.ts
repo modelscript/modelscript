@@ -9,6 +9,7 @@
 
 import { registeredPscadSourceTexts } from "../model/workspace-registry.js";
 import { computePortWorldPosition, parsePscx } from "../parser/pscx-parser.js";
+import { compileCStep } from "../script/c-codegen.js";
 import { compileFortranSegment } from "../script/fortran-codegen.js";
 import type {
   EmtBranch,
@@ -130,14 +131,105 @@ function mergeWireNets(mod: PscxModule): string[][] {
   return mod.wires.map((_, i) => [...ports.get(find(i))!]);
 }
 
+function fnv1aHash(str: string): string {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return `${h.toString(16)}_${str.length}`;
+}
+
+interface PscadIncrementalCacheState {
+  xmlNetlistCache: Map<string, EmtNetlist>;
+  compiledScriptCache: Map<string, ReturnType<typeof compileFortranSegment> | ReturnType<typeof compileCStep>>;
+  hits: number;
+  misses: number;
+  definitionScriptHits: number;
+  definitionScriptMisses: number;
+}
+
+const incrementalCache: PscadIncrementalCacheState = {
+  xmlNetlistCache: new Map(),
+  compiledScriptCache: new Map(),
+  hits: 0,
+  misses: 0,
+  definitionScriptHits: 0,
+  definitionScriptMisses: 0,
+};
+
+export function getPscadIncrementalStats() {
+  return {
+    xmlEntries: incrementalCache.xmlNetlistCache.size,
+    definitionScriptEntries: incrementalCache.compiledScriptCache.size,
+    hits: incrementalCache.hits,
+    misses: incrementalCache.misses,
+    definitionScriptHits: incrementalCache.definitionScriptHits,
+    definitionScriptMisses: incrementalCache.definitionScriptMisses,
+  };
+}
+
+export function clearPscadIncrementalCache(): void {
+  incrementalCache.xmlNetlistCache.clear();
+  incrementalCache.compiledScriptCache.clear();
+  incrementalCache.hits = 0;
+  incrementalCache.misses = 0;
+  incrementalCache.definitionScriptHits = 0;
+  incrementalCache.definitionScriptMisses = 0;
+}
+
+function getCompiledFortranCached(
+  content: string,
+  parameters: Record<string, string | number>,
+): ReturnType<typeof compileFortranSegment> {
+  const key = `F:${fnv1aHash(content)}:${JSON.stringify(parameters)}`;
+  const hit = incrementalCache.compiledScriptCache.get(key) as ReturnType<typeof compileFortranSegment> | undefined;
+  if (hit) {
+    incrementalCache.definitionScriptHits++;
+    return hit;
+  }
+  incrementalCache.definitionScriptMisses++;
+  const compiled = compileFortranSegment(content, parameters);
+  if (incrementalCache.compiledScriptCache.size > 512) incrementalCache.compiledScriptCache.clear();
+  incrementalCache.compiledScriptCache.set(key, compiled);
+  return compiled;
+}
+
+function getCompiledCCached(
+  content: string,
+  parameters: Record<string, string | number>,
+): ReturnType<typeof compileCStep> {
+  const key = `C:${fnv1aHash(content)}:${JSON.stringify(parameters)}`;
+  const hit = incrementalCache.compiledScriptCache.get(key) as ReturnType<typeof compileCStep> | undefined;
+  if (hit) {
+    incrementalCache.definitionScriptHits++;
+    return hit;
+  }
+  incrementalCache.definitionScriptMisses++;
+  const compiled = compileCStep(content, parameters);
+  if (incrementalCache.compiledScriptCache.size > 512) incrementalCache.compiledScriptCache.clear();
+  incrementalCache.compiledScriptCache.set(key, compiled);
+  return compiled;
+}
+
 /**
  * Fast-path CST-to-`EmtNetlist` lowering directly from a raw PSCAD `.pscx` XML string.
  * Skips line/column indexing, SVG/graphics string extraction, and FlyBy/Check documentation
- * parsing via `parsePscxCst(xmlSource, { headless: true })`.
+ * parsing via `parsePscxCst(xmlSource, { headless: true })`, with Salsa-style hash memoization.
  */
 export function extractEmtNetlistFromXml(xmlSource: string): EmtNetlist {
+  const key = fnv1aHash(xmlSource);
+  const cached = incrementalCache.xmlNetlistCache.get(key);
+  if (cached) {
+    incrementalCache.hits++;
+    return cached;
+  }
+  incrementalCache.misses++;
   const project = parsePscx(xmlSource, { headless: true });
-  return extractEmtNetlist(project);
+  const netlist = extractEmtNetlist(project);
+  if (incrementalCache.xmlNetlistCache.size > 64) incrementalCache.xmlNetlistCache.clear();
+  incrementalCache.xmlNetlistCache.set(key, netlist);
+  return netlist;
 }
 
 export function extractEmtNetlist(project: PscxProject): EmtNetlist {
@@ -761,6 +853,22 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           computedPoles = [-120.0, -1200.0, -12000.0, -90000.0];
           computedResidues = [22.0, 180.0, 1400.0, 9500.0];
           computedD0 = 0.38;
+        }
+
+        if (p["poles"] !== undefined && p["residues"] !== undefined) {
+          const parseList = (raw: string | number | undefined): number[] =>
+            String(raw ?? "")
+              .split(/[\s,;]+/)
+              .map((s) => Number(s.trim()))
+              .filter((n) => Number.isFinite(n));
+          const expPoles = parseList(p["poles"]);
+          const expRes = parseList(p["residues"]);
+          if (expPoles.length > 0 && expPoles.length === expRes.length) {
+            computedPoles = expPoles;
+            computedResidues = expRes;
+            const d0Num = parseFloat(String(p["d0"] ?? "0"));
+            if (!isNaN(d0Num)) computedD0 = d0Num;
+          }
         }
 
         const r = parseFloat(String(p["R"] ?? p["r"] ?? p["r_per_km"] ?? (isCable ? defaultCableR : defaultOverheadR)));
@@ -1757,7 +1865,7 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         const fortranSeg = defGraphic?.scriptSegments?.get("fortran") ?? defGraphic?.scriptSegments?.get("dsdyn");
         if (fortranSeg?.content) {
           try {
-            const compiled = compileFortranSegment(fortranSeg.content, cmp.parameters);
+            const compiled = getCompiledFortranCached(fortranSeg.content, cmp.parameters);
             const blockInputs: { portName: string; sourceId?: string | undefined }[] = [];
             for (const refPort of compiled.referencedPorts) {
               const pt = cmp.ports.find((p) => p.name.toLowerCase() === refPort.toLowerCase());
@@ -1780,9 +1888,69 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
               numRealStates: compiled.numRealStates,
               numIntStates: compiled.numIntStates,
               step: compiled.step,
+              scriptSource: fortranSeg.content,
+              scriptLang: "fortran",
+              params: cmp.parameters,
             });
           } catch {
             assumptions.push(`'${qInstName}' (${cleanDefn}): Custom Fortran script could not be lowered.`);
+          }
+        } else {
+          const cSeg = defGraphic?.scriptSegments?.get("c");
+          if (cSeg?.content) {
+            try {
+              const compiledC = getCompiledCCached(cSeg.content, cmp.parameters);
+              const blockInputs: { portName: string; sourceId?: string | undefined }[] = [];
+              for (const refPort of compiledC.referencedPorts) {
+                const pt = cmp.ports.find((p) => p.name.toLowerCase() === refPort.toLowerCase());
+                const srcId = pt ? (signalPortSourceMap.get(pt.id) ?? portToBusMap.get(pt.id)) : undefined;
+                blockInputs.push({ portName: refPort, sourceId: srcId });
+              }
+              const blockOutputs: { portName: string; targetId?: string | undefined }[] = [];
+              for (const asgPort of compiledC.assignedPorts) {
+                const targetId = compiledC.assignedPorts.length === 1 ? qInstName : `${qInstName}_${asgPort}`;
+                blockOutputs.push({ portName: asgPort, targetId });
+              }
+              const realArr = new Float64Array(Math.max(1, compiledC.numRealStates));
+              const intArr = new Int32Array(Math.max(1, compiledC.numIntStates));
+              customFortranBlocks.push({
+                id: qInstName,
+                name: localName(cmp),
+                referencedPorts: compiledC.referencedPorts,
+                assignedPorts: compiledC.assignedPorts,
+                inputs: blockInputs,
+                outputs: blockOutputs,
+                numRealStates: compiledC.numRealStates,
+                numIntStates: compiledC.numIntStates,
+                scriptSource: cSeg.content,
+                scriptLang: "c",
+                params: cmp.parameters,
+                step: (ctx) => {
+                  compiledC.step({
+                    time: ctx.time ?? 0,
+                    dt: ctx.dt ?? 50e-6,
+                    firstStep: Boolean(ctx.firstStep),
+                    getInput: (port) => {
+                      const inp = ctx.inputs;
+                      if (!inp) return 0;
+                      if (typeof inp === "function") return inp(port);
+                      if (inp instanceof Map) return inp.get(port) ?? 0;
+                      return inp[port] ?? 0;
+                    },
+                    setOutput: (port, val) => {
+                      const out = ctx.outputs;
+                      if (!out) return;
+                      if (out instanceof Map) out.set(port, val);
+                      else out[port] = val;
+                    },
+                    statesReal: realArr,
+                    statesInt: intArr,
+                  });
+                },
+              });
+            } catch {
+              assumptions.push(`'${qInstName}' (${cleanDefn}): Custom C script could not be lowered.`);
+            }
           }
         }
       }
@@ -2112,7 +2280,7 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     ...(cb.actuator !== undefined ? { actuator: cb.actuator } : {}),
   }));
 
-  // 7. Map custom procedural Fortran blocks
+  // 7. Map custom procedural Fortran/C blocks
   const customFortranBlocks = netlist.customFortranBlocks?.map((fb) => ({
     id: fb.id,
     name: fb.name,
@@ -2123,6 +2291,9 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     inputs: fb.inputs,
     outputs: fb.outputs,
     step: fb.step,
+    ...(fb.scriptSource !== undefined ? { scriptSource: fb.scriptSource } : {}),
+    ...(fb.scriptLang !== undefined ? { scriptLang: fb.scriptLang } : {}),
+    ...(fb.params !== undefined ? { params: fb.params } : {}),
   }));
 
   return {

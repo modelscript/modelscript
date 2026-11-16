@@ -333,17 +333,17 @@ export function registerWorkspaceFeaturesProvider(
     const offset = document.offsetAt(params.position);
     const text = document.getText();
 
-    if (/\.(pscx|pslx|pswx|psmx)$/i.test(params.textDocument.uri)) {
-      const pscadDocs = collectPscadWorkspaceDocs(documents, documentTrees);
-      const pscadRefs = getPscadReferences(text, offset, params.textDocument.uri, pscadDocs);
-      if (pscadRefs.length > 0) return pscadRefs;
-    }
-
     const { globalLanguageRegistry } = await import("../registry/LanguageRegistry.js");
     const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri, text);
     if (plugin?.customHandlers?.references) {
       const refs = plugin.customHandlers.references(offset, text, params.textDocument.uri);
       if (refs && refs.length > 0) return refs;
+    }
+
+    if (/\.(pscx|pslx|pswx|psmx)$/i.test(params.textDocument.uri)) {
+      const pscadDocs = collectPscadWorkspaceDocs(documents, documentTrees);
+      const pscadRefs = getPscadReferences(text, offset, params.textDocument.uri, pscadDocs);
+      if (pscadRefs.length > 0) return pscadRefs;
     }
 
     const isSysML2 = params.textDocument.uri.endsWith(".sysml");
@@ -393,6 +393,22 @@ export function registerWorkspaceFeaturesProvider(
     } else {
       const decls = resolveRef(targetEntry, unifiedIndex);
       declarationIds = decls.map((d) => d.id);
+    }
+
+    // Expand declarationIds with cross-language TGG counterparts from TggCorrespondenceIndexer
+    const corrIndexer = unifiedIndex?.tggCorrespondenceIndexer;
+    if (corrIndexer && typeof corrIndexer.getSlotsForSymbol === "function") {
+      const expanded = new Set<number>(declarationIds);
+      for (const baseId of declarationIds) {
+        for (const slot of corrIndexer.getSlotsForSymbol(baseId)) {
+          const rec = corrIndexer.hypergraph?.getRecord?.(slot);
+          if (!rec || rec.isRemoved || !rec.domainNodes) continue;
+          for (const memberId of Object.values(rec.domainNodes)) {
+            if (typeof memberId === "number") expanded.add(memberId);
+          }
+        }
+      }
+      declarationIds = Array.from(expanded);
     }
 
     const results: Array<{
@@ -515,8 +531,12 @@ export function registerWorkspaceFeaturesProvider(
 
     const changes: WorkspaceEdit["changes"] = {};
     const seen = new Set<string>();
+    const isNonIdentifierUri = (u: string) => /\.(step|stp|p21|raw|dyr|seq|reqif|reqifz|qif|xml)$/i.test(u);
 
     const addEdit = (uri: string, startOffset: number, endOffset: number) => {
+      if (uri !== params.textDocument.uri && isNonIdentifierUri(uri)) {
+        return;
+      }
       let text = documents.get(uri)?.getText();
       if (!text) {
         const cached = documentTrees.get(uri);
@@ -542,7 +562,7 @@ export function registerWorkspaceFeaturesProvider(
     for (const declId of declarationIds) {
       // Include declaration
       const declEntry = unifiedIndex.symbols.get(declId);
-      if (declEntry && declEntry.resourceId && declEntry.name) {
+      if (declEntry && declEntry.resourceId && declEntry.name && !declEntry.name.startsWith("#")) {
         const text = documents.get(declEntry.resourceId)?.getText() ?? documentTrees.get(declEntry.resourceId)?.text;
         if (text) {
           const dummyDoc = TextDocument.create(declEntry.resourceId, "temp", 1, text);

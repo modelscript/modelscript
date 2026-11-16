@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { PsseSoaTables } from "../parser/raw-soa.js";
 import type { PsseCase } from "../types.js";
+import { reduceNodeBreakerToBuses } from "./node-breaker.js";
 
 /**
  * Complex number representation for nodal admittance calculations.
@@ -41,6 +43,9 @@ export interface PowerFlowNetlist {
  * Extracts a structured PowerFlowNetlist and computes the complex nodal admittance matrix (Ybus).
  */
 export function extractPowerFlowNetlist(c: PsseCase): PowerFlowNetlist {
+  if (c.substations && c.substations.length > 0) {
+    c = reduceNodeBreakerToBuses(c).reducedCase;
+  }
   const busNumbers: number[] = [];
   const busIndices = new Map<number, number>();
 
@@ -253,6 +258,142 @@ export function extractPowerFlowNetlist(c: PsseCase): PowerFlowNetlist {
       const bPu = (sw.binit + sw.n1 * sw.b1) / c.header.sbase;
       addY(bIdx, bIdx, 0.0, bPu);
       totalShuntMvar += sw.binit + sw.n1 * sw.b1;
+    }
+  }
+
+  return {
+    nBuses: n,
+    busIndices,
+    busNumbers,
+    pNetMw,
+    qNetMvar,
+    vNominalKv,
+    vMagPu,
+    vAngRad,
+    busTypes,
+    ybus: {
+      g: gMap,
+      b: bMap,
+    },
+    metrics: {
+      totalGenMw,
+      totalGenMvar,
+      totalLoadMw,
+      totalLoadMvar,
+      totalShuntMvar,
+    },
+  };
+}
+
+/**
+ * Extracts a zero-GC flat numerical PowerFlowNetlist + Sparse Ybus directly from `PsseSoaTables`.
+ * Avoids intermediate per-record JS object allocations on large (70k–100k+ bus) `.raw` cases.
+ */
+export function extractPowerFlowNetlistFromSoa(soa: PsseSoaTables): PowerFlowNetlist {
+  const n = soa.nBuses;
+  const sbase = soa.header.sbase > 0 ? soa.header.sbase : 100.0;
+  const busNumbers = Array.from(soa.busId);
+  const busIndices = new Map<number, number>(soa.busIndexById);
+
+  const pNetMw = new Float64Array(n);
+  const qNetMvar = new Float64Array(n);
+  const vNominalKv = new Float64Array(n);
+  const vMagPu = new Float64Array(n);
+  const vAngRad = new Float64Array(n);
+  const busTypes = new Uint8Array(n);
+
+  for (let i = 0; i < n; i++) {
+    vNominalKv[i] = soa.busBaseKv[i]!;
+    vMagPu[i] = soa.busVm[i]! > 0 ? soa.busVm[i]! : 1.0;
+    vAngRad[i] = (soa.busVaDeg[i]! * Math.PI) / 180.0;
+    busTypes[i] = soa.busIde[i]!;
+  }
+
+  let totalLoadMw = 0;
+  let totalLoadMvar = 0;
+  let totalGenMw = 0;
+  let totalGenMvar = 0;
+  let totalShuntMvar = 0;
+
+  for (let idxL = 0; idxL < soa.nLoads; idxL++) {
+    if (soa.loadStatus[idxL] !== 1) continue;
+    const bIdx = busIndices.get(soa.loadBus[idxL]!);
+    if (bIdx !== undefined) {
+      const pl = soa.loadPl[idxL]!;
+      const ql = soa.loadQl[idxL]!;
+      pNetMw[bIdx] = (pNetMw[bIdx] ?? 0) - pl;
+      qNetMvar[bIdx] = (qNetMvar[bIdx] ?? 0) - ql;
+      totalLoadMw += pl;
+      totalLoadMvar += ql;
+    }
+  }
+
+  for (let idxG = 0; idxG < soa.nGenerators; idxG++) {
+    if (soa.genStat[idxG] !== 1) continue;
+    const bIdx = busIndices.get(soa.genBus[idxG]!);
+    if (bIdx !== undefined) {
+      const pg = soa.genPg[idxG]!;
+      const qg = soa.genQg[idxG]!;
+      const vs = soa.genVs[idxG]!;
+      pNetMw[bIdx] = (pNetMw[bIdx] ?? 0) + pg;
+      qNetMvar[bIdx] = (qNetMvar[bIdx] ?? 0) + qg;
+      totalGenMw += pg;
+      totalGenMvar += qg;
+      if (busTypes[bIdx] !== 3 && vs > 0) {
+        vMagPu[bIdx] = vs;
+      }
+    }
+  }
+
+  const gMap = new Map<number, Map<number, number>>();
+  const bMap = new Map<number, Map<number, number>>();
+
+  const addY = (row: number, col: number, gVal: number, bVal: number) => {
+    let rowG = gMap.get(row);
+    if (!rowG) {
+      rowG = new Map();
+      gMap.set(row, rowG);
+    }
+    rowG.set(col, (rowG.get(col) ?? 0) + gVal);
+
+    let rowB = bMap.get(row);
+    if (!rowB) {
+      rowB = new Map();
+      bMap.set(row, rowB);
+    }
+    rowB.set(col, (rowB.get(col) ?? 0) + bVal);
+  };
+
+  for (let idxB = 0; idxB < soa.nBranches; idxB++) {
+    if (soa.brSt[idxB] === 0) continue;
+    const from = busIndices.get(soa.brFrom[idxB]!);
+    const to = busIndices.get(soa.brTo[idxB]!);
+    if (from === undefined || to === undefined) continue;
+
+    const r = soa.brR[idxB]!;
+    const xRaw = soa.brX[idxB]!;
+    const x = xRaw === 0 && r === 0 ? 1e-4 : xRaw;
+    const magSq = r * r + x * x;
+    if (magSq < 1e-12) continue;
+
+    const gSeries = r / magSq;
+    const bSeries = -x / magSq;
+    const bHalf = soa.brB[idxB]! / 2.0;
+
+    addY(from, to, -gSeries, -bSeries);
+    addY(to, from, -gSeries, -bSeries);
+    addY(from, from, gSeries + soa.brGi[idxB]!, bSeries + bHalf + soa.brBi[idxB]!);
+    addY(to, to, gSeries + soa.brGj[idxB]!, bSeries + bHalf + soa.brBj[idxB]!);
+  }
+
+  for (let idxS = 0; idxS < soa.nFixedShunts; idxS++) {
+    if (soa.shuntStatus[idxS] !== 1) continue;
+    const bIdx = busIndices.get(soa.shuntBus[idxS]!);
+    if (bIdx !== undefined) {
+      const gl = soa.shuntGl[idxS]!;
+      const bl = soa.shuntBl[idxS]!;
+      addY(bIdx, bIdx, gl / sbase, bl / sbase);
+      totalShuntMvar += bl;
     }
   }
 

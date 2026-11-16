@@ -38,6 +38,7 @@ import {
   mirror,
   polyhedron,
   resetNameCounter,
+  revolve,
   rotate,
   scale,
   SolidKind,
@@ -1366,6 +1367,9 @@ export class ScadEvaluator {
         const first = childSolids[0]!;
         const profile = extract2DProfile(first);
         if (profile && profile.length >= 3) {
+          if (Math.abs(angle) >= 359.999 && profile.every(([r]) => r >= -1e-4)) {
+            return revolve(profile, angle, { segments: fn });
+          }
           const revolved = buildRotateExtrudeSolid(profile, angle, fn);
           if (revolved) return revolved;
         }

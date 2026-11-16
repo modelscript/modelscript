@@ -185,4 +185,37 @@ END-ISO-10303-21;
     assert.strictEqual(res.matchedFeatures[0]?.matchType, "spatialProximity");
     assert.strictEqual(res.matchedFeatures[0]?.stepEntityId, "#3");
   });
+
+  it("reconciles features via UnifiedWorkspace TggCorrespondenceIndexer when stepEntityId is omitted", async () => {
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const { qifLanguage } = await import("../src/language.js");
+    const { stepLanguage } = await import("@modelscript/step");
+
+    const ws = new UnifiedWorkspace();
+    ws.registerLanguageDef("qif", qifLanguage);
+    ws.registerLanguageDef("step", stepLanguage);
+
+    const stepText = [
+      "ISO-10303-21;",
+      "DATA;",
+      "#42 = CYLINDRICAL_SURFACE('PilotBore', #41, 6.25);",
+      "ENDSEC;",
+      "END-ISO-10303-21;",
+    ].join("\n");
+    const qifDsl = ["QIF 3.0.0", 'FEATURE F_TGG Cylinder "PilotBore" size=12.5 points=6'].join("\n");
+
+    ws.setDocument("file:///assy.step", stepText, "step");
+    ws.setDocument("file:///inspect.qif", qifDsl, "qif");
+
+    const doc = parseQif(qifDsl, "file:///inspect.qif");
+    const res = reconcileStepWithQif(stepText, doc, {
+      workspace: ws,
+      qifUri: "file:///inspect.qif",
+      stepUri: "file:///assy.step",
+    });
+
+    assert.strictEqual(res.matchedFeatures.length, 1);
+    assert.strictEqual(res.matchedFeatures[0]?.matchType, "tggCorrespondence");
+    assert.strictEqual(res.matchedFeatures[0]?.stepEntityId, "#42");
+  });
 });

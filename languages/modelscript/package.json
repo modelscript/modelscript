@@ -37,7 +37,8 @@
     "@modelscript/modelica": "*",
     "@modelscript/runtime": "*",
     "@modelscript/step": "*",
-    "@modelscript/sysml2": "*"
+    "@modelscript/sysml2": "*",
+    "@modelscript/urdf": "*"
   },
   "devDependencies": {
     "rimraf": "^6.1.0",

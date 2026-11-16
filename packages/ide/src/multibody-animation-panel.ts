@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { buildRobotAnimationBindings, parseObjMesh, parseStlMesh, type LoadedMeshBuffers } from "@modelscript/cad";
 import { extractFbiModalDeformation, parseFbiFile } from "@modelscript/simpack";
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
@@ -346,6 +347,24 @@ export function createTorusMesh(
   };
 }
 
+export function createLoadedMeshPayload(
+  id: number,
+  name: string,
+  buffers: LoadedMeshBuffers,
+  color?: [number, number, number],
+  type: string = "body",
+): MultibodyMeshPayload {
+  return {
+    id,
+    name,
+    type,
+    color,
+    vertices: buffers.vertices,
+    normals: buffers.normals,
+    indices: buffers.indices,
+  };
+}
+
 export function generateProceduralMultibodyGeometry(
   sourceUri: string,
   content: string = "",
@@ -356,14 +375,46 @@ export function generateProceduralMultibodyGeometry(
   const seenNames = new Set<string>();
   let nextId = 1;
 
+  const isUrdfOrMjcf =
+    /\.(?:urdf|mjcf|sdf)$/i.test(sourceUri) || /<mujoco[\s>]/i.test(content) || /<robot[\s>]/i.test(content);
   const isFbi =
     /\.fbi$/i.test(sourceUri) ||
     content.includes("$FBI") ||
     content.includes("FBI_VERSION") ||
     content.includes("<fbi");
-  const isSimpack = /\.s(?:pck|im)$/i.test(sourceUri) || content.includes("$body") || content.includes("<body");
+  const isSimpack =
+    !isUrdfOrMjcf && (/\.s(?:pck|im)$/i.test(sourceUri) || content.includes("$body") || content.includes("<body"));
   const isGensys =
     /\.c(?:alc|ins|run|sub)$/i.test(sourceUri) || content.includes("rigid_body") || content.includes("wheelset");
+
+  if (isUrdfOrMjcf) {
+    const linkNames: string[] = [];
+    const linkOrBodyRegex = /<(?:link|body)\b[^>]*\bname=["']([^"']+)["']/gi;
+    let m: RegExpExecArray | null;
+    while ((m = linkOrBodyRegex.exec(content)) !== null) {
+      const name = m[1]!;
+      if (name === "world" || seenNames.has(name)) continue;
+      seenNames.add(name);
+      linkNames.push(name);
+      meshes.push(createBoxMesh(nextId++, name, 0.16, 0.12, 0.16, [0.35, 0.72, 0.96]));
+    }
+    const contactNames = states.filter((s) => s.endsWith(".fz")).map((s) => s.slice(0, -3));
+    for (const cName of contactNames) {
+      meshes.push(createCylinderMesh(nextId++, `${cName}_force_arrow`, 0.015, 0.25, 10, [0.98, 0.4, 0.2]));
+    }
+    const servoJointNames = states.filter((s) => s.endsWith(".T_winding")).map((s) => s.slice(0, -10));
+
+    const bindings = buildRobotAnimationBindings({ linkNames, contactNames, servoJointNames });
+    for (const b of bindings) {
+      const posVars = b.bindings.filter((x) => x.property === "position").map((x) => x.variable);
+      components.push({
+        name: b.componentName,
+        cad: { feature: b.componentName },
+        bindings: posVars.length === 3 ? { position: [posVars[0]!, posVars[1]!, posVars[2]!] } : undefined,
+      });
+    }
+    return { meshes, components };
+  }
 
   if (isFbi) {
     try {
@@ -692,13 +743,48 @@ export class MultiBodyAnimationPanel extends BaseWebviewPanel {
       }
     }
 
-    // 3. If no CAD meshes found or if this is a native MBS deck, generate procedural geometry
+    // 3. If no CAD meshes found, load URDF/MJCF STL/OBJ assets via VS Code FS or generate procedural geometry
     if (stepMeshes.length === 0) {
-      const procedural = generateProceduralMultibodyGeometry(
-        this.sourceUri,
-        modelContent || "",
-        simulationData?.states || [],
-      );
+      const content = modelContent || "";
+      const procedural = generateProceduralMultibodyGeometry(this.sourceUri, content, simulationData?.states || []);
+      const isUrdfOrMjcf =
+        /\.(?:urdf|mjcf|sdf)$/i.test(this.sourceUri) || /<mujoco[\s>]/i.test(content) || /<robot[\s>]/i.test(content);
+      if (isUrdfOrMjcf && content) {
+        const meshDirMatch = content.match(/<compiler\b[^>]*\bmeshdir=["']([^"']+)["']/i);
+        const meshDir = meshDirMatch?.[1] ?? "";
+        const assetFiles = new Map<string, string>();
+        const assetRegex = /<mesh\b[^>]*\bname=["']([^"']+)["'][^>]*\bfile=["']([^"']+)["']/gi;
+        let am: RegExpExecArray | null;
+        while ((am = assetRegex.exec(content)) !== null) {
+          assetFiles.set(am[1]!, am[2]!);
+        }
+        const baseUriStr = this.sourceUri.replace(/\/[^/]*$/, "");
+        for (let i = 0; i < procedural.meshes.length; i++) {
+          const m = procedural.meshes[i]!;
+          const relFile = assetFiles.get(m.name) ?? assetFiles.get(`${m.name}_mesh`);
+          if (!relFile) continue;
+          const cleanRel = relFile.replace(/^package:\/\/[^/]+\//, "");
+          const joined = meshDir ? `${meshDir.replace(/\/$/, "")}/${cleanRel}` : cleanRel;
+          try {
+            const targetUri = vscode.Uri.parse(`${baseUriStr}/${joined.replace(/^\//, "")}`);
+            const rawBytes = await vscode.workspace.fs.readFile(targetUri);
+            const lower = joined.toLowerCase();
+            if (lower.endsWith(".stl")) {
+              const buffers = parseStlMesh(rawBytes);
+              if (buffers.vertices.length > 0) {
+                procedural.meshes[i] = createLoadedMeshPayload(m.id, m.name, buffers, m.color, m.type);
+              }
+            } else if (lower.endsWith(".obj")) {
+              const buffers = parseObjMesh(new TextDecoder().decode(rawBytes));
+              if (buffers.vertices.length > 0) {
+                procedural.meshes[i] = createLoadedMeshPayload(m.id, m.name, buffers, m.color, m.type);
+              }
+            }
+          } catch {
+            // Keep procedural fallback mesh when file is unavailable
+          }
+        }
+      }
       stepMeshes = procedural.meshes;
       if (cadComponents.length === 0) {
         cadComponents = procedural.components;

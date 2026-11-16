@@ -40,7 +40,32 @@ export type TGGConstraintKind =
   | "complement"
   | "invertible"
   | "exprMap"
-  | "physicalPort";
+  | "physicalPort"
+  | "fieldAlias";
+
+export type TGGIdentityKeyTransform = "exact" | "stripPrefix" | "stepId" | "caseInsensitive";
+
+export interface TGGIdentityKey {
+  /** Property/attribute name on the source symbol/node (e.g. "name", "identifier", "stepEntityId") */
+  source: string;
+  /** Property/attribute name on the target symbol/node (e.g. "declaredName", "reqId", "stepId") */
+  target: string;
+  /** Optional normalization applied when comparing source and target keys */
+  transform?: TGGIdentityKeyTransform | undefined;
+  /** Prefix stripped/formatted when transform === "stripPrefix" */
+  prefix?: string | undefined;
+}
+
+export type TGGRelationRole = "aligned" | "satisfy" | "verify" | "allocate" | "typed_usage";
+
+export interface TGGForeignKeySpec {
+  /** Metadata or field key on the source symbol containing the foreign reference (e.g. "stepEntityId") */
+  sourceAttr: string;
+  /** Metadata or field key on the target symbol matched by the foreign reference (e.g. "stepId" or "name") */
+  targetAttr: string;
+  /** Semantic digital thread relation established by this foreign key */
+  relation?: TGGRelationRole | undefined;
+}
 
 export interface TGGConstraint {
   kind: TGGConstraintKind;
@@ -77,6 +102,14 @@ export interface TGGRuleOptions<
   targetLang?: string | undefined;
   /** Source language identifier */
   sourceLang?: string | undefined;
+  /** Optional explicit identity key pairs used for cross-language correspondence matching (auto-derived from `where` when omitted) */
+  identityKeys?: TGGIdentityKey[] | undefined;
+  /** Optional native foreign-key descriptor linking source symbols directly to target symbols */
+  foreignKey?: TGGForeignKeySpec | undefined;
+  /** Whether intra/inter-file resolvers may resolve references across this rule's metaclass pair (default: true) */
+  allowCrossLanguageRef?: boolean | undefined;
+  /** Semantic digital thread relation established when symbols match this rule */
+  relation?: TGGRelationRole | undefined;
 }
 
 export interface PolyglotConfig<
@@ -221,6 +254,18 @@ export function tggPhysicalPort(
 }
 
 /**
+ * Declares bidirectional canonical field/attribute name aliases within an aligned parent context
+ * (e.g. mapping Modelica `m` <-> SysML v2 `mass` or SCAD `computed_mass_kg` <-> `mass`).
+ */
+export function tggFieldAlias(
+  sourceField: unknown,
+  targetField: unknown,
+  aliases?: Record<string, string>,
+): TGGConstraint {
+  return { kind: "fieldAlias", args: [sourceField, targetField, aliases] };
+}
+
+/**
  * Infix binary operation expression pattern.
  */
 export function tggBinary(op: string, left: unknown, right: unknown): TGGExprPattern {
@@ -246,6 +291,9 @@ export interface TGGThreadRuleOptions<DomainNames extends string = string> {
   domains: Record<DomainNames, (patternBuilder: TGGPatternBuilderProxy, varProxy: (name: string) => string) => unknown>;
   where?: ((varProxy: (name: string) => string) => TGGConstraint[]) | undefined;
   priority?: number | undefined;
+  identityKeys?: Record<string, string>[] | undefined;
+  allowCrossLanguageRef?: boolean | undefined;
+  relation?: TGGRelationRole | undefined;
 }
 
 /**

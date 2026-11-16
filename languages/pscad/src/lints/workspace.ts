@@ -7,6 +7,8 @@ import {
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { getMasterComponentSchema } from "../catalog/master-library-schemas.js";
+import { registeredExternalDefinitions } from "../model/workspace-registry.js";
 import { parsePscx } from "../parser/pscx-parser.js";
 import { lintPscx } from "./index.js";
 
@@ -64,12 +66,43 @@ export function lintPscadWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
       }
     }
 
-    // Check custom user definitions referenced against .pslx libraries if any .pslx files are loaded
-    if (libraryDefs.size > 0) {
-      for (const [defName] of project.definitions ?? []) {
-        if (defName && !defName.startsWith("master:") && libraryDefs.has(defName)) {
-          // Validated against .pslx
-          continue;
+    // Check component definitions against project definitions, submodules, loaded .pslx libraries, and workspace registry
+    const extDefs = registeredExternalDefinitions();
+    const BUILTIN_BARE_DEFS = new Set([
+      "bus",
+      "wire",
+      "graphframe",
+      "sticky",
+      "annotate",
+      "divider",
+      "label",
+      "pgb",
+      "tline",
+      "cable",
+    ]);
+    const modules = [project.rootModule, ...project.subModules.values()];
+    for (const mod of modules) {
+      for (const cmp of mod.components) {
+        const defName = cmp.definitionName;
+        if (!defName) continue;
+        const colonIdx = defName.indexOf(":");
+        const ns = colonIdx >= 0 ? defName.slice(0, colonIdx) : "";
+        const shortName = colonIdx >= 0 ? defName.slice(colonIdx + 1) : defName;
+        if (ns.toLowerCase() === "master") continue;
+        if (colonIdx < 0 && BUILTIN_BARE_DEFS.has(shortName.toLowerCase())) continue;
+        if (project.definitions?.has(defName) || project.definitions?.has(shortName)) continue;
+        if (project.subModules?.has(defName) || project.subModules?.has(shortName)) continue;
+        if (libraryDefs.has(defName) || libraryDefs.has(shortName)) continue;
+        if (ns && extDefs?.(ns, shortName)) continue;
+        if (getMasterComponentSchema(defName) || getMasterComponentSchema(shortName)) continue;
+        if (colonIdx >= 0 || libraryDefs.size > 0) {
+          diagnostics.push({
+            uri,
+            code: "M6021",
+            rule: "unresolved-component-definition",
+            severity: "warning",
+            message: `Component '${cmp.instanceName || cmp.id}' references definition '${defName}', which is not found in the project or loaded .pslx libraries.`,
+          });
         }
       }
     }

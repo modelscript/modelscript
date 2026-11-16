@@ -82,6 +82,8 @@ export type DiagramAction =
       newTargetPort?: string;
       points?: Pt[];
     }
+  | { type: "copySelection"; ids: string[]; targetDefinition?: string; dx?: number; dy?: number }
+  | { type: "syncSubmodulePorts"; definition: string; componentId?: string }
   | { type: string };
 
 export interface PlannedDiagramEdits {
@@ -460,13 +462,42 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
           unresolved.push(a.item.name);
           break;
         }
+        const nextOrient = orientCode(a.item.rotation ?? 0);
         ops.push({
           type: "moveComponent",
           id: hit.i.id,
           x: hit.i.x,
           y: hit.i.y,
-          orient: orientCode(a.item.rotation ?? 0),
+          orient: nextOrient,
         });
+        const lc = legacyCmps.find((c) => c.id === hit.i.id);
+        if (lc) {
+          const newDeg = nextOrient * 90;
+          const oldPortPos = new Map<string, Pt>();
+          const newPortPos = new Map<string, Pt>();
+          for (const p of lc.ports) {
+            const opw = computePortWorldPosition(lc.position, p.position, lc.rotation ?? 0, Boolean(lc.mirror));
+            const npw = computePortWorldPosition(lc.position, p.position, newDeg, Boolean(lc.mirror));
+            oldPortPos.set(p.id, { x: Math.round(opw.x), y: Math.round(opw.y) });
+            newPortPos.set(p.id, { x: Math.round(npw.x), y: Math.round(npw.y) });
+          }
+          for (const lw of legacyWires) {
+            if (touchedWires.has(lw.id) || lw.vertices.length < 2) continue;
+            const startOld = lw.startPortId ? oldPortPos.get(lw.startPortId) : undefined;
+            const startNew = lw.startPortId ? newPortPos.get(lw.startPortId) : undefined;
+            const endOld = lw.endPortId ? oldPortPos.get(lw.endPortId) : undefined;
+            const endNew = lw.endPortId ? newPortPos.get(lw.endPortId) : undefined;
+            if (!startNew && !endNew) continue;
+            const pts = lw.vertices.map((v) => ({ x: v.x, y: v.y }));
+            if (startNew && startOld && (startNew.x !== startOld.x || startNew.y !== startOld.y)) {
+              pts[0] = startNew;
+            }
+            if (endNew && endOld && (endNew.x !== endOld.x || endNew.y !== endOld.y)) {
+              pts[pts.length - 1] = endNew;
+            }
+            setPoints(lw.id, pts);
+          }
+        }
         renderHint = "immediate";
         break;
       }
@@ -642,6 +673,28 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
           pts = [s, d];
         }
         setPoints(w.w.id, pts);
+        renderHint = "immediate";
+        break;
+      }
+      case "copySelection": {
+        const a = action as Extract<DiagramAction, { type: "copySelection" }>;
+        ops.push({
+          type: "copySelection",
+          ids: a.ids.map(stripPrefix),
+          ...(a.targetDefinition ? { targetDefinition: a.targetDefinition } : {}),
+          ...(a.dx !== undefined ? { dx: a.dx } : {}),
+          ...(a.dy !== undefined ? { dy: a.dy } : {}),
+        });
+        renderHint = "immediate";
+        break;
+      }
+      case "syncSubmodulePorts": {
+        const a = action as Extract<DiagramAction, { type: "syncSubmodulePorts" }>;
+        ops.push({
+          type: "syncSubmodulePorts",
+          definition: a.definition,
+          ...(a.componentId ? { componentId: stripPrefix(a.componentId) } : {}),
+        });
         renderHint = "immediate";
         break;
       }

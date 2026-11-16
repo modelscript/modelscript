@@ -2196,9 +2196,17 @@ export class WasmQueryEngine {
       }
     }
 
+    const entryMatchesDomain = (entry: SymbolEntry, expected: LanguageDomainId | undefined): boolean => {
+      if (expected === undefined) return true;
+      const bitDomain = getSymbolDomain(entry.id);
+      if (bitDomain !== 0) return bitDomain === expected;
+      if (entry.language) return getLanguageDomainId(entry.language) === expected;
+      return false;
+    };
+
     // Direct match by qualifiedName / fqn metadata or exact name
     for (const entry of this.allEntries()) {
-      if (searchDomain !== undefined && getSymbolDomain(entry.id) !== searchDomain) {
+      if (!entryMatchesDomain(entry, searchDomain)) {
         continue;
       }
       if (
@@ -2219,7 +2227,7 @@ export class WasmQueryEngine {
     for (const candId of rootCandidates) {
       const cand = this.resolveEntry(candId);
       if (!cand) continue;
-      if (searchDomain !== undefined && getSymbolDomain(cand.id) !== searchDomain) {
+      if (!entryMatchesDomain(cand, searchDomain)) {
         continue;
       }
 
@@ -2258,7 +2266,7 @@ export class WasmQueryEngine {
     for (const lid of leafCandidates) {
       const entry = this.resolveEntry(lid);
       if (!entry) continue;
-      if (searchDomain !== undefined && getSymbolDomain(entry.id) !== searchDomain) {
+      if (!entryMatchesDomain(entry, searchDomain)) {
         continue;
       }
       return entry.id;
@@ -2269,22 +2277,59 @@ export class WasmQueryEngine {
 
   /**
    * Returns all cross-domain counterpart `SymbolId`s bound to `symbolId` via the TGG
-   * correspondence slot table, explicit metadata links (`twin`, `counterpart`, `implements`,
-   * `cadBinding`), or matching symbol names in other language domains.
+   * correspondence slot table / `DigitalThreadHypergraph`, explicit metadata links (`twin`,
+   * `counterpart`, `implements`, `cadBinding`), or (when no correspondence indexer is attached)
+   * top-level name matching across other language domains.
    */
   public crossDomainBinding(symbolId: SymbolId): SymbolId[] {
     const entry = this.resolveEntry(symbolId);
     if (!entry) return [];
 
-    const domain = getSymbolDomain(symbolId);
+    const domain = getSymbolDomain(symbolId) || (entry.language ? getLanguageDomainId(entry.language) : 0);
+    const entryLang = entry.language?.toLowerCase() ?? "";
     const results = new Set<SymbolId>();
 
-    // 1. Check correspondence slot map if configured
+    // 1. Check TGG correspondence slot map & attached DigitalThreadHypergraph if configured
     if (this.correspondenceSlotMap && this.correspondenceSlotMap.has(symbolId)) {
       const slot = this.correspondenceSlotMap.get(symbolId)!;
       for (const [otherId, otherSlot] of this.correspondenceSlotMap.entries()) {
         if (otherSlot === slot && otherId !== symbolId) {
           results.add(otherId);
+        }
+      }
+      if (this.correspondenceIndex && typeof this.correspondenceIndex.getRecord === "function") {
+        const rec = this.correspondenceIndex.getRecord(slot);
+        if (rec && !rec.isRemoved && rec.domainNodes) {
+          for (const nodeId of Object.values(rec.domainNodes) as number[]) {
+            if (typeof nodeId === "number" && nodeId !== symbolId && this.resolveEntry(nodeId)) {
+              results.add(nodeId);
+            }
+          }
+        }
+      }
+    }
+
+    if (
+      this.correspondenceIndex &&
+      typeof this.correspondenceIndex.resolveOrRegisterDomain === "function" &&
+      (typeof this.correspondenceIndex.findSlotsByDomainNode === "function" ||
+        typeof this.correspondenceIndex.findThreadsByDomainNode === "function") &&
+      entryLang
+    ) {
+      const normalizedLang = entryLang === "sysml" ? "sysml2" : entryLang;
+      const hgDom = this.correspondenceIndex.resolveOrRegisterDomain(normalizedLang);
+      const slots: number[] =
+        typeof this.correspondenceIndex.findSlotsByDomainNode === "function"
+          ? (this.correspondenceIndex.findSlotsByDomainNode(hgDom, symbolId) ?? [])
+          : (this.correspondenceIndex.findThreadsByDomainNode(hgDom, symbolId) ?? []);
+      for (const slot of slots) {
+        const rec = this.correspondenceIndex.getRecord?.(slot);
+        if (rec && !rec.isRemoved && rec.domainNodes) {
+          for (const nodeId of Object.values(rec.domainNodes) as number[]) {
+            if (typeof nodeId === "number" && nodeId !== symbolId && this.resolveEntry(nodeId)) {
+              results.add(nodeId);
+            }
+          }
         }
       }
     }
@@ -2312,13 +2357,18 @@ export class WasmQueryEngine {
       }
     }
 
-    // 3. Fall back to name matching across other language domains
-    if (entry.name) {
+    // 3. Legacy fallback ONLY when no correspondence indexer is attached: match top-level containers across domains
+    if (!this.correspondenceSlotMap && entry.name && entry.parentId === null) {
       const nameMatches = this.index.byName.get(entry.name) || [];
       for (const otherId of nameMatches) {
         if (otherId === symbolId) continue;
-        const otherDomain = getSymbolDomain(otherId);
-        if (otherDomain !== domain) {
+        const otherEntry = this.resolveEntry(otherId);
+        if (!otherEntry || otherEntry.parentId !== null) continue;
+        const otherDomain =
+          getSymbolDomain(otherId) || (otherEntry.language ? getLanguageDomainId(otherEntry.language) : 0);
+        const isDifferentLang =
+          entryLang && otherEntry.language ? entryLang !== otherEntry.language.toLowerCase() : otherDomain !== domain;
+        if (isDifferentLang) {
           results.add(otherId);
         }
       }

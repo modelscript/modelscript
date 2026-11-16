@@ -61,7 +61,7 @@ jobs:
   test:
     if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -222,6 +222,8 @@ jobs:
         run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica
       - name: Run Modelica Dual Testsuite (WASM vs JS)
         if: steps.check-affected.outputs.run_suite == 'true'
+        env:
+          NODE_OPTIONS: "--max-old-space-size=6144"
         run: |
           mkdir -p .v8-coverage languages/modelica/coverage/omc
           NODE_V8_COVERAGE=$(pwd)/.v8-coverage npm run test:modelica:both:allow-wasm
@@ -295,7 +297,7 @@ jobs:
             ${{ runner.os }}-wasm-
             Linux-wasm-
       - name: Build Prerequisites
-        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/simulate
+        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/simulate,@modelscript/rocets,@modelscript/ccsds,@modelscript/modflow
       - name: Cache Benchmarks
         uses: actions/cache@v4
         with:
@@ -388,7 +390,7 @@ jobs:
   build:
     if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:

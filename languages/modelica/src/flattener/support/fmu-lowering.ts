@@ -369,6 +369,10 @@ export function extractAndRegisterFmuMetadata(flattener: any, dae: DAEBuilder, r
     if (typeof flattener.isFmuClass === "function") {
       return flattener.isFmuClass(classId);
     }
+    const classSym = flattener.db.symbol(classId);
+    if (typeof classSym?.metadata?.["fmuPath"] === "string" && classSym.metadata["fmuPath"].length > 0) {
+      return true;
+    }
     const classCst = flattener.db.cstNode(classId);
     const ann = findDirectAnnotationClause(classCst);
     if (!ann) return false;
@@ -430,9 +434,14 @@ export function extractAndRegisterFmuMetadata(flattener: any, dae: DAEBuilder, r
   if (fmuComponents && fmuComponents.size > 0) {
     for (const [instanceName, classId] of fmuComponents) {
       if (existingNames.has(instanceName)) continue;
+      const classSym = flattener.db.symbol(classId);
       const classCst = flattener.db.cstNode(classId);
       const compAnn = extractFmuAnnotation(classCst);
-      if (!compAnn) continue;
+      const symFmuPath =
+        typeof classSym?.metadata?.["fmuPath"] === "string" && classSym.metadata["fmuPath"].length > 0
+          ? classSym.metadata["fmuPath"]
+          : undefined;
+      if (!compAnn && !symFmuPath) continue;
 
       const inputs: string[] = [];
       const outputs: string[] = [];
@@ -460,13 +469,16 @@ export function extractAndRegisterFmuMetadata(flattener: any, dae: DAEBuilder, r
 
       fmuInstances.push({
         instanceName,
-        fmuPath: compAnn.fmuPath!,
-        fmiVersion: compAnn.fmiVersion,
-        guid: compAnn.guid,
-        preferredKind: compAnn.preferredKind,
-        csModelIdentifier: compAnn.csModelIdentifier,
-        meModelIdentifier: compAnn.meModelIdentifier,
-        terminalMapping: compAnn.terminalMapping,
+        fmuPath: compAnn?.fmuPath ?? symFmuPath!,
+        fmiVersion: compAnn?.fmiVersion ?? (classSym?.metadata?.["fmiVersion"] as "2.0" | "3.0" | undefined),
+        guid: compAnn?.guid ?? (classSym?.metadata?.["guid"] as string | undefined),
+        preferredKind:
+          compAnn?.preferredKind ?? (classSym?.metadata?.["preferredKind"] as "cs" | "me" | "auto" | undefined),
+        csModelIdentifier:
+          compAnn?.csModelIdentifier ?? (classSym?.metadata?.["csModelIdentifier"] as string | undefined),
+        meModelIdentifier:
+          compAnn?.meModelIdentifier ?? (classSym?.metadata?.["meModelIdentifier"] as string | undefined),
+        terminalMapping: compAnn?.terminalMapping,
         inputs,
         outputs,
         parameters,

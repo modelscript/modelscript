@@ -52,9 +52,10 @@ export const reqifIndexing: LanguageIndexingConfig = {
       },
     );
 
+    const symIdByReqIdentifier = new Map<string, number>();
     for (const obj of doc.specObjects.values()) {
       const reqName = obj.identifier;
-      ctx.addSymbol(
+      const reqSymId = ctx.addSymbol(
         reqName,
         "Class",
         rootId,
@@ -62,11 +63,19 @@ export const reqifIndexing: LanguageIndexingConfig = {
         obj.span?.endOffset ?? 0,
         {
           language: "reqif",
+          identifier: obj.identifier,
           text: obj.text,
           longName: obj.longName,
           asilLevel: obj.asilLevel,
           contract: obj.contract,
           typeRef: obj.typeRef,
+          ...(obj.contract
+            ? {
+                variable: obj.contract.variable,
+                comparator: obj.contract.comparator,
+                limitValue: obj.contract.limitValue,
+              }
+            : {}),
         },
         {
           ruleName: "reqif_requirement",
@@ -74,6 +83,33 @@ export const reqifIndexing: LanguageIndexingConfig = {
           aliases: obj.longName && obj.longName !== reqName ? [obj.longName] : [],
         },
       );
+      symIdByReqIdentifier.set(reqName, reqSymId);
+    }
+
+    for (const rel of doc.specRelations) {
+      const relStart = rel.span?.startOffset ?? 0;
+      const relEnd = rel.span?.endOffset ?? 0;
+      const parentSymId = symIdByReqIdentifier.get(rel.sourceId) ?? rootId;
+      if (rel.targetId) {
+        ctx.addSymbol(
+          rel.targetId,
+          "Reference",
+          parentSymId,
+          relStart,
+          relEnd,
+          {
+            language: "reqif",
+            relationId: rel.identifier,
+            relationType: rel.relationType,
+            sourceId: rel.sourceId,
+            targetId: rel.targetId,
+          },
+          {
+            ruleName: "reqif_relation",
+            namePath: `${specTitle}.${rel.identifier || `${rel.sourceId}->${rel.targetId}`}`,
+          },
+        );
+      }
     }
   },
 };

@@ -351,8 +351,10 @@ export function importONNXToROM(
 
   // 3. Parse linear layers (Gemm / MatMul + optional Add) and per-layer activations
   const layers: { W: number[][]; b: number[] }[] = [];
-  const layerActivations: ("tanh" | "relu" | "sigmoid" | "linear")[] = [];
-  let detectedActivation: "tanh" | "relu" | "sigmoid" = "tanh";
+  const layerActivations: ("tanh" | "relu" | "sigmoid" | "silu" | "elu" | "linear")[] = [];
+  const layerNorms: ({ gamma: number[]; beta: number[]; eps: number } | undefined)[] = [];
+  let outputClamp: [number, number] | undefined;
+  let detectedActivation: "tanh" | "relu" | "sigmoid" | "silu" | "elu" = "tanh";
   let hasExplicitActivation = false;
 
   const nodes = onnx.graph.nodes ?? [];
@@ -386,6 +388,7 @@ export function importONNXToROM(
       const b = bInit ? Array.from(bInit.data) : new Array<number>(fanOut).fill(0.0);
       layers.push({ W, b });
       layerActivations.push("linear");
+      layerNorms.push(undefined);
     } else if (opType === "MatMul") {
       // MatMul inputs: [X, W] where W has shape [fanIn, fanOut]
       const in0 = node.inputs[0];
@@ -412,6 +415,7 @@ export function importONNXToROM(
       const b = new Array<number>(fanOut).fill(0.0);
       layers.push({ W, b });
       layerActivations.push("linear");
+      layerNorms.push(undefined);
     } else if (opType === "Add" && layers.length > 0) {
       // Attach bias if one of the Add inputs is a layer bias initializer (and not "output_mean")
       const in0 = node.inputs[0];
@@ -426,6 +430,23 @@ export function importONNXToROM(
           }
         }
       }
+    } else if (opType === "LayerNormalization" && layers.length > 0) {
+      const scaleInit = node.inputs[1] ? initializers.get(node.inputs[1]) : undefined;
+      const biasInit = node.inputs[2] ? initializers.get(node.inputs[2]) : undefined;
+      const dim = layers[layers.length - 1]!.W.length;
+      layerNorms[layers.length - 1] = {
+        gamma: scaleInit ? Array.from(scaleInit.data) : new Array<number>(dim).fill(1.0),
+        beta: biasInit ? Array.from(biasInit.data) : new Array<number>(dim).fill(0.0),
+        eps: 1e-5,
+      };
+    } else if (opType === "Clip") {
+      const minInit = node.inputs[1] ? initializers.get(node.inputs[1]) : undefined;
+      const maxInit = node.inputs[2] ? initializers.get(node.inputs[2]) : undefined;
+      const lo = minInit?.data[0] ?? -Infinity;
+      const hi = maxInit?.data[0] ?? Infinity;
+      outputClamp = [lo, hi];
+    } else if (opType === "Concat" || opType === "Slice") {
+      // Tensor routing/concatenation in RL actor heads passes through to downstream linear layers
     } else if (opType === "Tanh" && layers.length > 0) {
       layerActivations[layers.length - 1] = "tanh";
       if (!hasExplicitActivation) {
@@ -439,9 +460,33 @@ export function importONNXToROM(
         hasExplicitActivation = true;
       }
     } else if (opType === "Sigmoid" && layers.length > 0) {
-      layerActivations[layers.length - 1] = "sigmoid";
+      // Check for PyTorch SiLU export pattern: Sigmoid(z) followed by Mul(z, sigmoid(z))
+      const nextNode = nodes[idx + 1];
+      const sigOut = node.outputs[0];
+      if (nextNode && (nextNode.opType as string) === "Mul" && sigOut && nextNode.inputs.includes(sigOut)) {
+        layerActivations[layers.length - 1] = "silu";
+        if (!hasExplicitActivation) {
+          detectedActivation = "silu";
+          hasExplicitActivation = true;
+        }
+        idx++; // Skip paired Mul node
+      } else {
+        layerActivations[layers.length - 1] = "sigmoid";
+        if (!hasExplicitActivation) {
+          detectedActivation = "sigmoid";
+          hasExplicitActivation = true;
+        }
+      }
+    } else if ((opType === "Silu" || opType === "Swish") && layers.length > 0) {
+      layerActivations[layers.length - 1] = "silu";
       if (!hasExplicitActivation) {
-        detectedActivation = "sigmoid";
+        detectedActivation = "silu";
+        hasExplicitActivation = true;
+      }
+    } else if (opType === "Elu" && layers.length > 0) {
+      layerActivations[layers.length - 1] = "elu";
+      if (!hasExplicitActivation) {
+        detectedActivation = "elu";
         hasExplicitActivation = true;
       }
     }
@@ -478,6 +523,8 @@ export function importONNXToROM(
     (metaOutputNames && metaOutputNames.length === nOut ? metaOutputNames : undefined) ??
     (nOut === 1 ? ["y"] : Array.from({ length: nOut }, (_, i) => `out_${i + 1}`));
 
+  const hasAnyLayerNorm = layerNorms.some((ln) => ln !== undefined);
+
   return {
     architecture: "mlp",
     inputNames,
@@ -490,6 +537,8 @@ export function importONNXToROM(
       layers,
       activation: detectedActivation,
       layerActivations,
+      ...(hasAnyLayerNorm ? { layerNorms } : {}),
+      ...(outputClamp ? { outputClamp } : {}),
     },
     metrics: { trainMSE: 0.0, valMSE: 0.0, r2: 1.0 },
   };
@@ -553,6 +602,8 @@ export function importONNXToArenaNeuralBlock(
   const mapAct = (a: string | undefined): ActivationKind => {
     if (a === "relu") return ActivationKind.ReLU;
     if (a === "sigmoid") return ActivationKind.Sigmoid;
+    if (a === "silu") return ActivationKind.SiLU;
+    if (a === "elu") return ActivationKind.ELU;
     if (a === "linear") return ActivationKind.Linear;
     return ActivationKind.Tanh;
   };

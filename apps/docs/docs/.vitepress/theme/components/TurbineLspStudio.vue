@@ -42,6 +42,7 @@ export interface CompiledStepPayload {
     datums: StepGdtDatumPayload[];
     callouts: StepGdtCalloutPayload[];
   };
+  emptyStage?: boolean;
 }
 
 interface StudioArtifactState extends TurbineArtifactSpec {
@@ -302,6 +303,25 @@ async function compileStepAndDrive3D(forceRecompile = false): Promise<void> {
     });
     if (token !== stepCompileToken) return;
     if (compiled.error || !compiled.stepText) {
+      const isEmptyScad =
+        scadTab.code.trim().length === 0 ||
+        compiled.error === "No top-level SCAD solids evaluated from source.";
+      if (isEmptyScad) {
+        stepTab.code = "";
+        stepTab.faulted = false;
+        monacoHandle?.setValueForUri(stepTab.uri, "", stepTab.langSlug);
+        await syncDocsLspBuffer(stepTab.uri, stepTab.langSlug, "");
+        compiledSpools.value = compiled.spools;
+        compiledFeatureAnchors.value = [];
+        compiledGdtOverlay.value = null;
+        compiledMeshCount.value = 0;
+        emit("compiled-step", {
+          meshes: [],
+          spools: [],
+          gdtOverlay: { datums: [], callouts: [] },
+          emptyStage: true,
+        });
+      }
       return;
     }
 
@@ -314,6 +334,10 @@ async function compileStepAndDrive3D(forceRecompile = false): Promise<void> {
     compiledSpools.value = compiled.spools;
     compiledFeatureAnchors.value = compiled.featureAnchors;
     compiledGdtOverlay.value = compiled.gdtOverlay;
+
+    if (props.view === "code" || props.view === "diagram") {
+      return;
+    }
 
     const rawMeshes = await getStepMeshesDocsLsp(stepTab.uri, compiled.stepText);
     if (token !== stepCompileToken) return;

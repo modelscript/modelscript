@@ -1,0 +1,166 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import { ic, p, type DyrModelSchema } from "../types.js";
+
+const SHED_3STAGE_PARAMS = [
+  p("F1", "Hz", "Stage 1 pickup threshold F1 (or V1 in pu)", 59.3, 0.0, 70),
+  p("T1", "s", "Stage 1 pickup delay T1", 0.15, 0.0, 60),
+  p("TB1", "s", "Stage 1 breaker clearing delay TB1", 0.05, 0.0, 5),
+  p("SH1", "fraction", "Stage 1 load shed fraction SH1", 0.1, 0.0, 1),
+  p("F2", "Hz", "Stage 2 pickup threshold F2", 58.9, 0.0, 70),
+  p("T2", "s", "Stage 2 pickup delay T2", 0.15, 0.0, 60),
+  p("TB2", "s", "Stage 2 breaker clearing delay TB2", 0.05, 0.0, 5),
+  p("SH2", "fraction", "Stage 2 load shed fraction SH2", 0.1, 0.0, 1),
+  p("F3", "Hz", "Stage 3 pickup threshold F3", 58.5, 0.0, 70),
+  p("T3", "s", "Stage 3 pickup delay T3", 0.15, 0.0, 60),
+  p("TB3", "s", "Stage 3 breaker clearing delay TB3", 0.05, 0.0, 5),
+  p("SH3", "fraction", "Stage 3 load shed fraction SH3", 0.1, 0.0, 1),
+];
+
+export const RELAY_PROTECTION_SCHEMAS: Record<string, DyrModelSchema> = {
+  // === Under-Frequency & Under-Voltage Load Shedding ===
+  LDSHBL: {
+    model: "LDSHBL",
+    aliases: ["LDSHAL", "LDSHZL", "UFLSBL", "UFLSAL", "DLSHBL", "DLSHAL"],
+    category: "relay",
+    subCategory: "relay_shed",
+    headerKind: "load",
+    title: "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
+    standardRef: "NERC PRC-006 / IEEE UFLS Relay Model",
+    description:
+      "Three-stage under-frequency (and optional df/dt ROCOF) load shedding relay with pickup and breaker timers.",
+    icons: [ic("bus", "bus", "Frequency measurement bus (0 = local)", 0)],
+    params: SHED_3STAGE_PARAMS,
+    states: ["tShed1", "tShed2", "tShed3", "shedFraction"],
+    daeArchetype: "relay_load_shed",
+  },
+  LVSHBL: {
+    model: "LVSHBL",
+    aliases: ["LVSHAL", "LVSHZL", "UVLSBL", "UVLSAL"],
+    category: "relay",
+    subCategory: "relay_shed",
+    headerKind: "load",
+    title: "Under-Voltage Load Shedding Relay (LVSHBL / UVLS)",
+    standardRef: "NERC PRC-010 / IEEE UVLS Relay Model",
+    description: "Three-stage under-voltage load shedding relay protecting against voltage collapse and FIDVR.",
+    icons: [ic("bus", "bus", "Voltage measurement bus (0 = local)", 0)],
+    params: [
+      p("V1", "p.u.", "Stage 1 undervoltage threshold V1", 0.88, 0.1, 1.2),
+      p("T1", "s", "Stage 1 pickup delay T1", 1.5, 0.0, 60),
+      p("TB1", "s", "Stage 1 breaker delay TB1", 0.05, 0.0, 5),
+      p("SH1", "fraction", "Stage 1 shed fraction SH1", 0.1, 0.0, 1),
+      p("V2", "p.u.", "Stage 2 undervoltage threshold V2", 0.85, 0.1, 1.2),
+      p("T2", "s", "Stage 2 pickup delay T2", 0.8, 0.0, 60),
+      p("TB2", "s", "Stage 2 breaker delay TB2", 0.05, 0.0, 5),
+      p("SH2", "fraction", "Stage 2 shed fraction SH2", 0.1, 0.0, 1),
+      p("V3", "p.u.", "Stage 3 undervoltage threshold V3", 0.8, 0.1, 1.2),
+      p("T3", "s", "Stage 3 pickup delay T3", 0.3, 0.0, 60),
+      p("TB3", "s", "Stage 3 breaker delay TB3", 0.05, 0.0, 5),
+      p("SH3", "fraction", "Stage 3 shed fraction SH3", 0.1, 0.0, 1),
+    ],
+    states: ["tShed1", "tShed2", "tShed3", "shedFraction"],
+    daeArchetype: "relay_load_shed",
+  },
+
+  // === Generator / Bus Protection Relays ===
+  FRQTPAT: {
+    model: "FRQTPAT",
+    aliases: ["FRQTPAU", "GP1"],
+    category: "relay",
+    subCategory: "relay_trip",
+    headerKind: "machine",
+    title: "Generator Over/Under-Frequency Trip Relay (FRQTPAT)",
+    standardRef: "NERC PRC-024-3 Frequency Ride-Through Curve",
+    description: "Trips generator when bus frequency remains outside [FL, FU] beyond pickup + breaker delay.",
+    icons: [ic("bus", "bus", "Frequency measurement bus (0 = local)", 0)],
+    params: [
+      p("FL", "Hz", "Under-frequency trip threshold FL", 57.5, 40, 65),
+      p("FU", "Hz", "Over-frequency trip threshold FU", 61.5, 50, 75),
+      p("TP", "s", "Relay pickup time delay TP", 0.1, 0.0, 60),
+      p("TB", "s", "Breaker opening delay TB", 0.05, 0.0, 5),
+    ],
+    states: ["tPickup", "tripLatch"],
+    daeArchetype: "relay_gen_trip",
+  },
+  VTGTPAT: {
+    model: "VTGTPAT",
+    aliases: ["VTGTPAU", "VTGDCAT", "GP2"],
+    category: "relay",
+    subCategory: "relay_trip",
+    headerKind: "machine",
+    title: "Generator Over/Under-Voltage Trip Relay (VTGTPAT / VTGDCAT)",
+    standardRef: "NERC PRC-024-3 Voltage Ride-Through Curve",
+    description:
+      "Trips generator when terminal or monitored bus voltage remains outside [VL, VU] beyond pickup + breaker delay.",
+    icons: [ic("bus", "bus", "Monitored voltage bus (0 = local)", 0)],
+    params: [
+      p("VL", "p.u.", "Under-voltage trip threshold VL", 0.7, 0.0, 1.2),
+      p("VU", "p.u.", "Over-voltage trip threshold VU", 1.2, 0.8, 2.0),
+      p("TP", "s", "Relay pickup time delay TP", 0.2, 0.0, 60),
+      p("TB", "s", "Breaker opening delay TB", 0.05, 0.0, 5),
+    ],
+    states: ["tPickup", "tripLatch"],
+    daeArchetype: "relay_gen_trip",
+  },
+  OOSR1: {
+    model: "OOSR1",
+    aliases: ["LOEXR1"],
+    category: "relay",
+    subCategory: "relay_trip",
+    headerKind: "machine",
+    title: "Generator Out-of-Step & Loss-of-Excitation Protection Relay (OOSR1 / LOEXR1)",
+    standardRef: "IEEE C37.102 Generator Protection",
+    description: "Detects rotor angle pole-slipping or mho impedance trajectory inside loss-of-excitation zone.",
+    params: [
+      p("Zset", "p.u.", "Mho circle reach impedance Zset", 1.0, 0.05, 10),
+      p("Zoff", "p.u.", "Mho circle offset impedance Zoff", 0.15, -5, 5),
+      p("TP", "s", "Relay pickup delay TP", 0.1, 0.0, 10),
+      p("TB", "s", "Breaker delay TB", 0.05, 0.0, 5),
+    ],
+    states: ["tPickup", "tripLatch"],
+    daeArchetype: "relay_gen_trip",
+  },
+
+  // === Branch Distance & Overcurrent Relays ===
+  DISTRL: {
+    model: "DISTRL",
+    aliases: ["DIST1", "TIOCR1", "TOVRD1", "CMLDRL"],
+    category: "relay",
+    subCategory: "relay_branch",
+    headerKind: "branch",
+    title: "Transmission Line 3-Zone Mho Distance & Overcurrent Relay (DISTRL / TIOCR1)",
+    standardRef: "IEEE C37.113 / C37.112 Line Protection",
+    description:
+      "Computes apparent positive-sequence impedance Z = V/I at branch terminal for Zone 1/2/3 distance or inverse-time OC tripping.",
+    icons: [ic("end", "flag", "Monitored branch end (1=from-bus, 2=to-bus)", 1, [1, 2])],
+    params: [
+      p("Z1", "p.u.", "Zone 1 mho impedance reach Z1", 0.85, 0.01, 20),
+      p("T1", "s", "Zone 1 trip delay T1", 0.0, 0.0, 10),
+      p("Z2", "p.u.", "Zone 2 mho impedance reach Z2", 1.25, 0.01, 20),
+      p("T2", "s", "Zone 2 trip delay T2", 0.35, 0.0, 10),
+      p("Z3", "p.u.", "Zone 3 mho impedance reach Z3", 2.0, 0.01, 50),
+      p("T3", "s", "Zone 3 trip delay T3", 1.0, 0.0, 30),
+      p("TB", "s", "Breaker clearing delay TB", 0.05, 0.0, 5),
+    ],
+    states: ["tZ2", "tZ3", "tripLatch"],
+    daeArchetype: "relay_branch_dist",
+  },
+
+  // === Bus Frequency & Angle Measurement ===
+  BUSFRQ: {
+    model: "BUSFRQ",
+    aliases: ["SBUS", "PMU_MEAS"],
+    category: "relay",
+    subCategory: "measurement",
+    headerKind: "bus",
+    title: "Bus Frequency & Phase-Angle Rate Measurement Block (BUSFRQ / SBUS)",
+    standardRef: "IEEE C37.118 Synchrophasor / PSS/E Bus Frequency",
+    description: "Computes washed-out instantaneous bus frequency deviation df = (1 / 2pi) * d(theta)/dt.",
+    params: [
+      p("Tf", "s", "Derivative washout filter time constant Tf", 0.04, 0.005, 2),
+      p("Tw", "s", "Frequency smoothing time constant Tw", 0.02, 0.002, 2),
+    ],
+    states: ["theta_f", "freqDev"],
+    daeArchetype: "meas_bus_freq",
+  },
+};

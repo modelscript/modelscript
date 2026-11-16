@@ -193,6 +193,18 @@ export const Render: CommandModule<{}, RenderArgs> = {
       return;
     }
 
+    // 4b. URDF / MuJoCo MJCF (.urdf / .mjcf / .xml)
+    if (primaryFile && (ext === ".urdf" || ext === ".mjcf" || ext === ".xml")) {
+      const { isMjcfXml, parseMjcf, parseUrdf, renderUrdfIsometric3DSvg, renderUrdfSvg } =
+        await import("@modelscript/urdf");
+      const text = fs.readFileSync(primaryFile, "utf-8");
+      const robot = isMjcfXml(text) ? parseMjcf(text) : parseUrdf(text);
+      const view = (args.view ?? "3d").toLowerCase();
+      const svgStr = view === "2d" || view === "diagram" ? renderUrdfSvg(robot) : renderUrdfIsometric3DSvg(robot);
+      emitSvg(svgStr);
+      return;
+    }
+
     // 5. Modelica (.mo) — Default
     const { parser } = await createWasmParser(modelicaWasmPath);
     Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);

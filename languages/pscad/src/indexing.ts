@@ -67,6 +67,7 @@ const SEGMENT_TAG_SET = new Set(["segment"]);
 const PORT_TAG_SET = new Set(["port"]);
 const PARAM_TAG_SET = new Set(["parameter", "param"]);
 const ONLY_PARAM_TAG_SET = new Set(["param"]);
+const USER_TAG_SET = new Set(["user", "component"]);
 
 /**
  * Indexes a PSCAD project or library file (`.pslx`, `.pscx`, `.pswx`, `.psmx`) into `UnifiedWorkspace`.
@@ -121,6 +122,7 @@ export function indexPscadDocument(ctx: DslIndexFileContext): void {
 
   // 2. Extract component definitions from <definitions>
   const defElements = findDescendantsCI(xmlDoc.root, DEFINITION_TAG_SET);
+  const compIdByDefEl = new Map<XmlElement, number>();
   for (const defEl of defElements) {
     const defName = getAttrCI(defEl, "name");
     const classId = getAttrCI(defEl, "classid");
@@ -171,6 +173,7 @@ export function indexPscadDocument(ctx: DslIndexFileContext): void {
         resourceId: uri,
       },
     );
+    compIdByDefEl.set(defEl, compId);
 
     const seenChildren = new Set<string>();
 
@@ -235,6 +238,41 @@ export function indexPscadDocument(ctx: DslIndexFileContext): void {
         },
       );
     }
+  }
+
+  // 3. Index <User> / <Component> schematic instances as Reference symbols for inter-file & cross-language resolution
+  for (const userEl of findDescendantsCI(xmlDoc.root, USER_TAG_SET)) {
+    const rawDefn = getAttrAnyCI(userEl, ["defn", "name"])?.trim();
+    if (!rawDefn) continue;
+    const cleanDefn = rawDefn.includes(":") ? rawDefn.split(":").pop()! : rawDefn;
+    if (!cleanDefn) continue;
+    let parentSymId: typeof rootId | null = null;
+    let cur: XmlElement | undefined = userEl.parent ?? undefined;
+    while (cur) {
+      const mapped = compIdByDefEl.get(cur);
+      if (mapped !== undefined) {
+        parentSymId = mapped;
+        break;
+      }
+      cur = cur.parent ?? undefined;
+    }
+    ctx.addSymbol(
+      cleanDefn,
+      "Reference",
+      parentSymId,
+      userEl.start,
+      userEl.end,
+      {
+        language: "pscad",
+        rawDefinitionName: rawDefn,
+        instanceId: getAttrCI(userEl, "id"),
+      },
+      {
+        ruleName: "pscad_instance_ref",
+        namePath: `${projectName}.${cleanDefn}`,
+        resourceId: uri,
+      },
+    );
   }
 }
 

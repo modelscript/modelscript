@@ -28,6 +28,8 @@ export enum LanguageDomainId {
   CSV = 0x0a,
   PSCAD = 0x0b,
   PSSE = 0x0c,
+  ReqIF = 0x0d,
+  QIF = 0x0e,
 }
 
 export function makePolyglotSymbolId(domain: LanguageDomainId | number, localSeq: number): SymbolId {
@@ -46,7 +48,10 @@ export function getLanguageDomainId(language: string): LanguageDomainId {
   const norm = language.toLowerCase();
   if (norm.includes("modelica")) return LanguageDomainId.Modelica;
   if (norm.includes("sysml")) return LanguageDomainId.SysML2;
-  if (norm.includes("scad")) return LanguageDomainId.SCAD;
+  if (norm.includes("reqif")) return LanguageDomainId.ReqIF;
+  if (norm === "qif" || norm.startsWith("qif.") || norm.endsWith(".qif") || norm.includes("qif-"))
+    return LanguageDomainId.QIF;
+  if (norm.includes("scad") && !norm.includes("pscad")) return LanguageDomainId.SCAD;
   if (norm.includes("step") || norm === "cad" || norm.startsWith("cad-") || norm.endsWith("-cad"))
     return LanguageDomainId.STEP_CAD;
   if (norm.includes("owl")) return LanguageDomainId.OWL2;

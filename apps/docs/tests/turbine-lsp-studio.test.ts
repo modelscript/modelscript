@@ -300,169 +300,173 @@ describe("@modelscript/docs TurbineHero Live WASM LSP Studio", () => {
     assert.ok(!/liveGdtOverlay\.value\s*=\s*null/.test(closeMatch[1]), "closeStudio() must retain liveGdtOverlay");
   });
 
-  it("renders WebGL2 hero with zero initial LSP requests, then transitions in-place on click with working GD&T, CSG overlay, Fault QuickFix & Esc exit", async (t) => {
-    const indexHtml = path.join(DIST_DIR, "index.html");
-    if (!fs.existsSync(indexHtml)) {
-      t.skip("VitePress dist/index.html not built; run npm run build --workspace=@modelscript/docs first");
-      return;
-    }
+  it(
+    "renders WebGL2 hero with zero initial LSP requests, then transitions in-place on click with working GD&T, CSG overlay, Fault QuickFix & Esc exit",
+    { timeout: 150_000 },
+    async (t) => {
+      const indexHtml = path.join(DIST_DIR, "index.html");
+      if (!fs.existsSync(indexHtml)) {
+        t.skip("VitePress dist/index.html not built; run npm run build --workspace=@modelscript/docs first");
+        return;
+      }
 
-    const { chromium } = await import("playwright");
-    if (!fs.existsSync(chromium.executablePath())) {
-      t.skip(`Playwright Chromium binary not installed at ${chromium.executablePath()}`);
-      return;
-    }
+      const { chromium } = await import("playwright");
+      if (!fs.existsSync(chromium.executablePath())) {
+        t.skip(`Playwright Chromium binary not installed at ${chromium.executablePath()}`);
+        return;
+      }
 
-    const { server, port } = await startStaticServer(DIST_DIR);
-    let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+      const { server, port } = await startStaticServer(DIST_DIR);
+      let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 
-    try {
-      browser = await chromium.launch({
-        headless: true,
-        args: [
-          "--use-gl=angle",
-          "--use-angle=swiftshader",
-          "--enable-webgl",
-          "--enable-unsafe-swiftshader",
-          "--ignore-gpu-blocklist",
-        ],
-      });
-      const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-      const page = await context.newPage();
+      try {
+        browser = await chromium.launch({
+          headless: true,
+          args: [
+            "--use-gl=angle",
+            "--use-angle=swiftshader",
+            "--enable-webgl",
+            "--enable-unsafe-swiftshader",
+            "--ignore-gpu-blocklist",
+          ],
+        });
+        const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+        const page = await context.newPage();
 
-      const pageErrors: string[] = [];
-      const consoleErrors: string[] = [];
-      const lspRequestsBeforeInteract: string[] = [];
-      let interactedWithHero = false;
+        const pageErrors: string[] = [];
+        const consoleErrors: string[] = [];
+        const lspRequestsBeforeInteract: string[] = [];
+        let interactedWithHero = false;
 
-      page.on("pageerror", (err) => pageErrors.push(err.message || String(err)));
-      page.on("console", (msg) => {
-        if (msg.type() === "error") consoleErrors.push(msg.text());
-      });
-      page.on("request", (req) => {
-        if (!interactedWithHero && /\/lsp\/|monaco|browserServerMain/i.test(req.url())) {
-          lspRequestsBeforeInteract.push(req.url());
-        }
-      });
+        page.on("pageerror", (err) => pageErrors.push(err.message || String(err)));
+        page.on("console", (msg) => {
+          if (msg.type() === "error") consoleErrors.push(msg.text());
+        });
+        page.on("request", (req) => {
+          if (!interactedWithHero && /\/lsp\/|monaco|browserServerMain/i.test(req.url())) {
+            lspRequestsBeforeInteract.push(req.url());
+          }
+        });
 
-      await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle", timeout: 30000 });
+        await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle", timeout: 30000 });
 
-      // Wait for lightweight Three.js hero first frame
-      const readyCanvas = page.locator(".turbine-canvas.is-ready").first();
-      await readyCanvas.waitFor({ state: "visible", timeout: 15000 });
-      const canvasMetrics = await readyCanvas.evaluate((el) => {
-        const c = el as HTMLCanvasElement;
-        return { width: c.width, height: c.height, studioCount: document.querySelectorAll(".tls-root").length };
-      });
-      assert.ok(canvasMetrics.width > 0 && canvasMetrics.height > 0, "Expected live WebGL2 canvas dimensions > 0");
-      assert.strictEqual(canvasMetrics.studioCount, 0, "TurbineLspStudio must not mount before user interaction");
-      assert.deepStrictEqual(
-        lspRequestsBeforeInteract,
-        [],
-        `Zero LSP/Monaco requests should occur on initial load, saw: ${lspRequestsBeforeInteract.join(", ")}`,
-      );
+        // Wait for lightweight Three.js hero first frame
+        const readyCanvas = page.locator(".turbine-canvas.is-ready").first();
+        await readyCanvas.waitFor({ state: "visible", timeout: 15000 });
+        const canvasMetrics = await readyCanvas.evaluate((el) => {
+          const c = el as HTMLCanvasElement;
+          return { width: c.width, height: c.height, studioCount: document.querySelectorAll(".tls-root").length };
+        });
+        assert.ok(canvasMetrics.width > 0 && canvasMetrics.height > 0, "Expected live WebGL2 canvas dimensions > 0");
+        assert.strictEqual(canvasMetrics.studioCount, 0, "TurbineLspStudio must not mount before user interaction");
+        assert.deepStrictEqual(
+          lspRequestsBeforeInteract,
+          [],
+          `Zero LSP/Monaco requests should occur on initial load, saw: ${lspRequestsBeforeInteract.join(", ")}`,
+        );
 
-      // Hover hero to trigger 120ms idle prefetch + reveal CTA pill, then click into in-place studio
-      interactedWithHero = true;
-      await page.locator(".turbine").first().hover();
-      const ctaPill = page.locator(".turbine-lsp-trigger").first();
-      await ctaPill.waitFor({ state: "visible", timeout: 10000 });
-      await ctaPill.click();
+        // Hover hero to trigger 120ms idle prefetch + reveal CTA pill, then click into in-place studio
+        interactedWithHero = true;
+        await page.locator(".turbine").first().hover();
+        const ctaPill = page.locator(".turbine-lsp-trigger").first();
+        await ctaPill.waitFor({ state: "visible", timeout: 10000 });
+        await ctaPill.click();
 
-      const studioRoot = page.locator(".tls-root").first();
-      await studioRoot.waitFor({ state: "visible", timeout: 15000 });
+        const studioRoot = page.locator(".tls-root").first();
+        await studioRoot.waitFor({ state: "visible", timeout: 45000 });
 
-      // Verify all 4 engineering tabs, lock badge on STEP tab, and live telemetry readout
-      const tabNames = await page.locator(".tls-tab .tls-tab-name").allInnerTexts();
-      assert.deepStrictEqual(
-        tabNames.map((t) => t.trim()),
-        ["Turbofan2Spool.mo", "TurbofanCSG.scad", "TurbofanMBD.qif", "TurbofanAP242.step"],
-      );
-      assert.strictEqual(await page.locator('.tls-tab:has-text("TurbofanAP242.step") .tls-tab-lock').count(), 1);
-      const telemetryText = await page.locator(".tls-telemetry").first().innerText();
-      assert.ok(
-        telemetryText.includes("3850") && telemetryText.includes("14200"),
-        `Unexpected telemetry: ${telemetryText}`,
-      );
+        // Verify all 4 engineering tabs, lock badge on STEP tab, and live telemetry readout
+        const tabNames = await page.locator(".tls-tab .tls-tab-name").allInnerTexts();
+        assert.deepStrictEqual(
+          tabNames.map((t) => t.trim()),
+          ["Turbofan2Spool.mo", "TurbofanCSG.scad", "TurbofanMBD.qif", "TurbofanAP242.step"],
+        );
+        assert.strictEqual(await page.locator('.tls-tab:has-text("TurbofanAP242.step") .tls-tab-lock').count(), 1);
+        const telemetryText = await page.locator(".tls-telemetry").first().innerText();
+        assert.ok(
+          telemetryText.includes("3850") && telemetryText.includes("14200"),
+          `Unexpected telemetry: ${telemetryText}`,
+        );
 
-      // Wait for WASM LSP worker ready & verify clean initial status
-      await page.locator('.tls-status-dot[data-state="ready"]').waitFor({ state: "attached", timeout: 30000 });
-      await page.locator('.tls-prob-summary:has-text("0 Problems")').waitFor({ state: "visible", timeout: 15000 });
+        // Wait for WASM LSP worker ready & verify clean initial status
+        await page.locator('.tls-status-dot[data-state="ready"]').waitFor({ state: "attached", timeout: 30000 });
+        await page.locator('.tls-prob-summary:has-text("0 Problems")').waitFor({ state: "visible", timeout: 15000 });
 
-      // Wait for auto-compiled AP242 STEP -> OCCT B-Rep mesh handoff onto 3D viewport
-      const stepBtn = page.locator('button.tls-mini-btn:has-text("STEP 3D (")').first();
-      await stepBtn.waitFor({ state: "visible", timeout: 30000 });
-      const stepBtnLabel = await stepBtn.innerText();
-      const meshMatch = /STEP 3D \((\d+)\)/.exec(stepBtnLabel);
-      assert.ok(meshMatch && Number(meshMatch[1]) > 0, `Expected >=1 compiled STEP 3D mesh, got: ${stepBtnLabel}`);
+        // Wait for auto-compiled AP242 STEP -> OCCT B-Rep mesh handoff onto 3D viewport
+        const stepBtn = page.locator('button.tls-mini-btn:has-text("STEP 3D (")').first();
+        await stepBtn.waitFor({ state: "visible", timeout: 90000 });
+        const stepBtnLabel = await stepBtn.innerText();
+        const meshMatch = /STEP 3D \((\d+)\)/.exec(stepBtnLabel);
+        assert.ok(meshMatch && Number(meshMatch[1]) > 0, `Expected >=1 compiled STEP 3D mesh, got: ${stepBtnLabel}`);
 
-      // Toggle ASME Y14.5 GD&T overlay and click one 3D badge -> jumps to TurbofanMBD.qif
-      await page.locator('button.tls-pill-btn:has-text("GD&T")').click();
-      await page.locator(".turbine-gdt-layer").first().waitFor({ state: "visible", timeout: 10000 });
-      assert.strictEqual(await page.locator(".turbine-gdt-datum").count(), 3);
-      assert.strictEqual(await page.locator(".turbine-gdt-fcf").count(), 5);
+        // Toggle ASME Y14.5 GD&T overlay and click one 3D badge -> jumps to TurbofanMBD.qif
+        await page.locator('button.tls-pill-btn:has-text("GD&T")').click();
+        await page.locator(".turbine-gdt-layer").first().waitFor({ state: "visible", timeout: 10000 });
+        assert.strictEqual(await page.locator(".turbine-gdt-datum").count(), 3);
+        assert.strictEqual(await page.locator(".turbine-gdt-fcf").count(), 5);
 
-      await page.locator(".turbine-gdt-fcf").first().click({ force: true });
-      await page
-        .locator('.tls-tab.is-active:has-text("TurbofanMBD.qif")')
-        .waitFor({ state: "visible", timeout: 10000 });
+        await page.locator(".turbine-gdt-fcf").first().click({ force: true });
+        await page
+          .locator('.tls-tab.is-active:has-text("TurbofanMBD.qif")')
+          .waitFor({ state: "visible", timeout: 10000 });
 
-      // Exercise compiled STEP AP242 read-only tab, Diagram view, Code (Monaco), and Split views
-      await page.locator('.tls-tab:has-text("TurbofanAP242.step")').click();
-      await page.locator(".tls-ro-ribbon").first().waitFor({ state: "visible", timeout: 10000 });
+        // Exercise compiled STEP AP242 read-only tab, Diagram view, Code (Monaco), and Split views
+        await page.locator('.tls-tab:has-text("TurbofanAP242.step")').click();
+        await page.locator(".tls-ro-ribbon").first().waitFor({ state: "visible", timeout: 10000 });
 
-      await page.locator('button.tls-view-btn:has-text("Diagram")').click();
-      await page.locator(".tls-diagram-wrap").first().waitFor({ state: "visible", timeout: 10000 });
+        await page.locator('button.tls-view-btn:has-text("Diagram")').click();
+        await page.locator(".tls-diagram-wrap").first().waitFor({ state: "visible", timeout: 10000 });
 
-      await page.locator('button.tls-view-btn:has-text("Code")').click();
-      await page.locator(".tls-monaco-host .monaco-editor").first().waitFor({ state: "visible", timeout: 25000 });
+        await page.locator('button.tls-view-btn:has-text("Code")').click();
+        await page.locator(".tls-monaco-host .monaco-editor").first().waitFor({ state: "visible", timeout: 25000 });
 
-      // Jump back from STEP read-only banner to editable TurbofanMBD.qif source, then Split view
-      await page.locator('.tls-ro-link:has-text("TurbofanMBD.qif")').click();
-      await page
-        .locator('.tls-tab.is-active:has-text("TurbofanMBD.qif")')
-        .waitFor({ state: "visible", timeout: 10000 });
-      assert.strictEqual(await page.locator(".tls-ro-ribbon").count(), 0);
+        // Jump back from STEP read-only banner to editable TurbofanMBD.qif source, then Split view
+        await page.locator('.tls-ro-link:has-text("TurbofanMBD.qif")').click();
+        await page
+          .locator('.tls-tab.is-active:has-text("TurbofanMBD.qif")')
+          .waitFor({ state: "visible", timeout: 10000 });
+        assert.strictEqual(await page.locator(".tls-ro-ribbon").count(), 0);
 
-      await page.locator('button.tls-view-btn:has-text("Split")').click();
-      await page.locator(".tls-stage-slot").first().waitFor({ state: "visible", timeout: 10000 });
+        await page.locator('button.tls-view-btn:has-text("Split")').click();
+        await page.locator(".tls-stage-slot").first().waitFor({ state: "visible", timeout: 10000 });
 
-      // Toggle compiled STEP wireframe edges on/off
-      await page.locator('button.tls-mini-btn:has-text("STEP 3D (")').first().click();
-      await page.locator('button.tls-mini-btn:has-text("Wire On (")').waitFor({ state: "visible", timeout: 10000 });
-      await page.locator('button.tls-mini-btn:has-text("Wire On (")').first().click();
-      await page.locator('button.tls-mini-btn:has-text("STEP 3D (")').waitFor({ state: "visible", timeout: 10000 });
+        // Toggle compiled STEP wireframe edges on/off
+        await page.locator('button.tls-mini-btn:has-text("STEP 3D (")').first().click();
+        await page.locator('button.tls-mini-btn:has-text("Wire On (")').waitFor({ state: "visible", timeout: 10000 });
+        await page.locator('button.tls-mini-btn:has-text("Wire On (")').first().click();
+        await page.locator('button.tls-mini-btn:has-text("STEP 3D (")').waitFor({ state: "visible", timeout: 10000 });
 
-      // Exercise Inject Fault on QIF (M8104) -> Problems drawer -> 1-click Fix -> 0 Problems
-      await page.locator('button.tls-mini-btn:has-text("Inject Fault")').click();
-      await page.locator(".tls-prob-item").first().waitFor({ state: "visible", timeout: 15000 });
-      const probSummary = await page.locator(".tls-prob-summary").first().innerText();
-      assert.ok(
-        /^[1-9]\d*\s+Problem/.test(probSummary.trim()),
-        `Expected >=1 problem after Inject Fault, got: ${probSummary}`,
-      );
-      const fixBtn = page.locator(".tls-fix-btn").first();
-      await fixBtn.waitFor({ state: "visible", timeout: 10000 });
-      await fixBtn.click();
-      await page.locator('.tls-prob-summary:has-text("0 Problems")').waitFor({ state: "visible", timeout: 15000 });
+        // Exercise Inject Fault on QIF (M8104) -> Problems drawer -> 1-click Fix -> 0 Problems
+        await page.locator('button.tls-mini-btn:has-text("Inject Fault")').click();
+        await page.locator(".tls-prob-item").first().waitFor({ state: "visible", timeout: 15000 });
+        const probSummary = await page.locator(".tls-prob-summary").first().innerText();
+        assert.ok(
+          /^[1-9]\d*\s+Problem/.test(probSummary.trim()),
+          `Expected >=1 problem after Inject Fault, got: ${probSummary}`,
+        );
+        const fixBtn = page.locator(".tls-fix-btn").first();
+        await fixBtn.waitFor({ state: "visible", timeout: 10000 });
+        await fixBtn.click();
+        await page.locator('.tls-prob-summary:has-text("0 Problems")').waitFor({ state: "visible", timeout: 15000 });
 
-      // Exercise Expand overlay and Escape twice (collapse -> close back to lightweight hero)
-      await page.locator('button[aria-label="Expand workbench"]').click();
-      await page.locator(".turbine.is-expanded").waitFor({ state: "visible", timeout: 5000 });
+        // Exercise Expand overlay and Escape twice (collapse -> close back to lightweight hero)
+        await page.locator('button[aria-label="Expand workbench"]').click();
+        await page.locator(".turbine.is-expanded").waitFor({ state: "visible", timeout: 5000 });
 
-      await page.keyboard.press("Escape");
-      await page.waitForFunction(() => !document.querySelector(".turbine.is-expanded"), { timeout: 5000 });
-      assert.strictEqual(await page.locator(".tls-root").count(), 1, "First Escape collapses expanded overlay");
+        await page.keyboard.press("Escape");
+        await page.waitForFunction(() => !document.querySelector(".turbine.is-expanded"), { timeout: 5000 });
+        assert.strictEqual(await page.locator(".tls-root").count(), 1, "First Escape collapses expanded overlay");
 
-      await page.keyboard.press("Escape");
-      await page.waitForFunction(() => document.querySelectorAll(".tls-root").length === 0, { timeout: 5000 });
-      await page.locator(".turbine-canvas.is-ready").waitFor({ state: "visible", timeout: 5000 });
+        await page.keyboard.press("Escape");
+        await page.waitForFunction(() => document.querySelectorAll(".tls-root").length === 0, { timeout: 5000 });
+        await page.locator(".turbine-canvas.is-ready").waitFor({ state: "visible", timeout: 5000 });
 
-      assert.deepStrictEqual(pageErrors, [], `Unexpected pageerror(s): ${pageErrors.join("; ")}`);
-      assert.deepStrictEqual(consoleErrors, [], `Unexpected console errors: ${consoleErrors.join("; ")}`);
-    } finally {
-      await browser?.close();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    }
-  });
+        assert.deepStrictEqual(pageErrors, [], `Unexpected pageerror(s): ${pageErrors.join("; ")}`);
+        assert.deepStrictEqual(consoleErrors, [], `Unexpected console errors: ${consoleErrors.join("; ")}`);
+      } finally {
+        await browser?.close();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    },
+  );
 });

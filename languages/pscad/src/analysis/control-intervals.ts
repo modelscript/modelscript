@@ -147,14 +147,78 @@ function transfer(b: EmtControlBlock, ins: Interval[]): Interval {
   }
 }
 
+interface AffineForm {
+  center: number;
+  terms: Map<string, number>;
+}
+
+const ZERO_AFFINE: AffineForm = { center: 0, terms: new Map() };
+
+function intervalToAffine(iv: Interval, noiseId: string): AffineForm | null {
+  if (!isBounded(iv)) return null;
+  const center = 0.5 * (iv.lo + iv.hi);
+  const rad = 0.5 * (iv.hi - iv.lo);
+  const terms = new Map<string, number>();
+  if (rad > 0) terms.set(noiseId, rad);
+  return { center, terms };
+}
+
+function affineToInterval(a: AffineForm): Interval {
+  let rad = 0;
+  for (const w of a.terms.values()) rad += Math.abs(w);
+  return { lo: a.center - rad, hi: a.center + rad };
+}
+
+function scaleAffine(k: number, a: AffineForm | null): AffineForm | null {
+  if (k === 0) return ZERO_AFFINE;
+  if (!a) return null;
+  const terms = new Map<string, number>();
+  for (const [id, w] of a.terms) {
+    const scaled = k * w;
+    if (scaled !== 0) terms.set(id, scaled);
+  }
+  return { center: k * a.center, terms };
+}
+
+function addWeightedAffines(items: Array<{ k: number; a: AffineForm | null }>): AffineForm | null {
+  let center = 0;
+  const terms = new Map<string, number>();
+  for (const { k, a } of items) {
+    if (k === 0) continue;
+    if (!a) return null;
+    center += k * a.center;
+    for (const [id, w] of a.terms) {
+      const next = (terms.get(id) ?? 0) + k * w;
+      if (next === 0) terms.delete(id);
+      else terms.set(id, next);
+    }
+  }
+  return { center, terms };
+}
+
+export interface ControlZonotopeEntry {
+  interval: Interval;
+  plainInterval: Interval;
+  tightenedByZonotope: boolean;
+}
+
 /**
- * Computes a sound output interval for every control block by Kleene iteration with widening (to +/-infinity)
- * so feedback loops terminate. Unwired or unresolved inputs are treated as 0, as in the runtime.
+ * Computes sound plain-interval AND affine-zonotope bounds for every control block by Kleene iteration
+ * with widening and multi-step correlation preservation (`x - x` cancellation across gains, summers,
+ * delays, filters, and non-saturating limiters).
  */
-export function analyzeControlIntervals(blocks: readonly EmtControlBlock[]): Map<string, Interval> {
+export function analyzeControlZonotopes(blocks: readonly EmtControlBlock[]): Map<string, ControlZonotopeEntry> {
   const out = new Map<string, Interval>();
+  const plainOut = new Map<string, Interval>();
+  const aff = new Map<string, AffineForm | null>();
   // Blocks with internal state expose their initial output (0) on the first step; memoryless blocks start unreached.
-  for (const b of blocks) if (INITIAL_ZERO_KINDS.has(b.kind)) out.set(b.id, ZERO);
+  for (const b of blocks) {
+    if (INITIAL_ZERO_KINDS.has(b.kind)) {
+      out.set(b.id, ZERO);
+      plainOut.set(b.id, ZERO);
+      aff.set(b.id, ZERO_AFFINE);
+    }
+  }
   const known = new Set(blocks.map((b) => b.id));
   const MAX_PASSES = 40;
   const WIDEN_AFTER = 6;
@@ -164,20 +228,93 @@ export function analyzeControlIntervals(blocks: readonly EmtControlBlock[]): Map
       // Unresolved ids read as 0 (runtime behavior); a known-but-unreached input defers this block to a later pass.
       if (b.inputs.some((id) => known.has(id) && !out.has(id))) continue;
       const ins = b.inputs.map((id) => out.get(id) ?? ZERO);
+      const plainIns = b.inputs.map((id) => plainOut.get(id) ?? ZERO);
+      const inAff = b.inputs.map((id) => (aff.has(id) ? aff.get(id)! : ZERO_AFFINE));
       const prev = out.get(b.id);
-      const fresh = transfer(b, ins);
+      const prevPlain = plainOut.get(b.id);
+
+      let fresh = transfer(b, ins);
+      const freshPlain = transfer(b, plainIns);
+      let nextAff: AffineForm | null = null;
+
+      if (b.kind === "const") {
+        nextAff = intervalToAffine(fresh, b.id);
+      } else if (b.kind === "gain") {
+        const k = param(b.params, ["K", "k", "G"], 1);
+        nextAff = scaleAffine(k, b.inputs.length === 0 ? ZERO_AFFINE : (inAff[0] ?? null));
+      } else if (b.kind === "sum") {
+        nextAff = addWeightedAffines(inAff.map((a, idx) => ({ k: sumSign(b.params, idx), a })));
+      } else if (b.kind === "tdelay" || b.kind === "zminusone" || b.kind === "trans_filt") {
+        nextAff = b.inputs.length === 0 ? ZERO_AFFINE : (inAff[0] ?? null);
+      } else if (b.kind === "limit") {
+        const uAff = b.inputs.length === 0 ? ZERO_AFFINE : (inAff[0] ?? null);
+        if (uAff) {
+          const z = affineToInterval(uAff);
+          const lim = outputLimits(b);
+          if (z.lo >= lim.lo && z.hi <= lim.hi) {
+            // Non-saturating limiter acts as identity on this zonotope
+            nextAff = uAff;
+          }
+        }
+      }
+
+      if (nextAff) {
+        const zBounds = affineToInterval(nextAff);
+        fresh = { lo: Math.max(fresh.lo, zBounds.lo), hi: Math.min(fresh.hi, zBounds.hi) };
+      }
+
       let next = prev ? hull(prev, fresh) : fresh;
+      let nextPlain = prevPlain ? hull(prevPlain, freshPlain) : freshPlain;
       if (prev && pass >= WIDEN_AFTER) {
         next = { lo: next.lo < prev.lo ? -Infinity : next.lo, hi: next.hi > prev.hi ? Infinity : next.hi };
       }
-      if (!prev || next.lo !== prev.lo || next.hi !== prev.hi) {
+      if (prevPlain && pass >= WIDEN_AFTER) {
+        nextPlain = {
+          lo: nextPlain.lo < prevPlain.lo ? -Infinity : nextPlain.lo,
+          hi: nextPlain.hi > prevPlain.hi ? Infinity : nextPlain.hi,
+        };
+      }
+
+      const effAff = nextAff && next.lo === fresh.lo && next.hi === fresh.hi ? nextAff : intervalToAffine(next, b.id);
+      aff.set(b.id, effAff);
+
+      if (
+        !prev ||
+        next.lo !== prev.lo ||
+        next.hi !== prev.hi ||
+        !prevPlain ||
+        nextPlain.lo !== prevPlain.lo ||
+        nextPlain.hi !== prevPlain.hi
+      ) {
         out.set(b.id, next);
+        plainOut.set(b.id, nextPlain);
         changed = true;
       }
     }
     if (!changed) break;
   }
-  return out;
+
+  const report = new Map<string, ControlZonotopeEntry>();
+  for (const [id, interval] of out) {
+    const plainInterval = plainOut.get(id) ?? interval;
+    const zWidth = interval.hi - interval.lo;
+    const pWidth = plainInterval.hi - plainInterval.lo;
+    const tightenedByZonotope = isBounded(interval) && (!isBounded(plainInterval) || zWidth + 1e-6 < pWidth * 0.75);
+    report.set(id, { interval, plainInterval, tightenedByZonotope });
+  }
+  return report;
+}
+
+/**
+ * Computes a sound output interval for every control block by Kleene iteration with widening (to +/-infinity)
+ * and 1D affine/zonotope noise-symbol correlation tracking so feedforward differences `x - x` cancel exactly.
+ */
+export function analyzeControlIntervals(blocks: readonly EmtControlBlock[]): Map<string, Interval> {
+  const res = new Map<string, Interval>();
+  for (const [id, entry] of analyzeControlZonotopes(blocks)) {
+    res.set(id, entry.interval);
+  }
+  return res;
 }
 
 /** Kinds whose first-step output is their zero-initialised state. */

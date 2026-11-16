@@ -281,10 +281,48 @@ export const sysml2TggRules = [
     target: ($, v) => $["OneLinerBus"]?.({ name: v("poiName") }),
     where: (v) => [tggEq(v("poiName"), v("poiName"))],
   }),
+  tggRule({
+    name: "SysML2PartDefToScadModule",
+    targetLang: "scad",
+    sourceLang: "sysml2",
+    source: ($, v) => $["PartDefinition"]?.({ declaredName: v("modName") }),
+    target: ($, v) => $["ModuleDeclaration"]?.({ name: v("modName") }),
+    where: (v) => [tggEq(v("modName"), v("modName"))],
+  }),
+  tggRule({
+    name: "SysML2PortToScadTagPort",
+    targetLang: "scad",
+    sourceLang: "sysml2",
+    context: ($, v) => ({
+      source: $["PartDefinition"]?.({ declaredName: v("modName") }),
+      target: $["ModuleDeclaration"]?.({ name: v("modName") }),
+    }),
+    source: ($, v) => $["PortUsage"]?.({ declaredName: v("portName") }),
+    target: ($, v) => $["TagPortOp"]?.({ name: v("portName") }),
+    where: (v) => [tggEq(v("portName"), v("portName"))],
+  }),
+  tggRule({
+    name: "SysML2ReqDefToReqIfSpecObject",
+    targetLang: "reqif",
+    sourceLang: "sysml2",
+    relation: "satisfy",
+    source: ($, v) => $["RequirementDefinition"]?.({ declaredName: v("reqId") }),
+    target: ($, v) => $["SpecObject"]?.({ identifier: v("reqId") }),
+    where: (v) => [tggEq(v("reqId"), v("reqId"))],
+  }),
+  tggRule({
+    name: "SysML2RequirementToQifCharacteristic",
+    targetLang: "qif",
+    sourceLang: "sysml2",
+    relation: "verify",
+    source: ($, v) => $["RequirementUsage"]?.({ declaredName: v("charName") }),
+    target: ($, v) => $["DimensionalCharacteristic"]?.({ name: v("charName") }),
+    where: (v) => [tggEq(v("charName"), v("charName"))],
+  }),
 ];
 
 export const sysml2PolyglotConfig = {
-  languages: ["modelica", "owl2", "step", "psse", "pscad", "opendss", "oneliner"],
+  languages: ["modelica", "owl2", "step", "scad", "reqif", "qif", "psse", "pscad", "opendss", "oneliner"],
   typeMaps: {
     modelica: {
       "KerML::Real": "Real",
@@ -299,6 +337,27 @@ export const sysml2PolyglotConfig = {
       "KerML::Integer": "INTEGER",
       "KerML::Boolean": "BOOLEAN",
       "KerML::String": "STRING",
+    },
+    scad: {
+      "KerML::Real": "number",
+      "ISQ::Real": "number",
+      "KerML::Integer": "number",
+      "KerML::Boolean": "boolean",
+      "KerML::String": "string",
+    },
+    reqif: {
+      "KerML::Real": "REAL",
+      "ISQ::Real": "REAL",
+      "KerML::Integer": "INTEGER",
+      "KerML::Boolean": "BOOLEAN",
+      "KerML::String": "STRING",
+    },
+    qif: {
+      "KerML::Real": "double",
+      "ISQ::Real": "double",
+      "KerML::Integer": "integer",
+      "KerML::Boolean": "boolean",
+      "KerML::String": "string",
     },
     owl2: {
       "KerML::Real": "xsd:double",

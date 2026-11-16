@@ -8,9 +8,10 @@
  */
 
 import { parseXml } from "@modelscript/dsl/xml";
+import type { SymbolEntry, UnifiedWorkspace } from "@modelscript/runtime";
 import { lintReqIf } from "./lints/index.js";
 import { parseReqIf } from "./parser/reqif-parser.js";
-import type { ReqIfDocument, ReqIfSpecHierarchy, ReqIfSpecObject } from "./types.js";
+import type { ReqIfDocument, ReqIfSpecHierarchy, ReqIfSpecObject, SourceSpan } from "./types.js";
 
 export interface LspPosition {
   line: number;
@@ -20,6 +21,11 @@ export interface LspPosition {
 export interface LspRange {
   start: LspPosition;
   end: LspPosition;
+}
+
+export interface LspLocation {
+  uri: string;
+  range: LspRange;
 }
 
 export enum LspSymbolKind {
@@ -292,4 +298,268 @@ function formatSpecObjectHover(obj: ReqIfSpecObject, doc: ReqIfDocument): LspHov
       value: md.join("\n"),
     },
   };
+}
+
+function reqifSpanToRange(span?: SourceSpan): LspRange {
+  if (!span) {
+    return { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } };
+  }
+  const startLine = Math.max(0, span.startLine - 1);
+  const startCol = Math.max(0, span.startCol - 1);
+  const endLine = Math.max(0, span.endLine - 1);
+  const endCol = Math.max(0, span.endCol - 1);
+  return {
+    start: { line: startLine, character: startCol },
+    end: { line: endLine, character: endCol },
+  };
+}
+
+function reqifOffsetToPosition(text: string, offset: number): LspPosition {
+  const clamped = Math.max(0, Math.min(text.length, offset));
+  let line = 0;
+  let lineStart = 0;
+  for (let i = 0; i < clamped; i++) {
+    if (text.charCodeAt(i) === 10) {
+      line++;
+      lineStart = i + 1;
+    }
+  }
+  return { line, character: clamped - lineStart };
+}
+
+function reqifSymbolUri(sym: SymbolEntry): string {
+  return sym.resourceId || sym.documentUri || "";
+}
+
+function reqifSymbolToLocation(sym: SymbolEntry, workspace: UnifiedWorkspace): LspLocation {
+  const symUri = reqifSymbolUri(sym);
+  const docText = workspace.getDocument(symUri)?.text ?? "";
+  const nameRange = sym.fieldRanges?.["name"];
+  const startOff = nameRange?.startOffset ?? sym.startOffset ?? 0;
+  const endOff = nameRange?.endOffset ?? sym.endOffset ?? startOff;
+  return {
+    uri: symUri,
+    range: {
+      start: reqifOffsetToPosition(docText, startOff),
+      end: reqifOffsetToPosition(docText, Math.max(startOff, endOff)),
+    },
+  };
+}
+
+function extractReqifTokenAtOffset(text: string, offset: number): string {
+  if (offset < 0 || offset > text.length) return "";
+  const isChar = (ch: string | undefined) => Boolean(ch && /[A-Za-z0-9_.-]/.test(ch));
+  let start = offset;
+  while (start > 0 && isChar(text[start - 1])) start--;
+  let end = offset;
+  while (end < text.length && isChar(text[end])) end++;
+  return text.slice(start, end);
+}
+
+function collectReqifWorkspacePeers(
+  workspace: UnifiedWorkspace,
+  uri: string,
+  reqIdentifier: string,
+  longName?: string,
+): LspLocation[] {
+  const uIdx = workspace.getIndex();
+  workspace.syncTggCorrespondences(uIdx);
+  const out: LspLocation[] = [];
+  const seen = new Set<string>();
+  const pushSym = (sym: SymbolEntry) => {
+    const loc = reqifSymbolToLocation(sym, workspace);
+    if (!loc.uri) return;
+    const key = `${loc.uri}:${loc.range.start.line}:${loc.range.start.character}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(loc);
+    }
+  };
+
+  const indexer = workspace.tggCorrespondenceIndexer;
+  for (const symId of uIdx.byName.get(reqIdentifier) ?? []) {
+    const sym = uIdx.symbols.get(symId);
+    if (!sym || reqifSymbolUri(sym) !== uri) continue;
+    for (const slot of indexer.getSlotsForSymbol(symId)) {
+      const rec = indexer.hypergraph.getRecord(slot);
+      if (!rec || rec.isRemoved) continue;
+      for (const memberId of Object.values(rec.domainNodes)) {
+        if (typeof memberId === "number" && memberId !== symId) {
+          const peer = uIdx.symbols.get(memberId);
+          if (peer) pushSym(peer);
+        }
+      }
+    }
+  }
+
+  // Also include cross-language `satisfy` / `verify` usages referencing `reqIdentifier` or `longName`
+  const matchNames = new Set([reqIdentifier, ...(longName ? [longName] : [])]);
+  for (const sym of uIdx.symbols.values()) {
+    if (sym.language === "reqif") continue;
+    const satisfied = String(
+      sym.metadata?.["satisfiedRequirement"] ?? sym.metadata?.["verifiedRequirement"] ?? "",
+    ).replace(/^['"]|['"]$/g, "");
+    if (satisfied && matchNames.has(satisfied)) {
+      pushSym(sym);
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Resolves Go-to-Definition for ReqIF `SPEC-OBJECT-REF` links (`SPEC-HIERARCHY`, `SPEC-RELATION`)
+ * and cross-language TGG counterparts (SysML v2 requirements/satisfactions, Modelica verifiers).
+ */
+export function getReqifDefinition(
+  content: string,
+  offset: number,
+  uri = "file:///requirements.reqif",
+  workspace?: UnifiedWorkspace,
+): LspLocation | null {
+  let doc: ReqIfDocument;
+  try {
+    doc = parseReqIf(content);
+  } catch {
+    return null;
+  }
+
+  if (workspace && !workspace.getNativeFileIndex(uri)) {
+    workspace.indexDocumentText(uri, content, "reqif");
+  }
+
+  const token = extractReqifTokenAtOffset(content, offset);
+  let targetObj: ReqIfSpecObject | undefined = token ? doc.specObjects.get(token) : undefined;
+  if (!targetObj && token) {
+    for (const obj of doc.specObjects.values()) {
+      if (obj.longName === token) {
+        targetObj = obj;
+        break;
+      }
+    }
+  }
+
+  if (!targetObj) {
+    for (const rel of doc.specRelations) {
+      if (rel.span && offset >= (rel.span.startOffset ?? -1) && offset <= (rel.span.endOffset ?? -1)) {
+        targetObj = doc.specObjects.get(rel.targetId) ?? doc.specObjects.get(rel.sourceId);
+        if (targetObj) break;
+      }
+    }
+  }
+
+  if (!targetObj) {
+    for (const obj of doc.specObjects.values()) {
+      if (obj.span && offset >= (obj.span.startOffset ?? -1) && offset <= (obj.span.endOffset ?? -1)) {
+        targetObj = obj;
+        break;
+      }
+    }
+  }
+
+  if (!targetObj) return null;
+
+  const inOwnDecl =
+    targetObj.span !== undefined &&
+    targetObj.span.startOffset !== undefined &&
+    targetObj.span.endOffset !== undefined &&
+    offset >= targetObj.span.startOffset &&
+    offset <= targetObj.span.endOffset;
+
+  if (inOwnDecl && workspace) {
+    const peers = collectReqifWorkspacePeers(workspace, uri, targetObj.identifier, targetObj.longName);
+    const firstPeer = peers[0];
+    if (firstPeer) return firstPeer;
+  }
+
+  return {
+    uri,
+    range: reqifSpanToRange(targetObj.span),
+  };
+}
+
+/**
+ * Finds all intra/inter-file ReqIF references (`SPEC-OBJECT`, `SPEC-RELATION`, `SPEC-HIERARCHY`)
+ * and cross-language TGG counterparts (SysML v2 requirements/`satisfy`/`verify`, Modelica verifiers).
+ */
+export function getReqifReferences(
+  content: string,
+  offset: number,
+  uri = "file:///requirements.reqif",
+  workspace?: UnifiedWorkspace,
+): LspLocation[] {
+  let doc: ReqIfDocument;
+  try {
+    doc = parseReqIf(content);
+  } catch {
+    return [];
+  }
+
+  if (workspace && !workspace.getNativeFileIndex(uri)) {
+    workspace.indexDocumentText(uri, content, "reqif");
+  }
+
+  const token = extractReqifTokenAtOffset(content, offset);
+  let targetObj: ReqIfSpecObject | undefined = token ? doc.specObjects.get(token) : undefined;
+  if (!targetObj && token) {
+    for (const obj of doc.specObjects.values()) {
+      if (obj.longName === token) {
+        targetObj = obj;
+        break;
+      }
+    }
+  }
+  if (!targetObj) {
+    for (const obj of doc.specObjects.values()) {
+      if (obj.span && offset >= (obj.span.startOffset ?? -1) && offset <= (obj.span.endOffset ?? -1)) {
+        targetObj = obj;
+        break;
+      }
+    }
+  }
+  if (!targetObj) return [];
+
+  const results: LspLocation[] = [];
+  const seen = new Set<string>();
+  const pushLoc = (loc: LspLocation) => {
+    const key = `${loc.uri}:${loc.range.start.line}:${loc.range.start.character}:${loc.range.end.line}:${loc.range.end.character}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      results.push(loc);
+    }
+  };
+
+  pushLoc({ uri, range: reqifSpanToRange(targetObj.span) });
+
+  for (const rel of doc.specRelations) {
+    if (rel.sourceId === targetObj.identifier || rel.targetId === targetObj.identifier) {
+      pushLoc({ uri, range: reqifSpanToRange(rel.span) });
+    }
+  }
+
+  const walkHierarchy = (h: ReqIfSpecHierarchy) => {
+    if (h.objectRef === targetObj.identifier && h.span) {
+      pushLoc({ uri, range: reqifSpanToRange(h.span) });
+    }
+    for (const c of h.children ?? []) walkHierarchy(c);
+  };
+  for (const spec of doc.specifications) {
+    for (const h of spec.children) walkHierarchy(h);
+  }
+
+  if (workspace) {
+    for (const [otherUri, otherDoc] of workspace.getAllParsedModels<ReqIfDocument>()) {
+      if (otherUri === uri || !otherDoc?.specRelations) continue;
+      for (const rel of otherDoc.specRelations) {
+        if (rel.sourceId === targetObj.identifier || rel.targetId === targetObj.identifier) {
+          pushLoc({ uri: otherUri, range: reqifSpanToRange(rel.span) });
+        }
+      }
+    }
+    for (const peer of collectReqifWorkspacePeers(workspace, uri, targetObj.identifier, targetObj.longName)) {
+      pushLoc(peer);
+    }
+  }
+
+  return results;
 }

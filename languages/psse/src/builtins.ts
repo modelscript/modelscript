@@ -45,11 +45,49 @@ export const PSSE_CATEGORY_PORTS: Record<string, PssePortSpec[]> = {
     { name: "omega_in", direction: "input", y: 0, description: "Measured rotor speed signal", unit: "rad/s" },
     { name: "Vs_out", direction: "output", y: 0, description: "Stabilizer supplementary voltage output", unit: "p.u." },
   ],
+  load: [
+    { name: "Vt_in", direction: "input", y: 30, description: "Bus terminal voltage magnitude", unit: "p.u." },
+    { name: "omega_in", direction: "input", y: -30, description: "Local bus angular frequency", unit: "rad/s" },
+    { name: "P_out", direction: "output", y: 30, description: "Dynamic active load demand", unit: "p.u." },
+    { name: "Q_out", direction: "output", y: -30, description: "Dynamic reactive load demand", unit: "p.u." },
+  ],
+  facts: [
+    { name: "Vt_in", direction: "input", y: 0, description: "Controlled bus voltage magnitude", unit: "p.u." },
+    { name: "Q_out", direction: "output", y: 0, description: "Dynamic reactive power injection", unit: "p.u." },
+  ],
+  hvdc: [
+    { name: "Vr_in", direction: "input", y: 40, description: "Rectifier AC bus voltage magnitude", unit: "p.u." },
+    { name: "Vi_in", direction: "input", y: -40, description: "Inverter AC bus voltage magnitude", unit: "p.u." },
+    { name: "Pdc_out", direction: "output", y: 0, description: "Transferred DC link active power", unit: "p.u." },
+  ],
+  relay: [
+    {
+      name: "Signal_in",
+      direction: "input",
+      y: 0,
+      description: "Monitored voltage, frequency, or impedance signal",
+      unit: "p.u.",
+    },
+    {
+      name: "Trip_out",
+      direction: "output",
+      y: 0,
+      description: "Relay in-service / trip multiplier (1=closed, 0=tripped)",
+      unit: "1",
+    },
+  ],
 };
 
 export function getPsseModelPortSpecs(modelName: string, category: PsseDyrCategory): PssePortSpec[] {
   const upper = modelName.toUpperCase();
-  if (upper.startsWith("REGC")) {
+  if (
+    upper.startsWith("REGC") ||
+    upper.startsWith("WT4G") ||
+    upper.startsWith("PVGU") ||
+    upper.startsWith("DER") ||
+    upper.startsWith("REGFM") ||
+    upper.startsWith("WECCGFM")
+  ) {
     return PSSE_CATEGORY_PORTS["converter"]!;
   }
   return PSSE_CATEGORY_PORTS[category] ?? PSSE_CATEGORY_PORTS["generator"]!;
@@ -378,6 +416,22 @@ export const PSSE_MODEL_DEFAULTS: Record<string, Record<string, number>> = {
     omega0: 376.99111843077515,
   },
 };
+
+// Auto-populate defaults for every schema in DYR_MODEL_SCHEMAS not already hand-tuned above
+for (const [modelName, schema] of Object.entries(DYR_MODEL_SCHEMAS)) {
+  if (!PSSE_MODEL_DEFAULTS[modelName]) {
+    const entry: Record<string, number> = {};
+    for (const pm of schema.params) {
+      if (pm.default !== undefined) entry[pm.name] = pm.default;
+    }
+    entry["V0"] = 1.0;
+    entry["P0"] = 0.8;
+    entry["Q0"] = 0.0;
+    entry["Efd0"] = 1.05;
+    entry["omega0"] = 376.99111843077515;
+    PSSE_MODEL_DEFAULTS[modelName] = entry;
+  }
+}
 
 function buildPortPlacement(direction: "input" | "output", y: number): Record<string, unknown> {
   const ext =

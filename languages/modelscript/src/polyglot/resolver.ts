@@ -4,6 +4,7 @@ import { createWasmParserSync as createModelicaParserSync } from "@modelscript/m
 import { collectCstNodes, extractCstLeafNodes, type CstNodeLike } from "@modelscript/runtime";
 import { createWasmParserSync as createStepParserSync } from "@modelscript/step/parser";
 import { createWasmParserSync as createSysml2ParserSync } from "@modelscript/sysml2/parser";
+import { isMjcfXml, parseMjcf, parseUrdf } from "@modelscript/urdf";
 import { createRequire } from "node:module";
 import type { ModelScriptCstNode } from "../queries.js";
 
@@ -46,7 +47,7 @@ export interface PolyglotPortInfo {
 
 export interface PolyglotModel {
   name: string;
-  language: "modelica" | "sysml2" | "step";
+  language: "modelica" | "sysml2" | "step" | "urdf" | "mjcf" | "onnx";
   components: ModelicaComponentInfo[];
   parameters: PolyglotParameterInfo[];
   variables: PolyglotVariableInfo[];
@@ -83,8 +84,8 @@ function getStepParser() {
 const MODELICA_PRIMITIVE_TYPES = new Set(["Real", "Integer", "Boolean", "String"]);
 const MODELICA_PORT_KEYWORDS = ["pin", "port", "flange", "connector", "terminal"];
 const STEP_FILE_EXTENSIONS = [".step", ".stp", ".p21"];
-const POLYGLOT_LANG_NAMES = new Set(["modelica", "sysml2", "sysml", "step"]);
-const POLYGLOT_EXTENSIONS = [".mo", ".sysml", ".step", ".stp", ".p21"];
+const POLYGLOT_LANG_NAMES = new Set(["modelica", "sysml2", "sysml", "step", "urdf", "mjcf", "onnx"]);
+const POLYGLOT_EXTENSIONS = [".mo", ".sysml", ".step", ".stp", ".p21", ".urdf", ".mjcf", ".xml", ".onnx"];
 const SYSML_CONSTRAINT_OPS = ["==", "<=", ">=", "<", ">", "="];
 
 interface ModifierProps {
@@ -881,8 +882,123 @@ export function extractStepModel(
 }
 
 /**
+ * Extracts a `PolyglotModel` from a URDF (`.urdf`) or MuJoCo MJCF (`.mjcf`/`.xml`) robot description.
+ */
+function extractUrdfOrMjcfModel(sourceText: string, language: "urdf" | "mjcf"): PolyglotModel {
+  const isMjcf = language === "mjcf" || isMjcfXml(sourceText);
+  const robot = isMjcf ? parseMjcf(sourceText) : parseUrdf(sourceText);
+
+  const components: ModelicaComponentInfo[] = [];
+  const parameters: PolyglotParameterInfo[] = [];
+  const variables: PolyglotVariableInfo[] = [];
+  const ports: PolyglotPortInfo[] = [];
+
+  for (const link of robot.links.values()) {
+    if (link.name === "world") continue;
+    components.push({
+      name: link.name,
+      type: "RigidBody",
+      value: link.inertial?.mass,
+      properties: {
+        mass: link.inertial?.mass ?? 1.0,
+        inertia: link.inertial ? [link.inertial.ixx, link.inertial.iyy, link.inertial.izz] : undefined,
+      },
+    });
+    if (link.inertial) {
+      parameters.push({
+        name: `${link.name}.mass`,
+        type: "Real",
+        value: link.inertial.mass,
+        unit: "kg",
+      });
+    }
+  }
+
+  for (const joint of robot.joints.values()) {
+    if (joint.type === "fixed") continue;
+    if (joint.type === "floating") {
+      for (const s of ["x", "y", "z", "qw", "qx", "qy", "qz", "vx", "vy", "vz", "wx", "wy", "wz"]) {
+        variables.push({
+          name: `${joint.childLink}.${s}`,
+          type: "Real",
+          variability: "continuous",
+          causality: "local",
+        });
+      }
+      continue;
+    }
+    variables.push(
+      { name: `${joint.name}.q`, type: "Real", variability: "continuous", causality: "output", unit: "rad" },
+      { name: `${joint.name}.qd`, type: "Real", variability: "continuous", causality: "output", unit: "rad/s" },
+      { name: `${joint.name}.tau`, type: "Real", variability: "continuous", causality: "input", unit: "N.m" },
+    );
+    ports.push(
+      { name: `${joint.name}.q`, type: "RealOutput", direction: "out", properties: { joint: joint.name } },
+      { name: `${joint.name}.qd`, type: "RealOutput", direction: "out", properties: { joint: joint.name } },
+      { name: `${joint.name}.tau`, type: "RealInput", direction: "in", properties: { joint: joint.name } },
+    );
+  }
+
+  if (robot.sensors) {
+    for (const sensor of robot.sensors) {
+      ports.push({
+        name: sensor.name,
+        type: `Sensor.${sensor.kind}`,
+        direction: "out",
+        properties: { kind: sensor.kind, site: sensor.site, joint: sensor.joint },
+      });
+    }
+  }
+
+  return {
+    name: robot.name,
+    language: isMjcf ? "mjcf" : "urdf",
+    components,
+    parameters,
+    variables,
+    equations: [],
+    ports,
+  };
+}
+
+/**
+ * Extracts a `PolyglotModel` from a declarative ONNX RL policy manifest (JSON or metadata).
+ */
+function extractOnnxPolicyModel(sourceText: string): PolyglotModel {
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = JSON.parse(sourceText) as Record<string, unknown>;
+  } catch {
+    // Non-JSON (e.g. raw binary .onnx path or descriptor) falls back to default RL policy metadata
+  }
+  const name = typeof parsed["name"] === "string" ? parsed["name"] : "OnnxPolicy";
+  const samplePeriod = typeof parsed["samplePeriod"] === "number" ? parsed["samplePeriod"] : 0.02;
+  const commandDelay = typeof parsed["commandDelay"] === "number" ? parsed["commandDelay"] : 0.0225;
+  const inputNames = Array.isArray(parsed["inputNames"]) ? (parsed["inputNames"] as string[]) : ["obs"];
+  const outputNames = Array.isArray(parsed["outputNames"]) ? (parsed["outputNames"] as string[]) : ["action"];
+
+  const ports: PolyglotPortInfo[] = [
+    ...inputNames.map((n) => ({ name: n, type: "RealInput", direction: "in" as const, properties: {} })),
+    ...outputNames.map((n) => ({ name: n, type: "RealOutput", direction: "out" as const, properties: {} })),
+  ];
+
+  return {
+    name,
+    language: "onnx",
+    components: [{ name, type: "ArenaNeuralBlock", properties: { samplePeriod, commandDelay } }],
+    parameters: [
+      { name: "samplePeriod", type: "Real", value: samplePeriod, unit: "s" },
+      { name: "commandDelay", type: "Real", value: commandDelay, unit: "s" },
+    ],
+    variables: [],
+    equations: [],
+    ports,
+  };
+}
+
+/**
  * Dispatches polyglot model extraction across Modelica (`.mo`), SysML v2 (`.sysml`),
- * and STEP (`.step` / `.stp`) sources.
+ * STEP (`.step` / `.stp`), URDF (`.urdf`), MJCF (`.mjcf` / `.xml`), and ONNX (`.onnx`) sources.
  */
 export function resolvePolyglotModel(
   sourceOrPath: string,
@@ -901,6 +1017,15 @@ export function resolvePolyglotModel(
   }
   if (lower === "step" || lower.endsWith(".step") || lower.endsWith(".stp") || lower.endsWith(".p21")) {
     return extractStepModel(treeRoot, sourceText);
+  }
+  if (lower === "mjcf" || lower.endsWith(".mjcf") || (lower.endsWith(".xml") && isMjcfXml(sourceText))) {
+    return extractUrdfOrMjcfModel(sourceText, "mjcf");
+  }
+  if (lower === "urdf" || lower.endsWith(".urdf") || lower.endsWith(".xml")) {
+    return extractUrdfOrMjcfModel(sourceText, "urdf");
+  }
+  if (lower === "onnx" || lower.endsWith(".onnx")) {
+    return extractOnnxPolicyModel(sourceText);
   }
   return extractModelicaModel(treeRoot, sourceText);
 }

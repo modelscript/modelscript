@@ -260,8 +260,14 @@ function onStudioCompiledStep(payload: CompiledStepPayload | null): void {
     spool: s.spool,
     axis: s.axis,
   }));
-  scene.value?.setCompiledStepScene(payload.meshes, spools);
-  if (payload.gdtOverlay && (payload.gdtOverlay.datums.length > 0 || payload.gdtOverlay.callouts.length > 0)) {
+  scene.value?.setCompiledStepScene(payload.meshes, spools, {
+    hideProcedural: Boolean(payload.emptyStage),
+  });
+  if (payload.emptyStage) {
+    gdtDatumEls.length = 0;
+    gdtCalloutEls.length = 0;
+    liveGdtOverlay.value = null;
+  } else if (payload.gdtOverlay && (payload.gdtOverlay.datums.length > 0 || payload.gdtOverlay.callouts.length > 0)) {
     gdtDatumEls.length = 0;
     gdtCalloutEls.length = 0;
     liveGdtOverlay.value = payload.gdtOverlay;

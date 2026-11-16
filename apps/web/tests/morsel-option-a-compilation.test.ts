@@ -9,6 +9,11 @@ import {
   type StepMeshMorselResult,
 } from "../src/components/morsel/util/lsp-bridge.js";
 import {
+  buildMorselEmbedHtmlPage,
+  compressMorselPayload,
+  decompressMorselPayload,
+} from "../src/components/morsel/util/permalink.js";
+import {
   buildMorselEffectiveFileMap,
   compileMorselOptionAAssembly,
   resolveSpoolRulesForMorsel,
@@ -207,5 +212,44 @@ describe("Morsel Option-A multi-file STEP compilation & kinematics pairing", () 
     assert.strictEqual(stepOnlyOutcome.spools.length, 2);
     assert.strictEqual(stepOnlyOutcome.gdtOverlay?.callouts.length, 1);
     assert.ok(stepOnlyOutcome.components.length > 0);
+  });
+
+  it("preserves multi-file project maps through HTML iframe embed export and permalink round-trip", () => {
+    const projectFiles = {
+      "cad/rotor.scad": CROSS_FOLDER_SCAD,
+      "qa/inspection.qif": CROSS_FOLDER_QIF,
+      "dynamics/turbine.mo": CROSS_FOLDER_MO,
+    };
+    const token = compressMorselPayload({
+      v: 1,
+      lang: "scad",
+      code: CROSS_FOLDER_SCAD,
+      files: projectFiles,
+      activeFile: "cad/rotor.scad",
+      isMultiFile: true,
+      title: 'Turbofan <"Rig"> & Assembly',
+      view: "3d",
+    });
+    const embedSrc = `https://modelscript.org/embed/morsel#m=${token}`;
+    const html = buildMorselEmbedHtmlPage({
+      embedSrc,
+      title: 'Turbofan <"Rig"> & Assembly',
+    });
+
+    assert.ok(html.includes("<!DOCTYPE html>"));
+    assert.ok(html.includes("<title>Turbofan Rig  Assembly — ModelScript Embed</title>"));
+    assert.ok(html.includes(`src="${embedSrc}"`));
+
+    const hashMatch = /#m=([^"&]+)/.exec(html);
+    assert.ok(hashMatch && hashMatch[1], "Expected compressed #m= hash inside iframe src");
+
+    const decoded = decompressMorselPayload(`#m=${hashMatch[1]}`);
+    assert.ok(decoded, "Expected decoded payload from HTML iframe src");
+    assert.strictEqual(decoded.lang, "scad");
+    assert.strictEqual(decoded.activeFile, "cad/rotor.scad");
+    assert.strictEqual(decoded.isMultiFile, true);
+    assert.strictEqual(decoded.view, "3d");
+    assert.deepStrictEqual(decoded.files, projectFiles);
+    assert.strictEqual(decoded.code, CROSS_FOLDER_SCAD);
   });
 });

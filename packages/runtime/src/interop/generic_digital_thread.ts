@@ -40,6 +40,7 @@ export interface GenericDigitalThreadOptions {
   providers?: Partial<CoordinatorDomainProviders> | undefined;
   symbolIndex?: SymbolIndex | undefined;
   autoAlignByAlias?: boolean | undefined;
+  legacyDirectivesEnabled?: boolean | undefined;
   editedFileIndex?: number | undefined;
 }
 
@@ -565,7 +566,7 @@ function extractGenericArtifact(
     }
   };
 
-  if (lang === "sysml") {
+  if (lang === "sysml" || lang === "sysml2") {
     const cst = parseSysml2Cst(file.content);
     requirements = parseSysmlRequirements(file.content);
     const pkgMatch = /\bpackage\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(maskCommentsPreservingOffsets(file.content));
@@ -1207,7 +1208,7 @@ export function evaluateGenericDigitalThread(
   const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
   const artifacts = files.map((f, idx) => extractGenericArtifact(f, idx, options));
   const paneDiagnostics: CoordinatorDiagnosticLike[][] = artifacts.map(() => []);
-  const allDirectives = artifacts.flatMap((a) => a.directives);
+  const allDirectives = options?.legacyDirectivesEnabled === false ? [] : artifacts.flatMap((a) => a.directives);
   const conflicts: ConflictClause[] = [];
   const providers = options?.providers;
 
@@ -1288,12 +1289,102 @@ export function evaluateGenericDigitalThread(
     }
   }
 
-  // 4. Process explicit @twin / annotation(twin) links, per-component hypergraph slots, & surgical writeback
+  // 4. Process explicit @twin / annotation(twin) links + declarative TGG correspondences, per-component hypergraph slots, & surgical writeback
   const variableLinks: GenericVariableLink[] = [];
   const conflictedFiles = new Set<number>();
   const pendingEdits = new Map<number, Array<{ start: number; end: number; text: string }>>();
   const suggestedEdits: GenericSuggestedEdit[] = [];
   let componentSlotIdx = 0;
+
+  // 4a-pre: Ingest declarative TGG parameter/attribute correspondences from `options?.symbolIndex`
+  const tggIdx = options?.symbolIndex as
+    | (SymbolIndex & {
+        tggProjectionTable?: { areMemberNamesAligned?: (lA: string, nA: string, lB: string, nB: string) => boolean };
+        tggCorrespondenceIndexer?: {
+          syncIndex?: (idx: SymbolIndex) => { touchedSlots: number[] };
+          hypergraph?: DigitalThreadHypergraph;
+        };
+      })
+    | undefined;
+  if (tggIdx?.tggCorrespondenceIndexer?.syncIndex && tggIdx.tggCorrespondenceIndexer.hypergraph) {
+    const tggSummary = tggIdx.tggCorrespondenceIndexer.syncIndex(tggIdx);
+    const tggHg = tggIdx.tggCorrespondenceIndexer.hypergraph;
+    const projTable = tggIdx.tggProjectionTable;
+    const seenTggPairs = new Set<string>();
+    const findArtifactForUri = (u: string | undefined) => {
+      if (!u) return undefined;
+      const uLower = u.toLowerCase();
+      return artifacts.find(
+        (a) =>
+          (a.uri && a.uri.toLowerCase() === uLower) ||
+          uLower.endsWith(`/${a.fileName.toLowerCase()}`) ||
+          uLower === a.fileName.toLowerCase(),
+      );
+    };
+
+    for (const slot of tggSummary.touchedSlots) {
+      const rec = tggHg.getRecord(slot);
+      if (!rec || rec.isRemoved || !rec.domainNodes) continue;
+      const members = Object.values(rec.domainNodes)
+        .filter((nid): nid is number => typeof nid === "number" && nid > 0)
+        .map((nid) => tggIdx.symbols.get(nid))
+        .filter((s): s is NonNullable<typeof s> => Boolean(s));
+      for (let i = 0; i < members.length; i++) {
+        for (let j = i + 1; j < members.length; j++) {
+          const symA = members[i]!;
+          const symB = members[j]!;
+          const artA = findArtifactForUri(symA.resourceId ?? symA.documentUri);
+          const artB = findArtifactForUri(symB.resourceId ?? symB.documentUri);
+          if (!artA || !artB || artA.index === artB.index) continue;
+
+          // Match either direct leaf parameter symbols or aligned container parameters (including fieldAliases like m <-> mass)
+          const paramPairs: Array<[GenericArtifactParameter, GenericArtifactParameter]> = [];
+          const directA = artA.parameters.get(symA.name);
+          const directB = artB.parameters.get(symB.name);
+          if (directA && directB) {
+            paramPairs.push([directA, directB]);
+          } else {
+            for (const pA of artA.parameters.values()) {
+              for (const pB of artB.parameters.values()) {
+                const sameCanon =
+                  pA.name === pB.name ||
+                  (pA.name === "m" && pB.name === "mass") ||
+                  (pA.name === "mass" && pB.name === "m") ||
+                  Boolean(projTable?.areMemberNamesAligned?.(artA.lang, pA.name, artB.lang, pB.name));
+                if (sameCanon) {
+                  paramPairs.push([pA, pB]);
+                }
+              }
+            }
+          }
+
+          for (const [pA, pB] of paramPairs) {
+            const pairKey = [pA.fqn, pB.fqn].sort().join("|");
+            if (seenTggPairs.has(pairKey)) continue;
+            seenTggPairs.add(pairKey);
+            const alreadyExplicit = allDirectives.some(
+              (d) =>
+                (d.kind === "@twin" || d.kind === "annotation(twin)") &&
+                ((d.sourceExpr.endsWith(pA.name) && d.targetExpr.endsWith(pB.name)) ||
+                  (d.sourceExpr.endsWith(pB.name) && d.targetExpr.endsWith(pA.name))),
+            );
+            if (!alreadyExplicit) {
+              allDirectives.push({
+                fileIndex: artA.index,
+                fileName: artA.fileName,
+                line: pA.line,
+                kind: "@twin",
+                sourceExpr: pA.fqn,
+                direction: "<->",
+                targetExpr: pB.fqn,
+                rawText: `TGG(${symA.name} <-> ${symB.name})`,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
 
   for (const d of allDirectives) {
     if (d.kind === "@twin" || d.kind === "annotation(twin)") {

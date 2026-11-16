@@ -91,6 +91,8 @@ export interface PscadScriptSegment {
   id?: string | undefined;
   classid?: string | undefined;
   content: string;
+  startOffset?: number | undefined;
+  startLine?: number | undefined;
 }
 
 export interface PscadFlyByDoc {
@@ -144,10 +146,12 @@ export interface PscxModule {
 
 export interface PscxProjectSettings {
   timeStepUs: number; // e.g. 50.0 microseconds
+  plotStepUs?: number | undefined; // e.g. 250.0 microseconds
   durationSec: number; // e.g. 1.0 second
   startType: "flat" | "snapshot";
   snapshotFile?: string | undefined;
   frequencyHz: number; // 50 or 60 Hz
+  enableCda?: boolean | undefined;
 }
 
 export interface PscxProject {
@@ -515,6 +519,12 @@ export interface EmtCustomFortranBlock {
   drmProductCode?: number | undefined;
   /** Whether this OEM block requires physical USB hardware dongle presence. */
   requireHardwareDongle?: boolean | undefined;
+  /** Original embedded script source for AST->WASM compilation. */
+  scriptSource?: string | undefined;
+  /** Source language of `scriptSource`. */
+  scriptLang?: "fortran" | "c" | undefined;
+  /** Evaluated/raw component parameters passed to the UDM. */
+  params?: Record<string, string | number> | undefined;
 }
 
 // ==========================================

@@ -391,6 +391,8 @@ function computeSolidSignatureFromNode(solid: Solid): string {
       return `torus:${solid.major}:${solid.minor}:${solid.majorSegments}:${solid.minorSegments}`;
     case SolidKind.Extrusion:
       return `extrude:${solid.height}:${solid.twist ?? 0}:${solid.scale ?? 1}:${JSON.stringify(solid.polygon)}`;
+    case SolidKind.Revolve:
+      return `revolve:${solid.angle}:${solid.segments ?? 24}:${JSON.stringify(solid.polygon)}`;
     case SolidKind.Polyhedron:
       return `polyhedron:${JSON.stringify(solid.points)}:${JSON.stringify(solid.faces)}`;
     case SolidKind.Union:

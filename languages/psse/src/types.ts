@@ -30,6 +30,9 @@ export interface CaseIdentification {
   xfrrat: number;
   nxfrat: number;
   basfrq: number;
+  rawMetadataDetected?: boolean | undefined;
+  minBusColumnCount?: number | undefined;
+  maxBusColumnCount?: number | undefined;
   span?: SourceSpan | undefined;
 }
 
@@ -278,13 +281,37 @@ export interface SwitchedShuntRecord {
 /**
  * Standard PSS/E Dynamic Model Categories in `.dyr` files.
  */
-export type PsseDyrCategory = "generator" | "exciter" | "governor" | "stabilizer" | "load" | "facts" | "hvdc" | "user";
+export type PsseDyrCategory =
+  | "generator"
+  | "exciter"
+  | "governor"
+  | "stabilizer"
+  | "load"
+  | "facts"
+  | "hvdc"
+  | "relay"
+  | "user";
+
+/**
+ * Record header shape in PSS/E `.dyr` files before `ICON` / `CON` parameters.
+ */
+export type DyrHeaderKind =
+  | "machine"
+  | "bus"
+  | "load"
+  | "subsystem"
+  | "branch"
+  | "xfmr2w"
+  | "dc2t"
+  | "vscdc"
+  | "facts"
+  | "usrmdl";
 
 /**
  * Parsed PSS/E `.dyr` Dynamic Model Record.
  *
  * Standard PSS/E `.dyr` syntax:
- * `IBUS 'MODEL' ID CON(1) ... CON(N) /`
+ * `IBUS 'MODEL' ID [ICON(1..M)] CON(1) ... CON(N) /`
  */
 export interface PsseDyrRecord {
   ibus: number;
@@ -293,6 +320,23 @@ export interface PsseDyrRecord {
   category: PsseDyrCategory;
   con: number[];
   namedParams: Record<string, number>;
+  icons?: (number | string)[] | undefined;
+  namedIcons?: Record<string, number | string> | undefined;
+  jbus?: number | undefined;
+  ckt?: string | undefined;
+  deviceName?: string | undefined;
+  headerKind?: DyrHeaderKind | undefined;
+  canonicalModel?: string | undefined;
+  usrMeta?:
+    | {
+        ic: number;
+        it: number;
+        ni: number;
+        nc: number;
+        ns: number;
+        nv: number;
+      }
+    | undefined;
   span?: SourceSpan | undefined;
 }
 
@@ -307,6 +351,9 @@ export interface PsseDyrCase {
   stabilizersByBusId: Map<string, PsseDyrRecord>;
   loadsByBusId?: Map<string, PsseDyrRecord> | undefined;
   factsByBusId?: Map<string, PsseDyrRecord> | undefined;
+  limitersByBusId?: Map<string, PsseDyrRecord[]> | undefined;
+  relaysByKey?: Map<string, PsseDyrRecord[]> | undefined;
+  hvdcByName?: Map<string, PsseDyrRecord> | undefined;
 }
 
 /**
@@ -395,6 +442,63 @@ export interface PsseSeqCase {
 }
 
 /**
+ * Substation node record in PSS/E v34/v35 Node-Breaker (`BEGIN SUBSTATION DATA`) format.
+ */
+export interface SubstationNodeRecord {
+  ni: number;
+  name: string;
+  ibus: number;
+  status: number;
+  span?: SourceSpan | undefined;
+}
+
+/**
+ * Substation switching device (breaker / disconnect switch) in PSS/E v34/v35 Node-Breaker format.
+ */
+export interface SubstationSwitchRecord {
+  ni: number;
+  nj: number;
+  id: string;
+  x: number;
+  rate1: number;
+  rate2: number;
+  rate3: number;
+  /** 1 = closed (in-service conducting path), 0 = open. */
+  status: number;
+  type: number;
+  name: string;
+  span?: SourceSpan | undefined;
+}
+
+/**
+ * Equipment terminal attachment mapping a bus/branch/generator/load/transformer to a substation node `ni`.
+ */
+export interface SubstationTerminalRecord {
+  eqType: "BUS" | "GEN" | "LOAD" | "SHUNT" | "SWSHUNT" | "BRANCH" | "XFMR" | "DC";
+  i: number;
+  j?: number | undefined;
+  k?: number | undefined;
+  id: string;
+  ni: number;
+  span?: SourceSpan | undefined;
+}
+
+/**
+ * Parsed PSS/E v34/v35 Node-Breaker substation block.
+ */
+export interface SubstationRecord {
+  is: number;
+  name: string;
+  lati: number;
+  long: number;
+  sgr: number;
+  nodes: SubstationNodeRecord[];
+  switches: SubstationSwitchRecord[];
+  terminals: SubstationTerminalRecord[];
+  span?: SourceSpan | undefined;
+}
+
+/**
  * Parsed PSS/E Base Case Document.
  */
 export interface PsseCase {
@@ -411,9 +515,11 @@ export interface PsseCase {
   twoTerminalDc: TwoTerminalDcRecord[];
   vscDc: VscDcRecord[];
   switchedShunts: SwitchedShuntRecord[];
+  substations?: SubstationRecord[] | undefined;
   dyr?: PsseDyrCase | undefined;
   con?: PsseConCase | undefined;
   seq?: PsseSeqCase | undefined;
+  unterminatedSection?: { section: number; span?: SourceSpan | undefined } | undefined;
 }
 
 /**

@@ -143,3 +143,103 @@ test("Phase 1: Verilog-A workspace linter resolves `include and ignores builtin 
   const bad = new Map([["res.va", '`include "missing_header.va"\nmodule r(p,n); inout p,n; endmodule\n']]);
   assert.ok(lintVerilogAWorkspace(bad, "res.va").some((d) => d.rule === "unresolved-veriloga-include"));
 });
+
+test("Cross-domain: PSS/E <-> PSCAD RMS-EMT drift linter detects X7001 POI/frequency drift and X7003 transformer drift", async () => {
+  const { lintPssePscadCrossDomain } = await import("../src/services/workspace-linter-dispatch.js");
+  const raw = `0, 100.0, 33, 0, 0, 60.0 /
+GRID CHECK
+2026
+1, 'POI_MAIN    ', 230.0, 3, 1, 1, 1, 1.0, 0.0
+2, 'LOW_SIDE    ', 34.5, 1, 1, 1, 1, 1.0, 0.0
+0 / END OF BUS DATA
+0 / END OF LOAD DATA
+0 / END OF FIXED SHUNT DATA
+1, '1 ', 50.0, 0.0, 50.0, -50.0, 1.0, 0, 100.0, 0.0, 0.25, 0.0, 0.0, 1.0, 1, 100.0, 100.0, 0.0
+0 / END OF GENERATOR DATA
+0 / END OF BRANCH DATA
+1, 2, 0, '1 ', 1, 1, 0.0, 0.0, 2, 'MPT1', 1, 1, 1.0
+0.002, 0.080, 150.0
+1.0, 230.0, 0.0, 150.0, 160.0, 175.0, 1, 0, 1.1, 0.9, 1.01, 0.99, 33, 0, 0.0, 0.0, 0.0
+1.0, 34.5
+0 / END OF TRANSFORMER DATA
+Q
+`;
+  const pscx = `<?xml version="1.0" encoding="UTF-8"?>
+<project name="EmtMirror" version="5.0.0">
+  <param name="f_base" value="50.0"/>
+  <definitions><definition name="Main" type="module"><schematic>
+    <Bus name="POI_MAIN" id="B1" x="120" y="200" length="60" vbase="138.0"/>
+    <Bus name="LOW_SIDE" id="B2" x="280" y="200" length="60" vbase="34.5"/>
+    <User classid="UserCmp" defn="master:source_3p" id="S1" x="100" y="200">
+      <param name="Name" value="POI_MAIN"/><param name="V" value="138.0"/>
+      <port name="out" pos="[20,0]"/>
+    </User>
+    <User classid="UserCmp" defn="master:xfmr-3p" id="MPT1" x="250" y="200">
+      <param name="Name" value="MPT1"/><param name="MVA" value="250.0"/><param name="X" value="0.140"/><param name="Connection" value="Yg-D"/>
+      <port name="P" pos="[-130,0]"/><port name="S" pos="[30,0]"/>
+    </User>
+    <User classid="UserCmp" defn="master:inverter_fmu" id="IBR1" x="310" y="200">
+      <param name="Name" value="IBR1"/><param name="MVA" value="180.0"/><param name="Kqv" value="5.0"/>
+      <port name="term" pos="[-30,0]"/>
+    </User>
+    <Wire><vertex x="120" y="200"/><vertex x="280" y="200"/></Wire>
+  </schematic></definition></definitions>
+</project>`;
+  const dyr = `1 'REEC_A' '1' 0.85 1.15 0.02 -0.05 0.05 2.0 1.1 -1.1 1.0 0.0 0.0 0.0 0.05 0.44 -0.44 1.1 0.9 1.0 0.5 1.0 20.0 0.02 99.0 -99.0 1.0 0.0 1.2 0.02 1.0 0.0 /
+`;
+  const seq = `0, 100.0 / SEQ
+0 / END OF MACHINE IMPEDANCE
+0 / END OF ZERO-SEQUENCE LOAD
+0 / END OF ZERO-SEQUENCE BRANCH
+0 / END OF MUTUAL
+1, 2, 0, '1 ', 2, 0.0, 0.08, 0.0, 0.08, 0.0, 0.0, 0.0, 0.0
+0 / END OF TRANSFORMER
+Q
+`;
+  const fmuModelDesc = `<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="IbrCtrl">
+  <DefaultExperiment startTime="0.0" stopTime="1.0" stepSize="0.000015"/>
+  <ModelVariables>
+    <ScalarVariable name="V_pu" causality="input"><Real unit="kV"/></ScalarVariable>
+  </ModelVariables>
+</fmiModelDescription>`;
+  const reqifXml = `<?xml version="1.0" encoding="UTF-8"?>
+<REQ-IF>
+  <CORE-CONTENT>
+    <REQ-IF-CONTENT>
+      <SPEC-OBJECTS>
+        <SPEC-OBJECT IDENTIFIER="REQ-SCR-01">
+          <VALUES>
+            <ATTRIBUTE-VALUE-STRING THE-VALUE="POI Short-Circuit Ratio requirement: SCR >= 3.0 at 60 Hz nominal frequency."/>
+          </VALUES>
+        </SPEC-OBJECT>
+      </SPEC-OBJECTS>
+    </REQ-IF-CONTENT>
+  </CORE-CONTENT>
+</REQ-IF>`;
+
+  const diags = await lintPssePscadCrossDomain(
+    new Map([
+      ["file:///ws/grid.raw", raw],
+      ["file:///ws/grid.dyr", dyr],
+      ["file:///ws/grid.seq", seq],
+      ["file:///ws/emt.pscx", pscx],
+      ["file:///ws/modelDescription.xml", fmuModelDesc],
+      ["file:///ws/grid_reqs.reqif", reqifXml],
+    ]),
+  );
+  const codes = new Set(diags.map((d) => d.code));
+  assert.ok(codes.has("X7001"), `Expected X7001, got ${Array.from(codes).join(", ")}`);
+  assert.ok(codes.has("X7002"), `Expected X7002, got ${Array.from(codes).join(", ")}`);
+  assert.ok(codes.has("X7003"), `Expected X7003, got ${Array.from(codes).join(", ")}`);
+  assert.ok(codes.has("X7004"), `Expected X7004, got ${Array.from(codes).join(", ")}`);
+  assert.ok(codes.has("X7005"), `Expected X7005, got ${Array.from(codes).join(", ")}`);
+  assert.ok(
+    diags.some((d) => d.code === "X7003" && d.message.includes("vector group drift")),
+    "Expected X7003 to report .seq vector group drift",
+  );
+  assert.ok(
+    diags.some((d) => d.code === "X7004" && d.message.includes("stepSize")),
+    "Expected X7004 to report FMU stepSize mismatch",
+  );
+});

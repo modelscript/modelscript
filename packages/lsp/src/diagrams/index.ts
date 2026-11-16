@@ -2,6 +2,7 @@
 
 export { createOpenDriveDiagramBackend } from "./opendrive-backend.js";
 export { createPscadDiagramBackend } from "./pscad-backend.js";
+export { createPsseDiagramBackend } from "./psse-backend.js";
 export { createSimulinkDiagramBackend } from "./simulink-backend.js";
 export { createSpiceDiagramBackend } from "./spice-backend.js";
 export { createSspDiagramBackend } from "./ssp-backend.js";

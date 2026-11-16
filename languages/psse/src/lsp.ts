@@ -6,11 +6,22 @@ import { lowerPsseToDae } from "./dae/psse-to-dae.js";
 import { PsseErrorCode } from "./errors.js";
 import { lintPsse } from "./lints/index.js";
 import { extractPowerFlowNetlist, serializePowerFlowNetlist } from "./netlist/powerflow-netlist.js";
+import {
+  buildCstFieldReplacementEdit,
+  extractDyrCstRecords,
+  extractFieldsFromCstTokens,
+  getCstFieldIndexAtColumn,
+  parsePsseCstDocument,
+  type PsseCstDocument,
+  type PsseCstLine,
+} from "./parser/cst-tokens.js";
 import { DYR_MODEL_SCHEMAS, isLikelyDyrContent, parseDyr } from "./parser/dyr-parser.js";
+import { applyDyrCstParameterUpdates } from "./parser/dyr-serializer.js";
 import { parseRaw, writeRaw } from "./parser/raw-parser.js";
 import { parseSeq } from "./parser/seq-parser.js";
 import { psseToModelica } from "./projections/psse-to-modelica.js";
 import { psseToEmtNetlist } from "./projections/psse-to-pscad.js";
+import { resolveDyrModelSchema } from "./schema/index.js";
 import {
   analyzeN1Contingencies,
   calculateShortCircuit,
@@ -18,7 +29,7 @@ import {
   simulatePsseTransient,
   solvePowerFlow,
 } from "./solver/ac-powerflow.js";
-import type { PsseCase, SourceSpan } from "./types.js";
+import type { PsseCase, SourceSpan, TransformerRecord } from "./types.js";
 
 export interface LspPosition {
   line: number;
@@ -102,53 +113,66 @@ const DEFAULT_RANGE: LspRange = {
   end: { line: 0, character: 1 },
 };
 
-function spanToRange(span: SourceSpan | undefined, lines: string[], extraLines = 0): LspRange {
+function cstLineLength(cstDoc: PsseCstDocument, row0: number): number {
+  return cstDoc.byRow.get(row0)?.line.length ?? 1;
+}
+
+function fullCstDocRange(cstDoc: PsseCstDocument): LspRange {
+  const last = cstDoc.lines[cstDoc.lines.length - 1];
+  if (!last) return DEFAULT_RANGE;
+  return {
+    start: { line: 0, character: 0 },
+    end: { line: last.row, character: last.line.length },
+  };
+}
+
+function spanToRange(span: SourceSpan | undefined, cstDoc: PsseCstDocument, extraLines = 0): LspRange {
   if (!span) return DEFAULT_RANGE;
   const startLine = Math.max(0, span.line - 1);
-  const endLine = Math.min(Math.max(0, lines.length - 1), startLine + extraLines);
+  const maxRow = cstDoc.lines[cstDoc.lines.length - 1]?.row ?? 0;
+  const endLine = Math.min(maxRow, startLine + extraLines);
   const startCol = Math.max(0, span.column - 1);
-  const endCol = Math.max(startCol + 1, lines[endLine]?.length ?? 1);
+  const endCol = Math.max(startCol + 1, cstLineLength(cstDoc, endLine));
   return {
     start: { line: startLine, character: startCol },
     end: { line: endLine, character: endCol },
   };
 }
 
-function firstTokenRange(lines: string[]): LspRange {
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    const match = /\S+/.exec(line);
-    if (match) {
+function firstTokenRange(cstDoc: PsseCstDocument): LspRange {
+  for (const entry of cstDoc.lines) {
+    const firstTok = entry.tokens.find((t) => (t.text ?? "").trim().length > 0);
+    if (firstTok) {
+      const line = firstTok.startPosition?.row ?? entry.row;
+      const col = firstTok.startPosition?.column ?? 0;
       return {
-        start: { line: i, character: match.index },
-        end: { line: i, character: match.index + match[0].length },
+        start: { line, character: col },
+        end: { line, character: col + (firstTok.text?.length ?? 1) },
       };
     }
   }
   return DEFAULT_RANGE;
 }
 
-function findSeqRecordRange(lines: string[], busNum: number): LspRange {
-  const re = new RegExp(`^\\s*(${busNum})\\b`);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    const m = re.exec(line);
-    if (m && m[1]) {
-      const startChar = line.indexOf(m[1], m.index);
+function findSeqRecordRange(cstDoc: PsseCstDocument, source: string, busNum: number): LspRange {
+  for (const entry of cstDoc.lines) {
+    if (entry.isCommentOrBlank) continue;
+    const fields = extractFieldsFromCstTokens(entry.tokens, source, "delimited");
+    if (fields[0] && Number.parseInt(fields[0].value, 10) === busNum) {
       return {
-        start: { line: i, character: startChar },
-        end: { line: i, character: startChar + m[1].length },
+        start: { line: fields[0].line0, character: fields[0].startCol0 },
+        end: { line: fields[0].line0, character: Math.max(fields[0].startCol0 + 1, fields[0].endCol0) },
       };
     }
   }
-  return firstTokenRange(lines);
+  return firstTokenRange(cstDoc);
 }
 
 /**
  * Validates a PSS/E RAW power flow deck or DYR dynamic data file and returns diagnostics.
  */
 export function validatePsse(content: string, uri: string = "model.raw"): LspDiagnostic[] {
-  const lines = content.split(/\r?\n/);
+  const cstDoc = parsePsseCstDocument(content);
   try {
     if (uri.toLowerCase().endsWith(".seq")) {
       const seq = parseSeq(content);
@@ -156,7 +180,7 @@ export function validatePsse(content: string, uri: string = "model.raw"): LspDia
       for (const g of seq.generators) {
         if (g.zxpos <= 0 || g.zxneg <= 0 || g.zx0 <= 0) {
           diags.push({
-            range: findSeqRecordRange(lines, g.i),
+            range: findSeqRecordRange(cstDoc, content, g.i),
             severity: 2,
             code: "P5101",
             source: "modelscript-psse",
@@ -167,7 +191,7 @@ export function validatePsse(content: string, uri: string = "model.raw"): LspDia
       for (const br of seq.branches) {
         if (Math.abs(br.r0) < 1e-9 && Math.abs(br.x0) < 1e-9) {
           diags.push({
-            range: findSeqRecordRange(lines, br.i),
+            range: findSeqRecordRange(cstDoc, content, br.i),
             severity: 2,
             code: "P5102",
             source: "modelscript-psse",
@@ -178,7 +202,7 @@ export function validatePsse(content: string, uri: string = "model.raw"): LspDia
       for (const xf of seq.transformers) {
         if (xf.cc < 1 || xf.cc > 9) {
           diags.push({
-            range: findSeqRecordRange(lines, xf.i),
+            range: findSeqRecordRange(cstDoc, content, xf.i),
             severity: 1,
             code: "P5103",
             source: "modelscript-psse",
@@ -196,16 +220,96 @@ export function validatePsse(content: string, uri: string = "model.raw"): LspDia
         const schema = DYR_MODEL_SCHEMAS[rec.model];
         if (schema && rec.con.length < schema.params.length) {
           diags.push({
-            range: spanToRange(rec.span, lines),
+            range: spanToRange(rec.span, cstDoc),
             severity: 2,
             code: "P5001",
             source: "modelscript-psse",
             message: `Dynamic model '${rec.model}' at Bus ${rec.ibus} specifies ${rec.con.length} CON parameters, expected ${schema.params.length}.`,
           });
         }
+        if (rec.headerKind === "usrmdl" && !schema) {
+          diags.push({
+            range: spanToRange(rec.span, cstDoc),
+            severity: 3,
+            code: PsseErrorCode.DYR_USRMDL_UNMAPPED_CUSTOM.code,
+            source: "modelscript-psse",
+            message: PsseErrorCode.DYR_USRMDL_UNMAPPED_CUSTOM.message(rec.model, rec.ibus),
+          });
+        }
+        if (schema?.icons && rec.icons && rec.icons.length > 0) {
+          for (let idx = 0; idx < schema.icons.length && idx < rec.icons.length; idx++) {
+            const im = schema.icons[idx]!;
+            const val = rec.icons[idx]!;
+            if (im.validValues && typeof val === "number" && !im.validValues.includes(val)) {
+              diags.push({
+                range: spanToRange(rec.span, cstDoc),
+                severity: 1,
+                code: PsseErrorCode.DYR_ICON_INVALID_VALUE.code,
+                source: "modelscript-psse",
+                message: PsseErrorCode.DYR_ICON_INVALID_VALUE.message(
+                  rec.model,
+                  rec.ibus,
+                  im.name,
+                  String(val),
+                  im.validValues.join(", "),
+                ),
+              });
+            }
+          }
+        }
+        if (schema) {
+          for (let idx = 0; idx < schema.params.length && idx < rec.con.length; idx++) {
+            const pm = schema.params[idx]!;
+            const v = rec.con[idx]!;
+            if ((pm.min !== undefined && v < pm.min) || (pm.max !== undefined && v > pm.max)) {
+              diags.push({
+                range: spanToRange(rec.span, cstDoc),
+                severity: 2,
+                code: PsseErrorCode.DYR_CON_PHYSICAL_BOUNDS.code,
+                source: "modelscript-psse",
+                message: PsseErrorCode.DYR_CON_PHYSICAL_BOUNDS.message(
+                  rec.model,
+                  rec.ibus,
+                  pm.name,
+                  v,
+                  pm.min ?? -Infinity,
+                  pm.max ?? Infinity,
+                ),
+              });
+            }
+          }
+        }
+        const s10 = rec.namedParams["S10"] ?? rec.namedParams["SE1"];
+        const s12 = rec.namedParams["S12"] ?? rec.namedParams["SE2"];
+        if (s10 !== undefined && s12 !== undefined && (s10 < 0 || s12 < 0 || (s10 > 0 && s12 < s10))) {
+          diags.push({
+            range: spanToRange(rec.span, cstDoc),
+            severity: 1,
+            code: PsseErrorCode.DYR_SATURATION_NON_MONOTONIC.code,
+            source: "modelscript-psse",
+            message: PsseErrorCode.DYR_SATURATION_NON_MONOTONIC.message(rec.model, rec.ibus, s10, s12),
+          });
+        }
+        if (schema?.daeArchetype === "load_composite_cmpldw") {
+          const fSum =
+            (rec.namedParams["Fma"] ?? 0) +
+            (rec.namedParams["Fmb"] ?? 0) +
+            (rec.namedParams["Fmc"] ?? 0) +
+            (rec.namedParams["Fmd"] ?? 0) +
+            (rec.namedParams["Fel"] ?? 0);
+          if (fSum > 1.001 || fSum < 0) {
+            diags.push({
+              range: spanToRange(rec.span, cstDoc),
+              severity: 1,
+              code: PsseErrorCode.DYR_COMPOSITE_LOAD_FRACTION_SUM.code,
+              source: "modelscript-psse",
+              message: PsseErrorCode.DYR_COMPOSITE_LOAD_FRACTION_SUM.message(rec.model, rec.ibus, fSum),
+            });
+          }
+        }
         if (rec.category === "generator" && (rec.namedParams["H"] ?? 1) <= 0) {
           diags.push({
-            range: spanToRange(rec.span, lines),
+            range: spanToRange(rec.span, cstDoc),
             severity: 1,
             code: PsseErrorCode.ZERO_INERTIA_DYNAMIC_BUS.code,
             source: "modelscript-psse",
@@ -214,7 +318,7 @@ export function validatePsse(content: string, uri: string = "model.raw"): LspDia
         }
         if (rec.category === "generator" && (rec.namedParams["H"] ?? 1) < 0) {
           diags.push({
-            range: spanToRange(rec.span, lines),
+            range: spanToRange(rec.span, cstDoc),
             severity: 1,
             code: "P5002",
             source: "modelscript-psse",
@@ -231,7 +335,7 @@ export function validatePsse(content: string, uri: string = "model.raw"): LspDia
     return diags.map((d) => {
       const lineNum = Math.max(0, (d.line ?? 1) - 1);
       const colNum = Math.max(0, (d.column ?? 1) - 1);
-      const lineLen = lines[lineNum]?.length ?? 1;
+      const lineLen = cstLineLength(cstDoc, lineNum);
 
       return {
         range: {
@@ -247,7 +351,7 @@ export function validatePsse(content: string, uri: string = "model.raw"): LspDia
   } catch (err: unknown) {
     return [
       {
-        range: firstTokenRange(lines),
+        range: firstTokenRange(cstDoc),
         severity: 1,
         code: "P1001",
         source: "modelscript-psse",
@@ -262,16 +366,13 @@ export function validatePsse(content: string, uri: string = "model.raw"): LspDia
  */
 export function getPsseDocumentSymbols(content: string, uri: string = "model.raw"): LspDocumentSymbol[] {
   try {
-    const lines = content.split(/\r?\n/);
-    const docRange: LspRange = {
-      start: { line: 0, character: 0 },
-      end: { line: Math.max(0, lines.length - 1), character: lines[lines.length - 1]?.length ?? 1 },
-    };
+    const cstDoc = parsePsseCstDocument(content);
+    const docRange = fullCstDocRange(cstDoc);
 
     if (uri.toLowerCase().endsWith(".dyr") || isLikelyDyrContent(content)) {
       const dyr = parseDyr(content);
       const children: LspDocumentSymbol[] = dyr.records.map((rec) => {
-        const r = spanToRange(rec.span, lines);
+        const r = spanToRange(rec.span, cstDoc);
         const paramSummary = Object.entries(rec.namedParams)
           .slice(0, 4)
           .map(([k, v]) => `${k}=${v}`)
@@ -306,7 +407,7 @@ export function getPsseDocumentSymbols(content: string, uri: string = "model.raw
 
     // Buses
     for (const [busNum, bus] of psseCase.buses) {
-      const r = spanToRange(bus.span, lines);
+      const r = spanToRange(bus.span, cstDoc);
       children.push({
         name: `Bus ${busNum} (${bus.name})`,
         detail: `Type: ${bus.ide === 3 ? "Slack" : bus.ide === 2 ? "PV" : "PQ"} | Base: ${bus.baseKv} kV | V: ${bus.vm.toFixed(3)} p.u.`,
@@ -318,7 +419,7 @@ export function getPsseDocumentSymbols(content: string, uri: string = "model.raw
 
     // Loads
     for (const load of psseCase.loads) {
-      const r = spanToRange(load.span, lines);
+      const r = spanToRange(load.span, cstDoc);
       children.push({
         name: `Load Bus ${load.i} [${load.id.trim()}]`,
         detail: `P: ${load.pl.toFixed(1)} MW | Q: ${load.ql.toFixed(1)} Mvar`,
@@ -330,7 +431,7 @@ export function getPsseDocumentSymbols(content: string, uri: string = "model.raw
 
     // Generators
     for (const gen of psseCase.generators) {
-      const r = spanToRange(gen.span, lines);
+      const r = spanToRange(gen.span, cstDoc);
       children.push({
         name: `Gen Bus ${gen.i} [${gen.id.trim()}]`,
         detail: `Pg: ${gen.pg.toFixed(1)} MW | Qg: ${gen.qg.toFixed(1)} Mvar | Vset: ${gen.vs.toFixed(3)} p.u.`,
@@ -342,7 +443,7 @@ export function getPsseDocumentSymbols(content: string, uri: string = "model.raw
 
     // Branches / Lines
     for (const br of psseCase.branches) {
-      const r = spanToRange(br.span, lines);
+      const r = spanToRange(br.span, cstDoc);
       children.push({
         name: `Line ${br.i} -> ${br.j} [${br.ckt.trim()}]`,
         detail: `R: ${br.r.toFixed(4)} | X: ${br.x.toFixed(4)} | RateA: ${br.rateA} MVA`,
@@ -354,7 +455,7 @@ export function getPsseDocumentSymbols(content: string, uri: string = "model.raw
 
     // Transformers
     for (const xf of psseCase.transformers) {
-      const r = spanToRange(xf.span, lines, xf.k !== 0 ? 4 : 3);
+      const r = spanToRange(xf.span, cstDoc, xf.k !== 0 ? 4 : 3);
       children.push({
         name: `Xfmr ${xf.i} -> ${xf.j}${xf.k !== 0 ? ` -> ${xf.k}` : ""} [${xf.ckt.trim()}]`,
         detail: `Ratio: ${xf.windv1.toFixed(3)} / ${xf.windv2.toFixed(3)} | Sbase: ${xf.sbase12} MVA`,
@@ -364,7 +465,7 @@ export function getPsseDocumentSymbols(content: string, uri: string = "model.raw
       });
     }
 
-    const headerRange = spanToRange(psseCase.header.span, lines);
+    const headerRange = spanToRange(psseCase.header.span, cstDoc);
 
     return [
       {
@@ -381,31 +482,9 @@ export function getPsseDocumentSymbols(content: string, uri: string = "model.raw
   }
 }
 
-/**
- * Determines which 0-based comma-separated column index corresponds to `character` on `line`.
- */
-function getColumnIndexAtCursor(line: string, character: number): number {
-  let inQuote = false;
-  let quoteChar = "";
-  let colIdx = 0;
-  const limit = Math.min(character, line.length);
-  for (let i = 0; i < limit; i++) {
-    const ch = line[i]!;
-    if (!inQuote && ch === "/") break;
-    if (ch === "'" || ch === '"') {
-      if (!inQuote) {
-        inQuote = true;
-        quoteChar = ch;
-      } else if (ch === quoteChar) {
-        inQuote = false;
-      }
-      continue;
-    }
-    if (!inQuote && ch === ",") {
-      colIdx++;
-    }
-  }
-  return colIdx;
+function getColumnIndexAtCursor(cstLine: PsseCstLine | undefined, source: string, character: number): number {
+  if (!cstLine) return 0;
+  return getCstFieldIndexAtColumn(cstLine.tokens, source, character);
 }
 
 const BUS_FIELD_DOCS: readonly string[] = [
@@ -581,36 +660,17 @@ const SW_SHUNT_FIELD_DOCS: readonly string[] = [
   "B1 — Susceptance per step in block 1 (Mvar)",
 ];
 
-function getSpaceSeparatedTokenIndexAtCursor(line: string, character: number): number {
-  const limit = Math.min(character, line.length);
-  let idx = 0;
-  let inToken = false;
-  let inQuote = false;
-  let quoteChar = "";
-  for (let i = 0; i < limit; i++) {
-    const ch = line[i]!;
-    if (inQuote) {
-      if (ch === quoteChar) inQuote = false;
-      continue;
-    }
-    if (ch === "'" || ch === '"') {
-      if (!inToken) {
-        inToken = true;
-      }
-      inQuote = true;
-      quoteChar = ch;
-      continue;
-    }
-    if (ch === "," || ch === " " || ch === "\t") {
-      if (inToken) {
-        idx++;
-        inToken = false;
-      }
-    } else {
-      inToken = true;
-    }
+function getSpaceSeparatedTokenIndexAtCursor(
+  cstLine: PsseCstLine | undefined,
+  source: string,
+  character: number,
+): number {
+  if (!cstLine) return 0;
+  const fields = extractFieldsFromCstTokens(cstLine.tokens, source, "whitespace");
+  for (let i = 0; i < fields.length; i++) {
+    if (character <= fields[i]!.endCol0) return i;
   }
-  return idx;
+  return Math.max(0, fields.length - 1);
 }
 
 /**
@@ -623,8 +683,9 @@ export function getPsseHover(
   workspace?: UnifiedWorkspace,
 ): LspHover | undefined {
   try {
-    const lines = content.split(/\r?\n/);
-    const line = lines[position.line] ?? "";
+    const cstDoc = parsePsseCstDocument(content);
+    const cstLine = cstDoc.byRow.get(position.line);
+    const line = cstLine?.line ?? "";
     const targetLine1 = position.line + 1;
 
     // 0. Check if this is a .dyr dynamic model file
@@ -634,14 +695,37 @@ export function getPsseHover(
       for (const rec of dyr.records) {
         if (rec.span?.line === targetLine1) {
           const schema = DYR_MODEL_SCHEMAS[rec.model];
-          const tokIdx = getSpaceSeparatedTokenIndexAtCursor(line, position.character);
-          const activeConIdx = tokIdx >= 3 ? tokIdx - 3 : -1;
+          const tokIdx = getSpaceSeparatedTokenIndexAtCursor(cstLine, content, position.character);
+          const headerLen =
+            rec.headerKind === "usrmdl"
+              ? 10
+              : rec.headerKind === "branch"
+                ? 4
+                : rec.headerKind === "bus" || rec.deviceName
+                  ? 2
+                  : 3;
+          const iconCount = rec.icons?.length ?? 0;
+          const activeIconIdx = tokIdx >= headerLen && tokIdx < headerLen + iconCount ? tokIdx - headerLen : -1;
+          const activeConIdx = tokIdx >= headerLen + iconCount ? tokIdx - (headerLen + iconCount) : -1;
+
+          const iconLines: string[] = [];
+          if (rec.icons && rec.icons.length > 0) {
+            for (let i = 0; i < rec.icons.length; i++) {
+              const im = schema?.icons?.[i];
+              const marker = i === activeIconIdx ? " **(Active)**" : "";
+              iconLines.push(
+                `- **\`${im ? im.name : `ICON(${i + 1})`}\`**${im ? ` (${im.description})` : ""}: \`${rec.icons[i]}\`${marker}`,
+              );
+            }
+          }
+
           const paramLines: string[] = [];
           if (schema) {
             for (let i = 0; i < schema.params.length && i < rec.con.length; i++) {
               const p = schema.params[i]!;
               const marker = i === activeConIdx ? " **(Active)**" : "";
-              paramLines.push(`- **\`${p.name}\`** (${p.description}): \`${rec.con[i]}\` ${p.unit}${marker}`);
+              const bounds = p.min !== undefined || p.max !== undefined ? ` [${p.min ?? "-∞"}, ${p.max ?? "+∞"}]` : "";
+              paramLines.push(`- **\`${p.name}\`** (${p.description}): \`${rec.con[i]}\` ${p.unit}${bounds}${marker}`);
             }
           } else {
             for (let i = 0; i < rec.con.length; i++) {
@@ -650,20 +734,29 @@ export function getPsseHover(
             }
           }
           const activeParam =
-            activeConIdx >= 0 && schema?.params[activeConIdx]
-              ? `\n\n**Active Parameter (\`CON(${activeConIdx + 1})\`)**: \`${schema.params[activeConIdx]!.name}\` = \`${rec.con[activeConIdx]}\` ${schema.params[activeConIdx]!.unit} — ${schema.params[activeConIdx]!.description}`
-              : "";
+            activeIconIdx >= 0 && schema?.icons?.[activeIconIdx]
+              ? `\n\n**Active ICON (\`ICON(${activeIconIdx + 1})\`)**: \`${schema.icons[activeIconIdx]!.name}\` = \`${rec.icons?.[activeIconIdx]}\` — ${schema.icons[activeIconIdx]!.description}`
+              : activeConIdx >= 0 && schema?.params[activeConIdx]
+                ? `\n\n**Active Parameter (\`CON(${activeConIdx + 1})\`)**: \`${schema.params[activeConIdx]!.name}\` = \`${rec.con[activeConIdx]}\` ${schema.params[activeConIdx]!.unit} — ${schema.params[activeConIdx]!.description}`
+                : "";
           const rawBus = companionRaw?.buses.get(rec.ibus);
           const rawGen = companionRaw?.generators.find((g) => g.i === rec.ibus && g.id.trim() === rec.id.trim());
           const rawContext = rawBus
             ? `\n- **Connected \`.raw\` Bus**: \`${rec.ibus}\` (${rawBus.name}, ${rawBus.baseKv} kV)${rawGen ? ` — Gen \`${rawGen.id.trim()}\`: $P_g = ${rawGen.pg.toFixed(1)}$ MW, $M_{\\text{base}} = ${rawGen.mbase}$ MVA` : ""}`
             : "";
+          const stdBadge = schema?.standardRef ? `\n- **Reference**: ${schema.standardRef}` : "";
+          const headerId = rec.deviceName
+            ? `- **Device**: \`${rec.deviceName}\``
+            : rec.jbus && rec.jbus > 0
+              ? `- **Branch**: \`${rec.ibus}\` — \`${rec.jbus}\` | **CKT**: \`${rec.id}\``
+              : `- **Bus (\`IBUS\`)**: \`${rec.ibus}\` | **Machine ID**: \`${rec.id}\``;
+          const allParamLines = [...iconLines, ...paramLines].join("\n");
           return {
             contents: {
               kind: "markdown",
-              value: `### PSS/E Dynamic Model \`${rec.model}\` — ${schema?.title ?? rec.category.toUpperCase()}\n- **Bus (\`IBUS\`)**: \`${rec.ibus}\` | **Machine ID**: \`${rec.id}\`${rawContext}\n${schema ? `\n_${schema.description}_\n\n` : "\n"}${paramLines.join("\n")}${activeParam}`,
+              value: `### PSS/E Dynamic Model \`${rec.model}\` — ${schema?.title ?? rec.category.toUpperCase()}\n${headerId}${stdBadge}${rawContext}\n${schema ? `\n_${schema.description}_\n\n` : "\n"}${allParamLines}${activeParam}`,
             },
-            range: spanToRange(rec.span, lines),
+            range: spanToRange(rec.span, cstDoc),
           };
         }
       }
@@ -672,7 +765,7 @@ export function getPsseHover(
 
     const psseCase = parseRaw(content);
     const companionDyr = psseCase.dyr ?? (workspace ? findCompanionPsseDyr(workspace, uri)?.dyr : undefined);
-    const colIdx = getColumnIndexAtCursor(line, position.character);
+    const colIdx = getColumnIndexAtCursor(cstLine, content, position.character);
 
     // 1. Header line
     if (psseCase.header.span?.line === targetLine1) {
@@ -682,7 +775,7 @@ export function getPsseHover(
           kind: "markdown",
           value: `### PSS/E Case Identification Header\n- **System MVA Base (\`SBASE\`)**: ${psseCase.header.sbase} MVA\n- **Format Revision (\`REV\`)**: v${psseCase.header.rev}\n- **Base Frequency (\`BASFRQ\`)**: ${psseCase.header.basfrq} Hz\n- **Title 1**: ${psseCase.title1 || "N/A"}\n- **Title 2**: ${psseCase.title2 || "N/A"}${fieldDoc}`,
         },
-        range: spanToRange(psseCase.header.span, lines),
+        range: spanToRange(psseCase.header.span, cstDoc),
       };
     }
 
@@ -708,7 +801,7 @@ export function getPsseHover(
             kind: "markdown",
             value: `### PSS/E Bus \`${busNum}\` (${bus.name})\n- **Type**: \`${typeStr}\`\n- **Base Voltage**: ${bus.baseKv} kV\n- **Voltage Magnitude**: ${bus.vm.toFixed(4)} p.u. (${(bus.vm * bus.baseKv).toFixed(2)} kV)\n- **Voltage Angle**: ${bus.va.toFixed(2)}°\n- **Normal / Emergency Limits**: [${(bus.nvlo ?? 0.95).toFixed(2)}, ${(bus.nvhi ?? 1.05).toFixed(2)}] / [${(bus.evlo ?? 0.9).toFixed(2)}, ${(bus.evhi ?? 1.1).toFixed(2)}] p.u.\n- **Area / Zone / Owner**: ${bus.area} / ${bus.zone} / ${bus.owner}${dyrDoc}${fieldDoc}`,
           },
-          range: spanToRange(bus.span, lines),
+          range: spanToRange(bus.span, cstDoc),
         };
       }
     }
@@ -723,7 +816,7 @@ export function getPsseHover(
             kind: "markdown",
             value: `### PSS/E Load \`${load.id.trim()}\` at Bus \`${load.i}\` (${bus?.name ?? "Unknown"})\n- **Status**: ${load.status === 1 ? "In-Service (1)" : "Out-of-Service (0)"}\n- **Constant Power (P / Q)**: ${load.pl.toFixed(2)} MW / ${load.ql.toFixed(2)} Mvar\n- **Constant Current (IP / IQ)**: ${load.ip.toFixed(2)} MW / ${load.iq.toFixed(2)} Mvar\n- **Constant Admittance (YP / YQ)**: ${load.yp.toFixed(2)} MW / ${load.yq.toFixed(2)} Mvar${fieldDoc}`,
           },
-          range: spanToRange(load.span, lines),
+          range: spanToRange(load.span, cstDoc),
         };
       }
     }
@@ -740,7 +833,7 @@ export function getPsseHover(
             kind: "markdown",
             value: `### PSS/E Fixed Shunt \`${shunt.id.trim()}\` at Bus \`${shunt.i}\` (${bus?.name ?? "Unknown"})\n- **Status**: ${shunt.status === 1 ? "In-Service (1)" : "Out-of-Service (0)"}\n- **Active Conductance (\`GL\`)**: ${shunt.gl.toFixed(2)} MW\n- **Reactive Susceptance (\`BL\`)**: ${shunt.bl.toFixed(2)} Mvar (${shunt.bl >= 0 ? "Capacitor Bank" : "Shunt Reactor"})${fieldDoc}`,
           },
-          range: spanToRange(shunt.span, lines),
+          range: spanToRange(shunt.span, cstDoc),
         };
       }
     }
@@ -767,7 +860,7 @@ export function getPsseHover(
             kind: "markdown",
             value: `### PSS/E Synchronous Generator \`${gen.id.trim()}\` at Bus \`${gen.i}\` (${bus?.name ?? "Unknown"})\n- **Status**: ${gen.stat === 1 ? "Online (1)" : "Offline (0)"}\n- **Scheduled Output**: ${gen.pg.toFixed(2)} MW, ${gen.qg.toFixed(2)} Mvar\n- **Reactive Limits**: [${gen.qb.toFixed(1)}, ${gen.qt.toFixed(1)}] Mvar\n- **Active Limits**: [${gen.pb.toFixed(1)}, ${gen.pt.toFixed(1)}] MW\n- **Voltage Setpoint (\`VS\`)**: ${gen.vs.toFixed(4)} p.u.\n- **Machine Base & Transient Impedance**: ${gen.mbase} MVA, $Z = ${gen.zr} + j${gen.zx}$ p.u.${dyrDoc}${fieldDoc}`,
           },
-          range: spanToRange(gen.span, lines),
+          range: spanToRange(gen.span, cstDoc),
         };
       }
     }
@@ -785,7 +878,7 @@ export function getPsseHover(
             kind: "markdown",
             value: `### PSS/E AC Transmission Branch \`${br.i}\` (${fromBus?.name ?? "?"}) → \`${br.j}\` (${toBus?.name ?? "?"}) [Ckt \`${br.ckt.trim()}\`]\n- **Status**: ${br.st === 1 ? "Closed / In-Service (1)" : "Open (0)"}\n- **Series Impedance**: $R = ${br.r.toFixed(5)}$, $X = ${br.x.toFixed(5)}$ p.u. ($|Z| = ${zMag.toFixed(5)}$ p.u., $X/R = ${xrRatio}$)\n- **Line Charging (\`B\`)**: ${br.b.toFixed(5)} p.u.\n- **Thermal Ratings (A / B / C)**: ${br.rateA} / ${br.rateB} / ${br.rateC} MVA${fieldDoc}`,
           },
-          range: spanToRange(br.span, lines),
+          range: spanToRange(br.span, cstDoc),
         };
       }
     }
@@ -806,7 +899,7 @@ export function getPsseHover(
             kind: "markdown",
             value: `### PSS/E Transformer \`${xf.i}\` (${fromBus?.name ?? "?"}) → \`${xf.j}\` (${toBus?.name ?? "?"}) [Ckt \`${xf.ckt.trim()}\`]\n- **Status**: ${xf.stat === 1 ? "In-Service (1)" : "Out-of-Service (0)"}\n- **Leakage Impedance**: $R_{12} = ${xf.r12.toFixed(5)}$, $X_{12} = ${xf.x12.toFixed(5)}$ p.u. on ${xf.sbase12} MVA\n- **Off-Nominal Tap Ratio**: ${xf.windv1.toFixed(4)} : ${xf.windv2.toFixed(4)} (Phase Shift: ${xf.ang1.toFixed(2)}°)\n- **Ratings (A / B / C)**: ${xf.rata1} / ${xf.ratb1} / ${xf.ratc1} MVA${fieldDoc}`,
           },
-          range: spanToRange(xf.span, lines, nLines - 1),
+          range: spanToRange(xf.span, cstDoc, nLines - 1),
         };
       }
     }
@@ -820,7 +913,7 @@ export function getPsseHover(
             kind: "markdown",
             value: `### PSS/E Area \`${area.i}\` (${area.arname})\n- **Area Slack Bus (\`ISW\`)**: Bus \`${area.isw}\`\n- **Desired Net Export (\`PDES\`)**: ${area.pdes.toFixed(1)} MW (±${area.ptol.toFixed(1)} MW)${fieldDoc}`,
           },
-          range: spanToRange(area.span, lines),
+          range: spanToRange(area.span, cstDoc),
         };
       }
     }
@@ -835,7 +928,7 @@ export function getPsseHover(
             kind: "markdown",
             value: `### PSS/E Switched Shunt at Bus \`${sw.i}\` (${bus?.name ?? "Unknown"})\n- **Status**: ${sw.stat === 1 ? "In-Service (1)" : "Out-of-Service (0)"} | **Mode (\`MODSW\`)**: ${sw.modsw}\n- **Voltage Band**: [${sw.vswlo.toFixed(3)}, ${sw.vswhi.toFixed(3)}] p.u.\n- **Initial Susceptance (\`BINIT\`)**: ${sw.binit.toFixed(2)} Mvar${fieldDoc}`,
           },
-          range: spanToRange(sw.span, lines),
+          range: spanToRange(sw.span, cstDoc),
         };
       }
     }
@@ -860,12 +953,16 @@ export function getPsseHover(
 }
 
 /**
- * Helper that resolves which bus number is referenced at `(line, character)` in a `.raw` file.
+ * Helper that resolves which bus number is referenced at `(line, character)` in a `.raw` file via WASM CST.
  */
-function resolveTargetBusAtPosition(psseCase: PsseCase, lines: string[], position: LspPosition): number | undefined {
+function resolveTargetBusAtPosition(
+  psseCase: PsseCase,
+  cstDoc: PsseCstDocument,
+  source: string,
+  position: LspPosition,
+): number | undefined {
   const targetLine1 = position.line + 1;
-  const line = lines[position.line] ?? "";
-  const colIdx = getColumnIndexAtCursor(line, position.character);
+  const colIdx = getColumnIndexAtCursor(cstDoc.byRow.get(position.line), source, position.character);
 
   for (const [busNum, bus] of psseCase.buses) {
     if (bus.span?.line === targetLine1) return busNum;
@@ -903,9 +1000,96 @@ function resolveTargetBusAtPosition(psseCase: PsseCase, lines: string[], positio
   return undefined;
 }
 
+function psseOffsetToPosition(text: string, offset: number): LspPosition {
+  const clamped = Math.max(0, Math.min(text.length, offset));
+  let line = 0;
+  let lineStart = 0;
+  for (let i = 0; i < clamped; i++) {
+    if (text.charCodeAt(i) === 10) {
+      line++;
+      lineStart = i + 1;
+    }
+  }
+  return { line, character: clamped - lineStart };
+}
+
+function collectPsseCrossLanguagePeers(
+  workspace: UnifiedWorkspace,
+  uri: string,
+  candidateNames: readonly string[],
+): LspLocation[] {
+  const uIdx = workspace.getIndex();
+  workspace.syncTggCorrespondences(uIdx);
+  const out: LspLocation[] = [];
+  const seen = new Set<string>();
+  const pushSym = (sym: {
+    resourceId?: string | undefined;
+    documentUri?: string | undefined;
+    fieldRanges?: Record<string, { startOffset: number; endOffset: number }> | undefined;
+    startOffset: number;
+    endOffset: number;
+  }) => {
+    const symUri = sym.resourceId || sym.documentUri || "";
+    if (!symUri) return;
+    const docText = workspace.getDocument(symUri)?.text ?? "";
+    const nameRange = sym.fieldRanges?.["name"];
+    const startOff = nameRange?.startOffset ?? sym.startOffset ?? 0;
+    const endOff = nameRange?.endOffset ?? sym.endOffset ?? startOff;
+    const range: LspRange = {
+      start: psseOffsetToPosition(docText, startOff),
+      end: psseOffsetToPosition(docText, Math.max(startOff, endOff)),
+    };
+    const key = `${symUri}:${range.start.line}:${range.start.character}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push({ uri: symUri, range });
+    }
+  };
+
+  const indexer = workspace.tggCorrespondenceIndexer;
+  const candidateLowers = new Set(candidateNames.map((n) => n.trim().toLowerCase()).filter(Boolean));
+  const matchedSymIds = new Set<number>();
+  for (const name of candidateNames) {
+    if (!name) continue;
+    for (const symId of uIdx.byName.get(name) ?? []) {
+      matchedSymIds.add(symId);
+    }
+  }
+  if (candidateLowers.size > 0) {
+    for (const [symName, ids] of uIdx.byName.entries()) {
+      if (candidateLowers.has(symName.toLowerCase())) {
+        for (const symId of ids) {
+          matchedSymIds.add(symId);
+        }
+      }
+    }
+  }
+
+  for (const symId of matchedSymIds) {
+    const sym = uIdx.symbols.get(symId);
+    if (!sym) continue;
+    if ((sym.resourceId || sym.documentUri || "") === uri) {
+      for (const slot of indexer.getSlotsForSymbol(symId)) {
+        const rec = indexer.hypergraph.getRecord(slot);
+        if (!rec || rec.isRemoved) continue;
+        for (const memberId of Object.values(rec.domainNodes)) {
+          if (typeof memberId === "number" && memberId !== symId) {
+            const peer = uIdx.symbols.get(memberId);
+            if (peer) pushSym(peer);
+          }
+        }
+      }
+    } else if (sym.language !== "psse" && workspace.tggProjectionTable.canResolveAs("psse", sym)) {
+      pushSym(sym);
+    }
+  }
+
+  return out;
+}
+
 /**
  * Resolves Go-to-Definition for bus references in Loads, Shunts, Generators, Branches, Transformers,
- * and cross-file jumps between `.raw` and companion `.dyr` files.
+ * cross-file jumps between `.raw` and companion `.dyr` files, and TGG cross-language counterparts.
  */
 export function getPsseDefinition(
   content: string,
@@ -914,14 +1098,27 @@ export function getPsseDefinition(
   workspace?: UnifiedWorkspace,
 ): LspLocation | undefined {
   try {
-    const lines = content.split(/\r?\n/);
+    const cstDoc = parsePsseCstDocument(content);
     const targetLine1 = position.line + 1;
 
-    // Cross-file jump from .dyr record -> companion .raw Bus declaration
+    if (workspace && !workspace.getNativeFileIndex(uri)) {
+      workspace.indexDocumentText(uri, content, "psse");
+    }
+
+    // Cross-file jump from .dyr record -> companion .raw Bus declaration or TGG counterpart (e.g. Modelica GENROU wrapper)
     if (uri.toLowerCase().endsWith(".dyr") || isLikelyDyrContent(content)) {
       const dyr = parseDyr(content);
       const rec = dyr.records.find((r) => r.span?.line === targetLine1);
       if (!rec) return undefined;
+      const tokIdx = getSpaceSeparatedTokenIndexAtCursor(cstDoc.byRow.get(position.line), content, position.character);
+      // Clicking on model name token (e.g. 'GENROU') jumps to TGG Modelica/SysML2/PSCAD model definition if present
+      if (workspace && tokIdx === 1) {
+        const modelPeers = collectPsseCrossLanguagePeers(workspace, uri, [
+          rec.model,
+          `${rec.model}_${rec.ibus}_${rec.id.trim() || "1"}`,
+        ]);
+        if (modelPeers.length > 0) return modelPeers[0];
+      }
       const companion = workspace ? findCompanionPsseRaw(workspace, uri) : undefined;
       if (companion) {
         const bus = companion.psseCase.buses.get(rec.ibus);
@@ -938,12 +1135,25 @@ export function getPsseDefinition(
           };
         }
       }
+      if (workspace) {
+        const fallbackPeers = collectPsseCrossLanguagePeers(workspace, uri, [
+          rec.model,
+          `${rec.model}_${rec.ibus}_${rec.id.trim() || "1"}`,
+        ]);
+        if (fallbackPeers.length > 0) return fallbackPeers[0];
+      }
       return undefined;
     }
 
     const psseCase = parseRaw(content);
-    const line = lines[position.line] ?? "";
-    const colIdx = getColumnIndexAtCursor(line, position.character);
+    const colIdx = getColumnIndexAtCursor(cstDoc.byRow.get(position.line), content, position.character);
+
+    // Header line jump to cross-language case wrapper (Modelica / SysML2) if aligned
+    if (workspace && psseCase.header.span?.line === targetLine1) {
+      const stem = (uri.split("/").pop() || "case").replace(/\.(raw|dyr|seq)$/i, "");
+      const peers = collectPsseCrossLanguagePeers(workspace, uri, [stem, psseCase.title1?.trim() ?? ""]);
+      if (peers.length > 0) return peers[0];
+    }
 
     // Cross-file jump from .raw Generator ID (column 1) -> companion .dyr generator model
     if (colIdx === 1 && workspace) {
@@ -965,13 +1175,17 @@ export function getPsseDefinition(
       }
     }
 
-    const busNum = resolveTargetBusAtPosition(psseCase, lines, position);
+    const busNum = resolveTargetBusAtPosition(psseCase, cstDoc, content, position);
     if (busNum === undefined) return undefined;
     const bus = psseCase.buses.get(busNum);
     if (!bus?.span) return undefined;
+    if (workspace && bus.span.line === targetLine1) {
+      const busPeers = collectPsseCrossLanguagePeers(workspace, uri, [bus.name.trim(), `Bus_${busNum}`]);
+      if (busPeers.length > 0) return busPeers[0];
+    }
     return {
       uri,
-      range: spanToRange(bus.span, lines),
+      range: spanToRange(bus.span, cstDoc),
     };
   } catch {
     return undefined;
@@ -979,7 +1193,8 @@ export function getPsseDefinition(
 }
 
 /**
- * Finds all references (Bus declaration + Loads, Shunts, Generators, Branches, Transformers, and companion `.dyr` records) for a Bus.
+ * Finds all references (Bus declaration + Loads, Shunts, Generators, Branches, Transformers, companion `.dyr` records,
+ * and cross-language TGG counterparts) for a Bus or dynamic model.
  */
 export function getPsseReferences(
   content: string,
@@ -988,12 +1203,16 @@ export function getPsseReferences(
   workspace?: UnifiedWorkspace,
 ): LspLocation[] {
   try {
-    const lines = content.split(/\r?\n/);
+    const cstDoc = parsePsseCstDocument(content);
     const isDyr = uri.toLowerCase().endsWith(".dyr") || isLikelyDyrContent(content);
+
+    if (workspace && !workspace.getNativeFileIndex(uri)) {
+      workspace.indexDocumentText(uri, content, "psse");
+    }
 
     let busNum: number | undefined;
     let rawCase: PsseCase | undefined;
-    let rawUri = uri;
+    const rawUri = uri;
 
     if (isDyr) {
       const dyr = parseDyr(content);
@@ -1004,7 +1223,7 @@ export function getPsseReferences(
       const locations: LspLocation[] = [];
       for (const r of dyr.records) {
         if (r.ibus === busNum && r.span) {
-          locations.push({ uri, range: spanToRange(r.span, lines) });
+          locations.push({ uri, range: spanToRange(r.span, cstDoc) });
         }
       }
       const companionRaw = workspace ? findCompanionPsseRaw(workspace, uri) : undefined;
@@ -1018,46 +1237,54 @@ export function getPsseReferences(
           });
         }
       }
+      if (workspace) {
+        locations.push(
+          ...collectPsseCrossLanguagePeers(workspace, uri, [
+            rec.model,
+            `${rec.model}_${rec.ibus}_${rec.id.trim() || "1"}`,
+          ]),
+        );
+      }
       return locations;
     }
 
     rawCase = parseRaw(content);
-    busNum = resolveTargetBusAtPosition(rawCase, lines, position);
+    busNum = resolveTargetBusAtPosition(rawCase, cstDoc, content, position);
     if (busNum === undefined) return [];
 
     const locations: LspLocation[] = [];
     const bus = rawCase.buses.get(busNum);
     if (bus?.span) {
-      locations.push({ uri: rawUri, range: spanToRange(bus.span, lines) });
+      locations.push({ uri: rawUri, range: spanToRange(bus.span, cstDoc) });
     }
     for (const load of rawCase.loads) {
       if (load.i === busNum && load.span) {
-        locations.push({ uri: rawUri, range: spanToRange(load.span, lines) });
+        locations.push({ uri: rawUri, range: spanToRange(load.span, cstDoc) });
       }
     }
     for (const shunt of rawCase.fixedShunts) {
       if (shunt.i === busNum && shunt.span) {
-        locations.push({ uri: rawUri, range: spanToRange(shunt.span, lines) });
+        locations.push({ uri: rawUri, range: spanToRange(shunt.span, cstDoc) });
       }
     }
     for (const gen of rawCase.generators) {
       if ((gen.i === busNum || gen.ireg === busNum) && gen.span) {
-        locations.push({ uri: rawUri, range: spanToRange(gen.span, lines) });
+        locations.push({ uri: rawUri, range: spanToRange(gen.span, cstDoc) });
       }
     }
     for (const br of rawCase.branches) {
       if ((br.i === busNum || Math.abs(br.j) === busNum) && br.span) {
-        locations.push({ uri: rawUri, range: spanToRange(br.span, lines) });
+        locations.push({ uri: rawUri, range: spanToRange(br.span, cstDoc) });
       }
     }
     for (const xf of rawCase.transformers) {
       if ((xf.i === busNum || xf.j === busNum || xf.k === busNum) && xf.span) {
-        locations.push({ uri: rawUri, range: spanToRange(xf.span, lines, xf.k !== 0 ? 4 : 3) });
+        locations.push({ uri: rawUri, range: spanToRange(xf.span, cstDoc, xf.k !== 0 ? 4 : 3) });
       }
     }
     for (const sw of rawCase.switchedShunts) {
       if (sw.i === busNum && sw.span) {
-        locations.push({ uri: rawUri, range: spanToRange(sw.span, lines) });
+        locations.push({ uri: rawUri, range: spanToRange(sw.span, cstDoc) });
       }
     }
 
@@ -1073,6 +1300,10 @@ export function getPsseReferences(
           });
         }
       }
+    }
+
+    if (workspace && bus) {
+      locations.push(...collectPsseCrossLanguagePeers(workspace, uri, [bus.name.trim(), `Bus_${busNum}`]));
     }
 
     return locations;
@@ -1179,7 +1410,7 @@ export interface LspCodeAction {
 export function getPsseInlayHints(content: string, uri: string = "model.raw"): LspInlayHint[] {
   const hints: LspInlayHint[] = [];
   try {
-    const lines = content.split(/\r?\n/);
+    const cstDoc = parsePsseCstDocument(content);
     if (uri.toLowerCase().endsWith(".dyr") || isLikelyDyrContent(content)) {
       const dyr = parseDyr(content);
       for (const rec of dyr.records) {
@@ -1187,8 +1418,14 @@ export function getPsseInlayHints(content: string, uri: string = "model.raw"): L
         const schema = DYR_MODEL_SCHEMAS[rec.model];
         if (!schema) continue;
         const lineIdx = Math.max(0, rec.span.line - 1);
-        const lineText = lines[lineIdx] ?? "";
+        const lineText = cstDoc.byRow.get(lineIdx)?.line ?? "";
         const summaryParts: string[] = [];
+        if (rec.icons && rec.icons.length > 0 && schema.icons) {
+          const maxIcons = Math.min(2, schema.icons.length, rec.icons.length);
+          for (let i = 0; i < maxIcons; i++) {
+            summaryParts.push(`${schema.icons[i]!.name}=${rec.icons[i]}`);
+          }
+        }
         const maxHints = Math.min(4, schema.params.length, rec.con.length);
         for (let i = 0; i < maxHints; i++) {
           summaryParts.push(`${schema.params[i]!.name}=${rec.con[i]}`);
@@ -1209,7 +1446,7 @@ export function getPsseInlayHints(content: string, uri: string = "model.raw"): L
     for (const [, bus] of psseCase.buses) {
       if (!bus.span) continue;
       const lineIdx = Math.max(0, bus.span.line - 1);
-      const lineText = lines[lineIdx] ?? "";
+      const lineText = cstDoc.byRow.get(lineIdx)?.line ?? "";
       const role = bus.ide === 3 ? "Slack" : bus.ide === 2 ? "PV" : bus.ide === 4 ? "Iso" : "PQ";
       hints.push({
         position: { line: lineIdx, character: lineText.length },
@@ -1221,7 +1458,7 @@ export function getPsseInlayHints(content: string, uri: string = "model.raw"): L
     for (const g of psseCase.generators) {
       if (!g.span) continue;
       const lineIdx = Math.max(0, g.span.line - 1);
-      const lineText = lines[lineIdx] ?? "";
+      const lineText = cstDoc.byRow.get(lineIdx)?.line ?? "";
       hints.push({
         position: { line: lineIdx, character: lineText.length },
         label: `  /* Pg=${g.pg.toFixed(1)}MW Qg=${g.qg.toFixed(1)}Mvar Vs=${g.vs.toFixed(3)}pu */`,
@@ -1232,7 +1469,7 @@ export function getPsseInlayHints(content: string, uri: string = "model.raw"): L
     for (const l of psseCase.loads) {
       if (!l.span) continue;
       const lineIdx = Math.max(0, l.span.line - 1);
-      const lineText = lines[lineIdx] ?? "";
+      const lineText = cstDoc.byRow.get(lineIdx)?.line ?? "";
       hints.push({
         position: { line: lineIdx, character: lineText.length },
         label: `  /* Pl=${l.pl.toFixed(1)}MW Ql=${l.ql.toFixed(1)}Mvar */`,
@@ -1243,7 +1480,7 @@ export function getPsseInlayHints(content: string, uri: string = "model.raw"): L
     for (const br of psseCase.branches) {
       if (!br.span) continue;
       const lineIdx = Math.max(0, br.span.line - 1);
-      const lineText = lines[lineIdx] ?? "";
+      const lineText = cstDoc.byRow.get(lineIdx)?.line ?? "";
       hints.push({
         position: { line: lineIdx, character: lineText.length },
         label: `  /* X=${br.x.toFixed(4)}pu RateA=${br.rateA}MVA */`,
@@ -1255,9 +1492,24 @@ export function getPsseInlayHints(content: string, uri: string = "model.raw"): L
   return hints;
 }
 
+function applyOffsetPatches(
+  source: string,
+  patches: Array<{ startOffset: number; endOffset: number; newText: string }>,
+): string {
+  const sorted = [...patches].sort((a, b) => b.startOffset - a.startOffset);
+  let out = source;
+  for (const p of sorted) {
+    if (p.endOffset >= p.startOffset && p.startOffset >= 0 && p.endOffset <= out.length) {
+      out = out.slice(0, p.startOffset) + p.newText + out.slice(p.endOffset);
+    }
+  }
+  return out;
+}
+
 /**
  * Atomic Bus Renumbering (F2 Rename Symbol) across `.raw` (Bus, Load, Shunt, Generator I/IREG,
- * Branch I/J, Transformer I/J/K/CONT1, Switched Shunt, HVDC) and companion `.dyr` (`IBUS`).
+ * Branch I/J, Transformer I/J/K/CONT1, Switched Shunt, HVDC) and companion `.dyr` (`IBUS`)
+ * using surgical WASM CST token replacement via `CstUnparser` so comments and formatting remain intact.
  */
 export function getPsseRenameEdits(
   content: string,
@@ -1272,62 +1524,78 @@ export function getPsseRenameEdits(
   }
 
   try {
-    const lines = content.split(/\r?\n/);
+    const cstDoc = parsePsseCstDocument(content);
     const psseCase = parseRaw(content);
-    const oldBusNum = resolveTargetBusAtPosition(psseCase, lines, position);
+    const oldBusNum = resolveTargetBusAtPosition(psseCase, cstDoc, content, position);
     if (oldBusNum === undefined || oldBusNum === newBusNum) return undefined;
     if (psseCase.buses.has(newBusNum)) return undefined;
 
+    const rawPatches: Array<{ startOffset: number; endOffset: number; newText: string }> = [];
+    const patchFieldIfBus = (line1: number | undefined, colIdx: number, preserveNegative = false) => {
+      if (!line1) return;
+      const cstLine = cstDoc.byRow.get(line1 - 1);
+      if (!cstLine) return;
+      const fields = extractFieldsFromCstTokens(cstLine.tokens, content, "delimited");
+      const field = fields[colIdx];
+      if (!field) return;
+      const parsedVal = Number.parseInt(field.value, 10);
+      if (preserveNegative && Math.abs(parsedVal) === oldBusNum) {
+        const replacement = parsedVal < 0 ? `-${newBusNum}` : String(newBusNum);
+        rawPatches.push(buildCstFieldReplacementEdit(field, replacement));
+      } else if (parsedVal === oldBusNum) {
+        rawPatches.push(buildCstFieldReplacementEdit(field, String(newBusNum)));
+      }
+    };
+
     const bus = psseCase.buses.get(oldBusNum);
-    if (bus) {
-      psseCase.buses.delete(oldBusNum);
-      bus.i = newBusNum;
-      psseCase.buses.set(newBusNum, bus);
-    }
+    if (bus) patchFieldIfBus(bus.span?.line, 0);
     for (const l of psseCase.loads) {
-      if (l.i === oldBusNum) l.i = newBusNum;
+      if (l.i === oldBusNum) patchFieldIfBus(l.span?.line, 0);
     }
     for (const s of psseCase.fixedShunts) {
-      if (s.i === oldBusNum) s.i = newBusNum;
+      if (s.i === oldBusNum) patchFieldIfBus(s.span?.line, 0);
     }
     for (const g of psseCase.generators) {
-      if (g.i === oldBusNum) g.i = newBusNum;
-      if (g.ireg === oldBusNum) g.ireg = newBusNum;
+      if (g.i === oldBusNum) patchFieldIfBus(g.span?.line, 0);
+      if (g.ireg === oldBusNum) patchFieldIfBus(g.span?.line, 7);
     }
     for (const br of psseCase.branches) {
-      if (br.i === oldBusNum) br.i = newBusNum;
-      if (Math.abs(br.j) === oldBusNum) br.j = br.j < 0 ? -newBusNum : newBusNum;
+      if (br.i === oldBusNum) patchFieldIfBus(br.span?.line, 0);
+      if (Math.abs(br.j) === oldBusNum) patchFieldIfBus(br.span?.line, 1, true);
     }
     for (const xf of psseCase.transformers) {
-      if (xf.i === oldBusNum) xf.i = newBusNum;
-      if (xf.j === oldBusNum) xf.j = newBusNum;
-      if (xf.k === oldBusNum) xf.k = newBusNum;
-      if (xf.cont1 === oldBusNum) xf.cont1 = newBusNum;
+      if (xf.span) {
+        if (xf.i === oldBusNum) patchFieldIfBus(xf.span.line, 0);
+        if (xf.j === oldBusNum) patchFieldIfBus(xf.span.line, 1);
+        if (xf.k === oldBusNum) patchFieldIfBus(xf.span.line, 2);
+        if (xf.cont1 === oldBusNum) patchFieldIfBus(xf.span.line + 2, 7);
+      }
     }
     for (const area of psseCase.areas) {
-      if (area.isw === oldBusNum) area.isw = newBusNum;
+      if (area.isw === oldBusNum) patchFieldIfBus(area.span?.line, 1);
     }
     for (const dc of psseCase.twoTerminalDc) {
-      if (dc.ipr === oldBusNum) dc.ipr = newBusNum;
-      if (dc.ipi === oldBusNum) dc.ipi = newBusNum;
+      if (dc.span) {
+        if (dc.ipr === oldBusNum) patchFieldIfBus(dc.span.line + 1, 0);
+        if (dc.ipi === oldBusNum) patchFieldIfBus(dc.span.line + 2, 0);
+      }
     }
     for (const vsc of psseCase.vscDc) {
-      if (vsc.ibus1 === oldBusNum) vsc.ibus1 = newBusNum;
-      if (vsc.ibus2 === oldBusNum) vsc.ibus2 = newBusNum;
+      if (vsc.span) {
+        if (vsc.ibus1 === oldBusNum) patchFieldIfBus(vsc.span.line + 1, 0);
+        if (vsc.ibus2 === oldBusNum) patchFieldIfBus(vsc.span.line + 2, 0);
+      }
     }
     for (const sw of psseCase.switchedShunts) {
-      if (sw.i === oldBusNum) sw.i = newBusNum;
-      if (sw.swrem === oldBusNum) sw.swrem = newBusNum;
+      if (sw.i === oldBusNum) patchFieldIfBus(sw.span?.line, 0);
+      if (sw.swrem === oldBusNum) patchFieldIfBus(sw.span?.line, 6);
     }
 
-    const updatedRaw = writeRaw(psseCase);
+    const updatedRaw = applyOffsetPatches(content, rawPatches);
     const changes: Record<string, LspTextEdit[]> = {
       [uri]: [
         {
-          range: {
-            start: { line: 0, character: 0 },
-            end: { line: Math.max(0, lines.length - 1), character: lines[lines.length - 1]?.length ?? 0 },
-          },
+          range: fullCstDocRange(cstDoc),
           newText: updatedRaw,
         },
       ],
@@ -1335,25 +1603,34 @@ export function getPsseRenameEdits(
 
     const companionDyr = workspace ? findCompanionPsseDyr(workspace, uri) : undefined;
     if (companionDyr) {
-      for (const rec of companionDyr.dyr.records) {
-        if (rec.ibus === oldBusNum) {
-          const updatedLines: string[] = [];
-          for (const r of companionDyr.dyr.records) {
-            const ibus = r.ibus === oldBusNum ? newBusNum : r.ibus;
-            const paddedModel = `'${r.model.padEnd(6, " ")}'`;
-            const conStr = r.con.map((v) => Number(v.toPrecision(6)).toString()).join(" ");
-            updatedLines.push(`${ibus} ${paddedModel} ${r.id} ${conStr} /`);
+      const dyrSource = workspace?.getDocument(companionDyr.uri)?.text ?? "";
+      if (dyrSource) {
+        const dyrCst = parsePsseCstDocument(dyrSource);
+        const cstRecs = extractDyrCstRecords(dyrCst);
+        const dyrPatches: Array<{ startOffset: number; endOffset: number; newText: string }> = [];
+        for (const rec of cstRecs) {
+          if (rec.ibusField && Number.parseInt(rec.ibusField.value, 10) === oldBusNum) {
+            dyrPatches.push(buildCstFieldReplacementEdit(rec.ibusField, String(newBusNum)));
           }
+          if (rec.jbusField && Number.parseInt(rec.jbusField.value, 10) === oldBusNum) {
+            dyrPatches.push(buildCstFieldReplacementEdit(rec.jbusField, String(newBusNum)));
+          }
+          const schema = resolveDyrModelSchema(rec.modelName);
+          if (schema?.icons) {
+            for (let i = 0; i < schema.icons.length && i < rec.iconFields.length; i++) {
+              if (schema.icons[i]!.type === "bus" && Number.parseInt(rec.iconFields[i]!.value, 10) === oldBusNum) {
+                dyrPatches.push(buildCstFieldReplacementEdit(rec.iconFields[i]!, String(newBusNum)));
+              }
+            }
+          }
+        }
+        if (dyrPatches.length > 0) {
           changes[companionDyr.uri] = [
             {
-              range: {
-                start: { line: 0, character: 0 },
-                end: { line: 99999, character: 0 },
-              },
-              newText: updatedLines.join("\n") + "\n",
+              range: fullCstDocRange(dyrCst),
+              newText: applyOffsetPatches(dyrSource, dyrPatches),
             },
           ];
-          break;
         }
       }
     }
@@ -1365,7 +1642,8 @@ export function getPsseRenameEdits(
 }
 
 /**
- * Provides deterministic Quick Fix Code Actions for PSS/E diagnostics (`P2001`, `P2002`, `P3001`, `P3002`, `P4003`, `P5001`).
+ * Provides deterministic Quick Fix Code Actions for PSS/E diagnostics (`P2001`, `P2002`, `P3001`, `P3002`, `P4003`, `P5001`)
+ * using surgical WASM CST token/record patches.
  */
 export function getPsseCodeActions(
   content: string,
@@ -1374,10 +1652,23 @@ export function getPsseCodeActions(
   uri: string = "model.raw",
 ): LspCodeAction[] {
   const actions: LspCodeAction[] = [];
-  const lines = content.split(/\r?\n/);
-  const fullDocRange: LspRange = {
-    start: { line: 0, character: 0 },
-    end: { line: Math.max(0, lines.length - 1), character: lines[lines.length - 1]?.length ?? 0 },
+  const cstDoc = parsePsseCstDocument(content);
+  const fullDocRange = fullCstDocRange(cstDoc);
+
+  const patchCsvField = (
+    patches: Array<{ startOffset: number; endOffset: number; newText: string }>,
+    line1: number | undefined,
+    colIdx: number,
+    newVal: string,
+  ): boolean => {
+    if (!line1) return false;
+    const cstLine = cstDoc.byRow.get(line1 - 1);
+    if (!cstLine) return false;
+    const fields = extractFieldsFromCstTokens(cstLine.tokens, content, "delimited");
+    const field = fields[colIdx];
+    if (!field || field.tokenType === "empty") return false;
+    patches.push(buildCstFieldReplacementEdit(field, newVal));
+    return true;
   };
 
   for (const diag of diagnostics) {
@@ -1390,7 +1681,14 @@ export function getPsseCodeActions(
           const psseCase = parseRaw(content);
           const bus = psseCase.buses.get(busId);
           if (bus && bus.ide !== 4) {
-            bus.ide = 4;
+            const patches: Array<{ startOffset: number; endOffset: number; newText: string }> = [];
+            const patched = patchCsvField(patches, bus.span?.line, 3, "4");
+            const newText = patched
+              ? applyOffsetPatches(content, patches)
+              : (() => {
+                  bus.ide = 4;
+                  return writeRaw(psseCase);
+                })();
             actions.push({
               title: `Set Bus ${busId} type to Isolated (IDE = 4)`,
               kind: "quickfix",
@@ -1398,7 +1696,7 @@ export function getPsseCodeActions(
               isPreferred: true,
               edit: {
                 changes: {
-                  [uri]: [{ range: fullDocRange, newText: writeRaw(psseCase) }],
+                  [uri]: [{ range: fullDocRange, newText }],
                 },
               },
             });
@@ -1410,7 +1708,14 @@ export function getPsseCodeActions(
         const candidate =
           Array.from(psseCase.buses.values()).find((b) => b.ide === 2) ?? Array.from(psseCase.buses.values())[0];
         if (candidate) {
-          candidate.ide = 3;
+          const patches: Array<{ startOffset: number; endOffset: number; newText: string }> = [];
+          const patched = patchCsvField(patches, candidate.span?.line, 3, "3");
+          const newText = patched
+            ? applyOffsetPatches(content, patches)
+            : (() => {
+                candidate.ide = 3;
+                return writeRaw(psseCase);
+              })();
           actions.push({
             title: `Promote Bus ${candidate.i} (${candidate.name}) to Swing/Slack Bus (IDE = 3)`,
             kind: "quickfix",
@@ -1418,24 +1723,28 @@ export function getPsseCodeActions(
             isPreferred: true,
             edit: {
               changes: {
-                [uri]: [{ range: fullDocRange, newText: writeRaw(psseCase) }],
+                [uri]: [{ range: fullDocRange, newText }],
               },
             },
           });
         }
       } else if (diag.code === "P3001") {
-        // Inverted Qmin / Qmax limits on generator
+        // Inverted Qmin / Qmax limits on generator (cols 4=QT, 5=QB)
         const psseCase = parseRaw(content);
+        const patches: Array<{ startOffset: number; endOffset: number; newText: string }> = [];
         let fixed = false;
         for (const g of psseCase.generators) {
           if (g.qb > g.qt) {
+            const ok1 = patchCsvField(patches, g.span?.line, 4, g.qb.toFixed(3));
+            const ok2 = patchCsvField(patches, g.span?.line, 5, g.qt.toFixed(3));
             const tmp = g.qb;
             g.qb = g.qt;
             g.qt = tmp;
-            fixed = true;
+            fixed = ok1 && ok2 ? true : fixed || true;
           }
         }
         if (fixed) {
+          const newText = patches.length > 0 ? applyOffsetPatches(content, patches) : writeRaw(psseCase);
           actions.push({
             title: "Swap inverted generator reactive limits (Qmin / Qmax)",
             kind: "quickfix",
@@ -1443,17 +1752,23 @@ export function getPsseCodeActions(
             isPreferred: true,
             edit: {
               changes: {
-                [uri]: [{ range: fullDocRange, newText: writeRaw(psseCase) }],
+                [uri]: [{ range: fullDocRange, newText }],
               },
             },
           });
         }
       } else if (diag.code === "P3002") {
-        // Inverted Pmin / Pmax limits on generator
+        // Inverted Pmin / Pmax limits on generator (cols 16=PT, 17=PB; +1 in v35)
         const psseCase = parseRaw(content);
+        const patches: Array<{ startOffset: number; endOffset: number; newText: string }> = [];
         let fixed = false;
         for (const g of psseCase.generators) {
           if (g.pb > g.pt) {
+            const cstLine = g.span ? cstDoc.byRow.get(g.span.line - 1) : undefined;
+            const fields = cstLine ? extractFieldsFromCstTokens(cstLine.tokens, content, "delimited") : [];
+            const off = psseCase.header.rev >= 35 && fields.length >= 20 ? 1 : 0;
+            patchCsvField(patches, g.span?.line, 16 + off, g.pb.toFixed(3));
+            patchCsvField(patches, g.span?.line, 17 + off, g.pt.toFixed(3));
             const tmp = g.pb;
             g.pb = g.pt;
             g.pt = tmp;
@@ -1461,6 +1776,7 @@ export function getPsseCodeActions(
           }
         }
         if (fixed) {
+          const newText = patches.length > 0 ? applyOffsetPatches(content, patches) : writeRaw(psseCase);
           actions.push({
             title: "Swap inverted generator active power limits (Pmin / Pmax)",
             kind: "quickfix",
@@ -1468,26 +1784,30 @@ export function getPsseCodeActions(
             isPreferred: true,
             edit: {
               changes: {
-                [uri]: [{ range: fullDocRange, newText: writeRaw(psseCase) }],
+                [uri]: [{ range: fullDocRange, newText }],
               },
             },
           });
         }
       } else if (diag.code === "P4003") {
-        // Off-nominal tap ratio out of [0.8, 1.2] range: clamp to 1.000
+        // Off-nominal tap ratio out of [0.8, 1.2] range: clamp to 1.000 (line+2 col 0 = WINDV1, line+3 col 0 = WINDV2)
         const psseCase = parseRaw(content);
+        const patches: Array<{ startOffset: number; endOffset: number; newText: string }> = [];
         let fixed = false;
         for (const xf of psseCase.transformers) {
           if (xf.windv1 < 0.8 || xf.windv1 > 1.2) {
+            if (xf.span) patchCsvField(patches, xf.span.line + 2, 0, "1.0000");
             xf.windv1 = 1.0;
             fixed = true;
           }
           if (xf.windv2 < 0.8 || xf.windv2 > 1.2) {
+            if (xf.span) patchCsvField(patches, xf.span.line + 3, 0, "1.0000");
             xf.windv2 = 1.0;
             fixed = true;
           }
         }
         if (fixed) {
+          const newText = patches.length > 0 ? applyOffsetPatches(content, patches) : writeRaw(psseCase);
           actions.push({
             title: "Reset transformer off-nominal tap ratio to 1.000 p.u.",
             kind: "quickfix",
@@ -1495,7 +1815,7 @@ export function getPsseCodeActions(
             isPreferred: true,
             edit: {
               changes: {
-                [uri]: [{ range: fullDocRange, newText: writeRaw(psseCase) }],
+                [uri]: [{ range: fullDocRange, newText }],
               },
             },
           });
@@ -1503,6 +1823,7 @@ export function getPsseCodeActions(
       } else if (diag.code === "P5001") {
         // Missing CON parameters in .dyr record
         const dyr = parseDyr(content);
+        const patches: Array<{ startOffset: number; endOffset: number; newText: string }> = [];
         let fixed = false;
         for (const rec of dyr.records) {
           const schema = DYR_MODEL_SCHEMAS[rec.model];
@@ -1511,13 +1832,23 @@ export function getPsseCodeActions(
               rec.con.push(0.0);
             }
             fixed = true;
+            if (rec.span) {
+              const paddedModel = `'${rec.model.padEnd(6, " ")}'`;
+              patches.push({
+                startOffset: rec.span.startOffset,
+                endOffset: rec.span.endOffset,
+                newText: `${rec.ibus} ${paddedModel} ${rec.id} ${rec.con.join(" ")} /`,
+              });
+            }
           }
         }
         if (fixed) {
-          const formattedLines = dyr.records.map((r) => {
-            const paddedModel = `'${r.model.padEnd(6, " ")}'`;
-            return `${r.ibus} ${paddedModel} ${r.id} ${r.con.join(" ")} /`;
-          });
+          const newText =
+            patches.length > 0
+              ? applyOffsetPatches(content, patches)
+              : dyr.records
+                  .map((r) => `${r.ibus} '${r.model.padEnd(6, " ")}' ${r.id} ${r.con.join(" ")} /`)
+                  .join("\n") + "\n";
           actions.push({
             title: "Pad missing dynamic model CON parameters with defaults",
             kind: "quickfix",
@@ -1525,7 +1856,7 @@ export function getPsseCodeActions(
             isPreferred: true,
             edit: {
               changes: {
-                [uri]: [{ range: fullDocRange, newText: formattedLines.join("\n") + "\n" }],
+                [uri]: [{ range: fullDocRange, newText }],
               },
             },
           });
@@ -1638,17 +1969,44 @@ export async function executePsseAction(action: string, args: Record<string, unk
   }
 }
 
+function formatTransformerRecord(t: TransformerRecord): string {
+  const lines: string[] = [
+    `${t.i}, ${t.j}, ${t.k}, '${t.ckt}', ${t.cw}, ${t.cm}, ${t.mag1.toFixed(5)}, ${t.mag2.toFixed(5)}, ${t.nmetr}, '${t.name}', ${t.stat}`,
+    t.k !== 0
+      ? `${t.r12.toFixed(5)}, ${t.x12.toFixed(5)}, ${t.sbase12.toFixed(2)}, ${(t.r23 ?? 0).toFixed(5)}, ${(t.x23 ?? 0.0001).toFixed(5)}, ${(t.sbase23 ?? t.sbase12).toFixed(2)}, ${(t.r31 ?? 0).toFixed(5)}, ${(t.x31 ?? 0.0001).toFixed(5)}, ${(t.sbase31 ?? t.sbase12).toFixed(2)}, ${(t.vmstar ?? 1).toFixed(4)}, ${(t.anstar ?? 0).toFixed(4)}`
+      : `${t.r12.toFixed(5)}, ${t.x12.toFixed(5)}, ${t.sbase12.toFixed(2)}`,
+    `${t.windv1.toFixed(4)}, ${t.nomv1.toFixed(2)}, ${t.ang1.toFixed(2)}, ${t.rata1.toFixed(2)}, ${t.ratb1.toFixed(2)}, ${t.ratc1.toFixed(2)}, ${t.cod1}, ${t.cont1}, ${t.rma1.toFixed(4)}, ${t.rmi1.toFixed(4)}, ${t.vma1.toFixed(4)}, ${t.vmi1.toFixed(4)}, ${t.ntp1}, ${t.tab1}, ${t.cr1.toFixed(5)}, ${t.cx1.toFixed(5)}, ${t.cnxa1.toFixed(2)}`,
+    `${t.windv2.toFixed(4)}, ${t.nomv2.toFixed(2)}`,
+  ];
+  if (t.k !== 0) {
+    lines.push(`${(t.windv3 ?? 1.0).toFixed(4)}, ${(t.nomv3 ?? 0.0).toFixed(2)}`);
+  }
+  return lines.join("\n");
+}
+
 /**
  * Applies bi-directional SLD diagram property writeback onto a PSS/E `.raw` source text.
  * Supports mutating Bus (`bus_<id>`), Generator (`gen_<id>_<ckt>`), Load (`load_<id>_<ckt>`),
  * Fixed Shunt (`shunt_<id>_<ckt>`), Switched Shunt (`swshunt_<id>_SW`),
- * AC Branch (`branch_<i>_<j>_<ckt>` or `line_<i>_<j>_<ckt>`), and Transformer (`xfmr_<i>_<j>_<ckt>`) records.
+ * AC Branch (`branch_<i>_<j>_<ckt>` or `line_<i>_<j>_<ckt>`), and Transformer (`xfmr_<i>_<j>_<ckt>`) records
+ * via surgical CST record spans without wiping comments or unrelated sections.
  */
 export function applyPsseDiagramWriteback(
   sourceText: string,
   cellId: string,
   changes: Record<string, unknown>,
 ): string {
+  if (cellId.startsWith("dyr_") || isLikelyDyrContent(sourceText)) {
+    const parts = cellId.split("_");
+    const busNumber = parts.length >= 2 && /^-?\d+$/.test(parts[1] ?? "") ? Number.parseInt(parts[1]!, 10) : undefined;
+    const id = parts.length >= 4 ? parts[2] : undefined;
+    const model = parts.length >= 4 ? parts.slice(3).join("_") : parts.length === 3 ? parts[2] : undefined;
+    const updates: Record<string, number | string> = {};
+    for (const [k, v] of Object.entries(changes)) {
+      if (typeof v === "number" || typeof v === "string") updates[k] = v;
+    }
+    return applyDyrCstParameterUpdates(sourceText, { busNumber, id, model }, updates);
+  }
   const psseCase = parseRaw(sourceText);
   const num = (v: unknown, fallback: number): number => {
     const parsed = typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
@@ -1771,12 +2129,17 @@ export function applyPsseDiagramWriteback(
     if (xf) {
       if ("r12" in changes) xf.r12 = num(changes["r12"], xf.r12);
       if ("x12" in changes) xf.x12 = num(changes["x12"], xf.x12);
+      if ("sbase12" in changes) xf.sbase12 = num(changes["sbase12"], xf.sbase12);
       if ("windv1" in changes) xf.windv1 = num(changes["windv1"], xf.windv1);
       if ("windv2" in changes) xf.windv2 = num(changes["windv2"], xf.windv2);
       if ("ang1" in changes) xf.ang1 = num(changes["ang1"], xf.ang1);
       if ("rata1" in changes) xf.rata1 = num(changes["rata1"], xf.rata1);
       const stVal = changes["stat"] ?? changes["status"] ?? changes["st"];
       if (stVal !== undefined) xf.stat = Math.round(num(stVal, xf.stat)) as 0 | 1;
+      if (xf.span && xf.span.startOffset !== undefined && xf.span.endOffset !== undefined) {
+        targetSpan = xf.span;
+        formattedLine = formatTransformerRecord(xf);
+      }
     }
   }
 

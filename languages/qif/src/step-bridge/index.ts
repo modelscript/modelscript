@@ -9,7 +9,7 @@
  * on missing entities), and synthesizes QIF 3.0 inspection documents from STEP models.
  */
 
-import { collectCstNodes, extractCstLeafNodes, type CstNodeLike } from "@modelscript/runtime";
+import { collectCstNodes, extractCstLeafNodes, type CstNodeLike, type UnifiedWorkspace } from "@modelscript/runtime";
 import { createWasmParserSync } from "@modelscript/step/parser";
 import { createRequire } from "node:module";
 import { MATHEMATICAL_MIN_POINTS, QifErrorCode } from "../lints/rules.js";
@@ -122,7 +122,13 @@ export interface StepFeatureMatch {
   stepEntityId: string;
   stepEntityType: string;
   geometryCompatible: boolean;
-  matchType?: "entityId" | "semanticName" | "spatialProximity" | undefined;
+  matchType?: "entityId" | "tggCorrespondence" | "semanticName" | "spatialProximity" | undefined;
+}
+
+export interface ReconcileStepWithQifOptions {
+  workspace?: UnifiedWorkspace | undefined;
+  qifUri?: string | undefined;
+  stepUri?: string | undefined;
 }
 
 export interface StepReconciliationResult {
@@ -232,19 +238,54 @@ export function extractStepEntities(stepText: string): Map<string, StepAp242Enti
   return entityMap;
 }
 
-export function reconcileStepWithQif(stepText: string, qifDoc: QifDocument): StepReconciliationResult {
+export function reconcileStepWithQif(
+  stepText: string,
+  qifDoc: QifDocument,
+  options?: ReconcileStepWithQifOptions,
+): StepReconciliationResult {
   const entityMap = extractStepEntities(stepText);
   const matchedFeatures: StepFeatureMatch[] = [];
   const unresolvedFeatures: { featureId: string; featureName: string; stepEntityId: string }[] = [];
   const diagnostics: QifDiagnostic[] = [];
   const matchedStepEntityIds = new Set<string>();
 
-  // Pass 1: Exact stepEntityId matches
+  // Pass 1: Exact stepEntityId matches + optional UnifiedWorkspace TGG correspondence lookup
+  const tggFeatureToStepId = new Map<string, string>();
+  const ws = options?.workspace;
+  if (ws?.tggCorrespondenceIndexer) {
+    const uIdx = ws.getIndex();
+    ws.syncTggCorrespondences(uIdx);
+    for (const sym of uIdx.symbols.values()) {
+      if (sym.language !== "qif" || sym.ruleName !== "qif_feature") continue;
+      if (options?.qifUri && (sym.resourceId || sym.documentUri) !== options.qifUri) continue;
+      for (const slot of ws.tggCorrespondenceIndexer.getSlotsForSymbol(sym.id)) {
+        const rec = ws.tggCorrespondenceIndexer.hypergraph.getRecord(slot);
+        if (!rec || rec.isRemoved) continue;
+        for (const peerId of Object.values(rec.domainNodes)) {
+          if (typeof peerId !== "number" || peerId === sym.id) continue;
+          const peer = uIdx.symbols.get(peerId);
+          if (peer?.language !== "step") continue;
+          if (options?.stepUri && (peer.resourceId || peer.documentUri) !== options.stepUri) continue;
+          const rawStepId = typeof peer.metadata?.["stepId"] === "string" ? peer.metadata["stepId"] : peer.name;
+          if (rawStepId) {
+            const normId = normalizeStepEntityId(rawStepId);
+            tggFeatureToStepId.set(sym.name, normId);
+            if (typeof sym.metadata?.["featureId"] === "string") {
+              tggFeatureToStepId.set(sym.metadata["featureId"], normId);
+            }
+          }
+        }
+      }
+    }
+  }
+
   const unassignedFeatures: QifFeature[] = [];
 
   for (const feat of qifDoc.features) {
-    if (feat.stepEntityId) {
-      const normalizedId = normalizeStepEntityId(feat.stepEntityId);
+    const tggStepId = tggFeatureToStepId.get(feat.id) ?? tggFeatureToStepId.get(feat.name);
+    const effectiveStepId = feat.stepEntityId || tggStepId;
+    if (effectiveStepId) {
+      const normalizedId = normalizeStepEntityId(effectiveStepId);
       const stepEnt = entityMap.get(normalizedId);
       if (stepEnt) {
         const geometryCompatible =
@@ -256,10 +297,10 @@ export function reconcileStepWithQif(stepText: string, qifDoc: QifDocument): Ste
           featureId: feat.id,
           featureName: feat.name,
           featureType: feat.featureType,
-          stepEntityId: feat.stepEntityId,
+          stepEntityId: effectiveStepId,
           stepEntityType: stepEnt.entityType,
           geometryCompatible,
-          matchType: "entityId",
+          matchType: feat.stepEntityId ? "entityId" : "tggCorrespondence",
         });
         matchedStepEntityIds.add(stepEnt.id);
         continue;

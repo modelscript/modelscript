@@ -335,10 +335,6 @@ export const psseLanguage = language({
     },
   ],
 
-  primitives: {
-    lineComment: "/",
-  },
-
   extras: () => [/[ \t\r\n]+/],
 
   polyglot: pssePolyglotConfig,
@@ -376,11 +372,24 @@ export const psseLanguage = language({
         },
       }),
 
-    DataRecord: ($) => choice($["Number"]!, $["QuotedString"]!, $["Identifier"]!, ",", $["SymbolPunct"]!),
+    DataRecord: ($) =>
+      choice(
+        $["SlashTerminator"]!,
+        $["BangComment"]!,
+        $["DoubleSlashComment"]!,
+        $["Number"]!,
+        $["QuotedString"]!,
+        $["Identifier"]!,
+        ",",
+        $["SymbolPunct"]!,
+      ),
 
-    Number: () => /[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?/,
-    QuotedString: () => /'[^']*'|"[^"]*"/,
-    Identifier: () => /[A-Za-z_@!][A-Za-z0-9_@!.-]*/,
+    SlashTerminator: () => /\/[^\r\n]*/,
+    BangComment: () => /@![^\r\n]*/,
+    DoubleSlashComment: () => /\/\/[^\r\n]*/,
+    Number: () => /[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eEdD][-+]?[0-9]+)?/,
+    QuotedString: () => /'(?:''|[^'])*'|"(?:""|[^"])*"/,
+    Identifier: () => /[A-Za-z_][A-Za-z0-9_@!.-]*/,
     SymbolPunct: () => /[:;()[\]=+*<>~#%&$^|\\?-]+/,
   },
 });

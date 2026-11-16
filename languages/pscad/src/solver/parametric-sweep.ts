@@ -228,3 +228,215 @@ export function runPointOnWaveSweep(netlist: EmtNetlist, options: PointOnWaveOpt
     wallClockTimeMs: Number(wallClockTimeMs.toFixed(1)),
   };
 }
+
+export interface MultipleRunParameterSpec {
+  /** Component or branch/source ID whose parameter is swept. */
+  targetId: string;
+  /** Parameter property to vary (`r`, `l`, `c`, `vPeakKv`, `phaseDeg`, `startSec`, or component param name). */
+  paramName: string;
+  min: number;
+  max: number;
+  distribution?: "uniform" | "normal" | "grid" | undefined;
+}
+
+export interface MultipleRunOptions {
+  /** Number of MRUN sweep executions (default: 20 or MRUN block `NR`/`NumRuns`). */
+  numRuns?: number | undefined;
+  /** Explicit parameters to vary across runs; auto-discovers `<User defn="master:mrun">` or switches/sources if omitted. */
+  parameters?: MultipleRunParameterSpec[] | undefined;
+  /** Simulation duration per run in seconds (default: 0.05 s). */
+  durationSec?: number | undefined;
+  /** Simulation time step in seconds (default: 50e-6 s). */
+  timeStepSec?: number | undefined;
+  /** Deterministic LCG seed for repeatable statistical runs (default: 2026). */
+  seed?: number | undefined;
+}
+
+export interface MultipleRunSample {
+  runIndex: number;
+  parameters: Record<string, number>;
+  maxPeakKv: number;
+  maxCurrentAmp: number;
+  peakBusId: string;
+}
+
+export interface MultipleRunSweepResult {
+  totalRuns: number;
+  parameterSpecs: MultipleRunParameterSpec[];
+  meanPeakKv: number;
+  maxPeakKv: number;
+  minPeakKv: number;
+  stdDevPeakKv: number;
+  p98PeakKv: number;
+  worstRunIndex: number;
+  runs: MultipleRunSample[];
+  wallClockTimeMs: number;
+}
+
+function seededUniform(state: { s: number }): number {
+  state.s = (Math.imul(1664525, state.s) + 1013904223) >>> 0;
+  return state.s / 4294967296;
+}
+
+/**
+ * Executes a PSCAD Multiple-Run (`master:mrun`) parametric or statistical Monte-Carlo EMT sweep
+ * across the netlist, varying component/branch/source/fault parameters and aggregating peak
+ * overvoltage & overcurrent envelope statistics.
+ */
+export function runMultipleRunSweep(netlist: EmtNetlist, options: MultipleRunOptions = {}): MultipleRunSweepResult {
+  const t0 = performance.now();
+  const numRuns = Math.max(1, Math.min(500, Math.trunc(options.numRuns ?? 20)));
+  const durationSec = options.durationSec ?? 0.05;
+  const timeStepSec = options.timeStepSec ?? 50e-6;
+  const prng = { s: (options.seed ?? 2026) >>> 0 };
+
+  let specs = options.parameters ? [...options.parameters] : [];
+  if (specs.length === 0) {
+    if (netlist.faults && netlist.faults.length > 0) {
+      const f = netlist.faults[0]!;
+      specs.push({
+        targetId: f.id,
+        paramName: "startSec",
+        min: Math.max(0, f.startSec),
+        max: Math.max(f.startSec + 0.001, f.startSec + 1.0 / (netlist.nominalFrequencyHz || 60.0)),
+        distribution: "grid",
+      });
+    } else if (netlist.sources.length > 0) {
+      const s = netlist.sources[0]!;
+      specs.push({
+        targetId: s.id,
+        paramName: "phaseDeg",
+        min: 0,
+        max: 360,
+        distribution: "grid",
+      });
+    } else if (netlist.branches.length > 0) {
+      const b = netlist.branches[0]!;
+      const r0 = Math.max(0.01, b.resistanceOhm || 1.0);
+      specs.push({
+        targetId: b.id,
+        paramName: "resistanceOhm",
+        min: r0 * 0.8,
+        max: r0 * 1.2,
+        distribution: "uniform",
+      });
+    }
+  }
+
+  const runs: MultipleRunSample[] = [];
+  for (let r = 0; r < numRuns; r++) {
+    const sampleParams: Record<string, number> = {};
+    const cloned: EmtNetlist = {
+      ...netlist,
+      branches: netlist.branches.map((b) => ({ ...b })),
+      sources: netlist.sources.map((s) => ({ ...s })),
+      faults: netlist.faults ? netlist.faults.map((f) => ({ ...f })) : undefined,
+    };
+
+    const frac = numRuns > 1 ? r / (numRuns - 1) : 0.5;
+    for (const sp of specs) {
+      let val: number;
+      if (sp.distribution === "grid") {
+        val = sp.min + frac * (sp.max - sp.min);
+      } else if (sp.distribution === "normal") {
+        const u1 = Math.max(1e-9, seededUniform(prng));
+        const u2 = seededUniform(prng);
+        const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+        const mu = 0.5 * (sp.min + sp.max);
+        const sigma = Math.max(1e-12, (sp.max - sp.min) / 6.0);
+        val = Math.min(sp.max, Math.max(sp.min, mu + z * sigma));
+      } else {
+        val = sp.min + seededUniform(prng) * (sp.max - sp.min);
+      }
+      sampleParams[`${sp.targetId}.${sp.paramName}`] = Number(val.toFixed(6));
+
+      const br = cloned.branches.find((b) => b.id === sp.targetId);
+      if (br) {
+        if (sp.paramName === "r" || sp.paramName === "resistanceOhm") br.resistanceOhm = val;
+        else if (sp.paramName === "l" || sp.paramName === "inductanceH") br.inductanceH = val;
+        else if (sp.paramName === "c" || sp.paramName === "capacitanceF") br.capacitanceF = val;
+      }
+      const src = cloned.sources.find((s) => s.id === sp.targetId);
+      if (src) {
+        if (sp.paramName === "vPeakKv" || sp.paramName === "vmKv") src.vPeakKv = val;
+        else if (sp.paramName === "phaseDeg") src.phaseRad = (val * Math.PI) / 180.0;
+        else if (sp.paramName === "phaseRad") src.phaseRad = val;
+        else if (sp.paramName === "rSourceOhm") src.rSourceOhm = val;
+      }
+      const flt = cloned.faults?.find((f) => f.id === sp.targetId);
+      if (flt) {
+        if (sp.paramName === "startSec") {
+          const dur = Math.max(1e-4, flt.endSec - flt.startSec);
+          flt.startSec = val;
+          flt.endSec = val + dur;
+        } else if (sp.paramName === "rFaultOhm") {
+          flt.rFaultOhm = val;
+        }
+      }
+    }
+
+    const res = new EmtSolver(cloned, {
+      timeStepSec,
+      durationSec,
+      nominalFrequencyHz: cloned.nominalFrequencyHz || 60.0,
+      enableCda: true,
+    }).solve();
+
+    let maxV = 0;
+    let peakBus = "";
+    for (const [bId, arr] of res.busVoltages) {
+      for (let i = 0; i < arr.length; i++) {
+        const av = Math.abs(arr[i]!);
+        if (av > maxV) {
+          maxV = av;
+          peakBus = bId;
+        }
+      }
+    }
+    let maxI = 0;
+    for (const arr of res.branchCurrents.values()) {
+      for (let i = 0; i < arr.length; i++) {
+        const ai = Math.abs(arr[i]!);
+        if (ai > maxI) maxI = ai;
+      }
+    }
+
+    runs.push({
+      runIndex: r + 1,
+      parameters: sampleParams,
+      maxPeakKv: Number((maxV * 1e-3).toFixed(4)),
+      maxCurrentAmp: Number(maxI.toFixed(3)),
+      peakBusId: peakBus,
+    });
+  }
+
+  const peaks = runs.map((x) => x.maxPeakKv);
+  const sorted = [...peaks].sort((a, b) => a - b);
+  const minPeakKv = sorted[0] ?? 0;
+  const maxPeakKv = sorted[sorted.length - 1] ?? 0;
+  const mean = peaks.reduce((a, b) => a + b, 0) / Math.max(1, peaks.length);
+  const variance = peaks.reduce((a, b) => a + (b - mean) * (b - mean), 0) / Math.max(1, peaks.length);
+  const stdDevPeakKv = Number(Math.sqrt(variance).toFixed(4));
+  const p98Idx = Math.min(sorted.length - 1, Math.floor(sorted.length * 0.98));
+  const p98PeakKv = sorted[p98Idx] ?? maxPeakKv;
+  let worstRunIndex = 1;
+  for (const run of runs) {
+    if (run.maxPeakKv >= maxPeakKv) {
+      worstRunIndex = run.runIndex;
+      break;
+    }
+  }
+
+  return {
+    totalRuns: runs.length,
+    parameterSpecs: specs,
+    meanPeakKv: Number(mean.toFixed(4)),
+    maxPeakKv,
+    minPeakKv,
+    stdDevPeakKv,
+    p98PeakKv,
+    worstRunIndex,
+    runs,
+    wallClockTimeMs: Number((performance.now() - t0).toFixed(1)),
+  };
+}

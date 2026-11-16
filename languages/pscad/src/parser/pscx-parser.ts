@@ -234,6 +234,85 @@ function attrObj(el: XmlElement, name: string): XmlAttribute | undefined {
   return el.attributes.find((a) => a.name.toLowerCase() === lower);
 }
 
+function fnv1a32(text: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+interface CachedSubModuleEntry {
+  sliceText: string;
+  baseStartOffset: number;
+  baseLine: number;
+  mod: PscxModule;
+}
+
+const MAX_SUBMODULE_CACHE_ENTRIES = 256;
+const subModuleIncrementalCache = new Map<string, CachedSubModuleEntry>();
+let subModuleCacheHits = 0;
+let subModuleCacheMisses = 0;
+
+/** Returns incremental per-definition cache hit/miss counters for benchmarking and diagnostics. */
+export function getPscxIncrementalCacheStats(): { hits: number; misses: number; size: number } {
+  return { hits: subModuleCacheHits, misses: subModuleCacheMisses, size: subModuleIncrementalCache.size };
+}
+
+/** Clears the incremental `<definition>` module parse cache. */
+export function clearPscxIncrementalCache(): void {
+  subModuleIncrementalCache.clear();
+  subModuleCacheHits = 0;
+  subModuleCacheMisses = 0;
+}
+
+function cloneAndShiftModule(entry: CachedSubModuleEntry, newStartOffset: number, newBaseLine: number): PscxModule {
+  const deltaOff = newStartOffset - entry.baseStartOffset;
+  const deltaLine = newBaseLine - entry.baseLine;
+  const shiftRange = (r: { startOffset: number; endOffset: number } | undefined) =>
+    r ? { startOffset: r.startOffset + deltaOff, endOffset: r.endOffset + deltaOff } : undefined;
+  return {
+    ...entry.mod,
+    components: entry.mod.components.map((c) => {
+      let shiftedParamLocs: Record<string, { line: number; column: number }> | undefined;
+      if (c.paramLocations) {
+        shiftedParamLocs = {};
+        for (const [k, loc] of Object.entries(c.paramLocations)) {
+          shiftedParamLocs[k] = { line: loc.line + deltaLine, column: loc.column };
+        }
+      }
+      return {
+        ...c,
+        parameters: { ...c.parameters },
+        paramLocations: shiftedParamLocs,
+        ports: c.ports.map((p) => ({ ...p, position: { ...p.position } })),
+        line: c.line !== undefined ? c.line + deltaLine : undefined,
+        sourceRange: shiftRange(c.sourceRange),
+      };
+    }),
+    buses: entry.mod.buses.map((b) => ({
+      ...b,
+      line: b.line !== undefined ? b.line + deltaLine : undefined,
+      sourceRange: shiftRange(b.sourceRange),
+    })),
+    wires: entry.mod.wires.map((w) => ({
+      ...w,
+      vertices: w.vertices.map((v) => ({ ...v })),
+      connectedPortIds: [...w.connectedPortIds],
+      line: w.line !== undefined ? w.line + deltaLine : undefined,
+      sourceRange: shiftRange(w.sourceRange),
+    })),
+    stickies: entry.mod.stickies ? entry.mod.stickies.map((s) => ({ ...s, position: { ...s.position } })) : undefined,
+    lines: entry.mod.lines ? entry.mod.lines.map((l) => ({ ...l, sourceRange: shiftRange(l.sourceRange) })) : undefined,
+    junctions: entry.mod.junctions ? entry.mod.junctions.map((j) => ({ ...j })) : undefined,
+    wirelessNets: entry.mod.wirelessNets
+      ? Object.fromEntries(Object.entries(entry.mod.wirelessNets).map(([k, v]) => [k, [...v]]))
+      : undefined,
+    parameterDefaults: entry.mod.parameterDefaults ? { ...entry.mod.parameterDefaults } : undefined,
+  };
+}
+
 /**
  * Parses a PSCAD project using the DSL-generated lossless XML CST (@modelscript/dsl/xml).
  * When `options.headless` is true, skips line/column offset indexing, SVG/graphics string
@@ -309,6 +388,9 @@ export function parsePscxCst(
     if (lowerName === "time_step" || lowerName === "timestep") {
       const parsed = parseFloat(valAttr);
       if (!isNaN(parsed) && parsed > 0) settings.timeStepUs = parsed;
+    } else if (lowerName === "sample_step" || lowerName === "plot_step" || lowerName === "plotstep") {
+      const parsed = parseFloat(valAttr);
+      if (!isNaN(parsed) && parsed > 0) settings.plotStepUs = parsed;
     } else if (lowerName === "time_duration" || lowerName === "duration") {
       const parsed = parseFloat(valAttr);
       if (!isNaN(parsed) && parsed > 0) settings.durationSec = parsed;
@@ -319,6 +401,8 @@ export function parsePscxCst(
       settings.startType = valAttr === "1" ? "snapshot" : "flat";
     } else if (lowerName === "startup_filename" && valAttr) {
       settings.snapshotFile = valAttr;
+    } else if (lowerName === "cda" || lowerName === "enable_cda" || lowerName === "chatter_elimination") {
+      settings.enableCda = valAttr === "1" || valAttr.toLowerCase() === "true";
     }
   }
 
@@ -856,7 +940,39 @@ export function parsePscxCst(
   const rootModule = parseModule("Main", "Main", rootEl, true);
   const subModules = new Map<string, PscxModule>();
   for (const sub of subModuleDefs) {
-    subModules.set(sub.name, parseModule(sub.name, sub.name, sub.element, false));
+    const canCache =
+      !isHeadless &&
+      !options?.external &&
+      sub.element.start >= 0 &&
+      sub.element.end > sub.element.start &&
+      sub.element.end <= xmlContent.length;
+    if (canCache) {
+      const slice = xmlContent.slice(sub.element.start, sub.element.end);
+      const baseLine = offsetToLineCol(lineStarts, sub.element.start).line;
+      const cacheKey = `${sub.name}:${fnv1a32(slice).toString(16)}`;
+      const hit = subModuleIncrementalCache.get(cacheKey);
+      if (hit && hit.sliceText === slice) {
+        subModuleCacheHits++;
+        subModules.set(sub.name, cloneAndShiftModule(hit, sub.element.start, baseLine));
+        continue;
+      }
+      subModuleCacheMisses++;
+      const parsedMod = parseModule(sub.name, sub.name, sub.element, false);
+      if (subModuleIncrementalCache.size >= MAX_SUBMODULE_CACHE_ENTRIES) {
+        const oldestKey = subModuleIncrementalCache.keys().next().value;
+        if (oldestKey !== undefined) subModuleIncrementalCache.delete(oldestKey);
+      }
+      const entry: CachedSubModuleEntry = {
+        sliceText: slice,
+        baseStartOffset: sub.element.start,
+        baseLine,
+        mod: parsedMod,
+      };
+      subModuleIncrementalCache.set(cacheKey, entry);
+      subModules.set(sub.name, cloneAndShiftModule(entry, sub.element.start, baseLine));
+    } else {
+      subModules.set(sub.name, parseModule(sub.name, sub.name, sub.element, false));
+    }
   }
 
   return {

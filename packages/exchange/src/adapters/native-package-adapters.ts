@@ -172,6 +172,7 @@ export const EXTENSION_TO_LANGUAGE_ID: Record<string, string> = {
   ".s8p": "touchstone",
   ".snp": "touchstone",
   ".urdf": "urdf",
+  ".mjcf": "urdf",
   ".sdf": "urdf",
   ".xacro": "urdf",
   ".va": "verilog-a",

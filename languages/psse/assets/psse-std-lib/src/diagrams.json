@@ -1,67 +1,9152 @@
 [
   {
-    "namePath": "psse:SEXS",
-    "aliases": ["SEXS"],
-    "label": "Simplified Excitation System",
+    "namePath": "psse:ABBSVC1",
+    "aliases": ["ABBSVC1"],
+    "label": "Static Var System / Synchronous Condenser Shunt Var Compensator (CSVGN1–6)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:AC10C",
+    "aliases": ["AC10C"],
+    "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
     "category": "exciter",
     "domain": "control",
-    "width": 64,
-    "height": 40,
+    "width": 72,
+    "height": 44,
     "ports": [
-      { "name": "Vterm", "kind": "signal", "side": "left", "dx": -32, "dy": 0 },
-      { "name": "Efd", "kind": "signal", "side": "right", "dx": 32, "dy": 0 }
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:AC11C",
+    "aliases": ["AC11C"],
+    "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:AC1C",
+    "aliases": ["AC1C"],
+    "label": "IEEE Type AC1A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:AC2C",
+    "aliases": ["AC2C"],
+    "label": "IEEE Type AC2A High-Initial-Response Brushless Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:AC3C",
+    "aliases": ["AC3C"],
+    "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:AC4C",
+    "aliases": ["AC4C"],
+    "label": "IEEE Type AC4A Alternator-Supplied Controlled-Rectifier Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:AC5C",
+    "aliases": ["AC5C"],
+    "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:AC6C",
+    "aliases": ["AC6C"],
+    "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:AC7B",
+    "aliases": ["AC7B"],
+    "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:AC7C",
+    "aliases": ["AC7C"],
+    "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:AC8B",
+    "aliases": ["AC8B"],
+    "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:AC8C",
+    "aliases": ["AC8C"],
+    "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:BBSEX1",
+    "aliases": ["BBSEX1"],
+    "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:BESS1",
+    "aliases": ["BESS1"],
+    "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:BUSFRQ",
+    "aliases": ["BUSFRQ"],
+    "label": "Bus Frequency & Phase-Angle Rate Measurement Block (BUSFRQ / SBUS)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CCGOV1",
+    "aliases": ["CCGOV1"],
+    "label": "WECC General Purpose Gas & Combined-Cycle Turbine-Governor (GGOV1 / CCGOV1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CDC4T",
+    "aliases": ["CDC4T"],
+    "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CDC6T",
+    "aliases": ["CDC6T"],
+    "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CDC6TA",
+    "aliases": ["CDC6TA"],
+    "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CDC7T",
+    "aliases": ["CDC7T"],
+    "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CDCAB1",
+    "aliases": ["CDCAB1"],
+    "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CDCV1T",
+    "aliases": ["CDCV1T"],
+    "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CEEL1",
+    "aliases": ["CEEL1"],
+    "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CELIN",
+    "aliases": ["CELIN"],
+    "label": "Digital PID / Proportional-Integral Excitation System (EX2000 / EXPIC1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CFB1",
+    "aliases": ["CFB1"],
+    "label": "WECC Turbine Load Controller / Boiler Pressure Feedback (LCFB1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CGEN1",
+    "aliases": ["CGEN1"],
+    "label": "Constant-Excitation Transient Synchronous Generator Model",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CHSVCT",
+    "aliases": ["CHSVCT"],
+    "label": "Static Var System / Synchronous Condenser Shunt Var Compensator (CSVGN1–6)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CHVDC2",
+    "aliases": ["CHVDC2"],
+    "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIM5",
+    "aliases": ["CIM5"],
+    "label": "Fifth-Order Double-Cage Induction Motor Load Model (CIM5)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIM5AL",
+    "aliases": ["CIM5AL"],
+    "label": "Fifth-Order Double-Cage Induction Motor Load (Area-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIM5BL",
+    "aliases": ["CIM5BL"],
+    "label": "Fifth-Order Double-Cage Induction Motor Load (Bus-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIM5OW",
+    "aliases": ["CIM5OW"],
+    "label": "Fifth-Order Double-Cage Induction Motor Load (Owner-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIM5ZL",
+    "aliases": ["CIM5ZL"],
+    "label": "Fifth-Order Double-Cage Induction Motor Load (Zone-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIM6AL",
+    "aliases": ["CIM6AL"],
+    "label": "Sixth-Order Double-Cage Induction Motor Load (Area-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIM6BL",
+    "aliases": ["CIM6BL"],
+    "label": "Sixth-Order Double-Cage Induction Motor Load (Bus-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIM6OW",
+    "aliases": ["CIM6OW"],
+    "label": "Sixth-Order Double-Cage Induction Motor Load (Owner-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIM6ZL",
+    "aliases": ["CIM6ZL"],
+    "label": "Sixth-Order Double-Cage Induction Motor Load (Zone-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIMTR1",
+    "aliases": ["CIMTR1"],
+    "label": "Single-Cage Induction Generator / Motor Machine Model",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIMTR3",
+    "aliases": ["CIMTR3"],
+    "label": "Double-Cage Induction Generator / Motor Machine Model",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIMWAL",
+    "aliases": ["CIMWAL"],
+    "label": "Wound-Rotor Induction Motor Load (Area-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIMWBL",
+    "aliases": ["CIMWBL"],
+    "label": "Wound-Rotor Induction Motor Load (Bus-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIMWOW",
+    "aliases": ["CIMWOW"],
+    "label": "Wound-Rotor Induction Motor Load (Owner-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CIMWZL",
+    "aliases": ["CIMWZL"],
+    "label": "Wound-Rotor Induction Motor Load (Zone-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CLOD",
+    "aliases": ["CLOD"],
+    "label": "Complex Aggregate Load Model (CLOD)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CLODAL",
+    "aliases": ["CLODAL"],
+    "label": "Complex Aggregate Load Model (Area-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CLODBL",
+    "aliases": ["CLODBL"],
+    "label": "Complex Aggregate Load Model (Bus-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CLODOW",
+    "aliases": ["CLODOW"],
+    "label": "Complex Aggregate Load Model (Owner-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CLODZL",
+    "aliases": ["CLODZL"],
+    "label": "Complex Aggregate Load Model (Zone-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CMLDAL",
+    "aliases": ["CMLDAL"],
+    "label": "WECC Composite Load Subsystem Model (Area-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CMLDBL",
+    "aliases": ["CMLDBL"],
+    "label": "WECC Composite Load Subsystem Model (Bus-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CMLDBLDGU2",
+    "aliases": ["CMLDBLDGU2"],
+    "label": "WECC Composite Load Model (CMPLDW / CMLD) with Motor A–D & FIDVR",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CMLDBLU1",
+    "aliases": ["CMLDBLU1"],
+    "label": "WECC Composite Load Model (CMPLDW / CMLD) with Motor A–D & FIDVR",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CMLDBLU2",
+    "aliases": ["CMLDBLU2"],
+    "label": "WECC Composite Load Model (CMPLDW / CMLD) with Motor A–D & FIDVR",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CMLDOW",
+    "aliases": ["CMLDOW"],
+    "label": "WECC Composite Load Subsystem Model (Owner-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CMLDRL",
+    "aliases": ["CMLDRL"],
+    "label": "Transmission Line 3-Zone Mho Distance & Overcurrent Relay (DISTRL / TIOCR1)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CMLDZL",
+    "aliases": ["CMLDZL"],
+    "label": "WECC Composite Load Subsystem Model (Zone-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CMPLDW",
+    "aliases": ["CMPLDW"],
+    "label": "WECC Composite Load Model (CMPLDW / CMLD) with Motor A–D & FIDVR",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:COMP",
+    "aliases": ["COMP"],
+    "label": "Reactive Current / Line-Drop Voltage Compensator (COMP / IEEEVC)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:COMPCC",
+    "aliases": ["COMPCC"],
+    "label": "Reactive Current / Line-Drop Voltage Compensator (COMP / IEEEVC)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CRCMGV",
+    "aliases": ["CRCMGV"],
+    "label": "IEEE Type 1 Tandem / Cross-Compound Steam Turbine-Governor (IEEEG1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CSTCNT",
+    "aliases": ["CSTCNT"],
+    "label": "Thyristor-Controlled Series Capacitor / Series FACTS Model (CSTCNT / TCSC1)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CSVGN1",
+    "aliases": ["CSVGN1"],
+    "label": "Static Var System / Synchronous Condenser Shunt Var Compensator (CSVGN1–6)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CSVGN3",
+    "aliases": ["CSVGN3"],
+    "label": "Static Var System / Synchronous Condenser Shunt Var Compensator (CSVGN1–6)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CSVGN4",
+    "aliases": ["CSVGN4"],
+    "label": "Static Var System / Synchronous Condenser Shunt Var Compensator (CSVGN1–6)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CSVGN5",
+    "aliases": ["CSVGN5"],
+    "label": "Static Var System / Synchronous Condenser Shunt Var Compensator (CSVGN1–6)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:CSVGN6",
+    "aliases": ["CSVGN6"],
+    "label": "Static Var System / Synchronous Condenser Shunt Var Compensator (CSVGN1–6)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DC1C",
+    "aliases": ["DC1C"],
+    "label": "IEEE Type 1 DC Rotating Excitation System (IEEET1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DC2C",
+    "aliases": ["DC2C"],
+    "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DC3A",
+    "aliases": ["DC3A"],
+    "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DC4B",
+    "aliases": ["DC4B"],
+    "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DC4C",
+    "aliases": ["DC4C"],
+    "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DC_MOD1",
+    "aliases": ["DC_MOD1"],
+    "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DEC1A",
+    "aliases": ["DEC1A"],
+    "label": "Woodward Diesel Engine Speed Governor Model (DEGOV1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DEGOV",
+    "aliases": ["DEGOV"],
+    "label": "Woodward Diesel Engine Speed Governor Model (DEGOV1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DEGOV1",
+    "aliases": ["DEGOV1"],
+    "label": "Woodward Diesel Engine Speed Governor Model (DEGOV1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DERA1",
+    "aliases": ["DERA1"],
+    "label": "WECC Aggregate Distributed Energy Resource Model (DER_A)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DERAU1",
+    "aliases": ["DERAU1"],
+    "label": "WECC Aggregate Distributed Energy Resource Model (DER_A)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DER_A",
+    "aliases": ["DER_A"],
+    "label": "WECC Aggregate Distributed Energy Resource Model (DER_A)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DIESEL1",
+    "aliases": ["DIESEL1"],
+    "label": "Woodward Diesel Engine Speed Governor Model (DEGOV1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DIREX1",
+    "aliases": ["DIREX1"],
+    "label": "Digital PID / Proportional-Integral Excitation System (EX2000 / EXPIC1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DIST1",
+    "aliases": ["DIST1"],
+    "label": "Transmission Line 3-Zone Mho Distance & Overcurrent Relay (DISTRL / TIOCR1)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DISTRL",
+    "aliases": ["DISTRL"],
+    "label": "Transmission Line 3-Zone Mho Distance & Overcurrent Relay (DISTRL / TIOCR1)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DLSHAL",
+    "aliases": ["DLSHAL"],
+    "label": "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:DLSHBL",
+    "aliases": ["DLSHBL"],
+    "label": "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EMAC1T",
+    "aliases": ["EMAC1T"],
+    "label": "Digital PID / Proportional-Integral Excitation System (EX2000 / EXPIC1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ESAC10A",
+    "aliases": ["ESAC10A"],
+    "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
     ]
   },
   {
     "namePath": "psse:ESAC1A",
     "aliases": ["ESAC1A"],
-    "label": "IEEE Type AC1A Excitation System",
+    "label": "IEEE Type AC1A Alternator-Rectifier Excitation System",
     "category": "exciter",
     "domain": "control",
     "width": 72,
     "height": 44,
     "ports": [
-      { "name": "Vterm", "kind": "signal", "side": "left", "dx": -36, "dy": 0 },
-      { "name": "Efd", "kind": "signal", "side": "right", "dx": 36, "dy": 0 }
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
     ]
   },
   {
-    "namePath": "psse:TGOV1",
-    "aliases": ["TGOV1"],
-    "label": "Steam Turbine-Governor Model",
+    "namePath": "psse:ESAC2A",
+    "aliases": ["ESAC2A"],
+    "label": "IEEE Type AC2A High-Initial-Response Brushless Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ESAC3A",
+    "aliases": ["ESAC3A"],
+    "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ESAC4A",
+    "aliases": ["ESAC4A"],
+    "label": "IEEE Type AC4A Alternator-Supplied Controlled-Rectifier Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ESAC5A",
+    "aliases": ["ESAC5A"],
+    "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ESAC6A",
+    "aliases": ["ESAC6A"],
+    "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ESAC8B",
+    "aliases": ["ESAC8B"],
+    "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ESDC1A",
+    "aliases": ["ESDC1A"],
+    "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ESDC2A",
+    "aliases": ["ESDC2A"],
+    "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ESDC3A",
+    "aliases": ["ESDC3A"],
+    "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ESST1A",
+    "aliases": ["ESST1A"],
+    "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ESST2A",
+    "aliases": ["ESST2A"],
+    "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ESST3A",
+    "aliases": ["ESST3A"],
+    "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ESST4B",
+    "aliases": ["ESST4B"],
+    "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ESST5B",
+    "aliases": ["ESST5B"],
+    "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EX2000",
+    "aliases": ["EX2000"],
+    "label": "Digital PID / Proportional-Integral Excitation System (EX2000 / EXPIC1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXAC1",
+    "aliases": ["EXAC1"],
+    "label": "IEEE Type AC1A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXAC1A",
+    "aliases": ["EXAC1A"],
+    "label": "IEEE Type AC1A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXAC2",
+    "aliases": ["EXAC2"],
+    "label": "IEEE Type AC2A High-Initial-Response Brushless Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXAC3",
+    "aliases": ["EXAC3"],
+    "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXAC4",
+    "aliases": ["EXAC4"],
+    "label": "IEEE Type AC4A Alternator-Supplied Controlled-Rectifier Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXBAS",
+    "aliases": ["EXBAS"],
+    "label": "Digital PID / Proportional-Integral Excitation System (EX2000 / EXPIC1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXBBC",
+    "aliases": ["EXBBC"],
+    "label": "Digital PID / Proportional-Integral Excitation System (EX2000 / EXPIC1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXDC1",
+    "aliases": ["EXDC1"],
+    "label": "IEEE Type 1 DC Rotating Excitation System (IEEET1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXDC2",
+    "aliases": ["EXDC2"],
+    "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXELI",
+    "aliases": ["EXELI"],
+    "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXPIC1",
+    "aliases": ["EXPIC1"],
+    "label": "Digital PID / Proportional-Integral Excitation System (EX2000 / EXPIC1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXST1",
+    "aliases": ["EXST1"],
+    "label": "IEEE Type ST1 Potential-Source Controlled-Rectifier Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXST2",
+    "aliases": ["EXST2"],
+    "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXST2A",
+    "aliases": ["EXST2A"],
+    "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:EXST3",
+    "aliases": ["EXST3"],
+    "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:FCTRB1",
+    "aliases": ["FCTRB1"],
+    "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:FRQTPAT",
+    "aliases": ["FRQTPAT"],
+    "label": "Generator Over/Under-Frequency Trip Relay (FRQTPAT)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:FRQTPAU",
+    "aliases": ["FRQTPAU"],
+    "label": "Generator Over/Under-Frequency Trip Relay (FRQTPAT)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GASSIM",
+    "aliases": ["GASSIM"],
+    "label": "Single-Shaft Gas Turbine-Governor Model (GAST / GAST2A)",
     "category": "governor",
     "domain": "mechanical",
     "width": 72,
     "height": 44,
     "ports": [
-      { "name": "dOmega", "kind": "signal", "side": "left", "dx": -36, "dy": 0 },
-      { "name": "Pmech", "kind": "signal", "side": "right", "dx": 36, "dy": 0 }
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
     ]
   },
   {
     "namePath": "psse:GAST",
     "aliases": ["GAST"],
-    "label": "Gas Turbine-Governor Model",
+    "label": "Single-Shaft Gas Turbine-Governor Model (GAST / GAST2A)",
     "category": "governor",
     "domain": "mechanical",
     "width": 72,
     "height": 44,
     "ports": [
-      { "name": "dOmega", "kind": "signal", "side": "left", "dx": -36, "dy": 0 },
-      { "name": "Pmech", "kind": "signal", "side": "right", "dx": 36, "dy": 0 }
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
     ]
   },
   {
-    "namePath": "psse:PSS2B",
-    "aliases": ["PSS2B"],
-    "label": "Dual-Input Power System Stabilizer",
+    "namePath": "psse:GAST2A",
+    "aliases": ["GAST2A"],
+    "label": "Single-Shaft Gas Turbine-Governor Model (GAST / GAST2A)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GASTWD",
+    "aliases": ["GASTWD"],
+    "label": "Single-Shaft Gas Turbine-Governor Model (GAST / GAST2A)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENCC",
+    "aliases": ["GENCC"],
+    "label": "Cross-Compound Synchronous Generator Pair Model",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENCLS",
+    "aliases": ["GENCLS"],
+    "label": "Classical Constant-Flux Synchronous Generator Model",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENDCO",
+    "aliases": ["GENDCO"],
+    "label": "Round-Rotor Generator with Direct Damper Coupling",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENEQU",
+    "aliases": ["GENEQU"],
+    "label": "Dynamic Equivalenced Synchronous Generator Model",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENROE",
+    "aliases": ["GENROE"],
+    "label": "Round-Rotor Synchronous Generator Model (Subtransient, Exponential Saturation)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENROU",
+    "aliases": ["GENROU"],
+    "label": "Round-Rotor Synchronous Generator Model (Subtransient, Quadratic Saturation)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENROUU1",
+    "aliases": ["GENROUU1"],
+    "label": "Round-Rotor Synchronous Generator Model (Subtransient, Quadratic Saturation)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENSAE",
+    "aliases": ["GENSAE"],
+    "label": "Salient-Pole Synchronous Generator Model (Exponential Saturation)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENSAL",
+    "aliases": ["GENSAL"],
+    "label": "Salient-Pole Synchronous Generator Model (Quadratic Saturation)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENSDO",
+    "aliases": ["GENSDO"],
+    "label": "Salient-Pole Generator with Distinct q-Axis Subtransient Reactance",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENTB1",
+    "aliases": ["GENTB1"],
+    "label": "Turbine-Generator Extended Saturation Model",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENTPJ",
+    "aliases": ["GENTPJ"],
+    "label": "Round/Salient Synchronous Generator with Current-Dependent Saturation (Kis)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENTPJ1",
+    "aliases": ["GENTPJ1"],
+    "label": "Round/Salient Synchronous Generator with Current-Dependent Saturation (Kis)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENTPJU1",
+    "aliases": ["GENTPJU1"],
+    "label": "Round/Salient Synchronous Generator with Current-Dependent Saturation (Kis)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GENTRA",
+    "aliases": ["GENTRA"],
+    "label": "Three-State Transient Synchronous Generator Model",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GFM_DROOP",
+    "aliases": ["GFM_DROOP"],
+    "label": "WECC Droop / Virtual Synchronous Machine Grid-Forming Inverter (REGFM_A1)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Ip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GFM_VSM",
+    "aliases": ["GFM_VSM"],
+    "label": "WECC Droop / Virtual Synchronous Machine Grid-Forming Inverter (REGFM_A1)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Ip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GGOV1",
+    "aliases": ["GGOV1"],
+    "label": "WECC General Purpose Gas & Combined-Cycle Turbine-Governor (GGOV1 / CCGOV1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GGOV1DU",
+    "aliases": ["GGOV1DU"],
+    "label": "WECC General Purpose Gas & Combined-Cycle Turbine-Governor (GGOV1 / CCGOV1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GGOV3",
+    "aliases": ["GGOV3"],
+    "label": "WECC General Purpose Gas & Combined-Cycle Turbine-Governor (GGOV1 / CCGOV1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GP1",
+    "aliases": ["GP1"],
+    "label": "Generator Over/Under-Frequency Trip Relay (FRQTPAT)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GP2",
+    "aliases": ["GP2"],
+    "label": "Generator Over/Under-Voltage Trip Relay (VTGTPAT / VTGDCAT)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:GPWSCC",
+    "aliases": ["GPWSCC"],
+    "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:HVDC_VSC",
+    "aliases": ["HVDC_VSC"],
+    "label": "Voltage Source Converter (VSC / MMC) HVDC Dynamic Link Model",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:HYDTUR",
+    "aliases": ["HYDTUR"],
+    "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:HYG3",
+    "aliases": ["HYG3"],
+    "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:HYGOV",
+    "aliases": ["HYGOV"],
+    "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:HYGOV2",
+    "aliases": ["HYGOV2"],
+    "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:HYGOV4",
+    "aliases": ["HYGOV4"],
+    "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:HYGOVM",
+    "aliases": ["HYGOVM"],
+    "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:HYGOVR",
+    "aliases": ["HYGOVR"],
+    "label": "Electronic PID Hydro Turbine-Governor (PIDGOV / WPIDHY / HYGOVR)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IECPV1",
+    "aliases": ["IECPV1"],
+    "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IECWT3",
+    "aliases": ["IECWT3"],
+    "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IECWT4A",
+    "aliases": ["IECWT4A"],
+    "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IECWT4B",
+    "aliases": ["IECWT4B"],
+    "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEEG1",
+    "aliases": ["IEEEG1"],
+    "label": "IEEE Type 1 Tandem / Cross-Compound Steam Turbine-Governor (IEEEG1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEEG2",
+    "aliases": ["IEEEG2"],
+    "label": "IEEE Type 1 Tandem / Cross-Compound Steam Turbine-Governor (IEEEG1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEEG3",
+    "aliases": ["IEEEG3"],
+    "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEEL",
+    "aliases": ["IEEEL"],
+    "label": "IEEE Polynomial & Frequency-Dependent Static Load Model",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEEST",
+    "aliases": ["IEEEST"],
+    "label": "IEEE Std 421.5 Single-Input Power System Stabilizer (PSS1A / IEEEST)",
     "category": "stabilizer",
     "domain": "control",
     "width": 72,
     "height": 44,
     "ports": [
-      { "name": "dOmega", "kind": "signal", "side": "left", "dx": -36, "dy": 0 },
-      { "name": "Vs", "kind": "signal", "side": "right", "dx": 36, "dy": 0 }
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEET1",
+    "aliases": ["IEEET1"],
+    "label": "IEEE Type 1 DC Rotating Excitation System (IEEET1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEET2",
+    "aliases": ["IEEET2"],
+    "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEET3",
+    "aliases": ["IEEET3"],
+    "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEET4",
+    "aliases": ["IEEET4"],
+    "label": "IEEE Type ST1 Potential-Source Controlled-Rectifier Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEET5",
+    "aliases": ["IEEET5"],
+    "label": "IEEE Type ST1 Potential-Source Controlled-Rectifier Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEEVC",
+    "aliases": ["IEEEVC"],
+    "label": "Reactive Current / Line-Drop Voltage Compensator (COMP / IEEEVC)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEEX1",
+    "aliases": ["IEEEX1"],
+    "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEEX2",
+    "aliases": ["IEEEX2"],
+    "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEEX3",
+    "aliases": ["IEEEX3"],
+    "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEEEX4",
+    "aliases": ["IEEEX4"],
+    "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEELAL",
+    "aliases": ["IEELAL"],
+    "label": "IEEE Polynomial & Frequency Static Load (Area-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEELBL",
+    "aliases": ["IEELBL"],
+    "label": "IEEE Polynomial & Frequency Static Load (Bus-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEELOW",
+    "aliases": ["IEELOW"],
+    "label": "IEEE Polynomial & Frequency Static Load (Owner-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEELZL",
+    "aliases": ["IEELZL"],
+    "label": "IEEE Polynomial & Frequency Static Load (Zone-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IEESGO",
+    "aliases": ["IEESGO"],
+    "label": "IEEE General Speed-Governing & Steam Turbine Model (IEESGO / WSIEG1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:IRRADU1",
+    "aliases": ["IRRADU1"],
+    "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:LCFB1",
+    "aliases": ["LCFB1"],
+    "label": "WECC Turbine Load Controller / Boiler Pressure Feedback (LCFB1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:LD1PAC",
+    "aliases": ["LD1PAC"],
+    "label": "Single-Phase Residential Air-Conditioner Stall Model (LD1PAC)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:LD1PACU1",
+    "aliases": ["LD1PACU1"],
+    "label": "Single-Phase Residential Air-Conditioner Stall Model (LD1PAC)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:LDFRAL",
+    "aliases": ["LDFRAL"],
+    "label": "Exponential Voltage & Frequency Load Model (Area-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:LDFRBL",
+    "aliases": ["LDFRBL"],
+    "label": "Exponential Voltage & Frequency Load Model (Bus-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:LDFROW",
+    "aliases": ["LDFROW"],
+    "label": "Exponential Voltage & Frequency Load Model (Owner-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:LDFRZL",
+    "aliases": ["LDFRZL"],
+    "label": "Exponential Voltage & Frequency Load Model (Zone-Level)",
+    "category": "load",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pload",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:LDSHAL",
+    "aliases": ["LDSHAL"],
+    "label": "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:LDSHBL",
+    "aliases": ["LDSHBL"],
+    "label": "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:LDSHZL",
+    "aliases": ["LDSHZL"],
+    "label": "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:LOEXR1",
+    "aliases": ["LOEXR1"],
+    "label": "Generator Out-of-Step & Loss-of-Excitation Protection Relay (OOSR1 / LOEXR1)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:LVSHAL",
+    "aliases": ["LVSHAL"],
+    "label": "Under-Voltage Load Shedding Relay (LVSHBL / UVLS)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:LVSHBL",
+    "aliases": ["LVSHBL"],
+    "label": "Under-Voltage Load Shedding Relay (LVSHBL / UVLS)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:LVSHZL",
+    "aliases": ["LVSHZL"],
+    "label": "Under-Voltage Load Shedding Relay (LVSHBL / UVLS)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:MAXEX1",
+    "aliases": ["MAXEX1"],
+    "label": "IEEE Over-Excitation Limiter (OEL / MAXEX)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:MAXEX2",
+    "aliases": ["MAXEX2"],
+    "label": "IEEE Over-Excitation Limiter (OEL / MAXEX)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:MDSPSS",
+    "aliases": ["MDSPSS"],
+    "label": "Microprocessor-Based Dual-Washout Stabilizer (PTIST / MDSPSS)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:MMC_HVDC1",
+    "aliases": ["MMC_HVDC1"],
+    "label": "Voltage Source Converter (VSC / MMC) HVDC Dynamic Link Model",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:MNLEX1",
+    "aliases": ["MNLEX1"],
+    "label": "IEEE Under-Excitation Limiter (UEL / MNLEX)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:MNLEX2",
+    "aliases": ["MNLEX2"],
+    "label": "IEEE Under-Excitation Limiter (UEL / MNLEX)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:MNLEX3",
+    "aliases": ["MNLEX3"],
+    "label": "IEEE Under-Excitation Limiter (UEL / MNLEX)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:MOTOR1",
+    "aliases": ["MOTOR1"],
+    "label": "Dynamic Induction Motor/Generator Model (Generator Table)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:MTDC1T",
+    "aliases": ["MTDC1T"],
+    "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:OEL1",
+    "aliases": ["OEL1"],
+    "label": "IEEE Over-Excitation Limiter (OEL / MAXEX)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:OEL2B",
+    "aliases": ["OEL2B"],
+    "label": "IEEE Over-Excitation Limiter (OEL / MAXEX)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:OEL4C",
+    "aliases": ["OEL4C"],
+    "label": "IEEE Over-Excitation Limiter (OEL / MAXEX)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:OEL5C",
+    "aliases": ["OEL5C"],
+    "label": "IEEE Over-Excitation Limiter (OEL / MAXEX)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:OOSR1",
+    "aliases": ["OOSR1"],
+    "label": "Generator Out-of-Step & Loss-of-Excitation Protection Relay (OOSR1 / LOEXR1)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:OSTB1T",
+    "aliases": ["OSTB1T"],
+    "label": "Microprocessor-Based Dual-Washout Stabilizer (PTIST / MDSPSS)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PANELU1",
+    "aliases": ["PANELU1"],
+    "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PIDGOV",
+    "aliases": ["PIDGOV"],
+    "label": "Electronic PID Hydro Turbine-Governor (PIDGOV / WPIDHY / HYGOVR)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PLNTBU1",
+    "aliases": ["PLNTBU1"],
+    "label": "WECC Multi-Unit Plant Controller Model B/C (REPC_B / PLNTBU1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PMU_MEAS",
+    "aliases": ["PMU_MEAS"],
+    "label": "Bus Frequency & Phase-Angle Rate Measurement Block (BUSFRQ / SBUS)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSS1A",
+    "aliases": ["PSS1A"],
+    "label": "IEEE Std 421.5 Single-Input Power System Stabilizer (PSS1A / IEEEST)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSS1C",
+    "aliases": ["PSS1C"],
+    "label": "IEEE Std 421.5 Single-Input Power System Stabilizer (PSS1A / IEEEST)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSS2A",
+    "aliases": ["PSS2A"],
+    "label": "IEEE Std 421.5 Dual-Input Accelerating Power PSS (PSS2A)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSS2AU1",
+    "aliases": ["PSS2AU1"],
+    "label": "IEEE Std 421.5 Dual-Input Accelerating Power PSS (PSS2A)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSS2B",
+    "aliases": ["PSS2B"],
+    "label": "IEEE Std 421.5 Extended Dual-Input PSS (PSS2B / PSS2C)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSS2BU1",
+    "aliases": ["PSS2BU1"],
+    "label": "IEEE Std 421.5 Extended Dual-Input PSS (PSS2B / PSS2C)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSS2C",
+    "aliases": ["PSS2C"],
+    "label": "IEEE Std 421.5 Extended Dual-Input PSS (PSS2B / PSS2C)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSS3B",
+    "aliases": ["PSS3B"],
+    "label": "IEEE Std 421.5 Dual-Input Transducer Stabilizer (PSS3B / PSS3C)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSS3C",
+    "aliases": ["PSS3C"],
+    "label": "IEEE Std 421.5 Dual-Input Transducer Stabilizer (PSS3B / PSS3C)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSS4B",
+    "aliases": ["PSS4B"],
+    "label": "IEEE Multi-Band Power System Stabilizer (MB-PSS / PSS4B)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSS4C",
+    "aliases": ["PSS4C"],
+    "label": "IEEE Multi-Band Power System Stabilizer (MB-PSS / PSS4B)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSS5C",
+    "aliases": ["PSS5C"],
+    "label": "IEEE Multi-Band Power System Stabilizer (MB-PSS / PSS4B)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSS6C",
+    "aliases": ["PSS6C"],
+    "label": "IEEE Multi-Band Power System Stabilizer (MB-PSS / PSS4B)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSS7C",
+    "aliases": ["PSS7C"],
+    "label": "IEEE Multi-Band Power System Stabilizer (MB-PSS / PSS4B)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PSSSH",
+    "aliases": ["PSSSH"],
+    "label": "Microprocessor-Based Dual-Washout Stabilizer (PTIST / MDSPSS)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PTIST1",
+    "aliases": ["PTIST1"],
+    "label": "Microprocessor-Based Dual-Washout Stabilizer (PTIST / MDSPSS)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PTIST3",
+    "aliases": ["PTIST3"],
+    "label": "Microprocessor-Based Dual-Washout Stabilizer (PTIST / MDSPSS)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PV1E",
+    "aliases": ["PV1E"],
+    "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PV1G",
+    "aliases": ["PV1G"],
+    "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PVEU1",
+    "aliases": ["PVEU1"],
+    "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:PVGU1",
+    "aliases": ["PVGU1"],
+    "label": "WECC 1st-Generation Photovoltaic Converter Generator Model",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REAX3B1",
+    "aliases": ["REAX3B1"],
+    "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REAX4B1",
+    "aliases": ["REAX4B1"],
+    "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REECA1",
+    "aliases": ["REECA1"],
+    "label": "WECC Renewable Electrical Control Model A (REEC_A / REECA1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REECAU1",
+    "aliases": ["REECAU1"],
+    "label": "WECC Renewable Electrical Control Model A (REEC_A / REECA1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REECB1",
+    "aliases": ["REECB1"],
+    "label": "WECC Solar PV Electrical Control Model B (REEC_B / REECB1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REECBU1",
+    "aliases": ["REECBU1"],
+    "label": "WECC Solar PV Electrical Control Model B (REEC_B / REECB1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REECC1",
+    "aliases": ["REECC1"],
+    "label": "WECC Battery Energy Storage Electrical Control Model C (REEC_C)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REECCU1",
+    "aliases": ["REECCU1"],
+    "label": "WECC Battery Energy Storage Electrical Control Model C (REEC_C)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REECD1",
+    "aliases": ["REECD1"],
+    "label": "WECC Extended Renewable Electrical Control Model D (REEC_D)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REECDU1",
+    "aliases": ["REECDU1"],
+    "label": "WECC Extended Renewable Electrical Control Model D (REEC_D)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REEC_A",
+    "aliases": ["REEC_A"],
+    "label": "WECC Renewable Electrical Control Model A (REEC_A / REECA1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REEC_B",
+    "aliases": ["REEC_B"],
+    "label": "WECC Solar PV Electrical Control Model B (REEC_B / REECB1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REEC_C",
+    "aliases": ["REEC_C"],
+    "label": "WECC Battery Energy Storage Electrical Control Model C (REEC_C)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REEC_D",
+    "aliases": ["REEC_D"],
+    "label": "WECC Extended Renewable Electrical Control Model D (REEC_D)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REGCA1",
+    "aliases": ["REGCA1"],
+    "label": "WECC Generic Renewable Generator-Converter Model A (REGC_A / REGCA1)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Ip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REGCAU1",
+    "aliases": ["REGCAU1"],
+    "label": "WECC Generic Renewable Generator-Converter Model A (REGC_A / REGCA1)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Ip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REGCB1",
+    "aliases": ["REGCB1"],
+    "label": "WECC Voltage-Source Renewable Converter Model B (REGC_B)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Ip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REGCBU1",
+    "aliases": ["REGCBU1"],
+    "label": "WECC Voltage-Source Renewable Converter Model B (REGC_B)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Ip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REGCC1",
+    "aliases": ["REGCC1"],
+    "label": "WECC High-Bandwidth PLL/Voltage-Source Converter Model C (REGC_C)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Ip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REGCCU1",
+    "aliases": ["REGCCU1"],
+    "label": "WECC High-Bandwidth PLL/Voltage-Source Converter Model C (REGC_C)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Ip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REGC_A",
+    "aliases": ["REGC_A"],
+    "label": "WECC Generic Renewable Generator-Converter Model A (REGC_A / REGCA1)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Ip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REGC_B",
+    "aliases": ["REGC_B"],
+    "label": "WECC Voltage-Source Renewable Converter Model B (REGC_B)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Ip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REGC_C",
+    "aliases": ["REGC_C"],
+    "label": "WECC High-Bandwidth PLL/Voltage-Source Converter Model C (REGC_C)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Ip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REGFM_A1",
+    "aliases": ["REGFM_A1"],
+    "label": "WECC Droop / Virtual Synchronous Machine Grid-Forming Inverter (REGFM_A1)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Ip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REPCA1",
+    "aliases": ["REPCA1"],
+    "label": "WECC Renewable Energy Plant Controller Model A (REPC_A / REPCA1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REPCAU1",
+    "aliases": ["REPCAU1"],
+    "label": "WECC Renewable Energy Plant Controller Model A (REPC_A / REPCA1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REPCB1",
+    "aliases": ["REPCB1"],
+    "label": "WECC Multi-Unit Plant Controller Model B/C (REPC_B / PLNTBU1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REPCBU1",
+    "aliases": ["REPCBU1"],
+    "label": "WECC Multi-Unit Plant Controller Model B/C (REPC_B / PLNTBU1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REPCC1",
+    "aliases": ["REPCC1"],
+    "label": "WECC Multi-Unit Plant Controller Model B/C (REPC_B / PLNTBU1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REPC_A",
+    "aliases": ["REPC_A"],
+    "label": "WECC Renewable Energy Plant Controller Model A (REPC_A / REPCA1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REPC_B",
+    "aliases": ["REPC_B"],
+    "label": "WECC Multi-Unit Plant Controller Model B/C (REPC_B / PLNTBU1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:REPC_C",
+    "aliases": ["REPC_C"],
+    "label": "WECC Multi-Unit Plant Controller Model B/C (REPC_B / PLNTBU1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:SBUS",
+    "aliases": ["SBUS"],
+    "label": "Bus Frequency & Phase-Angle Rate Measurement Block (BUSFRQ / SBUS)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:SCRX",
+    "aliases": ["SCRX"],
+    "label": "Bus- or Solid-Fed SCR Static Exciter Model (SCRX)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:SEXS",
+    "aliases": ["SEXS"],
+    "label": "Simplified Excitation System Model (SEXS)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:SEXSG",
+    "aliases": ["SEXSG"],
+    "label": "Simplified Excitation System Model (SEXS)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:SSSC1",
+    "aliases": ["SSSC1"],
+    "label": "Thyristor-Controlled Series Capacitor / Series FACTS Model (CSTCNT / TCSC1)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ST10C",
+    "aliases": ["ST10C"],
+    "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ST1C",
+    "aliases": ["ST1C"],
+    "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ST2C",
+    "aliases": ["ST2C"],
+    "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ST3C",
+    "aliases": ["ST3C"],
+    "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ST4B",
+    "aliases": ["ST4B"],
+    "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ST4C",
+    "aliases": ["ST4C"],
+    "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ST5B",
+    "aliases": ["ST5B"],
+    "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ST5C",
+    "aliases": ["ST5C"],
+    "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ST6B",
+    "aliases": ["ST6B"],
+    "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ST6C",
+    "aliases": ["ST6C"],
+    "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ST7B",
+    "aliases": ["ST7B"],
+    "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ST7C",
+    "aliases": ["ST7C"],
+    "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ST8C",
+    "aliases": ["ST8C"],
+    "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:ST9C",
+    "aliases": ["ST9C"],
+    "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:STAB1",
+    "aliases": ["STAB1"],
+    "label": "Speed-Sensitive Power System Stabilizer (STAB1)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:STAB2A",
+    "aliases": ["STAB2A"],
+    "label": "Power-Sensitive Power System Stabilizer (STAB2A)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:STAB3",
+    "aliases": ["STAB3"],
+    "label": "Accelerating-Power Dual-Input Stabilizer (STAB3 / STAB4)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:STAB4",
+    "aliases": ["STAB4"],
+    "label": "Accelerating-Power Dual-Input Stabilizer (STAB3 / STAB4)",
+    "category": "stabilizer",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:STATCOM1",
+    "aliases": ["STATCOM1"],
+    "label": "WECC Static Synchronous Compensator (STATCOM) Model (SVSMO3)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:STEAM1",
+    "aliases": ["STEAM1"],
+    "label": "Fast-Valving Steam Turbine-Governor Model (TGOV2 / TGOV3 / TGOV5)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:SVSMO1",
+    "aliases": ["SVSMO1"],
+    "label": "WECC Static Var Compensator Model 1/2 (SVSMO1 / SVSMO2)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:SVSMO2",
+    "aliases": ["SVSMO2"],
+    "label": "WECC Static Var Compensator Model 1/2 (SVSMO1 / SVSMO2)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:SVSMO3",
+    "aliases": ["SVSMO3"],
+    "label": "WECC Static Synchronous Compensator (STATCOM) Model (SVSMO3)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:SWSHNT",
+    "aliases": ["SWSHNT"],
+    "label": "WECC Static Var Compensator Model 1/2 (SVSMO1 / SVSMO2)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:SYNCON",
+    "aliases": ["SYNCON"],
+    "label": "Synchronous Condenser Dynamic Machine Model",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:SYN_STAT",
+    "aliases": ["SYN_STAT"],
+    "label": "WECC Static Synchronous Compensator (STATCOM) Model (SVSMO3)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:TCSC1",
+    "aliases": ["TCSC1"],
+    "label": "Thyristor-Controlled Series Capacitor / Series FACTS Model (CSTCNT / TCSC1)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:TGOV1",
+    "aliases": ["TGOV1"],
+    "label": "Simplified Steam Turbine-Governor Model (TGOV1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:TGOV1D",
+    "aliases": ["TGOV1D"],
+    "label": "Simplified Steam Turbine-Governor Model (TGOV1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:TGOV1DU",
+    "aliases": ["TGOV1DU"],
+    "label": "Simplified Steam Turbine-Governor Model (TGOV1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:TGOV2",
+    "aliases": ["TGOV2"],
+    "label": "Fast-Valving Steam Turbine-Governor Model (TGOV2 / TGOV3 / TGOV5)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:TGOV3",
+    "aliases": ["TGOV3"],
+    "label": "Fast-Valving Steam Turbine-Governor Model (TGOV2 / TGOV3 / TGOV5)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:TGOV4",
+    "aliases": ["TGOV4"],
+    "label": "Fast-Valving Steam Turbine-Governor Model (TGOV2 / TGOV3 / TGOV5)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:TGOV5",
+    "aliases": ["TGOV5"],
+    "label": "Fast-Valving Steam Turbine-Governor Model (TGOV2 / TGOV3 / TGOV5)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:TGOV_CC",
+    "aliases": ["TGOV_CC"],
+    "label": "Fast-Valving Steam Turbine-Governor Model (TGOV2 / TGOV3 / TGOV5)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:TIOCR1",
+    "aliases": ["TIOCR1"],
+    "label": "Transmission Line 3-Zone Mho Distance & Overcurrent Relay (DISTRL / TIOCR1)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:TMECH1",
+    "aliases": ["TMECH1"],
+    "label": "WECC Turbine Load Controller / Boiler Pressure Feedback (LCFB1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:TOVRD1",
+    "aliases": ["TOVRD1"],
+    "label": "Transmission Line 3-Zone Mho Distance & Overcurrent Relay (DISTRL / TIOCR1)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:TURCZT",
+    "aliases": ["TURCZT"],
+    "label": "IEEE Type 1 Tandem / Cross-Compound Steam Turbine-Governor (IEEEG1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:UEL1",
+    "aliases": ["UEL1"],
+    "label": "IEEE Under-Excitation Limiter (UEL / MNLEX)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:UEL2",
+    "aliases": ["UEL2"],
+    "label": "IEEE Under-Excitation Limiter (UEL / MNLEX)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:UEL2C",
+    "aliases": ["UEL2C"],
+    "label": "IEEE Under-Excitation Limiter (UEL / MNLEX)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:UFLSAL",
+    "aliases": ["UFLSAL"],
+    "label": "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:UFLSBL",
+    "aliases": ["UFLSBL"],
+    "label": "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:UPFC1",
+    "aliases": ["UPFC1"],
+    "label": "Thyristor-Controlled Series Capacitor / Series FACTS Model (CSTCNT / TCSC1)",
+    "category": "facts",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qinj",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:URST5T",
+    "aliases": ["URST5T"],
+    "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:UVLSAL",
+    "aliases": ["UVLSAL"],
+    "label": "Under-Voltage Load Shedding Relay (LVSHBL / UVLS)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:UVLSBL",
+    "aliases": ["UVLSBL"],
+    "label": "Under-Voltage Load Shedding Relay (LVSHBL / UVLS)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:VHZL1",
+    "aliases": ["VHZL1"],
+    "label": "Volts-Per-Hertz Overfluxing Limiter (VHZL1)",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:VSC2DC",
+    "aliases": ["VSC2DC"],
+    "label": "Voltage Source Converter (VSC / MMC) HVDC Dynamic Link Model",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:VSCDCT",
+    "aliases": ["VSCDCT"],
+    "label": "Voltage Source Converter (VSC / MMC) HVDC Dynamic Link Model",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:VSC_DC",
+    "aliases": ["VSC_DC"],
+    "label": "Voltage Source Converter (VSC / MMC) HVDC Dynamic Link Model",
+    "category": "hvdc",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Pdc",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Qdc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:VTGDCAT",
+    "aliases": ["VTGDCAT"],
+    "label": "Generator Over/Under-Voltage Trip Relay (VTGTPAT / VTGDCAT)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:VTGTPAT",
+    "aliases": ["VTGTPAT"],
+    "label": "Generator Over/Under-Voltage Trip Relay (VTGTPAT / VTGDCAT)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:VTGTPAU",
+    "aliases": ["VTGTPAU"],
+    "label": "Generator Over/Under-Voltage Trip Relay (VTGTPAT / VTGDCAT)",
+    "category": "relay",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Signal",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WECCGFM",
+    "aliases": ["WECCGFM"],
+    "label": "WECC Droop / Virtual Synchronous Machine Grid-Forming Inverter (REGFM_A1)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Ip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WEHGOV",
+    "aliases": ["WEHGOV"],
+    "label": "IEEE General Speed-Governing & Steam Turbine Model (IEESGO / WSIEG1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WNDTGE",
+    "aliases": ["WNDTGE"],
+    "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
+    "category": "exciter",
+    "domain": "control",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Vterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WPID",
+    "aliases": ["WPID"],
+    "label": "Electronic PID Hydro Turbine-Governor (PIDGOV / WPIDHY / HYGOVR)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WPIDHY",
+    "aliases": ["WPIDHY"],
+    "label": "Electronic PID Hydro Turbine-Governor (PIDGOV / WPIDHY / HYGOVR)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WSHYDD",
+    "aliases": ["WSHYDD"],
+    "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WSHYGP",
+    "aliases": ["WSHYGP"],
+    "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WSHYST",
+    "aliases": ["WSHYST"],
+    "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WSIEG1",
+    "aliases": ["WSIEG1"],
+    "label": "IEEE General Speed-Governing & Steam Turbine Model (IEESGO / WSIEG1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT1G",
+    "aliases": ["WT1G"],
+    "label": "WECC Type 1 Fixed-Speed Induction Wind Generator",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT1G1",
+    "aliases": ["WT1G1"],
+    "label": "WECC Type 1 Fixed-Speed Induction Wind Generator",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT1P",
+    "aliases": ["WT1P"],
+    "label": "WECC Wind Turbine Blade Pitch Control Model (WTPTA1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT1T",
+    "aliases": ["WT1T"],
+    "label": "WECC Two-Mass Wind Turbine Drive-Train Model (WTDTA1 / WT3T1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT2E",
+    "aliases": ["WT2E"],
+    "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT2G",
+    "aliases": ["WT2G"],
+    "label": "WECC Type 2 Wound-Rotor Induction Wind Generator (Variable Slip)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT2G1",
+    "aliases": ["WT2G1"],
+    "label": "WECC Type 2 Wound-Rotor Induction Wind Generator (Variable Slip)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT2T",
+    "aliases": ["WT2T"],
+    "label": "WECC Two-Mass Wind Turbine Drive-Train Model (WTDTA1 / WT3T1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT3E1",
+    "aliases": ["WT3E1"],
+    "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT3G1",
+    "aliases": ["WT3G1"],
+    "label": "WECC Type 3 Doubly-Fed Asynchronous Wind Generator (DFAG)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT3G2",
+    "aliases": ["WT3G2"],
+    "label": "WECC Type 3 Doubly-Fed Asynchronous Wind Generator (DFAG)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT3GU1",
+    "aliases": ["WT3GU1"],
+    "label": "WECC Type 3 Doubly-Fed Asynchronous Wind Generator (DFAG)",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT3P1",
+    "aliases": ["WT3P1"],
+    "label": "WECC Wind Turbine Blade Pitch Control Model (WTPTA1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT3T1",
+    "aliases": ["WT3T1"],
+    "label": "WECC Two-Mass Wind Turbine Drive-Train Model (WTDTA1 / WT3T1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT4E1",
+    "aliases": ["WT4E1"],
+    "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT4E2",
+    "aliases": ["WT4E2"],
+    "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT4G1",
+    "aliases": ["WT4G1"],
+    "label": "WECC Type 4 Full-Converter Wind Generator Interface",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT4G2",
+    "aliases": ["WT4G2"],
+    "label": "WECC Type 4 Full-Converter Wind Generator Interface",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WT4GU1",
+    "aliases": ["WT4GU1"],
+    "label": "WECC Type 4 Full-Converter Wind Generator Interface",
+    "category": "generator",
+    "domain": "electrical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "Efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WTARA1",
+    "aliases": ["WTARA1"],
+    "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WTARAU1",
+    "aliases": ["WTARAU1"],
+    "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WTDTA1",
+    "aliases": ["WTDTA1"],
+    "label": "WECC Two-Mass Wind Turbine Drive-Train Model (WTDTA1 / WT3T1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WTDTAU1",
+    "aliases": ["WTDTAU1"],
+    "label": "WECC Two-Mass Wind Turbine Drive-Train Model (WTDTA1 / WT3T1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WTGAR1",
+    "aliases": ["WTGAR1"],
+    "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WTGARA",
+    "aliases": ["WTGARA"],
+    "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WTGT_A",
+    "aliases": ["WTGT_A"],
+    "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WTPTA1",
+    "aliases": ["WTPTA1"],
+    "label": "WECC Wind Turbine Blade Pitch Control Model (WTPTA1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WTPTAU1",
+    "aliases": ["WTPTAU1"],
+    "label": "WECC Wind Turbine Blade Pitch Control Model (WTPTA1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WTTQA1",
+    "aliases": ["WTTQA1"],
+    "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "psse:WTTQAU1",
+    "aliases": ["WTTQAU1"],
+    "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
+    "category": "governor",
+    "domain": "mechanical",
+    "width": 72,
+    "height": 44,
+    "ports": [
+      {
+        "name": "dOmega",
+        "kind": "signal",
+        "side": "left",
+        "dx": -36,
+        "dy": 0
+      },
+      {
+        "name": "Pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 36,
+        "dy": 0
+      }
     ]
   }
 ]

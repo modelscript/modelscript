@@ -443,6 +443,15 @@ interface PscadSimulateActionResponse extends PscadSimulationPayload {
   pscadOut?: { inf: string; out: { suffix: string; content: string }[] } | undefined;
   pscadPsout?: Uint8Array | string | undefined;
   project?: string | undefined;
+  simulationReport?:
+    | {
+        solver?: string | undefined;
+        status?: "ok" | "degraded" | "rejected" | undefined;
+        fidelitySummary?: string | undefined;
+        coverage?: { simulatable: number; lowered: number; ratio: number } | undefined;
+      }
+    | undefined;
+  diagnostics?: { code?: string; message?: string; severity?: string }[] | undefined;
 }
 
 export function registerSimulationCommands(
@@ -452,6 +461,8 @@ export function registerSimulationCommands(
   fmuContentProvider?: FmuContentProvider,
   onVerificationCompleted?: () => void,
 ): vscode.Disposable[] {
+  const pscadFidelityStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 95);
+  context.subscriptions.push(pscadFidelityStatusBar);
   return [
     vscode.commands.registerCommand("modelscript.runSimulation", async () => {
       if (!client) return;
@@ -880,6 +891,36 @@ export function registerSimulationCommands(
                 uri,
                 inputs: { ...(docText ? { documentText: docText } : {}), exportPsout: true },
               });
+
+              const simReport = res?.simulationReport;
+              if (simReport) {
+                const cov = simReport.coverage;
+                const pct = cov ? `${(cov.ratio * 100).toFixed(0)}%` : "n/a";
+                const icon =
+                  simReport.status === "ok" ? "$(check)" : simReport.status === "degraded" ? "$(warning)" : "$(error)";
+                pscadFidelityStatusBar.text = `${icon} PSCAD EMT: ${pct}`;
+                pscadFidelityStatusBar.tooltip = simReport.fidelitySummary ?? `Status: ${simReport.status}`;
+                pscadFidelityStatusBar.backgroundColor =
+                  simReport.status === "rejected"
+                    ? new vscode.ThemeColor("statusBarItem.errorBackground")
+                    : simReport.status === "degraded"
+                      ? new vscode.ThemeColor("statusBarItem.warningBackground")
+                      : undefined;
+                pscadFidelityStatusBar.show();
+
+                if (simReport.status === "rejected") {
+                  const errDiag = res?.diagnostics?.find((d) => d.code === "P6100" || d.severity === "error");
+                  vscode.window.showErrorMessage(
+                    `PSCAD EMT Simulation Rejected: ${simReport.fidelitySummary ?? errDiag?.message ?? "Incomplete netlist coverage."}`,
+                  );
+                  return;
+                }
+                if (simReport.status === "degraded") {
+                  vscode.window.showWarningMessage(
+                    `PSCAD EMT Simulation Degraded: ${simReport.fidelitySummary ?? "Using fallback solver or partial coverage."}`,
+                  );
+                }
+              }
 
               const simRes = res?.simulationResult ?? res;
               if (simRes) {

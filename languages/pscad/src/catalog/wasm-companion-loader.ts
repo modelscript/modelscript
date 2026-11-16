@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseCScript, type CExpr, type CStmt } from "@modelscript/c";
 import type { FmiLsEmtCompanionInstance } from "@modelscript/exchange";
+import { parseFortranScript, type FortranExpr, type FortranStmt } from "@modelscript/fortran";
 import { globalLibraryRegistry } from "@modelscript/runtime";
 import type { EmtCustomFortranBlock, EmtNetlist } from "../types.js";
 
@@ -219,17 +221,266 @@ export async function compileAssemblyScriptInWorker(
   });
 }
 
+function asFloatLit(n: number): string {
+  if (!Number.isFinite(n)) return "0.0";
+  const s = String(n);
+  return s.includes(".") || s.includes("e") || s.includes("E") ? s : `${s}.0`;
+}
+
+function asMathCall(fn: string, args: string[]): string {
+  const f = fn.toLowerCase();
+  if (f === "sin" || f === "dsin") return `Math.sin(${args[0] ?? "0.0"})`;
+  if (f === "cos" || f === "dcos") return `Math.cos(${args[0] ?? "0.0"})`;
+  if (f === "tan" || f === "dtan") return `Math.tan(${args[0] ?? "0.0"})`;
+  if (f === "sqrt" || f === "dsqrt") return `Math.sqrt(Math.max(0.0, ${args[0] ?? "0.0"}))`;
+  if (f === "abs" || f === "dabs" || f === "fabs") return `Math.abs(${args[0] ?? "0.0"})`;
+  if (f === "exp" || f === "dexp") return `Math.exp(${args[0] ?? "0.0"})`;
+  if (f === "log" || f === "dlog" || f === "alog") return `Math.log(Math.max(1e-12, ${args[0] ?? "1.0"}))`;
+  if (f === "min" || f === "dmin1" || f === "amin1")
+    return args.length >= 2 ? `Math.min(${args[0]}, ${args[1]})` : (args[0] ?? "0.0");
+  if (f === "max" || f === "dmax1" || f === "amax1")
+    return args.length >= 2 ? `Math.max(${args[0]}, ${args[1]})` : (args[0] ?? "0.0");
+  if (f === "pow") return `Math.pow(${args[0] ?? "0.0"}, ${args[1] ?? "1.0"})`;
+  return args[0] ?? "0.0";
+}
+
+function resolvePortReadAs(
+  portName: string,
+  refPorts: readonly string[],
+  params?: Record<string, string | number>,
+): string {
+  if (params && params[portName] !== undefined) {
+    const pv = Number(params[portName]);
+    if (Number.isFinite(pv)) return asFloatLit(pv);
+  }
+  const idx = refPorts.findIndex((p) => p.toLowerCase() === portName.toLowerCase());
+  if (idx === 0) return "va";
+  if (idx === 1) return "vb";
+  if (idx === 2) return "vc";
+  return "va";
+}
+
+function lowerFortranExprToAs(expr: FortranExpr, block: EmtCustomFortranBlock, locals: Set<string>): string {
+  switch (expr.kind) {
+    case "number":
+      return asFloatLit(expr.value);
+    case "boolean":
+      return expr.value ? "1.0" : "0.0";
+    case "special":
+      if (expr.name === "TIME") return "tSec";
+      if (expr.name === "DELT") return "dtSec";
+      if (expr.name === "FIRSTSTEP") return "(tSec <= dtSec * 0.5)";
+      return "0.0";
+    case "port":
+      return resolvePortReadAs(expr.portName, block.referencedPorts, block.params);
+    case "var": {
+      const safe = sanitizeIdent(expr.name);
+      if (block.params && block.params[expr.name] !== undefined) {
+        const pv = Number(block.params[expr.name]);
+        if (Number.isFinite(pv)) return asFloatLit(pv);
+      }
+      if (locals.has(safe)) return safe;
+      const refIdx = block.referencedPorts.findIndex((p) => p.toLowerCase() === expr.name.toLowerCase());
+      if (refIdx >= 0) return resolvePortReadAs(expr.name, block.referencedPorts, block.params);
+      return "0.0";
+    }
+    case "state": {
+      const idx = lowerFortranExprToAs(expr.indexExpr, block, locals);
+      return `states[Math.max(0, Math.min(states.length - 1, <i32>Math.round(${idx}) - 1))]`;
+    }
+    case "unary":
+      return expr.op === "!"
+        ? `(!(${lowerFortranExprToAs(expr.expr, block, locals)}))`
+        : `(-(${lowerFortranExprToAs(expr.expr, block, locals)}))`;
+    case "binary": {
+      const l = lowerFortranExprToAs(expr.left, block, locals);
+      const r = lowerFortranExprToAs(expr.right, block, locals);
+      if (expr.op === "^") return `Math.pow(${l}, ${r})`;
+      if (expr.op === "/") return `((${r}) != 0.0 ? (${l}) / (${r}) : 0.0)`;
+      return `(${l} ${expr.op} ${r})`;
+    }
+    case "math":
+      return asMathCall(
+        expr.func,
+        expr.args.map((a) => lowerFortranExprToAs(a, block, locals)),
+      );
+    default:
+      return "0.0";
+  }
+}
+
+function lowerFortranStmtsToAs(
+  stmts: FortranStmt[],
+  block: EmtCustomFortranBlock,
+  locals: Set<string>,
+  indent: string,
+): string[] {
+  const lines: string[] = [];
+  for (const st of stmts) {
+    if (st.kind === "subroutine" || st.kind === "function") {
+      lines.push(...lowerFortranStmtsToAs(st.body, block, locals, indent));
+    } else if (st.kind === "assign") {
+      const rhs = lowerFortranExprToAs(st.expr, block, locals);
+      if (st.target.type === "state") {
+        const idx = lowerFortranExprToAs(st.target.indexExpr, block, locals);
+        lines.push(`${indent}states[Math.max(0, Math.min(states.length - 1, <i32>Math.round(${idx}) - 1))] = ${rhs};`);
+      } else if (st.target.type === "port") {
+        const pname = st.target.portName.toLowerCase();
+        const outIdx = block.assignedPorts.findIndex((p) => p.toLowerCase() === pname);
+        const targetVar = outIdx === 0 ? "iHistA" : outIdx === 1 ? "iHistB" : outIdx === 2 ? "iHistC" : "states[0]";
+        lines.push(`${indent}${targetVar} = ${rhs};`);
+      } else if (st.target.type === "var") {
+        const rawVar = st.target.name.toLowerCase();
+        const vname = sanitizeIdent(st.target.name);
+        const decl = locals.has(vname) ? "" : "let ";
+        locals.add(vname);
+        lines.push(`${indent}${decl}${vname}: f64 = ${rhs};`);
+        const outIdx = block.assignedPorts.findIndex((p) => p.toLowerCase() === rawVar);
+        if (outIdx === 0) lines.push(`${indent}iHistA = ${vname};`);
+        else if (outIdx === 1) lines.push(`${indent}iHistB = ${vname};`);
+        else if (outIdx === 2) lines.push(`${indent}iHistC = ${vname};`);
+      }
+    } else if (st.kind === "if") {
+      const cond = lowerFortranExprToAs(st.condition, block, locals);
+      lines.push(`${indent}if (Boolean(${cond})) {`);
+      lines.push(...lowerFortranStmtsToAs(st.thenBody, block, locals, indent + "  "));
+      if (st.elseBody && st.elseBody.length > 0) {
+        lines.push(`${indent}} else {`);
+        lines.push(...lowerFortranStmtsToAs(st.elseBody, block, locals, indent + "  "));
+      }
+      lines.push(`${indent}}`);
+    }
+  }
+  return lines;
+}
+
+function lowerCEstExprToAs(expr: CExpr, block: EmtCustomFortranBlock, locals: Set<string>): string {
+  switch (expr.kind) {
+    case "number":
+      return asFloatLit(expr.value);
+    case "boolean":
+      return expr.value ? "1.0" : "0.0";
+    case "special":
+      if (expr.name === "TIME") return "tSec";
+      if (expr.name === "DT") return "dtSec";
+      return "(tSec <= dtSec * 0.5)";
+    case "port":
+      return resolvePortReadAs(expr.portName, block.referencedPorts, block.params);
+    case "var": {
+      const safe = sanitizeIdent(expr.name);
+      if (block.params && block.params[expr.name] !== undefined) {
+        const pv = Number(block.params[expr.name]);
+        if (Number.isFinite(pv)) return asFloatLit(pv);
+      }
+      if (locals.has(safe)) return safe;
+      const refIdx = block.referencedPorts.findIndex((p) => p.toLowerCase() === expr.name.toLowerCase());
+      if (refIdx >= 0) return resolvePortReadAs(expr.name, block.referencedPorts, block.params);
+      return "0.0";
+    }
+    case "subscript": {
+      const idx = lowerCEstExprToAs(expr.indexExpr, block, locals);
+      return `states[Math.max(0, Math.min(states.length - 1, <i32>Math.round(${idx})))]`;
+    }
+    case "unary": {
+      const inner = lowerCEstExprToAs(expr.expr, block, locals);
+      return expr.op === "!" ? `(!Boolean(${inner}))` : `(${expr.op}(${inner}))`;
+    }
+    case "binary": {
+      const l = lowerCEstExprToAs(expr.left, block, locals);
+      const r = lowerCEstExprToAs(expr.right, block, locals);
+      if (expr.op === "/") return `((${r}) != 0.0 ? (${l}) / (${r}) : 0.0)`;
+      return `(${l} ${expr.op} ${r})`;
+    }
+    case "call":
+      return asMathCall(
+        expr.callee,
+        expr.args.map((a) => lowerCEstExprToAs(a, block, locals)),
+      );
+    default:
+      return "0.0";
+  }
+}
+
+function lowerCStmtsToAs(stmts: CStmt[], block: EmtCustomFortranBlock, locals: Set<string>, indent: string): string[] {
+  const lines: string[] = [];
+  for (const st of stmts) {
+    if (st.kind === "func" || st.kind === "block") {
+      lines.push(...lowerCStmtsToAs(st.body, block, locals, indent));
+    } else if (st.kind === "decl") {
+      const safe = sanitizeIdent(st.name);
+      if (!locals.has(safe)) {
+        locals.add(safe);
+        const init = st.init ? lowerCEstExprToAs(st.init, block, locals) : "0.0";
+        lines.push(`${indent}let ${safe}: f64 = ${init};`);
+      }
+    } else if (st.kind === "assign") {
+      const rhs = lowerCEstExprToAs(st.expr, block, locals);
+      if (st.target.type === "subscript") {
+        const idx = lowerCEstExprToAs(st.target.indexExpr, block, locals);
+        lines.push(
+          `${indent}states[Math.max(0, Math.min(states.length - 1, <i32>Math.round(${idx})))] ${st.op} ${rhs};`,
+        );
+      } else if (st.target.type === "port") {
+        const pname = st.target.portName.toLowerCase();
+        const outIdx = block.assignedPorts.findIndex((p) => p.toLowerCase() === pname);
+        const targetVar = outIdx === 0 ? "iHistA" : outIdx === 1 ? "iHistB" : outIdx === 2 ? "iHistC" : "states[0]";
+        lines.push(`${indent}${targetVar} ${st.op} ${rhs};`);
+      } else if (st.target.type === "var") {
+        const rawVar = st.target.name.toLowerCase();
+        const vname = sanitizeIdent(st.target.name);
+        if (!locals.has(vname)) {
+          locals.add(vname);
+          lines.push(`${indent}let ${vname}: f64 = 0.0;`);
+        }
+        lines.push(`${indent}${vname} ${st.op} ${rhs};`);
+        const outIdx = block.assignedPorts.findIndex((p) => p.toLowerCase() === rawVar);
+        if (outIdx === 0) lines.push(`${indent}iHistA = ${vname};`);
+        else if (outIdx === 1) lines.push(`${indent}iHistB = ${vname};`);
+        else if (outIdx === 2) lines.push(`${indent}iHistC = ${vname};`);
+      }
+    } else if (st.kind === "if") {
+      const cond = lowerCEstExprToAs(st.condition, block, locals);
+      lines.push(`${indent}if (Boolean(${cond})) {`);
+      lines.push(...lowerCStmtsToAs(st.thenBody, block, locals, indent + "  "));
+      if (st.elseBody && st.elseBody.length > 0) {
+        lines.push(`${indent}} else {`);
+        lines.push(...lowerCStmtsToAs(st.elseBody, block, locals, indent + "  "));
+      }
+      lines.push(`${indent}}`);
+    }
+  }
+  return lines;
+}
+
 /**
- * Generates a clean-room AssemblyScript `fmi-ls-emt` Norton-companion scaffold from a
- * parsed PSCAD custom Fortran block (`EmtCustomFortranBlock`). The generated source
- * compiles directly via `compileAssemblyScriptCompanion()` and matches the ABI expected
- * by `instantiateWasmCompanionsForNetlist()`.
+ * Generates an executable clean-room AssemblyScript `fmi-ls-emt` Norton-companion kernel from a
+ * parsed PSCAD custom Fortran/C block (`EmtCustomFortranBlock`). When `block.scriptSource` is supplied,
+ * compiles real AST statements directly into the WebAssembly `_doStep` function.
  */
 export function generateCleanRoomCompanionFromFortran(block: EmtCustomFortranBlock): string {
   const safeName = sanitizeIdent(block.name || block.id || "CustomBlock");
   const inputsList = block.referencedPorts.length > 0 ? block.referencedPorts.join(", ") : "none";
   const outputsList = block.assignedPorts.length > 0 ? block.assignedPorts.join(", ") : "none";
   const stateCount = Math.max(1, block.numRealStates + block.numIntStates);
+
+  let stepBodyLines: string[] = [];
+  if (block.scriptSource && block.scriptSource.trim()) {
+    try {
+      const locals = new Set<string>(["va", "vb", "vc", "tSec", "dtSec", "iHistA", "iHistB", "iHistC"]);
+      if (block.scriptLang === "c") {
+        const cAst = parseCScript(block.scriptSource);
+        stepBodyLines = lowerCStmtsToAs(cAst, block, locals, "  ");
+      } else {
+        const fAst = parseFortranScript(block.scriptSource);
+        stepBodyLines = lowerFortranStmtsToAs(fAst, block, locals, "  ");
+      }
+    } catch {
+      stepBodyLines = [];
+    }
+  }
+  if (stepBodyLines.length === 0) {
+    stepBodyLines = ["  states[0] = (va + vb + vc) * dtSec;", "  iHistA = 0.0;", "  iHistB = 0.0;", "  iHistC = 0.0;"];
+  }
 
   return `// Clean-room fmi-ls-emt AssemblyScript companion for ${block.name} (${block.id})
 // Referenced inputs: ${inputsList}
@@ -268,11 +519,7 @@ export function ${safeName}_doStep(tSec: f64, dtSec: f64, vNodePtr: usize): void
   const va = load<f64>(vNodePtr + 0);
   const vb = load<f64>(vNodePtr + 8);
   const vc = load<f64>(vNodePtr + 16);
-  // Clean-room user equations go here; default passive update preserves energy balance
-  states[0] = (va + vb + vc) * dtSec;
-  iHistA = 0.0;
-  iHistB = 0.0;
-  iHistC = 0.0;
+${stepBodyLines.join("\n")}
 }
 
 export function init(paramsPtr: usize, count: i32): void {

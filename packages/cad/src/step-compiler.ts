@@ -1047,6 +1047,12 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4, partPr
       return [brepRef];
     }
 
+    case SolidKind.Revolve: {
+      if (solid.polygon.length < 3) return [];
+      const brepRef = buildRevolveBrep(ctx, brepName, solid.polygon, solid.angle, solid.segments ?? 24, parentMatrix);
+      return brepRef ? [brepRef] : [];
+    }
+
     case SolidKind.Polyhedron: {
       if (solid.points.length === 0) return [];
       // Emit faceted planar B-Rep when explicit face loops are provided; fallback to AABB box otherwise
@@ -1249,6 +1255,227 @@ function buildPolyhedronBrep(
   if (stepFaces.length === 0) return null;
   const shell = emit(ctx, allocId(ctx), `CLOSED_SHELL('',(${stepFaces.join(",")}))`);
   return emit(ctx, allocId(ctx), `MANIFOLD_SOLID_BREP('${name}',${shell})`);
+}
+
+/**
+ * Emits an analytical `MANIFOLD_SOLID_BREP` (`CONICAL_SURFACE`, `CYLINDRICAL_SURFACE`, `PLANE`)
+ * for a full 360° surface-of-revolution solid when the profile lies in the `+r` half-plane
+ * and `worldMatrix` has uniform positive scaling; falls back to faceted polyhedron B-Rep otherwise.
+ */
+function buildRevolveBrep(
+  ctx: StepContext,
+  name: string,
+  rawPoly: readonly (readonly [number, number])[],
+  angleDeg: number,
+  segments: number,
+  worldMatrix?: Mat4,
+): string | null {
+  if (rawPoly.length < 3) return null;
+  let area2 = 0;
+  for (let i = 0; i < rawPoly.length; i++) {
+    const [x0, y0] = rawPoly[i]!;
+    const [x1, y1] = rawPoly[(i + 1) % rawPoly.length]!;
+    area2 += x0 * y1 - x1 * y0;
+  }
+  const ordered = area2 >= 0 ? rawPoly : [...rawPoly].reverse();
+
+  // Check uniform scaling and +r half-plane for exact analytical surfaces
+  let canAnalytical = Math.abs(angleDeg) >= 359.999 && ordered.every(([r]) => r >= -1e-4);
+  if (canAnalytical && worldMatrix) {
+    const sx = Math.hypot(worldMatrix[0], worldMatrix[1], worldMatrix[2]);
+    const sy = Math.hypot(worldMatrix[4], worldMatrix[5], worldMatrix[6]);
+    const sz = Math.hypot(worldMatrix[8], worldMatrix[9], worldMatrix[10]);
+    if (Math.abs(sx - sy) > 1e-4 || Math.abs(sx - sz) > 1e-4 || sx <= 1e-6) {
+      canAnalytical = false;
+    }
+  }
+
+  if (!canAnalytical) {
+    const absAngle = Math.abs(Math.max(-360, Math.min(360, angleDeg))) || 360;
+    const isFull = absAngle >= 359.999;
+    const steps = Math.max(8, Math.ceil((segments * absAngle) / 360));
+    const ringCount = isFull ? steps : steps + 1;
+    const dirSign = angleDeg < 0 ? -1 : 1;
+    const M = ordered.length;
+    const pts: Vec3[] = [];
+    const faces: number[][] = [];
+    for (let s = 0; s < ringCount; s++) {
+      const theta = (dirSign * ((s / steps) * (absAngle * Math.PI))) / 180;
+      const cosT = Math.cos(theta),
+        sinT = Math.sin(theta);
+      for (let k = 0; k < M; k++) {
+        const r = Math.max(1e-4, Math.abs(ordered[k]![0]));
+        pts.push([r * cosT, r * sinT, ordered[k]![1]]);
+      }
+    }
+    for (let s = 0; s < steps; s++) {
+      const nextRing = isFull ? (s + 1) % steps : s + 1;
+      const r0 = s * M,
+        r1 = nextRing * M;
+      for (let k = 0; k < M; k++) {
+        const nk = (k + 1) % M;
+        if (dirSign > 0) {
+          faces.push([r0 + k, r1 + k, r1 + nk], [r0 + k, r1 + nk, r0 + nk]);
+        } else {
+          faces.push([r0 + k, r1 + nk, r1 + k], [r0 + k, r0 + nk, r1 + nk]);
+        }
+      }
+    }
+    if (!isFull) {
+      const endOff = steps * M;
+      for (let k = 1; k < M - 1; k++) {
+        if (dirSign > 0) {
+          faces.push([0, k + 1, k], [endOff, endOff + k, endOff + k + 1]);
+        } else {
+          faces.push([0, k, k + 1], [endOff, endOff + k + 1, endOff + k]);
+        }
+      }
+    }
+    return buildPolyhedronBrep(ctx, name, pts, faces, worldMatrix);
+  }
+
+  const pts: [number, number][] = [];
+  for (const [r, z] of ordered) {
+    const prev = pts[pts.length - 1];
+    if (!prev || Math.hypot(r - prev[0], z - prev[1]) > 1e-6) {
+      pts.push([Math.max(0, r), z]);
+    }
+  }
+  if (pts.length > 1 && Math.hypot(pts[0]![0] - pts[pts.length - 1]![0], pts[0]![1] - pts[pts.length - 1]![1]) < 1e-6) {
+    pts.pop();
+  }
+  if (pts.length < 3) return null;
+
+  const scale = matrixScale(worldMatrix);
+  const effZAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 0, 1]) : [0, 0, 1];
+  const effNegZAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 0, -1]) : [0, 0, -1];
+  const effXAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [1, 0, 0]) : [1, 0, 0];
+
+  interface RevolveRing {
+    r: number;
+    z: number;
+    isAxis: boolean;
+    pPos: Vec3;
+    pNeg: Vec3;
+    vpPos: string;
+    vpNeg: string;
+    ec0?: string;
+    ec1?: string;
+    plPos: string;
+    plNeg: string;
+  }
+
+  const rings: RevolveRing[] = pts.map(([r, z], idx) => {
+    const isAxis = r <= 1e-4;
+    const center: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, z]) : [0, 0, z];
+    const plPos = axis2Placement3d(ctx, center, effZAxis, effXAxis);
+    const plNeg = axis2Placement3d(ctx, center, effNegZAxis, effXAxis);
+    if (isAxis) {
+      const vp = emit(ctx, allocId(ctx), `VERTEX_POINT('ra${idx}',${cartesianPoint(ctx, center)})`);
+      return { r: 0, z, isAxis: true, pPos: center, pNeg: center, vpPos: vp, vpNeg: vp, plPos, plNeg };
+    }
+    const pPos: Vec3 = worldMatrix ? transformPoint(worldMatrix, [r, 0, z]) : [r, 0, z];
+    const pNeg: Vec3 = worldMatrix ? transformPoint(worldMatrix, [-r, 0, z]) : [-r, 0, z];
+    const vpPos = emit(ctx, allocId(ctx), `VERTEX_POINT('rp${idx}',${cartesianPoint(ctx, pPos)})`);
+    const vpNeg = emit(ctx, allocId(ctx), `VERTEX_POINT('rn${idx}',${cartesianPoint(ctx, pNeg)})`);
+    const circ = circle(ctx, center, r * scale, effZAxis, effXAxis);
+    const ec0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vpPos},${vpNeg},${circ},.T.)`);
+    const ec1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vpNeg},${vpPos},${circ},.T.)`);
+    return { r, z, isAxis: false, pPos, pNeg, vpPos, vpNeg, ec0, ec1, plPos, plNeg };
+  });
+
+  const lineEdge = (a: RevolveRing, b: RevolveRing, sign: 1 | -1): string => {
+    const p0 = sign > 0 ? a.pPos : a.pNeg;
+    const p1 = sign > 0 ? b.pPos : b.pNeg;
+    const dx = p1[0] - p0[0],
+      dy = p1[1] - p0[1],
+      dz = p1[2] - p0[2];
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
+    const dirRef = direction(ctx, [dx / len, dy / len, dz / len]);
+    const vec = emit(ctx, allocId(ctx), `VECTOR('',${dirRef},${fmt(len)})`);
+    const ln = emit(ctx, allocId(ctx), `LINE('',${cartesianPoint(ctx, p0)},${vec})`);
+    return emit(
+      ctx,
+      allocId(ctx),
+      `EDGE_CURVE('',${sign > 0 ? a.vpPos : a.vpNeg},${sign > 0 ? b.vpPos : b.vpNeg},${ln},.T.)`,
+    );
+  };
+
+  const oe = (ec: string, fwd: boolean) =>
+    emit(ctx, allocId(ctx), `ORIENTED_EDGE('',*,*,${ec},${fwd ? ".T." : ".F."})`);
+
+  const stepFaces: string[] = [];
+  for (let i = 0; i < rings.length; i++) {
+    const a = rings[i]!;
+    const b = rings[(i + 1) % rings.length]!;
+    if (a.isAxis && b.isAxis) continue;
+    const dr = b.r - a.r;
+    const dz = b.z - a.z;
+    if (Math.hypot(dr, dz) < 1e-6) continue;
+
+    if (Math.abs(dz) < 1e-6) {
+      const plane = emit(ctx, allocId(ctx), `PLANE('',${dr > 0 ? a.plNeg : a.plPos})`);
+      const outer = a.r > b.r ? a : b;
+      const inner = a.r > b.r ? b : a;
+      const outerFwd = dr < 0;
+      const outerLoop = emit(
+        ctx,
+        allocId(ctx),
+        `EDGE_LOOP('',(${oe(outer.ec0!, outerFwd)},${oe(outer.ec1!, outerFwd)}))`,
+      );
+      const bounds = [emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${outerLoop},.T.)`)];
+      if (!inner.isAxis) {
+        const innerLoop = emit(
+          ctx,
+          allocId(ctx),
+          `EDGE_LOOP('',(${oe(inner.ec0!, !outerFwd)},${oe(inner.ec1!, !outerFwd)}))`,
+        );
+        bounds.push(emit(ctx, allocId(ctx), `FACE_BOUND('',${innerLoop},.T.)`));
+      }
+      stepFaces.push(emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${bounds.join(",")}),${plane},.T.)`));
+      continue;
+    }
+
+    const seamPos = lineEdge(a, b, 1);
+    const seamNeg = lineEdge(a, b, -1);
+    const isOuter = dz > 0;
+    let surf: string;
+    if (Math.abs(dr) < 1e-6) {
+      const cBase: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, a.z]) : [0, 0, a.z];
+      surf = cylindricalSurface(ctx, cBase, a.r * scale, effZAxis, effXAxis);
+    } else {
+      const rBot = a.z < b.z ? a.r : b.r;
+      const rTop = a.z < b.z ? b.r : a.r;
+      const zBot = Math.min(a.z, b.z);
+      const zTop = Math.max(a.z, b.z);
+      const cBot: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, zBot]) : [0, 0, zBot];
+      const coneSemi = Math.atan2((rTop - rBot) * scale, (zTop - zBot) * scale);
+      surf = conicalSurface(ctx, cBot, Math.max(1e-6, rBot * scale), coneSemi, effZAxis, effXAxis);
+    }
+
+    for (const half of [0, 1]) {
+      const loopEdges: string[] = [];
+      if (!a.isAxis) {
+        loopEdges.push(oe(half === 0 ? a.ec0! : a.ec1!, isOuter));
+      }
+      if (isOuter) {
+        loopEdges.push(oe(half === 0 ? seamNeg : seamPos, true));
+        if (!b.isAxis) loopEdges.push(oe(half === 0 ? b.ec0! : b.ec1!, false));
+        loopEdges.push(oe(half === 0 ? seamPos : seamNeg, false));
+      } else {
+        loopEdges.push(oe(half === 0 ? seamPos : seamNeg, true));
+        if (!b.isAxis) loopEdges.push(oe(half === 0 ? b.ec0! : b.ec1!, true));
+        loopEdges.push(oe(half === 0 ? seamNeg : seamPos, false));
+      }
+      const el = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${loopEdges.join(",")}))`);
+      const fb = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${el},.T.)`);
+      stepFaces.push(emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${fb}),${surf},${isOuter ? ".T." : ".F."})`));
+    }
+  }
+
+  if (stepFaces.length === 0) return null;
+  const shell = emit(ctx, allocId(ctx), `CLOSED_SHELL('',(${stepFaces.join(",")}))`);
+  return emit(ctx, allocId(ctx), `MANIFOLD_SOLID_BREP('${escStepStr(name)}',${shell})`);
 }
 
 /**

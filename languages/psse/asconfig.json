@@ -1,0 +1,18 @@
+{
+  "targets": {
+    "release": {
+      "outFile": "dist/dyr-kernel.wasm",
+      "sourceMap": false,
+      "optimizeLevel": 3,
+      "shrinkLevel": 0,
+      "converge": false,
+      "noAssert": true
+    }
+  },
+  "options": {
+    "bindings": "raw",
+    "runtime": "stub",
+    "initialMemory": 8,
+    "maximumMemory": 2048
+  }
+}

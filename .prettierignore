@@ -21,3 +21,4 @@ packages/exchange/validation/fmi/exported_fmus/**
 packages/exchange/validation/fmi/reference_fmus/**
 packages/exchange/validation/fmi/reference_fmus_repo/**
 **/assembly/**
+languages/psse/assets/psse-std-lib/src/models.ts

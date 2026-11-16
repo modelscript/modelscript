@@ -3487,7 +3487,6 @@ export class ValidationService {
       return;
     }
     const explicitLinks = links.filter((l) => l.relationKind === "twin" || l.relationKind === "implements");
-    if (explicitLinks.length === 0) return;
 
     const dbView = {
       symbol: (id: number) => uIdx.symbols.get(id),
@@ -3511,10 +3510,15 @@ export class ValidationService {
     };
 
     const srcTransformer = this.getTggTransformer(normLang) ?? new PolyglotTransformer();
+    const validatedPairs = new Set<string>();
 
-    for (const link of explicitLinks) {
-      const srcEntry = uIdx.symbols.get(link.sourceSymbolId);
-      if (!srcEntry) continue;
+    const validatePair = (
+      srcEntry: SymbolEntry,
+      tgtEntry: SymbolEntry | null,
+      targetNameHint: string,
+      fallbackLine: number,
+      fallbackCol: number,
+    ) => {
       if (
         srcEntry.metadata?.["__modelscript_blackbox"] ||
         (srcEntry.startOffset >= 0 &&
@@ -3523,12 +3527,16 @@ export class ValidationService {
             .slice(srcEntry.startOffset, Math.min(text.length, srcEntry.endOffset))
             .includes("__modelscript_blackbox"))
       ) {
-        continue;
+        return;
       }
+
+      const pairKey = `${srcEntry.id}:${tgtEntry?.id ?? targetNameHint}`;
+      if (validatedPairs.has(pairKey)) return;
+      validatedPairs.add(pairKey);
 
       const startPos = textDocument
         ? textDocument.positionAt(srcEntry.startOffset)
-        : { line: Math.max(0, link.sourceLine - 1), character: Math.max(0, link.sourceColumn - 1) };
+        : { line: Math.max(0, fallbackLine - 1), character: Math.max(0, fallbackCol - 1) };
       const endPos = textDocument
         ? textDocument.positionAt(
             Math.max(
@@ -3540,8 +3548,8 @@ export class ValidationService {
       const range: Range = { start: startPos, end: endPos };
 
       const srcNode = symbolEntryToPolyglotNode(dbView, srcEntry);
-      if (!link.targetEntry) {
-        const expectedLang = inferTargetLang(link.targetName, normLang);
+      if (!tgtEntry) {
+        const expectedLang = inferTargetLang(targetNameHint, normLang);
         const corrDiags = srcTransformer.validateCorrespondence(srcNode, null, normLang, expectedLang);
         for (const cd of corrDiags) {
           diagnostics.push({
@@ -3552,16 +3560,19 @@ export class ValidationService {
             message: cd.message,
           });
         }
-        continue;
+        return;
       }
 
-      const tgtEntry = link.targetEntry;
-      const tgtLang = (tgtEntry.language ?? inferTargetLang(link.targetName, normLang)).toLowerCase();
-      if (tgtLang === normLang) continue;
+      const tgtLang = (tgtEntry.language ?? inferTargetLang(targetNameHint, normLang)).toLowerCase();
+      if (tgtLang === normLang) return;
 
       const isContainerTwin =
-        isTypeLikeSymbol(srcEntry) || srcEntry.ruleName === "psse_model" || srcEntry.ruleName === "pscad_component";
-      if (!isContainerTwin) continue;
+        isTypeLikeSymbol(srcEntry) ||
+        srcEntry.ruleName === "psse_model" ||
+        srcEntry.ruleName === "psse_dyr_record" ||
+        srcEntry.ruleName === "pscad_component" ||
+        srcEntry.ruleName === "ModuleDeclaration";
+      if (!isContainerTwin) return;
 
       const tgtNode = symbolEntryToPolyglotNode(dbView, tgtEntry);
       const seenCorr = new Set<string>();
@@ -3586,6 +3597,31 @@ export class ValidationService {
       if (tgtTransformer) {
         for (const cd of tgtTransformer.validateCorrespondence(tgtNode, srcNode, tgtLang, normLang)) {
           emitCorr(cd);
+        }
+      }
+    };
+
+    for (const link of explicitLinks) {
+      const srcEntry = uIdx.symbols.get(link.sourceSymbolId);
+      if (!srcEntry) continue;
+      validatePair(srcEntry, link.targetEntry ?? null, link.targetName, link.sourceLine, link.sourceColumn);
+    }
+
+    // Also validate zero-annotation TGG container correspondences aligned by TggCorrespondenceIndexer
+    const tggIndexer = uw.tggCorrespondenceIndexer;
+    if (tggIndexer) {
+      uw.syncTggCorrespondences?.(uIdx);
+      for (const sym of uIdx.symbols.values()) {
+        if ((sym.resourceId || sym.documentUri || "") !== effectiveUri) continue;
+        for (const slot of tggIndexer.getSlotsForSymbol(sym.id)) {
+          const rec = tggIndexer.hypergraph.getRecord(slot);
+          if (!rec || rec.isRemoved) continue;
+          for (const memberId of Object.values(rec.domainNodes)) {
+            if (typeof memberId === "number" && memberId !== sym.id) {
+              const peer = uIdx.symbols.get(memberId);
+              if (peer) validatePair(sym, peer, peer.name, 1, 1);
+            }
+          }
         }
       }
     }

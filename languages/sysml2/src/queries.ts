@@ -467,7 +467,26 @@ export const resolveFeatureInScope = (db: QueryDB, scopeId: number | null, name:
   const standardTypes = new Set(["Real", "Integer", "Boolean", "String", "Natural", "Complex", "Rational", "Anything"]);
   if (standardTypes.has(name)) return globals[0]!;
 
-  const rootGlobal = globals.find((g) => g.parentId === null || g.kind === "Package");
+  const rootGlobal =
+    globals.find(
+      (g) =>
+        (g.language === "sysml2" || g.language === "sysml" || !g.language) &&
+        (g.parentId === null || g.kind === "Package"),
+    ) ??
+    globals.find((g) => {
+      if (g.parentId === null || g.kind === "Package") return true;
+      if (!g.language || g.language === "sysml2" || g.language === "sysml") return false;
+      const parent = db.symbol(g.parentId);
+      return Boolean(
+        parent &&
+        parent.parentId === null &&
+        (parent.ruleName === "reqif_specification" ||
+          parent.ruleName === "scad_file" ||
+          parent.ruleName === "step_product" ||
+          parent.ruleName === "pscad_library" ||
+          parent.ruleName === "pscad_project"),
+      );
+    });
   return rootGlobal ?? null;
 };
 
@@ -1889,16 +1908,21 @@ export function resolveSatisfyingTargetRequirement(db: QueryDB, entry: SymbolEnt
   }
   if (!rawTarget) return null;
 
+  const isSatisfiableReqRule = (r: string | undefined): boolean =>
+    r === "RequirementDefinition" ||
+    r === "RequirementUsage" ||
+    r === "reqif_requirement" ||
+    r === "SpecObject" ||
+    r === "qif_characteristic" ||
+    r === "DimensionalCharacteristic";
+
   const resolved = resolveFeatureInScope(db, entry.parentId, rawTarget);
-  if (resolved && (resolved.ruleName === "RequirementDefinition" || resolved.ruleName === "RequirementUsage")) {
+  if (resolved && isSatisfiableReqRule(resolved.ruleName)) {
     return resolved;
   }
 
   const shortName = rawTarget.split("::").pop()!;
-  return (
-    db.byName(shortName).find((t) => t.ruleName === "RequirementDefinition" || t.ruleName === "RequirementUsage") ??
-    null
-  );
+  return db.byName(shortName).find((t) => isSatisfiableReqRule(t.ruleName)) ?? null;
 }
 
 /**

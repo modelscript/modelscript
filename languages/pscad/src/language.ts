@@ -22,7 +22,7 @@ import { parsePscx } from "./parser/pscx-parser.js";
 import { writePscadPsout } from "./psout/index.js";
 import { EmtSolver } from "./solver/emt-solver.js";
 import { runFrequencyScan } from "./solver/frequency-scanner.js";
-import { runPointOnWaveSweep } from "./solver/parametric-sweep.js";
+import { runMultipleRunSweep, runPointOnWaveSweep } from "./solver/parametric-sweep.js";
 import { pscadPolyglotConfig } from "./tgg/pscad-polyglot.js";
 import {
   verifyIeee2800Compliance,
@@ -141,9 +141,11 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
   const coverage = computeSimulationCoverage(project, netlist);
   const simulationReport: PscadSimulationReport = {
     solver: "none",
+    status: "rejected",
     coverage,
     injectedReferenceBuses: [],
     synthesizedIbr: false,
+    fidelitySummary: `${coverage.lowered}/${coverage.simulatable} simulatable components lowered (${(coverage.ratio * 100).toFixed(0)}%)`,
   };
   let strictNetlistFailed = false;
   if (coverage.simulatable > 0 && coverage.ratio < 0.9) {
@@ -327,6 +329,26 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
     }
   }
 
+  const pct = (coverage.ratio * 100).toFixed(0);
+  if (simulationReport.solver === "none") {
+    simulationReport.status = "rejected";
+    simulationReport.fidelitySummary = `${coverage.lowered}/${coverage.simulatable} simulatable components lowered (${pct}%), simulation not executed`;
+  } else if (
+    simulationReport.solver === "builtin-companion" ||
+    coverage.ratio < 1.0 ||
+    simulationReport.injectedReferenceBuses.length > 0 ||
+    simulationReport.synthesizedIbr
+  ) {
+    simulationReport.status = "degraded";
+    simulationReport.fidelitySummary =
+      `${coverage.lowered}/${coverage.simulatable} components lowered (${pct}%, solver=${simulationReport.solver}` +
+      `${simulationReport.injectedReferenceBuses.length > 0 ? `, injectedRefs=${simulationReport.injectedReferenceBuses.length}` : ""}` +
+      `${simulationReport.synthesizedIbr ? ", synthesizedIbr=true" : ""})`;
+  } else {
+    simulationReport.status = "ok";
+    simulationReport.fidelitySummary = `${coverage.lowered}/${coverage.simulatable} components lowered (100%, solver=${simulationReport.solver})`;
+  }
+
   return {
     project: project.name,
     settings: project.settings,
@@ -345,6 +367,8 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
 /** Describes how a PSCAD simulation result was obtained and how much of the model it reflects. */
 export interface PscadSimulationReport {
   solver: "external" | "builtin-companion" | "none";
+  status: "ok" | "degraded" | "rejected";
+  fidelitySummary: string;
   coverage: SimulationCoverage;
   /** Buses that received a fabricated Thevenin reference source in the companion fallback. */
   injectedReferenceBuses: string[];
@@ -455,13 +479,14 @@ export const pscadLanguage = language({
           documentText?: string | undefined;
           solverRunner?: PscadSimulationPipelineOptions["solverRunner"] | undefined;
         },
-        params?: Partial<PscadSimulationPipelineOptions>,
+        params?: Partial<PscadSimulationPipelineOptions> & { allowSyntheticFallback?: boolean | undefined },
       ) => {
         const text = params?.documentText ?? ctx?.documentText;
         if (!text) return null;
         return runPscadSimulationPipeline({
           runSimulation: true,
           ...params,
+          strictNetlist: params?.allowSyntheticFallback ? false : (params?.strictNetlist ?? true),
           documentText: text,
           solverRunner: params?.solverRunner ?? ctx?.solverRunner,
         });
@@ -595,6 +620,37 @@ export const pscadLanguage = language({
           fMinHz: params?.fMinHz ?? 1.0,
           fMaxHz: params?.fMaxHz ?? 150.0,
         });
+      },
+    },
+    {
+      id: "run_mrun_sweep",
+      title: "PSCAD Multiple-Run (MRUN) Parametric & Statistical Sweep",
+      description:
+        "Runs multi-iteration parametric/Monte-Carlo EMT sweeps across branch, source, or fault parameters and computes envelope statistics.",
+      category: "simulate",
+      execute: async (
+        ctx: { documentText?: string | undefined },
+        params?: {
+          documentText?: string | undefined;
+          numRuns?: number;
+          durationSec?: number;
+          timeStepSec?: number;
+          seed?: number;
+        },
+      ) => {
+        const text = params?.documentText ?? ctx?.documentText;
+        if (!text) return null;
+        const project = parsePscx(text);
+        const netlist = extractEmtNetlist(project);
+        // Auto-discover master:mrun NR / NumRuns parameter when present
+        const mrunCmp = [project.rootModule, ...project.subModules.values()]
+          .flatMap((m) => m.components)
+          .find((c) => c.definitionName.toLowerCase().endsWith("mrun"));
+        const nrRaw = mrunCmp
+          ? Number(mrunCmp.parameters["NR"] ?? mrunCmp.parameters["NumRuns"] ?? mrunCmp.parameters["N"] ?? NaN)
+          : NaN;
+        const numRuns = params?.numRuns ?? (Number.isFinite(nrRaw) && nrRaw > 0 ? Math.trunc(nrRaw) : 10);
+        return runMultipleRunSweep(netlist, { ...params, numRuns });
       },
     },
   ],

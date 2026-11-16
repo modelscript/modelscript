@@ -466,6 +466,50 @@ export class DigitalThreadHypergraph {
   }
 
   /**
+   * Resets a previously allocated (or removed) slot for clean incremental reuse,
+   * unbinding old domain nodes and restoring SYNCED status.
+   */
+  resetSlot(slot: number, relation: ThreadRelation = ThreadRelation.Aligned): void {
+    if (slot >= this.count) return;
+    const base = slot * THREAD_STRIDE;
+    const prevMask = this.data[base + THREAD_FIELD_MASK]!;
+    for (let d = 0; d < MAX_THREAD_DOMAINS; d++) {
+      if ((prevMask & (1 << d)) !== 0) {
+        const prevNode = this.data[base + THREAD_HEADER_WORDS + d]!;
+        if (prevNode !== 0) {
+          const oldKey = (BigInt(d) << 32n) | BigInt(prevNode >>> 0);
+          const oldSlots = this.nodeToThreadSlots.get(oldKey);
+          if (oldSlots) {
+            const filtered = oldSlots.filter((s) => s !== slot);
+            if (filtered.length > 0) this.nodeToThreadSlots.set(oldKey, filtered);
+            else this.nodeToThreadSlots.delete(oldKey);
+          }
+        }
+        this.data[base + THREAD_HEADER_WORDS + d] = 0;
+      }
+    }
+    const overflow = this.overflowDomainNodes.get(slot);
+    if (overflow) {
+      for (const [d, prevNode] of overflow.entries()) {
+        const oldKey = (BigInt(d) << 32n) | BigInt(prevNode >>> 0);
+        const oldSlots = this.nodeToThreadSlots.get(oldKey);
+        if (oldSlots) {
+          const filtered = oldSlots.filter((s) => s !== slot);
+          if (filtered.length > 0) this.nodeToThreadSlots.set(oldKey, filtered);
+          else this.nodeToThreadSlots.delete(oldKey);
+        }
+      }
+      this.overflowDomainNodes.delete(slot);
+    }
+    this.data[base + THREAD_FIELD_MASK] = 0;
+    this.data[base + THREAD_FIELD_STATUS] = THREAD_STATUS_SYNCED;
+    this.data[base + THREAD_FIELD_REVISION] = (this.data[base + THREAD_FIELD_REVISION]! || 0) + 1;
+    this.data[base + THREAD_FIELD_RELATION] = relation;
+    this.slotConflicts.delete(slot);
+    this.slotEqualities.delete(slot);
+  }
+
+  /**
    * Retrieves the raw underlying Uint32Array storage buffer.
    */
   getRawData(): Uint32Array {

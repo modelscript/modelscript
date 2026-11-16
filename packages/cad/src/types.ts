@@ -50,6 +50,7 @@ export enum SolidKind {
   Fillet = "fillet",
   Chamfer = "chamfer",
   Extrusion = "extrusion",
+  Revolve = "revolve",
   Polyhedron = "polyhedron",
 }
 
@@ -326,6 +327,16 @@ export interface ChamferSolid {
   readonly sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
+/** Surface-of-revolution solid from a closed 2D profile `[r, z][]` around the local Z axis. */
+export interface RevolveSolid {
+  readonly kind: SolidKind.Revolve;
+  readonly name: string;
+  readonly polygon: readonly (readonly [number, number])[];
+  readonly angle: number;
+  readonly segments?: number | undefined;
+  readonly sourceMetadata?: SolidSourceMetadata | undefined;
+}
+
 /** A node in the constructive solid geometry tree. */
 export type Solid =
   | BoxSolid
@@ -333,6 +344,7 @@ export type Solid =
   | SphereSolid
   | TorusSolid
   | ExtrusionSolid
+  | RevolveSolid
   | PolyhedronSolid
   | TransformSolid
   | BooleanSolid
