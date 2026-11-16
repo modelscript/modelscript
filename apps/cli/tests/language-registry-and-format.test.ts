@@ -120,7 +120,7 @@ ENDSEC;
 END-ISO-10303-21;`;
 
     const formatted = await lang.format(rawStep);
-    assert.ok(formatted.includes("#1=PRODUCT ('Cube','Test');"));
+    assert.ok(formatted.includes("#1=PRODUCT('Cube','Test');"));
     assert.ok(formatted.includes("#2=APPLICATION_CONTEXT('automotive');"));
   });
 

@@ -609,7 +609,7 @@ export function parseLasToModelica(text: string, packageName = "WellLogData"): s
       const v = r[c];
       return typeof v === "number" && Number.isFinite(v) ? String(v) : String(doc.nullValue);
     });
-    const desc = curve.description ? ` "${curve.description.replace(/"/g, '\\"')}"` : "";
+    const desc = curve.description ? ` "${curve.description.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"` : "";
     lines.push(`  constant Real ${safeName}${unitAttr}[${numRows}] = {${vals.join(", ")}}${desc};`);
   }
 

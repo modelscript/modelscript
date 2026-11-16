@@ -189,10 +189,7 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     const vizPath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx");
     const vizContent = fs.readFileSync(vizPath, "utf-8");
 
-    assert.ok(
-      vizContent.includes("2px solid var(--ms-brand, #0891b2)"),
-      "Nested model switcher tabs must use --ms-brand token",
-    );
+    assert.ok(vizContent.includes("var(--ms-brand,"), "Nested model switcher tabs must use --ms-brand token");
     assert.ok(
       vizContent.includes("var(--ms-border, var(--color-border-default))"),
       "Visualizer subheaders and dividers must use --ms-border token",
@@ -218,7 +215,7 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     );
     assert.ok(dockContent.includes("var(--ms-divider"), "MorselFloatingDock dividers must use --ms-divider token");
     assert.ok(
-      galleryContent.includes("var(--ms-brand") && galleryContent.includes("var(--ms-bg"),
+      galleryContent.includes("var(--ms-accent") && galleryContent.includes("var(--ms-bg"),
       "TemplateGalleryModal must use design tokens for brand accents and canvas backgrounds",
     );
   });

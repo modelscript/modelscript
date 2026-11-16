@@ -449,12 +449,21 @@ export function simulateClosedLoopRobot(
   const nJ = jointNames.length;
   const steps = Math.floor(duration / dt) + 1;
   const times: number[] = new Array(steps);
-  const jointSeries: Record<string, number[]> = {};
-  const reference: Record<string, number[]> = {};
+  const jointSeries: Record<string, number[]> = Object.create(null);
+  const reference: Record<string, number[]> = Object.create(null);
+  const jointArrays: number[][] = new Array(nJ);
+  const refArrays: number[][] = new Array(nJ);
 
-  for (const name of jointNames) {
-    jointSeries[name] = new Array(steps);
-    reference[name] = new Array(steps);
+  for (let j = 0; j < nJ; j++) {
+    const name = jointNames[j]!;
+    const jArr = new Array<number>(steps);
+    const rArr = new Array<number>(steps);
+    jointArrays[j] = jArr;
+    refArrays[j] = rArr;
+    if (name !== "__proto__" && name !== "constructor" && name !== "prototype") {
+      Object.defineProperty(jointSeries, name, { value: jArr, enumerable: true, configurable: true, writable: true });
+      Object.defineProperty(reference, name, { value: rArr, enumerable: true, configurable: true, writable: true });
+    }
   }
   if (nJ === 0) {
     for (let s = 0; s < steps; s++) times[s] = s * dt;
@@ -489,8 +498,8 @@ export function simulateClosedLoopRobot(
           : 0.7;
       const ref = maxAmp * Math.sin(1.4 * t + 0.6 * j);
       uCtrl[j] = kp * (ref - q[j]!) - kd * dq[j]!;
-      jointSeries[joint.name]![s] = q[j]!;
-      reference[joint.name]![s] = ref;
+      jointArrays[j]![s] = q[j]!;
+      refArrays[j]![s] = ref;
       const err = ref - q[j]!;
       sqErrSum += err * err;
 

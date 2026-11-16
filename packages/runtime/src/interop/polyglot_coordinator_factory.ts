@@ -1223,7 +1223,10 @@ function parseExplicitDirectiveLinks(
 
       const twinMatch = /@(twin|port_map)\s*:\s*([^\s<]+)\s*(<->|<-|->)\s*([^\s*]+(?:\s*\*\))?)/.exec(lineText);
       if (twinMatch) {
-        const rawTarget = twinMatch[4]!.replace(/\*\/$/, "").replace(/-->$/, "").trim();
+        const rawTarget = twinMatch[4]!
+          .replace(/\*\/$/, "")
+          .replace(/--!?>$/, "")
+          .trim();
         links.push({
           paneIndex: pIdx,
           fileName: pane.fileName,

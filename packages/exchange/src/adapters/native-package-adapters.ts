@@ -228,6 +228,7 @@ export const EXTENSION_TO_LANGUAGE_ID: Record<string, string> = {
   ".basin": "hec-hms",
   ".hms": "hec-hms",
   ".met": "hec-hms",
+  ".las": "las",
   ".rasgeo": "hec-ras",
   ".g01": "hec-ras",
   ".g02": "hec-ras",

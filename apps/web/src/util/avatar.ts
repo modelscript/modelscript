@@ -1,5 +1,47 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+const SAFE_DATA_IMAGE_RE = /^data:image\/(png|jpeg|jpg|gif|webp|avif);base64,([a-zA-Z0-9+/=]+)$/i;
+
+function sanitizeAvatarOrBannerUrl(rawUrl: string): string | undefined {
+  const trimmed = rawUrl.trim();
+  const dataMatch = SAFE_DATA_IMAGE_RE.exec(trimmed);
+  if (dataMatch) {
+    return `data:image/${dataMatch[1]!.toLowerCase()};base64,${dataMatch[2]!}`;
+  }
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return undefined;
+      if (parsed.hostname === "ui-avatars.com" || parsed.hostname.endsWith(".ui-avatars.com")) {
+        return undefined;
+      }
+      return parsed.href;
+    } catch {
+      return undefined;
+    }
+  }
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
+    try {
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://ansatz.social";
+      const parsed = new URL(trimmed, baseUrl);
+      if (parsed.origin !== baseUrl) return undefined;
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function escapeXmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function getAvatarUrl(username?: string | null, originalUrl?: string | null): string {
   const candidateUrl =
     originalUrl && (originalUrl.startsWith("http") || originalUrl.startsWith("/") || originalUrl.startsWith("data:"))
@@ -8,14 +50,9 @@ export function getAvatarUrl(username?: string | null, originalUrl?: string | nu
         ? username
         : undefined;
   if (candidateUrl) {
-    try {
-      const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://ansatz.social";
-      const hostname = new URL(candidateUrl, baseUrl).hostname;
-      if (hostname !== "ui-avatars.com" && !hostname.endsWith(".ui-avatars.com")) {
-        return candidateUrl;
-      }
-    } catch {
-      // Invalid URL, continue to generated avatar
+    const safeUrl = sanitizeAvatarOrBannerUrl(candidateUrl);
+    if (safeUrl) {
+      return safeUrl;
     }
   }
 
@@ -29,7 +66,7 @@ export function getAvatarUrl(username?: string | null, originalUrl?: string | nu
         ? originalUrl
         : "?";
 
-  const initials = effectiveUsername.substring(0, 2).toUpperCase();
+  const initials = escapeXmlText(effectiveUsername.substring(0, 2).toUpperCase());
   let hash = 0;
   for (let i = 0; i < effectiveUsername.length; i++) {
     hash = effectiveUsername.charCodeAt(i) + ((hash << 5) - hash);

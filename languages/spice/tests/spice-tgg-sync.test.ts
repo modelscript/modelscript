@@ -19,10 +19,10 @@ describe("SPICE Bidirectional TGG Round-Trip Synchronization (@modelscript/spice
   it("should compile all declarative SPICE TGG rules via compileTGGRules()", () => {
     assert.ok(spiceLanguage.polyglot, "SPICE language must define polyglot config");
     const compiled = compileTGGRules(spiceLanguage.polyglot);
-    assert.strictEqual(compiled.ruleCount, 7, "Should declare 7 TGG rules");
+    assert.strictEqual(compiled.ruleCount, 5, "Should declare 5 TGG rules");
     assert.ok(compiled.sourceCode.includes("tgg_forward_SpiceResistorToModelicaResistor"));
     assert.ok(compiled.sourceCode.includes("tgg_forward_SpiceCapacitorToModelicaCapacitor"));
-    assert.ok(compiled.sourceCode.includes("tgg_forward_SpiceVoltageSourceToModelicaConstantVoltage"));
+    assert.ok(compiled.sourceCode.includes("tgg_forward_SpiceVoltageSourceToModelicaVoltage"));
     assert.ok(compiled.sourceCode.includes("tgg_forward_dispatch"));
     assert.ok(compiled.sourceCode.includes("tgg_backward_dispatch"));
   });

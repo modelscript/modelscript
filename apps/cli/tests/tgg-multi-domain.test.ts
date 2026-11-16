@@ -49,18 +49,20 @@ describe("Multi-Domain TGG Rule Catalog", () => {
     expect(compiled.sourceCode).toContain("export function tgg_backward_SysML2ToStepMeasure");
   });
 
-  it("should compile Modelica polyglot rules targeting SysML v2, OWL 2, and CSV telemetry", () => {
+  it("should compile Modelica polyglot rules targeting SysML v2", () => {
     const modelicaRules = (modelicaLanguage as any).polyglot?.rules;
     expect(modelicaRules).toBeDefined();
 
     const compiled = compileTGGRules(modelicaRules);
     expect(compiled.ruleNames).toContain("ModelicaModelToSysmlBlock");
-    expect(compiled.ruleNames).toContain("ModelicaToOWL2Class");
-    expect(compiled.ruleNames).toContain("ModelicaVariableToCsvChannel");
+    expect(compiled.ruleNames).toContain("ModelicaComponentToSysmlPart");
+    expect(compiled.ruleNames).toContain("ModelicaPinToSysmlElectricalPort");
+    expect(compiled.ruleNames).toContain("ModelicaAssertToSysmlRequirement");
+    expect(compiled.ruleNames).toContain("ModelicaConnectToSysmlConnection");
+    expect(compiled.ruleNames).toContain("ModelicaEquationToSysmlConstraint");
 
-    // Verify generated CSV channel functions
-    expect(compiled.sourceCode).toContain("export function tgg_forward_ModelicaVariableToCsvChannel");
-    expect(compiled.sourceCode).toContain("export function tgg_backward_ModelicaVariableToCsvChannel");
+    expect(compiled.sourceCode).toContain("export function tgg_forward_ModelicaModelToSysmlBlock");
+    expect(compiled.sourceCode).toContain("export function tgg_backward_ModelicaModelToSysmlBlock");
   });
 
   it("should verify CPA confluence on multi-domain rule sets", () => {

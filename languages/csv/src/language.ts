@@ -271,7 +271,7 @@ export const csvLanguage = language({
     _unquoted_cell: () => /[^#,\r\n\t;"][^,\r\n\t;"]*/,
 
     _delimiter: () => choice(",", ";", "\t"),
-    _newline: () => /(\r\n|\n|\r)+/,
+    _newline: () => /[\r\n]+/,
 
     // =====================================================================
     // Dummy Rule for Virtual Component Symbols

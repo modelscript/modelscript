@@ -183,12 +183,12 @@ describe("Settings Page, Deep Search Index, Dynamic Instance URLs & Accessibilit
     const virtualListSrc = fs.readFileSync(path.join(WEB_SRC_DIR, "components/VirtualPostList.tsx"), "utf-8");
     assert.ok(virtualListSrc.includes("overscan: 10"), "VirtualPostList must use overscan: 10 for smooth scrolling");
 
-    // 4. index.css must apply font smoothing globally to *, *::before, *::after
-    const indexCss = fs.readFileSync(path.join(WEB_SRC_DIR, "index.css"), "utf-8");
+    // 4. Sidebar must apply font smoothing to prevent flicker
+    const sidebarSrc = fs.readFileSync(path.join(WEB_SRC_DIR, "components/Sidebar.tsx"), "utf-8");
     assert.ok(
-      indexCss.includes("-webkit-font-smoothing: antialiased;") &&
-        indexCss.includes("-moz-osx-font-smoothing: grayscale;"),
-      "index.css must define antialiased and grayscale font smoothing",
+      sidebarSrc.includes("-webkit-font-smoothing: antialiased;") &&
+        sidebarSrc.includes("-moz-osx-font-smoothing: grayscale;"),
+      "Sidebar.tsx must define antialiased and grayscale font smoothing",
     );
 
     // 5. ScrollToTop must throttle scroll updates with requestAnimationFrame and use getPropertyValue checks

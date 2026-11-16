@@ -1103,10 +1103,12 @@ export async function pregenerateServerSvgThumbnail(
         // Check for paired STEP CAD file in upload directory
         let stepContent: string | undefined;
         try {
-          const stepBase = originalFilename.replace(/\.qif$/i, "");
+          const resolvedBase = path.resolve(resolvedDir);
+          const stepBase = path.basename(originalFilename).replace(/\.qif$/i, "");
           const candidateNames = [`${stepBase}.step`, `${stepBase}.stp`, "TurbineBladeRoot.step"];
           for (const cand of candidateNames) {
-            const candPath = path.resolve(resolvedDir, cand);
+            const candPath = path.resolve(resolvedBase, cand);
+            if (!candPath.startsWith(resolvedBase + path.sep)) continue;
             if (fs.existsSync(candPath)) {
               stepContent = fs.readFileSync(candPath, "utf-8");
               break;

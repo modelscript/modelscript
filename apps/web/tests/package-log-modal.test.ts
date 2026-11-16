@@ -37,26 +37,18 @@ describe("Package Ingestion Log Modal & Accessibility UX Suite", () => {
 
     it("verifies TerminalLogViewer is removed from direct PageWrap flex row children", () => {
       // In the old broken code, TerminalLogViewer was a direct child inside PageWrap.
-      // Now, it is conditionally rendered inside LogsModalOverlay only when logsModalOpen is true.
+      // Now, it is conditionally rendered inside a Dialog only when logsModalOpen is true.
       assert.ok(
         packageDetailPageSrc.includes("{logsModalOpen && name && version && ("),
         "TerminalLogViewer must only be mounted when logsModalOpen is true",
       );
-      assert.ok(
-        packageDetailPageSrc.includes("<LogsModalOverlay"),
-        "TerminalLogViewer must be wrapped in a dedicated modal overlay",
-      );
-      assert.ok(
-        packageDetailPageSrc.includes("<LogsModalContainer>"),
-        "TerminalLogViewer must be wrapped in a centered modal container",
-      );
+      assert.ok(packageDetailPageSrc.includes("<Dialog"), "TerminalLogViewer must be wrapped in a dedicated Dialog");
     });
 
-    it("verifies clicking the overlay backdrop closes the modal", () => {
+    it("verifies closing the Dialog closes the modal", () => {
       assert.ok(
-        packageDetailPageSrc.includes("if (e.target === e.currentTarget) {") &&
-          packageDetailPageSrc.includes("setLogsModalOpen(false);"),
-        "Backdrop clicks must dismiss the logs modal",
+        packageDetailPageSrc.includes("onClose={() => setLogsModalOpen(false)}"),
+        "Dialog onClose must dismiss the logs modal",
       );
     });
   });

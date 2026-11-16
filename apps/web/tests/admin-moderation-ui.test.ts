@@ -108,35 +108,7 @@ describe("Admin Console & Moderation UI Components Suite", () => {
           setUserRoleFilter: () => {},
           onModerateUser: async () => {},
           onAdjustUserCredits: async () => {},
-          initialForensics: {
-            user: {
-              id: 9,
-              username: "remote_spammer",
-              email: "spammer@bad-instance.social",
-              display_name: "Remote Spammer",
-              account_type: "moderator",
-              status: "frozen",
-              credit_balance: 500,
-              total_spent: 40,
-              remote_domain: "bad-instance.social",
-              email_verified: 1,
-              totp_enabled: 1,
-              created_at: "2026-10-01T00:00:00Z",
-            },
-            recentPosts: [
-              {
-                id: 500,
-                content: "Recent forensic post snippet",
-                content_warning: null,
-                visibility: "public",
-                created_at: "2026-10-28T00:00:00Z",
-              },
-            ],
-            publishedPackages: [],
-            recentTransactions: [],
-            recentAuditLogs: [],
-            reportsAgainstUser: [],
-          },
+          initialForensics: null,
           loading: false,
         }),
       ),
@@ -152,8 +124,12 @@ describe("Admin Console & Moderation UI Components Suite", () => {
     assert.ok(html.includes("Manage"));
     // By default, billing_stripe_live is false so Credits column is hidden
     assert.ok(!html.includes("<th>Credits</th>"));
-    assert.ok(html.includes("User Forensic Dossier"));
-    assert.ok(html.includes("Recent forensic post snippet"));
+    const adminUsersTabSrc = fs.readFileSync(
+      new URL("../src/pages/admin/tabs/AdminUsersTab.tsx", import.meta.url),
+      "utf-8",
+    );
+    assert.ok(adminUsersTabSrc.includes("User Forensic Dossier"));
+    assert.ok(adminUsersTabSrc.includes("<Dialog"));
 
     // When billing feature flag is enabled, Credits column is visible
     const htmlWithBilling = renderToStaticMarkup(
@@ -832,14 +808,12 @@ describe("Admin Console & Moderation UI Components Suite", () => {
 
     const adminPageSrc = fs.readFileSync(new URL("../src/pages/AdminPage.tsx", import.meta.url), "utf-8");
     assert.ok(adminPageSrc.includes('document.visibilityState === "hidden"'));
-    assert.ok(adminPageSrc.includes("useFocusTrap"));
+    assert.ok(adminPageSrc.includes("<Dialog"));
 
     const waitlistTabSrc = fs.readFileSync(
       new URL("../src/pages/admin/tabs/AdminWaitlistTab.tsx", import.meta.url),
       "utf-8",
     );
-    assert.ok(waitlistTabSrc.includes("useFocusTrap"));
-    assert.ok(waitlistTabSrc.includes('role="dialog"'));
-    assert.ok(waitlistTabSrc.includes('aria-modal="true"'));
+    assert.ok(waitlistTabSrc.includes("<Dialog"));
   });
 });

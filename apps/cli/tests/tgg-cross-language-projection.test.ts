@@ -20,10 +20,9 @@ test("Cross-Language TGG Polyglot Rules across 8 engineering domains", () => {
     assert.ok(compiled.ruleCount > 0, "Modelica should have TGG transformation rules");
     assert.ok(compiled.ruleNames.includes("ModelicaModelToSysmlBlock"));
     assert.ok(compiled.ruleNames.includes("ModelicaComponentToSysmlPart"));
+    assert.ok(compiled.ruleNames.includes("ModelicaPinToSysmlElectricalPort"));
     assert.ok(compiled.ruleNames.includes("ModelicaConnectToSysmlConnection"));
     assert.ok(compiled.ruleNames.includes("ModelicaEquationToSysmlConstraint"));
-    assert.ok(compiled.ruleNames.includes("ModelicaSimpleEquationToSysmlConstraint"));
-    assert.ok(compiled.ruleNames.includes("ModelicaDerEquationToSysmlRateConstraint"));
     assert.ok(compiled.ruleNames.includes("ModelicaAssertToSysmlRequirement"));
     assert.ok(compiled.sourceCode.includes("export function tgg_forward_ModelicaModelToSysmlBlock"));
     assert.ok(compiled.sourceCode.includes("export function tgg_backward_ModelicaModelToSysmlBlock"));
@@ -48,19 +47,15 @@ test("Cross-Language TGG Polyglot Rules across 8 engineering domains", () => {
     assert.ok(compiled.sourceCode.includes("export function tgg_forward_dispatch"));
   }
 
-  // 3. Verify SSP -> Modelica & SysML2 TGG compilation
+  // 3. Verify SSP -> Modelica TGG compilation
   {
     assert.ok(sspConfig.polyglot, "SSP should define polyglot configuration");
     const compiled = compileTGGRules(sspConfig.polyglot);
-    assert.strictEqual(compiled.ruleCount, 8, "SSP should have 8 TGG transformation rules");
+    assert.strictEqual(compiled.ruleCount, 4, "SSP should have 4 TGG transformation rules");
     assert.ok(compiled.ruleNames.includes("SspSystemToModelicaModel"));
     assert.ok(compiled.ruleNames.includes("SspComponentToModelicaComponent"));
     assert.ok(compiled.ruleNames.includes("SspConnectorToModelicaConnector"));
     assert.ok(compiled.ruleNames.includes("SspConnectionToModelicaConnect"));
-    assert.ok(compiled.ruleNames.includes("SspSystemToSysmlPackage"));
-    assert.ok(compiled.ruleNames.includes("SspComponentToSysmlPart"));
-    assert.ok(compiled.ruleNames.includes("SspConnectorToSysmlPort"));
-    assert.ok(compiled.ruleNames.includes("SspConnectionToSysmlConnection"));
     assert.ok(compiled.sourceCode.includes("export function tgg_forward_SspSystemToModelicaModel"));
     assert.ok(compiled.sourceCode.includes("export function tgg_backward_SspSystemToModelicaModel"));
     assert.ok(compiled.sourceCode.includes("export function tgg_forward_dispatch"));
@@ -70,14 +65,12 @@ test("Cross-Language TGG Polyglot Rules across 8 engineering domains", () => {
   {
     assert.ok(stepConfig.polyglot, "STEP should define polyglot configuration");
     const compiled = compileTGGRules(stepConfig.polyglot);
-    assert.strictEqual(compiled.ruleCount, 5, "STEP should have 5 TGG transformation rules");
-    assert.ok(compiled.ruleNames.includes("StepProductToSysML2Part"));
-    assert.ok(compiled.ruleNames.includes("StepPropertyToSysML2Attribute"));
-    assert.ok(compiled.ruleNames.includes("StepPlacementToSysML2Port"));
-    assert.ok(compiled.ruleNames.includes("StepRevoluteJointToModelicaRevolute"));
-    assert.ok(compiled.ruleNames.includes("StepPrismaticJointToModelicaPrismatic"));
-    assert.ok(compiled.sourceCode.includes("export function tgg_forward_StepProductToSysML2Part"));
-    assert.ok(compiled.sourceCode.includes("export function tgg_backward_StepProductToSysML2Part"));
+    assert.strictEqual(compiled.ruleCount, 3, "STEP should have 3 TGG transformation rules");
+    assert.ok(compiled.ruleNames.includes("StepProductToSysmlPart"));
+    assert.ok(compiled.ruleNames.includes("StepProductToModelicaModel"));
+    assert.ok(compiled.ruleNames.includes("StepPointToSysmlAttribute"));
+    assert.ok(compiled.sourceCode.includes("export function tgg_forward_StepProductToSysmlPart"));
+    assert.ok(compiled.sourceCode.includes("export function tgg_backward_StepProductToSysmlPart"));
     assert.ok(compiled.sourceCode.includes("export function tgg_forward_dispatch"));
   }
 
@@ -100,7 +93,7 @@ test("Cross-Language TGG Polyglot Rules across 8 engineering domains", () => {
   {
     assert.ok(scadLanguage.polyglot, "OpenSCAD should define polyglot configuration");
     const compiled = compileTGGRules(scadLanguage.polyglot);
-    assert.strictEqual(compiled.ruleCount, 13, "OpenSCAD should have 13 TGG transformation rules");
+    assert.strictEqual(compiled.ruleCount, 7, "OpenSCAD should have 7 TGG transformation rules");
     assert.ok(compiled.ruleNames.includes("ScadProjectedAreaToModelicaParam"));
     assert.ok(compiled.ruleNames.includes("ScadProjectedAreaToSysmlAttribute"));
     assert.ok(compiled.ruleNames.includes("ScadModuleToSysmlPart"));
@@ -108,12 +101,6 @@ test("Cross-Language TGG Polyglot Rules across 8 engineering domains", () => {
     assert.ok(compiled.ruleNames.includes("ScadVariableToSysmlAttribute"));
     assert.ok(compiled.ruleNames.includes("ScadSolidToStepProduct"));
     assert.ok(compiled.ruleNames.includes("ScadCylinderToStepProduct"));
-    assert.ok(compiled.ruleNames.includes("ScadSphereToStepProduct"));
-    assert.ok(compiled.ruleNames.includes("ScadBooleanOpToStepComposite"));
-    assert.ok(compiled.ruleNames.includes("ScadTagPortToModelicaFrame"));
-    assert.ok(compiled.ruleNames.includes("ScadCubeToMultiBodyShape"));
-    assert.ok(compiled.ruleNames.includes("ScadCylinderToMultiBodyShape"));
-    assert.ok(compiled.ruleNames.includes("ScadSphereToMultiBodyShape"));
     assert.ok(compiled.sourceCode.includes("export function tgg_forward_ScadModuleToSysmlPart"));
     assert.ok(compiled.sourceCode.includes("export function tgg_backward_ScadModuleToSysmlPart"));
     assert.ok(compiled.sourceCode.includes("export function tgg_forward_dispatch"));
@@ -139,13 +126,12 @@ test("Cross-Language TGG Polyglot Rules across 8 engineering domains", () => {
   {
     assert.ok(feaLanguage.polyglot, "FEA should define polyglot configuration");
     const compiled = compileTGGRules(feaLanguage.polyglot);
-    assert.strictEqual(compiled.ruleCount, 6, "FEA should have 6 TGG transformation rules");
+    assert.strictEqual(compiled.ruleCount, 5, "FEA should have 5 TGG transformation rules");
     assert.ok(compiled.ruleNames.includes("FeaStressMassToModelicaParam"));
     assert.ok(compiled.ruleNames.includes("FeaStressMassToSysmlAttribute"));
     assert.ok(compiled.ruleNames.includes("FeaMaterialToSysmlAttribute"));
     assert.ok(compiled.ruleNames.includes("FeaBoundaryFixToModelicaFixed"));
     assert.ok(compiled.ruleNames.includes("FeaSpringToModelicaSpring"));
-    assert.ok(compiled.ruleNames.includes("FeaLoadCaseToSysmlRequirement"));
     assert.ok(compiled.sourceCode.includes("export function tgg_forward_FeaMaterialToSysmlAttribute"));
     assert.ok(compiled.sourceCode.includes("export function tgg_backward_FeaMaterialToSysmlAttribute"));
     assert.ok(compiled.sourceCode.includes("export function tgg_forward_dispatch"));

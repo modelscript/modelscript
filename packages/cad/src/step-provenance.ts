@@ -133,8 +133,8 @@ export function relativePosix(fromDir: string, toFile: string): string {
 
 function cleanDirectivePath(raw: string): string | undefined {
   let val = raw.trim();
-  // Strip inline comment tails (e.g. `// ...`, `-->`) and optional quotes/semicolons
-  val = val.replace(/\s*-->.*$/, "").trim();
+  // Strip inline comment tails (e.g. `// ...`, `-->`, `--!>`) and optional quotes/semicolons
+  val = val.replace(/\s*--!?>.*$/, "").trim();
   val = val.replace(/\s+\/\/.*$/, "").trim();
   val = val.replace(/^["']|["';]+$/g, "").trim();
   return val.length > 0 ? val : undefined;

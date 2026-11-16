@@ -390,7 +390,11 @@ function parseSpiceNumber(raw: string): number | undefined {
 }
 
 function stripCommentTrailer(token: string): string {
-  return token.replace(/\*\/$/, "").replace(/-->$/, "").replace(/\*\)$/, "").trim();
+  return token
+    .replace(/\*\/$/, "")
+    .replace(/--!?>$/, "")
+    .replace(/\*\)$/, "")
+    .trim();
 }
 
 function lineColAtOffset(text: string, offset: number): { line: number; col: number } {

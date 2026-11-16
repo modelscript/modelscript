@@ -175,7 +175,7 @@ export const lasLanguage = language({
     SectionHeader: () => /~[^\r\n]*/,
     DataLine: () => /[^\r\n~#][^\r\n]*/,
     _comment: () => /#[^\r\n]*/,
-    _newline: () => /(\r\n|\n|\r)+/,
+    _newline: () => /[\r\n]+/,
 
     LASVirtualComponent: () =>
       def({

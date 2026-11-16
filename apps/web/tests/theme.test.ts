@@ -132,7 +132,7 @@ describe("Theme Management & User Agent Preference Matching", () => {
       assert.strictEqual(rootAttrs["data-theme"], "dark");
       assert.strictEqual(rootAttrs["data-color-mode"], "dark");
       assert.strictEqual(rootStyle.colorScheme, "dark");
-      assert.strictEqual(metaAttrs.content, "#0a0f1c");
+      assert.strictEqual(metaAttrs.content, "#18181b");
     } finally {
       globalObj.document = originalDocument;
     }

@@ -86,7 +86,7 @@ function ensureLibraryMounted(name: string, version: string): Promise<boolean> {
         await installDependency(name, version);
         return true;
       } catch (err) {
-        console.warn(`[useClassSimulation] Failed to mount ${key}:`, err);
+        console.warn("[useClassSimulation] Failed to mount %s:", key, err);
         mountedLibraryPromises.delete(key);
         return false;
       }

@@ -28,12 +28,30 @@ function buildLibraryClassPath(packageName: string, packageVersion: string, fqn:
   return `/api/v1/libraries/${encodeURIComponent(packageName)}/${encVer}/classes/${encClass}`;
 }
 
+function stripPatternRepeatedly(input: string, pattern: RegExp): string {
+  let prev: string;
+  let curr = input;
+  do {
+    prev = curr;
+    curr = curr.replace(pattern, "");
+  } while (curr !== prev);
+  return curr;
+}
+
 export function sanitizeRegistrySvg(rawSvg: string): string {
-  return rawSvg
-    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
-    .replace(/<foreignObject\b[\s\S]*?<\/foreignObject>/gi, "")
-    .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/(?:href|xlink:href)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*')/gi, "");
+  let cleaned = rawSvg;
+  let prev: string;
+  let iterations = 0;
+  do {
+    prev = cleaned;
+    cleaned = stripPatternRepeatedly(cleaned, /<script\b[\s\S]*?<\/script[^>]*>/gi);
+    cleaned = stripPatternRepeatedly(cleaned, /<foreignObject\b[\s\S]*?<\/foreignObject[^>]*>/gi);
+    cleaned = stripPatternRepeatedly(cleaned, /<\/?(?:script|foreignObject)\b[^>]*>/gi);
+    cleaned = stripPatternRepeatedly(cleaned, /(?:[\s/]+)on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi);
+    cleaned = cleaned.replace(/(?:href|xlink:href)\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*')/gi, "");
+    iterations++;
+  } while (cleaned !== prev && iterations < 30);
+  return cleaned;
 }
 
 function hasDistinctIconVisual(svg: string | null): svg is string {

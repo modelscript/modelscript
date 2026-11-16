@@ -611,6 +611,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Verify All Required Jobs Succeeded
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           echo "Checking status of required CI jobs..."
           echo "  lint: ${{ needs.lint.result }}"
@@ -620,7 +622,7 @@ jobs:
           echo "  cross_os_smoke: ${{ needs.cross_os_smoke.result }}"
           echo "  polyglot_benchmarks: ${{ needs.polyglot_benchmarks.result }}"
           IS_RELEASE_COMMIT=false
-          case "${{ github.event.head_commit.message }}" in
+          case "$HEAD_COMMIT_MESSAGE" in
             "chore(release):"*) IS_RELEASE_COMMIT=true ;;
           esac
           for res in "${{ needs.lint.result }}" "${{ needs.build.result }}" "${{ needs.test.result }}" "${{ needs.modelica_testsuite.result }}" "${{ needs.polyglot_benchmarks.result }}"; do

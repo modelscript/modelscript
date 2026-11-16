@@ -590,9 +590,9 @@ export class VerificationRunner {
   }
 
   private extractRequirementStandardClause(requirementId: number): string | undefined {
-    const reqEntry = this.db.symbol(requirementId);
+    const reqEntry = this.db.symbol?.(requirementId);
     if (!reqEntry) return undefined;
-    const text = this.db.cstText(reqEntry.startOffset, reqEntry.endOffset, reqEntry);
+    const text = this.db.cstText?.(reqEntry.startOffset, reqEntry.endOffset, reqEntry);
     if (!text) return undefined;
     const metaMatch = text.match(/@(?:StandardClause|ComplianceRule|Standard)\b\s*(?:\{([^}]*)\}|\(([^)]*)\))/);
     if (!metaMatch) return undefined;

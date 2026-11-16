@@ -66,8 +66,9 @@ describe("Signed Account & Post Signatures Architecture Suite", () => {
     });
 
     it("explicitly clarifies that signing guarantees cryptographic authorship, not real-world identity", () => {
+      const normalized = verifiedAccountBadgeSrc.replace(/\s+/g, " ");
       assert.ok(
-        verifiedAccountBadgeSrc.includes(
+        normalized.includes(
           "Note: This guarantees cryptographic authorship and tamper resistance, not legal or real-world identity verification.",
         ),
         "Modal must include explicit educational disclaimer distinguishing cryptographic signing from identity verification",
@@ -76,14 +77,10 @@ describe("Signed Account & Post Signatures Architecture Suite", () => {
 
     it("preserves modal portal and accessibility guarantees", () => {
       assert.ok(
-        verifiedAccountBadgeSrc.includes("createPortal(modalNode, document.body)"),
-        "VerifiedAccountBadge modal must portal to document.body",
+        verifiedAccountBadgeSrc.includes('import { Dialog } from "@primer/react"') &&
+          verifiedAccountBadgeSrc.includes("<Dialog"),
+        "VerifiedAccountBadge modal must use Primer Dialog",
       );
-      assert.ok(
-        verifiedAccountBadgeSrc.includes('document.body.style.overflow = "hidden"'),
-        "Must lock body scroll while modal is open",
-      );
-      assert.ok(verifiedAccountBadgeSrc.includes('e.key === "Escape"'), "Must dismiss on Escape key");
     });
   });
 

@@ -1441,7 +1441,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
             manifestLicense = parsedManifest.license;
             manifestProfile = parsedManifest.profile;
           } catch (err) {
-            console.warn(`[Packages] Malformed stored manifest JSON for '${name}@${version}':`, err);
+            console.warn("[Packages] Malformed stored manifest JSON for '%s@%s':", name, version, err);
           }
         }
       }
@@ -1799,7 +1799,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
                   const parsed = JSON.parse(manifestResult.content);
                   manifestName = parsed?.name;
                 } catch (err) {
-                  console.warn(`[Packages] Malformed upstream manifest.json for '${name}@${version}':`, err);
+                  console.warn("[Packages] Malformed upstream manifest.json for '%s@%s':", name, version, err);
                 }
               } else if (manifestResult.type === "mo") {
                 manifestName = parsePackageMo(manifestResult.content)?.name ?? undefined;
@@ -3091,7 +3091,18 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
   function injectPackageLabelIfBare(svg: string, className: string): string {
     // Check if SVG already has non-empty text content
     const textMatches = svg.match(/<text\b[^>]*>([\s\S]*?)<\/text>/gi);
-    if (textMatches && textMatches.some((t) => t.replace(/<[^>]*>/g, "").trim().length > 0)) {
+    if (
+      textMatches &&
+      textMatches.some((t) => {
+        let stripped = t;
+        let prev: string;
+        do {
+          prev = stripped;
+          stripped = stripped.replace(/<[^>]*>/g, "");
+        } while (stripped !== prev);
+        return stripped.replace(/[<>]/g, "").trim().length > 0;
+      })
+    ) {
       return svg;
     }
     // Check if SVG has distinct inner graphical elements
@@ -3210,7 +3221,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
                     const b64 = fs.readFileSync(cand).toString("base64");
                     return `href="data:${mime};base64,${b64}"`;
                   } catch (err) {
-                    console.warn(`[Packages] Failed to inline icon asset '${cand}':`, err);
+                    console.warn("[Packages] Failed to inline icon asset '%s':", cand, err);
                   }
                 }
               }
@@ -3262,7 +3273,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
                 if (typeof parsedM.language === "string") domain = parsedM.language;
                 else if (typeof parsedM.modelscript?.language === "string") domain = parsedM.modelscript.language;
               } catch (err) {
-                console.warn(`[Packages] Malformed manifest JSON for '${name}@${version}':`, err);
+                console.warn("[Packages] Malformed manifest JSON for '%s@%s':", name, version, err);
               }
             }
             const artifacts = database.getArtifacts(verRow.id);

@@ -603,14 +603,31 @@ export function registerSessionRegistryDependencies(deps: Record<string, Record<
   }
 }
 
+function stripSvgPatternRepeatedly(input: string, pattern: RegExp): string {
+  let prev: string;
+  let curr = input;
+  do {
+    prev = curr;
+    curr = curr.replace(pattern, "");
+  } while (curr !== prev);
+  return curr;
+}
+
 export function sanitizeHubSvg(rawSvg: string | undefined | null): string | undefined {
   if (typeof rawSvg !== "string" || !rawSvg.includes("<svg")) return undefined;
-  const cleaned = rawSvg
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, "")
-    .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/(?:href|xlink:href)\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*')/gi, "")
-    .trim();
+  let cleaned = rawSvg;
+  let prev: string;
+  let iterations = 0;
+  do {
+    prev = cleaned;
+    cleaned = stripSvgPatternRepeatedly(cleaned, /<script\b[\s\S]*?<\/script[^>]*>/gi);
+    cleaned = stripSvgPatternRepeatedly(cleaned, /<foreignObject\b[\s\S]*?<\/foreignObject[^>]*>/gi);
+    cleaned = stripSvgPatternRepeatedly(cleaned, /<\/?(?:script|foreignObject)\b[^>]*>/gi);
+    cleaned = stripSvgPatternRepeatedly(cleaned, /(?:[\s/]+)on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi);
+    cleaned = cleaned.replace(/(?:href|xlink:href)\s*=\s*(?:"\s*javascript:[^"]*"|'\s*javascript:[^']*')/gi, "");
+    iterations++;
+  } while (cleaned !== prev && iterations < 30);
+  cleaned = cleaned.trim();
   return cleaned.includes("<svg") ? cleaned : undefined;
 }
 

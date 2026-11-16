@@ -66,7 +66,7 @@ describe("@modelscript/docs browser showcase smoke", () => {
     }
 
     const htmlText = fs.readFileSync(indexHtml, "utf-8");
-    if (!htmlText.includes("HomeSemanticCoordinator") && !htmlText.includes("Digital Thread")) {
+    if (!htmlText.includes("Semantic Theory Coordinator") && !htmlText.includes("Bidirectional TGG")) {
       t.skip("VitePress dist was built without FEATURE_FLAG_HOME_SHOWCASE=true");
       return;
     }
