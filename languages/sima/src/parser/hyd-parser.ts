@@ -5,19 +5,13 @@
  * and WAMIT 1st-order Force RAO / added mass / damping tables.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
 import { createWasmParserSync } from "@modelscript/sima/wasm-parser";
-import { createRequire } from "node:module";
 import type { HydrodynamicData, HydrodynamicRaoEntry } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getSimaWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/sima/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("sima", import.meta.url, createWasmParserSync);
 }
 
 export function parseHydFile(text: string): HydrodynamicData {

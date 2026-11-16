@@ -1358,33 +1358,84 @@ export declare function createWasmParserSync(
   facade: LspFacade;
   parser: TreeSitterParser;
 };
+/**
+ * Registers a pre-instantiated WebAssembly GLR parser in `globalThis.__msWasmParsers`
+ * so synchronous language parsers and workspace linters can use it inside browser WebWorkers
+ * without Node.js `fs` or `node:module`.
+ */
+export declare function registerPreloadedWasmParser(
+  langId: string,
+  parser: TreeSitterParser | null | undefined,
+  facade?: LspFacade | null,
+): void;
+/**
+ * Retrieves a pre-instantiated WebAssembly GLR parser from `globalThis` if registered
+ * by `ParserService` (browser WebWorker or Node LSP server).
+ */
+export declare function getPreloadedWasmParser(
+  langId: string,
+): TreeSitterParser | undefined;
+/**
+ * Resolves the filesystem path or URL to a language package's `parser.wasm` without `node:module`.
+ */
+export declare function resolveLanguageWasmPath(
+  importMetaUrl: string,
+  langId?: string,
+): string;
+/**
+ * Isomorphic helper that returns the pre-loaded WASM GLR parser in browser WebWorkers
+ * (`globalThis.__msWasmParsers`) and lazily loads `parser.wasm` synchronously in Node.js CLI/tests.
+ */
+export declare function getOrLoadLanguageWasmParser<TParser = TreeSitterParser>(
+  langId: string,
+  importMetaUrl: string,
+  syncFactory?: (wasmPath: string) => {
+    parser: TParser;
+  },
+): TParser;
+export interface WasmSyntaxErrorSpan {
+  message: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+}
+/**
+ * Walks a WASM GLR `SyntaxNode` root and extracts bounded `ERROR` / `isMissing` syntax error spans
+ * (1-indexed lines and columns).
+ */
+export declare function collectWasmSyntaxErrors(
+  rootNode: unknown,
+  maxErrors?: number,
+): WasmSyntaxErrorSpan[];
 
 export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  SourceFile = 21,
-  KeywordCard = 22,
-  ParameterAssignment = 23,
-  OptionFlag = 24,
-  DataLine = 25,
-  DataItem = 26,
+  SourceFile = 22,
+  KeywordCard = 23,
+  KeywordScalar = 24,
+  ParameterAssignment = 25,
+  DataToken = 26,
   EmbeddedExpression = 27,
   Expression = 28,
   BinaryExpression = 29,
   UnaryExpression = 30,
-  PrimaryExpression = 31,
-  QualifiedIdentifier = 32,
-  START = 33,
-  _START = 33,
-  CommentLine = 36,
-  Newline = 37,
-  _newline = 37,
-  CARDNAME = 59,
-  CARD_NAME = 59,
-  IDENTIFIER = 60,
-  NUMBER = 61,
-  STRING = 62,
+  CallExpression = 31,
+  PrimaryExpression = 32,
+  QualifiedIdentifier = 33,
+  START = 34,
+  _START = 34,
+  CARDHEADER = 57,
+  CARD_HEADER = 57,
+  QUALIFIEDIDENT = 58,
+  QUALIFIED_IDENT = 58,
+  IDENTIFIER = 59,
+  NUMBER = 60,
+  STRING = 61,
   EOF = 1023,
 }
 
@@ -1397,10 +1448,10 @@ export declare enum FieldId {
   param = 3,
   Value = 4,
   value = 4,
-  Flag = 5,
-  flag = 5,
-  Expr = 6,
-  expr = 6,
+  Expr = 5,
+  expr = 5,
+  Callee = 6,
+  callee = 6,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1416,22 +1467,18 @@ export interface KeywordCardNode extends SyntaxNode {
   readonly typeId: SyntaxKind.KeywordCard;
 }
 export declare function isKeywordCard(node: SyntaxNode | null | undefined): node is KeywordCardNode;
+export interface KeywordScalarNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.KeywordScalar;
+}
+export declare function isKeywordScalar(node: SyntaxNode | null | undefined): node is KeywordScalarNode;
 export interface ParameterAssignmentNode extends SyntaxNode {
   readonly typeId: SyntaxKind.ParameterAssignment;
 }
 export declare function isParameterAssignment(node: SyntaxNode | null | undefined): node is ParameterAssignmentNode;
-export interface OptionFlagNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.OptionFlag;
+export interface DataTokenNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DataToken;
 }
-export declare function isOptionFlag(node: SyntaxNode | null | undefined): node is OptionFlagNode;
-export interface DataLineNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DataLine;
-}
-export declare function isDataLine(node: SyntaxNode | null | undefined): node is DataLineNode;
-export interface DataItemNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DataItem;
-}
-export declare function isDataItem(node: SyntaxNode | null | undefined): node is DataItemNode;
+export declare function isDataToken(node: SyntaxNode | null | undefined): node is DataTokenNode;
 export interface EmbeddedExpressionNode extends SyntaxNode {
   readonly typeId: SyntaxKind.EmbeddedExpression;
 }
@@ -1448,6 +1495,10 @@ export interface UnaryExpressionNode extends SyntaxNode {
   readonly typeId: SyntaxKind.UnaryExpression;
 }
 export declare function isUnaryExpression(node: SyntaxNode | null | undefined): node is UnaryExpressionNode;
+export interface CallExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CallExpression;
+}
+export declare function isCallExpression(node: SyntaxNode | null | undefined): node is CallExpressionNode;
 export interface PrimaryExpressionNode extends SyntaxNode {
   readonly typeId: SyntaxKind.PrimaryExpression;
 }
@@ -1456,14 +1507,14 @@ export interface QualifiedIdentifierNode extends SyntaxNode {
   readonly typeId: SyntaxKind.QualifiedIdentifier;
 }
 export declare function isQualifiedIdentifier(node: SyntaxNode | null | undefined): node is QualifiedIdentifierNode;
-export interface CommentLineNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.CommentLine;
+export interface CARDHEADERNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CARDHEADER;
 }
-export declare function isCommentLine(node: SyntaxNode | null | undefined): node is CommentLineNode;
-export interface CARDNAMENode extends SyntaxNode {
-  readonly typeId: SyntaxKind.CARDNAME;
+export declare function isCARDHEADER(node: SyntaxNode | null | undefined): node is CARDHEADERNode;
+export interface QUALIFIEDIDENTNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.QUALIFIEDIDENT;
 }
-export declare function isCARDNAME(node: SyntaxNode | null | undefined): node is CARDNAMENode;
+export declare function isQUALIFIEDIDENT(node: SyntaxNode | null | undefined): node is QUALIFIEDIDENTNode;
 export interface IDENTIFIERNode extends SyntaxNode {
   readonly typeId: SyntaxKind.IDENTIFIER;
 }
@@ -1493,6 +1544,11 @@ export declare namespace Cst {
     parameter(node: SyntaxNode | null | undefined): SyntaxNode | null;
     parameterList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
+  export const KeywordScalar: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is KeywordScalarNode;
+  };
   export const ParameterAssignment: {
     readonly typeId: number;
     readonly type: string;
@@ -1502,22 +1558,10 @@ export declare namespace Cst {
     value(node: SyntaxNode | null | undefined): SyntaxNode | null;
     valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
-  export const OptionFlag: {
+  export const DataToken: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is OptionFlagNode;
-    flag(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    flagList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const DataLine: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DataLineNode;
-  };
-  export const DataItem: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DataItemNode;
+    is(node: SyntaxNode | null | undefined): node is DataTokenNode;
   };
   export const EmbeddedExpression: {
     readonly typeId: number;
@@ -1541,6 +1585,13 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is UnaryExpressionNode;
   };
+  export const CallExpression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CallExpressionNode;
+    callee(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    calleeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
   export const PrimaryExpression: {
     readonly typeId: number;
     readonly type: string;
@@ -1551,15 +1602,15 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is QualifiedIdentifierNode;
   };
-  export const CommentLine: {
+  export const CARDHEADER: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is CommentLineNode;
+    is(node: SyntaxNode | null | undefined): node is CARDHEADERNode;
   };
-  export const CARDNAME: {
+  export const QUALIFIEDIDENT: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is CARDNAMENode;
+    is(node: SyntaxNode | null | undefined): node is QUALIFIEDIDENTNode;
   };
   export const IDENTIFIER: {
     readonly typeId: number;

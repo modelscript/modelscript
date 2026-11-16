@@ -16,18 +16,12 @@ import type {
   Vessel,
 } from "../types.js";
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
 import { createWasmParserSync } from "@modelscript/sima/wasm-parser";
-import { createRequire } from "node:module";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getSimaWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/sima/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("sima", import.meta.url, createWasmParserSync);
 }
 
 export function parseCardDeck(text: string, filePath?: string): SimaModel {

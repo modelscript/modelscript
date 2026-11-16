@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { materializeCfdConfig } from "../materializer.js";
 import type { CfdDialect, CfdMarker, CfdModelData, MaterializeOptions } from "../types.js";
+import { getCfdWasmParser } from "../wasm-loader.js";
 
 /**
  * SU2 (.cfg) CFD configuration dialect implementation.
@@ -22,6 +24,8 @@ export class Su2Dialect implements CfdDialect {
    * Parses an SU2 `.cfg` deck into structured directives, flow conditions, and boundary markers.
    */
   public parse(cfgText: string): CfdModelData {
+    const tree = getCfdWasmParser().parse(cfgText);
+    const syntaxErrors = collectWasmSyntaxErrors(tree?.rootNode);
     const lines = cfgText.split(/\r?\n/);
 
     const rawDirectives = new Map<string, string>();
@@ -40,6 +44,7 @@ export class Su2Dialect implements CfdDialect {
       rawDirectives,
       markers,
       directiveLines,
+      syntaxErrors,
     };
 
     for (let i = 0; i < lines.length; i++) {

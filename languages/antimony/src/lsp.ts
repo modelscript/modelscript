@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParserSync } from "@modelscript/antimony/wasm-parser";
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { lowerAntimonyToDae } from "./dae/antimony-to-dae.js";
 import { lintAntimony } from "./lints/index.js";
 import { parseAntimony } from "./parser/antimony-parser.js";
@@ -78,6 +80,11 @@ export interface LspCompletionItem {
 
 export function validateAntimony(text: string): LspDiagnostic[] {
   try {
+    try {
+      getOrLoadLanguageWasmParser("antimony", import.meta.url, createWasmParserSync).parse(text);
+    } catch {
+      // Fall back cleanly if WASM parser is unavailable
+    }
     const doc = parseAntimony(text);
     const diags = lintAntimony(doc);
 

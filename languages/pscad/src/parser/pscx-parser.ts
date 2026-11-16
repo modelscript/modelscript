@@ -8,7 +8,7 @@
  * source line/column locations, and electrical connectivity.
  */
 
-import { parseXml, type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
+import { type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
 import { EXTRA_MASTER_PORT_LAYOUTS } from "../catalog/master-port-layouts.js";
 import { readDefinitionForm } from "../model/definition-form.js";
 import { buildProjectModel, type ExternalDefinitions, type ModelDefinition } from "../model/pscad-model.js";
@@ -29,6 +29,7 @@ import type {
   PscxProjectSettings,
   PscxSticky,
 } from "../types.js";
+import { parsePscadXmlDocument } from "./wasm-loader.js";
 
 /**
  * Built-in port catalog for standard PSCAD Master Library components
@@ -320,9 +321,9 @@ function cloneAndShiftModule(entry: CachedSubModuleEntry, newStartOffset: number
  */
 export function parsePscxCst(
   xmlContent: string,
-  options?: { external?: ExternalDefinitions; headless?: boolean },
+  options?: { external?: ExternalDefinitions; headless?: boolean; cstTree?: { rootNode?: unknown } | null },
 ): PscxProject {
-  const doc = parseXml(xmlContent);
+  const doc = parsePscadXmlDocument(xmlContent, options?.cstTree);
   if (!doc.root) {
     throw new Error("PSCAD XML has no root element");
   }
@@ -993,7 +994,7 @@ export function parsePscxCst(
  */
 export function parsePscx(
   xmlContent: string,
-  options?: { external?: ExternalDefinitions; headless?: boolean },
+  options?: { external?: ExternalDefinitions; headless?: boolean; cstTree?: { rootNode?: unknown } | null },
 ): PscxProject {
   return parsePscxCst(xmlContent, options);
 }

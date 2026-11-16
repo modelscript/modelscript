@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { cfdToDae } from "./dae/cfd-to-dae.js";
 import { parseCfdConfig } from "./dialects/index.js";
 import { lintCfdModel } from "./lints/index.js";
 import { extractCfdSlicingProperties } from "./materializer.js";
 import { cfdToModelica } from "./projections/index.js";
 import type { CaeDiagnostic, CfdModelData } from "./types.js";
+import { getCfdWasmParser } from "./wasm-loader.js";
 
 export interface LspPosition {
   line: number;
@@ -83,10 +85,22 @@ export function validateCfd(content: string, uri: string = "model.cfg"): LspDiag
   try {
     const ext = uri.split(".").pop() ?? "cfg";
     const model = parseCfdConfig(content, ext);
+    const syntaxSpans = model.syntaxErrors ?? collectWasmSyntaxErrors(getCfdWasmParser().parse(content)?.rootNode);
+    const syntaxDiags: LspDiagnostic[] = syntaxSpans.map((sp) => ({
+      range: {
+        start: { line: Math.max(0, sp.startLine - 1), character: Math.max(0, sp.startColumn - 1) },
+        end: { line: Math.max(0, sp.endLine - 1), character: Math.max(0, sp.endColumn - 1) },
+      },
+      severity: 1,
+      code: "M7300",
+      source: "modelscript-cfd",
+      message: sp.message,
+    }));
+
     const diags = lintCfdModel(model);
     const lines = content.split(/\r?\n/);
 
-    return diags.map((d) => {
+    const semanticDiags: LspDiagnostic[] = diags.map((d) => {
       const lineNum = d.line ? Math.max(0, d.line - 1) : 0;
       const colNum = d.column ? Math.max(0, d.column - 1) : 0;
       const lineLen = lines[lineNum]?.length ?? 1;
@@ -102,6 +116,8 @@ export function validateCfd(content: string, uri: string = "model.cfg"): LspDiag
         message: d.message,
       };
     });
+
+    return [...syntaxDiags, ...semanticDiags];
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     return [

@@ -347,4 +347,24 @@ test("gPROMS Modelica Projection, UnifiedWorkspace, and LSP services", async () 
   const daeInfo = await executeGpromsAction("gproms_to_dae", VALID_CSTR_GPROMS);
   assert.equal(daeInfo.variableCount, daeInfo.equationCount);
   assert.equal(gpromsLanguage.name, "gproms");
+
+  // WASM GLR parser and syntax diagnostic validation
+  const { getGpromsWasmParser } = await import("../src/index.js");
+  const morselDefault = `MODEL JacketedCSTR
+  PARAMETER
+    V_reactor AS REAL DEFAULT 2.5 ;
+    k0        AS REAL DEFAULT 1200.0 ;
+  VARIABLE
+    C_A       AS Concentration ;
+    T_react   AS Temperature ;
+  EQUATION
+    V_reactor * $C_A = 1.0 * (2.0 - C_A) - V_reactor * k0 * C_A ;
+    $T_react = 0.05 * (310.0 - T_react) ;
+END
+`;
+  const tree = getGpromsWasmParser().parse(morselDefault);
+  assert.equal(tree?.rootNode.hasError, false);
+
+  const badSyntaxDiags = validateGproms("MODEL Broken\n  EQUATION\n    $C = PARTIAL(C, Axial ;\nEND\n");
+  assert.ok(badSyntaxDiags.some((d) => d.code === "M9450" && d.severity === 1));
 });

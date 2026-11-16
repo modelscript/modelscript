@@ -306,4 +306,19 @@ describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Ro
     assert.ok(decoded);
     assert.equal(decoded.diagramType, "IBD", "Decoded permalink payload must include diagramType=IBD");
   });
+
+  it("strips query strings and hash tags from the URL bar in PlaygroundPage after loading or editing a Morsel", () => {
+    const playgroundPath = path.resolve(import.meta.dirname, "../src/pages/PlaygroundPage.tsx");
+    const src = fs.readFileSync(playgroundPath, "utf-8");
+
+    assert.ok(src.includes("function clearPlaygroundUrl("), "PlaygroundPage.tsx must define clearPlaygroundUrl");
+    assert.ok(
+      !src.includes("${location.pathname}${location.search}#m=") && !src.includes("${location.pathname}#m="),
+      "PlaygroundPage.tsx must not write query strings or #m= hashes to window.history.replaceState",
+    );
+    assert.ok(
+      src.includes("clearPlaygroundUrl(location.pathname);"),
+      "PlaygroundPage.tsx must clear query string and hash after resolving loads and edits",
+    );
+  });
 });

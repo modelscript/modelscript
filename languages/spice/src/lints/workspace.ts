@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import {
   collectWorkspaceDocuments,
   findIncludeCycle,
@@ -9,18 +10,11 @@ import {
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
 import { createWasmParserSync } from "@modelscript/spice/wasm-parser";
-import { createRequire } from "node:module";
 import { parseSpice } from "../parser/spice-parser.js";
 import { lintSpiceCircuit } from "./rules.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getSpiceWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/spice/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("spice", import.meta.url, createWasmParserSync);
 }
 
 /**

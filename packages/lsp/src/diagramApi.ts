@@ -2731,6 +2731,9 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
       if (typeof matcher === "string" && uri.endsWith(matcher)) return backend;
       if (matcher instanceof RegExp && matcher.test(uri)) return backend;
     }
+    if (uri.endsWith(".raw") || uri.endsWith(".dyr")) {
+      return createPsseDiagramBackend(backends);
+    }
     const plugin = globalLanguageRegistry.getPluginForUri(uri);
     if (plugin?.diagramBackend) {
       return plugin.diagramBackend;
@@ -2761,9 +2764,6 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
     }
     if (uri.endsWith(".xodr") || uri.endsWith(".opendrive")) {
       return backends.opendrive ?? createOpenDriveDiagramBackend(backends);
-    }
-    if (uri.endsWith(".raw") || uri.endsWith(".dyr")) {
-      return createPsseDiagramBackend(backends);
     }
     const readKinematicSource = async (targetUri: string): Promise<string | null> => {
       const memText =

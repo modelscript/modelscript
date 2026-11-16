@@ -2,7 +2,12 @@
 
 import type { Context } from "@modelscript/modelica";
 import { computeComponentInsert } from "@modelscript/modelica/diagram";
-import type { ClassHierarchyNode, ComponentTreeNode, TreeNodeInfo } from "@modelscript/runtime";
+import {
+  globalLibraryRegistry,
+  type ClassHierarchyNode,
+  type ComponentTreeNode,
+  type TreeNodeInfo,
+} from "@modelscript/runtime";
 import { printArenaDAE } from "@modelscript/runtime/dae-printer";
 import { computeModelicaComponentDropEdits, resolveCrossLanguageComponentDrop } from "../cross-language-drop.js";
 import { LspContext } from "../lsp-context.js";
@@ -314,6 +319,38 @@ export function registerClassQueryEndpoints(context: LspContext) {
             hasChildren,
             language: "modelica",
           });
+          if (results.length >= limit) break;
+        }
+      }
+
+      // Also search registered PSCAD library packages (e.g. @modelscript/pscad-master-lib)
+      if (results.length < limit) {
+        for (const pkg of globalLibraryRegistry.getPackagesForLanguage("pscad")) {
+          for (const sym of pkg.symbols) {
+            const id = sym.namePath || sym.name;
+            if (seenFqns.has(id)) continue;
+            const meta = sym.metadata as Record<string, unknown> | undefined;
+            const label = typeof meta?.["label"] === "string" ? meta["label"] : "";
+            const aliases = Array.isArray(meta?.["aliases"]) ? (meta["aliases"] as string[]) : [];
+            const matches =
+              id.toLowerCase().includes(query) ||
+              sym.name.toLowerCase().includes(query) ||
+              label.toLowerCase().includes(query) ||
+              aliases.some((a) => a.toLowerCase().includes(query));
+            if (!matches) continue;
+            seenFqns.add(id);
+            results.push({
+              id,
+              name: sym.name,
+              compositeName: id,
+              classKind: "class",
+              description: label || undefined,
+              icon: "circuit-board",
+              hasChildren: false,
+              language: "pscad",
+            });
+            if (results.length >= limit) break;
+          }
           if (results.length >= limit) break;
         }
       }

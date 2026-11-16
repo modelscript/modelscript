@@ -10,7 +10,7 @@ import debounce from "lodash/debounce";
 import * as monaco from "monaco-editor";
 import { editor, type IDisposable } from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import styledImport from "styled-components";
 import { useModelingPreferences } from "../../ModelingPreferencesContext";
 import { ensureMonacoThemesDefined, getMonacoThemeName } from "../../util/monaco-theme";
@@ -201,10 +201,40 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const languageIdRef = useRef(props.languageId ?? "modelica");
   const lintOnTypeRef = useRef(lintOnType);
   const onPasteRef = useRef(props.onPaste);
+  const onParsedRef = useRef(props.onParsed);
   uriRef.current = props.uri;
   languageIdRef.current = props.languageId ?? "modelica";
   lintOnTypeRef.current = lintOnType;
   onPasteRef.current = props.onPaste;
+  onParsedRef.current = props.onParsed;
+
+  const overflowWidgetsDomNode = useMemo(() => {
+    if (typeof document === "undefined") return undefined;
+    const node = document.createElement("div");
+    node.className = `monaco-editor ${getMonacoThemeName(props.theme)}`;
+    node.style.position = "fixed";
+    node.style.top = "0";
+    node.style.left = "0";
+    node.style.width = "0";
+    node.style.height = "0";
+    node.style.overflow = "visible";
+    node.style.backgroundColor = "transparent";
+    node.style.zIndex = "1100";
+    return node;
+  }, []);
+
+  useEffect(() => {
+    if (!overflowWidgetsDomNode) return;
+    overflowWidgetsDomNode.className = `monaco-editor ${getMonacoThemeName(props.theme)}`;
+  }, [overflowWidgetsDomNode, props.theme]);
+
+  useEffect(() => {
+    if (!overflowWidgetsDomNode || typeof document === "undefined") return;
+    document.body.appendChild(overflowWidgetsDomNode);
+    return () => {
+      overflowWidgetsDomNode.remove();
+    };
+  }, [overflowWidgetsDomNode]);
 
   // ── Sync Monaco editor options when user preferences change ──
   useEffect(() => {
@@ -364,24 +394,37 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   }, [props.content]);
 
   // ── Handler: content changed ──
-  const sendDidChange = debounce((value: string) => {
-    didChange(uriRef.current, value);
-    props.onParsed?.();
-  }, 300);
+  // Send didChange immediately so the LSP worker can cancel stale semantic work
+  // and run Tier 1 syntax/WASM lints without an extra 300ms client-side stall.
+  // Keep onParsed debounced & memoized so parent context refreshes don't fire per keystroke.
+  const notifyParsed = useMemo(
+    () =>
+      debounce(() => {
+        onParsedRef.current?.();
+      }, 150),
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      notifyParsed.cancel();
+    };
+  }, [notifyParsed]);
 
   const handleDidChangeContent = (value: string | undefined) => {
     if (value === undefined) return;
     lastValueRef.current = value;
     props.onChange?.(value);
     if (lintOnTypeRef.current) {
-      sendDidChange(value);
+      void didChange(uriRef.current, value);
+      notifyParsed();
     }
   };
 
   // ── Imperative handle ──
   React.useImperativeHandle(ref, () => ({
     sync: async () => {
-      sendDidChange.cancel();
+      notifyParsed.cancel();
       const value = editorRef.current?.getValue();
       if (value !== undefined) {
         await didChange(uriRef.current, value);
@@ -519,6 +562,8 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
             !props.embed
               ? {
                   automaticLayout: true,
+                  fixedOverflowWidgets: true,
+                  overflowWidgetsDomNode,
                   autoIndent: "full",
                   fontSize: editorFontSize,
                   tabSize: editorTabSize,
@@ -535,6 +580,8 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
                 }
               : {
                   automaticLayout: true,
+                  fixedOverflowWidgets: true,
+                  overflowWidgetsDomNode,
                   codeLens: false,
                   folding: false,
                   glyphMargin: false,

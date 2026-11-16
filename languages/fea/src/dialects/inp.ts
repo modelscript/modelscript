@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { materializeFeaDeck } from "../materializer.js";
 import type { FeaDialect, FeaElement, FeaMaterial, FeaModelData, FeaNode, MaterializeOptions } from "../types.js";
+import { getFeaWasmParser } from "../wasm-loader.js";
 
 /**
  * Standard FEA Input Deck (.inp) / CalculiX dialect implementation.
@@ -23,6 +25,8 @@ export class InpDialect implements FeaDialect {
    * material constitutive properties, fixed boundary conditions, and nodal loads.
    */
   public parse(deckText: string): FeaModelData {
+    const tree = getFeaWasmParser().parse(deckText);
+    const syntaxErrors = collectWasmSyntaxErrors(tree?.rootNode);
     const lines = deckText.split(/\r?\n/);
 
     const data: FeaModelData = {
@@ -47,6 +51,7 @@ export class InpDialect implements FeaDialect {
       materialLines: new Map<string, number>(),
       sectionLines: new Map<string, number>(),
       boundaryLines: [],
+      syntaxErrors,
     };
 
     let currentSection = "";

@@ -28,10 +28,13 @@ import { startLsp } from "./util/lsp-worker";
 import { useToast } from "../ToastContext";
 import { useMorselEngine } from "./hooks";
 import {
+  COLLAPSED_DIAGNOSTICS_HEIGHT,
+  MorselDiagnosticsPanel,
   MorselFloatingDock,
   MorselLeftSidebar,
   MorselMobileTabBar,
   MorselModals,
+  MorselResizeHandle,
   MorselVisualizerPane,
   MorselView as View,
   type MobileTab,
@@ -51,11 +54,16 @@ export interface MorselEditorProps {
   initialView?: string | undefined;
   isSplit?: boolean | undefined;
   splitOrientation?: "columns" | "rows" | undefined;
+  canSplit?: boolean | undefined;
+  onViewChange?: ((view: "diagram" | "simulation" | "3d" | "inspector" | "code" | "split") => void) | undefined;
+  onToggleSplit?: (() => void) | undefined;
   initialVisualizerSubview?: "diagram" | "simulation" | "3d" | "inspector" | undefined;
   initialSimulationVariables?: string[] | undefined;
   initialStartTime?: number | undefined;
   initialStopTime?: number | undefined;
   initialDiagramType?: string | undefined;
+  diagramType?: string | undefined;
+  onDiagramTypeChange?: ((diagramType: string) => void) | undefined;
   /** Modelica: class to select initially (otherwise the file's primary class). */
   initialClassName?: string | undefined;
   initialAnchor?:
@@ -92,25 +100,31 @@ export default function MorselEditor(props: MorselEditorProps) {
   const resolvedInitialDialect = props.initialDialect ?? props.initialLanguage;
   const initialLangInfo = getLanguageInfo(resolvedInitialDialect);
   const [dialect, setDialectState] = useState<string>(initialLangInfo.id);
-  const [diagramType, setDiagramType] = useState<string>(() => {
-    if (props.initialDiagramType) {
-      const match = initialLangInfo.diagramTypes?.find(
-        (dt) => dt.id.toLowerCase() === props.initialDiagramType!.toLowerCase(),
-      );
+  const [diagramType, setDiagramTypeState] = useState<string>(() => {
+    const requested = props.diagramType ?? props.initialDiagramType;
+    if (requested) {
+      const match = initialLangInfo.diagramTypes?.find((dt) => dt.id.toLowerCase() === requested.toLowerCase());
       if (match) return match.id;
-      return props.initialDiagramType;
+      return requested;
     }
     return initialLangInfo.diagramTypes?.[0]?.id ?? "diagram";
   });
 
+  const setDiagramType = useCallback(
+    (next: string) => {
+      setDiagramTypeState(next);
+      props.onDiagramTypeChange?.(next);
+    },
+    [props.onDiagramTypeChange],
+  );
+
   useEffect(() => {
-    if (props.initialDiagramType) {
-      const match = initialLangInfo.diagramTypes?.find(
-        (dt) => dt.id.toLowerCase() === props.initialDiagramType!.toLowerCase(),
-      );
-      setDiagramType(match ? match.id : props.initialDiagramType);
+    const requested = props.diagramType ?? props.initialDiagramType;
+    if (requested) {
+      const match = initialLangInfo.diagramTypes?.find((dt) => dt.id.toLowerCase() === requested.toLowerCase());
+      setDiagramTypeState(match ? match.id : requested);
     }
-  }, [props.initialDiagramType, initialLangInfo.diagramTypes]);
+  }, [props.diagramType, props.initialDiagramType, initialLangInfo.diagramTypes]);
   const [sidecarContent, setSidecarContent] = useState<string | undefined>(undefined);
   const instanceDocPrefix = useMemo(
     () => (props.embed ? `file:///embed_${nextEmbedMorselId++}_document` : "file:///document"),
@@ -222,6 +236,22 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [windowHeight, setWindowHeight] = useState(typeof window !== "undefined" ? window.innerHeight : 800);
   const [splitRatio, setSplitRatio] = useState(0.5);
   const [contextVersion, setContextVersion] = useState(0);
+  const [editorDiagnostics, setEditorDiagnostics] = useState<editor.IMarkerData[]>([]);
+  const [isDiagnosticsExpanded, setIsDiagnosticsExpanded] = useState(false);
+  const [diagnosticsPanelHeight, setDiagnosticsPanelHeight] = useState(160);
+  const userToggledDiagnosticsRef = useRef(false);
+
+  const handleDiagnosticsChange = useCallback((markers: editor.IMarkerData[]) => {
+    setEditorDiagnostics(markers);
+    if (!userToggledDiagnosticsRef.current) {
+      setIsDiagnosticsExpanded(markers.length > 0);
+    }
+  }, []);
+
+  const handleToggleDiagnostics = useCallback(() => {
+    userToggledDiagnosticsRef.current = true;
+    setIsDiagnosticsExpanded((prev) => !prev);
+  }, []);
 
   useEffect(() => {
     const handleToggle = () => {
@@ -508,7 +538,6 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, [parameterOverrides, props.onParametersChange]);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
-  const [isSplitResizerHovered, setIsSplitResizerHovered] = useState(false);
   const [isSplitResizerDragging, setIsSplitResizerDragging] = useState(false);
   const [treeWidth, setTreeWidth] = useState(300);
   const [propertiesWidth, setPropertiesWidth] = useState(props.embed ? 240 : 300);
@@ -681,6 +710,34 @@ export default function MorselEditor(props: MorselEditorProps) {
     });
     ed.focus();
   }, []);
+
+  const handleSelectDiagnostic = useCallback(
+    (marker: editor.IMarkerData) => {
+      if (view !== View.CODE && !isSplit(view)) {
+        const splitMode =
+          props.splitOrientation === "rows" ||
+          (props.splitOrientation !== "columns" && windowWidth < 960 && windowHeight >= 560)
+            ? View.SPLIT_ROWS
+            : View.SPLIT_COLUMNS;
+        setView(splitMode);
+      }
+      const focusMarker = () => {
+        const ed = editorRef.current;
+        if (!ed) return;
+        const range = {
+          startLineNumber: Math.max(1, marker.startLineNumber),
+          startColumn: Math.max(1, marker.startColumn),
+          endLineNumber: Math.max(1, marker.endLineNumber || marker.startLineNumber),
+          endColumn: Math.max(1, marker.endColumn || marker.startColumn),
+        };
+        ed.revealRangeInCenter(range);
+        ed.setSelection(range);
+        ed.focus();
+      };
+      requestAnimationFrame(focusMarker);
+    },
+    [view, props.splitOrientation, windowWidth, windowHeight],
+  );
 
   const handleNodeDoubleClick = useCallback(
     (nodeId: string, nodeData?: any) => {
@@ -1050,6 +1107,9 @@ export default function MorselEditor(props: MorselEditorProps) {
       setDrillDownPath([]);
       setDiagramType(nextInfo.diagramTypes?.[0]?.id ?? "diagram");
 
+      if (!nextInfo.supportsSimulation) {
+        setShowResultsView(false);
+      }
       const keep3dView =
         nextInfo.supports3d && (showCadView || props.initialVisualizerSubview === "3d" || props.initialView === "3d");
       if ((nextInfo.supports3d && !nextInfo.supportsDiagram) || keep3dView) {
@@ -1058,6 +1118,15 @@ export default function MorselEditor(props: MorselEditorProps) {
         setShowAnalysisView(false);
       } else if (nextInfo.supportsDiagram) {
         setShowCadView(false);
+      } else {
+        setShowCadView(false);
+        if (nextInfo.supportsSimulation) {
+          setShowResultsView(true);
+          setShowAnalysisView(false);
+        } else {
+          setShowResultsView(false);
+          setShowAnalysisView(true);
+        }
       }
 
       const currentVal = editorRef.current?.getValue() || props.initialCode || "";
@@ -1332,10 +1401,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     loadClassRef.current(className, kind);
   }, []);
 
-  const [highlightedComponent, setHighlightedComponent] = useState<string | null>(null);
-
   const handleTreeHighlight = useCallback((name: string | null) => {
-    setHighlightedComponent(name);
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("morsel:highlight-component", { detail: { name } }));
     }
@@ -1479,6 +1545,23 @@ export default function MorselEditor(props: MorselEditorProps) {
     (props.embed || props.showParameterRibbon) && ribbonParams.length > 0 && view !== View.CODE && !showAnalysisView,
   );
 
+  const isPlaygroundRoute =
+    typeof window !== "undefined" &&
+    (window.location.pathname.startsWith("/playground") ||
+      window.location.pathname.startsWith("/sketch") ||
+      window.location.pathname.startsWith("/morsel"));
+  const isFloatingWorkspace =
+    !isNarrow && !props.embed && Boolean(props.hideCenterFloatingToolbar || isPlaygroundRoute);
+  const isFullScreenSplitCanvas = isFloatingWorkspace && isSplit(view) && !showResultsView && !showAnalysisView;
+  const diagnosticsBottomOffset =
+    !isNarrow && !props.embed
+      ? 12 + (isDiagnosticsExpanded ? diagnosticsPanelHeight : COLLAPSED_DIAGNOSTICS_HEIGHT) + 8
+      : 12;
+  const floatingCardShadow =
+    colorMode === "dark"
+      ? "0 12px 36px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.28)"
+      : "0 10px 32px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.05)";
+
   return (
     <>
       <div
@@ -1525,6 +1608,11 @@ export default function MorselEditor(props: MorselEditorProps) {
             width: "100%",
             height: "100%",
             overflow: "hidden",
+            position: "relative",
+            padding: isNarrow || isFloatingWorkspace ? 0 : 8,
+            gap: isNarrow || isFloatingWorkspace ? 0 : 8,
+            backgroundColor: "var(--color-canvas-default, #ffffff)",
+            boxSizing: "border-box",
           }}
         >
           <MorselLeftSidebar
@@ -1569,342 +1657,433 @@ export default function MorselEditor(props: MorselEditorProps) {
             onSimulate={handleSimulate}
             onOpenCloud={() => setIsCloudModalOpen(true)}
             isSimulating={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
+            floating={isFloatingWorkspace}
           />
 
           <div
-            className={`d-flex flex-1 ${view === View.SPLIT_ROWS ? "flex-column" : ""}`}
-            ref={splitContainerRef}
-            style={{
-              display: isNarrow && mobileTab === "params" ? "none" : "flex",
-              flex: 1,
-              flexDirection: view === View.SPLIT_ROWS ? "column" : "row",
-              minHeight: 0,
-              minWidth: 0,
-              height: "100%",
-              overflow: "hidden",
-              position: "relative",
-            }}
+            style={
+              isFloatingWorkspace
+                ? {
+                    display: "contents",
+                  }
+                : {
+                    display: isNarrow && mobileTab === "params" ? "none" : "flex",
+                    flex: 1,
+                    flexDirection: "column",
+                    minHeight: 0,
+                    minWidth: 0,
+                    height: "100%",
+                    overflow: "hidden",
+                    position: "relative",
+                    gap: isNarrow ? 0 : 8,
+                  }
+            }
           >
-            {/* Code Editor (on the left in split view) */}
             <div
-              onDragOver={(e) => {
-                if (e.dataTransfer?.types?.includes("Files")) {
-                  e.preventDefault();
-                  setIsEditorDragOver(true);
-                }
-              }}
-              onDragLeave={() => setIsEditorDragOver(false)}
-              onDrop={handleEditorDrop}
-              style={{
-                display: (view === View.CODE || isSplit(view)) && (!isNarrow || mobileTab === "code") ? "flex" : "none",
-                flex: isNarrow ? 1 : isSplit(view) ? "none" : 1,
-                width: isNarrow
-                  ? "100%"
-                  : isSplit(view) && view === View.SPLIT_COLUMNS
-                    ? `${splitRatio * 100}%`
-                    : isSplit(view)
-                      ? undefined
-                      : "100%",
-                height: isNarrow ? "100%" : isSplit(view) && view === View.SPLIT_ROWS ? `${splitRatio * 100}%` : "100%",
-                flexDirection: "column",
-                minWidth: 0,
-                minHeight: 0,
-                outline: isEditorDragOver ? "2px dashed var(--ms-brand, #0891b2)" : "none",
-                outlineOffset: -2,
-              }}
+              className={`d-flex flex-1 ${view === View.SPLIT_ROWS ? "flex-column" : ""}`}
+              ref={splitContainerRef}
+              style={
+                isFloatingWorkspace && isSplit(view) && !isFullScreenSplitCanvas
+                  ? {
+                      display: "flex",
+                      position: "absolute",
+                      top: 70,
+                      left: treeVisible ? treeWidth + 24 : 12,
+                      right: 12,
+                      bottom: diagnosticsBottomOffset,
+                      flexDirection: view === View.SPLIT_ROWS ? "column" : "row",
+                      minHeight: 0,
+                      minWidth: 0,
+                      overflow: "hidden",
+                      gap: 8,
+                    }
+                  : {
+                      display: isNarrow && mobileTab === "params" ? "none" : "flex",
+                      flex: 1,
+                      flexDirection: view === View.SPLIT_ROWS ? "column" : "row",
+                      minHeight: 0,
+                      minWidth: 0,
+                      height: isFloatingWorkspace ? "100%" : undefined,
+                      overflow: "hidden",
+                      position: isFloatingWorkspace ? "absolute" : "relative",
+                      inset: isFloatingWorkspace ? 0 : undefined,
+                      gap: isNarrow ? 0 : isSplit(view) && !isFullScreenSplitCanvas ? 4 : 0,
+                    }
+              }
             >
-              {detectedDialectHint && (
-                <div
-                  role="status"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    padding: "6px 10px",
-                    fontSize: 12,
-                    background: colorMode === "dark" ? "rgba(8, 145, 178, 0.16)" : "rgba(8, 145, 178, 0.1)",
-                    borderBottom: `1px solid ${colorMode === "dark" ? "rgba(56, 189, 248, 0.35)" : "rgba(8, 145, 178, 0.3)"}`,
-                    color: colorMode === "dark" ? "#e2e8f0" : "#0f172a",
-                  }}
-                >
-                  <span>
-                    Detected <strong>{detectedDialectHint.name}</strong> ({detectedDialectHint.reason}).
-                  </span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <button
-                      type="button"
-                      onClick={acceptDetectedDialect}
-                      style={{
-                        padding: "3px 9px",
-                        fontSize: 11,
-                        fontWeight: 600,
-                        borderRadius: 6,
-                        border: "none",
-                        cursor: "pointer",
-                        background: "var(--ms-brand, #0891b2)",
-                        color: "#ffffff",
-                      }}
-                    >
-                      Switch to {detectedDialectHint.name}
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Dismiss dialect suggestion"
-                      onClick={() => setDetectedDialectHint(null)}
-                      style={{
-                        padding: "2px 6px",
-                        fontSize: 13,
-                        lineHeight: 1,
-                        borderRadius: 4,
-                        border: "none",
-                        background: "transparent",
-                        color: "inherit",
-                        cursor: "pointer",
-                        opacity: 0.75,
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-              )}
-              <Suspense fallback={null}>
-                <CodeEditor
-                  uri={documentUri}
-                  languageId={dialect}
-                  ref={codeEditorRef}
-                  embed={props.embed ?? false}
-                  setEditor={setEditor}
-                  content={content}
-                  onChange={props.onCodeChange}
-                  onPaste={handleEditorPaste}
-                  theme={colorMode === "dark" ? "vs-dark" : "light"}
-                  externalErrors={
-                    simulationStatus?.status === "failed" && simulationStatus.error ? [simulationStatus.error] : []
-                  }
-                />
-              </Suspense>
-            </div>
-
-            {/* Split Resizer */}
-            {isSplit(view) && !isNarrow && (
-              <div
-                role="separator"
-                aria-orientation={view === View.SPLIT_COLUMNS ? "vertical" : "horizontal"}
-                aria-valuenow={Math.round(splitRatio * 100)}
-                aria-valuemin={20}
-                aria-valuemax={80}
-                aria-label="Resize split panes"
-                tabIndex={0}
-                style={{
-                  width: view === View.SPLIT_COLUMNS ? 10 : "100%",
-                  height: view === View.SPLIT_ROWS ? 10 : "100%",
-                  marginLeft: view === View.SPLIT_COLUMNS ? -5 : 0,
-                  marginRight: view === View.SPLIT_COLUMNS ? -5 : 0,
-                  marginTop: view === View.SPLIT_ROWS ? -5 : 0,
-                  marginBottom: view === View.SPLIT_ROWS ? -5 : 0,
-                  cursor: view === View.SPLIT_COLUMNS ? "col-resize" : "row-resize",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  backgroundColor: "transparent",
-                  display: "flex",
-                  position: "relative",
-                  zIndex: 10,
-                  outline: "none",
-                  userSelect: "none",
-                  borderLeft:
-                    view === View.SPLIT_COLUMNS && !isSplitResizerHovered && !isSplitResizerDragging
-                      ? `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`
-                      : "none",
-                  borderTop:
-                    view === View.SPLIT_ROWS && !isSplitResizerHovered && !isSplitResizerDragging
-                      ? `1px solid ${colorMode === "dark" ? "#30363d" : "#d0d7de"}`
-                      : "none",
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setSplitRatio((prev) => Math.max(0.2, Number((prev - 0.05).toFixed(2))));
-                  } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
-                    e.preventDefault();
-                    setSplitRatio((prev) => Math.min(0.8, Number((prev + 0.05).toFixed(2))));
-                  } else if (e.key === "Home") {
-                    e.preventDefault();
-                    setSplitRatio(0.2);
-                  } else if (e.key === "End") {
-                    e.preventDefault();
-                    setSplitRatio(0.8);
-                  }
-                }}
-                onDoubleClick={() => {
-                  setSplitRatio(0.5);
-                }}
-                onTouchStart={() => {
-                  isDraggingSplit.current = true;
-                  setIsSplitResizerDragging(true);
-                  document.body.style.userSelect = "none";
-                }}
-                onTouchMove={(e) => {
-                  if (!isDraggingSplit.current || !splitContainerRef.current) return;
-                  const touch = e.touches[0];
-                  if (!touch) return;
-                  const rect = splitContainerRef.current.getBoundingClientRect();
-                  if (view === View.SPLIT_COLUMNS) {
-                    const x = touch.clientX - rect.left;
-                    const ratio = Math.min(0.8, Math.max(0.2, x / rect.width));
-                    setSplitRatio(ratio);
+              {/* Visualizer Pane (Diagram / 3D / Simulation / Inspector on the left in split view) */}
+              <MorselVisualizerPane
+                view={view}
+                isNarrow={isNarrow}
+                mobileTab={mobileTab}
+                splitRatio={splitRatio}
+                nestedModels={nestedModels}
+                selectedModelIndex={selectedModelIndex}
+                setSelectedModelIndex={setSelectedModelIndex}
+                setSelectedTreeClassName={setSelectedTreeClassName}
+                colorMode={colorMode}
+                translations={translations}
+                dialect={dialect}
+                diagramType={diagramType}
+                setDiagramType={setDiagramType}
+                vtkBuffer={vtkBuffer}
+                editorValue={editorValue}
+                drillDownPath={drillDownPath}
+                onDrillUp={handleDrillUp}
+                onDrillRoot={handleDrillRoot}
+                onNodeDoubleClick={handleNodeDoubleClick}
+                onRevealLine={handleRevealLine}
+                onInsertStencilSnippet={handleInsertStencilSnippet}
+                showResultsView={showResultsView}
+                setShowResultsView={setShowResultsView}
+                showCadView={showCadView}
+                setShowCadView={setShowCadView}
+                cadComponents={cadComponents}
+                gdtOverlay={gdtOverlay}
+                animationMode={animationMode}
+                animationControllerRef={animationControllerRef}
+                diagramEditorRef={diagramEditorRef}
+                diagramData={diagramData}
+                selectedTreeClassName={selectedTreeClassName}
+                selectedComponent={selectedComponent}
+                setSelectedComponent={setSelectedComponent}
+                isDiagramLoading={isDiagramLoading}
+                setIsDiagramLoading={setIsDiagramLoading}
+                handleSelectComponent={handleSelectComponent}
+                enqueueDiagramAction={enqueueDiagramAction}
+                editor={editor}
+                editorRef={editorRef}
+                isSpatialEditPending={isSpatialEditPending}
+                propertiesWidth={propertiesWidth}
+                setPropertiesWidth={setPropertiesWidth}
+                selectedComponentProperties={selectedComponentProperties}
+                isPropertiesLoading={isPropertiesLoading}
+                diagnosticsBottomOffset={diagnosticsBottomOffset}
+                expectedComponentNameRef={expectedComponentNameRef}
+                handleSaveCadBindings={handleSaveCadBindings}
+                simulationVariables={simulationVariables || []}
+                selectedSimulationVariables={selectedSimulationVariables}
+                cosimDataSource={cosimDataSource}
+                setCosimDataSource={setCosimDataSource}
+                handleReplaySession={handleReplaySession}
+                localSimulationData={localSimulationData}
+                sweepResults={sweepResults}
+                simulationStatus={simulationStatus}
+                handleVariablesLoaded={handleVariablesLoaded}
+                treeVisible={treeVisible}
+                setTreeVisible={setTreeVisible}
+                setView={setView}
+                onAutoLayout={handleAutoLayout}
+                onSimulate={handleSimulate}
+                onOpenCloudModal={() => setIsCloudModalOpen(true)}
+                onFlatten={handleFlatten}
+                hideCenterFloatingToolbar={props.hideCenterFloatingToolbar}
+                showAnalysisView={showAnalysisView}
+                setShowAnalysisView={setShowAnalysisView}
+                documentUri={documentUri}
+                loadingProgress={loadingProgress}
+                onLoadStarterExample={handleLoadStarterExample}
+                isSplitActive={isSplit(view)}
+                canSplit={props.canSplit ?? true}
+                splitOrientation={props.splitOrientation}
+                treeWidth={treeWidth}
+                onSelectView={(target) => {
+                  if (props.onViewChange) {
+                    props.onViewChange(target);
                   } else {
-                    const y = touch.clientY - rect.top;
-                    const ratio = Math.min(0.8, Math.max(0.2, y / rect.height));
-                    setSplitRatio(ratio);
+                    applyViewMode(target);
                   }
                 }}
-                onTouchEnd={() => {
-                  isDraggingSplit.current = false;
-                  setIsSplitResizerDragging(false);
-                  document.body.style.userSelect = "";
-                }}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  isDraggingSplit.current = true;
-                  setIsSplitResizerDragging(true);
-                  const onMouseMove = (ev: MouseEvent) => {
+                onToggleSplit={
+                  props.onToggleSplit ??
+                  (() => {
+                    if (isSplit(view)) {
+                      setView(View.DIAGRAM);
+                    } else {
+                      const splitMode =
+                        props.splitOrientation === "rows" ||
+                        (props.splitOrientation !== "columns" && windowWidth < 960 && windowHeight >= 560)
+                          ? View.SPLIT_ROWS
+                          : View.SPLIT_COLUMNS;
+                      setView(splitMode);
+                    }
+                  })
+                }
+              />
+
+              {/* Split Resizer */}
+              {isSplit(view) && !isNarrow && (
+                <MorselResizeHandle
+                  orientation={view === View.SPLIT_COLUMNS ? "vertical" : "horizontal"}
+                  ariaLabel="Resize split panes"
+                  ariaValueNow={Math.round(splitRatio * 100)}
+                  ariaValueMin={20}
+                  ariaValueMax={80}
+                  isDragging={isSplitResizerDragging}
+                  style={{
+                    width: view === View.SPLIT_COLUMNS ? 8 : isFullScreenSplitCanvas ? "auto" : "100%",
+                    height: view === View.SPLIT_ROWS ? 8 : isFullScreenSplitCanvas ? "auto" : "100%",
+                    marginLeft: view === View.SPLIT_COLUMNS && !isFullScreenSplitCanvas ? -4 : 0,
+                    marginRight: view === View.SPLIT_COLUMNS && !isFullScreenSplitCanvas ? -4 : 0,
+                    marginTop: view === View.SPLIT_ROWS && !isFullScreenSplitCanvas ? -4 : 0,
+                    marginBottom: view === View.SPLIT_ROWS && !isFullScreenSplitCanvas ? -4 : 0,
+                    position: isFullScreenSplitCanvas ? "absolute" : "relative",
+                    ...(isFullScreenSplitCanvas && view === View.SPLIT_COLUMNS
+                      ? {
+                          top: 70,
+                          bottom: diagnosticsBottomOffset,
+                          left: `max(${treeVisible ? treeWidth + 24 - 4 : 8}px, calc(${splitRatio * 100}% - 4px))`,
+                        }
+                      : isFullScreenSplitCanvas && view === View.SPLIT_ROWS
+                        ? {
+                            left: treeVisible ? treeWidth + 24 : 12,
+                            right: 12,
+                            top: `max(66px, calc(${splitRatio * 100}% - 4px))`,
+                          }
+                        : {}),
+                    zIndex: isFullScreenSplitCanvas ? 25 : 10,
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+                      e.preventDefault();
+                      setSplitRatio((prev) => Math.max(0.2, Number((prev - 0.05).toFixed(2))));
+                    } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+                      e.preventDefault();
+                      setSplitRatio((prev) => Math.min(0.8, Number((prev + 0.05).toFixed(2))));
+                    } else if (e.key === "Home") {
+                      e.preventDefault();
+                      setSplitRatio(0.2);
+                    } else if (e.key === "End") {
+                      e.preventDefault();
+                      setSplitRatio(0.8);
+                    }
+                  }}
+                  onDoubleClick={() => {
+                    setSplitRatio(0.5);
+                  }}
+                  onTouchStart={() => {
+                    isDraggingSplit.current = true;
+                    setIsSplitResizerDragging(true);
+                    document.body.style.userSelect = "none";
+                  }}
+                  onTouchMove={(e) => {
                     if (!isDraggingSplit.current || !splitContainerRef.current) return;
+                    const touch = e.touches[0];
+                    if (!touch) return;
                     const rect = splitContainerRef.current.getBoundingClientRect();
                     if (view === View.SPLIT_COLUMNS) {
-                      const x = ev.clientX - rect.left;
+                      const x = touch.clientX - rect.left;
                       const ratio = Math.min(0.8, Math.max(0.2, x / rect.width));
                       setSplitRatio(ratio);
                     } else {
-                      const y = ev.clientY - rect.top;
+                      const y = touch.clientY - rect.top;
                       const ratio = Math.min(0.8, Math.max(0.2, y / rect.height));
                       setSplitRatio(ratio);
                     }
-                  };
-                  const onMouseUp = () => {
+                  }}
+                  onTouchEnd={() => {
                     isDraggingSplit.current = false;
                     setIsSplitResizerDragging(false);
-                    document.removeEventListener("mousemove", onMouseMove);
-                    document.removeEventListener("mouseup", onMouseUp);
-                    document.body.style.cursor = "";
                     document.body.style.userSelect = "";
-                  };
-                  document.addEventListener("mousemove", onMouseMove);
-                  document.addEventListener("mouseup", onMouseUp);
-                  document.body.style.cursor = view === View.SPLIT_COLUMNS ? "col-resize" : "row-resize";
-                  document.body.style.userSelect = "none";
-                }}
-                onMouseEnter={() => setIsSplitResizerHovered(true)}
-                onMouseLeave={() => setIsSplitResizerHovered(false)}
-              >
-                {/* Active highlight line centered on the split */}
-                <div
-                  style={{
-                    width: view === View.SPLIT_COLUMNS ? 2 : "100%",
-                    height: view === View.SPLIT_ROWS ? 2 : "100%",
-                    backgroundColor:
-                      isSplitResizerHovered || isSplitResizerDragging ? "var(--ms-brand, #0891b2)" : "transparent",
-                    transition: "background-color 0.15s ease",
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    isDraggingSplit.current = true;
+                    setIsSplitResizerDragging(true);
+                    const onMouseMove = (ev: MouseEvent) => {
+                      if (!isDraggingSplit.current || !splitContainerRef.current) return;
+                      const rect = splitContainerRef.current.getBoundingClientRect();
+                      if (view === View.SPLIT_COLUMNS) {
+                        const x = ev.clientX - rect.left;
+                        const ratio = Math.min(0.8, Math.max(0.2, x / rect.width));
+                        setSplitRatio(ratio);
+                      } else {
+                        const y = ev.clientY - rect.top;
+                        const ratio = Math.min(0.8, Math.max(0.2, y / rect.height));
+                        setSplitRatio(ratio);
+                      }
+                    };
+                    const onMouseUp = () => {
+                      isDraggingSplit.current = false;
+                      setIsSplitResizerDragging(false);
+                      document.removeEventListener("mousemove", onMouseMove);
+                      document.removeEventListener("mouseup", onMouseUp);
+                      document.body.style.cursor = "";
+                      document.body.style.userSelect = "";
+                    };
+                    document.addEventListener("mousemove", onMouseMove);
+                    document.addEventListener("mouseup", onMouseUp);
+                    document.body.style.cursor = view === View.SPLIT_COLUMNS ? "col-resize" : "row-resize";
+                    document.body.style.userSelect = "none";
                   }}
                 />
-                {/* Subtle grab pill in the center */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "50%",
-                    left: "50%",
-                    transform: "translate(-50%, -50%)",
-                    width: view === View.SPLIT_COLUMNS ? 4 : 28,
-                    height: view === View.SPLIT_COLUMNS ? 28 : 4,
-                    borderRadius: 999,
-                    backgroundColor:
-                      isSplitResizerHovered || isSplitResizerDragging ? "var(--ms-brand, #0891b2)" : "transparent",
-                    boxShadow:
-                      isSplitResizerHovered || isSplitResizerDragging
-                        ? "0 0 6px color-mix(in srgb, var(--ms-brand, #0891b2) 50%, transparent)"
-                        : "none",
-                    opacity: isSplitResizerHovered || isSplitResizerDragging ? 1 : 0,
-                    transition: "opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease",
-                    pointerEvents: "none",
-                  }}
-                />
-              </div>
-            )}
+              )}
 
-            {/* Visualizer Pane (Diagram / 3D / Simulation / Inspector on the right) */}
-            <MorselVisualizerPane
-              view={view}
-              isNarrow={isNarrow}
-              mobileTab={mobileTab}
-              splitRatio={splitRatio}
-              nestedModels={nestedModels}
-              selectedModelIndex={selectedModelIndex}
-              setSelectedModelIndex={setSelectedModelIndex}
-              setSelectedTreeClassName={setSelectedTreeClassName}
-              colorMode={colorMode}
-              translations={translations}
-              dialect={dialect}
-              diagramType={diagramType}
-              setDiagramType={setDiagramType}
-              vtkBuffer={vtkBuffer}
-              editorValue={editorValue}
-              drillDownPath={drillDownPath}
-              onDrillUp={handleDrillUp}
-              onDrillRoot={handleDrillRoot}
-              onNodeDoubleClick={handleNodeDoubleClick}
-              onRevealLine={handleRevealLine}
-              onInsertStencilSnippet={handleInsertStencilSnippet}
-              showResultsView={showResultsView}
-              setShowResultsView={setShowResultsView}
-              showCadView={showCadView}
-              setShowCadView={setShowCadView}
-              cadComponents={cadComponents}
-              gdtOverlay={gdtOverlay}
-              animationMode={animationMode}
-              animationControllerRef={animationControllerRef}
-              diagramEditorRef={diagramEditorRef}
-              diagramData={diagramData}
-              selectedTreeClassName={selectedTreeClassName}
-              selectedComponent={selectedComponent ?? highlightedComponent}
-              setSelectedComponent={setSelectedComponent}
-              isDiagramLoading={isDiagramLoading}
-              setIsDiagramLoading={setIsDiagramLoading}
-              handleSelectComponent={handleSelectComponent}
-              enqueueDiagramAction={enqueueDiagramAction}
-              editor={editor}
-              editorRef={editorRef}
-              isSpatialEditPending={isSpatialEditPending}
-              propertiesWidth={propertiesWidth}
-              setPropertiesWidth={setPropertiesWidth}
-              selectedComponentProperties={selectedComponentProperties}
-              isPropertiesLoading={isPropertiesLoading}
-              expectedComponentNameRef={expectedComponentNameRef}
-              handleSaveCadBindings={handleSaveCadBindings}
-              simulationVariables={simulationVariables || []}
-              selectedSimulationVariables={selectedSimulationVariables}
-              cosimDataSource={cosimDataSource}
-              setCosimDataSource={setCosimDataSource}
-              handleReplaySession={handleReplaySession}
-              localSimulationData={localSimulationData}
-              sweepResults={sweepResults}
-              simulationStatus={simulationStatus}
-              handleVariablesLoaded={handleVariablesLoaded}
-              treeVisible={treeVisible}
-              setTreeVisible={setTreeVisible}
-              setView={setView}
-              onAutoLayout={handleAutoLayout}
-              onSimulate={handleSimulate}
-              onOpenCloudModal={() => setIsCloudModalOpen(true)}
-              onFlatten={handleFlatten}
-              hideCenterFloatingToolbar={props.hideCenterFloatingToolbar}
-              showAnalysisView={showAnalysisView}
-              setShowAnalysisView={setShowAnalysisView}
-              documentUri={documentUri}
-              loadingProgress={loadingProgress}
-              onLoadStarterExample={handleLoadStarterExample}
-            />
+              {/* Code Editor (on the right in split view) */}
+              <div
+                onDragOver={(e) => {
+                  if (e.dataTransfer?.types?.includes("Files")) {
+                    e.preventDefault();
+                    setIsEditorDragOver(true);
+                  }
+                }}
+                onDragLeave={() => setIsEditorDragOver(false)}
+                onDrop={handleEditorDrop}
+                style={{
+                  display:
+                    (view === View.CODE || isSplit(view)) && (!isNarrow || mobileTab === "code") ? "flex" : "none",
+                  flex: isNarrow ? 1 : isSplit(view) ? "none" : 1,
+                  position:
+                    (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas ? "absolute" : undefined,
+                  zIndex: isFullScreenSplitCanvas ? 20 : undefined,
+                  top:
+                    (isFloatingWorkspace && view === View.CODE) ||
+                    (isFullScreenSplitCanvas && view === View.SPLIT_COLUMNS)
+                      ? 70
+                      : isFullScreenSplitCanvas && view === View.SPLIT_ROWS
+                        ? `max(70px, calc(${splitRatio * 100}% + 4px))`
+                        : undefined,
+                  left:
+                    (isFloatingWorkspace && view === View.CODE) || (isFullScreenSplitCanvas && view === View.SPLIT_ROWS)
+                      ? treeVisible
+                        ? treeWidth + 24
+                        : 12
+                      : isFullScreenSplitCanvas && view === View.SPLIT_COLUMNS
+                        ? `max(${treeVisible ? treeWidth + 24 : 12}px, calc(${splitRatio * 100}% + 4px))`
+                        : undefined,
+                  right: (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas ? 12 : undefined,
+                  bottom:
+                    (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas
+                      ? diagnosticsBottomOffset
+                      : undefined,
+                  width:
+                    (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas
+                      ? "auto"
+                      : isNarrow
+                        ? "100%"
+                        : isSplit(view) && view === View.SPLIT_COLUMNS
+                          ? `${(1 - splitRatio) * 100}%`
+                          : isSplit(view)
+                            ? undefined
+                            : "100%",
+                  height:
+                    (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas
+                      ? "auto"
+                      : isNarrow
+                        ? "100%"
+                        : isSplit(view) && view === View.SPLIT_ROWS
+                          ? `${(1 - splitRatio) * 100}%`
+                          : "100%",
+                  flexDirection: "column",
+                  minWidth: 0,
+                  minHeight: 0,
+                  outline: isEditorDragOver ? "2px dashed var(--ms-brand, #0891b2)" : "none",
+                  outlineOffset: -2,
+                  borderRadius: isNarrow ? 0 : 8,
+                  border: isNarrow
+                    ? "none"
+                    : isFloatingWorkspace
+                      ? "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))"
+                      : "1px solid var(--borderColor-muted, var(--ms-divider))",
+                  boxShadow: isFloatingWorkspace ? floatingCardShadow : undefined,
+                  overflow: "hidden",
+                  backgroundColor: "var(--color-canvas-default, #ffffff)",
+                }}
+              >
+                {detectedDialectHint && (
+                  <div
+                    role="status"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      padding: "6px 10px",
+                      fontSize: 12,
+                      background: colorMode === "dark" ? "rgba(8, 145, 178, 0.16)" : "rgba(8, 145, 178, 0.1)",
+                      borderBottom: `1px solid ${colorMode === "dark" ? "rgba(56, 189, 248, 0.35)" : "rgba(8, 145, 178, 0.3)"}`,
+                      color: colorMode === "dark" ? "#e2e8f0" : "#0f172a",
+                    }}
+                  >
+                    <span>
+                      Detected <strong>{detectedDialectHint.name}</strong> ({detectedDialectHint.reason}).
+                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={acceptDetectedDialect}
+                        style={{
+                          padding: "3px 9px",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          borderRadius: 6,
+                          border: "none",
+                          cursor: "pointer",
+                          background: "var(--ms-brand, #0891b2)",
+                          color: "#ffffff",
+                        }}
+                      >
+                        Switch to {detectedDialectHint.name}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Dismiss dialect suggestion"
+                        onClick={() => setDetectedDialectHint(null)}
+                        style={{
+                          padding: "2px 6px",
+                          fontSize: 13,
+                          lineHeight: 1,
+                          borderRadius: 4,
+                          border: "none",
+                          background: "transparent",
+                          color: "inherit",
+                          cursor: "pointer",
+                          opacity: 0.75,
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <Suspense fallback={null}>
+                  <CodeEditor
+                    uri={documentUri}
+                    languageId={dialect}
+                    ref={codeEditorRef}
+                    embed={props.embed ?? false}
+                    setEditor={setEditor}
+                    content={content}
+                    onChange={props.onCodeChange}
+                    onParsed={() => {
+                      if (dialect !== "modelica" && dialect !== "modelscript") {
+                        setContextVersion((v) => v + 1);
+                      }
+                    }}
+                    onPaste={handleEditorPaste}
+                    onDiagnostics={handleDiagnosticsChange}
+                    theme={colorMode === "dark" ? "vs-dark" : "light"}
+                    externalErrors={
+                      simulationStatus?.status === "failed" && simulationStatus.error ? [simulationStatus.error] : []
+                    }
+                  />
+                </Suspense>
+              </div>
+            </div>
+            {!isNarrow && !props.embed && (
+              <MorselDiagnosticsPanel
+                diagnostics={editorDiagnostics}
+                colorMode={colorMode}
+                isFloatingWorkspace={isFloatingWorkspace}
+                treeVisible={treeVisible}
+                treeWidth={treeWidth}
+                isExpanded={isDiagnosticsExpanded}
+                onToggleExpand={handleToggleDiagnostics}
+                panelHeight={diagnosticsPanelHeight}
+                onResizeHeight={setDiagnosticsPanelHeight}
+                onSelectDiagnostic={handleSelectDiagnostic}
+              />
+            )}
           </div>
         </div>
 

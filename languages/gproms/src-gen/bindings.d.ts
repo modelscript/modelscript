@@ -1358,19 +1358,80 @@ export declare function createWasmParserSync(
   facade: LspFacade;
   parser: TreeSitterParser;
 };
+/**
+ * Registers a pre-instantiated WebAssembly GLR parser in `globalThis.__msWasmParsers`
+ * so synchronous language parsers and workspace linters can use it inside browser WebWorkers
+ * without Node.js `fs` or `node:module`.
+ */
+export declare function registerPreloadedWasmParser(
+  langId: string,
+  parser: TreeSitterParser | null | undefined,
+  facade?: LspFacade | null,
+): void;
+/**
+ * Retrieves a pre-instantiated WebAssembly GLR parser from `globalThis` if registered
+ * by `ParserService` (browser WebWorker or Node LSP server).
+ */
+export declare function getPreloadedWasmParser(
+  langId: string,
+): TreeSitterParser | undefined;
+/**
+ * Resolves the filesystem path or URL to a language package's `parser.wasm` without `node:module`.
+ */
+export declare function resolveLanguageWasmPath(
+  importMetaUrl: string,
+  langId?: string,
+): string;
+/**
+ * Isomorphic helper that returns the pre-loaded WASM GLR parser in browser WebWorkers
+ * (`globalThis.__msWasmParsers`) and lazily loads `parser.wasm` synchronously in Node.js CLI/tests.
+ */
+export declare function getOrLoadLanguageWasmParser<TParser = TreeSitterParser>(
+  langId: string,
+  importMetaUrl: string,
+  syncFactory?: (wasmPath: string) => {
+    parser: TParser;
+  },
+): TParser;
+export interface WasmSyntaxErrorSpan {
+  message: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+}
+/**
+ * Walks a WASM GLR `SyntaxNode` root and extracts bounded `ERROR` / `isMissing` syntax error spans
+ * (1-indexed lines and columns).
+ */
+export declare function collectWasmSyntaxErrors(
+  rootNode: unknown,
+  maxErrors?: number,
+): WasmSyntaxErrorSpan[];
 
 export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Document = 6,
-  DeckToken = 7,
-  START = 8,
-  _START = 8,
-  DeckNumber = 11,
-  DeckString = 12,
-  DeckIdentifier = 13,
-  DeckPunct = 14,
+  Document = 20,
+  Item = 21,
+  ParenGroup = 22,
+  BracketGroup = 23,
+  CompareOp = 24,
+  START = 25,
+  _START = 25,
+  AssignOp = 28,
+  PowerOp = 29,
+  DomainInteriorOp = 31,
+  StringLiteral = 32,
+  NumberLiteral = 33,
+  Identifier = 34,
+  SymbolToken = 35,
+  LineComment = 36,
+  BraceComment = 37,
+  BlockComment = 38,
   EOF = 1023,
 }
 
@@ -1386,26 +1447,62 @@ export interface DocumentNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Document;
 }
 export declare function isDocument(node: SyntaxNode | null | undefined): node is DocumentNode;
-export interface DeckTokenNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DeckToken;
+export interface ItemNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Item;
 }
-export declare function isDeckToken(node: SyntaxNode | null | undefined): node is DeckTokenNode;
-export interface DeckNumberNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DeckNumber;
+export declare function isItem(node: SyntaxNode | null | undefined): node is ItemNode;
+export interface ParenGroupNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ParenGroup;
 }
-export declare function isDeckNumber(node: SyntaxNode | null | undefined): node is DeckNumberNode;
-export interface DeckStringNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DeckString;
+export declare function isParenGroup(node: SyntaxNode | null | undefined): node is ParenGroupNode;
+export interface BracketGroupNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.BracketGroup;
 }
-export declare function isDeckString(node: SyntaxNode | null | undefined): node is DeckStringNode;
-export interface DeckIdentifierNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DeckIdentifier;
+export declare function isBracketGroup(node: SyntaxNode | null | undefined): node is BracketGroupNode;
+export interface CompareOpNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CompareOp;
 }
-export declare function isDeckIdentifier(node: SyntaxNode | null | undefined): node is DeckIdentifierNode;
-export interface DeckPunctNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DeckPunct;
+export declare function isCompareOp(node: SyntaxNode | null | undefined): node is CompareOpNode;
+export interface AssignOpNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.AssignOp;
 }
-export declare function isDeckPunct(node: SyntaxNode | null | undefined): node is DeckPunctNode;
+export declare function isAssignOp(node: SyntaxNode | null | undefined): node is AssignOpNode;
+export interface PowerOpNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.PowerOp;
+}
+export declare function isPowerOp(node: SyntaxNode | null | undefined): node is PowerOpNode;
+export interface DomainInteriorOpNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DomainInteriorOp;
+}
+export declare function isDomainInteriorOp(node: SyntaxNode | null | undefined): node is DomainInteriorOpNode;
+export interface StringLiteralNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.StringLiteral;
+}
+export declare function isStringLiteral(node: SyntaxNode | null | undefined): node is StringLiteralNode;
+export interface NumberLiteralNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.NumberLiteral;
+}
+export declare function isNumberLiteral(node: SyntaxNode | null | undefined): node is NumberLiteralNode;
+export interface IdentifierNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Identifier;
+}
+export declare function isIdentifier(node: SyntaxNode | null | undefined): node is IdentifierNode;
+export interface SymbolTokenNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SymbolToken;
+}
+export declare function isSymbolToken(node: SyntaxNode | null | undefined): node is SymbolTokenNode;
+export interface LineCommentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.LineComment;
+}
+export declare function isLineComment(node: SyntaxNode | null | undefined): node is LineCommentNode;
+export interface BraceCommentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.BraceComment;
+}
+export declare function isBraceComment(node: SyntaxNode | null | undefined): node is BraceCommentNode;
+export interface BlockCommentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.BlockComment;
+}
+export declare function isBlockComment(node: SyntaxNode | null | undefined): node is BlockCommentNode;
 export declare namespace Cst {
   export function kind(node: SyntaxNode | null | undefined): string;
   export function normalize(token: string | null | undefined): string;
@@ -1414,29 +1511,74 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DocumentNode;
   };
-  export const DeckToken: {
+  export const Item: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DeckTokenNode;
+    is(node: SyntaxNode | null | undefined): node is ItemNode;
   };
-  export const DeckNumber: {
+  export const ParenGroup: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DeckNumberNode;
+    is(node: SyntaxNode | null | undefined): node is ParenGroupNode;
   };
-  export const DeckString: {
+  export const BracketGroup: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DeckStringNode;
+    is(node: SyntaxNode | null | undefined): node is BracketGroupNode;
   };
-  export const DeckIdentifier: {
+  export const CompareOp: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DeckIdentifierNode;
+    is(node: SyntaxNode | null | undefined): node is CompareOpNode;
   };
-  export const DeckPunct: {
+  export const AssignOp: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DeckPunctNode;
+    is(node: SyntaxNode | null | undefined): node is AssignOpNode;
+  };
+  export const PowerOp: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is PowerOpNode;
+  };
+  export const DomainInteriorOp: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DomainInteriorOpNode;
+  };
+  export const StringLiteral: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is StringLiteralNode;
+  };
+  export const NumberLiteral: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is NumberLiteralNode;
+  };
+  export const Identifier: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IdentifierNode;
+  };
+  export const SymbolToken: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is SymbolTokenNode;
+  };
+  export const LineComment: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is LineCommentNode;
+  };
+  export const BraceComment: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is BraceCommentNode;
+  };
+  export const BlockComment: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is BlockCommentNode;
   };
 }

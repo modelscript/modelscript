@@ -4,19 +4,13 @@
  * GE PSLF Dynamic Data (.dyd) Parser.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/pslf/wasm-parser";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type { PslfDydCase, PslfDynamicModel } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getPslfWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/pslf/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("pslf", import.meta.url, createWasmParserSync);
 }
 
 /**

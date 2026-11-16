@@ -9,6 +9,11 @@ import {
   type ModelscriptLibraryManifest,
 } from "@modelscript/runtime";
 import type { PscadComponentSchema, PscadParameterSchema, PscadPortSchema } from "./master-library-schemas.js";
+import {
+  PSCAD_MASTER_LIB_DIAGRAMS,
+  PSCAD_MASTER_LIB_PKG_JSON,
+  PSCAD_MASTER_LIB_SYMBOLS,
+} from "./pscad-master-lib-data.js";
 
 /**
  * Converts `PscadComponentSchema[]` into generic `@modelscript/runtime` `LibrarySymbolStub[]`
@@ -161,10 +166,13 @@ export function ensureBuiltInPscadLibraryRegistered(): LoadedLibraryPackage | un
         });
       }
     } catch {
-      // Browser or non-fs environment: Morsel registers bundles via registerPscadLibraryBundle()
+      // Browser or non-fs environment: fall through to bundled JSON registration below.
     }
   }
-  return undefined;
+  return globalLibraryRegistry.registerLibraryBundle(PSCAD_MASTER_LIB_PKG_JSON, {
+    symbols: PSCAD_MASTER_LIB_SYMBOLS,
+    diagrams: PSCAD_MASTER_LIB_DIAGRAMS,
+  });
 }
 
 /**

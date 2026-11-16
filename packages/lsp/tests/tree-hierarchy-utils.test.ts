@@ -244,5 +244,35 @@ describe("LSP Tree Hierarchy & OWL 2 Tree Utilities", () => {
         mountedLibraryMetadata.delete("PSSE-Standard-Dynamics");
       }
     });
+
+    it("surfaces @modelscript/pscad-master-lib as MASTER with categories and components", async () => {
+      const { ensureBuiltInPscadLibraryRegistered } = await import("@modelscript/pscad");
+      const { globalLibraryRegistry } = await import("@modelscript/runtime");
+      const pkg = ensureBuiltInPscadLibraryRegistered();
+      assert.ok(pkg, "ensureBuiltInPscadLibraryRegistered must return a loaded package");
+
+      const emptyIndex = { symbols: new Map(), childrenOf: new Map() };
+      try {
+        const roots = await getTreeChildrenFast(emptyIndex);
+        const masterNode = roots.find((r) => r.id === "__LIB__:MASTER");
+        assert.ok(masterNode, "MASTER library root must appear in getTreeChildrenFast()");
+        assert.strictEqual(masterNode.language, "pscad");
+        assert.strictEqual(masterNode.hasChildren, true);
+
+        const categories = await getTreeChildrenFast(emptyIndex, "__LIB__:MASTER");
+        assert.ok(categories.length > 0, "MASTER must expand into component categories");
+        const sourcesCat = categories.find((c) => c.name === "Sources & Rotating Machines");
+        assert.ok(sourcesCat, "Sources & Rotating Machines category must exist");
+        assert.strictEqual(sourcesCat.hasChildren, true);
+
+        const leaves = await getTreeChildrenFast(emptyIndex, sourcesCat.id);
+        const source3 = leaves.find((l) => l.compositeName === "master:source3");
+        assert.ok(source3, "master:source3 must appear under Sources & Rotating Machines");
+        assert.strictEqual(source3.language, "pscad");
+        assert.strictEqual(source3.hasChildren, false);
+      } finally {
+        globalLibraryRegistry.unregisterPackage("@modelscript/pscad-master-lib");
+      }
+    });
   });
 });

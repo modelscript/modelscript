@@ -19,100 +19,50 @@ export const canteraGrammar = language({
     outline: ["CtiDirective", "YamlSection"],
   },
   rules: {
-    MechanismFile: ($) => repeat(choice($.CtiDirective, $.YamlSection, $.Statement)),
+    MechanismFile: ($) => optional(choice($.YamlDocument, $.CtiDocument)),
+
+    YamlDocument: ($) => repeat1(choice($.DocMarker, $.YamlSection, $.YamlSequenceItem)),
+
+    CtiDocument: ($) => repeat1($.CtiDirective),
 
     // Legacy CTI directive: ideal_gas(...), species(...), reaction(...)
-    CtiDirective: ($) =>
-      seq(
-        field(
-          "directiveName",
-          choice(
-            "ideal_gas",
-            "gas",
-            "species",
-            "reaction",
-            "three_body_reaction",
-            "falloff_reaction",
-            "plog_reaction",
-            "element",
-            "units",
-            $.Identifier,
-          ),
-        ),
-        "(",
-        optional($.ArgumentList),
-        ")",
-      ),
+    CtiDirective: ($) => seq(field("directiveName", $.Identifier), "(", $.GroupBody, ")"),
 
-    ArgumentList: ($) =>
-      seq(
-        choice($.NamedArgument, $.Expression),
-        repeat(seq(",", choice($.NamedArgument, $.Expression))),
-        optional(","),
-      ),
-
-    NamedArgument: ($) => seq(field("paramName", $.Identifier), "=", field("value", $.Expression)),
-
-    // Modern Cantera YAML sections
+    // Modern Cantera YAML key-value / block-header entries
     YamlSection: ($) =>
-      seq(
-        field(
-          "sectionKey",
-          choice("phases", "species", "reactions", "elements", "units", "description", "generator", $.Identifier),
-        ),
-        ":",
-        choice($.YamlBlock, $.Expression),
+      choice(seq(field("sectionKey", $.YamlKey), field("value", $.LineValue)), field("sectionKey", $.YamlKey)),
+
+    YamlSequenceItem: ($) => choice(seq("-", $.YamlSection), seq("-", $.LineValue)),
+
+    LineValue: ($) => repeat1($.ValueAtom),
+
+    ValueAtom: ($) =>
+      choice(
+        $.YamlMapping,
+        $.ListLiteral,
+        $.TupleLiteral,
+        $.StringLiteral,
+        $.NumberLiteral,
+        $.Identifier,
+        $.ReactionOp,
       ),
 
-    YamlBlock: ($) => choice($.YamlSequence, $.YamlMapping),
+    // YAML flow mapping: {A: 1.2e+17, b: -1.0, Ea: 0.0}
+    YamlMapping: ($) => seq("{", $.GroupBody, "}"),
 
-    YamlSequence: ($) => repeat1($.YamlSequenceItem),
+    ListLiteral: ($) => seq("[", $.GroupBody, "]"),
 
-    YamlSequenceItem: ($) => seq("-", choice($.YamlMapping, $.Expression)),
+    TupleLiteral: ($) => seq("(", $.GroupBody, ")"),
 
-    YamlMapping: ($) => repeat1($.YamlEntry),
-
-    YamlEntry: ($) =>
-      seq(
-        field(
-          "key",
-          choice(
-            "equation",
-            "rate-constant",
-            "type",
-            "reversible",
-            "orders",
-            "duplicate",
-            "troe",
-            "low-P-rate-constant",
-            "name",
-            "composition",
-            "thermo",
-            "transport",
-            "note",
-            $.StringLiteral,
-            $.Identifier,
-          ),
-        ),
-        ":",
-        field("value", choice($.YamlMapping, $.Expression)),
-      ),
-
-    Statement: ($) => seq(field("lhs", $.Identifier), choice("=", ":"), field("rhs", $.Expression)),
-
-    Expression: ($) =>
-      choice($.ListLiteral, $.TupleLiteral, $.FunctionCall, $.StringLiteral, $.NumberLiteral, $.Identifier),
-
-    ListLiteral: ($) => seq("[", optional(seq($.Expression, repeat(seq(",", $.Expression)), optional(","))), "]"),
-
-    TupleLiteral: ($) => seq("(", optional(seq($.Expression, repeat(seq(",", $.Expression)), optional(","))), ")"),
-
-    FunctionCall: ($) => seq(field("callee", $.Identifier), "(", optional($.ArgumentList), ")"),
+    GroupBody: ($) => repeat(choice($.ValueAtom, $.YamlKey, ":", ",", "=", "-")),
 
     // Terminals
-    CommentLine: () => /#.*|\/\/.*|--.*/,
-    Identifier: () => /[a-zA-Z_][a-zA-Z0-9_\-.]*/,
-    StringLiteral: () => /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/,
-    NumberLiteral: () => /[-+]?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?/,
+    DocMarker: () => /---|\.\.\./,
+    YamlKey: () => /[a-zA-Z_][a-zA-Z0-9_.+-]*:/,
+    ReactionOp: () => /<=>|<=|=>|<->|->|\+|\//,
+    CommentLine: () => /(?:#|\/\/)[^\r\n]*/,
+    Identifier: () => /[a-zA-Z_][a-zA-Z0-9_.+-]*/,
+    StringLiteral: () => /"([^"\\\r\n]|\\.)*"|'([^'\\\r\n]|\\.)*'/,
+    NumberLiteral: () => /[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?/,
   },
 });

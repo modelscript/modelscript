@@ -1358,44 +1358,102 @@ export declare function createWasmParserSync(
   facade: LspFacade;
   parser: TreeSitterParser;
 };
+/**
+ * Registers a pre-instantiated WebAssembly GLR parser in `globalThis.__msWasmParsers`
+ * so synchronous language parsers and workspace linters can use it inside browser WebWorkers
+ * without Node.js `fs` or `node:module`.
+ */
+export declare function registerPreloadedWasmParser(
+  langId: string,
+  parser: TreeSitterParser | null | undefined,
+  facade?: LspFacade | null,
+): void;
+/**
+ * Retrieves a pre-instantiated WebAssembly GLR parser from `globalThis` if registered
+ * by `ParserService` (browser WebWorker or Node LSP server).
+ */
+export declare function getPreloadedWasmParser(
+  langId: string,
+): TreeSitterParser | undefined;
+/**
+ * Resolves the filesystem path or URL to a language package's `parser.wasm` without `node:module`.
+ */
+export declare function resolveLanguageWasmPath(
+  importMetaUrl: string,
+  langId?: string,
+): string;
+/**
+ * Isomorphic helper that returns the pre-loaded WASM GLR parser in browser WebWorkers
+ * (`globalThis.__msWasmParsers`) and lazily loads `parser.wasm` synchronously in Node.js CLI/tests.
+ */
+export declare function getOrLoadLanguageWasmParser<TParser = TreeSitterParser>(
+  langId: string,
+  importMetaUrl: string,
+  syncFactory?: (wasmPath: string) => {
+    parser: TParser;
+  },
+): TParser;
+export interface WasmSyntaxErrorSpan {
+  message: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+}
+/**
+ * Walks a WASM GLR `SyntaxNode` root and extracts bounded `ERROR` / `isMissing` syntax error spans
+ * (1-indexed lines and columns).
+ */
+export declare function collectWasmSyntaxErrors(
+  rootNode: unknown,
+  maxErrors?: number,
+): WasmSyntaxErrorSpan[];
 
 export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  ControlStream = 54,
-  RecordBlock = 55,
-  ProblemRecord = 56,
-  DataRecord = 57,
-  InputRecord = 58,
-  SubroutineRecord = 59,
-  ModelRecord = 60,
-  PkRecord = 61,
-  DesRecord = 62,
-  ErrorRecord = 63,
-  ThetaRecord = 64,
-  ThetaBound = 65,
-  OmegaRecord = 66,
-  SigmaRecord = 67,
-  EstimationRecord = 68,
-  TableRecord = 69,
-  GenericRecord = 70,
-  RecordOption = 71,
-  Equation = 72,
-  DerivativeEquation = 73,
-  AssignmentEquation = 74,
-  IfEquation = 75,
-  Expression = 76,
-  BinaryExpr = 77,
-  UnaryExpr = 78,
-  CallExpr = 79,
-  PrimaryExpr = 80,
-  START = 81,
-  _START = 81,
-  CommentLine = 137,
-  Identifier = 138,
-  NumberLiteral = 139,
-  StringLiteral = 140,
+  ControlStream = 76,
+  RecordBlock = 77,
+  ProblemRecord = 78,
+  DataRecord = 79,
+  DataFile = 80,
+  InputRecord = 81,
+  SubroutineRecord = 82,
+  ModelRecord = 83,
+  PkRecord = 84,
+  DesRecord = 85,
+  ErrorRecord = 86,
+  ThetaRecord = 87,
+  ThetaItem = 88,
+  ThetaBound = 89,
+  ThetaBoundElem = 90,
+  OmegaRecord = 91,
+  SigmaRecord = 92,
+  EstimationRecord = 93,
+  TableRecord = 94,
+  GenericRecord = 95,
+  RecordOption = 96,
+  ParenOptionList = 97,
+  SignedNumber = 98,
+  Equation = 99,
+  DerivativeEquation = 100,
+  AssignmentEquation = 101,
+  IfEquation = 102,
+  Expression = 103,
+  BinaryExpr = 104,
+  UnaryExpr = 105,
+  CallExpr = 106,
+  PrimaryExpr = 107,
+  START = 108,
+  _START = 108,
+  CommentLine = 185,
+  DottedIdent = 186,
+  Identifier = 187,
+  NumberLiteral = 188,
+  StringLiteral = 189,
   EOF = 1023,
 }
 
@@ -1406,26 +1464,20 @@ export declare enum FieldId {
   option = 2,
   Item = 3,
   item = 3,
-  Lower = 4,
-  lower = 4,
-  Init = 5,
-  init = 5,
-  Upper = 6,
-  upper = 6,
-  RecordName = 7,
-  recordName = 7,
-  Key = 8,
-  key = 8,
-  Value = 9,
-  value = 9,
-  Lhs = 10,
-  lhs = 10,
-  Rhs = 11,
-  rhs = 11,
-  Cond = 12,
-  cond = 12,
-  Func = 13,
-  func = 13,
+  RecordName = 4,
+  recordName = 4,
+  Key = 5,
+  key = 5,
+  Value = 6,
+  value = 6,
+  Lhs = 7,
+  lhs = 7,
+  Rhs = 8,
+  rhs = 8,
+  Cond = 9,
+  cond = 9,
+  Func = 10,
+  func = 10,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1449,6 +1501,10 @@ export interface DataRecordNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DataRecord;
 }
 export declare function isDataRecord(node: SyntaxNode | null | undefined): node is DataRecordNode;
+export interface DataFileNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DataFile;
+}
+export declare function isDataFile(node: SyntaxNode | null | undefined): node is DataFileNode;
 export interface InputRecordNode extends SyntaxNode {
   readonly typeId: SyntaxKind.InputRecord;
 }
@@ -1477,10 +1533,18 @@ export interface ThetaRecordNode extends SyntaxNode {
   readonly typeId: SyntaxKind.ThetaRecord;
 }
 export declare function isThetaRecord(node: SyntaxNode | null | undefined): node is ThetaRecordNode;
+export interface ThetaItemNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ThetaItem;
+}
+export declare function isThetaItem(node: SyntaxNode | null | undefined): node is ThetaItemNode;
 export interface ThetaBoundNode extends SyntaxNode {
   readonly typeId: SyntaxKind.ThetaBound;
 }
 export declare function isThetaBound(node: SyntaxNode | null | undefined): node is ThetaBoundNode;
+export interface ThetaBoundElemNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ThetaBoundElem;
+}
+export declare function isThetaBoundElem(node: SyntaxNode | null | undefined): node is ThetaBoundElemNode;
 export interface OmegaRecordNode extends SyntaxNode {
   readonly typeId: SyntaxKind.OmegaRecord;
 }
@@ -1505,6 +1569,14 @@ export interface RecordOptionNode extends SyntaxNode {
   readonly typeId: SyntaxKind.RecordOption;
 }
 export declare function isRecordOption(node: SyntaxNode | null | undefined): node is RecordOptionNode;
+export interface ParenOptionListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ParenOptionList;
+}
+export declare function isParenOptionList(node: SyntaxNode | null | undefined): node is ParenOptionListNode;
+export interface SignedNumberNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SignedNumber;
+}
+export declare function isSignedNumber(node: SyntaxNode | null | undefined): node is SignedNumberNode;
 export interface EquationNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Equation;
 }
@@ -1545,6 +1617,10 @@ export interface CommentLineNode extends SyntaxNode {
   readonly typeId: SyntaxKind.CommentLine;
 }
 export declare function isCommentLine(node: SyntaxNode | null | undefined): node is CommentLineNode;
+export interface DottedIdentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DottedIdent;
+}
+export declare function isDottedIdent(node: SyntaxNode | null | undefined): node is DottedIdentNode;
 export interface IdentifierNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Identifier;
 }
@@ -1583,6 +1659,11 @@ export declare namespace Cst {
     fileList(node: SyntaxNode | null | undefined): SyntaxNode[];
     option(node: SyntaxNode | null | undefined): SyntaxNode | null;
     optionList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const DataFile: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DataFileNode;
   };
   export const InputRecord: {
     readonly typeId: number;
@@ -1625,16 +1706,20 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ThetaRecordNode;
   };
+  export const ThetaItem: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ThetaItemNode;
+  };
   export const ThetaBound: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ThetaBoundNode;
-    lower(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    lowerList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    init(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    initList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    upper(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    upperList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ThetaBoundElem: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ThetaBoundElemNode;
   };
   export const OmegaRecord: {
     readonly typeId: number;
@@ -1671,6 +1756,16 @@ export declare namespace Cst {
     keyList(node: SyntaxNode | null | undefined): SyntaxNode[];
     value(node: SyntaxNode | null | undefined): SyntaxNode | null;
     valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const ParenOptionList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ParenOptionListNode;
+  };
+  export const SignedNumber: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is SignedNumberNode;
   };
   export const Equation: {
     readonly typeId: number;
@@ -1733,6 +1828,11 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is CommentLineNode;
+  };
+  export const DottedIdent: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DottedIdentNode;
   };
   export const Identifier: {
     readonly typeId: number;

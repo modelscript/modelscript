@@ -4,9 +4,9 @@
  * Parser for USACE HEC-HMS basin and project files (.basin, .hms).
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/hec-hms/wasm-parser";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type {
   HmsBasinModel,
   HmsJunction,
@@ -17,14 +17,8 @@ import type {
   HmsUnitSystem,
 } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getHecHmsWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/hec-hms/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("hec-hms", import.meta.url, createWasmParserSync);
 }
 
 /**

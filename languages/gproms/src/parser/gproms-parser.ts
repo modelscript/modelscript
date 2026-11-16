@@ -11,6 +11,7 @@
  *   - PROCESS ... UNIT ... SET ... ASSIGN ... INITIAL ... SOLUTIONPARAMETERS ... END
  */
 
+import { groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
 import type {
   GpromsDiscretizationMethod,
   GpromsDocument,
@@ -25,6 +26,7 @@ import type {
   GpromsRange,
   GpromsVariableType,
 } from "../types.js";
+import { getGpromsWasmParser } from "./wasm-loader.js";
 
 export type GpromsTokenType =
   | "IDENT"
@@ -480,9 +482,125 @@ function tokenRange(startTok: GpromsToken, endTok: GpromsToken): GpromsRange {
   };
 }
 
-export function parseGproms(source: string, sourceFile?: string): GpromsDocument {
-  const lexer = new GpromsLexer(source);
-  const tokens = lexer.tokenize();
+function tokenizeGpromsFromCst(source: string, rootNode: CstNodeLike): GpromsToken[] {
+  const tokens: GpromsToken[] = [];
+  const cstLines = groupAllCstTokensByLine(rootNode);
+
+  for (const { row, tokens: lineLeaves } of cstLines) {
+    for (const leaf of lineLeaves) {
+      const raw = leaf.text ?? "";
+      if (!raw || leaf.type === "ERROR" || raw === "|+" || raw === "|-") continue;
+
+      const startLine = (leaf.startPosition?.row ?? row) + 1;
+      const startColumn = (leaf.startPosition?.column ?? 0) + 1;
+      const endLine = startLine;
+      const endColumn = startColumn + raw.length;
+      const startOffset = leaf.startIndex ?? 0;
+      const endOffset = leaf.endIndex ?? startOffset + raw.length;
+
+      let type: GpromsTokenType = "IDENT";
+      let value = raw;
+
+      if (raw === ":=") {
+        type = "ASSIGN_OP";
+      } else if (raw === "**") {
+        type = "OP";
+        value = "^";
+      } else if (raw === "<=" || raw === ">=" || raw === "<>" || raw === "==") {
+        type = "OP";
+      } else if (raw === "$") {
+        type = "DOLLAR";
+      } else if (raw === "=") {
+        type = "EQUALS";
+      } else if (raw === ":") {
+        type = "COLON";
+      } else if (raw === ";") {
+        type = "SEMICOLON";
+      } else if (raw === ",") {
+        type = "COMMA";
+      } else if (raw === ".") {
+        type = "DOT";
+      } else if (raw === "(") {
+        type = "LPAREN";
+      } else if (raw === ")") {
+        type = "RPAREN";
+      } else if (raw === "[") {
+        type = "LBRACKET";
+      } else if (raw === "]") {
+        type = "RBRACKET";
+      } else if (
+        raw === "+" ||
+        raw === "-" ||
+        raw === "*" ||
+        raw === "/" ||
+        raw === "^" ||
+        raw === "<" ||
+        raw === ">"
+      ) {
+        type = "OP";
+      } else if (
+        (raw.startsWith('"') && raw.endsWith('"') && raw.length >= 2) ||
+        (raw.startsWith("'") && raw.endsWith("'") && raw.length >= 2)
+      ) {
+        type = "STRING";
+        value = raw.slice(1, -1);
+      } else if (
+        leaf.type === "NumberLiteral" ||
+        isAsciiDigit(raw[0] ?? "") ||
+        (raw[0] === "." && isAsciiDigit(raw[1] ?? ""))
+      ) {
+        type = "NUMBER";
+      }
+
+      tokens.push({
+        type,
+        value,
+        upper: value.toUpperCase(),
+        startLine,
+        startColumn,
+        endLine,
+        endColumn,
+        startOffset,
+        endOffset,
+      });
+    }
+  }
+
+  let eofLine = 1;
+  let eofCol = 1;
+  for (let i = 0; i < source.length; i++) {
+    if (source[i] === "\n") {
+      eofLine++;
+      eofCol = 1;
+    } else {
+      eofCol++;
+    }
+  }
+
+  tokens.push({
+    type: "EOF",
+    value: "",
+    upper: "",
+    startLine: eofLine,
+    startColumn: eofCol,
+    endLine: eofLine,
+    endColumn: eofCol,
+    startOffset: source.length,
+    endOffset: source.length,
+  });
+
+  return tokens;
+}
+
+export function parseGproms(
+  source: string,
+  sourceFile?: string,
+  existingTree?: { rootNode?: unknown } | null,
+): GpromsDocument {
+  const cstTree = existingTree ?? getGpromsWasmParser().parse(source);
+  const rootNode = cstTree?.rootNode as (CstNodeLike & { hasError?: boolean }) | null | undefined;
+  const tokens =
+    rootNode && !rootNode.hasError ? tokenizeGpromsFromCst(source, rootNode) : new GpromsLexer(source).tokenize();
   let idx = 0;
 
   const variableTypes = new Map<string, GpromsVariableType>();

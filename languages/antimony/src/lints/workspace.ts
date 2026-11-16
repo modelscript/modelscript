@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { createWasmParserSync } from "@modelscript/antimony/wasm-parser";
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import {
   collectWorkspaceDocuments,
   findIncludeCycle,
@@ -9,18 +10,11 @@ import {
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import { parseAntimony } from "../parser/index.js";
 import { lintAntimony } from "./index.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getAntimonyWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/antimony/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("antimony", import.meta.url, createWasmParserSync);
 }
 
 /**

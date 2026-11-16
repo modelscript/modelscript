@@ -9,9 +9,9 @@
  * on missing entities), and synthesizes QIF 3.0 inspection documents from STEP models.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { collectCstNodes, extractCstLeafNodes, type CstNodeLike, type UnifiedWorkspace } from "@modelscript/runtime";
 import { createWasmParserSync } from "@modelscript/step/parser";
-import { createRequire } from "node:module";
 import { MATHEMATICAL_MIN_POINTS, QifErrorCode } from "../lints/rules.js";
 import { computeLineOffsets, isDefaultFeatureOfSize, makeRange } from "../parser/index.js";
 import type {
@@ -25,15 +25,9 @@ import type {
   QifPlanStep,
 } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedStepParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
-
 function getStepWasmParser() {
-  if (!cachedStepParser) {
-    const wasmPath = require.resolve("@modelscript/step/parser.wasm");
-    cachedStepParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedStepParser;
+  const stepMetaUrl = import.meta.url.replace(/\/(languages|@modelscript)\/qif\//, "/$1/step/");
+  return getOrLoadLanguageWasmParser("step", stepMetaUrl, createWasmParserSync);
 }
 
 function stripLeadingHash(s: string): string {

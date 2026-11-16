@@ -2,18 +2,12 @@
 
 import type { RocetsPerformanceMap } from "../types.js";
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/rocets/wasm-parser";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getRocetsWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/rocets/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("rocets", import.meta.url, createWasmParserSync);
 }
 
 /**

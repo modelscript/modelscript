@@ -80,54 +80,94 @@ export const MorselMobileTabBar: React.FC<MorselMobileTabBarProps> = ({
   const activeLangInfo = getLanguageInfo(dialect);
   const isPlaygroundRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/playground");
 
+  const visibleTabs = React.useMemo<MobileTab[]>(() => {
+    const tabs: MobileTab[] = ["code", "params"];
+    if (activeLangInfo.supportsSimulation) {
+      tabs.push("results");
+    }
+    if (activeLangInfo.supportsDiagram) {
+      tabs.push("diagram");
+    }
+    if (activeLangInfo.supports3d) {
+      tabs.push("cad");
+    }
+    tabs.push("inspector");
+    return tabs;
+  }, [activeLangInfo.supportsSimulation, activeLangInfo.supportsDiagram, activeLangInfo.supports3d]);
+
+  const selectTab = React.useCallback(
+    (tab: MobileTab) => {
+      setMobileTab(tab);
+      switch (tab) {
+        case "code":
+          setTreeVisible(false);
+          setView(MorselView.CODE);
+          setShowAnalysisView?.(false);
+          break;
+        case "params":
+          setTreeVisible(true);
+          break;
+        case "results":
+          setTreeVisible(false);
+          setView(MorselView.DIAGRAM);
+          setShowResultsView(true);
+          setShowCadView(false);
+          setShowAnalysisView?.(false);
+          break;
+        case "diagram":
+          setTreeVisible(false);
+          setView(MorselView.DIAGRAM);
+          setShowResultsView(false);
+          setShowCadView(false);
+          setShowAnalysisView?.(false);
+          break;
+        case "cad":
+          setTreeVisible(false);
+          setView(MorselView.DIAGRAM);
+          setShowResultsView(false);
+          setShowCadView(true);
+          setShowAnalysisView?.(false);
+          break;
+        case "inspector":
+          setTreeVisible(false);
+          setView(MorselView.DIAGRAM);
+          setShowResultsView(false);
+          setShowCadView(false);
+          setShowAnalysisView?.(true);
+          break;
+      }
+    },
+    [setMobileTab, setTreeVisible, setView, setShowResultsView, setShowCadView, setShowAnalysisView],
+  );
+
+  React.useEffect(() => {
+    if (!isNarrow) return;
+    if (!visibleTabs.includes(mobileTab)) {
+      const fallback: MobileTab = activeLangInfo.supportsDiagram
+        ? "diagram"
+        : activeLangInfo.supports3d
+          ? "cad"
+          : activeLangInfo.supportsSimulation
+            ? "results"
+            : "inspector";
+      selectTab(fallback);
+    }
+  }, [
+    isNarrow,
+    visibleTabs,
+    mobileTab,
+    activeLangInfo.supportsDiagram,
+    activeLangInfo.supports3d,
+    activeLangInfo.supportsSimulation,
+    selectTab,
+  ]);
+
   if (!isNarrow) return null;
 
   const isSimulating = simulationStatus?.status === "pending" || simulationStatus?.status === "processing";
   const hasToolsMenu = Boolean(
     onNewModel || onOpenFile || onSaveModel || onAutoLayout || onFlatten || onOpenCloudModal || onSelectDialect,
   );
-
-  const selectTab = (tab: MobileTab) => {
-    setMobileTab(tab);
-    switch (tab) {
-      case "code":
-        setTreeVisible(false);
-        setView(MorselView.CODE);
-        setShowAnalysisView?.(false);
-        break;
-      case "params":
-        setTreeVisible(true);
-        break;
-      case "results":
-        setTreeVisible(false);
-        setView(MorselView.DIAGRAM);
-        setShowResultsView(true);
-        setShowCadView(false);
-        setShowAnalysisView?.(false);
-        break;
-      case "diagram":
-        setTreeVisible(false);
-        setView(MorselView.DIAGRAM);
-        setShowResultsView(false);
-        setShowCadView(false);
-        setShowAnalysisView?.(false);
-        break;
-      case "cad":
-        setTreeVisible(false);
-        setView(MorselView.DIAGRAM);
-        setShowResultsView(false);
-        setShowCadView(true);
-        setShowAnalysisView?.(false);
-        break;
-      case "inspector":
-        setTreeVisible(false);
-        setView(MorselView.DIAGRAM);
-        setShowResultsView(false);
-        setShowCadView(false);
-        setShowAnalysisView?.(true);
-        break;
-    }
-  };
 
   return (
     <>
@@ -156,7 +196,7 @@ export const MorselMobileTabBar: React.FC<MorselMobileTabBarProps> = ({
             minWidth: 0,
           }}
         >
-          {(Object.keys(TAB_LABELS) as MobileTab[]).map((tab) => {
+          {visibleTabs.map((tab) => {
             const active = mobileTab === tab;
             return (
               <button

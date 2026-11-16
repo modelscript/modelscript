@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import {
   collectWorkspaceDocuments,
   findIncludeCycle,
@@ -9,18 +10,11 @@ import {
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
 import { createWasmParserSync } from "@modelscript/verilog-a/wasm-parser";
-import { createRequire } from "node:module";
 import { parseVerilogA } from "../parser/verilog-a-parser.js";
 import { lintVerilogA } from "./rules.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getVerilogAWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/verilog-a/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("verilog-a", import.meta.url, createWasmParserSync);
 }
 
 const BUILTIN_VAMS_HEADERS = new Set(["disciplines.vams", "constants.vams", "disciplines.h", "constants.h"]);

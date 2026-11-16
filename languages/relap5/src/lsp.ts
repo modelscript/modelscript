@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { lowerRelap5ToDae } from "./dae/relap5-to-dae.js";
 import { lintRelap5 } from "./lints/index.js";
-import { parseRelap5 } from "./parser/relap5-parser.js";
+import { getRelap5WasmParser, parseRelap5 } from "./parser/relap5-parser.js";
 import { relap5ToModelica } from "./projections/relap5-to-modelica.js";
 import { solvePointKinetics, type KineticsSolverOptions } from "./solvers/point-kinetics-solver.js";
 
@@ -19,10 +20,35 @@ export { LspSymbolKind, type LspDiagnostic, type LspDocumentSymbol, type LspHove
 
 export function validateRelap5(text: string): LspDiagnostic[] {
   try {
+    const cstTree = getRelap5WasmParser().parse(text);
+    const syntaxDiags: LspDiagnostic[] = collectWasmSyntaxErrors(cstTree?.rootNode).map((err) => ({
+      range: {
+        start: { line: Math.max(0, err.startLine - 1), character: Math.max(0, err.startColumn - 1) },
+        end: { line: Math.max(0, err.endLine - 1), character: Math.max(0, err.endColumn - 1) },
+      },
+      severity: 1,
+      code: "M8600",
+      source: "relap5-parser",
+      message: err.message,
+    }));
+    if (syntaxDiags.length === 0 && cstTree?.rootNode?.hasError) {
+      const ep = cstTree.rootNode.endPosition ?? { row: 0, column: 0 };
+      syntaxDiags.push({
+        range: {
+          start: { line: Math.max(0, ep.row), character: Math.max(0, ep.column - 1) },
+          end: { line: Math.max(0, ep.row), character: Math.max(1, ep.column) },
+        },
+        severity: 1,
+        code: "M8600",
+        source: "relap5-parser",
+        message: "Syntax error: incomplete or invalid RELAP5 card.",
+      });
+    }
+
     const deck = parseRelap5(text);
     const diags = lintRelap5(deck);
 
-    return diags.map((d) => {
+    const semanticDiags: LspDiagnostic[] = diags.map((d) => {
       const line = d.range ? Math.max(0, d.range.startLine - 1) : 0;
       const col = d.range ? Math.max(0, d.range.startColumn - 1) : 0;
       const endLine = d.range ? Math.max(0, d.range.endLine - 1) : line;
@@ -43,6 +69,8 @@ export function validateRelap5(text: string): LspDiagnostic[] {
         message: d.message,
       };
     });
+
+    return [...syntaxDiags, ...semanticDiags];
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     return [

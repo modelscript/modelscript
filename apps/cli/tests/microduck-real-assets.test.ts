@@ -152,6 +152,10 @@ describe("Real MicroDuck 14-DOF MJCF + velstand.onnx + Compiled C99 FMU Python C
       "reference_fmus_repo",
       "include",
     );
+    if (!fs.existsSync(path.join(fmiIncludeDir, "fmi2Functions.h"))) {
+      t.skip("FMI reference headers not present");
+      return;
+    }
     const soPath = path.join(buildDir, "DuckPlant.so");
     execFileSync(
       "gcc",

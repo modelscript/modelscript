@@ -1358,18 +1358,100 @@ export declare function createWasmParserSync(
   facade: LspFacade;
   parser: TreeSitterParser;
 };
+/**
+ * Registers a pre-instantiated WebAssembly GLR parser in `globalThis.__msWasmParsers`
+ * so synchronous language parsers and workspace linters can use it inside browser WebWorkers
+ * without Node.js `fs` or `node:module`.
+ */
+export declare function registerPreloadedWasmParser(
+  langId: string,
+  parser: TreeSitterParser | null | undefined,
+  facade?: LspFacade | null,
+): void;
+/**
+ * Retrieves a pre-instantiated WebAssembly GLR parser from `globalThis` if registered
+ * by `ParserService` (browser WebWorker or Node LSP server).
+ */
+export declare function getPreloadedWasmParser(
+  langId: string,
+): TreeSitterParser | undefined;
+/**
+ * Resolves the filesystem path or URL to a language package's `parser.wasm` without `node:module`.
+ */
+export declare function resolveLanguageWasmPath(
+  importMetaUrl: string,
+  langId?: string,
+): string;
+/**
+ * Isomorphic helper that returns the pre-loaded WASM GLR parser in browser WebWorkers
+ * (`globalThis.__msWasmParsers`) and lazily loads `parser.wasm` synchronously in Node.js CLI/tests.
+ */
+export declare function getOrLoadLanguageWasmParser<TParser = TreeSitterParser>(
+  langId: string,
+  importMetaUrl: string,
+  syncFactory?: (wasmPath: string) => {
+    parser: TParser;
+  },
+): TParser;
+export interface WasmSyntaxErrorSpan {
+  message: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+}
+/**
+ * Walks a WASM GLR `SyntaxNode` root and extracts bounded `ERROR` / `isMissing` syntax error spans
+ * (1-indexed lines and columns).
+ */
+export declare function collectWasmSyntaxErrors(
+  rootNode: unknown,
+  maxErrors?: number,
+): WasmSyntaxErrorSpan[];
 
 export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  START = 2,
-  _START = 2,
-  Root = 3,
+  Document = 35,
+  JsonValue = 36,
+  JsonObject = 37,
+  JsonPair = 38,
+  JsonArray = 39,
+  JsonBoolean = 40,
+  NrrdDocument = 41,
+  XmlElement = 42,
+  DslDocument = 43,
+  DslStatement = 44,
+  DslAssign = 45,
+  DslValue = 46,
+  DslAtom = 47,
+  NumberVal = 48,
+  START = 49,
+  _START = 49,
+  JsonString = 57,
+  JsonNumber = 58,
+  JsonNull = 60,
+  NrrdMagic = 63,
+  NrrdField = 64,
+  EmptyTag = 68,
+  StartTag = 69,
+  CloseTag = 70,
+  Identifier = 78,
   EOF = 1023,
 }
 
 export declare enum FieldId {
+  Key = 1,
+  key = 1,
+  Value = 2,
+  value = 2,
+  Magic = 3,
+  magic = 3,
+  Keyword = 4,
+  keyword = 4,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1377,16 +1459,226 @@ export declare function normalizeToken(token: string | null | undefined): string
 
 /** Returns the normalized type of a CST node (stripped of quotes). */
 export declare function cstKind(node: SyntaxNode | null | undefined): string;
-export interface RootNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.Root;
+export interface DocumentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Document;
 }
-export declare function isRoot(node: SyntaxNode | null | undefined): node is RootNode;
+export declare function isDocument(node: SyntaxNode | null | undefined): node is DocumentNode;
+export interface JsonValueNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.JsonValue;
+}
+export declare function isJsonValue(node: SyntaxNode | null | undefined): node is JsonValueNode;
+export interface JsonObjectNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.JsonObject;
+}
+export declare function isJsonObject(node: SyntaxNode | null | undefined): node is JsonObjectNode;
+export interface JsonPairNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.JsonPair;
+}
+export declare function isJsonPair(node: SyntaxNode | null | undefined): node is JsonPairNode;
+export interface JsonArrayNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.JsonArray;
+}
+export declare function isJsonArray(node: SyntaxNode | null | undefined): node is JsonArrayNode;
+export interface JsonBooleanNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.JsonBoolean;
+}
+export declare function isJsonBoolean(node: SyntaxNode | null | undefined): node is JsonBooleanNode;
+export interface NrrdDocumentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.NrrdDocument;
+}
+export declare function isNrrdDocument(node: SyntaxNode | null | undefined): node is NrrdDocumentNode;
+export interface XmlElementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.XmlElement;
+}
+export declare function isXmlElement(node: SyntaxNode | null | undefined): node is XmlElementNode;
+export interface DslDocumentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DslDocument;
+}
+export declare function isDslDocument(node: SyntaxNode | null | undefined): node is DslDocumentNode;
+export interface DslStatementNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DslStatement;
+}
+export declare function isDslStatement(node: SyntaxNode | null | undefined): node is DslStatementNode;
+export interface DslAssignNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DslAssign;
+}
+export declare function isDslAssign(node: SyntaxNode | null | undefined): node is DslAssignNode;
+export interface DslValueNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DslValue;
+}
+export declare function isDslValue(node: SyntaxNode | null | undefined): node is DslValueNode;
+export interface DslAtomNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DslAtom;
+}
+export declare function isDslAtom(node: SyntaxNode | null | undefined): node is DslAtomNode;
+export interface NumberValNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.NumberVal;
+}
+export declare function isNumberVal(node: SyntaxNode | null | undefined): node is NumberValNode;
+export interface JsonStringNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.JsonString;
+}
+export declare function isJsonString(node: SyntaxNode | null | undefined): node is JsonStringNode;
+export interface JsonNumberNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.JsonNumber;
+}
+export declare function isJsonNumber(node: SyntaxNode | null | undefined): node is JsonNumberNode;
+export interface JsonNullNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.JsonNull;
+}
+export declare function isJsonNull(node: SyntaxNode | null | undefined): node is JsonNullNode;
+export interface NrrdMagicNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.NrrdMagic;
+}
+export declare function isNrrdMagic(node: SyntaxNode | null | undefined): node is NrrdMagicNode;
+export interface NrrdFieldNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.NrrdField;
+}
+export declare function isNrrdField(node: SyntaxNode | null | undefined): node is NrrdFieldNode;
+export interface EmptyTagNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.EmptyTag;
+}
+export declare function isEmptyTag(node: SyntaxNode | null | undefined): node is EmptyTagNode;
+export interface StartTagNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.StartTag;
+}
+export declare function isStartTag(node: SyntaxNode | null | undefined): node is StartTagNode;
+export interface CloseTagNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CloseTag;
+}
+export declare function isCloseTag(node: SyntaxNode | null | undefined): node is CloseTagNode;
+export interface IdentifierNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Identifier;
+}
+export declare function isIdentifier(node: SyntaxNode | null | undefined): node is IdentifierNode;
 export declare namespace Cst {
   export function kind(node: SyntaxNode | null | undefined): string;
   export function normalize(token: string | null | undefined): string;
-  export const Root: {
+  export const Document: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is RootNode;
+    is(node: SyntaxNode | null | undefined): node is DocumentNode;
+  };
+  export const JsonValue: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is JsonValueNode;
+  };
+  export const JsonObject: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is JsonObjectNode;
+  };
+  export const JsonPair: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is JsonPairNode;
+    key(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    keyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const JsonArray: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is JsonArrayNode;
+  };
+  export const JsonBoolean: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is JsonBooleanNode;
+  };
+  export const NrrdDocument: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is NrrdDocumentNode;
+    magic(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    magicList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const XmlElement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is XmlElementNode;
+  };
+  export const DslDocument: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DslDocumentNode;
+  };
+  export const DslStatement: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DslStatementNode;
+    keyword(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    keywordList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const DslAssign: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DslAssignNode;
+    key(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    keyList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const DslValue: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DslValueNode;
+  };
+  export const DslAtom: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DslAtomNode;
+  };
+  export const NumberVal: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is NumberValNode;
+  };
+  export const JsonString: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is JsonStringNode;
+  };
+  export const JsonNumber: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is JsonNumberNode;
+  };
+  export const JsonNull: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is JsonNullNode;
+  };
+  export const NrrdMagic: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is NrrdMagicNode;
+  };
+  export const NrrdField: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is NrrdFieldNode;
+  };
+  export const EmptyTag: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is EmptyTagNode;
+  };
+  export const StartTag: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is StartTagNode;
+  };
+  export const CloseTag: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CloseTagNode;
+  };
+  export const Identifier: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IdentifierNode;
   };
 }

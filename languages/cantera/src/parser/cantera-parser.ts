@@ -7,6 +7,7 @@
  * Strictly zero regular expressions (no RegExp or slash-literal patterns).
  */
 
+import { groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
 import type {
   ArrheniusRate,
   CanteraDocument,
@@ -21,6 +22,9 @@ import type {
   Nasa7Polynomial,
   TroeFalloff,
 } from "../types.js";
+import { getCanteraWasmParser } from "./wasm-loader.js";
+
+export { getCanteraWasmParser, type CanteraWasmParser } from "./wasm-loader.js";
 
 // ============================================================================
 // Character Classification Helpers (Zero-Regex)
@@ -396,7 +400,16 @@ function stripYamlComment(line: string): string {
   return line;
 }
 
-function extractSourceLines(source: string): SourceLine[] {
+function extractSourceLines(source: string, cstRoot?: CstNodeLike | null): SourceLine[] {
+  const activeRows = new Set<number>();
+  if (cstRoot) {
+    for (const { row, tokens } of groupAllCstTokensByLine(cstRoot)) {
+      if (tokens.some((t) => trimText(t.text ?? "").length > 0)) {
+        activeRows.add(row);
+      }
+    }
+  }
+
   const result: SourceLine[] = [];
   let lineIndex = 0;
   let i = 0;
@@ -407,6 +420,11 @@ function extractSourceLines(source: string): SourceLine[] {
     while (i < n && source[i] !== "\n") i++;
     const lineEnd = i;
     if (i < n && source[i] === "\n") i++;
+
+    if (cstRoot && !activeRows.has(lineIndex)) {
+      lineIndex++;
+      continue;
+    }
 
     let rawLine = source.slice(lineStart, lineEnd);
     if (rawLine.endsWith("\r")) {
@@ -972,9 +990,13 @@ function parseArrheniusRateValue(
   return undefined;
 }
 
-function parseYamlCanteraDocument(source: string, sourceFile?: string | undefined): CanteraDocument {
+function parseYamlCanteraDocument(
+  source: string,
+  sourceFile?: string | undefined,
+  cstRoot?: CstNodeLike | null,
+): CanteraDocument {
   const lineStarts = buildLineStarts(source);
-  const lines = extractSourceLines(source);
+  const lines = extractSourceLines(source, cstRoot);
   const rootObj: Record<string, YamlValue> =
     lines.length > 0 ? (asRecord(parseYamlBlock(lines, 0, 0).node.value) ?? {}) : {};
 
@@ -1486,10 +1508,12 @@ function isCtiFormat(source: string, sourceFile?: string | undefined): boolean {
 // ============================================================================
 
 export function parseCantera(sourceText: string, sourceFile?: string | undefined): CanteraDocument {
+  const cstTree = getCanteraWasmParser().parse(sourceText);
+  const cstRoot = cstTree?.rootNode as CstNodeLike | undefined;
   if (isCtiFormat(sourceText, sourceFile)) {
     return parseCtiDocument(sourceText, sourceFile);
   }
-  return parseYamlCanteraDocument(sourceText, sourceFile);
+  return parseYamlCanteraDocument(sourceText, sourceFile, cstRoot);
 }
 
 export function serializeCantera(doc: CanteraDocument): string {

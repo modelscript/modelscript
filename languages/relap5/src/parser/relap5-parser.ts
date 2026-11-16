@@ -6,6 +6,7 @@
  * Implements 80-column character-level parsing for nuclear reactor safety decks (100 - 600 series cards).
  */
 
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
 import type {
   ComponentType,
   Relap5Card,
@@ -19,6 +20,27 @@ import type {
   Relap5Volume,
   TripOperator,
 } from "../types.js";
+import { getRelap5WasmParser } from "./wasm-loader.js";
+
+export { getRelap5WasmParser, type Relap5WasmParser } from "./wasm-loader.js";
+
+function stripInlineComment(line: string): string {
+  let inQuotes = false;
+  let quoteChar = "";
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i] ?? "";
+    if ((ch === '"' || ch === "'") && !inQuotes) {
+      inQuotes = true;
+      quoteChar = ch;
+    } else if (ch === quoteChar && inQuotes) {
+      inQuotes = false;
+    } else if (!inQuotes) {
+      if (ch === "$") return line.slice(0, i);
+      if (ch === "/" && line[i + 1] === "/") return line.slice(0, i);
+    }
+  }
+  return line;
+}
 
 function splitTokens(line: string): string[] {
   const tokens: string[] = [];
@@ -41,29 +63,49 @@ function splitTokens(line: string): string[] {
 }
 
 export function parseRelap5(source: string, filename?: string): Relap5Deck {
+  const cstTree = getRelap5WasmParser().parse(source);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode as CstNodeLike | undefined);
+
   const lines = source.split("\n");
+  const lineOffsets: number[] = new Array(lines.length);
+  let runningOffset = 0;
+  for (let i = 0; i < lines.length; i++) {
+    lineOffsets[i] = runningOffset;
+    runningOffset += (lines[i]?.length ?? 0) + 1;
+  }
+
   const rawCards: Relap5Card[] = [];
+  let equalsTitle: string | undefined;
 
-  let lineOffset = 0;
-  for (let lineNum = 1; lineNum <= lines.length; lineNum++) {
-    const rawLine = lines[lineNum - 1] ?? "";
-    const trimmed = rawLine.trim();
+  for (const { row, tokens: cstTokens } of cstLines) {
+    const lineNum = row + 1;
+    const rawLine = lines[row] ?? cstLineText(source, cstTokens);
+    const lineOffset = lineOffsets[row] ?? cstTokens[0]?.startIndex ?? 0;
+    const cleaned = stripInlineComment(rawLine).trim();
 
-    // Check for comment or blank line
-    if (trimmed.length === 0 || trimmed.startsWith("*") || trimmed.startsWith("/")) {
-      lineOffset += rawLine.length + 1;
+    if (cleaned.length === 0 || cleaned.startsWith("*")) {
+      continue;
+    }
+
+    if (cleaned.startsWith("=")) {
+      const t = cleaned.slice(1).trim();
+      if (t.length > 0) equalsTitle = t;
       continue;
     }
 
     // Stop at terminal marker
-    if (trimmed === "." || trimmed.toLowerCase() === "end" || trimmed === "/") {
+    if (
+      cleaned === "." ||
+      cleaned.toLowerCase().startsWith(". end") ||
+      cleaned.toLowerCase() === "end" ||
+      cleaned === "/"
+    ) {
       break;
     }
 
-    const tokens = splitTokens(trimmed);
+    const tokens = splitTokens(cleaned);
     const firstTok = tokens[0];
     if (!firstTok) {
-      lineOffset += rawLine.length + 1;
       continue;
     }
     const cardNum = parseInt(firstTok, 10);
@@ -85,12 +127,10 @@ export function parseRelap5(source: string, filename?: string): Relap5Deck {
         range,
       });
     }
-
-    lineOffset += rawLine.length + 1;
   }
 
   // Build Structured Deck
-  let title = "RELAP5 Nuclear Reactor Model";
+  let title = equalsTitle ?? "RELAP5 Nuclear Reactor Model";
   let problemType: "transnt" | "stdy-st" = "transnt";
   let executionType: "new" | "restart" = "new";
   const timeSteps: Relap5TimeStepControl[] = [];
@@ -104,9 +144,16 @@ export function parseRelap5(source: string, filename?: string): Relap5Deck {
     const num = card.cardNumber;
     const words = card.words;
 
-    // 100 Title card
+    // 100 Title card (or MOD3 problem type card when '=' title card is present)
     if (num === 100) {
-      title = words.join(" ");
+      const w0 = words[0]?.toLowerCase();
+      const w1 = words[1]?.toLowerCase();
+      if (equalsTitle && (w0 === "new" || w0 === "restart") && (w1 === "transnt" || w1 === "stdy-st")) {
+        if (w0 === "restart") executionType = "restart";
+        if (w1 === "stdy-st") problemType = "stdy-st";
+      } else if (words.length > 0) {
+        title = words.join(" ");
+      }
       continue;
     }
 

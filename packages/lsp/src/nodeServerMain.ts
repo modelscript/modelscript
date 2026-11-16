@@ -623,7 +623,7 @@ export function startNodeServer(input?: any, output?: any) {
           const fastDiags = deduplicateAllDiagnostics([...syntaxDiags, ...wasmLspDiags]);
           const lastCount = lastSyntaxErrorsCount.get(uri) ?? 0;
 
-          // Surface fast syntax and WASM CST lint errors: clear immediately when 0, debounce by 180ms when editing
+          // Surface fast syntax and WASM CST lint errors: clear immediately when 0, debounce by 40ms when editing
           if (fastDiags.length === 0 && lastCount > 0) {
             lastSyntaxErrorsCount.set(uri, 0);
             const cachedSemantic = (validationService.lastSemanticDiagnostics.get(uri) || []).filter(
@@ -645,7 +645,7 @@ export function startNodeServer(input?: any, output?: any) {
                 validationService.lastSemanticDiagnostics.set(uri, allDiags);
                 if (allDiags.length > 1000) allDiags.length = 1000;
                 connection.sendDiagnostics({ uri, diagnostics: allDiags });
-              }, 180),
+              }, 40),
             );
           }
         }
@@ -674,7 +674,7 @@ export function startNodeServer(input?: any, output?: any) {
       }, 60),
     );
 
-    // === TIER 3: Longer Debounce (~180ms) — Salsa QueryEngine, Declarative Lints & Semantic Diagnostics ===
+    // === TIER 3: Longer Debounce (~100ms) — Salsa QueryEngine, Declarative Lints & Semantic Diagnostics ===
     validationService.activeValidationTimers.set(
       uri,
       setTimeout(async () => {
@@ -692,7 +692,7 @@ export function startNodeServer(input?: any, output?: any) {
         }
         const doc = documents.get(uri);
         if (doc) await validationService.validateTextDocument(doc);
-      }, 180),
+      }, 100),
     );
   });
 

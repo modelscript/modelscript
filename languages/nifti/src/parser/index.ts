@@ -10,6 +10,7 @@
  * 4. Volumetric NIfTI/NRRD DSL (`NIFTI`, `DIM`, `PIXDIM`, `QFORM`, `SFORM`, `SCALING`, `LABEL`, `ROI`, `VOXELS`)
  */
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import type {
   NiftiAnatomyLabel,
   NiftiDocument,
@@ -17,6 +18,23 @@ import type {
   NiftiRegionOfInterest,
   NiftiSourceRange,
 } from "../types.js";
+import { getNiftiWasmParser } from "./wasm-loader.js";
+
+export { getNiftiWasmParser } from "./wasm-loader.js";
+
+/**
+ * Detects binary NIfTI-1/2 (`.nii`) or gzip-compressed (`.nii.gz`) magic bytes inside a string payload
+ * so binary buffers are never routed through the text WASM GLR grammar.
+ */
+export function hasBinaryNiftiMagic(text: string): boolean {
+  if (text.length >= 2 && text.charCodeAt(0) === 0x1f && text.charCodeAt(1) === 0x8b) {
+    return true; // GZIP magic (\x1f\x8b) for .nii.gz
+  }
+  if (text.includes("\0")) {
+    return true; // 348-byte/540-byte binary NIfTI header contains NUL bytes (e.g. sizeof_hdr / magic "n+1\0")
+  }
+  return false;
+}
 
 const DATATYPE_NAME_TO_CODE: Record<string, { code: number; bitpix: number; canonical: string }> = {
   uint8: { code: 2, bitpix: 8, canonical: "UINT8" },
@@ -134,19 +152,36 @@ export function parseNifti(input: string | Uint8Array | ArrayBuffer, sourceUri?:
     return parseNifti1Binary(bytes, sourceUri);
   }
 
+  if (hasBinaryNiftiMagic(input)) {
+    if (input.length >= 348 && !(input.charCodeAt(0) === 0x1f && input.charCodeAt(1) === 0x8b)) {
+      const bytes = new Uint8Array(input.length);
+      for (let i = 0; i < input.length; i++) {
+        bytes[i] = input.charCodeAt(i) & 0xff;
+      }
+      return parseNifti1Binary(bytes, sourceUri);
+    }
+    const lineOffsets = buildLineOffsets(input);
+    return parseNiftiDsl(input, lineOffsets, sourceUri);
+  }
+
+  const tree = getNiftiWasmParser().parse(input);
+  const syntaxErrors = collectWasmSyntaxErrors(tree?.rootNode);
+
   const trimmed = input.trim();
   const lineOffsets = buildLineOffsets(input);
 
+  let doc: NiftiDocument;
   if (/^NRRD000/i.test(trimmed)) {
-    return parseNrrdText(input, lineOffsets, sourceUri);
+    doc = parseNrrdText(input, lineOffsets, sourceUri);
+  } else if (trimmed.startsWith("{")) {
+    doc = parseNiftiJson(input, lineOffsets, sourceUri);
+  } else if (/^<(?:nifti_image|NiftiVolume|\?xml)/i.test(trimmed)) {
+    doc = parseNiftiXml(input, lineOffsets, sourceUri);
+  } else {
+    doc = parseNiftiDsl(input, lineOffsets, sourceUri);
   }
-  if (trimmed.startsWith("{")) {
-    return parseNiftiJson(input, lineOffsets, sourceUri);
-  }
-  if (/^<(?:nifti_image|NiftiVolume|\?xml)/i.test(trimmed)) {
-    return parseNiftiXml(input, lineOffsets, sourceUri);
-  }
-  return parseNiftiDsl(input, lineOffsets, sourceUri);
+  doc.syntaxErrors = syntaxErrors;
+  return doc;
 }
 
 /**

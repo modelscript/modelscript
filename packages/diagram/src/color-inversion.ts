@@ -344,20 +344,20 @@ export function adaptSvgColors(str: string, options?: boolean | DarkModeColorOpt
         (w >= 180 || attrs.includes('width="100%"')) && (h >= 180 || attrs.includes('height="100%"'));
 
       if (isFullCanvas) {
+        let updated = match;
         const fillM = attrs.match(/\bfill=["']([^"']+)["']/i);
         const fillVal = fillM ? fillM[1] : undefined;
-        if (fillVal && !fillVal.startsWith("url(")) {
-          if (isLightPaperColor(fillVal)) {
-            return match.replace(/\bfill=["'][^"']+["']/i, 'fill="none"');
-          }
+        if (fillVal && !fillVal.startsWith("url(") && isLightPaperColor(fillVal)) {
+          updated = updated.replace(/\bfill=["'][^"']+["']/i, 'fill="none"');
         }
         const styleFillM = attrs.match(/\bstyle=["'][^"']*\bfill:\s*([^;]+)[^"']*["']/i);
         const styleFillVal = styleFillM ? styleFillM[1] : undefined;
-        if (styleFillVal && !styleFillVal.startsWith("url(")) {
-          if (isLightPaperColor(styleFillVal.trim())) {
-            return match.replace(/(\bstyle=["'][^"']*\bfill:\s*)[^;]+(;?[^"']*["'])/i, "$1none$2");
-          }
+        if (styleFillVal && !styleFillVal.startsWith("url(") && isLightPaperColor(styleFillVal.trim())) {
+          updated = updated.replace(/(\bstyle=["'][^"']*\bfill:\s*)[^;]+(;?[^"']*["'])/i, "$1none$2");
         }
+        updated = updated.replace(/\bstroke=["'][^"']+["']/i, 'stroke="none"');
+        updated = updated.replace(/(\bstyle=["'][^"']*\bstroke:\s*)[^;]+(;?[^"']*["'])/i, "$1none$2");
+        return updated;
       }
       return match;
     });

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { iniSectionRules, language, type ActionExecutionContext } from "@modelscript/dsl";
+import { choice, language, repeat, seq, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerPhreeqcToDae } from "./dae/phreeqc-to-dae.js";
 import { indexPhreeqcFile } from "./indexing.js";
 import { lintPhreeqc } from "./lints/index.js";
@@ -120,8 +120,66 @@ export const phreeqcLanguage = language({
       },
     },
   ],
-  extras: ($) => [/[ \t\r\n]+/, $["IniComment"]!],
-  rules: iniSectionRules,
+  word: ($) => $["Identifier"]!,
+  extras: ($) => [/[ \t\r\n]+/, ";", $["Comment"]!],
+  rules: {
+    PhreeqcDeck: ($) => repeat($["PhreeqcBlock"]!),
+
+    PhreeqcBlock: ($) => seq($["BlockKeyword"]!, repeat($["ExprAtom"]!)),
+
+    ExprAtom: ($) =>
+      choice(
+        $["Identifier"]!,
+        $["NumberLiteral"]!,
+        $["OptionFlag"]!,
+        $["StringLiteral"]!,
+        $["ParenGroup"]!,
+        $["BracketGroup"]!,
+        $["ChemPunct"]!,
+        "-",
+      ),
+
+    ParenGroup: ($) => seq("(", repeat($["ExprAtom"]!), ")"),
+    BracketGroup: ($) => seq("[", repeat($["ExprAtom"]!), "]"),
+
+    BlockKeyword: () =>
+      choice(
+        "TITLE",
+        "REMARKS",
+        "SOLUTION",
+        "EQUILIBRIUM_PHASES",
+        "PURE_PHASES",
+        "REACTION",
+        "KINETICS",
+        "MIX",
+        "SOLUTION_MASTER_SPECIES",
+        "SOLUTION_SPECIES",
+        "PHASES",
+        "EXCHANGE",
+        "SURFACE",
+        "GAS_PHASE",
+        "SOLID_SOLUTIONS",
+        "RATES",
+        "SELECTED_OUTPUT",
+        "USER_PUNCH",
+        "INCREMENTAL_REACTIONS",
+        "TRANSPORT",
+        "ADVECTION",
+        "USE",
+        "SAVE",
+        "COPY",
+        "PRINT",
+        "KNOBS",
+        "END",
+      ),
+
+    OptionFlag: () => /-[A-Za-z_][A-Za-z0-9_]*/,
+    Identifier: () => /[A-Za-z_][A-Za-z0-9_.:+-]*/,
+    NumberLiteral: () => /[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/,
+    StringLiteral: () => /"[^"\\\r\n]*(?:\\.[^"\\\r\n]*)*"|'[^'\\\r\n]*(?:\\.[^'\\\r\n]*)*'/,
+    ChemPunct: () => /[=+/*:&,<>^~]/,
+    Comment: () => /#[^\r\n]*/,
+  },
 });
 
 export default phreeqcLanguage;

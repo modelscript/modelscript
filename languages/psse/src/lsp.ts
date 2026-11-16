@@ -2154,3 +2154,362 @@ export function applyPsseDiagramWriteback(
 
   return writeRaw(psseCase);
 }
+
+function findRawSectionInsertOffset(
+  sourceText: string,
+  sectionBeginPattern: RegExp,
+  sectionEndPattern: RegExp,
+): number | null {
+  const lines = sourceText.split(/\r?\n/);
+  let offset = 0;
+  let inSection = false;
+  for (let idx = 0; idx < lines.length; idx++) {
+    const line = lines[idx]!;
+    const trimmed = line.trim();
+    if (!inSection && sectionBeginPattern.test(trimmed)) {
+      inSection = true;
+    } else if (inSection && /^0\b/.test(trimmed) && (sectionEndPattern.test(trimmed) || /END OF /i.test(trimmed))) {
+      return offset;
+    }
+    offset += line.length + (sourceText[offset + line.length] === "\r" ? 2 : 1);
+  }
+  return null;
+}
+
+function insertRawRecordInSection(
+  sourceText: string,
+  sectionName: string,
+  sectionBeginPattern: RegExp,
+  sectionEndPattern: RegExp,
+  recordLine: string,
+  isBusSection = false,
+): string {
+  if (isBusSection) {
+    const lines = sourceText.split(/\r?\n/);
+    let offset = 0;
+    for (let idx = 0; idx < lines.length; idx++) {
+      const line = lines[idx]!;
+      const trimmed = line.trim();
+      if (
+        idx > 0 &&
+        /^0\b/.test(trimmed) &&
+        (/END OF BUS/i.test(trimmed) || /BEGIN /i.test(trimmed) || trimmed === "0")
+      ) {
+        return sourceText.slice(0, offset) + recordLine + "\n" + sourceText.slice(offset);
+      }
+      offset += line.length + (sourceText[offset + line.length] === "\r" ? 2 : 1);
+    }
+  }
+
+  const insertAt = findRawSectionInsertOffset(sourceText, sectionBeginPattern, sectionEndPattern);
+  if (insertAt !== null) {
+    return sourceText.slice(0, insertAt) + recordLine + "\n" + sourceText.slice(insertAt);
+  }
+
+  // Append new section before trailing Q / end-of-file
+  const qMatch = /\n[ \t]*Q[ \t]*\r?\n?$/i.exec(sourceText);
+  const block = `0 / BEGIN ${sectionName} DATA\n${recordLine}\n0 / END OF ${sectionName} DATA\n`;
+  if (qMatch) {
+    const head = sourceText.slice(0, qMatch.index + 1);
+    return head + block + sourceText.slice(qMatch.index + 1);
+  }
+  const sep = sourceText.endsWith("\n") || sourceText.length === 0 ? "" : "\n";
+  return sourceText + sep + block;
+}
+
+/**
+ * Adds a PSS/E component (from the diagram palette or `PSSEDynamics` library)
+ * to a `.raw` or `.dyr` document and returns the updated source text.
+ */
+export function addPsseDiagramComponent(sourceText: string, className: string, _x?: number, _y?: number): string {
+  const cleanClass = className
+    .replace(/^__LIB__:[^/]+\//, "")
+    .replace(/^__LIB__:/, "")
+    .replace(/^PSSEDynamics\./i, "")
+    .trim();
+  const lower = cleanClass.toLowerCase();
+
+  if (isLikelyDyrContent(sourceText)) {
+    const modelName = cleanClass.replace(/^psse:/i, "").toUpperCase() || "GENROU";
+    const dyr = parseDyr(sourceText);
+    const busNum = dyr.records[0]?.ibus ?? 1;
+    const sep = sourceText.endsWith("\n") || sourceText.length === 0 ? "" : "\n";
+    return `${sourceText}${sep}${busNum} '${modelName}' 1 5.0 0.05 0.1 5.0 0.5 1.8 1.7 0.3 0.5 0.25 0.1 0.3 / /* ${modelName} */\n`;
+  }
+
+  const psseCase = parseRaw(sourceText);
+  const existingBusIds = [...psseCase.buses.keys()];
+  const maxBusId = existingBusIds.length > 0 ? Math.max(...existingBusIds) : 0;
+  const defaultBusId = existingBusIds[existingBusIds.length - 1] ?? 1;
+
+  if (lower === "psse:bus_pq" || lower === "psse:bus_pv" || lower === "psse:bus_slack" || lower === "bus") {
+    const newBusId = maxBusId + 1;
+    const ide = lower === "psse:bus_slack" ? 3 : lower === "psse:bus_pv" ? 2 : 1;
+    const baseKv = psseCase.buses.get(defaultBusId)?.baseKv || 230.0;
+    const record = `${newBusId}, '${`BUS ${newBusId}`.padEnd(12)}', ${baseKv.toFixed(1)}, ${ide}, 1, 1, 1, 1.0000, 0.0000`;
+    return insertRawRecordInSection(sourceText, "BUS", /BEGIN BUS/i, /END OF BUS/i, record, true);
+  }
+
+  if (lower === "psse:load" || lower === "load") {
+    const targetBus = existingBusIds.find((id) => psseCase.buses.get(id)?.ide === 1) ?? defaultBusId;
+    const existingIds = new Set(psseCase.loads.filter((l) => l.i === targetBus).map((l) => l.id.trim()));
+    let ckt = 1;
+    while (existingIds.has(String(ckt))) ckt++;
+    const record = `${targetBus}, '${String(ckt).padEnd(2)}', 1, 1, 1, 50.0, 15.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0`;
+    return insertRawRecordInSection(sourceText, "LOAD", /BEGIN LOAD/i, /END OF LOAD/i, record);
+  }
+
+  if (lower === "psse:fixed_shunt" || lower === "fixed_shunt" || lower.includes("svc") || lower.includes("shunt")) {
+    if (lower === "psse:switched_shunt" || lower === "switched_shunt") {
+      const record = `${defaultBusId}, 1, 1, 1, 1.0200, 0.9800, 0, 100.0, '', 0.000, 1, 25.000`;
+      return insertRawRecordInSection(
+        sourceText,
+        "SWITCHED SHUNT",
+        /BEGIN SWITCHED SHUNT/i,
+        /END OF SWITCHED SHUNT/i,
+        record,
+      );
+    }
+    const existingIds = new Set(psseCase.fixedShunts.filter((s) => s.i === defaultBusId).map((s) => s.id.trim()));
+    let ckt = 1;
+    while (existingIds.has(String(ckt))) ckt++;
+    const comment = !lower.startsWith("psse:") ? ` /* ${cleanClass} */` : "";
+    const record = `${defaultBusId}, '${String(ckt).padEnd(2)}', 1, 0.000, 25.000${comment}`;
+    return insertRawRecordInSection(sourceText, "FIXED SHUNT", /BEGIN FIXED SHUNT/i, /END OF FIXED SHUNT/i, record);
+  }
+
+  if (lower === "psse:branch" || lower === "branch") {
+    const busA = existingBusIds[0] ?? 1;
+    const busB = existingBusIds[1] ?? busA + 1;
+    const existingCkts = new Set(
+      psseCase.branches.filter((b) => b.i === busA && Math.abs(b.j) === busB).map((b) => b.ckt.trim()),
+    );
+    let ckt = 1;
+    while (existingCkts.has(String(ckt))) ckt++;
+    const record = `${busA}, ${busB}, '${String(ckt).padEnd(2)}', 0.01000, 0.05000, 0.02000, 100.00, 120.00, 140.00, 0.00000, 0.00000, 0.00000, 0.00000, 1, 1, 0.00`;
+    return insertRawRecordInSection(
+      sourceText,
+      "BRANCH",
+      /BEGIN (?:NON-TRANSFORMER )?BRANCH/i,
+      /END OF (?:NON-TRANSFORMER )?BRANCH/i,
+      record,
+    );
+  }
+
+  if (lower === "psse:xfmr_2w" || lower === "psse:xfmr_3w") {
+    const busA = existingBusIds[0] ?? 1;
+    const busB = existingBusIds[1] ?? busA + 1;
+    const busK = lower === "psse:xfmr_3w" ? (existingBusIds[2] ?? busB + 1) : 0;
+    const recordLines = [
+      `${busA}, ${busB}, ${busK}, '1 ', 1, 1, 1, 0.00000, 0.00000, 2, 'XFMR_${busA}_${busB}', 1, 1, 1.0000`,
+      `0.00200, 0.08000, 100.00`,
+      `1.00000, 0.000, 0.000, 100.00, 120.00, 140.00, 0, 0, 1.10000, 0.90000, 1.10000, 0.90000, 33, 0, 0.00000, 0.00000`,
+      `1.00000, 0.000`,
+    ];
+    if (busK !== 0) {
+      recordLines.push(`1.00000, 0.000`);
+    }
+    return insertRawRecordInSection(
+      sourceText,
+      "TRANSFORMER",
+      /BEGIN TRANSFORMER/i,
+      /END OF TRANSFORMER/i,
+      recordLines.join("\n"),
+    );
+  }
+
+  // Default for `psse:generator` or any PSSEDynamics.* model: add a generator on the first Slack/PV bus
+  const targetBus =
+    existingBusIds.find((id) => {
+      const ide = psseCase.buses.get(id)?.ide;
+      return ide === 3 || ide === 2;
+    }) ?? defaultBusId;
+  const existingIds = new Set(psseCase.generators.filter((g) => g.i === targetBus).map((g) => g.id.trim()));
+  let ckt = 1;
+  while (existingIds.has(String(ckt))) ckt++;
+  const modelComment = !lower.startsWith("psse:") ? ` /* ${cleanClass} */` : "";
+  const record = `${targetBus}, '${String(ckt).padEnd(2)}', 100.000, 0.000, 50.000, -50.000, 1.0000, 0, 100.00, 0.00000, 0.20000, 0.00000, 0.00000, 1.0000, 1, 100.0, 200.000, 0.000${modelComment}`;
+  return insertRawRecordInSection(sourceText, "GENERATOR", /BEGIN GENERATOR/i, /END OF GENERATOR/i, record);
+}
+
+/**
+ * Deletes one or more PSS/E diagram components (buses, loads, generators, shunts, branches, transformers, or DYR records)
+ * from a `.raw` or `.dyr` document and returns the updated source text.
+ */
+export function deletePsseDiagramComponents(sourceText: string, cellIds: string[]): string {
+  if (cellIds.length === 0) return sourceText;
+
+  if (isLikelyDyrContent(sourceText)) {
+    const dyr = parseDyr(sourceText);
+    const spansToDelete: Array<{ startOffset: number; endOffset: number }> = [];
+    for (const cellId of cellIds) {
+      if (!cellId.startsWith("dyr_")) continue;
+      const parts = cellId.split("_");
+      const busNum = Number.parseInt(parts[1] ?? "0", 10);
+      const id = parts[2];
+      const model = parts.slice(3).join("_");
+      for (const rec of dyr.records) {
+        if (
+          rec.ibus === busNum &&
+          (!id || rec.id.trim() === id) &&
+          (!model || rec.model.trim() === model) &&
+          rec.span?.startOffset !== undefined &&
+          rec.span?.endOffset !== undefined
+        ) {
+          spansToDelete.push({ startOffset: rec.span.startOffset, endOffset: rec.span.endOffset });
+        }
+      }
+    }
+    if (spansToDelete.length === 0) return sourceText;
+    spansToDelete.sort((a, b) => b.startOffset - a.startOffset);
+    let out = sourceText;
+    for (const sp of spansToDelete) {
+      let end = sp.endOffset;
+      if (out[end] === "\r") end++;
+      if (out[end] === "\n") end++;
+      out = out.slice(0, sp.startOffset) + out.slice(end);
+    }
+    return out;
+  }
+
+  const psseCase = parseRaw(sourceText);
+  const spanMap = new Map<string, { startOffset: number; endOffset: number }>();
+  const addSpan = (span?: SourceSpan) => {
+    if (span && span.startOffset !== undefined && span.endOffset !== undefined) {
+      spanMap.set(`${span.startOffset}:${span.endOffset}`, {
+        startOffset: span.startOffset,
+        endOffset: span.endOffset,
+      });
+    }
+  };
+
+  // Normalize wire_* IDs to the underlying attached element
+  const normalizedIds: string[] = [];
+  for (const id of cellIds) {
+    if (id.startsWith("wire_bus_") && id.includes("_to_load_")) {
+      normalizedIds.push(id.slice(id.indexOf("_to_") + 4));
+    } else if (id.startsWith("wire_gen_") && id.includes("_to_bus_")) {
+      normalizedIds.push(id.slice(5, id.indexOf("_to_bus_")));
+    } else if (id.startsWith("wire_bus_") && id.includes("_to_shunt_")) {
+      normalizedIds.push(id.slice(id.indexOf("_to_") + 4));
+    } else if (id.startsWith("wire_bus_") && id.includes("_to_swshunt_")) {
+      normalizedIds.push(id.slice(id.indexOf("_to_") + 4));
+    } else {
+      normalizedIds.push(id);
+    }
+  }
+
+  for (const cellId of normalizedIds) {
+    if (cellId.startsWith("bus_")) {
+      const busId = Number.parseInt(cellId.slice(4), 10);
+      addSpan(psseCase.buses.get(busId)?.span);
+      for (const l of psseCase.loads) if (l.i === busId) addSpan(l.span);
+      for (const g of psseCase.generators) if (g.i === busId) addSpan(g.span);
+      for (const s of psseCase.fixedShunts) if (s.i === busId) addSpan(s.span);
+      for (const s of psseCase.switchedShunts) if (s.i === busId) addSpan(s.span);
+      for (const b of psseCase.branches) if (b.i === busId || Math.abs(b.j) === busId) addSpan(b.span);
+      for (const t of psseCase.transformers) if (t.i === busId || t.j === busId || t.k === busId) addSpan(t.span);
+    } else if (cellId.startsWith("load_")) {
+      const parts = cellId.split("_");
+      const busId = Number.parseInt(parts[1] ?? "0", 10);
+      const ckt = parts[2]?.trim();
+      const load = psseCase.loads.find((l) => l.i === busId && (!ckt || l.id.trim() === ckt));
+      addSpan(load?.span);
+    } else if (cellId.startsWith("gen_")) {
+      const parts = cellId.split("_");
+      const busId = Number.parseInt(parts[1] ?? "0", 10);
+      const ckt = parts[2]?.trim();
+      const gen = psseCase.generators.find((g) => g.i === busId && (!ckt || g.id.trim() === ckt));
+      addSpan(gen?.span);
+    } else if (cellId.startsWith("shunt_")) {
+      const parts = cellId.split("_");
+      const busId = Number.parseInt(parts[1] ?? "0", 10);
+      const ckt = parts[2]?.trim();
+      const shunt = psseCase.fixedShunts.find((s) => s.i === busId && (!ckt || s.id.trim() === ckt));
+      addSpan(shunt?.span);
+    } else if (cellId.startsWith("swshunt_")) {
+      const parts = cellId.split("_");
+      const busId = Number.parseInt(parts[1] ?? "0", 10);
+      const sw = psseCase.switchedShunts.find((s) => s.i === busId);
+      addSpan(sw?.span);
+    } else if (cellId.startsWith("branch_") || cellId.startsWith("line_")) {
+      const parts = cellId.split("_");
+      const iBus = Number.parseInt(parts[1] ?? "0", 10);
+      const jBus = Number.parseInt(parts[2] ?? "0", 10);
+      const ckt = parts[3]?.trim();
+      const br = psseCase.branches.find(
+        (b) => b.i === iBus && Math.abs(b.j) === jBus && (!ckt || b.ckt.trim() === ckt),
+      );
+      addSpan(br?.span);
+    } else if (cellId.startsWith("xfmr_")) {
+      const parts = cellId.split("_");
+      const iBus = Number.parseInt(parts[1] ?? "0", 10);
+      const jBus = Number.parseInt(parts[2] ?? "0", 10);
+      const ckt = parts[3]?.trim();
+      const xf = psseCase.transformers.find(
+        (x) => x.i === iBus && (x.j === jBus || x.k === jBus) && (!ckt || x.ckt.trim() === ckt),
+      );
+      addSpan(xf?.span);
+    }
+  }
+
+  if (spanMap.size === 0) return sourceText;
+  const sorted = [...spanMap.values()].sort((a, b) => b.startOffset - a.startOffset);
+  let out = sourceText;
+  for (const sp of sorted) {
+    let end = sp.endOffset;
+    if (out[end] === "\r") end++;
+    if (out[end] === "\n") end++;
+    out = out.slice(0, sp.startOffset) + out.slice(end);
+  }
+  return out;
+}
+
+/**
+ * Adds an AC branch connecting two buses in a PSS/E `.raw` document.
+ */
+export function connectPsseDiagramBuses(sourceText: string, sourceCellId: string, targetCellId: string): string {
+  const iBus = sourceCellId.startsWith("bus_") ? Number.parseInt(sourceCellId.slice(4), 10) : NaN;
+  const jBus = targetCellId.startsWith("bus_") ? Number.parseInt(targetCellId.slice(4), 10) : NaN;
+  if (!Number.isFinite(iBus) || !Number.isFinite(jBus) || iBus === jBus) return sourceText;
+
+  const psseCase = parseRaw(sourceText);
+  const existingCkts = new Set(
+    psseCase.branches
+      .filter((b) => (b.i === iBus && Math.abs(b.j) === jBus) || (b.i === jBus && Math.abs(b.j) === iBus))
+      .map((b) => b.ckt.trim()),
+  );
+  let ckt = 1;
+  while (existingCkts.has(String(ckt))) ckt++;
+  const record = `${iBus}, ${jBus}, '${String(ckt).padEnd(2)}', 0.01000, 0.05000, 0.02000, 100.00, 120.00, 140.00, 0.00000, 0.00000, 0.00000, 0.00000, 1, 1, 0.00`;
+  return insertRawRecordInSection(
+    sourceText,
+    "BRANCH",
+    /BEGIN (?:NON-TRANSFORMER )?BRANCH/i,
+    /END OF (?:NON-TRANSFORMER )?BRANCH/i,
+    record,
+  );
+}
+
+/**
+ * Removes AC branches/transformers connecting two buses in a PSS/E `.raw` document.
+ */
+export function disconnectPsseDiagramBuses(sourceText: string, sourceCellId: string, targetCellId: string): string {
+  const iBus = sourceCellId.startsWith("bus_") ? Number.parseInt(sourceCellId.slice(4), 10) : NaN;
+  const jBus = targetCellId.startsWith("bus_") ? Number.parseInt(targetCellId.slice(4), 10) : NaN;
+  if (!Number.isFinite(iBus) || !Number.isFinite(jBus)) return sourceText;
+
+  const psseCase = parseRaw(sourceText);
+  const toDelete: string[] = [];
+  for (const b of psseCase.branches) {
+    if ((b.i === iBus && Math.abs(b.j) === jBus) || (b.i === jBus && Math.abs(b.j) === iBus)) {
+      toDelete.push(`branch_${b.i}_${Math.abs(b.j)}_${b.ckt.trim() || "1"}`);
+    }
+  }
+  for (const t of psseCase.transformers) {
+    if ((t.i === iBus && t.j === jBus) || (t.i === jBus && t.j === iBus)) {
+      toDelete.push(`xfmr_${t.i}_${t.j}_${t.ckt.trim() || "1"}`);
+    }
+  }
+  return toDelete.length > 0 ? deletePsseDiagramComponents(sourceText, toDelete) : sourceText;
+}

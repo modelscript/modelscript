@@ -260,6 +260,7 @@ export class DiagramService {
           // ignore parse errors
         }
       }
+      await this.parserService?.ensureLanguageParserLoaded(params.uri);
       return this.getDiagramDispatch().getData(params);
     }
 

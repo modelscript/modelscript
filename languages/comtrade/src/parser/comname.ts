@@ -13,20 +13,14 @@
  */
 
 import { createWasmParserSync } from "@modelscript/comtrade/wasm-parser";
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type { ComtradeConfig } from "../types.js";
 
 type CstToken = ReturnType<typeof groupAllCstTokensByLine>[number]["tokens"][number];
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getComtradeWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/comtrade/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("comtrade", import.meta.url, createWasmParserSync);
 }
 
 export interface ComnameComponents {

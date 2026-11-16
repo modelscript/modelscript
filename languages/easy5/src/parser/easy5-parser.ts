@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/easy5/wasm-parser";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import { getBlockDescriptor } from "../catalog/gp-library.js";
 import type {
   Easy5Component,
@@ -13,14 +13,8 @@ import type {
   Easy5Table,
 } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getEasy5WasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/easy5/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("easy5", import.meta.url, createWasmParserSync);
 }
 
 /**

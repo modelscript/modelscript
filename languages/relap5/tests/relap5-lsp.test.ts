@@ -98,3 +98,29 @@ test("RELAP5 LSP: executeRelap5Action executes registered actions", async () => 
   assert.ok(mo.includes("model PwrLspTest"));
   assert.ok(mo.includes("Real P_100"));
 });
+
+test("RELAP5 WASM GLR Parser & LSP: parses Morsel defaultCode without error and reports syntax errors", async () => {
+  const { getRelap5WasmParser } = await import("../src/parser/wasm-loader.js");
+  const { collectWasmSyntaxErrors } = await import("@modelscript/dsl");
+
+  const morselDefaultCode = `= RELAP5 Point Kinetics & Primary Loop Deck
+0000100 new transnt
+0000105 5.0 10.0
+0000201 10.0 0.001 0.05 3 10 100
+3000000 point-kinetics
+3000001 0 100.0e6 0.0065
+`;
+
+  const tree = getRelap5WasmParser().parse(morselDefaultCode);
+  assert.ok(tree?.rootNode);
+  assert.equal(tree.rootNode.hasError, false);
+  assert.equal(collectWasmSyntaxErrors(tree.rootNode).length, 0);
+  assert.equal(validateRelap5(morselDefaultCode).filter((d) => d.code === "M8600").length, 0);
+
+  const brokenDeck = `= Broken RELAP5 Deck
+invalid_non_numeric_card 1.0 2.0
+`;
+  const brokenTree = getRelap5WasmParser().parse(brokenDeck);
+  assert.equal(brokenTree?.rootNode.hasError, true);
+  assert.ok(validateRelap5(brokenDeck).some((d) => d.code === "M8600" && d.source === "relap5-parser"));
+});

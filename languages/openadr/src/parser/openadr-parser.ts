@@ -1,19 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
 import { createWasmParserSync, type SyntaxNode } from "@modelscript/openadr/wasm-parser";
-import { createRequire } from "node:module";
 import type { OadrEvent, OadrEventStatus, OadrInterval, OadrProgram, OadrSignalType, OpenAdrDeck } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedOadrParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
-
 function getOadrWasmParser(): ReturnType<typeof createWasmParserSync>["parser"] {
-  if (!cachedOadrParser) {
-    const wasmPath = require.resolve("@modelscript/openadr/parser.wasm");
-    cachedOadrParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedOadrParser;
+  return getOrLoadLanguageWasmParser("openadr", import.meta.url, createWasmParserSync);
 }
 
 export function parseOpenAdr(text: string): OpenAdrDeck {

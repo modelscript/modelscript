@@ -95,4 +95,5 @@ export interface NiftiDocument {
   spaceDirections?: [[number, number, number], [number, number, number], [number, number, number]] | undefined;
   sourceUri?: string | undefined;
   range: NiftiSourceRange;
+  syntaxErrors?: import("@modelscript/dsl").WasmSyntaxErrorSpan[] | undefined;
 }

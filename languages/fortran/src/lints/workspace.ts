@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/fortran/parser";
 import {
   collectWorkspaceDocuments,
@@ -9,17 +10,10 @@ import {
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import { lintFortranSource } from "./index.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getFortranWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/fortran/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("fortran", import.meta.url, createWasmParserSync);
 }
 
 const BUILTIN_FORTRAN_MODULES = new Set(["iso_c_binding", "iso_fortran_env", "ieee_arithmetic", "omp_lib", "mpi"]);

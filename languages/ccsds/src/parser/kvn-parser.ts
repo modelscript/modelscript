@@ -8,8 +8,8 @@
  */
 
 import { createWasmParserSync } from "@modelscript/ccsds/wasm-parser";
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { cstLineText, groupCstLeavesByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type {
   CcsdsDocument,
   CcsdsEphemerisPoint,
@@ -22,14 +22,8 @@ import type {
   CcsdsSpacecraftParameters,
 } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getCcsdsWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/ccsds/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("ccsds", import.meta.url, createWasmParserSync);
 }
 
 function parseEpochSeconds(epochStr: string): number {

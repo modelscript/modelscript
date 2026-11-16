@@ -9,6 +9,7 @@
  * spring-dampers, applied forces, prescribed motions, and simulation controls.
  */
 
+import { groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
 import type {
   AdamsDataset,
   AdamsForce,
@@ -24,6 +25,7 @@ import type {
   SourceRange,
   Vector3D,
 } from "../types.js";
+import { getAdamsWasmParser } from "./wasm-loader.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zero-Regex Number & Angle Evaluation
@@ -67,23 +69,43 @@ interface LogicalCard {
 }
 
 /**
- * Normalizes source text into logical statements by merging lines ending with '&'
- * and stripping comment lines starting with '!', '$', or '//'.
+ * Normalizes source text into logical statements using the native WASM GLR CST
+ * line grouping, merging lines ending with '&' and stripping inline comments.
  */
-function preprocessCards(source: string): LogicalCard[] {
-  const lines = source.split("\n").map((l) => (l.endsWith("\r") ? l.slice(0, -1) : l));
+function preprocessCards(source: string, cstRoot?: CstNodeLike | null): LogicalCard[] {
+  const rawLines = source.split("\n");
+  const lines: string[] = new Array(rawLines.length);
+  const lineOffsets: number[] = new Array(rawLines.length);
+  let runningOffset = 0;
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i] ?? "";
+    lineOffsets[i] = runningOffset;
+    lines[i] = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+    runningOffset += raw.length + 1;
+  }
+
+  const cstLines = groupAllCstTokensByLine(cstRoot);
+  const activeRows: number[] = [];
+  for (const { row, tokens } of cstLines) {
+    const hasNonNewline = tokens.some((t) => (t.text ?? "").trim().length > 0);
+    if (hasNonNewline && row >= 0 && row < lines.length) {
+      activeRows.push(row);
+    }
+  }
+
   const cards: LogicalCard[] = [];
 
   let currentText = "";
   let cardStartLine = 1;
   let cardEndLine = 1;
   let cardStartOffset = 0;
-  let currentOffset = 0;
+  let lastLineEndOffset = 0;
 
-  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+  for (const lineIdx of activeRows) {
     const rawLine = lines[lineIdx] ?? "";
     const lineNum = lineIdx + 1;
-    const lineLen = rawLine.length + 1; // +1 for newline
+    const currentOffset = lineOffsets[lineIdx] ?? 0;
+    const lineLen = (rawLines[lineIdx]?.length ?? rawLine.length) + 1;
 
     // Strip inline or full-line comments
     let lineContent = rawLine;
@@ -116,7 +138,6 @@ function preprocessCards(source: string): LogicalCard[] {
 
     const trimmed = lineContent.trim();
     if (!trimmed) {
-      currentOffset += lineLen;
       continue;
     }
 
@@ -132,6 +153,7 @@ function preprocessCards(source: string): LogicalCard[] {
     }
 
     cardEndLine = lineNum;
+    lastLineEndOffset = Math.min(source.length, currentOffset + lineLen);
 
     if (!isContinuation) {
       cards.push({
@@ -139,12 +161,10 @@ function preprocessCards(source: string): LogicalCard[] {
         startLine: cardStartLine,
         endLine: cardEndLine,
         startOffset: cardStartOffset,
-        endOffset: currentOffset + lineLen,
+        endOffset: lastLineEndOffset,
       });
       currentText = "";
     }
-
-    currentOffset += lineLen;
   }
 
   if (currentText) {
@@ -153,7 +173,7 @@ function preprocessCards(source: string): LogicalCard[] {
       startLine: cardStartLine,
       endLine: cardEndLine,
       startOffset: cardStartOffset,
-      endOffset: currentOffset,
+      endOffset: lastLineEndOffset,
     });
   }
 
@@ -415,7 +435,8 @@ export function parseAdams(source: string, defaultTitle = "adams_model"): AdamsD
     }
   }
 
-  const cards = preprocessCards(source);
+  const cstTree = getAdamsWasmParser().parse(source);
+  const cards = preprocessCards(source, cstTree?.rootNode as CstNodeLike | undefined);
 
   for (const card of cards) {
     const parsed = tokenizeCard(card);

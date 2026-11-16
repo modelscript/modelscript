@@ -4,9 +4,9 @@
  * @modelscript/easy5 — WASM GLR CST Modelica Block Diagram Parser.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/modelica/parser";
 import { collectCstNodes, type CstNodeLike } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 
 export interface ModelicaComponentDecl {
   name: string;
@@ -26,15 +26,9 @@ export interface ParsedModelicaModel {
   connections: ModelicaConnection[];
 }
 
-const require = createRequire(import.meta.url);
-let cachedModelicaParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
-
 function getModelicaWasmParser() {
-  if (!cachedModelicaParser) {
-    const wasmPath = require.resolve("@modelscript/modelica/parser.wasm");
-    cachedModelicaParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedModelicaParser;
+  const modelicaMetaUrl = import.meta.url.replace(/\/(languages|@modelscript)\/easy5\//, "/$1/modelica/");
+  return getOrLoadLanguageWasmParser("modelica", modelicaMetaUrl, createWasmParserSync);
 }
 
 function getChildren(node: CstNodeLike): readonly CstNodeLike[] {

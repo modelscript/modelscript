@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { lowerCanteraToDae } from "./dae/cantera-to-dae.js";
 import { lintCantera } from "./lints/index.js";
-import { parseCantera } from "./parser/cantera-parser.js";
+import { getCanteraWasmParser, parseCantera } from "./parser/cantera-parser.js";
 import { canteraToModelica } from "./projections/cantera-to-modelica.js";
 import { evaluateNasa7Thermo, solveCanteraReactor, type CanteraReactorOptions } from "./solvers/kinetics-solver.js";
 
@@ -79,10 +80,35 @@ export interface LspCompletionItem {
 
 export function validateCantera(text: string): LspDiagnostic[] {
   try {
+    const cstTree = getCanteraWasmParser().parse(text);
+    const syntaxDiags: LspDiagnostic[] = collectWasmSyntaxErrors(cstTree?.rootNode).map((err) => ({
+      range: {
+        start: { line: Math.max(0, err.startLine - 1), character: Math.max(0, err.startColumn - 1) },
+        end: { line: Math.max(0, err.endLine - 1), character: Math.max(0, err.endColumn - 1) },
+      },
+      severity: 1,
+      code: "M9200",
+      source: "cantera-parser",
+      message: err.message,
+    }));
+    if (syntaxDiags.length === 0 && cstTree?.rootNode?.hasError) {
+      const ep = cstTree.rootNode.endPosition ?? { row: 0, column: 0 };
+      syntaxDiags.push({
+        range: {
+          start: { line: Math.max(0, ep.row), character: Math.max(0, ep.column - 1) },
+          end: { line: Math.max(0, ep.row), character: Math.max(1, ep.column) },
+        },
+        severity: 1,
+        code: "M9200",
+        source: "cantera-parser",
+        message: "Syntax error: incomplete or unclosed Cantera construct.",
+      });
+    }
+
     const doc = parseCantera(text);
     const diags = lintCantera(doc);
 
-    return diags.map((d) => {
+    const semanticDiags: LspDiagnostic[] = diags.map((d) => {
       const line = d.range ? Math.max(0, d.range.startLine - 1) : 0;
       const col = d.range ? Math.max(0, d.range.startColumn - 1) : 0;
       const endLine = d.range ? Math.max(0, d.range.endLine - 1) : line;
@@ -103,6 +129,8 @@ export function validateCantera(text: string): LspDiagnostic[] {
         message: d.message,
       };
     });
+
+    return [...syntaxDiags, ...semanticDiags];
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     return [

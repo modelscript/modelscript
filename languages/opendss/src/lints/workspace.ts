@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/opendss/wasm-parser";
 import {
   collectWorkspaceDocuments,
@@ -9,18 +10,11 @@ import {
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import { parseOpenDss } from "../parser/opendss-parser.js";
 import { lintOpenDss } from "./opendss-linter.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getOpenDssWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/opendss/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("opendss", import.meta.url, createWasmParserSync);
 }
 
 /**

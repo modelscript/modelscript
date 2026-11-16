@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { iniSectionRules, language, type ActionExecutionContext } from "@modelscript/dsl";
+import { choice, language, optional, repeat, seq, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerBnglToDae } from "./dae/bngl-to-dae.js";
 import { indexBnglDocument } from "./indexing.js";
 import { lintBngl } from "./lints/index.js";
@@ -144,8 +144,72 @@ export const bnglLanguage = language({
       },
     },
   ],
-  extras: ($) => [/[ \t\r\n]+/, $["IniComment"]!],
-  rules: iniSectionRules,
+  word: ($) => $["Identifier"]!,
+  extras: ($) => [/[ \t\r\n]+/, "\\", ";", $["Comment"]!],
+  rules: {
+    BnglDocument: ($) => repeat($["TopItem"]!),
+
+    TopItem: ($) => choice($["ModelBlock"]!, $["SectionBlock"]!, $["ActionCall"]!),
+
+    ModelBlock: ($) =>
+      seq(
+        $["BeginKw"]!,
+        $["ModelKw"]!,
+        optional($["Identifier"]!),
+        repeat($["SectionBlock"]!),
+        $["EndKw"]!,
+        $["ModelKw"]!,
+      ),
+
+    SectionBlock: ($) =>
+      seq($["BeginKw"]!, $["SectionHeader"]!, repeat($["ExprToken"]!), $["EndKw"]!, optional($["SectionHeader"]!)),
+
+    ActionCall: ($) => seq($["Identifier"]!, $["ParenGroup"]!),
+
+    ExprToken: ($) =>
+      choice(
+        $["Identifier"]!,
+        $["ModelKw"]!,
+        $["NumberLiteral"]!,
+        $["StringLiteral"]!,
+        $["Arrow"]!,
+        $["ParenGroup"]!,
+        $["BraceGroup"]!,
+        $["BracketGroup"]!,
+        $["OperatorPunct"]!,
+        "@",
+        "%",
+      ),
+
+    ParenGroup: ($) => seq("(", repeat($["ExprToken"]!), ")"),
+    BraceGroup: ($) => seq("{", repeat($["ExprToken"]!), "}"),
+    BracketGroup: ($) => seq("[", repeat($["ExprToken"]!), "]"),
+
+    BeginKw: () => choice("begin", "BEGIN"),
+    EndKw: () => choice("end", "END"),
+    ModelKw: () => choice("model", "MODEL"),
+    SectionHeader: () =>
+      choice(
+        "parameters",
+        "compartments",
+        seq("molecule", "types"),
+        "molecule_types",
+        seq("seed", "species"),
+        "seed_species",
+        "species",
+        "observables",
+        "functions",
+        seq("reaction", "rules"),
+        "reaction_rules",
+        "actions",
+      ),
+    Arrow: () => /<->|->|=>/,
+    OperatorPunct: () => /[~!.?:,=+\-*/^<>]/,
+    Identifier: () => /[A-Za-z_][A-Za-z0-9_]*/,
+    NumberLiteral: () => /(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/,
+    StringLiteral: () => /"[^"\\\r\n]*(?:\\.[^"\\\r\n]*)*"|'[^'\\\r\n]*(?:\\.[^'\\\r\n]*)*'/,
+    Comment: () => /#[^\r\n]*/,
+  },
 });
 
 export default bnglLanguage;

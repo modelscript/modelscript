@@ -63,18 +63,12 @@ export function tokenizeGensysLine(line: string): string[] {
  * - Inline comments
  * - Case-insensitive commands
  */
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/gensys/wasm-parser";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getGensysWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/gensys/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("gensys", import.meta.url, createWasmParserSync);
 }
 
 export function parseGensysDeck(source: string, name: string = "GensysModel"): GensysModel {

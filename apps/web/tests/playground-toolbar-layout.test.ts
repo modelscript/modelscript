@@ -6,7 +6,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 
 describe("Playground Toolbar & Canvas Sub-Header Architecture", () => {
-  it("verifies PlaygroundNavbar unifies view switcher including 3D and Inspector, and provides sidebar toggle", () => {
+  it("verifies PlaygroundNavbar unifies icon-only view switcher including Icon, 3D, Simulation, Inspector, Code, and Split with text", () => {
     const navbarPath = path.resolve(import.meta.dirname, "../src/pages/playground/components/PlaygroundNavbar.tsx");
     const content = fs.readFileSync(navbarPath, "utf-8");
 
@@ -14,12 +14,35 @@ describe("Playground Toolbar & Canvas Sub-Header Architecture", () => {
       content.includes('aria-label="Workbench View"'),
       "PlaygroundNavbar must render Workbench View SegmentedControl",
     );
-    assert.ok(content.includes('onViewChange("3d")'), "PlaygroundNavbar must support 3D view");
-    assert.ok(content.includes('onViewChange("inspector")'), "PlaygroundNavbar must support Inspector view");
+    assert.ok(
+      content.includes("SegmentedControl.IconButton"),
+      "PlaygroundNavbar must render icon-only SegmentedControl.IconButton tabs",
+    );
+    assert.ok(
+      content.includes('id: "icon"') && content.includes('onSelectDiagramType?.("icon")'),
+      "PlaygroundNavbar must include Icon tab",
+    );
+    assert.ok(content.includes('onViewChange?.("3d")'), "PlaygroundNavbar must support 3D view");
+    assert.ok(content.includes('onViewChange?.("inspector")'), "PlaygroundNavbar must support Inspector view");
+    assert.ok(content.includes('onViewChange?.("code")'), "PlaygroundNavbar must support Code view");
+    assert.ok(
+      content.includes("SplitToggleButton") && content.includes("<span>Split</span>"),
+      "PlaygroundNavbar must render Split toggle button with Split text",
+    );
+  });
+
+  it("verifies PlaygroundNavbar provides sidebar toggle and theme toggle", () => {
+    const navbarPath = path.resolve(import.meta.dirname, "../src/pages/playground/components/PlaygroundNavbar.tsx");
+    const content = fs.readFileSync(navbarPath, "utf-8");
+
     assert.ok(content.includes("onToggleSidebar"), "PlaygroundNavbar must accept onToggleSidebar prop");
     assert.ok(
       content.includes("SidebarCollapseIcon") && content.includes("SidebarExpandIcon"),
       "PlaygroundNavbar must render sidebar collapse/expand icons",
+    );
+    assert.ok(
+      content.includes("SunIcon") && content.includes("MoonIcon") && content.includes("toggleTheme"),
+      "PlaygroundNavbar must render a dark/light mode toggle button wired to toggleTheme",
     );
   });
 
@@ -41,7 +64,7 @@ describe("Playground Toolbar & Canvas Sub-Header Architecture", () => {
     );
   });
 
-  it("verifies MorselVisualizerPane docks canvas sub-header within the canvas column to avoid right sidebar collisions", () => {
+  it("verifies MorselVisualizerPane omits secondary MorselViewSubHeader and provides canvas tools", () => {
     const panePath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx");
     const content = fs.readFileSync(panePath, "utf-8");
 
@@ -50,12 +73,11 @@ describe("Playground Toolbar & Canvas Sub-Header Architecture", () => {
       "MorselVisualizerPane must not render the floating view switcher on playground routes",
     );
     assert.ok(
-      content.includes("(hideCenterFloatingToolbar || isPlaygroundRoute) &&") &&
-        content.includes("activeLangInfo.diagramTypes"),
-      "MorselVisualizerPane must dock the canvas sub-header within the canvas column",
+      !content.includes("<MorselViewSubHeader"),
+      "MorselVisualizerPane must not render the unnecessary secondary MorselViewSubHeader",
     );
-    assert.ok(content.includes("setShowPalette"), "Docked canvas sub-header must provide Add Element palette toggle");
-    assert.ok(content.includes("onAutoLayout"), "Docked canvas sub-header must provide Auto-layout button");
+    assert.ok(content.includes("setShowPalette"), "Docked canvas must provide Add Element palette toggle");
+    assert.ok(content.includes("onAutoLayout"), "Docked canvas must provide Auto-layout button");
   });
 
   it("verifies MorselLeftSidebar provides a collapse button in the Libraries header", () => {

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { lowerNmtranToDae } from "./dae/nmtran-to-dae.js";
 import { lintNmtran } from "./lints/index.js";
 import { parseNmtran } from "./parser/nmtran-parser.js";
+import { getNmtranWasmParser } from "./parser/wasm-loader.js";
 import { nmtranToModelica } from "./projections/nmtran-to-modelica.js";
 import { solveNmtranPkPd, type PkPdSolverOptions } from "./solvers/pkpd-solver.js";
 
@@ -80,9 +82,21 @@ export interface LspCompletionItem {
 export function validateNmtran(text: string): LspDiagnostic[] {
   try {
     const doc = parseNmtran(text);
+    const syntaxSpans = doc.syntaxErrors ?? collectWasmSyntaxErrors(getNmtranWasmParser().parse(text)?.rootNode);
+    const syntaxDiags: LspDiagnostic[] = syntaxSpans.map((sp) => ({
+      range: {
+        start: { line: Math.max(0, sp.startLine - 1), character: Math.max(0, sp.startColumn - 1) },
+        end: { line: Math.max(0, sp.endLine - 1), character: Math.max(0, sp.endColumn - 1) },
+      },
+      severity: 1,
+      code: "M9400",
+      source: "nmtran-parser",
+      message: sp.message,
+    }));
+
     const diags = lintNmtran(doc);
 
-    return diags.map((d) => {
+    const semanticDiags: LspDiagnostic[] = diags.map((d) => {
       const line = d.range ? Math.max(0, d.range.startLine - 1) : 0;
       const col = d.range ? Math.max(0, d.range.startColumn - 1) : 0;
       const endLine = d.range ? Math.max(0, d.range.endLine - 1) : line;
@@ -103,6 +117,8 @@ export function validateNmtran(text: string): LspDiagnostic[] {
         message: d.message,
       };
     });
+
+    return [...syntaxDiags, ...semanticDiags];
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     return [

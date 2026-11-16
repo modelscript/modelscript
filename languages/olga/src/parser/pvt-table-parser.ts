@@ -361,18 +361,12 @@ function normalizePropertyTag(tag: string): string {
   }
 }
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/olga/wasm-parser";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getOlgaWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/olga/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("olga", import.meta.url, createWasmParserSync);
 }
 
 /**

@@ -4,7 +4,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { lowerPsseToDae } from "../src/dae/index.js";
 import {
+  addPsseDiagramComponent,
   applyPsseDiagramWriteback,
+  connectPsseDiagramBuses,
+  deletePsseDiagramComponents,
+  disconnectPsseDiagramBuses,
   executePsseAction,
   formatPsseDocument,
   getPsseCodeActions,
@@ -19,6 +23,7 @@ import {
 } from "../src/lsp.js";
 import { parseDyr } from "../src/parser/dyr-parser.js";
 import { parseRaw } from "../src/parser/raw-parser.js";
+import { simulatePsseTransient } from "../src/solver/ac-powerflow.js";
 
 const IEEE_14_RAW = `0, 100.00, 33, 0, 0, 60.00 / PSS/E-33.0 IEEE 14 BUS TEST CASE
 IEEE 14 BUS TEST CASE
@@ -291,5 +296,72 @@ describe("PSS/E LSP Services & DAE Lowering (@modelscript/psse)", () => {
     const formattedDyr = formatPsseDocument(ibrDyrText, "ibr.dyr");
     assert.ok(formattedDyr.includes("@! IBUS"));
     assert.ok(formattedDyr.includes("'REGC_A'"));
+  });
+
+  it("supports diagram addComponent, deleteComponents, connect, disconnect, suppresses false P6004 on isolated buses, and simulates Slack-only networks without all-zero voltages", () => {
+    const minimalRaw = [
+      "0, 100.0, 33, 0, 1, 60.0 / PSS/E 2-Bus Sample",
+      "1, 'BUS 1 ', 230.0, 3, 1, 1, 1, 1.02, 0.0 /",
+      "2, 'BUS 2 ', 230.0, 1, 1, 1, 1, 1.00, -2.5 /",
+      "0 / END OF BUS DATA, BEGIN LOAD DATA",
+      "2, '1 ', 1, 1, 1, 120.0, 40.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0",
+      "0 / END OF LOAD DATA",
+      "",
+    ].join("\n");
+
+    // 1. Isolated bus should emit P2001, NOT bogus P6004 Q-V collapse
+    const diags = validatePsse(minimalRaw, "sample.raw");
+    assert.ok(
+      diags.some((d) => d.code === "P2001"),
+      "Expected P2001 for isolated buses",
+    );
+    assert.ok(
+      !diags.some((d) => d.code === "P6004"),
+      `Did not expect P6004 on isolated bus, got: ${diags.map((d) => d.code).join(", ")}`,
+    );
+
+    // 2. Simulate Slack + isolated PQ bus (no generators): Slack bus must hold ~1.02 pu, not 0.0000
+    const parsedMinimal = parseRaw(minimalRaw);
+    const simMinimal = simulatePsseTransient(parsedMinimal, { stopTime: 0.2, timeStep: 0.02 });
+    const vm1Idx = simMinimal.states.indexOf("Vm_Bus1_pu");
+    assert.ok(vm1Idx >= 0, "Expected Vm_Bus1_pu state");
+    assert.ok(
+      Math.abs((simMinimal.y[vm1Idx]?.[0] ?? 0) - 1.02) < 0.01,
+      `Expected Vm_Bus1_pu ~ 1.02, got ${simMinimal.y[vm1Idx]?.[0]}`,
+    );
+
+    // 3. Connect Bus 1 and Bus 2, then simulate: Bus 2 should be energized (~0.98+ pu, not 0)
+    const connectedRaw = connectPsseDiagramBuses(minimalRaw, "bus_1", "bus_2");
+    const parsedConnected = parseRaw(connectedRaw);
+    assert.equal(parsedConnected.branches.length, 1);
+    const simConnected = simulatePsseTransient(parsedConnected, { stopTime: 0.2, timeStep: 0.02 });
+    const vm2Idx = simConnected.states.indexOf("Vm_Bus2_pu");
+    assert.ok(vm2Idx >= 0);
+    assert.ok(
+      (simConnected.y[vm2Idx]?.[0] ?? 0) > 0.8,
+      `Expected connected Bus 2 voltage > 0.8 pu, got ${simConnected.y[vm2Idx]?.[0]}`,
+    );
+
+    // 4. Add components (bus, generator, PSSEDynamics.ABBSVC1) and delete load/branch/bus
+    const withBus = addPsseDiagramComponent(minimalRaw, "psse:bus_pv");
+    assert.equal(parseRaw(withBus).buses.size, 3);
+
+    const withGen = addPsseDiagramComponent(withBus, "psse:generator");
+    assert.equal(parseRaw(withGen).generators.length, 1);
+
+    const withSvc = addPsseDiagramComponent(withGen, "PSSEDynamics.ABBSVC1");
+    assert.equal(parseRaw(withSvc).fixedShunts.length, 1);
+
+    const afterDeleteLoad = deletePsseDiagramComponents(connectedRaw, ["load_2_1"]);
+    assert.equal(parseRaw(afterDeleteLoad).loads.length, 0);
+
+    const afterDisconnect = disconnectPsseDiagramBuses(connectedRaw, "bus_1", "bus_2");
+    assert.equal(parseRaw(afterDisconnect).branches.length, 0);
+
+    const afterDeleteBus = deletePsseDiagramComponents(connectedRaw, ["bus_2"]);
+    const afterBusCase = parseRaw(afterDeleteBus);
+    assert.equal(afterBusCase.buses.has(2), false);
+    assert.equal(afterBusCase.loads.length, 0);
+    assert.equal(afterBusCase.branches.length, 0);
   });
 });

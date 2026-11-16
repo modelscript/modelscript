@@ -9,7 +9,7 @@ import { useAuth } from "../AuthContext";
 import { analyzeSnippetDiagnostics } from "../components/compose/snippet-diagnostics";
 import { ComposeContext } from "../components/ComposeContext";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { getLanguageInfo } from "../components/morsel/constants";
+import { getLanguageInfo, MORSEL_LANGUAGE_MAP } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
 import { extractPrimaryModelicaClassName, installDependency } from "../components/morsel/util/lsp-bridge";
 import {
@@ -80,6 +80,12 @@ const TEMPLATE_ALIASES: Record<string, string> = {
   fea: "fea-bracket-deck",
   cfd: "cfd-rae2822-su2",
 };
+
+function clearPlaygroundUrl(pathname: string): void {
+  if (typeof window === "undefined") return;
+  if (!window.location.search && !window.location.hash) return;
+  window.history.replaceState(window.history.state, "", pathname);
+}
 
 export const PlaygroundPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -290,6 +296,7 @@ export const PlaygroundPage: React.FC = () => {
             lang: detectedLang,
             title: resolvedTitle,
           });
+          clearPlaygroundUrl(location.pathname);
         } catch {
           if (!cancelled) setIsLoadingArtifact(false);
         }
@@ -351,6 +358,7 @@ export const PlaygroundPage: React.FC = () => {
                 ...(entries.length > 1 ? { files, activeFile: fileName, isMultiFile: true } : {}),
                 title: resolvedTitle,
               });
+              clearPlaygroundUrl(location.pathname);
               return;
             }
           }
@@ -402,6 +410,7 @@ export const PlaygroundPage: React.FC = () => {
                   : {}),
                 title: resolvedTitle,
               });
+              clearPlaygroundUrl(location.pathname);
               return;
             }
           }
@@ -469,6 +478,7 @@ export const PlaygroundPage: React.FC = () => {
           if (p.dependencies) {
             mountArtifactDependencies(p.dependencies);
           }
+          clearPlaygroundUrl(location.pathname);
           return;
         }
       }
@@ -490,14 +500,7 @@ export const PlaygroundPage: React.FC = () => {
         code: sourceParam,
         title,
       });
-      const hash = compressMorselPayload({
-        v: 1,
-        lang: detectedLang,
-        code: sourceParam,
-        title,
-        ...(fromArtifactParam ? { artifactId: fromArtifactParam } : {}),
-      });
-      window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
+      clearPlaygroundUrl(location.pathname);
       return;
     }
 
@@ -528,13 +531,7 @@ export const PlaygroundPage: React.FC = () => {
         code: navState.code,
         title,
       });
-      const hash = compressMorselPayload({
-        v: 1,
-        lang: detectedLang,
-        code: navState.code,
-        title,
-      });
-      window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
+      clearPlaygroundUrl(location.pathname);
       return;
     }
 
@@ -669,20 +666,7 @@ export const PlaygroundPage: React.FC = () => {
               ...(dependencies ? { dependencies } : {}),
               ...(artifactDiagramType ? { diagramType: artifactDiagramType } : {}),
             });
-            const hash = compressMorselPayload({
-              v: 1,
-              lang: detectedLang,
-              code,
-              ...(isMulti && filesMap
-                ? { files: filesMap, activeFile: resolvedActiveFile || undefined, isMultiFile: true }
-                : {}),
-              ...(viewParam ? { view: viewParam } : {}),
-              title: resolvedTitle,
-              artifactId: String(effectiveArtifactId),
-              ...(dependencies ? { dependencies } : {}),
-              ...(artifactDiagramType ? { diagramType: artifactDiagramType } : {}),
-            });
-            window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
+            clearPlaygroundUrl(location.pathname);
           } else {
             const fallbackCode = getLanguageInfo(detectedLang)?.defaultCode || HERO_EXAMPLES[0]!.code;
             baselineCodeRef.current = fallbackCode;
@@ -693,6 +677,7 @@ export const PlaygroundPage: React.FC = () => {
               lang: detectedLang,
               title: resolvedTitle,
             }));
+            clearPlaygroundUrl(location.pathname);
           }
         } catch (err) {
           console.warn("[PlaygroundPage] Failed to load artifact from ?fromArtifact=", effectiveArtifactId, err);
@@ -739,13 +724,7 @@ export const PlaygroundPage: React.FC = () => {
           code: match.code,
           title: match.title,
         });
-        const hash = compressMorselPayload({
-          v: 1,
-          lang: match.lang,
-          code: match.code,
-          title: match.title,
-        });
-        window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
+        clearPlaygroundUrl(location.pathname);
       }
       return;
     }
@@ -792,6 +771,8 @@ export const PlaygroundPage: React.FC = () => {
       });
     }
 
+    clearPlaygroundUrl(location.pathname);
+
     return () => {
       cancelled = true;
     };
@@ -835,13 +816,7 @@ export const PlaygroundPage: React.FC = () => {
       code: ex.code,
       title: ex.title,
     });
-    const hash = compressMorselPayload({
-      v: 1,
-      lang: ex.lang,
-      code: ex.code,
-      title: ex.title,
-    });
-    window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
+    clearPlaygroundUrl(location.pathname);
   };
 
   const handleSelectExample = (ex: HeroExample) => {
@@ -854,42 +829,23 @@ export const PlaygroundPage: React.FC = () => {
 
   const handleSelectLang = (nextLang: string) => {
     if (nextLang === currentLang) return;
-    if (
-      isDirty &&
-      typeof window !== "undefined" &&
-      !window.confirm("You have unsaved changes. Switch language and discard changes?")
-    ) {
+    const nextStarter = HERO_EXAMPLES.find((ex) => ex.lang === nextLang);
+    const langInfo = MORSEL_LANGUAGE_MAP.get(nextLang.toLowerCase());
+    const langOpt = PLAYGROUND_LANGUAGES.find((l) => l.id === nextLang);
+    const nextCode = nextStarter?.code || langInfo?.defaultCode || "";
+    const nextTitle = nextStarter?.title || langOpt?.label || langInfo?.label || langInfo?.name || nextLang;
+    const nextExample: HeroExample = {
+      id: `lang-${nextLang}`,
+      title: nextTitle,
+      category: "Starter",
+      lang: nextLang,
+      code: nextCode,
+    };
+    if (isDirty) {
+      setPendingExample(nextExample);
       return;
     }
-    setCurrentLang(nextLang);
-    setProjectFiles(null);
-    setActiveFile(null);
-    const nextStarter = HERO_EXAMPLES.find((ex) => ex.lang === nextLang);
-    const langInfo = getLanguageInfo(nextLang);
-    const langOpt = PLAYGROUND_LANGUAGES.find((l) => l.id === nextLang);
-    const nextCode = nextStarter?.code || langInfo?.defaultCode || currentCode;
-    const nextTitle = nextStarter?.title || langOpt?.label || langInfo?.label || langInfo?.name || currentTitle;
-
-    baselineCodeRef.current = nextCode;
-    setIsDirty(false);
-    if (nextCode !== currentCode) setCurrentCode(nextCode);
-    if (nextTitle !== currentTitle) setCurrentTitle(nextTitle);
-
-    setPayload((prev) => ({
-      ...(prev || { v: 1 }),
-      lang: nextLang,
-      code: nextCode,
-      title: nextTitle,
-    }));
-
-    const hash = compressMorselPayload({
-      v: 1,
-      lang: nextLang,
-      code: nextCode,
-      title: nextTitle,
-      ...(resolvedFromArtifact ? { artifactId: resolvedFromArtifact } : {}),
-    });
-    window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
+    applySelectedExample(nextExample);
   };
 
   const handleOpenInVsCode = () => {
@@ -1121,19 +1077,7 @@ export const PlaygroundPage: React.FC = () => {
         : {}),
       title: nextTitle,
     }));
-    const hash = compressMorselPayload({
-      v: 1,
-      lang: currentLang,
-      code: currentCode,
-      ...(isMulti && projectFiles
-        ? { files: projectFiles, activeFile: activeFile || undefined, isMultiFile: true }
-        : {}),
-      title: nextTitle,
-      view: payload?.view,
-      anchor: payload?.anchor,
-      ...(resolvedFromArtifact ? { artifactId: resolvedFromArtifact } : {}),
-    });
-    window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
+    clearPlaygroundUrl(location.pathname);
   };
 
   const handleClassLoaded = (loadedCode: string, loadedClassName: string, loadedDialect: string) => {
@@ -1154,15 +1098,7 @@ export const PlaygroundPage: React.FC = () => {
       code: loadedCode,
       title: nextTitle,
     }));
-    const hash = compressMorselPayload({
-      v: 1,
-      lang: nextLang,
-      code: loadedCode,
-      title: nextTitle,
-      view: payload?.view,
-      ...(resolvedFromArtifact ? { artifactId: resolvedFromArtifact } : {}),
-    });
-    window.history.replaceState(window.history.state, "", `${location.pathname}${location.search}#m=${hash}`);
+    clearPlaygroundUrl(location.pathname);
   };
 
   const handleCodeChange = (nextCode: string) => {
@@ -1245,6 +1181,9 @@ export const PlaygroundPage: React.FC = () => {
   }, [currentView, canSplit, setIsSplit]);
   const [simulateTriggerCount, setSimulateTriggerCount] = useState<number>(() => (autoSimulateParam === "1" ? 1 : 0));
   const [isSimulating, setIsSimulating] = useState(false);
+  const [diagramType, setDiagramType] = useState<string>(
+    () => diagramTypeParam || (payload as any)?.diagramType || "diagram",
+  );
 
   // If autoSimulate=1 is requested and artifact loads, ensure simulateTriggerCount is at least 1
   useEffect(() => {
@@ -1287,20 +1226,42 @@ export const PlaygroundPage: React.FC = () => {
     (nextView: "diagram" | "code" | "split" | "simulation" | "3d" | "inspector") => {
       if (nextView === "split") {
         handleToggleSplit();
-      } else {
-        handleActiveViewChange(nextView);
+        return;
       }
+      const langInfo = getLanguageInfo(currentLang);
+      if (nextView === "diagram" && !langInfo.supportsDiagram) return;
+      if (nextView === "3d" && !langInfo.supports3d) return;
+      if (nextView === "simulation" && !langInfo.supportsSimulation) return;
+      handleActiveViewChange(nextView);
     },
-    [handleActiveViewChange, handleToggleSplit],
+    [currentLang, handleActiveViewChange, handleToggleSplit],
   );
 
+  useEffect(() => {
+    const langInfo = getLanguageInfo(currentLang);
+    const isUnsupported =
+      (currentView === "diagram" && !langInfo.supportsDiagram) ||
+      (currentView === "3d" && !langInfo.supports3d) ||
+      (currentView === "simulation" && !langInfo.supportsSimulation);
+    if (!isUnsupported) return;
+    const fallback: "diagram" | "3d" | "simulation" | "inspector" = langInfo.supportsDiagram
+      ? "diagram"
+      : langInfo.supports3d
+        ? "3d"
+        : langInfo.supportsSimulation
+          ? "simulation"
+          : "inspector";
+    handleActiveViewChange(fallback);
+  }, [currentLang, currentView, handleActiveViewChange]);
+
   const handleRunSimulation = useCallback(() => {
+    if (!getLanguageInfo(currentLang).supportsSimulation) return;
     if (currentView !== "simulation") {
       setCurrentView("simulation");
       handleActiveViewChange("simulation");
     }
     setSimulateTriggerCount((c) => c + 1);
-  }, [currentView, handleActiveViewChange, setCurrentView]);
+  }, [currentLang, currentView, handleActiveViewChange, setCurrentView]);
 
   // Desktop-grade global keyboard shortcuts for workbench view navigation and actions
   useEffect(() => {
@@ -1392,6 +1353,11 @@ export const PlaygroundPage: React.FC = () => {
         currentTitle={currentTitle}
         currentLang={currentLang}
         currentView={currentView}
+        diagramType={diagramType}
+        onSelectDiagramType={(nextType) => {
+          setDiagramType(nextType);
+          handleViewChange("diagram");
+        }}
         isSplit={isSplit && canSplit}
         canSplit={canSplit}
         splitOrientation={splitOrientation}
@@ -1428,12 +1394,22 @@ export const PlaygroundPage: React.FC = () => {
           role="tablist"
           aria-label="Project files"
           style={{
+            position: "absolute",
+            bottom: 16,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 35,
+            maxWidth: "calc(100% - 24px)",
             display: "flex",
             alignItems: "center",
             gap: 4,
-            padding: "4px 12px",
-            backgroundColor: "var(--ms-bg-surface, var(--color-canvas-subtle))",
-            borderBottom: "1px solid var(--ms-border-subtle, var(--color-border-default))",
+            padding: "4px 10px",
+            borderRadius: 12,
+            backgroundColor: "var(--ms-surface-glass, rgba(255, 255, 255, 0.94))",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
+            border: "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))",
+            boxShadow: "0 8px 24px rgba(15, 23, 42, 0.08), 0 1px 4px rgba(15, 23, 42, 0.05)",
             overflowX: "auto",
             flexShrink: 0,
           }}
@@ -1584,6 +1560,9 @@ export const PlaygroundPage: React.FC = () => {
               initialDialect={currentLang}
               initialView={currentView}
               isSplit={isSplit && canSplit && currentView !== "code"}
+              canSplit={canSplit}
+              onViewChange={handleViewChange}
+              onToggleSplit={handleToggleSplit}
               splitOrientation={splitOrientation === "vertical" ? "rows" : "columns"}
               initialVisualizerSubview={
                 currentView === "simulation" ||
@@ -1602,6 +1581,8 @@ export const PlaygroundPage: React.FC = () => {
               initialStartTime={initialStartTime}
               initialStopTime={initialStopTime}
               initialDiagramType={diagramTypeParam || (payload as any)?.diagramType || undefined}
+              diagramType={diagramType}
+              onDiagramTypeChange={setDiagramType}
               initialClassName={extractPrimaryModelicaClassName(currentCode) || undefined}
               initialAnchor={payload?.anchor}
               externalParams={payload?.params}

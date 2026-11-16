@@ -1358,29 +1358,87 @@ export declare function createWasmParserSync(
   facade: LspFacade;
   parser: TreeSitterParser;
 };
+/**
+ * Registers a pre-instantiated WebAssembly GLR parser in `globalThis.__msWasmParsers`
+ * so synchronous language parsers and workspace linters can use it inside browser WebWorkers
+ * without Node.js `fs` or `node:module`.
+ */
+export declare function registerPreloadedWasmParser(
+  langId: string,
+  parser: TreeSitterParser | null | undefined,
+  facade?: LspFacade | null,
+): void;
+/**
+ * Retrieves a pre-instantiated WebAssembly GLR parser from `globalThis` if registered
+ * by `ParserService` (browser WebWorker or Node LSP server).
+ */
+export declare function getPreloadedWasmParser(
+  langId: string,
+): TreeSitterParser | undefined;
+/**
+ * Resolves the filesystem path or URL to a language package's `parser.wasm` without `node:module`.
+ */
+export declare function resolveLanguageWasmPath(
+  importMetaUrl: string,
+  langId?: string,
+): string;
+/**
+ * Isomorphic helper that returns the pre-loaded WASM GLR parser in browser WebWorkers
+ * (`globalThis.__msWasmParsers`) and lazily loads `parser.wasm` synchronously in Node.js CLI/tests.
+ */
+export declare function getOrLoadLanguageWasmParser<TParser = TreeSitterParser>(
+  langId: string,
+  importMetaUrl: string,
+  syncFactory?: (wasmPath: string) => {
+    parser: TParser;
+  },
+): TParser;
+export interface WasmSyntaxErrorSpan {
+  message: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+}
+/**
+ * Walks a WASM GLR `SyntaxNode` root and extracts bounded `ERROR` / `isMissing` syntax error spans
+ * (1-indexed lines and columns).
+ */
+export declare function collectWasmSyntaxErrors(
+  rootNode: unknown,
+  maxErrors?: number,
+): WasmSyntaxErrorSpan[];
 
 export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  SourceFile = 20,
-  Directive = 21,
-  TupleValue = 22,
-  ScalarValue = 23,
-  EmbeddedExpression = 24,
-  Expression = 25,
-  BinaryExpression = 26,
-  UnaryExpression = 27,
-  PrimaryExpression = 28,
-  QualifiedIdentifier = 29,
-  START = 30,
-  _START = 30,
-  CommentLine = 33,
-  Newline = 34,
-  _newline = 34,
-  IDENTIFIER = 52,
-  NUMBER = 53,
-  STRING = 54,
+  SourceFile = 24,
+  Directive = 25,
+  DirectiveValue = 26,
+  TupleValue = 27,
+  ScalarOrExpr = 28,
+  ScalarValue = 29,
+  FoamValue = 30,
+  FoamAtom = 31,
+  FoamParenList = 32,
+  FoamBracketList = 33,
+  EmbeddedExpression = 34,
+  Expression = 35,
+  BinaryExpression = 36,
+  UnaryExpression = 37,
+  CallExpression = 38,
+  PrimaryExpression = 39,
+  QualifiedIdentifier = 40,
+  START = 41,
+  _START = 41,
+  QUALIFIEDIDENT = 75,
+  QUALIFIED_IDENT = 75,
+  IDENTIFIER = 76,
+  NUMBER = 77,
+  STRING = 78,
   EOF = 1023,
 }
 
@@ -1391,6 +1449,8 @@ export declare enum FieldId {
   value = 2,
   Expr = 3,
   expr = 3,
+  Callee = 4,
+  callee = 4,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1406,14 +1466,38 @@ export interface DirectiveNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Directive;
 }
 export declare function isDirective(node: SyntaxNode | null | undefined): node is DirectiveNode;
+export interface DirectiveValueNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DirectiveValue;
+}
+export declare function isDirectiveValue(node: SyntaxNode | null | undefined): node is DirectiveValueNode;
 export interface TupleValueNode extends SyntaxNode {
   readonly typeId: SyntaxKind.TupleValue;
 }
 export declare function isTupleValue(node: SyntaxNode | null | undefined): node is TupleValueNode;
+export interface ScalarOrExprNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ScalarOrExpr;
+}
+export declare function isScalarOrExpr(node: SyntaxNode | null | undefined): node is ScalarOrExprNode;
 export interface ScalarValueNode extends SyntaxNode {
   readonly typeId: SyntaxKind.ScalarValue;
 }
 export declare function isScalarValue(node: SyntaxNode | null | undefined): node is ScalarValueNode;
+export interface FoamValueNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FoamValue;
+}
+export declare function isFoamValue(node: SyntaxNode | null | undefined): node is FoamValueNode;
+export interface FoamAtomNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FoamAtom;
+}
+export declare function isFoamAtom(node: SyntaxNode | null | undefined): node is FoamAtomNode;
+export interface FoamParenListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FoamParenList;
+}
+export declare function isFoamParenList(node: SyntaxNode | null | undefined): node is FoamParenListNode;
+export interface FoamBracketListNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FoamBracketList;
+}
+export declare function isFoamBracketList(node: SyntaxNode | null | undefined): node is FoamBracketListNode;
 export interface EmbeddedExpressionNode extends SyntaxNode {
   readonly typeId: SyntaxKind.EmbeddedExpression;
 }
@@ -1430,6 +1514,10 @@ export interface UnaryExpressionNode extends SyntaxNode {
   readonly typeId: SyntaxKind.UnaryExpression;
 }
 export declare function isUnaryExpression(node: SyntaxNode | null | undefined): node is UnaryExpressionNode;
+export interface CallExpressionNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CallExpression;
+}
+export declare function isCallExpression(node: SyntaxNode | null | undefined): node is CallExpressionNode;
 export interface PrimaryExpressionNode extends SyntaxNode {
   readonly typeId: SyntaxKind.PrimaryExpression;
 }
@@ -1438,10 +1526,10 @@ export interface QualifiedIdentifierNode extends SyntaxNode {
   readonly typeId: SyntaxKind.QualifiedIdentifier;
 }
 export declare function isQualifiedIdentifier(node: SyntaxNode | null | undefined): node is QualifiedIdentifierNode;
-export interface CommentLineNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.CommentLine;
+export interface QUALIFIEDIDENTNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.QUALIFIEDIDENT;
 }
-export declare function isCommentLine(node: SyntaxNode | null | undefined): node is CommentLineNode;
+export declare function isQUALIFIEDIDENT(node: SyntaxNode | null | undefined): node is QUALIFIEDIDENTNode;
 export interface IDENTIFIERNode extends SyntaxNode {
   readonly typeId: SyntaxKind.IDENTIFIER;
 }
@@ -1471,15 +1559,45 @@ export declare namespace Cst {
     value(node: SyntaxNode | null | undefined): SyntaxNode | null;
     valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
+  export const DirectiveValue: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DirectiveValueNode;
+  };
   export const TupleValue: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is TupleValueNode;
   };
+  export const ScalarOrExpr: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ScalarOrExprNode;
+  };
   export const ScalarValue: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ScalarValueNode;
+  };
+  export const FoamValue: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FoamValueNode;
+  };
+  export const FoamAtom: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FoamAtomNode;
+  };
+  export const FoamParenList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FoamParenListNode;
+  };
+  export const FoamBracketList: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FoamBracketListNode;
   };
   export const EmbeddedExpression: {
     readonly typeId: number;
@@ -1503,6 +1621,13 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is UnaryExpressionNode;
   };
+  export const CallExpression: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CallExpressionNode;
+    callee(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    calleeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
   export const PrimaryExpression: {
     readonly typeId: number;
     readonly type: string;
@@ -1513,10 +1638,10 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is QualifiedIdentifierNode;
   };
-  export const CommentLine: {
+  export const QUALIFIEDIDENT: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is CommentLineNode;
+    is(node: SyntaxNode | null | undefined): node is QUALIFIEDIDENTNode;
   };
   export const IDENTIFIER: {
     readonly typeId: number;

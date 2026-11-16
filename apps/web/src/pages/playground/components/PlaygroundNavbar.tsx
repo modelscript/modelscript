@@ -2,14 +2,17 @@
 
 import {
   AlertIcon,
-  ArrowLeftIcon,
   BookmarkIcon,
+  CheckIcon,
+  ChevronDownIcon,
   CodeIcon,
   ColumnsIcon,
   CrossReferenceIcon,
   DownloadIcon,
   FileIcon,
   GraphIcon,
+  ImageIcon,
+  MoonIcon,
   PencilIcon,
   PlayIcon,
   PlusIcon,
@@ -21,30 +24,36 @@ import {
   SidebarCollapseIcon,
   SidebarExpandIcon,
   StackIcon,
+  SunIcon,
   TableIcon,
   TerminalIcon,
+  TrashIcon,
+  TriangleDownIcon,
   WorkflowIcon,
+  XIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import { ActionList, ActionMenu, Button, IconButton, SegmentedControl } from "@primer/react";
-import React, { useEffect, useState } from "react";
+import { ActionList, ActionMenu, AnchoredOverlay, Button, IconButton, SegmentedControl } from "@primer/react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../AuthContext";
 import { MorselIcon } from "../../../components/icons";
-import { getLanguageInfo } from "../../../components/morsel/constants";
+import { MORSEL_LANGUAGE_MAP, getLanguageInfo } from "../../../components/morsel/constants";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
 import { getExtensionForDialect } from "../../../util/editor-routing";
 import {
   DEFAULT_EMPTY_MODELICA_CODE,
   HERO_EXAMPLES,
+  PINNED_PLAYGROUND_LANGUAGE_IDS,
+  PLAYGROUND_LANGUAGE_DOMAINS,
+  getPlaygroundLanguageDomain,
   useVisiblePlaygroundLanguages,
   type HeroExample,
 } from "../constants";
 import {
   Badge,
   BrandLink,
-  NavBackLink,
   NavCenter,
   NavDivider,
   NavLeft,
@@ -59,6 +68,7 @@ export interface PlaygroundNavbarProps {
   currentTitle: string;
   currentLang?: string;
   currentView?: string;
+  diagramType?: string;
   isSplit?: boolean;
   canSplit?: boolean;
   splitOrientation?: "horizontal" | "vertical";
@@ -71,6 +81,7 @@ export interface PlaygroundNavbarProps {
   onTitleChange?: (newTitle: string) => void;
   onSelectExample: (ex: HeroExample) => void;
   onSelectLang?: (lang: string) => void;
+  onSelectDiagramType?: (diagramType: string) => void;
   onViewChange?: (view: "diagram" | "code" | "split" | "simulation" | "3d" | "inspector") => void;
   onSimulate?: () => void;
   onOpenInVsCode?: () => void;
@@ -94,6 +105,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   currentTitle,
   currentLang = "modelica",
   currentView = "diagram",
+  diagramType = "diagram",
   isSplit = false,
   canSplit = true,
   splitOrientation = "horizontal",
@@ -108,6 +120,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   onTitleChange,
   onSelectExample,
   onSelectLang,
+  onSelectDiagramType,
   onViewChange,
   onSimulate,
   onOpenInVsCode,
@@ -120,16 +133,26 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   onPublishToFeed,
 }) => {
   const { user } = useAuth();
-  const { theme } = useTheme();
+  const { theme, toggleTheme } = useTheme();
   const branding = useInstanceBranding();
   const visiblePlaygroundLanguages = useVisiblePlaygroundLanguages();
   const customLogoSrc = theme === "dark" ? branding.brandLogoDarkUrl || branding.brandLogoUrl : branding.brandLogoUrl;
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState(currentTitle);
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const [langSearch, setLangSearch] = useState("");
+  const langSearchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setDraftTitle(currentTitle);
   }, [currentTitle]);
+
+  useEffect(() => {
+    if (langMenuOpen) {
+      const id = requestAnimationFrame(() => langSearchInputRef.current?.focus());
+      return () => cancelAnimationFrame(id);
+    }
+  }, [langMenuOpen]);
 
   const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/i.test(navigator.platform);
 
@@ -149,11 +172,155 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
     ext: getExtensionForDialect(currentLang),
   };
 
+  const normalizedLangQuery = langSearch.trim().toLowerCase();
+  const filteredLanguages = useMemo(() => {
+    if (!normalizedLangQuery) return visiblePlaygroundLanguages;
+    return visiblePlaygroundLanguages.filter((lang) => {
+      const domain = getPlaygroundLanguageDomain(lang.id).toLowerCase();
+      return (
+        lang.label.toLowerCase().includes(normalizedLangQuery) ||
+        lang.id.toLowerCase().includes(normalizedLangQuery) ||
+        lang.ext.toLowerCase().includes(normalizedLangQuery) ||
+        domain.includes(normalizedLangQuery)
+      );
+    });
+  }, [visiblePlaygroundLanguages, normalizedLangQuery]);
+
+  const pinnedLanguages = useMemo(() => {
+    const byId = new Map(visiblePlaygroundLanguages.map((l) => [l.id, l]));
+    return PINNED_PLAYGROUND_LANGUAGE_IDS.map((id) => byId.get(id)).filter((l): l is NonNullable<typeof l> =>
+      Boolean(l),
+    );
+  }, [visiblePlaygroundLanguages]);
+
+  const groupedLanguages = useMemo(() => {
+    const byId = new Map(visiblePlaygroundLanguages.map((l) => [l.id, l]));
+    const assigned = new Set<string>();
+    const groups: Array<{ title: string; items: typeof visiblePlaygroundLanguages }> = [];
+    for (const domain of PLAYGROUND_LANGUAGE_DOMAINS) {
+      const items = domain.ids.map((id) => byId.get(id)).filter((l): l is NonNullable<typeof l> => Boolean(l));
+      if (items.length > 0) {
+        items.forEach((l) => assigned.add(l.id));
+        groups.push({ title: domain.title, items });
+      }
+    }
+    const remaining = visiblePlaygroundLanguages.filter((l) => !assigned.has(l.id));
+    if (remaining.length > 0) {
+      groups.push({ title: "Other", items: remaining });
+    }
+    return groups;
+  }, [visiblePlaygroundLanguages]);
+
   const effectivePublishLabel = publishLabel || (fromArtifactParam ? "Post your fork" : "Post");
   const displayTitle =
     currentTitle.includes(".") && !currentTitle.includes(" ")
       ? currentTitle.split(".").pop() || currentTitle
       : currentTitle;
+
+  const activeLangInfo = getLanguageInfo(currentLang);
+  const supportsDiagram = activeLangInfo.supportsDiagram ?? true;
+  const supportsSimulation = activeLangInfo.supportsSimulation ?? true;
+  const hasIconMode = Boolean(supportsDiagram && activeLangInfo.diagramTypes?.some((dt) => dt.id === "icon"));
+  const supports3dView = Boolean(activeLangInfo.supports3d);
+  const inspectorLabel =
+    activeLangInfo.id === "owl2" ? "Reasoner" : activeLangInfo.id === "sysml2" ? "Requirements" : "Inspector";
+
+  type ViewTabId = "diagram" | "icon" | "3d" | "simulation" | "inspector" | "code";
+  const viewTabs: Array<{
+    id: ViewTabId;
+    label: string;
+    icon: any;
+    title: string;
+    onClick: () => void;
+  }> = [];
+
+  if (supportsDiagram) {
+    viewTabs.push({
+      id: "diagram",
+      label: "Diagram",
+      icon: WorkflowIcon,
+      title: "Diagram schematic view (⌥1)",
+      onClick: () => {
+        onSelectDiagramType?.("diagram");
+        onViewChange?.("diagram");
+      },
+    });
+  }
+  if (hasIconMode) {
+    viewTabs.push({
+      id: "icon",
+      label: "Icon",
+      icon: ImageIcon,
+      title: "Icon graphical view",
+      onClick: () => {
+        onSelectDiagramType?.("icon");
+        onViewChange?.("diagram");
+      },
+    });
+  }
+  if (supports3dView) {
+    viewTabs.push({
+      id: "3d",
+      label: "3D",
+      icon: StackIcon,
+      title: "3D CAD & multibody animation (⌥2)",
+      onClick: () => onViewChange?.("3d"),
+    });
+  }
+  if (supportsSimulation) {
+    viewTabs.push({
+      id: "simulation",
+      label: "Simulation",
+      icon: GraphIcon,
+      title: "Simulation plots & variables (⌥3)",
+      onClick: () => onViewChange?.("simulation"),
+    });
+  }
+  viewTabs.push({
+    id: "inspector",
+    label: inspectorLabel,
+    icon: TableIcon,
+    title: `${inspectorLabel} table & properties (⌥4)`,
+    onClick: () => onViewChange?.("inspector"),
+  });
+  viewTabs.push({
+    id: "code",
+    label: "Code",
+    icon: CodeIcon,
+    title: "Source code editor (⌥5)",
+    onClick: () => onViewChange?.("code"),
+  });
+
+  const isCodeView = currentView === "code";
+  const activeTabId: ViewTabId = isCodeView
+    ? "code"
+    : currentView === "inspector"
+      ? "inspector"
+      : currentView === "3d" && supports3dView
+        ? "3d"
+        : currentView === "simulation" && supportsSimulation
+          ? "simulation"
+          : supportsDiagram
+            ? hasIconMode && diagramType === "icon"
+              ? "icon"
+              : "diagram"
+            : supports3dView
+              ? "3d"
+              : supportsSimulation
+                ? "simulation"
+                : "inspector";
+
+  const selectedIndex = viewTabs.findIndex((t) => t.id === activeTabId);
+  const SplitIcon = splitOrientation === "vertical" ? RowsIcon : ColumnsIcon;
+  const splitTitle = !canSplit
+    ? "Split view unavailable: window too small"
+    : isCodeView
+      ? "Split view is unavailable when Code tab is full"
+      : isSplit
+        ? "Close split view (⌥6)"
+        : splitOrientation === "vertical"
+          ? "Split view: Code on top, selected view on bottom (⌥6)"
+          : "Split view: Code on left, selected view on right (⌥6)";
 
   return (
     <NavbarContainer>
@@ -195,16 +362,6 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           )}
         </BrandLink>
 
-        <NavBackLink
-          as={Link}
-          to={user ? "/home" : "/explore"}
-          title="Return to Ansatz Platform"
-          aria-label="Back to Ansatz Platform"
-        >
-          <ArrowLeftIcon size={12} />
-          <span className="nav-hide-lg">Ansatz</span>
-        </NavBackLink>
-
         <NavDivider />
 
         {fromArtifactParam && (
@@ -231,115 +388,74 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           </Link>
         )}
 
-        {/* Breadcrumb Hierarchy: Models / [CurrentModel] */}
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", minWidth: 0, flexShrink: 1 }}>
-          <span
-            className="nav-hide-lg"
-            style={{
-              fontSize: "12px",
-              fontWeight: 500,
-              color: "var(--ms-text-3, var(--color-fg-muted))",
-              userSelect: "none",
-            }}
-          >
-            Models
-          </span>
-          <span
-            className="nav-hide-lg"
-            style={{
-              fontSize: "12px",
-              color: "var(--ms-divider, rgba(255, 255, 255, 0.2))",
-              userSelect: "none",
-            }}
-          >
-            /
-          </span>
-
-          {/* Preset Example Picker & Inline Title Rename */}
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
-            {isEditingTitle ? (
-              <input
-                type="text"
-                value={draftTitle}
-                aria-label="Model title"
-                autoFocus
-                onChange={(e) => setDraftTitle(e.target.value)}
-                onBlur={commitTitleChange}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    commitTitleChange();
-                  } else if (e.key === "Escape") {
+        {/* Document Title + Status + Attached Dialect Badge (Option C) */}
+        <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", minWidth: 0, flexShrink: 1 }}>
+          {isEditingTitle ? (
+            <input
+              type="text"
+              value={draftTitle}
+              aria-label="Model title"
+              autoFocus
+              onChange={(e) => setDraftTitle(e.target.value)}
+              onBlur={commitTitleChange}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  commitTitleChange();
+                } else if (e.key === "Escape") {
+                  setDraftTitle(currentTitle);
+                  setIsEditingTitle(false);
+                }
+              }}
+              style={{
+                width: 180,
+                maxWidth: "38vw",
+                height: 28,
+                padding: "2px 8px",
+                fontSize: 13,
+                fontWeight: 600,
+                borderRadius: "var(--ms-radius-sm, 6px)",
+                border: "1px solid var(--ms-brand, #0891b2)",
+                boxShadow: "var(--ms-focus-ring, 0 0 0 3px rgba(8, 145, 178, 0.25))",
+                background: "var(--color-canvas-default)",
+                color: "var(--color-fg-default)",
+                outline: "none",
+                fontFamily: "inherit",
+              }}
+            />
+          ) : (
+            <ActionMenu>
+              <ActionMenu.Button
+                size="small"
+                variant="invisible"
+                trailingVisual={ChevronDownIcon}
+                trailingAction={null}
+                title={
+                  onTitleChange
+                    ? `${currentTitle} — Click for model options & templates, double-click to rename`
+                    : currentTitle
+                }
+                onDoubleClick={(e) => {
+                  if (onTitleChange) {
+                    e.stopPropagation();
                     setDraftTitle(currentTitle);
-                    setIsEditingTitle(false);
+                    setIsEditingTitle(true);
                   }
                 }}
                 style={{
-                  width: 180,
-                  maxWidth: "38vw",
                   height: 28,
-                  padding: "2px 8px",
-                  fontSize: 13,
-                  fontWeight: 600,
                   borderRadius: "var(--ms-radius-sm, 6px)",
-                  border: "1px solid var(--ms-brand, #0891b2)",
-                  boxShadow: "var(--ms-focus-ring, 0 0 0 3px rgba(8, 145, 178, 0.25))",
-                  background: "var(--color-canvas-default)",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  padding: "0 6px",
                   color: "var(--color-fg-default)",
-                  outline: "none",
-                  fontFamily: "inherit",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  minWidth: 0,
                 }}
-              />
-            ) : (
-              <ActionMenu>
-                <ActionMenu.Button
-                  size="small"
-                  title={
-                    onTitleChange
-                      ? `${currentTitle} — Click for model options & templates, double-click to rename`
-                      : currentTitle
-                  }
-                  onDoubleClick={(e) => {
-                    if (onTitleChange) {
-                      e.stopPropagation();
-                      setDraftTitle(currentTitle);
-                      setIsEditingTitle(true);
-                    }
-                  }}
-                  style={{
-                    height: 28,
-                    borderRadius: "var(--ms-radius-pill, 999px)",
-                    fontWeight: 600,
-                    padding: "0 10px",
-                    background: "var(--ms-surface-hover, rgba(125, 125, 125, 0.06))",
-                    border: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <span
-                    style={{
-                      display: "inline-block",
-                      minWidth: 0,
-                      maxWidth: "clamp(80px, 12vw, 180px)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      verticalAlign: "bottom",
-                    }}
-                  >
-                    {displayTitle}
-                  </span>
-                  {onTitleChange && (
-                    <PencilIcon
-                      size={11}
-                      style={{
-                        opacity: 0.5,
-                        flexShrink: 0,
-                      }}
-                    />
-                  )}
-                  {isDirty && (
+              >
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+                  {isDirty ? (
                     <span
                       title="Unsaved changes"
                       aria-label="Unsaved changes"
@@ -349,302 +465,375 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                         height: 6,
                         borderRadius: "50%",
                         backgroundColor: "var(--ms-warning, #d97706)",
-                        marginLeft: 2,
-                        verticalAlign: "middle",
                         boxShadow: "0 0 4px var(--ms-warning, #d97706)",
                         flexShrink: 0,
                       }}
                     />
-                  )}
-                </ActionMenu.Button>
-                <ActionMenu.Overlay width="large">
-                  <ActionList>
-                    {onTitleChange && (
-                      <>
-                        <ActionList.Item
-                          onSelect={() => {
-                            setDraftTitle(currentTitle);
-                            setIsEditingTitle(true);
-                          }}
-                        >
-                          <ActionList.LeadingVisual>
-                            <PencilIcon />
-                          </ActionList.LeadingVisual>
-                          Rename Model…
-                        </ActionList.Item>
-                        <ActionList.Divider />
-                      </>
-                    )}
-                    <ActionList.Item
-                      onSelect={() =>
-                        onSelectExample({
-                          id: "untitled",
-                          title: "Untitled Model",
-                          category: "General",
-                          lang: currentLang,
-                          code: DEFAULT_EMPTY_MODELICA_CODE,
-                        })
-                      }
+                  ) : (
+                    <span
+                      title="All changes saved in local session"
+                      aria-label="Saved"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        color: "var(--ms-text-3, var(--color-fg-muted))",
+                        opacity: 0.65,
+                        flexShrink: 0,
+                      }}
                     >
+                      <CheckIcon size={12} />
+                    </span>
+                  )}
+                  <span
+                    style={{
+                      display: "inline-block",
+                      minWidth: 0,
+                      maxWidth: "clamp(90px, 14vw, 200px)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      verticalAlign: "bottom",
+                    }}
+                  >
+                    {displayTitle}
+                  </span>
+                </span>
+              </ActionMenu.Button>
+              <ActionMenu.Overlay width="large">
+                <ActionList>
+                  {onTitleChange && (
+                    <>
+                      <ActionList.Item
+                        onSelect={() => {
+                          setDraftTitle(currentTitle);
+                          setIsEditingTitle(true);
+                        }}
+                      >
+                        <ActionList.LeadingVisual>
+                          <PencilIcon />
+                        </ActionList.LeadingVisual>
+                        Rename Model…
+                      </ActionList.Item>
+                      <ActionList.Divider />
+                    </>
+                  )}
+                  <ActionList.Item
+                    onSelect={() =>
+                      onSelectExample({
+                        id: "untitled",
+                        title: "Untitled Model",
+                        category: "General",
+                        lang: currentLang,
+                        code: DEFAULT_EMPTY_MODELICA_CODE,
+                      })
+                    }
+                  >
+                    <ActionList.LeadingVisual>
+                      <PlusIcon />
+                    </ActionList.LeadingVisual>
+                    New Blank Model
+                    <ActionList.Description variant="inline">Reset to empty canvas</ActionList.Description>
+                  </ActionList.Item>
+                  {onOpenTemplates && (
+                    <ActionList.Item onSelect={onOpenTemplates}>
                       <ActionList.LeadingVisual>
-                        <PlusIcon />
+                        <CrossReferenceIcon />
                       </ActionList.LeadingVisual>
-                      New Blank Model
-                      <ActionList.Description variant="inline">Reset to empty canvas</ActionList.Description>
+                      Browse Starter Templates…
+                      <ActionList.Description variant="inline">Explore multi-physics gallery</ActionList.Description>
                     </ActionList.Item>
+                  )}
+                  <ActionList.Divider />
+                  <ActionList.Group title="Curated Starter Models">
+                    {HERO_EXAMPLES.slice(0, 7).map((ex) => (
+                      <ActionList.Item key={ex.id} onSelect={() => onSelectExample(ex)}>
+                        <ActionList.LeadingVisual>
+                          <FileIcon />
+                        </ActionList.LeadingVisual>
+                        {ex.title}
+                        <ActionList.Description variant="inline">{ex.category}</ActionList.Description>
+                      </ActionList.Item>
+                    ))}
                     {onOpenTemplates && (
                       <ActionList.Item onSelect={onOpenTemplates}>
                         <ActionList.LeadingVisual>
                           <CrossReferenceIcon />
                         </ActionList.LeadingVisual>
-                        Browse Starter Templates…
-                        <ActionList.Description variant="inline">Explore multi-physics gallery</ActionList.Description>
+                        <span style={{ color: "var(--ms-link, var(--color-accent-fg, #0891b2))", fontWeight: 600 }}>
+                          View all in template gallery →
+                        </span>
                       </ActionList.Item>
                     )}
-                    <ActionList.Divider />
-                    <ActionList.Group title="Curated Starter Models">
-                      {HERO_EXAMPLES.slice(0, 7).map((ex) => (
-                        <ActionList.Item key={ex.id} onSelect={() => onSelectExample(ex)}>
-                          <ActionList.LeadingVisual>
-                            <FileIcon />
-                          </ActionList.LeadingVisual>
-                          {ex.title}
-                          <ActionList.Description variant="inline">{ex.category}</ActionList.Description>
-                        </ActionList.Item>
-                      ))}
-                      {onOpenTemplates && (
-                        <ActionList.Item onSelect={onOpenTemplates}>
-                          <ActionList.LeadingVisual>
-                            <CrossReferenceIcon />
-                          </ActionList.LeadingVisual>
-                          <span style={{ color: "var(--ms-link, var(--color-accent-fg, #0891b2))", fontWeight: 600 }}>
-                            View all in template gallery →
-                          </span>
-                        </ActionList.Item>
-                      )}
-                    </ActionList.Group>
-                  </ActionList>
-                </ActionMenu.Overlay>
-              </ActionMenu>
-            )}
-          </div>
+                  </ActionList.Group>
+                </ActionList>
+              </ActionMenu.Overlay>
+            </ActionMenu>
+          )}
 
-          {/* Saved state indicator */}
-          {!isDirty && (
-            <span
-              className="nav-hide-lg"
-              style={{
-                fontSize: 11,
-                fontWeight: 500,
-                color: "var(--ms-text-3, var(--color-fg-muted))",
-                opacity: 0.75,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 3,
-                marginLeft: 2,
-                userSelect: "none",
+          {/* Attached Dialect / Language Badge with Searchable Picker */}
+          {onSelectLang && (
+            <AnchoredOverlay
+              open={langMenuOpen}
+              onOpen={() => {
+                setLangSearch("");
+                setLangMenuOpen(true);
               }}
-              title="All changes saved in local session"
+              onClose={() => setLangMenuOpen(false)}
+              renderAnchor={(anchorProps) => (
+                <Button
+                  {...anchorProps}
+                  size="small"
+                  aria-label="Select engineering dialect"
+                  title={`Engineering Dialect: ${currentLangOption.label} (${currentLangOption.ext}) — ${visiblePlaygroundLanguages.length} languages`}
+                  trailingAction={TriangleDownIcon}
+                  style={{
+                    height: 30,
+                    borderRadius: 6,
+                    color: "var(--ms-brand, #0891b2)",
+                    background: "var(--ms-brand-soft, rgba(8, 145, 178, 0.08))",
+                    border: "1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 24%, transparent)",
+                    flexShrink: 1,
+                    minWidth: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "inline-block",
+                      maxWidth: "clamp(54px, 9vw, 110px)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      verticalAlign: "bottom",
+                    }}
+                  >
+                    {currentLangOption.label}
+                  </span>
+                </Button>
+              )}
             >
-              Saved ✓
-            </span>
+              <div
+                style={{
+                  width: 310,
+                  maxWidth: "90vw",
+                  display: "flex",
+                  flexDirection: "column",
+                  maxHeight: 420,
+                  background: "var(--color-canvas-overlay, var(--color-canvas-default))",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "8px 16px",
+                    minHeight: 44,
+                    boxSizing: "border-box",
+                    borderBottom: "1px solid var(--borderColor-muted, var(--ms-divider))",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    flexShrink: 0,
+                  }}
+                >
+                  <SearchIcon size={14} style={{ color: "var(--color-fg-muted)", flexShrink: 0 }} />
+                  <input
+                    ref={langSearchInputRef}
+                    type="text"
+                    value={langSearch}
+                    onChange={(e) => setLangSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        setLangMenuOpen(false);
+                      } else if (e.key === "Enter" && filteredLanguages.length > 0) {
+                        onSelectLang(filteredLanguages[0].id);
+                        setLangMenuOpen(false);
+                      }
+                      e.stopPropagation();
+                    }}
+                    placeholder={`Search ${visiblePlaygroundLanguages.length} languages or .ext…`}
+                    aria-label="Search engineering languages"
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      border: "none",
+                      outline: "none",
+                      background: "transparent",
+                      color: "var(--color-fg-default)",
+                      fontSize: 12,
+                      fontFamily: "inherit",
+                    }}
+                  />
+                  {langSearch && (
+                    <IconButton
+                      icon={XIcon}
+                      size="small"
+                      variant="invisible"
+                      aria-label="Clear language search"
+                      onClick={() => {
+                        setLangSearch("");
+                        langSearchInputRef.current?.focus();
+                      }}
+                      style={{ width: 20, height: 20 }}
+                    />
+                  )}
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: "var(--color-fg-muted)",
+                      fontFamily: "var(--ms-font-mono, monospace)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {filteredLanguages.length}
+                  </span>
+                </div>
+
+                <div style={{ overflowY: "auto", flex: 1 }}>
+                  {(() => {
+                    const renderLangItem = (lang: (typeof visiblePlaygroundLanguages)[number], keyPrefix = "") => {
+                      const tier = MORSEL_LANGUAGE_MAP.get(lang.id.toLowerCase())?.tier ?? "beta";
+                      const isStable = tier === "stable";
+                      const isPreview = tier === "preview";
+                      const badgeLabel = isStable ? "Stable" : isPreview ? "Preview" : "Beta";
+                      const badgeBg = isStable
+                        ? theme === "dark"
+                          ? "rgba(34, 197, 94, 0.16)"
+                          : "rgba(22, 163, 74, 0.10)"
+                        : isPreview
+                          ? theme === "dark"
+                            ? "rgba(168, 85, 247, 0.16)"
+                            : "rgba(147, 51, 234, 0.10)"
+                          : theme === "dark"
+                            ? "rgba(217, 119, 6, 0.16)"
+                            : "rgba(217, 119, 6, 0.10)";
+                      const badgeColor = isStable
+                        ? theme === "dark"
+                          ? "#4ade80"
+                          : "#15803d"
+                        : isPreview
+                          ? theme === "dark"
+                            ? "#c084fc"
+                            : "#7e22ce"
+                          : theme === "dark"
+                            ? "#fbbf24"
+                            : "#b45309";
+                      return (
+                        <ActionList.Item
+                          key={`${keyPrefix}${lang.id}`}
+                          selected={lang.id === currentLang}
+                          onSelect={() => {
+                            onSelectLang(lang.id);
+                            setLangMenuOpen(false);
+                          }}
+                        >
+                          {lang.label}
+                          <ActionList.Description variant="inline">{lang.ext}</ActionList.Description>
+                          <ActionList.TrailingVisual>
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 600,
+                                lineHeight: "14px",
+                                padding: "1px 6px",
+                                borderRadius: 999,
+                                backgroundColor: badgeBg,
+                                color: badgeColor,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.03em",
+                              }}
+                            >
+                              {badgeLabel}
+                            </span>
+                          </ActionList.TrailingVisual>
+                        </ActionList.Item>
+                      );
+                    };
+
+                    if (filteredLanguages.length === 0) {
+                      return (
+                        <div
+                          style={{
+                            padding: "20px 12px",
+                            textAlign: "center",
+                            fontSize: 12,
+                            color: "var(--color-fg-muted)",
+                          }}
+                        >
+                          No languages matching "{langSearch}"
+                        </div>
+                      );
+                    }
+                    if (normalizedLangQuery) {
+                      return (
+                        <ActionList selectionVariant="single">
+                          {filteredLanguages.map((lang) => renderLangItem(lang))}
+                        </ActionList>
+                      );
+                    }
+                    return (
+                      <ActionList selectionVariant="single">
+                        {pinnedLanguages.length > 0 && (
+                          <ActionList.Group title="Popular">
+                            {pinnedLanguages.map((lang) => renderLangItem(lang, "pinned-"))}
+                          </ActionList.Group>
+                        )}
+                        {groupedLanguages.map((group) => (
+                          <ActionList.Group key={group.title} title={`${group.title} (${group.items.length})`}>
+                            {group.items.map((lang) => renderLangItem(lang))}
+                          </ActionList.Group>
+                        ))}
+                      </ActionList>
+                    );
+                  })()}
+                </div>
+              </div>
+            </AnchoredOverlay>
           )}
         </div>
-
-        {/* Language / Dialect Selector Chip */}
-        {onSelectLang && (
-          <ActionMenu>
-            <ActionMenu.Button
-              size="small"
-              aria-label="Select engineering dialect"
-              title={`Engineering Dialect: ${currentLangOption.label} (${currentLangOption.ext})`}
-              style={{
-                height: 26,
-                padding: "0 8px",
-                borderRadius: "var(--ms-radius-pill, 999px)",
-                fontWeight: 600,
-                fontSize: 11,
-                color: "var(--ms-brand, #0891b2)",
-                background: "var(--ms-brand-soft, rgba(8, 145, 178, 0.08))",
-                borderColor: "color-mix(in srgb, var(--ms-brand, #0891b2) 24%, transparent)",
-                flexShrink: 1,
-                minWidth: 0,
-              }}
-            >
-              <span
-                style={{
-                  display: "inline-block",
-                  maxWidth: "clamp(48px, 8vw, 84px)",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  verticalAlign: "bottom",
-                }}
-              >
-                {currentLangOption.label}
-              </span>
-            </ActionMenu.Button>
-            <ActionMenu.Overlay width="medium" style={{ maxHeight: "360px", overflowY: "auto" }}>
-              <ActionList selectionVariant="single">
-                <ActionList.Group title={`Engineering Dialect (${visiblePlaygroundLanguages.length} Languages)`}>
-                  {visiblePlaygroundLanguages.map((lang) => (
-                    <ActionList.Item
-                      key={lang.id}
-                      selected={lang.id === currentLang}
-                      onSelect={() => onSelectLang(lang.id)}
-                    >
-                      {lang.label}
-                      <ActionList.Description variant="inline">{lang.ext}</ActionList.Description>
-                    </ActionList.Item>
-                  ))}
-                </ActionList.Group>
-              </ActionList>
-            </ActionMenu.Overlay>
-          </ActionMenu>
-        )}
       </NavLeft>
 
-      {onViewChange &&
-        (() => {
-          const langInfo = getLanguageInfo(currentLang);
-          const supportsDiagram = langInfo?.supportsDiagram ?? true;
-          const supportsSimulation = langInfo?.supportsSimulation ?? true;
-          const supports3d = Boolean(langInfo?.supports3d || currentView === "3d");
-          const inspectorLabel =
-            langInfo?.id === "owl2" ? "Reasoner" : langInfo?.id === "sysml2" ? "Requirements" : "Inspector";
+      {onViewChange && (
+        <NavCenter>
+          <SegmentedControl
+            size="small"
+            aria-label="Workbench View"
+            onChange={(idx) => {
+              const target = viewTabs[idx];
+              if (target) target.onClick();
+            }}
+          >
+            {viewTabs.map((tab, idx) => (
+              <SegmentedControl.IconButton
+                key={tab.id}
+                selected={idx === (selectedIndex !== -1 ? selectedIndex : 0)}
+                icon={tab.icon}
+                aria-label={tab.label}
+                description={tab.title}
+                onClick={tab.onClick}
+              />
+            ))}
+          </SegmentedControl>
 
-          const viewTabs: Array<{
-            id: "diagram" | "3d" | "simulation" | "inspector" | "code";
-            label: string;
-            icon: any;
-            title: string;
-            onClick: () => void;
-          }> = [];
-
-          if (supportsDiagram) {
-            viewTabs.push({
-              id: "diagram",
-              label: "Diagram",
-              icon: WorkflowIcon,
-              title: "Diagram schematic view (⌥1)",
-              onClick: () => onViewChange("diagram"),
-            });
-          }
-          if (supports3d) {
-            viewTabs.push({
-              id: "3d",
-              label: "3D",
-              icon: StackIcon,
-              title: "3D CAD & multibody animation (⌥2)",
-              onClick: () => onViewChange("3d"),
-            });
-          }
-          if (supportsSimulation) {
-            viewTabs.push({
-              id: "simulation",
-              label: "Simulation",
-              icon: GraphIcon,
-              title: "Simulation plots & variables (⌥3)",
-              onClick: () => onViewChange("simulation"),
-            });
-          }
-          viewTabs.push({
-            id: "inspector",
-            label: inspectorLabel,
-            icon: TableIcon,
-            title: `${inspectorLabel} table & properties (⌥4)`,
-            onClick: () => onViewChange("inspector"),
-          });
-          viewTabs.push({
-            id: "code",
-            label: "Code",
-            icon: CodeIcon,
-            title: "Source code editor (⌥5)",
-            onClick: () => onViewChange("code"),
-          });
-
-          const isCodeSelected = currentView === "code";
-          const effectiveIsSplit =
-            Boolean(isSplit) ||
-            currentView === "split" ||
-            currentView === "split-columns" ||
-            currentView === "split-rows";
-
-          const handleSplitClick = () => {
-            if (isCodeSelected || !canSplit) return;
-            if (onToggleSplit) {
-              onToggleSplit();
-            } else if (onViewChange) {
-              onViewChange("split");
-            }
-          };
-
-          const selectedIndex = viewTabs.findIndex(
-            (t) =>
-              t.id === currentView ||
-              (t.id === "simulation" && currentView === "plot") ||
-              (t.id === "diagram" &&
-                (currentView === "split" || currentView === "split-columns" || currentView === "split-rows")),
-          );
-
-          const isSplitActive = effectiveIsSplit && !isCodeSelected && canSplit;
-          const SplitIcon = splitOrientation === "vertical" ? RowsIcon : ColumnsIcon;
-          const splitTitle = !canSplit
-            ? "Split view unavailable: window too small"
-            : isCodeSelected
-              ? "Split view is unavailable when Code tab is full"
-              : isSplitActive
-                ? "Close split view (⌥6)"
-                : splitOrientation === "vertical"
-                  ? "Split view: Code on top, selected view on bottom (⌥6)"
-                  : "Split view: Code on left, selected view on right (⌥6)";
-
-          return (
-            <NavCenter>
-              <SegmentedControl
-                size="small"
-                aria-label="Workbench View"
-                onChange={(index) => {
-                  const target = viewTabs[index];
-                  if (target) {
-                    target.onClick();
-                  }
-                }}
-              >
-                {viewTabs.map((tab, idx) => (
-                  <SegmentedControl.Button
-                    key={tab.id}
-                    selected={idx === (selectedIndex !== -1 ? selectedIndex : 0)}
-                    leadingVisual={tab.icon}
-                    title={tab.title}
-                    aria-label={tab.label}
-                    onClick={tab.onClick}
-                  >
-                    {tab.label}
-                  </SegmentedControl.Button>
-                ))}
-              </SegmentedControl>
-
-              <SplitToggleButton
-                type="button"
-                role="button"
-                aria-pressed={isSplitActive}
-                aria-label={
-                  splitOrientation === "vertical"
-                    ? "Split view (Code on top, visualizer on bottom)"
-                    : "Split view (Code on left, visualizer on right)"
-                }
-                disabled={isCodeSelected || !canSplit}
-                $active={isSplitActive}
-                onClick={handleSplitClick}
-                title={splitTitle}
-              >
-                <SplitIcon size={14} />
-                <span>Split</span>
-              </SplitToggleButton>
-            </NavCenter>
-          );
-        })()}
+          {onToggleSplit && (
+            <SplitToggleButton
+              type="button"
+              role="button"
+              aria-pressed={Boolean(isSplit && !isCodeView && canSplit)}
+              aria-label={
+                splitOrientation === "vertical"
+                  ? "Split view (Code on top, visualizer on bottom)"
+                  : "Split view (Code on left, visualizer on right)"
+              }
+              disabled={isCodeView || !canSplit}
+              $active={Boolean(isSplit && !isCodeView && canSplit)}
+              onClick={onToggleSplit}
+              title={splitTitle}
+            >
+              <SplitIcon size={14} />
+              <span>Split</span>
+            </SplitToggleButton>
+          )}
+        </NavCenter>
+      )}
 
       <NavRight>
         {/* Compilation / Solver Error Status Pill */}
@@ -743,6 +932,25 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           </Button>
         )}
 
+        {/* Clear Model */}
+        <IconButton
+          icon={TrashIcon}
+          size="small"
+          variant="invisible"
+          onClick={() =>
+            onSelectExample({
+              id: "clear",
+              title: "Untitled Model",
+              category: "General",
+              lang: currentLang,
+              code: currentLang === "modelica" ? DEFAULT_EMPTY_MODELICA_CODE : "",
+            })
+          }
+          aria-label="Clear model"
+          title="Clear model"
+          style={{ height: 30, width: 30, borderRadius: 6 }}
+        />
+
         {/* Global Search / Command Palette */}
         <IconButton
           icon={SearchIcon}
@@ -751,6 +959,17 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-command-palette"))}
           aria-label={`Search models & commands (${isMac ? "⌘K" : "Ctrl+K"})`}
           title={`Search models, packages & commands (${isMac ? "⌘K" : "Ctrl+K"})`}
+          style={{ height: 30, width: 30, borderRadius: 6 }}
+        />
+
+        {/* Dark / Light Mode Toggle */}
+        <IconButton
+          icon={theme === "dark" ? SunIcon : MoonIcon}
+          size="small"
+          variant="invisible"
+          onClick={toggleTheme}
+          aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+          title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
           style={{ height: 30, width: 30, borderRadius: 6 }}
         />
 

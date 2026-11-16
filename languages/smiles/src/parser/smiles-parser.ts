@@ -13,6 +13,7 @@
  * - Multi-line .smi / .smarts files and MDL Molfile V2000 / SDF ($$$$) records
  */
 
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
 import type {
   BondOrder,
   BondStereo,
@@ -27,6 +28,9 @@ import type {
   UnbalancedParenRecord,
   UnclosedRingRecord,
 } from "../types.js";
+import { getSmilesWasmParser } from "./wasm-loader.js";
+
+export * from "./wasm-loader.js";
 
 export interface ElementInfo {
   atomicNumber: number;
@@ -746,18 +750,42 @@ export function parseSmiles(
   explicitName?: string,
   lineNumber = 1,
   lineStartOffset = 0,
+  fromDocumentCst = false,
 ): MolecularGraph {
+  let effectiveInput = smilesInput;
+  let effectiveOffset = lineStartOffset;
+
+  if (!fromDocumentCst && smilesInput.length > 0) {
+    const cstTree = getSmilesWasmParser().parse(smilesInput);
+    const rootNode = cstTree?.rootNode as (CstNodeLike & { hasError?: boolean }) | null | undefined;
+    if (rootNode && !rootNode.hasError) {
+      const cstRows = groupAllCstTokensByLine(rootNode);
+      for (const { row, tokens } of cstRows) {
+        const recTokens = tokens.filter((t) => {
+          const txt = t.text ?? "";
+          return t.type !== "Newline" && txt !== "\n" && txt !== "\r\n" && txt !== "\r";
+        });
+        if (recTokens.length > 0) {
+          effectiveInput = cstLineText(smilesInput, recTokens);
+          effectiveOffset = lineStartOffset + (recTokens[0]!.startIndex ?? 0);
+          lineNumber = lineNumber === 1 ? row + 1 : lineNumber;
+          break;
+        }
+      }
+    }
+  }
+
   let startIdx = 0;
-  const totalLen = smilesInput.length;
-  while (startIdx < totalLen && isWhitespaceChar(smilesInput[startIdx])) {
+  const totalLen = effectiveInput.length;
+  while (startIdx < totalLen && isWhitespaceChar(effectiveInput[startIdx])) {
     startIdx++;
   }
   let endIdx = totalLen;
-  while (endIdx > startIdx && isWhitespaceChar(smilesInput[endIdx - 1])) {
+  while (endIdx > startIdx && isWhitespaceChar(effectiveInput[endIdx - 1])) {
     endIdx--;
   }
 
-  const trimmed = smilesInput.slice(startIdx, endIdx);
+  const trimmed = effectiveInput.slice(startIdx, endIdx);
   if (trimmed.length === 0) {
     const emptyName = explicitName ?? "EmptyMolecule";
     return {
@@ -773,8 +801,8 @@ export function parseSmiles(
         startColumn: 1,
         endLine: lineNumber,
         endColumn: 1,
-        startOffset: lineStartOffset,
-        endOffset: lineStartOffset,
+        startOffset: effectiveOffset,
+        endOffset: effectiveOffset,
       },
     };
   }
@@ -791,7 +819,9 @@ export function parseSmiles(
     while (nameStart < trimmed.length && isWhitespaceChar(trimmed[nameStart])) {
       nameStart++;
     }
-    trailingName = trimmed.slice(nameStart);
+    const rawTrailing = trimmed.slice(nameStart);
+    const tabIdx = rawTrailing.indexOf("\t");
+    trailingName = (tabIdx !== -1 ? rawTrailing.slice(0, tabIdx) : rawTrailing).trim();
   }
 
   const molName = explicitName ?? (trailingName.length > 0 ? trailingName : smilesStr);
@@ -814,8 +844,8 @@ export function parseSmiles(
     startColumn: startIdx + relStart + 1,
     endLine: lineNumber,
     endColumn: startIdx + relEnd + 1,
-    startOffset: lineStartOffset + startIdx + relStart,
-    endOffset: lineStartOffset + startIdx + relEnd,
+    startOffset: effectiveOffset + startIdx + relStart,
+    endOffset: effectiveOffset + startIdx + relEnd,
   });
 
   const appendAtom = (atom: MoleculeAtom): void => {
@@ -1307,11 +1337,50 @@ export function parseSmiles(
   return mol;
 }
 
+function extractDenseLinesFromCst(source: string, rootNode: CstNodeLike | null | undefined): string[] {
+  const cstRows = groupAllCstTokensByLine(rootNode);
+  const srcLen = source.length;
+  let totalRows = 1;
+  for (let i = 0; i < srcLen; i++) {
+    if (source.charCodeAt(i) === 10) totalRows++;
+  }
+  const lines = new Array<string>(totalRows).fill("");
+
+  for (const { row, tokens } of cstRows) {
+    const recTokens = tokens.filter((t) => {
+      const txt = t.text ?? "";
+      return t.type !== "Newline" && txt !== "\n" && txt !== "\r\n" && txt !== "\r";
+    });
+    if (recTokens.length === 0) continue;
+
+    const first = recTokens[0]!;
+    const last = recTokens[recTokens.length - 1]!;
+    const lineStart = Math.max(0, (first.startIndex ?? 0) - (first.startPosition?.column ?? 0));
+    let lineEnd = Math.max(lineStart, last.endIndex ?? lineStart);
+    while (lineEnd < srcLen) {
+      const c = source.charCodeAt(lineEnd);
+      if (c === 10 || c === 13) break;
+      lineEnd++;
+    }
+    while (row >= lines.length) lines.push("");
+    lines[row] = source.slice(lineStart, lineEnd);
+  }
+
+  return lines;
+}
+
 /**
- * Parses an MDL Molfile V2000 connection table into a `MolecularGraph`.
+ * Parses an MDL Molfile V2000 connection table into a `MolecularGraph` using the native WASM GLR CST.
  */
-export function parseMolfile(molText: string, explicitName?: string): MolecularGraph {
-  const lines = splitLinesZeroRegex(molText);
+export function parseMolfile(
+  molText: string,
+  explicitName?: string,
+  existingTree?: { rootNode?: unknown } | null,
+): MolecularGraph {
+  const cstTree = existingTree ?? getSmilesWasmParser().parse(molText);
+  const rootNode = cstTree?.rootNode as (CstNodeLike & { hasError?: boolean }) | null | undefined;
+  const lines =
+    rootNode && !rootNode.hasError ? extractDenseLinesFromCst(molText, rootNode) : splitLinesZeroRegex(molText);
   const titleLine = (lines[0] ?? "").trim();
   const commentLine = (lines[2] ?? "").trim();
   const molName = explicitName ?? (titleLine.length > 0 ? titleLine : "MolfileMolecule");
@@ -1501,10 +1570,13 @@ export function parseMolfile(molText: string, explicitName?: string): MolecularG
 }
 
 /**
- * Parses an MDL SDfile (.sdf) containing one or more `$$$$`-delimited records.
+ * Parses an MDL SDfile (.sdf) containing one or more `$$$$`-delimited records using the native WASM GLR CST.
  */
-export function parseSdf(sdfText: string): MolecularGraph[] {
-  const lines = splitLinesZeroRegex(sdfText);
+export function parseSdf(sdfText: string, existingTree?: { rootNode?: unknown } | null): MolecularGraph[] {
+  const cstTree = existingTree ?? getSmilesWasmParser().parse(sdfText);
+  const rootNode = cstTree?.rootNode as (CstNodeLike & { hasError?: boolean }) | null | undefined;
+  const lines =
+    rootNode && !rootNode.hasError ? extractDenseLinesFromCst(sdfText, rootNode) : splitLinesZeroRegex(sdfText);
   const records: string[][] = [];
   let current: string[] = [];
 
@@ -1583,15 +1655,21 @@ export function parseSdf(sdfText: string): MolecularGraph[] {
 }
 
 /**
- * Auto-detects format (`.smi`, `.smarts`, `.mol`, `.sdf`) and parses into a `SmilesDocument`.
+ * Auto-detects format (`.smi`, `.smarts`, `.mol`, `.sdf`) and parses into a `SmilesDocument` via the WASM GLR CST.
  */
-export function parseSmilesDocument(text: string, sourceFile?: string): SmilesDocument {
+export function parseSmilesDocument(
+  text: string,
+  sourceFile?: string,
+  existingTree?: { rootNode?: unknown } | null,
+): SmilesDocument {
+  const cstTree = existingTree ?? getSmilesWasmParser().parse(text);
+  const rootNode = cstTree?.rootNode as (CstNodeLike & { hasError?: boolean }) | null | undefined;
   const lowerSource = (sourceFile ?? "").toLowerCase();
   const hasV2000 = text.includes("V2000") || text.includes("M  END");
   const hasSdfDelim = text.includes("$$$$");
 
   if (lowerSource.endsWith(".sdf") || hasSdfDelim) {
-    const molecules = parseSdf(text);
+    const molecules = parseSdf(text, cstTree);
     return {
       format: "sdf",
       molecules,
@@ -1600,7 +1678,7 @@ export function parseSmilesDocument(text: string, sourceFile?: string): SmilesDo
   }
 
   if (lowerSource.endsWith(".mol") || hasV2000) {
-    const mol = parseMolfile(text);
+    const mol = parseMolfile(text, undefined, cstTree);
     return {
       format: "mol2000",
       molecules: [mol],
@@ -1608,25 +1686,47 @@ export function parseSmilesDocument(text: string, sourceFile?: string): SmilesDo
     };
   }
 
-  const lines = splitLinesZeroRegex(text);
   const molecules: MolecularGraph[] = [];
-  let offset = 0;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-    const trimmed = line.trim();
-    if (trimmed.length > 0 && !trimmed.startsWith("#") && !trimmed.startsWith("//")) {
-      const mol = parseSmiles(line, undefined, i + 1, offset);
-      if (lowerSource.endsWith(".smarts")) {
-        mol.format = "smarts";
+  if (rootNode && !rootNode.hasError) {
+    const cstRows = groupAllCstTokensByLine(rootNode);
+    for (const { row, tokens } of cstRows) {
+      const recTokens = tokens.filter((t) => {
+        const txt = t.text ?? "";
+        return t.type !== "Newline" && txt !== "\n" && txt !== "\r\n" && txt !== "\r";
+      });
+      if (recTokens.length === 0) continue;
+
+      const lineSlice = cstLineText(text, recTokens);
+      const trimmed = lineSlice.trim();
+      if (trimmed.length > 0 && !trimmed.startsWith("#") && !trimmed.startsWith("//")) {
+        const startOff = recTokens[0]!.startIndex ?? 0;
+        const mol = parseSmiles(lineSlice, undefined, row + 1, startOff, true);
+        if (lowerSource.endsWith(".smarts")) {
+          mol.format = "smarts";
+        }
+        molecules.push(mol);
       }
-      molecules.push(mol);
     }
-    offset += line.length + 1;
+  } else {
+    const lines = splitLinesZeroRegex(text);
+    let offset = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      const trimmed = line.trim();
+      if (trimmed.length > 0 && !trimmed.startsWith("#") && !trimmed.startsWith("//")) {
+        const mol = parseSmiles(line, undefined, i + 1, offset, true);
+        if (lowerSource.endsWith(".smarts")) {
+          mol.format = "smarts";
+        }
+        molecules.push(mol);
+      }
+      offset += line.length + 1;
+    }
   }
 
   if (molecules.length === 0) {
-    molecules.push(parseSmiles("", "EmptyDocument", 1, 0));
+    molecules.push(parseSmiles("", "EmptyDocument", 1, 0, true));
   }
 
   const format: MolecularFormat =

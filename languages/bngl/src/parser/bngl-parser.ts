@@ -8,6 +8,7 @@
  * site states (~U, ~P) and bond labels (!1, !+, !?), and simulation actions.
  */
 
+import { groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
 import type {
   BnglAction,
   BnglCompartment,
@@ -26,6 +27,9 @@ import type {
   BnglSeedSpecies,
   BnglSiteDef,
 } from "../types.js";
+import { getBnglWasmParser } from "./wasm-loader.js";
+
+export { getBnglWasmParser, type BnglWasmParser } from "./wasm-loader.js";
 
 function isWhitespace(ch: string): boolean {
   return ch === " " || ch === "\t" || ch === "\r" || ch === "\n";
@@ -49,9 +53,23 @@ interface LogicalLine {
 }
 
 /**
- * Strips '#' comments and joins backslash-continued lines into logical lines with source ranges.
+ * Strips '#' comments and joins backslash-continued lines into logical lines with source ranges,
+ * driven by WASM GLR CST line tokens.
  */
-function extractLogicalLines(source: string): LogicalLine[] {
+function extractLogicalLines(source: string, cstRoot?: CstNodeLike | null): LogicalLine[] {
+  const cstLines = groupAllCstTokensByLine(cstRoot);
+  const activeRows = new Set<number>();
+  for (const { row, tokens } of cstLines) {
+    if (
+      tokens.some((t) => {
+        const txt = (t.text ?? "").trim();
+        return txt.length > 0 && txt !== ";";
+      })
+    ) {
+      activeRows.add(row);
+    }
+  }
+
   const result: LogicalLine[] = [];
   const n = source.length;
   let pos = 0;
@@ -94,6 +112,10 @@ function extractLogicalLines(source: string): LogicalLine[] {
       pos++;
       line++;
       col = 1;
+    }
+
+    if (!hasStart && cstRoot && !activeRows.has(lineStartNum - 1)) {
+      continue;
     }
 
     const trimmedRight = rawContent.trimEnd();
@@ -866,7 +888,8 @@ function parseActionLine(lineText: string, range: BnglRange): BnglAction | null 
  * Parses a BioNetGen (.bngl) source document into a structured BnglDocument AST.
  */
 export function parseBngl(source: string, sourceFile?: string): BnglDocument {
-  const logicalLines = extractLogicalLines(source);
+  const cstTree = getBnglWasmParser().parse(source);
+  const logicalLines = extractLogicalLines(source, cstTree?.rootNode as CstNodeLike | undefined);
 
   let modelId = "BioNetGenModel";
   if (sourceFile) {

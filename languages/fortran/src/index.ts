@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { createWasmParser, type SyntaxNode, type TreeSitterParser } from "../src-gen/bindings.js";
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { createWasmParser, createWasmParserSync, type SyntaxNode, type TreeSitterParser } from "../src-gen/bindings.js";
 import {
   extractFortranSignature,
   FortranAstParser,
@@ -122,63 +123,30 @@ export type {
 
 let cachedParser: TreeSitterParser | null = null;
 
-async function findFile(relativePaths: string[]): Promise<string> {
-  if (
-    typeof window === "undefined" &&
-    typeof process !== "undefined" &&
-    typeof import.meta?.url === "string" &&
-    import.meta.url.startsWith("file:")
-  ) {
-    try {
-      const nodePath = await import("node:path");
-      const { fileURLToPath } = await import("node:url");
-      const nodeFs = await import("node:fs");
-      const currentDir = nodePath.dirname(fileURLToPath(import.meta.url));
-      for (const rel of relativePaths) {
-        const candidate = nodePath.resolve(currentDir, rel);
-        if (nodeFs.existsSync(candidate)) return candidate;
-      }
-      return nodePath.resolve(currentDir, relativePaths[0]!);
-    } catch {
-      // fallback
-    }
-  }
-  return relativePaths[0]!;
-}
-
 /**
  * Initializes or retrieves the singleton WebAssembly GLR parser for Fortran.
  */
 export async function getFortranParser(wasmUrlOrBytes?: Uint8Array | ArrayBuffer | string): Promise<TreeSitterParser> {
   if (cachedParser) return cachedParser;
 
-  let wasmInput: Uint8Array | ArrayBuffer | string | undefined = wasmUrlOrBytes;
-  if (!wasmInput || (typeof wasmInput !== "string" && "byteLength" in wasmInput && wasmInput.byteLength === 0)) {
-    if (
-      typeof window === "undefined" &&
-      typeof process !== "undefined" &&
-      typeof import.meta?.url === "string" &&
-      import.meta.url.startsWith("file:")
-    ) {
-      try {
-        const nodeFs = await import("node:fs");
-        const wasmPath = await findFile([
-          "../parser.wasm",
-          "../dist/parser.wasm",
-          "../../dist/parser.wasm",
-          "parser.wasm",
-        ]);
-        wasmInput = nodeFs.readFileSync(wasmPath);
-      } catch {
-        wasmInput = "fortran.wasm";
-      }
-    } else {
+  const isEmptyInput =
+    !wasmUrlOrBytes ||
+    (typeof wasmUrlOrBytes !== "string" && "byteLength" in wasmUrlOrBytes && wasmUrlOrBytes.byteLength === 0);
+
+  if (isEmptyInput) {
+    try {
+      cachedParser = getOrLoadLanguageWasmParser("fortran", import.meta.url, createWasmParserSync);
+      return cachedParser;
+    } catch {
       const serverBase = (globalThis as { serverDistBase?: string | undefined }).serverDistBase;
-      wasmInput = serverBase ? `${serverBase.replace(/\/$/, "")}/fortran.wasm` : "fortran.wasm";
+      const fallbackUrl = serverBase ? `${serverBase.replace(/\/$/, "")}/fortran.wasm` : "fortran.wasm";
+      const { parser } = await createWasmParser(fallbackUrl);
+      cachedParser = parser;
+      return parser;
     }
   }
 
-  const { parser } = await createWasmParser(wasmInput ?? "fortran.wasm");
+  const { parser } = await createWasmParser(wasmUrlOrBytes);
   cachedParser = parser;
   return parser;
 }

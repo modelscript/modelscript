@@ -162,6 +162,11 @@ export function flattenTargetClass(
   if (!target) {
     return { error: `No class definition found for '${className || uri}'` };
   }
+  if (/\.(raw|dyr|sav|psse)($|\?|#)/i.test(uri) || target.className === "PsseCase") {
+    return {
+      error: `Class '${target.className}' is a PSS/E power grid case and cannot be flattened with the Modelica flattener.`,
+    };
+  }
   const sharedContext = context.parserService.sharedContext;
   let arena: DAEBuilder | null = null;
   if (sharedContext && typeof (sharedContext as any).flattenArena === "function") {
@@ -285,6 +290,46 @@ export function registerSimulationEndpoints(context: LspContext) {
             states: simRes.states,
             experiment: { startTime, stopTime, interval: dt, tolerance: 1e-4 },
             telemetry: { executionTimeMs, stepCount: simRes.t.length },
+          };
+        }
+
+        if (
+          /\.(raw|dyr|sav|psse)($|\?|#)/i.test(params.uri) ||
+          doc?.languageId === "psse" ||
+          params.className === "PsseCase"
+        ) {
+          const text = doc?.getText() ?? context.state.sharedContext?.fs?.read?.(params.uri) ?? "";
+          if (!text) {
+            return { t: [], y: [], states: [], error: `Could not read PSS/E source for ${params.uri}` };
+          }
+          const t0 = Date.now();
+          const { getMergedPsseCase, parseRaw, simulatePsseTransient } = await import("@modelscript/psse");
+          const unifiedWs = context.workspaceManager?.unifiedWorkspace;
+          const parsed = unifiedWs ? getMergedPsseCase(unifiedWs, params.uri, text) : parseRaw(text);
+          const startTime = params.startTime ?? 0;
+          const stopTime = params.stopTime ?? 5.0;
+          const dt = params.interval ?? 0.01;
+          const simRes = simulatePsseTransient(parsed, {
+            stopTime,
+            timeStep: dt,
+          });
+          const tArr = simRes.t;
+          const nStates = simRes.states.length;
+          const yArr: number[][] = new Array(tArr.length);
+          for (let ti = 0; ti < tArr.length; ti++) {
+            const row = new Array<number>(nStates);
+            for (let si = 0; si < nStates; si++) {
+              row[si] = simRes.y[si]?.[ti] ?? 0;
+            }
+            yArr[ti] = row;
+          }
+          const executionTimeMs = Date.now() - t0;
+          return {
+            t: tArr,
+            y: yArr,
+            states: simRes.states,
+            experiment: { startTime, stopTime, interval: dt, tolerance: 1e-4 },
+            telemetry: { executionTimeMs, stepCount: tArr.length },
           };
         }
 

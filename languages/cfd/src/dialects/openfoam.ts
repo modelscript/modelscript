@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { materializeCfdConfig } from "../materializer.js";
 import type { CfdDialect, CfdMarker, CfdModelData, MaterializeOptions } from "../types.js";
+import { getCfdWasmParser } from "../wasm-loader.js";
 
 /**
  * Recursive key-value tree representation of an OpenFOAM dictionary file.
@@ -82,6 +84,8 @@ export class OpenFoamDialect implements CfdDialect {
    * Parses an OpenFOAM dictionary into flattened dot-notated directives and classified boundary patches.
    */
   public parse(content: string): CfdModelData {
+    const tree = getCfdWasmParser().parse(content);
+    const syntaxErrors = collectWasmSyntaxErrors(tree?.rootNode);
     const rawDirectives = new Map<string, string>();
     const directives = new Map<string, string>();
     const directiveLines = new Map<string, number>();
@@ -99,6 +103,7 @@ export class OpenFoamDialect implements CfdDialect {
       rawDirectives,
       markers,
       directiveLines,
+      syntaxErrors,
     };
 
     const rawLines = content.split(/\r?\n/);

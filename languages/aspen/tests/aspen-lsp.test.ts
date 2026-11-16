@@ -75,3 +75,21 @@ test("Aspen LSP: executeAspenAction executes registered actions", async () => {
   assert.ok(flashRes.vaporFraction >= 0.0);
   assert.equal(flashRes.kValues.length, 2);
 });
+
+test("Aspen LSP: WASM GLR parser parses Morsel defaultCode cleanly and surfaces M8100 on invalid syntax", async () => {
+  const { getAspenWasmParser } = await import("../src/index.js");
+  const morselDefault = `TITLE "Flash Separation Process"
+COMPONENTS
+  METHANOL CH4O /
+  WATER H2O
+FLOWSHEET
+  BLOCK FLASH1 IN=FEED OUT=VAPOR LIQUID
+BLOCK FLASH1 FLASH2
+  PARAM TEMP=78.5 PRES=1.013
+`;
+  const tree = getAspenWasmParser().parse(morselDefault);
+  assert.equal(tree?.rootNode.hasError, false);
+
+  const badSyntaxDiags = validateAspen(`TITLE 'UNTERMINATED QUOTE\nCOMPONENTS\n  WATER H2O {{\n`);
+  assert.ok(badSyntaxDiags.some((d) => d.code === "M8100" && d.severity === 1));
+});

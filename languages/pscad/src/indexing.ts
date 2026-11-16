@@ -3,6 +3,7 @@
 import type { DslIndexFileContext } from "@modelscript/dsl";
 import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
 import { registerPscadSource } from "./model/workspace-registry.js";
+import { parsePscadXmlDocument } from "./parser/wasm-loader.js";
 import { parseFlyBySegment } from "./script/script-parser.js";
 import type { PscadFlyByDoc } from "./types.js";
 
@@ -83,7 +84,7 @@ export function indexPscadDocument(ctx: DslIndexFileContext): void {
 
   registerPscadSource(uri, text);
 
-  const xmlDoc = parseXml(text);
+  const xmlDoc = parsePscadXmlDocument(text);
   const projectEl = xmlDoc.root
     ? xmlDoc.root.name.toLowerCase() === "project"
       ? xmlDoc.root

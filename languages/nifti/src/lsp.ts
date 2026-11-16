@@ -7,9 +7,10 @@
  * completions, go-to-definition, and custom mesh/DAE action execution for .nii, .nrrd, and .nhdr.
  */
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { computeSformAffineDeterminant, lintNiftiDocument } from "./lints/rules.js";
 import { extractIsoSurfaceMesh, lowerNiftiToDae, type NiftiSurfaceMeshSummary } from "./mesh/index.js";
-import { parseNifti } from "./parser/index.js";
+import { getNiftiWasmParser, hasBinaryNiftiMagic, parseNifti } from "./parser/index.js";
 import { niftiToScad, niftiToStep } from "./projections/index.js";
 import type { NiftiDiagnostic, NiftiDocument, NiftiSourceRange } from "./types.js";
 
@@ -104,10 +105,26 @@ function toLspRange(r: NiftiSourceRange): LspRange {
 }
 
 export function validateNifti(content: string): LspDiagnostic[] {
+  const isBinary = hasBinaryNiftiMagic(content);
+  const wasmSyntaxSpans = !isBinary ? collectWasmSyntaxErrors(getNiftiWasmParser().parse(content)?.rootNode) : [];
+  const syntaxDiags: LspDiagnostic[] = wasmSyntaxSpans.map((sp) => ({
+    range: {
+      start: { line: Math.max(0, sp.startLine - 1), character: Math.max(0, sp.startColumn - 1) },
+      end: { line: Math.max(0, sp.endLine - 1), character: Math.max(0, sp.endColumn - 1) },
+    },
+    severity: 1,
+    code: "M9500",
+    source: "nifti-parser",
+    message: sp.message,
+  }));
+
   let doc: NiftiDocument;
   try {
     doc = parseNifti(content);
   } catch (err: unknown) {
+    if (syntaxDiags.length > 0) {
+      return syntaxDiags;
+    }
     return [
       {
         range: {
@@ -123,7 +140,7 @@ export function validateNifti(content: string): LspDiagnostic[] {
   }
 
   const rawDiags = lintNiftiDocument(doc);
-  return rawDiags.map((d) => {
+  const lintDiags: LspDiagnostic[] = rawDiags.map((d) => {
     let sev: 1 | 2 | 3 | 4 = 1;
     if (d.severity === "warning") sev = 2;
     else if (d.severity === "info") sev = 3;
@@ -136,6 +153,8 @@ export function validateNifti(content: string): LspDiagnostic[] {
       message: d.message,
     };
   });
+
+  return [...syntaxDiags, ...lintDiags];
 }
 
 export function getNiftiDocumentSymbols(content: string): LspDocumentSymbol[] {

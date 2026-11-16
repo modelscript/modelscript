@@ -201,3 +201,7 @@ export function parseXmlSync(source: string): XmlDocument {
 export function parseXml(source: string): XmlDocument {
   return parseXmlSync(source);
 }
+
+export function parseXmlWithWasmParser(source: string, _wasmParser?: unknown, _existingTree?: unknown): XmlDocument {
+  return parseXmlSync(source);
+}

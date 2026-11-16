@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { lowerSmilesToDae, type SmilesDaeOptions } from "./dae/smiles-to-dae.js";
 import { lintSmiles } from "./lints/index.js";
-import { parseSmilesDocument } from "./parser/smiles-parser.js";
+import { getSmilesWasmParser, parseSmilesDocument } from "./parser/smiles-parser.js";
 import { smilesToAspenDeck, smilesToModelica } from "./projections/smiles-to-modelica.js";
 import { estimateThermophysicalProperties, solveMolecularProperties } from "./solvers/property-estimator.js";
 
@@ -77,12 +78,64 @@ export interface LspCompletionItem {
   documentation?: string | undefined;
 }
 
+interface ErrNode {
+  hasError?: boolean;
+  isError?: boolean;
+  text?: string;
+  startPosition?: { row?: number; column?: number };
+  endPosition?: { row?: number; column?: number };
+  children?: unknown[];
+}
+
+function collectAllWasmErrors(rootNode: unknown) {
+  const errs = collectWasmSyntaxErrors(rootNode);
+  if (errs.length > 0 || !rootNode || typeof rootNode !== "object") return errs;
+  const root = rootNode as ErrNode;
+  if (!root.hasError) return errs;
+  let target: ErrNode = root;
+  let cur: ErrNode | undefined = root;
+  while (cur && Array.isArray(cur.children)) {
+    const next: ErrNode | undefined = cur.children.find((c): c is ErrNode =>
+      Boolean(c && typeof c === "object" && ((c as ErrNode).isError || (c as ErrNode).hasError)),
+    );
+    if (!next) break;
+    target = next;
+    cur = next;
+  }
+  const sp = target.startPosition ?? { row: 0, column: 0 };
+  const ep = target.endPosition ?? sp;
+  const snippet = (target.text ?? "").trim().replace(/\s+/g, " ").slice(0, 32);
+  return [
+    {
+      message: snippet ? `Unexpected or unclosed syntax near '${snippet}'.` : "Syntax error in input.",
+      startLine: (sp.row ?? 0) + 1,
+      startColumn: (sp.column ?? 0) + 1,
+      endLine: (ep.row ?? sp.row ?? 0) + 1,
+      endColumn: Math.max((sp.column ?? 0) + 2, (ep.column ?? 0) + 1),
+      startOffset: 0,
+      endOffset: 0,
+    },
+  ];
+}
+
 export function validateSmiles(text: string, sourceFile?: string): LspDiagnostic[] {
   try {
-    const doc = parseSmilesDocument(text, sourceFile);
-    const diags = lintSmiles(doc);
+    const cstTree = getSmilesWasmParser().parse(text);
+    const syntaxDiags: LspDiagnostic[] = collectAllWasmErrors(cstTree?.rootNode).map((err) => ({
+      range: {
+        start: { line: Math.max(0, err.startLine - 1), character: Math.max(0, err.startColumn - 1) },
+        end: { line: Math.max(0, err.endLine - 1), character: Math.max(0, err.endColumn - 1) },
+      },
+      severity: 1,
+      code: "M9300",
+      source: "smiles-parser",
+      message: err.message,
+    }));
 
-    return diags.map((d) => {
+    const doc = parseSmilesDocument(text, sourceFile, cstTree);
+    const diags = lintSmiles(doc).filter((d) => !(syntaxDiags.length > 0 && d.code === 9310));
+
+    const lintDiags: LspDiagnostic[] = diags.map((d) => {
       const line = d.range ? Math.max(0, d.range.startLine - 1) : 0;
       const col = d.range ? Math.max(0, d.range.startColumn - 1) : 0;
       const endLine = d.range ? Math.max(0, d.range.endLine - 1) : line;
@@ -103,6 +156,8 @@ export function validateSmiles(text: string, sourceFile?: string): LspDiagnostic
         message: d.message,
       };
     });
+
+    return [...syntaxDiags, ...lintDiags];
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     return [

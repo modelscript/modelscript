@@ -7,6 +7,8 @@
  * and hover documentation for SPICE analog netlists (.cir, .sp, .net, .lib).
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { createWasmParserSync } from "@modelscript/spice/wasm-parser";
 import { lintSpiceCircuit } from "./lints/rules.js";
 import { parseSpice } from "./parser/spice-parser.js";
 import { spiceToModelica } from "./projections/modelica.js";
@@ -32,6 +34,11 @@ export function validateSpice(content: string): LspDiagnostic[] {
   let circuit: SpiceCircuit;
 
   try {
+    try {
+      getOrLoadLanguageWasmParser("spice", import.meta.url, createWasmParserSync).parse(content);
+    } catch {
+      // Fall back cleanly if WASM parser is unavailable
+    }
     circuit = parseSpice(content);
   } catch (err: unknown) {
     diagnostics.push({

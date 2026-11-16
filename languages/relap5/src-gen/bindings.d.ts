@@ -1358,71 +1358,109 @@ export declare function createWasmParserSync(
   facade: LspFacade;
   parser: TreeSitterParser;
 };
+/**
+ * Registers a pre-instantiated WebAssembly GLR parser in `globalThis.__msWasmParsers`
+ * so synchronous language parsers and workspace linters can use it inside browser WebWorkers
+ * without Node.js `fs` or `node:module`.
+ */
+export declare function registerPreloadedWasmParser(
+  langId: string,
+  parser: TreeSitterParser | null | undefined,
+  facade?: LspFacade | null,
+): void;
+/**
+ * Retrieves a pre-instantiated WebAssembly GLR parser from `globalThis` if registered
+ * by `ParserService` (browser WebWorker or Node LSP server).
+ */
+export declare function getPreloadedWasmParser(
+  langId: string,
+): TreeSitterParser | undefined;
+/**
+ * Resolves the filesystem path or URL to a language package's `parser.wasm` without `node:module`.
+ */
+export declare function resolveLanguageWasmPath(
+  importMetaUrl: string,
+  langId?: string,
+): string;
+/**
+ * Isomorphic helper that returns the pre-loaded WASM GLR parser in browser WebWorkers
+ * (`globalThis.__msWasmParsers`) and lazily loads `parser.wasm` synchronously in Node.js CLI/tests.
+ */
+export declare function getOrLoadLanguageWasmParser<TParser = TreeSitterParser>(
+  langId: string,
+  importMetaUrl: string,
+  syncFactory?: (wasmPath: string) => {
+    parser: TParser;
+  },
+): TParser;
+export interface WasmSyntaxErrorSpan {
+  message: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+}
+/**
+ * Walks a WASM GLR `SyntaxNode` root and extracts bounded `ERROR` / `isMissing` syntax error spans
+ * (1-indexed lines and columns).
+ */
+export declare function collectWasmSyntaxErrors(
+  rootNode: unknown,
+  maxErrors?: number,
+): WasmSyntaxErrorSpan[];
 
 export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Deck = 49,
-  Card = 50,
-  TitleCard = 51,
-  ControlCard = 52,
-  TimeStepCard = 53,
-  VolumeCard = 54,
-  JunctionCard = 55,
-  HeatStructureCard = 56,
-  KineticsCard = 57,
-  TripCard = 58,
-  GenericCard = 59,
-  TerminalCard = 60,
-  START = 61,
-  _START = 61,
-  VolumeCardNum = 88,
-  JunctionCardNum = 89,
-  HeatCardNum = 90,
-  KineticsCardNum = 91,
-  TripCardNum = 92,
-  CardNumber = 93,
-  CommentLine = 94,
-  Identifier = 95,
+  Deck = 44,
+  Card = 45,
+  GenericCard = 46,
+  TitleCard = 47,
+  ControlCard = 48,
+  TimeStepCard = 49,
+  VolumeCard = 50,
+  JunctionCard = 51,
+  HeatStructureCard = 52,
+  KineticsCard = 53,
+  TripCard = 54,
+  CardWords1 = 55,
+  TerminalCard = 56,
+  TitleWord = 57,
+  CardWord = 58,
+  TitleCardNum = 59,
+  ControlCardNum = 60,
+  TimeStepCardNum = 61,
+  VolumeType = 62,
+  JunctionType = 63,
+  EndKw = 64,
+  START = 65,
+  _START = 65,
+  EqualsTitle = 81,
+  ComponentCardNum = 88,
+  HeatCardNum = 89,
+  KineticsCardNum = 90,
+  TripCardNum = 91,
+  CardNumber = 92,
+  CommentLine = 93,
+  Identifier = 94,
+  HyphenWord = 95,
   NumberLiteral = 96,
   StringLiteral = 97,
   EOF = 1023,
 }
 
 export declare enum FieldId {
-  TitleWord = 1,
-  titleWord = 1,
-  CardNumber = 2,
-  cardNumber = 2,
-  ProblemType = 3,
-  problemType = 3,
-  ExecType = 4,
-  execType = 4,
-  EndTime = 5,
-  endTime = 5,
-  MinDt = 6,
-  minDt = 6,
-  MaxDt = 7,
-  maxDt = 7,
-  ControlFlags = 8,
-  controlFlags = 8,
-  ComponentName = 9,
-  componentName = 9,
-  ComponentType = 10,
-  componentType = 10,
-  Word = 11,
-  word = 11,
-  StructureName = 12,
-  structureName = 12,
-  Variable = 13,
-  variable = 13,
-  Operator = 14,
-  operator = 14,
-  Setpoint = 15,
-  setpoint = 15,
-  Latch = 16,
-  latch = 16,
+  CardNumber = 1,
+  cardNumber = 1,
+  Word = 2,
+  word = 2,
+  ComponentName = 3,
+  componentName = 3,
+  ComponentType = 4,
+  componentType = 4,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1438,6 +1476,10 @@ export interface CardNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Card;
 }
 export declare function isCard(node: SyntaxNode | null | undefined): node is CardNode;
+export interface GenericCardNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.GenericCard;
+}
+export declare function isGenericCard(node: SyntaxNode | null | undefined): node is GenericCardNode;
 export interface TitleCardNode extends SyntaxNode {
   readonly typeId: SyntaxKind.TitleCard;
 }
@@ -1470,22 +1512,54 @@ export interface TripCardNode extends SyntaxNode {
   readonly typeId: SyntaxKind.TripCard;
 }
 export declare function isTripCard(node: SyntaxNode | null | undefined): node is TripCardNode;
-export interface GenericCardNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.GenericCard;
+export interface CardWords1Node extends SyntaxNode {
+  readonly typeId: SyntaxKind.CardWords1;
 }
-export declare function isGenericCard(node: SyntaxNode | null | undefined): node is GenericCardNode;
+export declare function isCardWords1(node: SyntaxNode | null | undefined): node is CardWords1Node;
 export interface TerminalCardNode extends SyntaxNode {
   readonly typeId: SyntaxKind.TerminalCard;
 }
 export declare function isTerminalCard(node: SyntaxNode | null | undefined): node is TerminalCardNode;
-export interface VolumeCardNumNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.VolumeCardNum;
+export interface TitleWordNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.TitleWord;
 }
-export declare function isVolumeCardNum(node: SyntaxNode | null | undefined): node is VolumeCardNumNode;
-export interface JunctionCardNumNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.JunctionCardNum;
+export declare function isTitleWord(node: SyntaxNode | null | undefined): node is TitleWordNode;
+export interface CardWordNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CardWord;
 }
-export declare function isJunctionCardNum(node: SyntaxNode | null | undefined): node is JunctionCardNumNode;
+export declare function isCardWord(node: SyntaxNode | null | undefined): node is CardWordNode;
+export interface TitleCardNumNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.TitleCardNum;
+}
+export declare function isTitleCardNum(node: SyntaxNode | null | undefined): node is TitleCardNumNode;
+export interface ControlCardNumNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ControlCardNum;
+}
+export declare function isControlCardNum(node: SyntaxNode | null | undefined): node is ControlCardNumNode;
+export interface TimeStepCardNumNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.TimeStepCardNum;
+}
+export declare function isTimeStepCardNum(node: SyntaxNode | null | undefined): node is TimeStepCardNumNode;
+export interface VolumeTypeNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.VolumeType;
+}
+export declare function isVolumeType(node: SyntaxNode | null | undefined): node is VolumeTypeNode;
+export interface JunctionTypeNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.JunctionType;
+}
+export declare function isJunctionType(node: SyntaxNode | null | undefined): node is JunctionTypeNode;
+export interface EndKwNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.EndKw;
+}
+export declare function isEndKw(node: SyntaxNode | null | undefined): node is EndKwNode;
+export interface EqualsTitleNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.EqualsTitle;
+}
+export declare function isEqualsTitle(node: SyntaxNode | null | undefined): node is EqualsTitleNode;
+export interface ComponentCardNumNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ComponentCardNum;
+}
+export declare function isComponentCardNum(node: SyntaxNode | null | undefined): node is ComponentCardNumNode;
 export interface HeatCardNumNode extends SyntaxNode {
   readonly typeId: SyntaxKind.HeatCardNum;
 }
@@ -1510,6 +1584,10 @@ export interface IdentifierNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Identifier;
 }
 export declare function isIdentifier(node: SyntaxNode | null | undefined): node is IdentifierNode;
+export interface HyphenWordNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.HyphenWord;
+}
+export declare function isHyphenWord(node: SyntaxNode | null | undefined): node is HyphenWordNode;
 export interface NumberLiteralNode extends SyntaxNode {
   readonly typeId: SyntaxKind.NumberLiteral;
 }
@@ -1531,12 +1609,19 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is CardNode;
   };
+  export const GenericCard: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is GenericCardNode;
+    cardNumber(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    cardNumberList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
   export const TitleCard: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is TitleCardNode;
-    titleWord(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    titleWordList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    word(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    wordList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ControlCard: {
     readonly typeId: number;
@@ -1544,10 +1629,6 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is ControlCardNode;
     cardNumber(node: SyntaxNode | null | undefined): SyntaxNode | null;
     cardNumberList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    problemType(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    problemTypeList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    execType(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    execTypeList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const TimeStepCard: {
     readonly typeId: number;
@@ -1555,14 +1636,6 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is TimeStepCardNode;
     cardNumber(node: SyntaxNode | null | undefined): SyntaxNode | null;
     cardNumberList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    endTime(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    endTimeList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    minDt(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    minDtList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    maxDt(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    maxDtList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    controlFlags(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    controlFlagsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const VolumeCard: {
     readonly typeId: number;
@@ -1574,8 +1647,6 @@ export declare namespace Cst {
     componentNameList(node: SyntaxNode | null | undefined): SyntaxNode[];
     componentType(node: SyntaxNode | null | undefined): SyntaxNode | null;
     componentTypeList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    word(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    wordList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const JunctionCard: {
     readonly typeId: number;
@@ -1587,8 +1658,6 @@ export declare namespace Cst {
     componentNameList(node: SyntaxNode | null | undefined): SyntaxNode[];
     componentType(node: SyntaxNode | null | undefined): SyntaxNode | null;
     componentTypeList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    word(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    wordList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const HeatStructureCard: {
     readonly typeId: number;
@@ -1596,10 +1665,6 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is HeatStructureCardNode;
     cardNumber(node: SyntaxNode | null | undefined): SyntaxNode | null;
     cardNumberList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    structureName(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    structureNameList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    word(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    wordList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const KineticsCard: {
     readonly typeId: number;
@@ -1607,8 +1672,6 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is KineticsCardNode;
     cardNumber(node: SyntaxNode | null | undefined): SyntaxNode | null;
     cardNumberList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    word(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    wordList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const TripCard: {
     readonly typeId: number;
@@ -1616,21 +1679,11 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is TripCardNode;
     cardNumber(node: SyntaxNode | null | undefined): SyntaxNode | null;
     cardNumberList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    variable(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    variableList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    operator(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    operatorList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    setpoint(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    setpointList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    latch(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    latchList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
-  export const GenericCard: {
+  export const CardWords1: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is GenericCardNode;
-    cardNumber(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    cardNumberList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    is(node: SyntaxNode | null | undefined): node is CardWords1Node;
     word(node: SyntaxNode | null | undefined): SyntaxNode | null;
     wordList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
@@ -1639,15 +1692,55 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is TerminalCardNode;
   };
-  export const VolumeCardNum: {
+  export const TitleWord: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is VolumeCardNumNode;
+    is(node: SyntaxNode | null | undefined): node is TitleWordNode;
   };
-  export const JunctionCardNum: {
+  export const CardWord: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is JunctionCardNumNode;
+    is(node: SyntaxNode | null | undefined): node is CardWordNode;
+  };
+  export const TitleCardNum: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is TitleCardNumNode;
+  };
+  export const ControlCardNum: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ControlCardNumNode;
+  };
+  export const TimeStepCardNum: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is TimeStepCardNumNode;
+  };
+  export const VolumeType: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is VolumeTypeNode;
+  };
+  export const JunctionType: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is JunctionTypeNode;
+  };
+  export const EndKw: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is EndKwNode;
+  };
+  export const EqualsTitle: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is EqualsTitleNode;
+  };
+  export const ComponentCardNum: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ComponentCardNumNode;
   };
   export const HeatCardNum: {
     readonly typeId: number;
@@ -1678,6 +1771,11 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is IdentifierNode;
+  };
+  export const HyphenWord: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is HyphenWordNode;
   };
   export const NumberLiteral: {
     readonly typeId: number;

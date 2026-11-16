@@ -272,7 +272,6 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
           component.id;
         const badgeStyle = getKindBadgeStyle(rawKind, true);
         const rawClassName = component.properties?.className || "";
-        const domainInfo = getComponentDomain(rawClassName, rawKind);
         const shortTypeName = rawClassName.includes(".")
           ? rawClassName.split(".").pop()
           : rawClassName.toLowerCase() !== rawKind.toLowerCase()
@@ -297,29 +296,14 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
             }}
           >
             <NavList.LeadingVisual>
-              <div
-                style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: 6,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  background: isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.03)",
-                  border: isDark ? "1px solid rgba(255, 255, 255, 0.08)" : "1px solid rgba(0, 0, 0, 0.06)",
-                  borderLeft: `2.5px solid ${domainInfo.color}`,
-                  overflow: "hidden",
-                }}
-              >
-                <ComponentIcon
-                  iconSvg={component.properties?.iconSvg}
-                  className={rawClassName || component.properties?.className}
-                  kind={rawKind}
-                  darkMode={isDark}
-                  uri={props.uri}
-                  size={16}
-                />
-              </div>
+              <ComponentIcon
+                iconSvg={component.properties?.iconSvg}
+                className={rawClassName || component.properties?.className}
+                kind={rawKind}
+                darkMode={isDark}
+                uri={props.uri}
+                size={20}
+              />
             </NavList.LeadingVisual>
             <div
               style={{
@@ -340,26 +324,10 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
                   fontWeight: 600,
                   fontSize: 12.5,
                   color: "var(--ms-text-1, var(--color-fg-default))",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
                 }}
                 title={component.id ?? undefined}
               >
-                <span
-                  style={{
-                    width: 5,
-                    height: 5,
-                    borderRadius: "50%",
-                    backgroundColor: domainInfo.color,
-                    flexShrink: 0,
-                    boxShadow: `0 0 5px ${domainInfo.color}80`,
-                  }}
-                  title={`Domain: ${domainInfo.domain}`}
-                />
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {displayName}
-                </span>
+                {displayName}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                 {shortTypeName && (

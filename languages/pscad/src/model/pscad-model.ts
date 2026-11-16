@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import { type XmlElement } from "@modelscript/dsl/xml";
 import { globalLibraryRegistry } from "@modelscript/runtime";
+import { parsePscadXmlDocument } from "../parser/wasm-loader.js";
 
 /**
  * Semantic model of a PSCAD project (`.pscx`/`.pslx`) built on the lossless XML CST.
@@ -203,7 +204,7 @@ function collectSchematic(
 }
 
 export function buildProjectModel(source: string, external?: ExternalDefinitions): PscadProjectModel {
-  const doc = parseXml(source);
+  const doc = parsePscadXmlDocument(source);
   const root = doc.root;
   if (!root) {
     throw new Error("PSCAD project has no root element");

@@ -1643,6 +1643,26 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
     baseB[idx * N + idx] = (baseB[idx * N + idx] ?? 0) + m.ygImag;
   }
 
+  // Treat any Slack bus (ide === 3) without an online generator record as an infinite-bus voltage source
+  const machineBusIndices = new Set(machines.map((m) => m.busIdx));
+  const slackInfiniteBuses: Array<{ busIdx: number; bInf: number; irInf: number; iiInf: number }> = [];
+  for (let i = 0; i < N; i++) {
+    const busNum = netlist.busNumbers[i]!;
+    const busRec = psseCase.buses.get(busNum);
+    if (busRec?.ide === 3 && !machineBusIndices.has(i)) {
+      const bInf = -1e4;
+      const vMag = Vm0[i]!;
+      const vAng = Va0[i]!;
+      const er = vMag * Math.cos(vAng);
+      const ei = vMag * Math.sin(vAng);
+      // Norton current I_N = (j * bInf) * (er + j * ei) = -bInf * ei + j * bInf * er
+      const irInf = -bInf * ei;
+      const iiInf = bInf * er;
+      baseB[i * N + i] = (baseB[i * N + i] ?? 0) + bInf;
+      slackInfiniteBuses.push({ busIdx: i, bInf, irInf, iiInf });
+    }
+  }
+
   // Initialize WECC CMPLDW / CLOD / CIM5 composite load induction motor states (FIDVR stalling & slip)
   interface CompositeMotorLoadState {
     busNum: number;
@@ -1741,6 +1761,11 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
       const ii = trip * (mach.ygReal * ei + mach.ygImag * er);
       rhs[2 * mach.busIdx] = (rhs[2 * mach.busIdx] ?? 0) + ir;
       rhs[2 * mach.busIdx + 1] = (rhs[2 * mach.busIdx + 1] ?? 0) + ii;
+    }
+
+    for (const sb of slackInfiniteBuses) {
+      rhs[2 * sb.busIdx] = (rhs[2 * sb.busIdx] ?? 0) + sb.irInf;
+      rhs[2 * sb.busIdx + 1] = (rhs[2 * sb.busIdx + 1] ?? 0) + sb.iiInf;
     }
 
     // WASM ABI v2 FACTS / SVC / IBR reactive and complex current injections

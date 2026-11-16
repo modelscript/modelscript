@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { createWasmParser, type SyntaxNode, type TreeSitterParser } from "../src-gen/bindings.js";
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { createWasmParser, createWasmParserSync, type SyntaxNode, type TreeSitterParser } from "../src-gen/bindings.js";
 import { CAstParser, parseCScript, tokenizeC, type CExpr, type CStmt, type CSwitchCase, type CToken } from "./ast.js";
 import {
   scrapeCHeader,
@@ -100,36 +98,18 @@ export type {
 
 let cachedParser: TreeSitterParser | null = null;
 
-function findFile(relativePaths: string[]): string {
-  const currentDir = path.dirname(fileURLToPath(import.meta.url));
-  for (const rel of relativePaths) {
-    const candidate = path.resolve(currentDir, rel);
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return path.resolve(currentDir, relativePaths[0]!);
-}
-
 /**
  * Initializes or retrieves the singleton WebAssembly GLR parser for C.
  */
 export async function getCParser(wasmUrlOrBytes?: Uint8Array | ArrayBuffer | string): Promise<TreeSitterParser> {
   if (cachedParser) return cachedParser;
 
-  let wasmInput: Uint8Array | ArrayBuffer | string | undefined = wasmUrlOrBytes;
-  if (!wasmInput) {
-    if (
-      typeof fs?.readFileSync === "function" &&
-      typeof import.meta?.url === "string" &&
-      import.meta.url.startsWith("file:")
-    ) {
-      const wasmPath = findFile(["../parser.wasm", "../dist/parser.wasm", "../../dist/parser.wasm", "parser.wasm"]);
-      wasmInput = fs.readFileSync(wasmPath);
-    } else {
-      wasmInput = "c.wasm";
-    }
+  if (!wasmUrlOrBytes) {
+    cachedParser = getOrLoadLanguageWasmParser("c", import.meta.url, createWasmParserSync);
+    return cachedParser;
   }
 
-  const { parser } = await createWasmParser(wasmInput);
+  const { parser } = await createWasmParser(wasmUrlOrBytes);
   cachedParser = parser;
   return parser;
 }

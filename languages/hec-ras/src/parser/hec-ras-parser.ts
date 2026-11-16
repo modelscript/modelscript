@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/hec-ras/wasm-parser";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type {
   BoundaryCondition,
   BoundaryType,
@@ -14,14 +14,8 @@ import type {
   StationElevation,
 } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getHecRasWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/hec-ras/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("hec-ras", import.meta.url, createWasmParserSync);
 }
 
 export function parseGeometry(text: string): HecRasGeometry {

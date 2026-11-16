@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { createWasmParserSync } from "@modelscript/opendss/wasm-parser";
 import {
   type LspDiagnostic,
   type LspDocumentSymbol,
@@ -24,6 +26,11 @@ export {
 
 export function validateOpenDss(text: string): LspDiagnostic[] {
   try {
+    try {
+      getOrLoadLanguageWasmParser("opendss", import.meta.url, createWasmParserSync).parse(text);
+    } catch {
+      // Fall back cleanly if WASM parser is unavailable
+    }
     const deck = parseOpenDss(text);
     const diags = lintOpenDss(deck);
 

@@ -545,10 +545,23 @@ export function createPsseDiagramBackend(backends: DiagramDispatchDeps): Diagram
         return { seq: params.seq, edits: [], renderHint: "none" };
       }
 
-      const { applyPsseDiagramWriteback } = await import("@modelscript/psse");
+      const {
+        applyPsseDiagramWriteback,
+        addPsseDiagramComponent,
+        deletePsseDiagramComponents,
+        connectPsseDiagramBuses,
+        disconnectPsseDiagramBuses,
+      } = await import("@modelscript/psse");
       let workingText = initialText;
 
       const batchedChanges = new Map<string, Record<string, unknown>>();
+      const flushBatchedChanges = () => {
+        for (const [cellId, changes] of batchedChanges) {
+          workingText = applyPsseDiagramWriteback(workingText, cellId, changes);
+        }
+        batchedChanges.clear();
+      };
+
       for (const act of params.actions) {
         if (act.type === "updateProperty") {
           const bag = batchedChanges.get(act.name) ?? {};
@@ -562,12 +575,22 @@ export function createPsseDiagramBackend(backends: DiagramDispatchDeps): Diagram
           const bag = batchedChanges.get(act.oldName) ?? {};
           bag["name"] = act.newName;
           batchedChanges.set(act.oldName, bag);
+        } else if (act.type === "addComponent") {
+          flushBatchedChanges();
+          workingText = addPsseDiagramComponent(workingText, act.className, act.x, act.y);
+        } else if (act.type === "deleteComponents") {
+          flushBatchedChanges();
+          workingText = deletePsseDiagramComponents(workingText, act.names);
+        } else if (act.type === "connect") {
+          flushBatchedChanges();
+          workingText = connectPsseDiagramBuses(workingText, act.source, act.target);
+        } else if (act.type === "disconnect") {
+          flushBatchedChanges();
+          workingText = disconnectPsseDiagramBuses(workingText, act.source, act.target);
         }
       }
 
-      for (const [cellId, changes] of batchedChanges) {
-        workingText = applyPsseDiagramWriteback(workingText, cellId, changes);
-      }
+      flushBatchedChanges();
 
       const edits = await computeMinimalPsseTextEdits(initialText, workingText);
       return {

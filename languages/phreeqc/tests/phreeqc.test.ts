@@ -300,3 +300,35 @@ test("PHREEQC UnifiedWorkspace & LSP: indexes symbols, hover, diagnostics, and a
   const daeInfo = await executePhreeqcAction("phreeqc_to_dae", VALID_PHREEQC_DECK);
   assert.equal(daeInfo.variableCount, daeInfo.equationCount);
 });
+
+test("PHREEQC WASM GLR Parser & LSP: parses Morsel defaultCode without error and reports syntax errors", async () => {
+  const { getPhreeqcWasmParser } = await import("../src/parser/wasm-loader.js");
+  const { collectWasmSyntaxErrors } = await import("@modelscript/dsl");
+
+  const morselDefaultCode = `TITLE Calcite Dissolution & Acid Mine Drainage Neutralization
+SOLUTION 1 Acidic Drainage Feed
+  temp      25.0
+  pH        3.8
+  pe        8.5
+  units     mmol/kgw
+  Ca        0.5
+  S(6)      12.0
+EQUILIBRIUM_PHASES 1
+  Calcite   0.0   10.0
+END
+`;
+
+  const tree = getPhreeqcWasmParser().parse(morselDefaultCode);
+  assert.ok(tree?.rootNode);
+  assert.equal(tree.rootNode.hasError, false);
+  assert.equal(collectWasmSyntaxErrors(tree.rootNode).length, 0);
+  assert.equal(validatePhreeqc(morselDefaultCode).filter((d) => d.code === "M9550").length, 0);
+
+  const brokenDeck = `SOLUTION 1
+  S(6      12.0
+END
+`;
+  const brokenTree = getPhreeqcWasmParser().parse(brokenDeck);
+  assert.equal(brokenTree?.rootNode.hasError, true);
+  assert.ok(validatePhreeqc(brokenDeck).some((d) => d.code === "M9550" && d.source === "phreeqc-parser"));
+});

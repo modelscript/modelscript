@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { feaToDae } from "./dae/fea-to-dae.js";
 import { parseFeaDeck } from "./dialects/index.js";
 import { lintFeaModel } from "./lints/index.js";
 import { extractFeaSlicingProperties } from "./materializer.js";
 import { feaToModelica } from "./projections/index.js";
 import type { CaeDiagnostic, FeaModelData } from "./types.js";
+import { getFeaWasmParser } from "./wasm-loader.js";
 
 export interface LspPosition {
   line: number;
@@ -83,10 +85,22 @@ export function validateFea(content: string, uri: string = "model.inp"): LspDiag
   try {
     const ext = uri.split(".").pop() ?? "inp";
     const model = parseFeaDeck(content, ext);
+    const syntaxSpans = model.syntaxErrors ?? collectWasmSyntaxErrors(getFeaWasmParser().parse(content)?.rootNode);
+    const syntaxDiags: LspDiagnostic[] = syntaxSpans.map((sp) => ({
+      range: {
+        start: { line: Math.max(0, sp.startLine - 1), character: Math.max(0, sp.startColumn - 1) },
+        end: { line: Math.max(0, sp.endLine - 1), character: Math.max(0, sp.endColumn - 1) },
+      },
+      severity: 1,
+      code: "M7400",
+      source: "modelscript-fea",
+      message: sp.message,
+    }));
+
     const diags = lintFeaModel(model);
     const lines = content.split(/\r?\n/);
 
-    return diags.map((d) => {
+    const semanticDiags: LspDiagnostic[] = diags.map((d) => {
       const lineNum = d.line ? Math.max(0, d.line - 1) : 0;
       const colNum = d.column ? Math.max(0, d.column - 1) : 0;
       const lineLen = lines[lineNum]?.length ?? 1;
@@ -102,6 +116,8 @@ export function validateFea(content: string, uri: string = "model.inp"): LspDiag
         message: d.message,
       };
     });
+
+    return [...syntaxDiags, ...semanticDiags];
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     return [

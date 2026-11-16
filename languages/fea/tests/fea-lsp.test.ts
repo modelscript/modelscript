@@ -222,4 +222,44 @@ Inverted Element & Shell Section Checks
     assert.ok(solveRes.numElements > 0);
     assert.ok(solveRes.maxDisplacementM > 0);
   });
+
+  test("parses Morsel defaultCode and Nastran executive/bulk cards via native WASM GLR with hasError === false and surfaces syntax errors", async () => {
+    const { getFeaWasmParser } = await import("../src/wasm-loader.js");
+    const parser = getFeaWasmParser();
+
+    const morselDefaultCode = `*HEADING
+Cantilever Beam Linear Static Analysis
+*NODE
+1, 0.0, 0.0, 0.0
+2, 1.0, 0.0, 0.0
+*MATERIAL, NAME=STEEL
+*ELASTIC
+210.0E9, 0.3
+*STEP
+*STATIC
+*END STEP
+`;
+    const inpTree = parser.parse(morselDefaultCode);
+    assert.ok(inpTree?.rootNode);
+    assert.equal(inpTree.rootNode.hasError, false);
+
+    const nastranDeck = `$ Nastran Linear Static Deck
+SOL 101
+CEND
+TITLE = Cantilever Beam
+SPC = 1
+LOAD = 1
+BEGIN BULK
+GRID,1,,0.0,0.0,0.0
+GRID,2,,1.0,0.0,0.0
+MAT1,1,2.1+11,,0.3,7850.0
+ENDDATA
+`;
+    const bdfTree = parser.parse(nastranDeck);
+    assert.ok(bdfTree?.rootNode);
+    assert.equal(bdfTree.rootNode.hasError, false);
+
+    const brokenDiags = validateFea("*MATERIAL, NAME=\n{{ 1 + }}\n", "broken.inp");
+    assert.ok(brokenDiags.some((d) => d.code === "M7400" && d.severity === 1));
+  });
 });

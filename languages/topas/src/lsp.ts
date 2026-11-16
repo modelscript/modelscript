@@ -7,6 +7,8 @@
  * completions, go-to-definition, and custom TOPAS / GATE action execution.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { createWasmParserSync } from "@modelscript/topas/wasm-parser";
 import { BUILTIN_GEANT4_NIST_MATERIALS, lintTopasDocument } from "./lints/rules.js";
 import { parseTopas } from "./parser/index.js";
 import { type BraggPeakResult, computeBraggPeakDepthDose, lowerTopasToDae } from "./physics/index.js";
@@ -106,6 +108,11 @@ function toLspRange(r: TopasSourceRange): LspRange {
 export function validateTopas(content: string, sourceUri?: string): LspDiagnostic[] {
   let doc: TopasDocument;
   try {
+    try {
+      getOrLoadLanguageWasmParser("topas", import.meta.url, createWasmParserSync).parse(content);
+    } catch {
+      // Fall back cleanly if WASM parser is unavailable
+    }
     doc = parseTopas(content, sourceUri);
   } catch (err: unknown) {
     return [

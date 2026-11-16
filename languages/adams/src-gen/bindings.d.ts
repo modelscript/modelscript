@@ -1358,26 +1358,88 @@ export declare function createWasmParserSync(
   facade: LspFacade;
   parser: TreeSitterParser;
 };
+/**
+ * Registers a pre-instantiated WebAssembly GLR parser in `globalThis.__msWasmParsers`
+ * so synchronous language parsers and workspace linters can use it inside browser WebWorkers
+ * without Node.js `fs` or `node:module`.
+ */
+export declare function registerPreloadedWasmParser(
+  langId: string,
+  parser: TreeSitterParser | null | undefined,
+  facade?: LspFacade | null,
+): void;
+/**
+ * Retrieves a pre-instantiated WebAssembly GLR parser from `globalThis` if registered
+ * by `ParserService` (browser WebWorker or Node LSP server).
+ */
+export declare function getPreloadedWasmParser(
+  langId: string,
+): TreeSitterParser | undefined;
+/**
+ * Resolves the filesystem path or URL to a language package's `parser.wasm` without `node:module`.
+ */
+export declare function resolveLanguageWasmPath(
+  importMetaUrl: string,
+  langId?: string,
+): string;
+/**
+ * Isomorphic helper that returns the pre-loaded WASM GLR parser in browser WebWorkers
+ * (`globalThis.__msWasmParsers`) and lazily loads `parser.wasm` synchronously in Node.js CLI/tests.
+ */
+export declare function getOrLoadLanguageWasmParser<TParser = TreeSitterParser>(
+  langId: string,
+  importMetaUrl: string,
+  syncFactory?: (wasmPath: string) => {
+    parser: TParser;
+  },
+): TParser;
+export interface WasmSyntaxErrorSpan {
+  message: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+}
+/**
+ * Walks a WASM GLR `SyntaxNode` root and extracts bounded `ERROR` / `isMissing` syntax error spans
+ * (1-indexed lines and columns).
+ */
+export declare function collectWasmSyntaxErrors(
+  rootNode: unknown,
+  maxErrors?: number,
+): WasmSyntaxErrorSpan[];
 
 export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Deck = 23,
-  CardStatement = 24,
-  PartCard = 25,
-  MarkerCard = 26,
-  JointCard = 27,
-  ForceCard = 28,
-  MotionCard = 29,
-  SimulateCard = 30,
-  GenericCard = 31,
-  START = 32,
-  _START = 32,
-  Identifier = 48,
-  NumberLiteral = 49,
-  StringLiteral = 50,
-  Comment = 51,
+  Deck = 25,
+  CardStatement = 26,
+  PartCard = 27,
+  MarkerCard = 28,
+  JointCard = 29,
+  ForceCard = 30,
+  MotionCard = 31,
+  SimulateCard = 32,
+  GenericCard = 33,
+  EndCard = 34,
+  CardArg = 35,
+  ParenExpr = 36,
+  START = 37,
+  _START = 37,
+  PartHeader = 44,
+  MarkerHeader = 45,
+  JointHeader = 46,
+  ForceHeader = 47,
+  MotionHeader = 48,
+  SimulateHeader = 49,
+  GenericHeader = 50,
+  Identifier = 51,
+  NumberLiteral = 52,
+  StringLiteral = 53,
+  Comment = 54,
   EOF = 1023,
 }
 
@@ -1429,6 +1491,46 @@ export interface GenericCardNode extends SyntaxNode {
   readonly typeId: SyntaxKind.GenericCard;
 }
 export declare function isGenericCard(node: SyntaxNode | null | undefined): node is GenericCardNode;
+export interface EndCardNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.EndCard;
+}
+export declare function isEndCard(node: SyntaxNode | null | undefined): node is EndCardNode;
+export interface CardArgNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CardArg;
+}
+export declare function isCardArg(node: SyntaxNode | null | undefined): node is CardArgNode;
+export interface ParenExprNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ParenExpr;
+}
+export declare function isParenExpr(node: SyntaxNode | null | undefined): node is ParenExprNode;
+export interface PartHeaderNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.PartHeader;
+}
+export declare function isPartHeader(node: SyntaxNode | null | undefined): node is PartHeaderNode;
+export interface MarkerHeaderNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.MarkerHeader;
+}
+export declare function isMarkerHeader(node: SyntaxNode | null | undefined): node is MarkerHeaderNode;
+export interface JointHeaderNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.JointHeader;
+}
+export declare function isJointHeader(node: SyntaxNode | null | undefined): node is JointHeaderNode;
+export interface ForceHeaderNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ForceHeader;
+}
+export declare function isForceHeader(node: SyntaxNode | null | undefined): node is ForceHeaderNode;
+export interface MotionHeaderNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.MotionHeader;
+}
+export declare function isMotionHeader(node: SyntaxNode | null | undefined): node is MotionHeaderNode;
+export interface SimulateHeaderNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SimulateHeader;
+}
+export declare function isSimulateHeader(node: SyntaxNode | null | undefined): node is SimulateHeaderNode;
+export interface GenericHeaderNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.GenericHeader;
+}
+export declare function isGenericHeader(node: SyntaxNode | null | undefined): node is GenericHeaderNode;
 export interface IdentifierNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Identifier;
 }
@@ -1504,6 +1606,56 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is GenericCardNode;
+  };
+  export const EndCard: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is EndCardNode;
+  };
+  export const CardArg: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CardArgNode;
+  };
+  export const ParenExpr: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ParenExprNode;
+  };
+  export const PartHeader: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is PartHeaderNode;
+  };
+  export const MarkerHeader: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is MarkerHeaderNode;
+  };
+  export const JointHeader: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is JointHeaderNode;
+  };
+  export const ForceHeader: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ForceHeaderNode;
+  };
+  export const MotionHeader: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is MotionHeaderNode;
+  };
+  export const SimulateHeader: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is SimulateHeaderNode;
+  };
+  export const GenericHeader: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is GenericHeaderNode;
   };
   export const Identifier: {
     readonly typeId: number;

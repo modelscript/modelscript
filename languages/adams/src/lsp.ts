@@ -4,8 +4,9 @@
  * @modelscript/adams — Language Server Protocol (LSP) Service Integration.
  */
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { analyzeAdamsMobility, lintAdamsModel } from "./lints/index.js";
-import { parseAdams } from "./parser/index.js";
+import { getAdamsWasmParser, parseAdams } from "./parser/index.js";
 import type { AdamsDataset } from "./types.js";
 
 export interface LspPosition {
@@ -94,8 +95,35 @@ function findLineAndCol(text: string, searchPattern: string): LspRange {
  * Validates MSC Adams deck and emits LSP diagnostics with M7301-M7310 codes.
  */
 export function validateAdams(content: string): LspDiagnostic[] {
+  const syntaxDiagnostics: LspDiagnostic[] = [];
   let dataset: AdamsDataset;
   try {
+    const cstTree = getAdamsWasmParser().parse(content);
+    for (const err of collectWasmSyntaxErrors(cstTree?.rootNode)) {
+      syntaxDiagnostics.push({
+        range: {
+          start: { line: Math.max(0, err.startLine - 1), character: Math.max(0, err.startColumn - 1) },
+          end: { line: Math.max(0, err.endLine - 1), character: Math.max(0, err.endColumn - 1) },
+        },
+        severity: 1,
+        code: "M7300",
+        source: "adams-parser",
+        message: err.message,
+      });
+    }
+    if (syntaxDiagnostics.length === 0 && cstTree?.rootNode?.hasError) {
+      const ep = cstTree.rootNode.endPosition ?? { row: 0, column: 0 };
+      syntaxDiagnostics.push({
+        range: {
+          start: { line: Math.max(0, ep.row), character: Math.max(0, ep.column - 1) },
+          end: { line: Math.max(0, ep.row), character: Math.max(1, ep.column) },
+        },
+        severity: 1,
+        code: "M7300",
+        source: "adams-parser",
+        message: "Syntax error: incomplete or invalid construct.",
+      });
+    }
     dataset = parseAdams(content);
   } catch (err: unknown) {
     return [
@@ -113,7 +141,7 @@ export function validateAdams(content: string): LspDiagnostic[] {
   }
 
   const rawDiags = lintAdamsModel(dataset);
-  return rawDiags.map((d) => {
+  const semanticDiagnostics: LspDiagnostic[] = rawDiags.map((d) => {
     let sev: 1 | 2 | 3 | 4 = 1;
     if (d.severity === "warning") sev = 2;
     else if (d.severity === "info") sev = 3;
@@ -129,6 +157,8 @@ export function validateAdams(content: string): LspDiagnostic[] {
       message: d.message,
     };
   });
+
+  return [...syntaxDiagnostics, ...semanticDiagnostics];
 }
 
 /**

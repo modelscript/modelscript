@@ -232,13 +232,13 @@ export const feaLanguage = language({
     lineComment: "**",
   },
 
-  extras: () => [/[ \t\r]+/],
+  extras: () => [/[ \t\r\n]+/, /(?:\*\*|\$|#)[^\r\n]*/],
 
   rules: {
     // Root FEA deck rule exposing Salsa instantiation and name-resolution queries
     SourceFile: ($) =>
       def({
-        syntax: repeat(choice($["CommentLine"]!, $["KeywordCard"]!, $["DataLine"]!, $["_newline"]!)),
+        syntax: repeat(choice($["KeywordCard"]!, $["DataToken"]!)),
         symbol: () => ({
           kind: "Class",
           name: "FeaDeck",
@@ -258,48 +258,45 @@ export const feaLanguage = language({
         },
       }),
 
-    CommentLine: () => /(?:\*\*|\$|#)[^\n]*/,
-
-    _newline: () => /\n/,
-
     // Abaqus/CalculiX keyword card (`*KEYWORD, PARAM=VAL`) indexed as a Section symbol
     KeywordCard: ($) =>
       def({
-        syntax: seq(
-          "*",
-          field("name", $["CARD_NAME"]!),
-          optional(
-            seq(
-              ",",
-              field("parameter", choice($["IDENTIFIER"]!, $["NUMBER"]!, $["STRING"]!, $["EmbeddedExpression"]!)),
-            ),
+        syntax: prec.right(
+          2,
+          seq(
+            field("name", $["CARD_HEADER"]!),
+            repeat(seq(",", choice($["ParameterAssignment"]!, field("parameter", $["KeywordScalar"]!)))),
           ),
-          repeat(seq(",", choice($["ParameterAssignment"]!, $["OptionFlag"]!))),
-          choice($["_newline"]!, optional(/\r?\n/)),
         ),
         symbol: (self: Record<string, string>) => ({
           kind: "Section",
-          name: self["name"] ?? "KEYWORD",
+          name: (self["name"] ?? "*KEYWORD").replace(/^\*/, ""),
         }),
       }),
 
+    KeywordScalar: ($) =>
+      choice($["IDENTIFIER"]!, $["QUALIFIED_IDENT"]!, $["NUMBER"]!, $["STRING"]!, $["EmbeddedExpression"]!),
+
     ParameterAssignment: ($) =>
-      seq(
-        field("param", $["IDENTIFIER"]!),
+      prec(3, seq(field("param", $["IDENTIFIER"]!), "=", field("value", $["KeywordScalar"]!))),
+
+    DataToken: ($) =>
+      choice(
+        $["NUMBER"]!,
+        $["IDENTIFIER"]!,
+        $["QUALIFIED_IDENT"]!,
+        $["STRING"]!,
+        $["EmbeddedExpression"]!,
+        seq("(", repeat($["DataToken"]!), ")"),
+        ",",
         "=",
-        field("value", choice($["IDENTIFIER"]!, $["NUMBER"]!, $["STRING"]!, $["EmbeddedExpression"]!)),
+        ":",
+        "-",
+        "+",
+        "/",
+        "&",
+        ".",
       ),
-
-    OptionFlag: ($) => field("flag", $["IDENTIFIER"]!),
-
-    DataLine: ($) =>
-      seq(
-        choice($["DataItem"]!, $["EmbeddedExpression"]!),
-        repeat(seq(",", choice($["DataItem"]!, $["EmbeddedExpression"]!))),
-        choice($["_newline"]!, optional(/\r?\n/)),
-      ),
-
-    DataItem: ($) => choice($["NUMBER"]!, $["IDENTIFIER"]!, $["STRING"]!),
 
     // Embedded template expression (`{{ expr }}`) for parametric FEA deck materialization
     EmbeddedExpression: ($) =>
@@ -322,14 +319,29 @@ export const feaLanguage = language({
 
     UnaryExpression: ($) => prec(PREC.UNARY, seq(choice("+", "-"), $["Expression"]!)),
 
+    CallExpression: ($) =>
+      seq(
+        field("callee", $["QualifiedIdentifier"]!),
+        "(",
+        optional(seq($["Expression"]!, repeat(seq(",", $["Expression"]!)))),
+        ")",
+      ),
+
     PrimaryExpression: ($) =>
-      choice($["QualifiedIdentifier"]!, $["NUMBER"]!, $["STRING"]!, seq("(", $["Expression"]!, ")")),
+      choice(
+        $["CallExpression"]!,
+        $["QualifiedIdentifier"]!,
+        $["NUMBER"]!,
+        $["STRING"]!,
+        seq("(", $["Expression"]!, ")"),
+      ),
 
-    QualifiedIdentifier: ($) => seq($["IDENTIFIER"]!, repeat(seq(".", $["IDENTIFIER"]!))),
+    QualifiedIdentifier: ($) => choice($["IDENTIFIER"]!, $["QUALIFIED_IDENT"]!),
 
-    CARD_NAME: () => /[A-Za-z_][A-Za-z0-9_]*(?:[ \t]+[A-Za-z_][A-Za-z0-9_]*)*/,
+    CARD_HEADER: () => /\*[A-Za-z_][A-Za-z0-9_-]*(?:[ \t]+[A-Za-z_][A-Za-z0-9_-]*)*/,
+    QUALIFIED_IDENT: () => /[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+/,
     IDENTIFIER: () => /[A-Za-z_][A-Za-z0-9_]*/,
-    NUMBER: () => /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/,
-    STRING: () => /"[^"\\]*(?:\\.[^"\\]*)*"/,
+    NUMBER: () => /[+-]?(?:(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+|[+-]\d+)?|\d+(?:[eE][+-]?\d+)?)/,
+    STRING: () => /"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'/,
   },
 });

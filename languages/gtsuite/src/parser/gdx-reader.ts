@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/gtsuite/wasm-parser";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type { GtSimulationResult, GtSimulationResultPoint } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getGtSuiteWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/gtsuite/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("gtsuite", import.meta.url, createWasmParserSync);
 }
 
 /**

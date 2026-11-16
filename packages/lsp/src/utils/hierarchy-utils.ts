@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { ClassHierarchyNode, ComponentTreeNode, TreeNodeInfo } from "@modelscript/runtime";
+import {
+  globalLibraryRegistry,
+  type ClassHierarchyNode,
+  type ComponentTreeNode,
+  type TreeNodeInfo,
+} from "@modelscript/runtime";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import {
   getOntologyCategoryNodes,
@@ -172,6 +177,14 @@ export function normalizeLibraryName(rawName: string): string {
   if (trimmed === "SysML2 Standard Library" || trimmed === "SysML v2 Standard Library" || trimmed === "SysML") {
     return "SysML";
   }
+  if (
+    trimmed === "@modelscript/pscad-master-lib" ||
+    trimmed === "pscad-master-lib" ||
+    trimmed === "PSCAD Master Library" ||
+    trimmed === "MASTER"
+  ) {
+    return "MASTER";
+  }
   return trimmed;
 }
 
@@ -337,6 +350,35 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
     if (parentId.startsWith("__OWL_INDIVIDUALS__:")) {
       return getOwlIndividualTreeNodes(store);
     }
+    if (parentId.startsWith("__LIB_CAT__:")) {
+      const rest = parentId.slice("__LIB_CAT__:".length);
+      const colonIdx = rest.indexOf(":");
+      const libName = colonIdx >= 0 ? rest.slice(0, colonIdx) : rest;
+      const category = colonIdx >= 0 ? rest.slice(colonIdx + 1) : "";
+      const normLib = normalizeLibraryName(libName);
+      for (const pkg of globalLibraryRegistry.getPackagesForLanguage("pscad")) {
+        if (normalizeLibraryName(pkg.packageName) !== normLib) continue;
+        for (const sym of pkg.symbols) {
+          const symCat = String((sym.metadata as Record<string, unknown> | undefined)?.["category"] ?? "Components");
+          if (symCat !== category) continue;
+          const id = sym.namePath || sym.name;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          const label = (sym.metadata as Record<string, unknown> | undefined)?.["label"];
+          nodes.push({
+            id,
+            name: sym.name,
+            compositeName: id,
+            classKind: "class",
+            description: typeof label === "string" ? label : undefined,
+            icon: "circuit-board",
+            hasChildren: false,
+            language: "pscad",
+          });
+        }
+      }
+      return nodes;
+    }
   }
 
   if (!parentId) {
@@ -347,6 +389,12 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
 
     for (const [libKey, meta] of mountedLibraryMetadata.entries()) {
       libraryVersions.set(libKey, meta.version);
+    }
+    for (const pkg of globalLibraryRegistry.getPackagesForLanguage("pscad")) {
+      const norm = normalizeLibraryName(pkg.packageName);
+      if (!libraryVersions.has(norm)) {
+        libraryVersions.set(norm, pkg.version);
+      }
     }
 
     for (const id of rootChildIds) {
@@ -402,7 +450,13 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
         hasChildren: true,
         language:
           meta?.language ??
-          (libName.includes("SysML") ? "sysml2" : libName === "PSSE-Standard-Dynamics" ? "psse" : "modelica"),
+          (libName.includes("SysML")
+            ? "sysml2"
+            : libName === "PSSE-Standard-Dynamics"
+              ? "psse"
+              : libName === "MASTER"
+                ? "pscad"
+                : "modelica"),
       });
     }
 
@@ -441,6 +495,35 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
   } else if (parentId.startsWith("__LIB__:")) {
     // Return root children belonging to this library (supporting legacy stdlib aliases)
     const libName = normalizeLibraryName(parentId.substring("__LIB__:".length));
+
+    // Check if this library is a package.json#modelscript symbol bundle (e.g. PSCAD MASTER)
+    const pscadPkgs = globalLibraryRegistry
+      .getPackagesForLanguage("pscad")
+      .filter((p) => normalizeLibraryName(p.packageName) === libName);
+    if (pscadPkgs.length > 0) {
+      const categories = new Map<string, number>();
+      for (const pkg of pscadPkgs) {
+        for (const sym of pkg.symbols) {
+          const cat = String((sym.metadata as Record<string, unknown> | undefined)?.["category"] ?? "Components");
+          categories.set(cat, (categories.get(cat) ?? 0) + 1);
+        }
+      }
+      for (const [cat, count] of categories.entries()) {
+        const catId = `__LIB_CAT__:${libName}:${cat}`;
+        nodes.push({
+          id: catId,
+          name: cat,
+          compositeName: catId,
+          classKind: "package",
+          description: `${count} components`,
+          icon: "package",
+          hasChildren: true,
+          language: "pscad",
+        });
+      }
+      return nodes;
+    }
+
     const rootChildIds = getRootChildIds(index);
     for (const id of rootChildIds) {
       const entry = index.symbols.get(id);

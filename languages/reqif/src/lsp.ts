@@ -7,10 +7,11 @@
  * hover documentation, and formal entailment inspection for OMG ReqIF 1.2.
  */
 
-import { parseXml } from "@modelscript/dsl/xml";
+import { xmlErrorToLspRange } from "@modelscript/dsl/xml";
 import type { SymbolEntry, UnifiedWorkspace } from "@modelscript/runtime";
 import { lintReqIf } from "./lints/index.js";
 import { parseReqIf } from "./parser/reqif-parser.js";
+import { parseReqIfXmlDocument } from "./parser/wasm-loader.js";
 import type { ReqIfDocument, ReqIfSpecHierarchy, ReqIfSpecObject, SourceSpan } from "./types.js";
 
 export interface LspPosition {
@@ -85,12 +86,27 @@ export interface LspHover {
 /**
  * Validates a ReqIF document text and produces LSP diagnostics.
  */
-export function validateReqif(content: string): LspDiagnostic[] {
-  const xml = parseXml(content);
+export function validateReqif(content: string, cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
+  const xml = parseReqIfXmlDocument(content, cstTree);
   const diags: LspDiagnostic[] = [];
 
   if (xml.errors && xml.errors.length > 0) {
-    for (const _err of xml.errors) {
+    for (const err of xml.errors) {
+      diags.push({
+        range: xmlErrorToLspRange(content, err),
+        severity: 1,
+        code: "REQIF-PARSE-ERROR",
+        source: "reqif",
+        message: err.message || "XML syntax error in ReqIF document",
+      });
+    }
+  }
+
+  let doc: ReqIfDocument;
+  try {
+    doc = parseReqIf(content, { cstTree });
+  } catch (err: unknown) {
+    if (diags.length === 0) {
       diags.push({
         range: {
           start: { line: 0, character: 0 },
@@ -99,25 +115,9 @@ export function validateReqif(content: string): LspDiagnostic[] {
         severity: 1,
         code: "REQIF-PARSE-ERROR",
         source: "reqif",
-        message: "XML syntax error in ReqIF document",
+        message: (err instanceof Error ? err.message : String(err)) || "Failed to parse ReqIF XML document",
       });
     }
-  }
-
-  let doc: ReqIfDocument;
-  try {
-    doc = parseReqIf(content);
-  } catch (err: unknown) {
-    diags.push({
-      range: {
-        start: { line: 0, character: 0 },
-        end: { line: 0, character: 1 },
-      },
-      severity: 1,
-      code: "REQIF-PARSE-ERROR",
-      source: "reqif",
-      message: (err instanceof Error ? err.message : String(err)) || "Failed to parse ReqIF XML document",
-    });
     return diags;
   }
 

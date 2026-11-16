@@ -155,6 +155,108 @@ export function useVisiblePlaygroundLanguages(): PlaygroundLanguageOption[] {
   return useMemo(() => getVisiblePlaygroundLanguages(isEnabled), [isEnabled]);
 }
 
+export const PINNED_PLAYGROUND_LANGUAGE_IDS = ["modelica", "sysml2", "scad", "spice", "pscad", "step"] as const;
+
+export const PLAYGROUND_LANGUAGE_DOMAINS: ReadonlyArray<{ title: string; ids: readonly string[] }> = [
+  {
+    title: "Core Systems & Modeling",
+    ids: ["modelica", "modelscript", "ampl", "sysml2", "ssp", "reqif", "oscal", "owl2", "csv"],
+  },
+  {
+    title: "Power Grids, RF & Electronics",
+    ids: [
+      "pscad",
+      "psse",
+      "cgmes",
+      "opendss",
+      "powerfactory",
+      "pslf",
+      "ocpp",
+      "openadr",
+      "spice",
+      "verilog-a",
+      "ibis",
+      "touchstone",
+      "optical",
+      "ran",
+      "fiber",
+      "matpower",
+      "comtrade",
+      "scl",
+      "atp",
+      "dnp3",
+      "oneliner",
+      "sel",
+    ],
+  },
+  {
+    title: "Fluids, Process & Civil Water",
+    ids: [
+      "olga",
+      "lps",
+      "aspen",
+      "eclipse",
+      "epanet",
+      "swmm",
+      "relap5",
+      "energyplus",
+      "hec-ras",
+      "tough",
+      "modflow",
+      "landgem",
+      "hec-hms",
+      "waterml",
+      "asm",
+    ],
+  },
+  {
+    title: "Multibody, Auto, Robotics & Rail",
+    ids: ["adams", "simpack", "gensys", "gtsuite", "sima", "urdf", "opendrive", "openscenario", "autosar", "gtfs"],
+  },
+  {
+    title: "Aerospace & Controls",
+    ids: ["simulink", "easy5", "jsbsim", "rocets", "ccsds", "plcopen", "automationml"],
+  },
+  {
+    title: "3D CAD, Metrology & Physics",
+    ids: ["step", "qif", "scad", "usd", "fea", "cfd"],
+  },
+  {
+    title: "Chemistry, Biology & Scientific",
+    ids: [
+      "sbml",
+      "antimony",
+      "cantera",
+      "smiles",
+      "nmtran",
+      "mlxtran",
+      "nmodl",
+      "sbol",
+      "bngl",
+      "sedml",
+      "pdb",
+      "genbank",
+      "gproms",
+      "phreeqc",
+      "fortran",
+      "c",
+    ],
+  },
+  {
+    title: "Medical & Biomechanics",
+    ids: ["opensim", "dicom-rt", "cellml", "febio", "nifti", "topas", "three-mf", "igtl"],
+  },
+];
+
+export function getPlaygroundLanguageDomain(langId: string): string {
+  for (const group of PLAYGROUND_LANGUAGE_DOMAINS) {
+    if (group.ids.includes(langId)) {
+      return group.title;
+    }
+  }
+  return "Other";
+}
+
 export const DEFAULT_EMPTY_MODELICA_CODE = `model Untitled "Untitled engineering model"
   annotation(
     Icon(coordinateSystem(preserveAspectRatio = false, extent = {{-100, -100}, {100, 100}})),

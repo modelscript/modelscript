@@ -10,7 +10,7 @@
  * typed attribute values, and hierarchical specification structures with ZERO regex.
  */
 
-import { parseXml, type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
+import { type XmlAttribute, type XmlElement } from "@modelscript/dsl/xml";
 import { defaultContainerToolkit } from "@modelscript/runtime";
 import type {
   AsilLevel,
@@ -33,6 +33,7 @@ import type {
   ReqIfSpecTypeKind,
   SourceSpan,
 } from "../types.js";
+import { parseReqIfXmlDocument } from "./wasm-loader.js";
 
 function localName(tag: string): string {
   const idx = tag.indexOf(":");
@@ -449,7 +450,7 @@ export function extractFormalContract(
   options?: ExtractContractOptions | ContractPolicy,
 ): ReqIfContract | undefined {
   if (!text) return undefined;
-  const policy: ContractPolicy = typeof options === "string" ? options : options?.policy ?? "permissive";
+  const policy: ContractPolicy = typeof options === "string" ? options : (options?.policy ?? "permissive");
 
   const normalized = text
     .replace(/<\/?[a-zA-Z][^<>]*>/g, " ")
@@ -562,13 +563,14 @@ export function extractAsilLevel(text: string): AsilLevel | undefined {
 
 export interface ParseReqIfOptions {
   contractPolicy?: ContractPolicy | undefined;
+  cstTree?: { rootNode?: unknown } | null | undefined;
 }
 
 /**
  * Parses a ReqIF XML document into a strongly-typed ReqIfDocument.
  */
 export function parseReqIf(xmlContent: string, options?: ParseReqIfOptions): ReqIfDocument {
-  const doc = parseXml(xmlContent);
+  const doc = parseReqIfXmlDocument(xmlContent, options?.cstTree);
   if (!doc.root) {
     throw new Error("ReqIF XML document has no root element");
   }

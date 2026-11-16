@@ -188,23 +188,8 @@ export function ensureDiagramStyles(): void {
       outline: none !important;
     }
 
-    .modelscript-hover-halo text,
-    .modelscript-hover-halo tspan,
-    .modelscript-hover-halo .x6-port,
-    .modelscript-hover-halo g[class*="port"] {
-      filter: none !important;
-      outline: none !important;
-    }
-
-    .modelscript-hover-halo > svg,
-    .modelscript-hover-halo > image,
-    .modelscript-hover-halo > rect:not([class*="port"]),
-    .modelscript-hover-halo > circle:not([class*="port"]),
-    .modelscript-hover-halo > polygon,
-    .modelscript-hover-halo > path:not([class*="port"]),
-    .modelscript-hover-halo [selector="body"] {
-      filter: drop-shadow(0 0 5px rgba(14, 165, 233, 0.7)) drop-shadow(0 0 1.5px rgba(14, 165, 233, 0.85)) !important;
-      transition: filter 0.15s ease;
+    .modelscript-hover-glow {
+      pointer-events: none !important;
     }
 
     [data-cell-id="__drop_placeholder__"],
@@ -482,12 +467,12 @@ export function ensureDiagramStyles(): void {
       align-items: center;
       gap: 3px;
       padding: 4px 6px;
-      background: var(--ms-bg-soft, var(--vscode-editorWidget-background, #1e293b));
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      border: 1px solid var(--ms-border, var(--vscode-widget-border, rgba(148, 163, 184, 0.25)));
-      border-radius: 9px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24), 0 2px 6px rgba(0, 0, 0, 0.14);
+      background: var(--ms-surface-glass, var(--vscode-editorWidget-background, rgba(255, 255, 255, 0.94)));
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--borderColor-muted, var(--ms-divider, var(--vscode-widget-border, rgba(15, 23, 42, 0.08))));
+      border-radius: var(--ms-radius-lg, 12px);
+      box-shadow: var(--ms-shadow-card, 0 8px 24px -4px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08));
       user-select: none;
       white-space: nowrap;
       font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;

@@ -426,3 +426,42 @@ test("GenBank UnifiedWorkspace & LSP: indexes symbols, validates, hovers, comple
   assert.equal(genbankLanguage.name, "genbank");
   assert.deepEqual(genbankLanguage.fileExtensions, [".gb", ".gbk", ".fasta", ".fa"]);
 });
+
+test("GenBank WASM GLR Parser & LSP: parses Morsel defaultCode without error and reports syntax errors", async () => {
+  const { getGenbankWasmParser } = await import("../src/parser/wasm-loader.js");
+  const { collectWasmSyntaxErrors } = await import("@modelscript/dsl");
+
+  const morselDefaultCode = `LOCUS       pUC19_Vector              180 bp ds-DNA     circular SYN 14-APR-2026
+DEFINITION  Cloning vector pUC19 annotated origin and AmpR cassette.
+ACCESSION   MSX_PUC19
+FEATURES             Location/Qualifiers
+     rep_origin      1..60
+                     /label="pMB1_ori"
+     CDS             61..180
+                     /gene="bla"
+ORIGIN
+        1 tcgcgcgttt cggtgatgac ggtgaaaacc tctgacacat gcagctcccg gagacggtca
+       61 cagcttgtct gtaagcggat gccgggagca gacaagcccg tcagggcgcg tcagcgggtg
+      121 ttggcgggtg tcggggctgg cttaactatg cggcatcaga gcagattgta ctgagagtgc
+//
+`;
+
+  const tree = getGenbankWasmParser().parse(morselDefaultCode);
+  assert.ok(tree?.rootNode);
+  assert.equal(tree.rootNode.hasError, false);
+  assert.equal(collectWasmSyntaxErrors(tree.rootNode).length, 0);
+  assert.equal(validateGenbank(morselDefaultCode).filter((d) => d.code === "M9350").length, 0);
+
+  const fastaTree = getGenbankWasmParser().parse(MULTI_RECORD_FASTA);
+  assert.equal(fastaTree?.rootNode.hasError, false);
+
+  const brokenGb = `LOCUS       pBroken                    60 bp ds-DNA     circular SYN 14-APR-2026
+FEATURES             Location/Qualifiers
+     CDS             complement(1..60
+ORIGIN
+        1 tcgcgcgttt
+`;
+  const brokenTree = getGenbankWasmParser().parse(brokenGb);
+  assert.equal(brokenTree?.rootNode.hasError, true);
+  assert.ok(validateGenbank(brokenGb).some((d) => d.code === "M9350" && d.source === "genbank-parser"));
+});

@@ -13,6 +13,7 @@ import EnterpriseUpgradeModal from "./components/EnterpriseUpgradeModal";
 import ErrorBoundary from "./components/ErrorBoundary";
 import KeyboardShortcutsModal from "./components/KeyboardShortcutsModal";
 import MaintenanceExperienceHost from "./components/MaintenanceExperienceHost";
+import { MorselLoadingScreen } from "./components/morsel/MorselLoadingScreen";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { RealtimeNotificationListener } from "./components/RealtimeNotificationListener";
 import RequireAuth from "./components/RequireAuth";
@@ -116,10 +117,23 @@ const SpaceChatPage = lazyWithRetry(() => import("./pages/SpaceChatPage"));
 const SpacePage = lazyWithRetry(() => import("./pages/SpacePage"));
 const SpacesExplorePage = lazyWithRetry(() => import("./pages/SpacesExplorePage"));
 
+function isMorselRoute(pathname: string): boolean {
+  return /^\/(?:embed\/)?(?:morsel|sketch|playground)(?:\/|$)/.test(pathname);
+}
+
 /**
  * Skeleton loading placeholder rendered while lazy-loaded route bundles are fetched.
+ * Renders the Morsel loading screen directly on Morsel routes so the Ansatz skeleton
+ * never flashes before Morsel mounts.
  */
 function PageLoadingFallback() {
+  const location = useLocation();
+  const { theme } = useTheme();
+
+  if (isMorselRoute(location.pathname)) {
+    return <MorselLoadingScreen colorMode={theme === "dark" ? "dark" : "light"} />;
+  }
+
   return (
     <div
       style={{

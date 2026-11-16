@@ -4,6 +4,8 @@
  * @modelscript/verilog-a — Language Server Protocol (LSP) Service Integration.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { createWasmParserSync } from "@modelscript/verilog-a/wasm-parser";
 import { lowerVerilogAToDae } from "./dae/verilog-a-to-dae.js";
 import { lintVerilogA } from "./lints/rules.js";
 import { parseVerilogA } from "./parser/verilog-a-parser.js";
@@ -78,6 +80,11 @@ export interface LspHover {
 export function validateVerilogA(content: string): LspDiagnostic[] {
   let doc: VerilogADocument;
   try {
+    try {
+      getOrLoadLanguageWasmParser("verilog-a", import.meta.url, createWasmParserSync).parse(content);
+    } catch {
+      // Fall back cleanly if WASM parser is unavailable
+    }
     doc = parseVerilogA(content);
   } catch (err: unknown) {
     return [

@@ -29,8 +29,9 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
       stylesContent.includes(".segmentedControl-text"),
       "Icon-only collapse must target .segmentedControl-text so icons remain visible",
     );
+    const subHeaderPath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselViewSubHeader.tsx");
     assert.ok(
-      fs.readFileSync(navbarPath, "utf-8").includes("aria-label={tab.label}"),
+      fs.readFileSync(subHeaderPath, "utf-8").includes("aria-label={tab.label}"),
       "View tabs must set aria-label because display:none labels leave the accessibility tree",
     );
     // Border and background fallbacks must use design tokens instead of white fallbacks
@@ -282,7 +283,7 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     );
     assert.ok(
       cssContent.includes(".modelscript-alignment-toolbar") &&
-        cssContent.includes("var(--ms-bg-soft") &&
+        cssContent.includes("var(--ms-surface-glass") &&
         (cssContent.includes("backdrop-filter: blur(12px)") ||
           cssContent.includes("backdrop-filter: blur(14px)") ||
           cssContent.includes("backdrop-filter: blur(")),

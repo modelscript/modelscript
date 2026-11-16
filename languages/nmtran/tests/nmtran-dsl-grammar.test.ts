@@ -70,5 +70,32 @@ $ESTIMATION METHOD=1 INTER MAXEVAL=9999
     assert.ok(tree, "Parser should return a Tree");
     assert.ok(tree.rootNode, "Tree should have rootNode");
     assert.equal(tree.rootNode.type, "ControlStream");
+    assert.equal(tree.rootNode.hasError, false);
+
+    const { getNmtranWasmParser } = await import("../src/parser/wasm-loader.js");
+    const { validateNmtran } = await import("../src/lsp.js");
+    const morselDefaultCode = `$PROBLEM Two-Compartment Oral & IV Population PK Model
+$INPUT ID TIME AMT DV CMT EVID MDV WT
+$DATA oral_pk_study.csv IGNORE=@
+$SUBROUTINES ADVAN4 TRANS4
+$PK
+  CL = THETA(1) * EXP(ETA(1))
+  V2 = THETA(2) * EXP(ETA(2))
+  Q  = THETA(3)
+  V3 = THETA(4)
+  KA = THETA(5)
+$THETA
+  (0.1, 4.5, 25.0) ; POP_CL [L/h]
+  (1.0, 28.0, 120.0) ; POP_V2 [L]
+$OMEGA 0.09 0.06
+$SIGMA 0.04
+$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999
+`;
+    const morselTree = getNmtranWasmParser().parse(morselDefaultCode);
+    assert.ok(morselTree?.rootNode);
+    assert.equal(morselTree.rootNode.hasError, false);
+
+    const brokenDiags = validateNmtran("$PROBLEM Bad\n$PK\n  CL = (1 + * )\n");
+    assert.ok(brokenDiags.some((d) => d.code === "M9400" && d.severity === 1));
   });
 });

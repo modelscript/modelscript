@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
 import type {
   Complex,
   FrequencyUnit,
@@ -10,6 +11,9 @@ import type {
   TouchstonePoint,
   TouchstoneVersion,
 } from "../types.js";
+import { getTouchstoneWasmParser } from "./wasm-loader.js";
+
+export * from "./wasm-loader.js";
 
 /**
  * Character classification utilities for zero-regex parsing.
@@ -61,10 +65,34 @@ export function toComplex(v1: number, v2: number, format: ParameterFormat): Comp
   return { re: v1, im: v2 };
 }
 
+function splitLineWords(s: string): string[] {
+  const out: string[] = [];
+  let i = 0;
+  const n = s.length;
+  while (i < n) {
+    while (i < n && isWhitespace(s[i]!)) i++;
+    if (i >= n) break;
+    let tok = "";
+    while (i < n && !isWhitespace(s[i]!)) {
+      tok += s[i]!;
+      i++;
+    }
+    if (tok.length > 0) out.push(tok);
+  }
+  return out;
+}
+
 /**
- * Parse Touchstone string content into a TouchstoneDeck AST.
+ * Parse Touchstone string content into a TouchstoneDeck AST using the native WASM GLR CST.
  */
-export function parseTouchstone(content: string, filename?: string): TouchstoneDeck {
+export function parseTouchstone(
+  content: string,
+  filename?: string,
+  existingTree?: { rootNode?: unknown } | null,
+): TouchstoneDeck {
+  const cstTree = existingTree ?? getTouchstoneWasmParser().parse(content);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode as CstNodeLike | null | undefined);
+
   const comments: string[] = [];
   let version: TouchstoneVersion = "1.0";
   let numPorts = 0;
@@ -95,10 +123,6 @@ export function parseTouchstone(content: string, filename?: string): TouchstoneD
   const invalidTokens: { token: string; line: number }[] = [];
   const incompleteRows: { expected: number; received: number; line: number }[] = [];
 
-  const len = content.length;
-  let idx = 0;
-  let line = 1;
-
   interface Token {
     text: string;
     line: number;
@@ -106,67 +130,24 @@ export function parseTouchstone(content: string, filename?: string): TouchstoneD
 
   const dataTokens: Token[] = [];
 
-  while (idx < len) {
-    const ch = content[idx]!;
+  for (const { row, tokens: cstTokens } of cstLines) {
+    const line = row + 1;
+    let lineText = cstLineText(content, cstTokens);
 
-    // Newlines
-    if (ch === "\n") {
-      line++;
-      idx++;
-      continue;
-    }
-    if (ch === "\r") {
-      if (idx + 1 < len && content[idx + 1] === "\n") {
-        idx++;
-      }
-      line++;
-      idx++;
-      continue;
+    const bangIdx = lineText.indexOf("!");
+    if (bangIdx !== -1) {
+      comments.push(lineText.slice(bangIdx + 1).trim());
+      lineText = lineText.slice(0, bangIdx);
     }
 
-    // Whitespace
-    if (isWhitespace(ch)) {
-      idx++;
-      continue;
-    }
-
-    // Comment line: starts with '!'
-    if (ch === "!") {
-      let commentText = "";
-      idx++; // skip '!'
-      while (idx < len && content[idx] !== "\n" && content[idx] !== "\r") {
-        commentText += content[idx];
-        idx++;
-      }
-      comments.push(commentText.trim());
-      continue;
-    }
+    const trimmed = lineText.trim();
+    if (trimmed.length === 0) continue;
 
     // Option line: starts with '#'
-    if (ch === "#") {
+    if (trimmed.startsWith("#")) {
       hasOptionLine = true;
       options.line = line;
-      let optLine = "";
-      idx++; // skip '#'
-      while (idx < len && content[idx] !== "\n" && content[idx] !== "\r") {
-        optLine += content[idx];
-        idx++;
-      }
-
-      // Parse tokens from option line manually
-      let oIdx = 0;
-      const oLen = optLine.length;
-      const optTokens: string[] = [];
-      while (oIdx < oLen) {
-        while (oIdx < oLen && isWhitespace(optLine[oIdx]!)) oIdx++;
-        if (oIdx >= oLen) break;
-        let tok = "";
-        while (oIdx < oLen && !isWhitespace(optLine[oIdx]!)) {
-          tok += optLine[oIdx]!;
-          oIdx++;
-        }
-        if (tok.length > 0) optTokens.push(tok.toUpperCase());
-      }
+      const optTokens = splitLineWords(trimmed.slice(1)).map((w) => w.toUpperCase());
 
       for (let t = 0; t < optTokens.length; t++) {
         const tok = optTokens[t]!;
@@ -195,23 +176,10 @@ export function parseTouchstone(content: string, filename?: string): TouchstoneD
     }
 
     // Keyword line (Touchstone 2.0 tags like [Version], [Number of Ports], etc.)
-    if (ch === "[") {
-      let keyword = "";
-      idx++; // skip '['
-      while (idx < len && content[idx] !== "]" && content[idx] !== "\n" && content[idx] !== "\r") {
-        keyword += content[idx];
-        idx++;
-      }
-      if (idx < len && content[idx] === "]") idx++; // skip ']'
-      const kw = keyword.trim().toUpperCase();
-
-      // Read remainder of line for keyword argument
-      let argLine = "";
-      while (idx < len && content[idx] !== "\n" && content[idx] !== "\r") {
-        argLine += content[idx];
-        idx++;
-      }
-      const arg = argLine.trim();
+    if (trimmed.startsWith("[")) {
+      const closeIdx = trimmed.indexOf("]");
+      const kw = (closeIdx !== -1 ? trimmed.slice(1, closeIdx) : trimmed.slice(1)).trim().toUpperCase();
+      const arg = closeIdx !== -1 ? trimmed.slice(closeIdx + 1).trim() : "";
 
       if (kw === "VERSION") {
         if (arg.startsWith("2")) version = "2.0";
@@ -222,21 +190,9 @@ export function parseTouchstone(content: string, filename?: string): TouchstoneD
       continue;
     }
 
-    // Numeric or word token
-    const tokenStartLine = line;
-    let tok = "";
-    while (
-      idx < len &&
-      !isWhitespace(content[idx]!) &&
-      content[idx] !== "!" &&
-      content[idx] !== "#" &&
-      content[idx] !== "["
-    ) {
-      tok += content[idx]!;
-      idx++;
-    }
-    if (tok.length > 0) {
-      dataTokens.push({ text: tok, line: tokenStartLine });
+    // Numeric or word data tokens
+    for (const tok of splitLineWords(trimmed)) {
+      dataTokens.push({ text: tok, line });
     }
   }
 

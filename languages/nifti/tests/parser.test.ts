@@ -73,4 +73,43 @@ Segment0_LabelValue:=1
     assert.strictEqual(xmlDoc.format, "xml");
     assert.strictEqual(xmlDoc.title, "CorticalAtlas");
   });
+
+  it("parses Morsel defaultCode (.nii.json) and NRRD headers via native WASM GLR with hasError === false and surfaces syntax errors", async () => {
+    const { getNiftiWasmParser } = await import("../src/parser/wasm-loader.js");
+    const { validateNifti } = await import("../src/lsp.js");
+    const parser = getNiftiWasmParser();
+
+    const morselDefaultCode = `{
+  "nifti_version": 1,
+  "magic": "n+1",
+  "descrip": "MNI152 T1w 1mm Isotropic Structural Brain Volume",
+  "dim": [3, 182, 218, 182, 1, 1, 1, 1],
+  "pixdim": [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+  "datatype": "INT16",
+  "qform_code": 4,
+  "sform_code": 4,
+  "srow_x": [-1.0, 0.0, 0.0, 90.0],
+  "srow_y": [0.0, 1.0, 0.0, -126.0],
+  "srow_z": [0.0, 0.0, 1.0, -72.0]
+}
+`;
+    const jsonTree = parser.parse(morselDefaultCode);
+    assert.ok(jsonTree?.rootNode);
+    assert.strictEqual(jsonTree.rootNode.hasError, false);
+
+    const nrrdHeader = `NRRD0004
+# NRRD clinical brain header
+type: int16
+dimension: 3
+sizes: 128 128 64
+spacings: 1.0 1.0 1.5
+Segment0_Name:=Cortex
+`;
+    const nrrdTree = parser.parse(nrrdHeader);
+    assert.ok(nrrdTree?.rootNode);
+    assert.strictEqual(nrrdTree.rootNode.hasError, false);
+
+    const brokenDiags = validateNifti('{"nifti_version": 1, "dim": [3, }');
+    assert.ok(brokenDiags.some((d) => d.code === "M9500" && d.severity === 1));
+  });
 });

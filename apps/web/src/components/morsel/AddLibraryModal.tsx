@@ -118,47 +118,24 @@ function formatSize(bytes?: number): string {
   return `${Math.round(bytes / 1024)} KB`;
 }
 
-function setComponentDragPreview(e: React.DragEvent, svgMarkup: string, shortName: string, isDark: boolean): void {
+function setComponentDragPreview(e: React.DragEvent, _svgMarkup: string, _shortName: string, _isDark: boolean): void {
   if (typeof document === "undefined") return;
-  const ghost = document.createElement("div");
-  ghost.style.position = "fixed";
-  ghost.style.top = "-9999px";
-  ghost.style.left = "-9999px";
-  ghost.style.width = "64px";
-  ghost.style.height = "52px";
-  ghost.style.display = "flex";
-  ghost.style.alignItems = "center";
-  ghost.style.justifyContent = "center";
-  ghost.style.backgroundColor = isDark ? "#1e1e22" : "#ffffff";
-  ghost.style.color = isDark ? "#f4f4f5" : "#18181b";
-  ghost.style.borderRadius = "10px";
-  ghost.style.border = "1.5px solid var(--ms-brand, #0891b2)";
-  ghost.style.boxShadow = "0 10px 24px rgba(0, 0, 0, 0.35)";
-  ghost.style.pointerEvents = "none";
-  ghost.style.zIndex = "999999";
-  ghost.style.padding = "4px";
-
-  if (svgMarkup && svgMarkup.includes("<svg")) {
-    ghost.innerHTML = DOMPurify.sanitize(svgMarkup, { USE_PROFILES: { svg: true, svgFilters: true } });
-    const svgEl = ghost.querySelector("svg");
-    if (svgEl) {
-      svgEl.setAttribute("width", "50");
-      svgEl.setAttribute("height", "38");
-      svgEl.style.width = "50px";
-      svgEl.style.height = "38px";
-    }
-  } else {
-    ghost.textContent = shortName.slice(0, 6);
-  }
-
-  document.body.appendChild(ghost);
+  // Suppress the browser's cursor drag snapshot so only the canvas placement placeholder icon is shown.
+  const blank = document.createElement("canvas");
+  blank.width = 1;
+  blank.height = 1;
+  blank.style.position = "fixed";
+  blank.style.top = "-10px";
+  blank.style.left = "-10px";
+  blank.style.pointerEvents = "none";
+  document.body.appendChild(blank);
   try {
-    e.dataTransfer.setDragImage(ghost, 32, 26);
+    e.dataTransfer.setDragImage(blank, 0, 0);
   } catch {
     // ignore unsupported environments
   }
   setTimeout(() => {
-    if (ghost.parentNode) ghost.parentNode.removeChild(ghost);
+    if (blank.parentNode) blank.parentNode.removeChild(blank);
   }, 0);
 }
 

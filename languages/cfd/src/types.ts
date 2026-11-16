@@ -43,6 +43,7 @@ export interface CfdModelData {
   rawDirectives: Map<string, string>;
   markers: Map<string, CfdMarker>;
   directiveLines?: Map<string, number> | undefined;
+  syntaxErrors?: import("@modelscript/dsl").WasmSyntaxErrorSpan[] | undefined;
 }
 
 export type ParameterLookup = (name: string) => number | string | undefined;

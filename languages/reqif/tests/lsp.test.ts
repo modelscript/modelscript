@@ -85,6 +85,34 @@ describe("ReqIF LSP Services (Diagnostics, DocumentSymbols, Hover)", () => {
     assert.equal(diags[0]?.code, "REQIF-PARSE-ERROR");
   });
 
+  it("should mark XML syntax errors at their exact line and character", () => {
+    const reqifWithLine9Error = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<REQ-IF xmlns="http://www.omg.org/spec/ReqIF/20110401/reqif.xsd">',
+      "  <THE-HEADER>",
+      '    <REQ-IF-HEADER IDENTIFIER="HDR-1">',
+      "      <TITLE>System Safety Requirements</TITLE>",
+      "    </REQ-IF-HEADER>",
+      "  </THE-HEADER>",
+      "  <CORE-CONTENT>",
+      "    <REQ-IF-CONTENT ERROR>",
+      "      <SPEC-OBJECTS>",
+      '        <SPEC-OBJECT IDENTIFIER="REQ-001" LONG-NAME="Brake Response Time" />',
+      "      </SPEC-OBJECTS>",
+      "    </REQ-IF-CONTENT>",
+      "  </CORE-CONTENT>",
+      "</REQ-IF>",
+    ].join("\n");
+    const diags = validateReqif(reqifWithLine9Error);
+    const parseErr = diags.find((d) => d.code === "REQIF-PARSE-ERROR");
+    assert.ok(parseErr, "Expected REQIF-PARSE-ERROR diagnostic");
+    assert.equal(parseErr.range.start.line, 8); // 0-indexed line 8 = 1-indexed line 9
+    assert.equal(parseErr.range.start.character, 20); // 'ERROR' starts at column 20
+    assert.equal(parseErr.range.end.line, 8);
+    assert.equal(parseErr.range.end.character, 25);
+    assert.ok(parseErr.message.includes("ERROR"));
+  });
+
   it("should extract document symbol hierarchy", () => {
     const symbols = getReqifDocumentSymbols(VALID_REQIF);
     assert.equal(symbols.length, 1);

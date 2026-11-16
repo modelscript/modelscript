@@ -1358,32 +1358,81 @@ export declare function createWasmParserSync(
   facade: LspFacade;
   parser: TreeSitterParser;
 };
+/**
+ * Registers a pre-instantiated WebAssembly GLR parser in `globalThis.__msWasmParsers`
+ * so synchronous language parsers and workspace linters can use it inside browser WebWorkers
+ * without Node.js `fs` or `node:module`.
+ */
+export declare function registerPreloadedWasmParser(
+  langId: string,
+  parser: TreeSitterParser | null | undefined,
+  facade?: LspFacade | null,
+): void;
+/**
+ * Retrieves a pre-instantiated WebAssembly GLR parser from `globalThis` if registered
+ * by `ParserService` (browser WebWorker or Node LSP server).
+ */
+export declare function getPreloadedWasmParser(
+  langId: string,
+): TreeSitterParser | undefined;
+/**
+ * Resolves the filesystem path or URL to a language package's `parser.wasm` without `node:module`.
+ */
+export declare function resolveLanguageWasmPath(
+  importMetaUrl: string,
+  langId?: string,
+): string;
+/**
+ * Isomorphic helper that returns the pre-loaded WASM GLR parser in browser WebWorkers
+ * (`globalThis.__msWasmParsers`) and lazily loads `parser.wasm` synchronously in Node.js CLI/tests.
+ */
+export declare function getOrLoadLanguageWasmParser<TParser = TreeSitterParser>(
+  langId: string,
+  importMetaUrl: string,
+  syncFactory?: (wasmPath: string) => {
+    parser: TParser;
+  },
+): TParser;
+export interface WasmSyntaxErrorSpan {
+  message: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+}
+/**
+ * Walks a WASM GLR `SyntaxNode` root and extracts bounded `ERROR` / `isMissing` syntax error spans
+ * (1-indexed lines and columns).
+ */
+export declare function collectWasmSyntaxErrors(
+  rootNode: unknown,
+  maxErrors?: number,
+): WasmSyntaxErrorSpan[];
 
 export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Document = 7,
-  Record = 8,
-  MoleculeEntry = 9,
-  MolfileRecord = 10,
-  START = 11,
-  _START = 11,
-  CountsLine = 20,
-  MolfileEndLine = 21,
-  SmilesPattern = 22,
-  CommentLine = 23,
-  Identifier = 24,
+  Document = 9,
+  Record = 10,
+  MoleculeEntry = 11,
+  START = 12,
+  _START = 12,
+  MolfileRecord = 16,
+  SdfDataHeader = 17,
+  SdfDelimiter = 18,
+  QuotedString = 19,
+  SmilesPattern = 20,
+  CommentLine = 21,
+  Identifier = 22,
   EOF = 1023,
 }
 
 export declare enum FieldId {
   Smiles = 1,
   smiles = 1,
-  Name = 2,
-  name = 2,
-  Counts = 3,
-  counts = 3,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1407,14 +1456,18 @@ export interface MolfileRecordNode extends SyntaxNode {
   readonly typeId: SyntaxKind.MolfileRecord;
 }
 export declare function isMolfileRecord(node: SyntaxNode | null | undefined): node is MolfileRecordNode;
-export interface CountsLineNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.CountsLine;
+export interface SdfDataHeaderNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SdfDataHeader;
 }
-export declare function isCountsLine(node: SyntaxNode | null | undefined): node is CountsLineNode;
-export interface MolfileEndLineNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.MolfileEndLine;
+export declare function isSdfDataHeader(node: SyntaxNode | null | undefined): node is SdfDataHeaderNode;
+export interface SdfDelimiterNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SdfDelimiter;
 }
-export declare function isMolfileEndLine(node: SyntaxNode | null | undefined): node is MolfileEndLineNode;
+export declare function isSdfDelimiter(node: SyntaxNode | null | undefined): node is SdfDelimiterNode;
+export interface QuotedStringNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.QuotedString;
+}
+export declare function isQuotedString(node: SyntaxNode | null | undefined): node is QuotedStringNode;
 export interface SmilesPatternNode extends SyntaxNode {
   readonly typeId: SyntaxKind.SmilesPattern;
 }
@@ -1446,25 +1499,26 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is MoleculeEntryNode;
     smiles(node: SyntaxNode | null | undefined): SyntaxNode | null;
     smilesList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const MolfileRecord: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is MolfileRecordNode;
-    counts(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    countsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
-  export const CountsLine: {
+  export const SdfDataHeader: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is CountsLineNode;
+    is(node: SyntaxNode | null | undefined): node is SdfDataHeaderNode;
   };
-  export const MolfileEndLine: {
+  export const SdfDelimiter: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is MolfileEndLineNode;
+    is(node: SyntaxNode | null | undefined): node is SdfDelimiterNode;
+  };
+  export const QuotedString: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is QuotedStringNode;
   };
   export const SmilesPattern: {
     readonly typeId: number;

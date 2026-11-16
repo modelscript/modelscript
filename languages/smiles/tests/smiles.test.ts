@@ -318,4 +318,18 @@ test("SMILES UnifiedWorkspace & LSP: indexes symbols, hover cards, completions, 
   assert.equal(smilesLanguage.name, "smiles");
   assert.ok(smilesLanguage.fileExtensions?.includes(".smi"));
   assert.ok(smilesLanguage.fileExtensions?.includes(".sdf"));
+
+  // WASM GLR parser & syntax diagnostic validation
+  const { getSmilesWasmParser } = await import("../src/index.js");
+  const morselDefault = `# SMILES_STRING\tCOMPOUND_ID\tMW_G_MOL\tLOGP
+CC(=O)Oc1ccccc1C(=O)O\tAspirin_ASA\t180.16\t1.19
+CC(=O)Nc1ccc(O)cc1\tAcetaminophen_APAP\t151.16\t0.46
+CC(C)Cc1ccc(cc1)[C@@H](C)C(=O)O\tS_Ibuprofen\t206.28\t3.97
+`;
+  assert.equal(getSmilesWasmParser().parse(morselDefault)?.rootNode.hasError, false);
+  assert.equal(getSmilesWasmParser().parse(BENZENE_MOLFILE)?.rootNode.hasError, false);
+  assert.equal(getSmilesWasmParser().parse(MULTI_RECORD_SDF)?.rootNode.hasError, false);
+
+  const badSyntaxDiags = validateSmiles('CC(=O)O "unterminated_quote\n> <UNCLOSED_TAG\n');
+  assert.ok(badSyntaxDiags.some((d) => d.code === "M9300" && d.severity === 1));
 });

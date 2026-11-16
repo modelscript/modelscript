@@ -4,6 +4,8 @@
  * @modelscript/usd — Language Server Protocol (LSP) Services Integration.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { createWasmParserSync } from "@modelscript/usd/wasm-parser";
 import { lintUsdStage } from "./lints/index.js";
 import { parseUsd } from "./parser/index.js";
 import type { UsdPrim } from "./types.js";
@@ -93,6 +95,11 @@ const SCHEMA_DOCS: Record<string, string> = {
 export class UsdLspService {
   /** Validates an OpenUSD document and returns language server diagnostics. */
   public validate(content: string): LspDiagnostic[] {
+    try {
+      getOrLoadLanguageWasmParser("usd", import.meta.url, createWasmParserSync).parse(content);
+    } catch {
+      // Fall back cleanly if WASM parser is unavailable
+    }
     const stage = parseUsd(content);
     const diags = lintUsdStage(stage);
 

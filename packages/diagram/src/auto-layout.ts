@@ -399,7 +399,7 @@ export function autoLayoutDiagram(g?: AutoLayoutGraphLike | null, options?: Auto
     const containerH =
       g.container?.clientHeight && g.container.clientHeight > 0 ? g.container.clientHeight : g.options?.height || 600;
     if (typeof g.zoomToFit === "function") {
-      g.zoomToFit({ padding: 20, viewportArea: { x: 0, y: 0, width: containerW, height: containerH } });
+      g.zoomToFit({ padding: 20, maxScale: 1, viewportArea: { x: 0, y: 0, width: containerW, height: containerH } });
     }
     if (typeof g.centerContent === "function") {
       g.centerContent();

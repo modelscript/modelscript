@@ -6,6 +6,7 @@
  * Parses .ctl and .mod pharmacometric control streams without any regular expressions.
  */
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import type {
   CompartmentDef,
   DesEquation,
@@ -20,6 +21,7 @@ import type {
   SigmaSpec,
   ThetaSpec,
 } from "../types.js";
+import { getNmtranWasmParser } from "./wasm-loader.js";
 
 interface SourceLine {
   lineNumber: number; // 1-based
@@ -739,9 +741,13 @@ export function parseNmtran(source: string, sourceFile?: string): NmtranDocument
     controlStream.nCompartments = controlStream.compartments.length;
   }
 
+  const tree = getNmtranWasmParser().parse(source);
+  const syntaxErrors = collectWasmSyntaxErrors(tree?.rootNode);
+
   return {
     controlStream,
     sourceFile,
+    syntaxErrors,
   };
 }
 

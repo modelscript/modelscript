@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { iniSectionRules, language, type ActionExecutionContext } from "@modelscript/dsl";
+import { choice, language, optional, repeat, repeat1, seq, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerGenbankToDae } from "./dae/genbank-to-dae.js";
 import { indexGenbankDocument } from "./indexing.js";
 import { lintGenbank } from "./lints/index.js";
@@ -139,8 +139,45 @@ export const genbankLanguage = language({
       },
     },
   ],
-  extras: ($) => [/[ \t\r\n]+/, $["IniComment"]!],
-  rules: iniSectionRules,
+  word: ($) => $["Identifier"]!,
+  extras: ($) => [/[ \t\r\n]+/, $["HashComment"]!],
+  rules: {
+    GenbankDocument: ($) => optional(choice(repeat1($["GenbankRecord"]!), $["FastaStream"]!)),
+
+    GenbankRecord: ($) => seq("LOCUS", repeat1($["LineToken"]!), $["RecordEnd"]!),
+
+    LineToken: ($) =>
+      choice(
+        $["Identifier"]!,
+        $["NumberLiteral"]!,
+        $["AlnumHyphen"]!,
+        $["StringLiteral"]!,
+        $["RangeDots"]!,
+        $["FastaComment"]!,
+        $["ParenGroup"]!,
+        $["BracketGroup"]!,
+        $["Punct"]!,
+        "*",
+        "-",
+      ),
+
+    ParenGroup: ($) => seq("(", repeat($["LineToken"]!), ")"),
+    BracketGroup: ($) => seq("[", repeat($["LineToken"]!), "]"),
+
+    FastaStream: ($) =>
+      seq($["FastaHeader"]!, repeat(choice($["FastaHeader"]!, $["FastaComment"]!, $["Identifier"]!, "*", "-"))),
+
+    RecordEnd: () => /\/\//,
+    FastaHeader: () => />[^\r\n]*/,
+    FastaComment: () => /;[^\r\n]*/,
+    RangeDots: () => /\.\./,
+    Punct: () => /[/:.,;=+<>^'~]/,
+    AlnumHyphen: () => /[0-9]+[A-Za-z0-9_.'-]*[A-Za-z][A-Za-z0-9_.'-]*/,
+    Identifier: () => /[A-Za-z_][A-Za-z0-9_'-]*/,
+    NumberLiteral: () => /[0-9]+(?:\.[0-9]+)?/,
+    StringLiteral: () => /"[^"\\]*(?:\\.[^"\\]*)*"/,
+    HashComment: () => /#[^\r\n]*/,
+  },
 });
 
 export default genbankLanguage;

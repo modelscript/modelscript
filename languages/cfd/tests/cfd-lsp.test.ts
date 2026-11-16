@@ -182,4 +182,44 @@ OUTLET_MASS_FLOW= 9.8
     assert.ok(solveRes.cD > 0, "Expected positive drag coefficient");
     assert.ok(solveRes.liftN > 0, "Expected positive lift force");
   });
+
+  test("parses Morsel defaultCode and OpenFOAM dictionaries via native WASM GLR with hasError === false and surfaces syntax errors", async () => {
+    const { getCfdWasmParser } = await import("../src/wasm-loader.js");
+    const parser = getCfdWasmParser();
+
+    const morselDefaultCode = `% SU2 Compressible Flow Configuration
+SOLVER= EULER
+MATH_PROBLEM= DIRECT
+MACH_NUMBER= 0.8
+AOA= 1.25
+FREESTREAM_PRESSURE= 101325.0
+FREESTREAM_TEMPERATURE= 288.15
+MESH_FILENAME= mesh_naca0012.su2
+`;
+    const su2Tree = parser.parse(morselDefaultCode);
+    assert.ok(su2Tree?.rootNode);
+    assert.equal(su2Tree.rootNode.hasError, false);
+
+    const foamDict = `/* OpenFOAM case */
+FoamFile {
+    version 2.0;
+    format ascii;
+    class volVectorField;
+    object U;
+}
+dimensions [0 1 -1 0 0 0 0];
+boundaryField {
+    inlet {
+        type fixedValue;
+        value uniform (15.5 0 0);
+    }
+}
+`;
+    const foamTree = parser.parse(foamDict);
+    assert.ok(foamTree?.rootNode);
+    assert.equal(foamTree.rootNode.hasError, false);
+
+    const brokenDiags = validateCfd("SOLVER = === @@@", "broken.cfg");
+    assert.ok(brokenDiags.some((d) => d.code === "M7300" && d.severity === 1));
+  });
 });

@@ -6,9 +6,9 @@
  * Extracts [LONGITUDINAL], input lists, EQUATION blocks, OUTPUT lists, and PK macros.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/mlxtran/wasm-parser";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type {
   MlxtranDocument,
   MlxtranEquation,
@@ -19,14 +19,8 @@ import type {
   MlxtranRange,
 } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getMlxtranWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/mlxtran/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("mlxtran", import.meta.url, createWasmParserSync);
 }
 
 function stripComments(line: string): string {

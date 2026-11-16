@@ -23,6 +23,7 @@ import {
 } from "../SimulationParameters";
 import TreeWidget from "../Tree";
 import { VariablesTree } from "../VariablesTree";
+import { MorselResizeHandle } from "./MorselResizeHandle";
 
 export interface MorselLeftSidebarProps {
   treeVisible: boolean;
@@ -66,6 +67,7 @@ export interface MorselLeftSidebarProps {
   onSimulate: () => void;
   onOpenCloud: () => void;
   isSimulating: boolean;
+  floating?: boolean | undefined;
 }
 
 export type MobileSidebarSection = "parameters" | "variables" | "components" | "libraries" | "solver";
@@ -112,12 +114,15 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   onSimulate,
   onOpenCloud,
   isSimulating,
+  floating = false,
 }) => {
   const { hasCapability } = useCapabilities();
   const isCaeComputeEnabled = hasCapability("caeCompute");
   const isDraggingTree = useRef(false);
-  const [isHovered, setIsHovered] = useState(false);
+  const columnRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [librariesSplit, setLibrariesSplit] = useState(0.55);
+  const [isSplitting, setIsSplitting] = useState(false);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(true);
   const [mobileSection, setMobileSection] = useState<MobileSidebarSection>(() =>
     simulationParameters.length > 0 ? "parameters" : showResultsView ? "variables" : "components",
@@ -133,23 +138,102 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
     : showResultsView && simulationParameters.length > 0;
   const showSolverSection = isNarrow ? mobileSection === "solver" : showResultsView;
 
+  const isFloating = Boolean(floating && !isNarrow);
+  const isStackedFloating = isFloating && showLibrariesSection && showComponentsSection;
+  const componentCount = Array.isArray(diagramData?.nodes)
+    ? diagramData.nodes.filter((c: any) => {
+        if (!c?.id || c.id.startsWith("__diagram_") || c.id.startsWith("solder_dot_")) return false;
+        if (!c.properties || c.shape === "circle") return false;
+        const kind = c.properties?.classKind?.toLowerCase();
+        return !(kind && kind.includes("connector"));
+      }).length
+    : 0;
+  const hasComponents = componentCount > 0;
+  const canResizeLibrariesSplit = !isNarrow && showLibrariesSection && showComponentsSection && hasComponents;
+  const isSearchActive = Boolean(isSearchExpanded || libraryFilter);
+
+  const dividerColor =
+    _colorMode === "dark"
+      ? "var(--ms-divider, rgba(255, 255, 255, 0.08))"
+      : "var(--ms-divider, rgba(15, 23, 42, 0.08))";
+  const floatingShadow =
+    _colorMode === "dark"
+      ? "0 12px 36px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.28)"
+      : "0 10px 32px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.05)";
+  const floatingCardStyle: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+    overflow: "hidden",
+    boxSizing: "border-box",
+    pointerEvents: "auto",
+    backgroundColor: _colorMode === "dark" ? "rgba(24, 24, 27, 0.94)" : "rgba(255, 255, 255, 0.96)",
+    backdropFilter: "blur(14px)",
+    WebkitBackdropFilter: "blur(14px)",
+    borderRadius: 8,
+    border: "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))",
+    boxShadow: floatingShadow,
+  };
+
   return (
-    <>
+    <div
+      style={
+        isFloating
+          ? {
+              position: "absolute",
+              top: 70,
+              left: 12,
+              bottom: 12,
+              zIndex: 30,
+              display: "flex",
+              flexDirection: "row",
+              pointerEvents: "none",
+            }
+          : {
+              display: "contents",
+            }
+      }
+    >
       <div
-        className={isNarrow ? undefined : "border-right"}
-        style={{
-          width: isNarrow ? "100%" : treeWidth,
-          display: "flex",
-          flexDirection: "column",
-          minHeight: 0,
-          height: "100%",
-          minWidth: isNarrow ? 0 : 200,
-          maxWidth: isNarrow ? "100%" : 600,
-          flexShrink: 0,
-          overflow: "hidden",
-          boxSizing: "border-box",
-          backgroundColor: "var(--bgColor-muted, var(--ms-bg-elv))",
-        }}
+        ref={columnRef}
+        style={
+          isStackedFloating
+            ? {
+                width: treeWidth,
+                display: "flex",
+                flexDirection: "column",
+                minHeight: 0,
+                height: "100%",
+                minWidth: 200,
+                maxWidth: 600,
+                flexShrink: 0,
+                boxSizing: "border-box",
+                pointerEvents: "none",
+              }
+            : {
+                width: isNarrow ? "100%" : treeWidth,
+                display: "flex",
+                flexDirection: "column",
+                minHeight: 0,
+                height: "100%",
+                minWidth: isNarrow ? 0 : 200,
+                maxWidth: isNarrow ? "100%" : 600,
+                flexShrink: 0,
+                overflow: "hidden",
+                boxSizing: "border-box",
+                pointerEvents: "auto",
+                backgroundColor: isFloating
+                  ? _colorMode === "dark"
+                    ? "rgba(24, 24, 27, 0.94)"
+                    : "rgba(255, 255, 255, 0.96)"
+                  : "var(--bgColor-muted, var(--ms-bg-alt))",
+                backdropFilter: isFloating ? "blur(14px)" : undefined,
+                WebkitBackdropFilter: isFloating ? "blur(14px)" : undefined,
+                borderRadius: isNarrow ? 0 : 8,
+                border: isNarrow ? "none" : "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))",
+                boxShadow: isFloating ? floatingShadow : undefined,
+              }
+        }
       >
         {isNarrow && (
           <div
@@ -229,93 +313,134 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
         )}
 
         {showLibrariesSection && (
-          <>
+          <div
+            style={
+              isStackedFloating
+                ? {
+                    ...floatingCardStyle,
+                    flex: hasComponents ? `${librariesSplit} 1 0%` : "1 1 0%",
+                    minHeight: 120,
+                  }
+                : canResizeLibrariesSplit
+                  ? {
+                      display: "flex",
+                      flexDirection: "column",
+                      flex: `${librariesSplit} 1 0%`,
+                      minHeight: 120,
+                      overflow: "hidden",
+                    }
+                  : { display: "contents" }
+            }
+          >
             <div
-              className="px-3 d-flex flex-items-center flex-justify-between"
               style={{
-                height: 36,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: isSearchActive ? "8px 12px" : "8px 16px",
+                minHeight: 44,
                 gap: 6,
-                backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.04))",
-                borderBottom: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
+                backgroundColor: "transparent",
+                borderBottom: `1px solid ${dividerColor}`,
                 boxSizing: "border-box",
+                flexShrink: 0,
               }}
             >
+              {!isSearchActive && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                    color: "var(--ms-text-2, var(--color-fg-muted))",
+                    whiteSpace: "nowrap",
+                    userSelect: "none",
+                    flexShrink: 0,
+                  }}
+                >
+                  {translations.libraries}
+                </div>
+              )}
               <div
-                className="d-flex flex-items-center"
                 style={{
-                  display: isSearchExpanded || libraryFilter ? "none" : "flex",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: "0.04em",
-                  textTransform: "uppercase",
-                  color: "var(--ms-text-2, var(--color-fg-muted))",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  flex: isSearchActive ? "1 1 auto" : "0 0 auto",
+                  minWidth: 0,
+                  gap: 2,
                 }}
               >
-                {translations.libraries}
-              </div>
-              <div className="d-flex flex-items-center flex-1 flex-justify-end" style={{ minWidth: 0, gap: 2 }}>
-                <TextInput
-                  ref={inputRef}
-                  aria-label={translations.filterClasses}
-                  placeholder={translations.filterClasses}
-                  value={libraryFilter}
-                  onChange={(e) => setLibraryFilter(e.target.value)}
-                  onBlur={() => {
-                    if (!libraryFilter) setIsSearchExpanded(false);
-                  }}
-                  trailingAction={
-                    !isSearching && (isSearchExpanded || libraryFilter) ? (
-                      <TextInput.Action
-                        onClick={() => {
-                          if (libraryFilter) {
-                            setLibraryFilter("");
-                            inputRef.current?.focus();
-                          } else {
-                            setIsSearchExpanded(false);
-                          }
-                        }}
-                        icon={libraryFilter ? XIcon : SearchIcon}
-                        aria-label={libraryFilter ? "Clear search" : "Close search"}
-                      />
-                    ) : undefined
-                  }
-                  trailingVisual={
-                    isSearching && (isSearchExpanded || libraryFilter) ? (
-                      <Spinner size="small" style={{ marginTop: "6px", marginInlineStart: "8px" }} />
-                    ) : undefined
-                  }
-                  className={isSearchExpanded || libraryFilter ? "input-sm" : "input-sm border-0"}
-                  style={{
-                    width: isSearchExpanded || libraryFilter ? "100%" : "0px",
-                    opacity: isSearchExpanded || libraryFilter ? 1 : 0,
-                    padding: isSearchExpanded || libraryFilter ? undefined : "0px",
-                    borderWidth: isSearchExpanded || libraryFilter ? undefined : "0px",
-                    height: "28px",
-                    borderRadius: 6,
-                    fontSize: 12,
-                    transition: "all 0.2s ease-in-out",
-                    overflow: "hidden",
-                  }}
-                />
-                <IconButton
-                  icon={SearchIcon}
-                  aria-label={translations.filterClasses}
-                  size="small"
-                  variant="invisible"
-                  onClick={() => {
-                    setIsSearchExpanded(true);
-                    setTimeout(() => inputRef.current?.focus(), 50);
-                  }}
-                  style={{
-                    width: isSearchExpanded || libraryFilter ? "0px" : "28px",
-                    height: "28px",
-                    borderRadius: 6,
-                    opacity: isSearchExpanded || libraryFilter ? 0 : 1,
-                    padding: isSearchExpanded || libraryFilter ? "0px" : undefined,
-                    overflow: "hidden",
-                    transition: "all 0.2s ease-in-out",
-                  }}
-                />
+                {isSearchActive ? (
+                  <TextInput
+                    ref={inputRef}
+                    size="small"
+                    block
+                    autoFocus
+                    leadingVisual={SearchIcon}
+                    aria-label={translations.filterClasses}
+                    placeholder={translations.filterClasses}
+                    value={libraryFilter}
+                    onChange={(e) => setLibraryFilter(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        e.stopPropagation();
+                        if (libraryFilter) {
+                          setLibraryFilter("");
+                        } else {
+                          setIsSearchExpanded(false);
+                        }
+                      }
+                    }}
+                    onBlur={() => {
+                      if (!libraryFilter) setIsSearchExpanded(false);
+                    }}
+                    trailingAction={
+                      !isSearching ? (
+                        <TextInput.Action
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            if (libraryFilter) {
+                              setLibraryFilter("");
+                              inputRef.current?.focus();
+                            } else {
+                              setIsSearchExpanded(false);
+                            }
+                          }}
+                          icon={XIcon}
+                          aria-label={libraryFilter ? "Clear search" : "Close search"}
+                        />
+                      ) : undefined
+                    }
+                    trailingVisual={isSearching ? <Spinner size="small" /> : undefined}
+                    style={{
+                      height: 26,
+                      minHeight: 26,
+                      borderRadius: 6,
+                      fontSize: 12,
+                    }}
+                  />
+                ) : (
+                  <IconButton
+                    icon={SearchIcon}
+                    aria-label={translations.filterClasses}
+                    title={translations.filterClasses}
+                    size="small"
+                    variant="invisible"
+                    onClick={() => {
+                      setIsSearchExpanded(true);
+                      setTimeout(() => inputRef.current?.focus(), 50);
+                    }}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 6,
+                    }}
+                  />
+                )}
                 <IconButton
                   icon={PlusIcon}
                   aria-label={translations.addLibrary}
@@ -361,28 +486,157 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 colorMode={_colorMode}
               />
             </div>
-          </>
+          </div>
+        )}
+
+        {canResizeLibrariesSplit ? (
+          <MorselResizeHandle
+            orientation="horizontal"
+            cursor="row-resize"
+            ariaLabel="Resize Libraries and Components"
+            ariaValueNow={Math.round(librariesSplit * 100)}
+            ariaValueMin={25}
+            ariaValueMax={80}
+            isDragging={isSplitting}
+            style={{
+              height: 8,
+              width: "100%",
+              marginTop: isStackedFloating ? 0 : -4,
+              marginBottom: isStackedFloating ? 0 : -4,
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setLibrariesSplit((prev) => Math.max(0.25, Number((prev - 0.05).toFixed(2))));
+              } else if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setLibrariesSplit((prev) => Math.min(0.8, Number((prev + 0.05).toFixed(2))));
+              } else if (e.key === "Home") {
+                e.preventDefault();
+                setLibrariesSplit(0.25);
+              } else if (e.key === "End") {
+                e.preventDefault();
+                setLibrariesSplit(0.8);
+              }
+            }}
+            onDoubleClick={() => {
+              setLibrariesSplit(0.55);
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsSplitting(true);
+              const startY = e.clientY;
+              const startSplit = librariesSplit;
+              const totalHeight = columnRef.current?.clientHeight ?? 600;
+              const usableHeight = Math.max(240, totalHeight - 8);
+
+              const onMouseMove = (ev: MouseEvent) => {
+                const deltaY = ev.clientY - startY;
+                const next = Math.max(0.25, Math.min(0.8, startSplit + deltaY / usableHeight));
+                setLibrariesSplit(next);
+              };
+
+              const onMouseUp = () => {
+                setIsSplitting(false);
+                document.removeEventListener("mousemove", onMouseMove);
+                document.removeEventListener("mouseup", onMouseUp);
+                document.body.style.cursor = "auto";
+                document.body.style.userSelect = "auto";
+              };
+
+              document.addEventListener("mousemove", onMouseMove);
+              document.addEventListener("mouseup", onMouseUp);
+              document.body.style.cursor = "row-resize";
+              document.body.style.userSelect = "none";
+            }}
+            onTouchStart={(e) => {
+              const touch = e.touches[0];
+              if (!touch) return;
+              setIsSplitting(true);
+              const startY = touch.clientY;
+              const startSplit = librariesSplit;
+              const totalHeight = columnRef.current?.clientHeight ?? 600;
+              const usableHeight = Math.max(240, totalHeight - 8);
+
+              const onTouchMove = (ev: TouchEvent) => {
+                const t = ev.touches[0];
+                if (!t) return;
+                const deltaY = t.clientY - startY;
+                const next = Math.max(0.25, Math.min(0.8, startSplit + deltaY / usableHeight));
+                setLibrariesSplit(next);
+              };
+
+              const onTouchEnd = () => {
+                setIsSplitting(false);
+                document.removeEventListener("touchmove", onTouchMove);
+                document.removeEventListener("touchend", onTouchEnd);
+                document.body.style.userSelect = "auto";
+              };
+
+              document.addEventListener("touchmove", onTouchMove, { passive: true });
+              document.addEventListener("touchend", onTouchEnd);
+              document.body.style.userSelect = "none";
+            }}
+          />
+        ) : (
+          isStackedFloating && <div style={{ height: 8, flexShrink: 0 }} />
         )}
 
         {(showComponentsSection || showVariablesSection) && (
-          <>
+          <div
+            style={
+              isStackedFloating
+                ? {
+                    ...floatingCardStyle,
+                    flex: hasComponents ? `${1 - librariesSplit} 1 0%` : "0 0 auto",
+                    minHeight: hasComponents ? 120 : undefined,
+                  }
+                : canResizeLibrariesSplit
+                  ? {
+                      display: "flex",
+                      flexDirection: "column",
+                      flex: `${1 - librariesSplit} 1 0%`,
+                      minHeight: 120,
+                      overflow: "hidden",
+                      borderTop: `1px solid ${dividerColor}`,
+                    }
+                  : { display: "contents" }
+            }
+          >
             {!isNarrow && (
               <div
-                className="px-3 d-flex flex-items-center flex-justify-between"
+                className="d-flex flex-items-center flex-justify-between"
                 style={{
-                  height: 34,
-                  borderTop: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
-                  borderBottom: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
-                  backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.04))",
+                  minHeight: 44,
+                  padding: "8px 16px",
+                  boxSizing: "border-box",
+                  borderTop: isStackedFloating ? "none" : `1px solid ${dividerColor}`,
+                  borderBottom: `1px solid ${dividerColor}`,
+                  backgroundColor: "transparent",
                   fontSize: 11,
                   fontWeight: 700,
                   letterSpacing: "0.04em",
                   textTransform: "uppercase",
                   color: "var(--ms-text-2, var(--color-fg-muted))",
                   userSelect: "none",
+                  flexShrink: 0,
                 }}
               >
                 <span>{showVariablesSection ? "Simulation Variables" : translations.components}</span>
+                {showComponentsSection && componentCount > 0 && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: "1px 6px",
+                      borderRadius: 999,
+                      backgroundColor: _colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(15, 23, 42, 0.06)",
+                      color: "var(--ms-text-2, var(--color-fg-muted))",
+                    }}
+                  >
+                    {componentCount}
+                  </span>
+                )}
               </div>
             )}
             <div style={{ flex: 1, overflow: "auto", minHeight: 0, paddingBottom: isNarrow ? 72 : 0 }}>
@@ -405,19 +659,21 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 />
               )}
             </div>
-          </>
+          </div>
         )}
 
         {showParametersSection && (
           <>
             {!isNarrow && (
               <div
-                className="px-3 d-flex flex-items-center"
+                className="d-flex flex-items-center"
                 style={{
-                  height: 34,
-                  borderTop: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
-                  borderBottom: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
-                  backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.04))",
+                  minHeight: 44,
+                  padding: "8px 16px",
+                  boxSizing: "border-box",
+                  borderTop: `1px solid ${dividerColor}`,
+                  borderBottom: `1px solid ${dividerColor}`,
+                  backgroundColor: "transparent",
                   fontSize: 11,
                   fontWeight: 700,
                   letterSpacing: "0.04em",
@@ -468,15 +724,17 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 type="button"
                 onClick={() => setIsSettingsExpanded((prev) => !prev)}
                 aria-expanded={isSettingsExpanded}
-                className="d-flex flex-items-center flex-justify-between px-3"
+                className="d-flex flex-items-center flex-justify-between"
                 style={{
                   width: "100%",
-                  height: 34,
+                  minHeight: 44,
+                  padding: "8px 16px",
+                  boxSizing: "border-box",
                   borderLeft: "none",
                   borderRight: "none",
-                  borderTop: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
-                  borderBottom: "1px solid var(--ms-divider, rgba(255, 255, 255, 0.08))",
-                  backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.04))",
+                  borderTop: `1px solid ${dividerColor}`,
+                  borderBottom: `1px solid ${dividerColor}`,
+                  backgroundColor: "transparent",
                   cursor: "pointer",
                   textAlign: "left",
                   color: "var(--ms-text-2, var(--color-fg-muted))",
@@ -520,28 +778,17 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
         )}
       </div>
       {!isNarrow && (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-valuenow={treeWidth}
-          aria-valuemin={200}
-          aria-valuemax={600}
-          aria-label={translations.collapseTree || "Resize sidebar"}
-          tabIndex={0}
+        <MorselResizeHandle
+          orientation="vertical"
+          ariaLabel={translations.collapseTree || "Resize sidebar"}
+          ariaValueNow={treeWidth}
+          ariaValueMin={200}
+          ariaValueMax={600}
+          isDragging={isDragging}
           style={{
-            width: 10,
-            marginLeft: -5,
-            marginRight: -5,
-            cursor: "col-resize",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-            display: "flex",
-            position: "relative",
-            zIndex: 10,
-            backgroundColor: "transparent",
-            outline: "none",
-            userSelect: "none",
+            width: 8,
+            marginLeft: isFloating ? 2 : -4,
+            marginRight: isFloating ? -10 : -4,
           }}
           onKeyDown={(e) => {
             if (e.key === "ArrowLeft") {
@@ -618,39 +865,8 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
             document.addEventListener("touchend", onTouchEnd);
             document.body.style.userSelect = "none";
           }}
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
-        >
-          {/* Active highlight line centered on the border */}
-          <div
-            style={{
-              width: 2,
-              height: "100%",
-              backgroundColor: isHovered || isDragging ? "var(--ms-brand, #0891b2)" : "transparent",
-              transition: "background-color 0.15s ease",
-            }}
-          />
-          {/* Subtle grab pill in the vertical center */}
-          <div
-            style={{
-              position: "absolute",
-              top: "50%",
-              transform: "translateY(-50%)",
-              width: 4,
-              height: 28,
-              borderRadius: 999,
-              backgroundColor: isHovered || isDragging ? "var(--ms-brand, #0891b2)" : "transparent",
-              boxShadow:
-                isHovered || isDragging
-                  ? "0 0 6px color-mix(in srgb, var(--ms-brand, #0891b2) 50%, transparent)"
-                  : "none",
-              opacity: isHovered || isDragging ? 1 : 0,
-              transition: "opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease",
-              pointerEvents: "none",
-            }}
-          />
-        </div>
+        />
       )}
-    </>
+    </div>
   );
 };

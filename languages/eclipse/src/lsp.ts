@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { createWasmParserSync } from "@modelscript/eclipse/wasm-parser";
 import { lowerEclipseToDae } from "./dae/eclipse-to-dae.js";
 import { lintEclipse } from "./lints/index.js";
 import { parseEclipse } from "./parser/eclipse-parser.js";
@@ -75,6 +77,11 @@ export interface LspHover {
 
 export function validateEclipse(text: string): LspDiagnostic[] {
   try {
+    try {
+      getOrLoadLanguageWasmParser("eclipse", import.meta.url, createWasmParserSync).parse(text);
+    } catch {
+      // Fall back cleanly if WASM parser is unavailable
+    }
     const deck = parseEclipse(text);
     const diags = lintEclipse(deck);
 

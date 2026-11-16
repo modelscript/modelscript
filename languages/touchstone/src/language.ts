@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { cardDeckRules, language } from "@modelscript/dsl";
+import { choice, language, repeat, repeat1, seq } from "@modelscript/dsl";
 import { lowerTouchstoneToDae } from "./dae/touchstone-to-dae.js";
 import { indexTouchstoneFile } from "./indexing.js";
 import { lintTouchstone } from "./lints/index.js";
@@ -27,6 +27,22 @@ const touchstoneExtensions = [
   ".ts2",
 ];
 
+const touchstoneGrammar = language({
+  name: "touchstone",
+  extras: () => [/[ \t\r\n]+/],
+  rules: {
+    Document: ($) => repeat($.Item),
+    Item: ($) =>
+      choice($.KeywordHeader, $.OptionMarker, $.TouchstoneComment, $.DeckNumber, $.DeckIdentifier, $.DeckColon),
+    KeywordHeader: ($) => seq("[", repeat1(choice($.DeckIdentifier, $.DeckNumber)), "]"),
+    OptionMarker: () => "#",
+    TouchstoneComment: () => /![^\r\n]*/,
+    DeckNumber: () => /[-+]?[0-9]*\.?[0-9]+([eEdD][-+]?[0-9]+)?/,
+    DeckIdentifier: () => /[A-Za-z_][A-Za-z0-9_.-]*/,
+    DeckColon: () => ":",
+  },
+});
+
 /**
  * ModelScript Touchstone N-Port (.sNp, .ts2) Language Definition.
  */
@@ -35,6 +51,8 @@ export const touchstoneLanguage = language({
   name: "touchstone",
   maturity: "beta",
   fileExtensions: touchstoneExtensions,
+  extras: touchstoneGrammar.extras,
+  rules: touchstoneGrammar.rules,
   indexing: {
     indexFile: indexTouchstoneFile,
   },
@@ -135,8 +153,6 @@ export const touchstoneLanguage = language({
       },
     },
   ],
-  extras: () => [/[ \t\r\n]+/],
-  rules: cardDeckRules,
 });
 
 export default touchstoneLanguage;

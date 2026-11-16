@@ -9,6 +9,7 @@
  * - Strictly zero regular expressions (no RegExp or /.../ literals).
  */
 
+import { groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
 import type {
   PdbAtom,
   PdbChain,
@@ -21,6 +22,9 @@ import type {
   PdbSecondaryStructure,
   PdbStructure,
 } from "../types.js";
+import { getPdbWasmParser } from "./wasm-loader.js";
+
+export * from "./wasm-loader.js";
 
 export const STANDARD_AMINO_ACIDS: Readonly<Record<string, string>> = {
   ALA: "A",
@@ -270,8 +274,40 @@ function finalizeDocument(structure: PdbStructure, sourceFile?: string): PdbDocu
   };
 }
 
-function isMmCifSource(text: string): boolean {
-  const lines = splitLinesWithRanges(text);
+function extractCstLinesWithRanges(source: string, rootNode: CstNodeLike | null | undefined): LineEntry[] {
+  const entries: LineEntry[] = [];
+  const cstRows = groupAllCstTokensByLine(rootNode);
+  const srcLen = source.length;
+
+  for (const { row, tokens } of cstRows) {
+    const recordTokens = tokens.filter((t) => {
+      const txt = t.text ?? "";
+      return t.type !== "Newline" && txt !== "\n" && txt !== "\r\n" && txt !== "\r";
+    });
+    if (recordTokens.length === 0) continue;
+
+    const first = recordTokens[0]!;
+    const last = recordTokens[recordTokens.length - 1]!;
+    const lineStart = Math.max(0, (first.startIndex ?? 0) - (first.startPosition?.column ?? 0));
+    let lineEnd = Math.max(lineStart, last.endIndex ?? lineStart);
+    while (lineEnd < srcLen) {
+      const code = source.charCodeAt(lineEnd);
+      if (code === 10 || code === 13) break;
+      lineEnd++;
+    }
+
+    entries.push({
+      text: source.slice(lineStart, lineEnd),
+      lineNumber: row + 1,
+      startOffset: lineStart,
+      endOffset: lineEnd,
+    });
+  }
+
+  return entries;
+}
+
+function isMmCifLines(lines: LineEntry[]): boolean {
   for (const entry of lines) {
     const trimmed = entry.text.trim();
     if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
@@ -425,12 +461,14 @@ function parseAtomLine(
 /**
  * Parses a Protein Data Bank (.pdb) or PDBx/mmCIF (.cif) macromolecular structure document.
  */
-export function parsePdb(text: string, sourceFile?: string): PdbDocument {
-  if (isMmCifSource(text)) {
-    return parseMmCif(text, sourceFile);
-  }
+export function parsePdb(text: string, sourceFile?: string, existingTree?: { rootNode?: unknown } | null): PdbDocument {
+  const cstTree = existingTree ?? getPdbWasmParser().parse(text);
+  const rootNode = cstTree?.rootNode as (CstNodeLike & { hasError?: boolean }) | null | undefined;
+  const lines = rootNode && !rootNode.hasError ? extractCstLinesWithRanges(text, rootNode) : splitLinesWithRanges(text);
 
-  const lines = splitLinesWithRanges(text);
+  if (isMmCifLines(lines)) {
+    return parseMmCif(text, sourceFile, cstTree, lines);
+  }
   let id = "XXXX";
   let classification: string | undefined;
   let depositionDate: string | undefined;
@@ -930,11 +968,85 @@ function tokenizeMmCif(text: string): CifToken[] {
   return tokens;
 }
 
+function tokenizeMmCifFromLines(lines: LineEntry[]): CifToken[] | null {
+  const tokens: CifToken[] = [];
+  for (const entry of lines) {
+    const lineText = entry.text;
+    if (lineText.startsWith(";")) {
+      return null; // Fall back to full STAR multi-line semicolon scanner
+    }
+    const len = lineText.length;
+    let i = 0;
+    while (i < len) {
+      const code = lineText.charCodeAt(i);
+      if (isWhitespaceChar(code)) {
+        i++;
+        continue;
+      }
+      if (code === 35) {
+        // '#' comment to end of line
+        break;
+      }
+      if (code === 39 || code === 34) {
+        const quote = code;
+        const startCol = i + 1;
+        const startOffset = entry.startOffset + i;
+        i++;
+        const contentStart = i;
+        while (i < len) {
+          if (lineText.charCodeAt(i) === quote) {
+            const nextIdx = i + 1;
+            if (nextIdx >= len || isWhitespaceChar(lineText.charCodeAt(nextIdx))) {
+              break;
+            }
+          }
+          i++;
+        }
+        const value = lineText.slice(contentStart, i);
+        if (i < len && lineText.charCodeAt(i) === quote) i++;
+        tokens.push({
+          value,
+          isQuoted: true,
+          line: entry.lineNumber,
+          column: startCol,
+          startOffset,
+          endOffset: entry.startOffset + i,
+        });
+        continue;
+      }
+      const tokStart = i;
+      const startCol = i + 1;
+      const startOffset = entry.startOffset + i;
+      while (i < len && !isWhitespaceChar(lineText.charCodeAt(i)) && lineText.charCodeAt(i) !== 35) {
+        i++;
+      }
+      tokens.push({
+        value: lineText.slice(tokStart, i),
+        isQuoted: false,
+        line: entry.lineNumber,
+        column: startCol,
+        startOffset,
+        endOffset: entry.startOffset + i,
+      });
+    }
+  }
+  return tokens;
+}
+
 /**
- * Parses a PDBx/mmCIF (.cif) macromolecular crystallographic structure file using a zero-regex STAR parser.
+ * Parses a PDBx/mmCIF (.cif) macromolecular crystallographic structure file using the WASM GLR CST and zero-regex STAR parser.
  */
-export function parseMmCif(text: string, sourceFile?: string): PdbDocument {
-  const tokens = tokenizeMmCif(text);
+export function parseMmCif(
+  text: string,
+  sourceFile?: string,
+  existingTree?: { rootNode?: unknown } | null,
+  preExtractedLines?: LineEntry[],
+): PdbDocument {
+  const cstTree = existingTree ?? getPdbWasmParser().parse(text);
+  const rootNode = cstTree?.rootNode as (CstNodeLike & { hasError?: boolean }) | null | undefined;
+  const cstLines =
+    preExtractedLines ?? (rootNode && !rootNode.hasError ? extractCstLinesWithRanges(text, rootNode) : undefined);
+  const tokens = (cstLines ? tokenizeMmCifFromLines(cstLines) : null) ?? tokenizeMmCif(text);
   let id = "XXXX";
   let title = "";
   let classification: string | undefined;

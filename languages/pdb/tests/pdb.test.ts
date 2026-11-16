@@ -454,4 +454,22 @@ test("PDB UnifiedWorkspace & LSP: indexes chains/residues, hover cards, completi
   assert.equal(pdbLanguage.name, "pdb");
   assert.ok(pdbLanguage.fileExtensions?.includes(".pdb"));
   assert.ok(pdbLanguage.fileExtensions?.includes(".cif"));
+
+  // WASM GLR parser & syntax diagnostic validation
+  const { getPdbWasmParser } = await import("../src/index.js");
+  const morselDefault = `HEADER    ANTIMICROBIAL PEPTIDE                   14-APR-26   1MSX
+TITLE     ALPHA-HELICAL ANTIMICROBIAL PEPTIDE BACKBONE
+HELIX    1  H1 ALA A    1  ALA A    3  1                                   3
+ATOM      1  N   ALA A   1      11.104   6.134  -6.504  1.00 12.40           N
+ATOM      2  CA  ALA A   1      11.639   6.071  -5.147  1.00 11.80           C
+ATOM      3  C   ALA A   1      13.135   5.826  -5.161  1.00 11.50           C
+ATOM      4  O   ALA A   1      13.663   5.024  -5.932  1.00 12.10           O
+END
+`;
+  assert.equal(getPdbWasmParser().parse(morselDefault)?.rootNode.hasError, false);
+  assert.equal(getPdbWasmParser().parse(IDEAL_HELIX_PDB)?.rootNode.hasError, false);
+  assert.equal(getPdbWasmParser().parse(SAMPLE_MMCIF)?.rootNode.hasError, false);
+
+  const badSyntaxDiags = validatePdb("HEADER 'UNTERMINATED QUOTE\nATOM 1 $$$ @@@\nEND\n");
+  assert.ok(badSyntaxDiags.some((d) => d.code === "M9250" && d.severity === 1));
 });

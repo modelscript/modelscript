@@ -516,6 +516,8 @@ export interface DiagramRendererOptions {
   onAutoLayout?: (() => void) | undefined;
   /** Generic message callback for non-action messages (revealSource, navigateTo, etc.) */
   onMessage?: ((msg: DiagramHostMessage) => void) | undefined;
+  /** Optional viewport insets (in pixels) for floating overlays when fitting/centering. */
+  fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
 }
 
 /** Active diagram renderer configuration options. */
@@ -537,6 +539,7 @@ let activeFlipSelectedNodes: ((axis: "x" | "y", targetGraph?: Graph) => void) | 
 let activeSyncAlignmentToolbar: (() => void) | null = null;
 
 const containerInstances = new Map<HTMLElement, ContainerDiagramInstance>();
+const graphBaseGridSizes = new WeakMap<Graph, number>();
 
 function getOptionsForGraph(g?: Graph | null): DiagramRendererOptions | null {
   if (g?.container && containerInstances.has(g.container)) {
@@ -3930,6 +3933,7 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     const gridConfig = data.coordinateSystem.grid;
     if (Array.isArray(gridConfig)) {
       if (typeof gridConfig[0] === "number" && gridConfig[0] > 0) {
+        graphBaseGridSizes.set(g, gridConfig[0]);
         g.setGridSize?.(gridConfig[0]);
       }
     } else if (typeof gridConfig === "object") {
@@ -3938,6 +3942,7 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
       } else {
         g.showGrid?.();
         if (typeof gridConfig.x === "number" && gridConfig.x > 0) {
+          graphBaseGridSizes.set(g, gridConfig.x);
           g.setGridSize?.(gridConfig.x);
         }
         if (gridConfig.type) {
@@ -4859,7 +4864,11 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
   const loadingCompleted = lastRenderWasLoading && !isCurrentLoading;
   lastRenderWasLoading = isCurrentLoading;
 
-  const currentModule = data.metadata?.currentModule ?? data.className ?? null;
+  const rootNodeId = nodes.find((n) => !n.parent)?.id ?? null;
+  const currentModule =
+    data.metadata?.currentModule ??
+    data.className ??
+    (data.diagramType ? `${data.diagramType}:${rootNodeId ?? ""}` : null);
   const moduleChanged = lastRenderedModule !== null && currentModule !== null && lastRenderedModule !== currentModule;
   if (!isCurrentLoading) {
     lastRenderedModule = currentModule;
@@ -4970,11 +4979,13 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
           cell.setAttrs(nodeData.attrs);
         }
 
-        // Update ports if changed (e.g. conditional ports like heatPort toggled via parameters)
+        // Update ports if changed (e.g. conditional ports like heatPort toggled via parameters, or theme color adaptation)
         interface DiagramPortLike {
           id?: string;
           name?: string;
           args?: { x?: number; y?: number; angle?: number };
+          markup?: unknown;
+          attrs?: unknown;
         }
         const currentPorts = (cell.getPorts?.() || []) as DiagramPortLike[];
         const newPortItems: DiagramPortLike[] = nodeData.ports
@@ -4988,10 +4999,22 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
         const newSig = newPortItems
           .map((p) => `${p.id || p.name}:${p.args?.x ?? ""},${p.args?.y ?? ""},${p.args?.angle ?? ""}`)
           .join(";");
-        if (currentSig !== newSig) {
-          const cellData = (cell.getData?.() || {}) as { __portRatios?: unknown };
-          if (cellData.__portRatios) {
-            delete cellData.__portRatios;
+        const currentGroups = (cell.prop?.("ports") as { groups?: unknown } | undefined)?.groups;
+        const newGroups =
+          nodeData.ports && !Array.isArray(nodeData.ports)
+            ? (nodeData.ports as { groups?: unknown }).groups
+            : undefined;
+        const portVisualChanged =
+          currentSig === newSig &&
+          (JSON.stringify(currentGroups ?? null) !== JSON.stringify(newGroups ?? null) ||
+            JSON.stringify(currentPorts.map((p) => ({ markup: p.markup ?? null, attrs: p.attrs ?? null }))) !==
+              JSON.stringify(newPortItems.map((p) => ({ markup: p.markup ?? null, attrs: p.attrs ?? null }))));
+        if (currentSig !== newSig || portVisualChanged) {
+          if (currentSig !== newSig) {
+            const cellData = (cell.getData?.() || {}) as { __portRatios?: unknown };
+            if (cellData.__portRatios) {
+              delete cellData.__portRatios;
+            }
           }
           cell.prop?.("ports", nodeData.ports ?? { items: [], groups: {} }, { rewrite: true });
         }
@@ -5136,32 +5159,55 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     const containerW = parentW > 0 ? parentW : clientW > 0 ? clientW : 800;
     const containerH = parentH > 0 ? parentH : clientH > 0 ? clientH : 600;
     g.resize(containerW, containerH);
-    const viewportArea = { x: 0, y: 0, width: containerW, height: containerH };
+    const fitViewportWithInsets = (cw: number, ch: number) => {
+      const insets = getOptionsForGraph(g)?.fitInsets;
+      const top = insets?.top ?? 0;
+      const right = insets?.right ?? 0;
+      const bottom = insets?.bottom ?? 0;
+      const left = insets?.left ?? 0;
+      const vw = Math.max(120, cw - left - right);
+      const vh = Math.max(120, ch - top - bottom);
+      const viewportArea = { x: left, y: top, width: vw, height: vh };
+      const shiftX = (left - right) / 2;
+      const shiftY = (top - bottom) / 2;
 
-    if (cs) {
-      const expandedRect = {
-        x: cs.x - cs.width * 0.125,
-        y: cs.y - cs.height * 0.125,
-        width: cs.width * 1.25,
-        height: cs.height * 1.25,
-      };
-      g.zoomToRect(expandedRect, { viewportArea });
-      const ox = cs.axesStyle?.origin?.[0] ?? 0;
-      const oy = cs.axesStyle?.origin?.[1] ?? 0;
-      const gWithCenter = g as unknown as { centerPoint?: (x: number, y: number) => void };
-      if (typeof gWithCenter.centerPoint === "function") {
-        gWithCenter.centerPoint(ox, oy);
-      } else if (typeof g.centerContent === "function") {
-        g.centerContent();
+      const hasExplicitCoordBounds = Boolean(
+        cs && (cs.boundsStyle?.visible !== false || cs.axesStyle?.visible !== false),
+      );
+      if (hasExplicitCoordBounds && cs) {
+        const expandedRect = {
+          x: cs.x - cs.width * 0.125,
+          y: cs.y - cs.height * 0.125,
+          width: cs.width * 1.25,
+          height: cs.height * 1.25,
+        };
+        g.zoomToRect(expandedRect, { viewportArea });
+        const ox = cs.axesStyle?.origin?.[0] ?? 0;
+        const oy = cs.axesStyle?.origin?.[1] ?? 0;
+        const gWithCenter = g as unknown as { centerPoint?: (x: number, y: number) => void };
+        if (typeof gWithCenter.centerPoint === "function") {
+          gWithCenter.centerPoint(ox, oy);
+        } else if (typeof g.centerContent === "function") {
+          g.centerContent();
+        }
+      } else {
+        try {
+          g.zoomToFit({ padding: 40, maxScale: 1.0, minScale: 0.2, viewportArea });
+          g.centerContent();
+        } catch {
+          // ignore
+        }
       }
-    } else {
-      try {
-        g.zoomToFit({ padding: 40, maxScale: 1.0, minScale: 0.2, viewportArea });
-        g.centerContent();
-      } catch {
-        // ignore
+
+      if ((shiftX !== 0 || shiftY !== 0) && typeof g.translate === "function") {
+        const cur = g.translate();
+        if (cur && typeof cur.tx === "number" && typeof cur.ty === "number") {
+          g.translate(cur.tx + shiftX, cur.ty + shiftY);
+        }
       }
-    }
+    };
+
+    fitViewportWithInsets(containerW, containerH);
 
     // In webviews, container dimensions can be 0 or small during initial mount.
     // Ensure the diagram is properly sized and centered once the layout completes.
@@ -5177,27 +5223,7 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
           if (cw > 0 && ch > 0) {
             g.resize(cw, ch);
           }
-          if (cs) {
-            const currentViewport = { x: 0, y: 0, width: cw > 0 ? cw : containerW, height: ch > 0 ? ch : containerH };
-            const expandedRect = {
-              x: cs.x - cs.width * 0.125,
-              y: cs.y - cs.height * 0.125,
-              width: cs.width * 1.25,
-              height: cs.height * 1.25,
-            };
-            g.zoomToRect(expandedRect, { viewportArea: currentViewport });
-            const ox = cs.axesStyle?.origin?.[0] ?? 0;
-            const oy = cs.axesStyle?.origin?.[1] ?? 0;
-            const gCheckWithCenter = g as unknown as { centerPoint?: (x: number, y: number) => void };
-            if (typeof gCheckWithCenter.centerPoint === "function") {
-              gCheckWithCenter.centerPoint(ox, oy);
-            } else if (typeof g.centerContent === "function") {
-              g.centerContent();
-            }
-          } else {
-            g.zoomToFit({ padding: 40, maxScale: 1.0, minScale: 0.2 });
-            g.centerContent();
-          }
+          fitViewportWithInsets(cw > 0 ? cw : containerW, ch > 0 ? ch : containerH);
         }
       } catch {
         // ignore
@@ -5737,6 +5763,14 @@ export function updateSolderDots(g: Graph) {
         if (existing.attr("arc/stroke") !== crossing.color) {
           existing.attr("arc/stroke", crossing.color);
         }
+        const crossingBg = isDark ? "#1e1e1e" : "#ffffff";
+        if (crossingStyle === "gap") {
+          if (existing.attr("mask/fill") !== crossingBg) {
+            existing.attr("mask/fill", crossingBg);
+          }
+        } else if (existing.attr("mask/stroke") !== crossingBg) {
+          existing.attr("mask/stroke", crossingBg);
+        }
         const curSize = existing.getSize();
         if (curSize.width !== crossingSize || curSize.height !== crossingSize) {
           existing.resize?.(crossingSize, crossingSize);
@@ -6178,7 +6212,8 @@ export function setDiagramGrid(mode: DiagramGridMode, g?: Graph | null): void {
 export function setDiagramSnap(enabled: boolean, g?: Graph | null): void {
   const targetGraph = g ?? graph;
   if (!targetGraph || targetGraph.disposed) return;
-  targetGraph.setGridSize?.(enabled ? 10 : 1);
+  const baseGridSize = graphBaseGridSizes.get(targetGraph) ?? 2;
+  targetGraph.setGridSize?.(enabled ? baseGridSize : 1);
 }
 
 /**

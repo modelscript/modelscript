@@ -75,6 +75,7 @@ interface PropertiesWidgetProps {
   onGoToSource?: ((name: string) => void) | undefined;
   onDuplicateComponent?: ((name: string) => void) | undefined;
   onDeleteComponent?: ((name: string) => void) | undefined;
+  floating?: boolean | undefined;
 }
 
 function CollapsibleSection({
@@ -112,7 +113,8 @@ function CollapsibleSection({
         }}
         style={{
           width: "100%",
-          padding: "8px 12px",
+          minHeight: 44,
+          padding: "8px 16px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -1293,15 +1295,30 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
     }
   }, [visibleTabs, activeTabId]);
 
+  const floatingCardStyle: React.CSSProperties = props.floating
+    ? {
+        borderRadius: 8,
+        border: "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))",
+        backgroundColor: isDark ? "rgba(24, 24, 27, 0.94)" : "rgba(255, 255, 255, 0.96)",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        boxShadow: isDark
+          ? "0 12px 36px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.28)"
+          : "0 10px 32px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.05)",
+        boxSizing: "border-box",
+      }
+    : {};
+
   if (isLoading && !properties) {
     return (
       <div
-        className="height-full border-left d-flex flex-column flex-items-center flex-justify-center p-4"
+        className={`height-full ${props.floating ? "" : "border-left"} d-flex flex-column flex-items-center flex-justify-center p-4`}
         style={{
           width: props.width || 300,
           minHeight: 240,
           backgroundColor: "var(--color-canvas-default)",
           color: "var(--color-fg-muted)",
+          ...floatingCardStyle,
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1314,12 +1331,13 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
   if (!properties) {
     return (
       <div
-        className="height-full border-left d-flex flex-column flex-items-center flex-justify-center p-4 text-center"
+        className={`height-full ${props.floating ? "" : "border-left"} d-flex flex-column flex-items-center flex-justify-center p-4 text-center`}
         style={{
           width: props.width || 300,
           backgroundColor: "var(--color-canvas-default)",
           color: "var(--color-fg-muted)",
           userSelect: "none",
+          ...floatingCardStyle,
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -1388,8 +1406,8 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
 
   return (
     <div
-      className="height-full overflow-auto border-left"
-      style={{ width: props.width || 300, paddingBottom: 80 }}
+      className={`height-full overflow-auto ${props.floating ? "" : "border-left"}`}
+      style={{ width: props.width || 300, paddingBottom: 80, ...floatingCardStyle }}
       onClick={(e) => e.stopPropagation()}
     >
       <CollapsibleSection

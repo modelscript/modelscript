@@ -1339,7 +1339,21 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
 
   // 18. P6004: Sparse reduced Q-V Jacobian inverse-iteration voltage collapse proximity check
   if (c.buses.size >= 2 && c.buses.size <= 300) {
-    const pqBuses = [...c.buses.values()].filter((b) => b.ide === 1);
+    const qvConnectedBuses = new Set<number>();
+    for (const br of c.branches) {
+      if (br.st !== 0) {
+        qvConnectedBuses.add(br.i);
+        qvConnectedBuses.add(Math.abs(br.j));
+      }
+    }
+    for (const t of c.transformers) {
+      if (t.stat !== 0) {
+        qvConnectedBuses.add(t.i);
+        qvConnectedBuses.add(t.j);
+        if (t.k !== 0) qvConnectedBuses.add(t.k);
+      }
+    }
+    const pqBuses = [...c.buses.values()].filter((b) => b.ide === 1 && qvConnectedBuses.has(b.i));
     const npq = pqBuses.length;
     if (npq >= 1) {
       const pqIdx = new Map<number, number>();

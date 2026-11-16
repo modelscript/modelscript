@@ -174,4 +174,29 @@ describe("Morsel Diagram Coordinate Grid Centering on Load Completion", () => {
       "diagram-service.ts loading placeholder must not use oversized 1000x1000 coordinateSystem",
     );
   });
+
+  it("verifies polyglot/SysML2 diagrams with hidden bounds/axes use zoomToFit(maxScale: 1) and wait for non-loading data", () => {
+    const diagramSrc = fs.readFileSync(diagramPkgPath, "utf-8");
+    const editorSrc = fs.readFileSync(diagramEditorPath, "utf-8");
+    const paneSrc = fs.readFileSync(visualizerPanePath, "utf-8");
+
+    assert.ok(
+      diagramSrc.includes("hasExplicitCoordBounds") &&
+        diagramSrc.includes("cs.boundsStyle?.visible !== false || cs.axesStyle?.visible !== false"),
+      "packages/diagram must check hasExplicitCoordBounds before zoomToRect",
+    );
+    assert.ok(
+      editorSrc.includes("hasExplicitCoordBounds") &&
+        editorSrc.includes("cs.boundsStyle?.visible !== false || cs.axesStyle?.visible !== false"),
+      "Diagram.tsx must check hasExplicitCoordBounds before zoomToRect",
+    );
+    assert.ok(
+      diagramSrc.includes("data.diagramType ? `${data.diagramType}:${rootNodeId"),
+      "packages/diagram must derive fallback currentModule for polyglot diagrams",
+    );
+    assert.ok(
+      paneSrc.includes("!isDiagramLoading && diagramData && !diagramData.isLoading"),
+      "MorselVisualizerPane.tsx must wait for non-loading diagramData before marking hasCenteredOnLoadRef",
+    );
+  });
 });

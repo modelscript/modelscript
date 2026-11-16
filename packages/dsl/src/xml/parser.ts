@@ -452,13 +452,18 @@ export function parseXmlSync(source: string): XmlDocument {
       }
 
       const attrSlice = tagContent.slice(nameMatch[0].length, selfClosing ? -2 : -1);
-      const leftoverAttr = attrSlice
-        .replace(/[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*=[ \t\r\n]*(?:"[^"]*"|'[^']*')/g, "")
-        .trim();
+      const maskedAttrSlice = attrSlice.replace(
+        /[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*=[ \t\r\n]*(?:"[^"]*"|'[^']*')/g,
+        (match) => " ".repeat(match.length),
+      );
+      const leftoverAttr = maskedAttrSlice.trim();
       if (leftoverAttr.length > 0) {
+        const firstTokenMatch = /\S+/.exec(maskedAttrSlice);
+        const errStart = firstTokenMatch ? idx + nameMatch[0].length + firstTokenMatch.index : idx;
+        const errEnd = firstTokenMatch ? errStart + firstTokenMatch[0].length : endTagIdx + 1;
         errors.push({
-          start: idx,
-          end: endTagIdx + 1,
+          start: errStart,
+          end: errEnd,
           code: "XML-1004",
           message: `Malformed attribute '${leftoverAttr}' in '<${tagName}>'; expected key="value".`,
         });
@@ -558,6 +563,68 @@ export function parseXmlSync(source: string): XmlDocument {
   return { source, root, errors };
 }
 
+/**
+ * Materializes an `XmlDocument` from a pre-parsed WASM GLR `SyntaxNode` root
+ * produced by any `xmlRules`-based parser (`reqif.wasm`, `pscad.wasm`, etc.).
+ */
+export function convertWasmXmlTree(rootNode: SyntaxNode, source: string): XmlDocument {
+  const rawErrors: { start: number; end: number }[] = [];
+  collectErrors(rootNode, rawErrors);
+  const rootField = typeof rootNode.childForFieldName === "function" ? rootNode.childForFieldName("root") : null;
+  let root = rootField ? convert(rootField, source, null) : null;
+  if (!root && Array.isArray(rootNode.children)) {
+    for (const c of rootNode.children) {
+      if (c.type === "Element") {
+        root = convert(c, source, null);
+        if (root) break;
+      }
+    }
+  }
+  const errors: XmlSyntaxError[] = rawErrors.map((e) => ({
+    start: e.start,
+    end: Math.max(e.start + 1, e.end),
+    code: "XML-1001",
+    message: "XML syntax error detected by WASM GLR parser.",
+  }));
+  return { source, root, errors };
+}
+
+/**
+ * Parses XML using a language-specific WASM GLR parser (`reqif.wasm`, `pscad.wasm`, etc.)
+ * for documents <= 2 MB, falling back to streaming `parseXmlSync` for > 2 MB libraries
+ * or detailed tag-mismatch recovery.
+ */
+export function parseXmlWithWasmParser(
+  source: string,
+  wasmParser?: { parse(input: string, oldTree?: unknown): { rootNode?: SyntaxNode } | null } | null,
+  existingTree?: { rootNode?: SyntaxNode } | null,
+): XmlDocument {
+  if (source.length > 2 * 1024 * 1024) {
+    return parseXmlSync(source);
+  }
+
+  try {
+    const tree = existingTree?.rootNode ? existingTree : wasmParser?.parse(source);
+    if (tree?.rootNode) {
+      const converted = convertWasmXmlTree(tree.rootNode, source);
+      if (converted.root && converted.errors.length === 0) {
+        return converted;
+      }
+      // Run parseXmlSync for detailed tag-mismatch diagnostics & partial recovery,
+      // but preserve WASM GLR error detection if parseXmlSync missed an error.
+      const syncDoc = parseXmlSync(source);
+      if (syncDoc.errors.length === 0 && converted.errors.length > 0) {
+        syncDoc.errors.push(...converted.errors);
+      }
+      return syncDoc;
+    }
+  } catch {
+    // Fall back to parseXmlSync below
+  }
+
+  return parseXmlSync(source);
+}
+
 export function parseXml(source: string): XmlDocument {
   // For multi-megabyte XML files (> 2 MB), parseXmlSync avoids WASM node bit-packing limits (8MB)
   // and parses large engineering libraries in under 400ms with exact offsets and tag stack.
@@ -569,21 +636,10 @@ export function parseXml(source: string): XmlDocument {
     if (!cached) ensureXmlParser();
     if (cached) {
       const tree = cached.parse(source);
-      if (tree) {
-        const errors: { start: number; end: number }[] = [];
-        collectErrors(tree.rootNode, errors);
-        const rootNode = tree.rootNode.childForFieldName("root");
-        let root = rootNode ? convert(rootNode, source, null) : null;
-        if (!root) {
-          for (const c of tree.rootNode.children) {
-            if (c.type === "Element") {
-              root = convert(c, source, null);
-              if (root) break;
-            }
-          }
-        }
-        if (root && errors.length === 0) {
-          return { source, root, errors };
+      if (tree?.rootNode) {
+        const converted = convertWasmXmlTree(tree.rootNode, source);
+        if (converted.root && converted.errors.length === 0) {
+          return converted;
         }
       }
     }
@@ -592,4 +648,36 @@ export function parseXml(source: string): XmlDocument {
   }
 
   return parseXmlSync(source);
+}
+
+export interface XmlLspPosition {
+  line: number;
+  character: number;
+}
+
+export interface XmlLspRange {
+  start: XmlLspPosition;
+  end: XmlLspPosition;
+}
+
+/** Converts a 0-based character offset in `source` to a 0-based LSP `{ line, character }`. */
+export function offsetToLspPosition(source: string, offset: number): XmlLspPosition {
+  const clamped = Math.max(0, Math.min(offset, source.length));
+  let line = 0;
+  let lastLineStart = 0;
+  for (let i = 0; i < clamped; i++) {
+    if (source.charCodeAt(i) === 10) {
+      line++;
+      lastLineStart = i + 1;
+    }
+  }
+  return { line, character: clamped - lastLineStart };
+}
+
+/** Converts an `XmlSyntaxError` span to a 0-based LSP range. */
+export function xmlErrorToLspRange(source: string, err: Pick<XmlSyntaxError, "start" | "end">): XmlLspRange {
+  const start = offsetToLspPosition(source, err.start);
+  const endOffset = Math.max(err.start + 1, err.end);
+  const end = offsetToLspPosition(source, endOffset);
+  return { start, end };
 }

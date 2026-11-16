@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { lowerPhreeqcToDae } from "./dae/phreeqc-to-dae.js";
 import { lintPhreeqc } from "./lints/index.js";
-import { parsePhreeqc } from "./parser/phreeqc-parser.js";
+import { getPhreeqcWasmParser, parsePhreeqc } from "./parser/phreeqc-parser.js";
 import { phreeqcToModelica } from "./projections/phreeqc-to-modelica.js";
 import {
   KNOWN_MASTER_SPECIES,
@@ -76,10 +77,35 @@ export interface LspHover {
 
 export function validatePhreeqc(text: string): LspDiagnostic[] {
   try {
+    const cstTree = getPhreeqcWasmParser().parse(text);
+    const syntaxDiags: LspDiagnostic[] = collectWasmSyntaxErrors(cstTree?.rootNode).map((err) => ({
+      range: {
+        start: { line: Math.max(0, err.startLine - 1), character: Math.max(0, err.startColumn - 1) },
+        end: { line: Math.max(0, err.endLine - 1), character: Math.max(0, err.endColumn - 1) },
+      },
+      severity: 1,
+      code: "M9550",
+      source: "phreeqc-parser",
+      message: err.message,
+    }));
+    if (syntaxDiags.length === 0 && cstTree?.rootNode?.hasError) {
+      const ep = cstTree.rootNode.endPosition ?? { row: 0, column: 0 };
+      syntaxDiags.push({
+        range: {
+          start: { line: Math.max(0, ep.row), character: Math.max(0, ep.column - 1) },
+          end: { line: Math.max(0, ep.row), character: Math.max(1, ep.column) },
+        },
+        severity: 1,
+        code: "M9550",
+        source: "phreeqc-parser",
+        message: "Syntax error: incomplete or invalid PHREEQC construct.",
+      });
+    }
+
     const doc = parsePhreeqc(text);
     const diags = lintPhreeqc(doc);
 
-    return diags.map((d) => {
+    const semanticDiags: LspDiagnostic[] = diags.map((d) => {
       const line = d.range ? Math.max(0, d.range.startLine - 1) : 0;
       const col = d.range ? Math.max(0, d.range.startColumn - 1) : 0;
       const endLine = d.range ? Math.max(0, d.range.endLine - 1) : line;
@@ -100,6 +126,8 @@ export function validatePhreeqc(text: string): LspDiagnostic[] {
         message: d.message,
       };
     });
+
+    return [...syntaxDiags, ...semanticDiags];
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     return [

@@ -11,16 +11,17 @@ describe("Playground View Switching Synchronization & Anti-Flicker Architecture"
     const content = fs.readFileSync(navbarPath, "utf-8");
 
     assert.ok(
-      content.includes("onChange={(index) =>") || content.includes("onChange={"),
+      content.includes("onChange={(idx) =>") || content.includes("onChange={"),
       "PlaygroundNavbar must pass onChange to SegmentedControl for controlled synchronization",
     );
     assert.ok(
       content.includes("viewTabs.findIndex"),
-      "PlaygroundNavbar must calculate selectedIndex deterministically from currentView",
+      "PlaygroundNavbar must calculate selectedIndex deterministically from activeTabId",
     );
-    assert.ok(content.includes('onViewChange("3d")'), "Must support 3d view change");
-    assert.ok(content.includes('onViewChange("inspector")'), "Must support inspector view change");
-    assert.ok(content.includes('onViewChange("split")'), "Must support split view change");
+    assert.ok(content.includes('onViewChange?.("3d")'), "Must support 3d view change");
+    assert.ok(content.includes('onViewChange?.("inspector")'), "Must support inspector view change");
+    assert.ok(content.includes('onViewChange?.("code")'), "Must support code view change");
+    assert.ok(content.includes('id: "icon"'), "Must include Icon tab");
   });
 
   it("verifies PlaygroundPage wraps handleActiveViewChange in useCallback and handles split view", () => {
@@ -74,14 +75,11 @@ describe("Playground View Switching Synchronization & Anti-Flicker Architecture"
 
     assert.ok(
       navbarContent.includes("<SplitToggleButton") &&
-        (navbarContent.includes("disabled={isCodeSelected || !canSplit}") ||
-          navbarContent.includes("disabled={isCodeSelected}")),
+        (navbarContent.includes("disabled={isCodeView || !canSplit}") ||
+          navbarContent.includes("disabled={isCodeView}")),
       "PlaygroundNavbar must render a separate SplitToggleButton disabled when Code view is selected or canSplit is false",
     );
-    assert.ok(
-      navbarContent.includes("effectiveIsSplit"),
-      "PlaygroundNavbar must coordinate separate isSplit toggle state",
-    );
+    assert.ok(navbarContent.includes("isSplit"), "PlaygroundNavbar must coordinate separate isSplit toggle state");
     assert.ok(
       navbarContent.includes('splitOrientation === "vertical" ? RowsIcon : ColumnsIcon') ||
         navbarContent.includes("RowsIcon"),
@@ -93,7 +91,7 @@ describe("Playground View Switching Synchronization & Anti-Flicker Architecture"
 
     assert.ok(
       pageContent.includes("onToggleSplit={handleToggleSplit}") && pageContent.includes("canSplit={canSplit}"),
-      "PlaygroundPage must pass canSplit and onToggleSplit to PlaygroundNavbar",
+      "PlaygroundPage must pass canSplit and onToggleSplit to MorselEditor",
     );
     assert.ok(
       pageContent.includes('isSplit={isSplit && canSplit && currentView !== "code"}') ||
@@ -108,14 +106,18 @@ describe("Playground View Switching Synchronization & Anti-Flicker Architecture"
     const morselPath = path.resolve(import.meta.dirname, "../src/components/morsel/Morsel.tsx");
     const morselContent = fs.readFileSync(morselPath, "utf-8");
 
-    // Code Editor should appear before MorselVisualizerPane in the split container
-    const codeEditorPos = morselContent.indexOf("{/* Code Editor (on the left in split view) */}");
+    // MorselVisualizerPane should appear before Code Editor in the split container
     const visualizerPos = morselContent.indexOf(
-      "{/* Visualizer Pane (Diagram / 3D / Simulation / Inspector on the right) */}",
+      "{/* Visualizer Pane (Diagram / 3D / Simulation / Inspector on the left in split view) */}",
+    );
+    const codeEditorPos = morselContent.indexOf("{/* Code Editor (on the right in split view) */}");
+    assert.ok(
+      visualizerPos !== -1 && codeEditorPos !== -1 && visualizerPos < codeEditorPos,
+      "MorselEditor must place Visualizer Pane on the left and Code Editor on the right",
     );
     assert.ok(
-      codeEditorPos !== -1 && visualizerPos !== -1 && codeEditorPos < visualizerPos,
-      "MorselEditor must place Code Editor on the left and Visualizer Pane on the right",
+      morselContent.includes("(1 - splitRatio) * 100"),
+      "MorselEditor must size the right-hand Code Editor to the remaining split width",
     );
 
     const visualizerPath = path.resolve(
@@ -124,8 +126,8 @@ describe("Playground View Switching Synchronization & Anti-Flicker Architecture"
     );
     const visualizerContent = fs.readFileSync(visualizerPath, "utf-8");
     assert.ok(
-      visualizerContent.includes("(1 - splitRatio) * 100"),
-      "MorselVisualizerPane must size itself to the remaining right-hand split width",
+      visualizerContent.includes("`${splitRatio * 100}%`"),
+      "MorselVisualizerPane must size itself to the left-hand splitRatio width",
     );
   });
 

@@ -215,57 +215,24 @@ interface TreeNodeProps {
   colorMode?: "dark" | "light" | undefined;
 }
 
-function setDragPreview(e: React.DragEvent, iconSvg: string | null | undefined, className: string, isDark = false) {
+function setDragPreview(e: React.DragEvent, _iconSvg: string | null | undefined, _className: string, _isDark = false) {
   if (typeof document === "undefined") return;
-  const ghost = document.createElement("div");
-  ghost.style.position = "fixed";
-  ghost.style.top = "-9999px";
-  ghost.style.left = "-9999px";
-  ghost.style.width = "48px";
-  ghost.style.height = "48px";
-  ghost.style.display = "flex";
-  ghost.style.alignItems = "center";
-  ghost.style.justifyContent = "center";
-  ghost.style.backgroundColor = isDark ? "rgba(30, 34, 42, 0.95)" : "rgba(255, 255, 255, 0.95)";
-  ghost.style.borderRadius = "8px";
-  ghost.style.border = "1.5px solid var(--ms-brand, #0891b2)";
-  ghost.style.boxShadow = "0 6px 16px rgba(0, 0, 0, 0.25)";
-  ghost.style.pointerEvents = "none";
-  ghost.style.zIndex = "999999";
-  ghost.style.overflow = "hidden";
-
-  if (iconSvg && iconSvg.includes("<svg")) {
-    const adaptedSvg = invertSvgColors(iconSvg, isDark);
-    ghost.innerHTML = DOMPurify.sanitize(adaptedSvg, {
-      USE_PROFILES: { svg: true, svgFilters: true },
-    });
-    const svgEl = ghost.querySelector("svg");
-    if (svgEl) {
-      svgEl.setAttribute("width", "36");
-      svgEl.setAttribute("height", "36");
-      svgEl.style.width = "36px";
-      svgEl.style.height = "36px";
-      svgEl.style.display = "block";
-    }
-  } else {
-    const label = document.createElement("div");
-    label.style.fontSize = "10px";
-    label.style.fontWeight = "bold";
-    label.style.color = "var(--ms-brand, #0891b2)";
-    label.style.textAlign = "center";
-    label.style.lineHeight = "1.1";
-    label.textContent = className.split(".").pop() || className;
-    ghost.appendChild(label);
-  }
-
-  document.body.appendChild(ghost);
+  // Suppress the browser's cursor drag snapshot so only the canvas placement placeholder icon is shown.
+  const blank = document.createElement("canvas");
+  blank.width = 1;
+  blank.height = 1;
+  blank.style.position = "fixed";
+  blank.style.top = "-10px";
+  blank.style.left = "-10px";
+  blank.style.pointerEvents = "none";
+  document.body.appendChild(blank);
   try {
-    e.dataTransfer.setDragImage(ghost, 24, 24);
+    e.dataTransfer.setDragImage(blank, 0, 0);
   } catch {
     // ignore if browser doesn't support setDragImage
   }
   setTimeout(() => {
-    if (ghost.parentNode) document.body.removeChild(ghost);
+    if (blank.parentNode) document.body.removeChild(blank);
   }, 0);
 }
 
@@ -626,6 +593,8 @@ function inferLanguageFromUri(uri: string): string | null {
     return "spice";
   if (lower.endsWith(".csv")) return "csv";
   if (lower.endsWith(".urdf") || lower.endsWith(".sdf") || lower.endsWith(".xacro")) return "urdf";
+  if (lower.endsWith(".pscx") || lower.endsWith(".pslx") || lower.endsWith(".pswx") || lower.endsWith(".psmx"))
+    return "pscad";
   return null;
 }
 

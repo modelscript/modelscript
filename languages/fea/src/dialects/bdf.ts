@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { materializeFeaDeck } from "../materializer.js";
 import type { FeaDialect, FeaModelData, FeaNode, MaterializeOptions } from "../types.js";
+import { getFeaWasmParser } from "../wasm-loader.js";
 
 /**
  * Bulk Data (.bdf / .dat) FEA deck dialect implementation.
@@ -23,6 +25,8 @@ export class BdfDialect implements FeaDialect {
    * and 8-column small-field formats with continuation cards) into `FeaModelData`.
    */
   public parse(deckText: string): FeaModelData {
+    const tree = getFeaWasmParser().parse(deckText);
+    const syntaxErrors = collectWasmSyntaxErrors(tree?.rootNode);
     const lines = deckText.split(/\r?\n/);
     const data: FeaModelData = {
       dialect: this.id,
@@ -42,6 +46,7 @@ export class BdfDialect implements FeaDialect {
       materialLines: new Map(),
       sectionLines: new Map(),
       boundaryLines: [],
+      syntaxErrors,
     };
 
     /**

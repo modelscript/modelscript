@@ -1358,52 +1358,94 @@ export declare function createWasmParserSync(
   facade: LspFacade;
   parser: TreeSitterParser;
 };
+/**
+ * Registers a pre-instantiated WebAssembly GLR parser in `globalThis.__msWasmParsers`
+ * so synchronous language parsers and workspace linters can use it inside browser WebWorkers
+ * without Node.js `fs` or `node:module`.
+ */
+export declare function registerPreloadedWasmParser(
+  langId: string,
+  parser: TreeSitterParser | null | undefined,
+  facade?: LspFacade | null,
+): void;
+/**
+ * Retrieves a pre-instantiated WebAssembly GLR parser from `globalThis` if registered
+ * by `ParserService` (browser WebWorker or Node LSP server).
+ */
+export declare function getPreloadedWasmParser(
+  langId: string,
+): TreeSitterParser | undefined;
+/**
+ * Resolves the filesystem path or URL to a language package's `parser.wasm` without `node:module`.
+ */
+export declare function resolveLanguageWasmPath(
+  importMetaUrl: string,
+  langId?: string,
+): string;
+/**
+ * Isomorphic helper that returns the pre-loaded WASM GLR parser in browser WebWorkers
+ * (`globalThis.__msWasmParsers`) and lazily loads `parser.wasm` synchronously in Node.js CLI/tests.
+ */
+export declare function getOrLoadLanguageWasmParser<TParser = TreeSitterParser>(
+  langId: string,
+  importMetaUrl: string,
+  syncFactory?: (wasmPath: string) => {
+    parser: TParser;
+  },
+): TParser;
+export interface WasmSyntaxErrorSpan {
+  message: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+}
+/**
+ * Walks a WASM GLR `SyntaxNode` root and extracts bounded `ERROR` / `isMissing` syntax error spans
+ * (1-indexed lines and columns).
+ */
+export declare function collectWasmSyntaxErrors(
+  rootNode: unknown,
+  maxErrors?: number,
+): WasmSyntaxErrorSpan[];
 
 export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  MechanismFile = 41,
-  CtiDirective = 42,
-  ArgumentList = 43,
-  NamedArgument = 44,
-  YamlSection = 45,
-  YamlBlock = 46,
-  YamlSequence = 47,
-  YamlSequenceItem = 48,
-  YamlMapping = 49,
-  YamlEntry = 50,
-  Statement = 51,
-  Expression = 52,
-  ListLiteral = 53,
-  TupleLiteral = 54,
-  FunctionCall = 55,
-  START = 56,
-  _START = 56,
-  CommentLine = 76,
-  Identifier = 77,
-  StringLiteral = 78,
-  NumberLiteral = 79,
+  MechanismFile = 19,
+  YamlDocument = 20,
+  CtiDocument = 21,
+  CtiDirective = 22,
+  YamlSection = 23,
+  YamlSequenceItem = 24,
+  LineValue = 25,
+  ValueAtom = 26,
+  YamlMapping = 27,
+  ListLiteral = 28,
+  TupleLiteral = 29,
+  GroupBody = 30,
+  START = 31,
+  _START = 31,
+  DocMarker = 43,
+  YamlKey = 44,
+  ReactionOp = 45,
+  CommentLine = 46,
+  Identifier = 47,
+  StringLiteral = 48,
+  NumberLiteral = 49,
   EOF = 1023,
 }
 
 export declare enum FieldId {
   DirectiveName = 1,
   directiveName = 1,
-  ParamName = 2,
-  paramName = 2,
+  SectionKey = 2,
+  sectionKey = 2,
   Value = 3,
   value = 3,
-  SectionKey = 4,
-  sectionKey = 4,
-  Key = 5,
-  key = 5,
-  Lhs = 6,
-  lhs = 6,
-  Rhs = 7,
-  rhs = 7,
-  Callee = 8,
-  callee = 8,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1415,50 +1457,38 @@ export interface MechanismFileNode extends SyntaxNode {
   readonly typeId: SyntaxKind.MechanismFile;
 }
 export declare function isMechanismFile(node: SyntaxNode | null | undefined): node is MechanismFileNode;
+export interface YamlDocumentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.YamlDocument;
+}
+export declare function isYamlDocument(node: SyntaxNode | null | undefined): node is YamlDocumentNode;
+export interface CtiDocumentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.CtiDocument;
+}
+export declare function isCtiDocument(node: SyntaxNode | null | undefined): node is CtiDocumentNode;
 export interface CtiDirectiveNode extends SyntaxNode {
   readonly typeId: SyntaxKind.CtiDirective;
 }
 export declare function isCtiDirective(node: SyntaxNode | null | undefined): node is CtiDirectiveNode;
-export interface ArgumentListNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.ArgumentList;
-}
-export declare function isArgumentList(node: SyntaxNode | null | undefined): node is ArgumentListNode;
-export interface NamedArgumentNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.NamedArgument;
-}
-export declare function isNamedArgument(node: SyntaxNode | null | undefined): node is NamedArgumentNode;
 export interface YamlSectionNode extends SyntaxNode {
   readonly typeId: SyntaxKind.YamlSection;
 }
 export declare function isYamlSection(node: SyntaxNode | null | undefined): node is YamlSectionNode;
-export interface YamlBlockNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.YamlBlock;
-}
-export declare function isYamlBlock(node: SyntaxNode | null | undefined): node is YamlBlockNode;
-export interface YamlSequenceNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.YamlSequence;
-}
-export declare function isYamlSequence(node: SyntaxNode | null | undefined): node is YamlSequenceNode;
 export interface YamlSequenceItemNode extends SyntaxNode {
   readonly typeId: SyntaxKind.YamlSequenceItem;
 }
 export declare function isYamlSequenceItem(node: SyntaxNode | null | undefined): node is YamlSequenceItemNode;
+export interface LineValueNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.LineValue;
+}
+export declare function isLineValue(node: SyntaxNode | null | undefined): node is LineValueNode;
+export interface ValueAtomNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ValueAtom;
+}
+export declare function isValueAtom(node: SyntaxNode | null | undefined): node is ValueAtomNode;
 export interface YamlMappingNode extends SyntaxNode {
   readonly typeId: SyntaxKind.YamlMapping;
 }
 export declare function isYamlMapping(node: SyntaxNode | null | undefined): node is YamlMappingNode;
-export interface YamlEntryNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.YamlEntry;
-}
-export declare function isYamlEntry(node: SyntaxNode | null | undefined): node is YamlEntryNode;
-export interface StatementNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.Statement;
-}
-export declare function isStatement(node: SyntaxNode | null | undefined): node is StatementNode;
-export interface ExpressionNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.Expression;
-}
-export declare function isExpression(node: SyntaxNode | null | undefined): node is ExpressionNode;
 export interface ListLiteralNode extends SyntaxNode {
   readonly typeId: SyntaxKind.ListLiteral;
 }
@@ -1467,10 +1497,22 @@ export interface TupleLiteralNode extends SyntaxNode {
   readonly typeId: SyntaxKind.TupleLiteral;
 }
 export declare function isTupleLiteral(node: SyntaxNode | null | undefined): node is TupleLiteralNode;
-export interface FunctionCallNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.FunctionCall;
+export interface GroupBodyNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.GroupBody;
 }
-export declare function isFunctionCall(node: SyntaxNode | null | undefined): node is FunctionCallNode;
+export declare function isGroupBody(node: SyntaxNode | null | undefined): node is GroupBodyNode;
+export interface DocMarkerNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DocMarker;
+}
+export declare function isDocMarker(node: SyntaxNode | null | undefined): node is DocMarkerNode;
+export interface YamlKeyNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.YamlKey;
+}
+export declare function isYamlKey(node: SyntaxNode | null | undefined): node is YamlKeyNode;
+export interface ReactionOpNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ReactionOp;
+}
+export declare function isReactionOp(node: SyntaxNode | null | undefined): node is ReactionOpNode;
 export interface CommentLineNode extends SyntaxNode {
   readonly typeId: SyntaxKind.CommentLine;
 }
@@ -1495,6 +1537,16 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is MechanismFileNode;
   };
+  export const YamlDocument: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is YamlDocumentNode;
+  };
+  export const CtiDocument: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is CtiDocumentNode;
+  };
   export const CtiDirective: {
     readonly typeId: number;
     readonly type: string;
@@ -1502,69 +1554,34 @@ export declare namespace Cst {
     directiveName(node: SyntaxNode | null | undefined): SyntaxNode | null;
     directiveNameList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
-  export const ArgumentList: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ArgumentListNode;
-  };
-  export const NamedArgument: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is NamedArgumentNode;
-    paramName(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    paramNameList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
   export const YamlSection: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is YamlSectionNode;
     sectionKey(node: SyntaxNode | null | undefined): SyntaxNode | null;
     sectionKeyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const YamlBlock: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is YamlBlockNode;
-  };
-  export const YamlSequence: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is YamlSequenceNode;
+    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const YamlSequenceItem: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is YamlSequenceItemNode;
   };
+  export const LineValue: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is LineValueNode;
+  };
+  export const ValueAtom: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ValueAtomNode;
+  };
   export const YamlMapping: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is YamlMappingNode;
-  };
-  export const YamlEntry: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is YamlEntryNode;
-    key(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    keyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const Statement: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is StatementNode;
-    lhs(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    lhsList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    rhs(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    rhsList(node: SyntaxNode | null | undefined): SyntaxNode[];
-  };
-  export const Expression: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is ExpressionNode;
   };
   export const ListLiteral: {
     readonly typeId: number;
@@ -1576,12 +1593,25 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is TupleLiteralNode;
   };
-  export const FunctionCall: {
+  export const GroupBody: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is FunctionCallNode;
-    callee(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    calleeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    is(node: SyntaxNode | null | undefined): node is GroupBodyNode;
+  };
+  export const DocMarker: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DocMarkerNode;
+  };
+  export const YamlKey: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is YamlKeyNode;
+  };
+  export const ReactionOp: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ReactionOpNode;
   };
   export const CommentLine: {
     readonly typeId: number;

@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/landgem/wasm-parser";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type { DigesterParameters, LandfillSite, LandgemModel, LandgemParameters, WasteCohort } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getLandgemWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/landgem/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("landgem", import.meta.url, createWasmParserSync);
 }
 
 /**

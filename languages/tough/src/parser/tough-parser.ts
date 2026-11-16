@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
 import { createWasmParserSync } from "@modelscript/tough/wasm-parser";
-import { createRequire } from "node:module";
 import type { ToughConnection, ToughDeck, ToughElement, ToughGenerator, ToughIncon, ToughRock } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getToughWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/tough/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("tough", import.meta.url, createWasmParserSync);
 }
 
 export function parseTough(text: string): ToughDeck {

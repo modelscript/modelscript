@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { lowerIbisToDae } from "./dae/ibis-to-dae.js";
 import { lintIbis } from "./lints/index.js";
-import { parseIbis } from "./parser/ibis-parser.js";
+import { getIbisWasmParser, parseIbis } from "./parser/ibis-parser.js";
 import { ibisToModelica } from "./projections/ibis-to-modelica.js";
 import { calculateOutputResistance, evaluateBufferCurrent } from "./solvers/buffer-solver.js";
 
@@ -70,12 +71,64 @@ export interface LspHover {
   range?: LspRange | undefined;
 }
 
+interface ErrNode {
+  hasError?: boolean;
+  isError?: boolean;
+  text?: string;
+  startPosition?: { row?: number; column?: number };
+  endPosition?: { row?: number; column?: number };
+  children?: unknown[];
+}
+
+function collectAllWasmErrors(rootNode: unknown) {
+  const errs = collectWasmSyntaxErrors(rootNode);
+  if (errs.length > 0 || !rootNode || typeof rootNode !== "object") return errs;
+  const root = rootNode as ErrNode;
+  if (!root.hasError) return errs;
+  let target: ErrNode = root;
+  let cur: ErrNode | undefined = root;
+  while (cur && Array.isArray(cur.children)) {
+    const next: ErrNode | undefined = cur.children.find((c): c is ErrNode =>
+      Boolean(c && typeof c === "object" && ((c as ErrNode).isError || (c as ErrNode).hasError)),
+    );
+    if (!next) break;
+    target = next;
+    cur = next;
+  }
+  const sp = target.startPosition ?? { row: 0, column: 0 };
+  const ep = target.endPosition ?? sp;
+  const snippet = (target.text ?? "").trim().replace(/\s+/g, " ").slice(0, 32);
+  return [
+    {
+      message: snippet ? `Unexpected or unclosed syntax near '${snippet}'.` : "Syntax error in input.",
+      startLine: (sp.row ?? 0) + 1,
+      startColumn: (sp.column ?? 0) + 1,
+      endLine: (ep.row ?? sp.row ?? 0) + 1,
+      endColumn: Math.max((sp.column ?? 0) + 2, (ep.column ?? 0) + 1),
+      startOffset: 0,
+      endOffset: 0,
+    },
+  ];
+}
+
 export function validateIbis(text: string): LspDiagnostic[] {
   try {
-    const deck = parseIbis(text);
+    const cstTree = getIbisWasmParser().parse(text);
+    const syntaxDiags: LspDiagnostic[] = collectAllWasmErrors(cstTree?.rootNode).map((err) => ({
+      range: {
+        start: { line: Math.max(0, err.startLine - 1), character: Math.max(0, err.startColumn - 1) },
+        end: { line: Math.max(0, err.endLine - 1), character: Math.max(0, err.endColumn - 1) },
+      },
+      severity: 1,
+      code: "M8300",
+      source: "modelscript-ibis",
+      message: `[M8300] ${err.message}`,
+    }));
+
+    const deck = parseIbis(text, undefined, cstTree);
     const diags = lintIbis(deck);
 
-    return diags.map((d) => {
+    const lintDiags: LspDiagnostic[] = diags.map((d) => {
       const severity = d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3;
       return {
         range: {
@@ -88,6 +141,8 @@ export function validateIbis(text: string): LspDiagnostic[] {
         message: `[M${d.code}] ${d.message}`,
       };
     });
+
+    return [...syntaxDiags, ...lintDiags];
   } catch (err: unknown) {
     return [
       {

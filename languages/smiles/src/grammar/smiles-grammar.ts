@@ -7,37 +7,31 @@
  * enabling compilation into native WebAssembly GLR parse tables and linear-memory CST.
  */
 
-import { choice, field, language, optional, repeat, seq } from "@modelscript/dsl";
+import { choice, field, language, repeat } from "@modelscript/dsl";
 
 export const smilesGrammar = language({
   name: "Smiles",
   word: ($) => $.Identifier,
   extras: ($) => [/[ \t\r\n]+/, $.CommentLine],
-  conflicts: ($) => [[$.MoleculeEntry]],
   lsp: {
     folding: ["MoleculeEntry", "MolfileRecord"],
     outline: ["MoleculeEntry", "MolfileRecord"],
   },
   rules: {
-    Document: ($) => repeat(choice($.Record, $.CommentLine)),
+    Document: ($) => repeat($.Record),
 
-    Record: ($) => choice($.MoleculeEntry, $.MolfileRecord),
+    Record: ($) => choice($.SdfDelimiter, $.SdfDataHeader, $.MolfileRecord, $.MoleculeEntry),
 
-    MoleculeEntry: ($) =>
-      seq(
-        field("smiles", choice($.SmilesPattern, $.Identifier)),
-        optional(field("name", choice($.Identifier, $.SmilesPattern))),
-      ),
+    MoleculeEntry: ($) => field("smiles", choice($.SmilesPattern, $.Identifier, $.QuotedString)),
 
-    MolfileRecord: ($) =>
-      seq(field("counts", $.CountsLine), repeat(choice($.SmilesPattern, $.Identifier)), $.MolfileEndLine),
+    MolfileRecord: () => /M[ \t]+(END|CHG|ISO|RAD|RGP|V30)[^\r\n]*/,
+    SdfDataHeader: () => />[ \t]*<[^>\r\n]+>[^\r\n]*/,
+    SdfDelimiter: () => /\$\$\$\$/,
+    QuotedString: () => /"[^"\r\n]*"|'[^'\r\n]*'/,
 
-    CountsLine: () => /.*(V2000|V3000)[^\r\n]*/,
-    MolfileEndLine: () => /M\s+END[^\r\n]*/,
+    SmilesPattern: () => /[A-Za-z0-9@+\-[\]()/\\#=.:%*,~&!;]+/,
 
-    SmilesPattern: () => /[A-Za-z0-9@+\-[\]()/\\#=.:%*]+/,
-
-    CommentLine: () => /#[^\r\n]*/,
+    CommentLine: () => /(#|\/\/)[^\r\n]*/,
     Identifier: () => /[a-zA-Z_][a-zA-Z0-9_\-.]*/,
   },
 });

@@ -415,6 +415,17 @@ html [data-color-mode][data-light-theme][data-dark-theme] {
   --control-fgColor-disabled: var(--ms-text-3);
   --control-checked-bgColor-rest: var(--ms-brand);
   --control-checked-bgColor-hover: var(--ms-brand-hover);
+  --control-transparent-bgColor-rest: transparent;
+  --control-transparent-bgColor-hover: var(--ms-surface-hover);
+  --control-transparent-bgColor-active: color-mix(in srgb, var(--ms-text-1) 10%, transparent);
+  --control-transparent-bgColor-selected: color-mix(in srgb, var(--ms-text-1) 8%, transparent);
+  --control-transparent-borderColor-active: transparent;
+  --control-danger-fgColor-rest: var(--ms-danger);
+  --control-danger-bgColor-hover: color-mix(in srgb, var(--ms-danger) 12%, transparent);
+  --color-action-list-item-default-hover-bg: var(--ms-surface-hover);
+  --color-action-list-item-default-active-bg: color-mix(in srgb, var(--ms-text-1) 10%, transparent);
+  --color-action-list-item-default-selected-bg: color-mix(in srgb, var(--ms-text-1) 8%, transparent);
+  --color-action-list-item-default-active-border: transparent;
   --underlineNav-borderColor-active: var(--ms-brand);
 
   /* Primer typography bridge: ensure BaseStyles, Tooltip, TextInput, etc. never fall back to system/Noto fonts */

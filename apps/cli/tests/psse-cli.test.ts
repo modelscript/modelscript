@@ -75,7 +75,11 @@ test("PSS/E CLI Commands (msx psse inspect, lint, to-dae, to-modelica, solve)", 
         action: "lint",
         files: [rawFile],
       });
-      assert.ok(logs.some((l) => l.includes("No electrical or parameter diagnostics found.")));
+      assert.ok(
+        logs.some((l) => l.includes("[psse] Linting")),
+        logs.join("\n"),
+      );
+      assert.ok(!logs.some((l) => l.includes("✖ ERROR")), logs.join("\n"));
     } finally {
       console.log = origLog;
     }

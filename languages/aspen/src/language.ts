@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { cardDeckRules, language } from "@modelscript/dsl";
+import { choice, language, repeat, seq } from "@modelscript/dsl";
 import { lowerAspenToDae } from "./dae/aspen-to-dae.js";
 import { canIndexAspen, indexAspenDocument } from "./indexing.js";
 import { lintAspen } from "./lints/index.js";
@@ -8,6 +8,34 @@ import { parseAspen } from "./parser/aspen-parser.js";
 import { aspenToModelica } from "./projections/aspen-to-modelica.js";
 import { solveFlashRachfordRice } from "./solvers/flash-solver.js";
 import { aspenPolyglotConfig } from "./tgg/index.js";
+
+const aspenGrammar = language({
+  name: "aspen",
+  extras: ($) => [/[ \t\r\n]+/, $.DeckComment],
+  rules: {
+    Document: ($) => repeat($.DeckToken),
+    DeckToken: ($) =>
+      choice(
+        $.ParenGroup,
+        $.DeckString,
+        $.DeckNumber,
+        $.DeckIdentifier,
+        $.EqualsToken,
+        $.SlashToken,
+        $.ColonToken,
+        $.StarToken,
+      ),
+    ParenGroup: ($) => seq("(", repeat($.DeckToken), ")"),
+    DeckString: () => /'[^'\r\n]*'|"[^"\r\n]*"/,
+    DeckNumber: () => /[-+]?[0-9]+(\.[0-9]*)?([eE][-+]?[0-9]+)?|[-+]?\.[0-9]+([eE][-+]?[0-9]+)?/,
+    DeckIdentifier: () => /[A-Za-z_][A-Za-z0-9_.:-]*/,
+    EqualsToken: () => "=",
+    SlashToken: () => "/",
+    ColonToken: () => ":",
+    StarToken: () => "*",
+    DeckComment: () => /[;#][^\r\n]*/,
+  },
+});
 
 /**
  * ModelScript Aspen Plus Input Deck (.in, .inp, .bkp) Language Definition.
@@ -17,6 +45,8 @@ export const aspenLanguage = language({
   name: "aspen",
   fileExtensions: [".in", ".inp", ".bkp", ".aspen.inp"],
   maturity: "experimental",
+  extras: aspenGrammar.extras,
+  rules: aspenGrammar.rules,
   indexing: {
     indexFile: indexAspenDocument,
     canIndex: canIndexAspen,
@@ -112,8 +142,6 @@ export const aspenLanguage = language({
       },
     },
   ],
-  extras: () => [/[ \t\r\n]+/],
-  rules: cardDeckRules,
 });
 
 export default aspenLanguage;

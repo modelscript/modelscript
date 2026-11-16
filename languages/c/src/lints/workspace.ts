@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { createWasmParserSync } from "@modelscript/c/parser";
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import {
   collectWorkspaceDocuments,
   findIncludeCycle,
@@ -9,17 +10,10 @@ import {
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import { lintCSource } from "./index.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getCWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/c/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("c", import.meta.url, createWasmParserSync);
 }
 
 /**

@@ -28,7 +28,6 @@ import { CosimPanel, type HistorianSession } from "../CosimPanel";
 import DiagramEditor, { type DiagramEditorHandle } from "../Diagram";
 import PropertiesWidget from "../Properties";
 import type { MobileTab } from "./MorselMobileTabBar";
-import { MorselSelectionRibbon } from "./MorselSelectionRibbon";
 import { PolyglotDomainPanel } from "./PolyglotDomainPanel";
 import { MorselView } from "./types";
 
@@ -317,6 +316,13 @@ export interface MorselVisualizerPaneProps {
   loadingProgress?: number | undefined;
   onLoadStarterExample?: ((code: string, title?: string) => void) | undefined;
   gdtOverlay?: GdtOverlayPayload | null | undefined;
+  isSplitActive?: boolean | undefined;
+  canSplit?: boolean | undefined;
+  splitOrientation?: "columns" | "rows" | undefined;
+  onSelectView?: ((target: "diagram" | "3d" | "simulation" | "inspector" | "code") => void) | undefined;
+  onToggleSplit?: (() => void) | undefined;
+  treeWidth?: number | undefined;
+  diagnosticsBottomOffset?: number | undefined;
 }
 
 const isSplit = (v: MorselView) => v === MorselView.SPLIT_COLUMNS || v === MorselView.SPLIT_ROWS;
@@ -392,6 +398,13 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   documentUri,
   loadingProgress,
   onLoadStarterExample,
+  isSplitActive: _isSplitActive,
+  canSplit: _canSplit = true,
+  splitOrientation: _splitOrientation = "columns",
+  onSelectView: _onSelectView,
+  onToggleSplit: _onToggleSplit,
+  treeWidth = 260,
+  diagnosticsBottomOffset = 12,
 }) => {
   const { hasCapability } = useCapabilities();
   const _isCaeComputeEnabled = useFeatureFlag("cae_cloud_solver");
@@ -474,7 +487,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
 
   useEffect(() => {
     if (loadingProgress !== undefined && loadingProgress >= 100 && !hasCenteredOnLoadRef.current) {
-      if (!isDiagramLoading || diagramData) {
+      if (!isDiagramLoading && diagramData && !diagramData.isLoading) {
         hasCenteredOnLoadRef.current = true;
         const timer = setTimeout(() => {
           effectiveDiagramRef?.current?.zoomToFit();
@@ -573,19 +586,33 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   }, [activeLangInfo.diagramTypes, diagramType]);
 
   useEffect(() => {
-    if (!activeLangInfo.supportsSimulation && showResultsView) {
-      setShowResultsView(false);
+    const nextResults = activeLangInfo.supportsSimulation ? showResultsView : false;
+    const nextCad = supports3dView ? showCadView : false;
+    if (nextResults !== showResultsView) {
+      setShowResultsView(nextResults);
     }
-    if (!supports3dView && showCadView) {
-      setShowCadView(false);
+    if (nextCad !== showCadView) {
+      setShowCadView(nextCad);
+    }
+    if (!activeLangInfo.supportsDiagram && !nextResults && !nextCad && !showAnalysisView) {
+      if (supports3dView) {
+        setShowCadView(true);
+      } else if (activeLangInfo.supportsSimulation) {
+        setShowResultsView(true);
+      } else {
+        setShowAnalysisView(true);
+      }
     }
   }, [
+    activeLangInfo.supportsDiagram,
     activeLangInfo.supportsSimulation,
     supports3dView,
     showResultsView,
     showCadView,
+    showAnalysisView,
     setShowResultsView,
     setShowCadView,
+    setShowAnalysisView,
   ]);
 
   const hasUserCode = useMemo(() => {
@@ -749,28 +776,51 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
     return null;
   }
 
+  const isFullScreenSplitCanvas =
+    !isNarrow &&
+    (hideCenterFloatingToolbar || isPlaygroundRoute) &&
+    isSplit(view) &&
+    !showResultsView &&
+    !showAnalysisView;
+  const isFloatingLayout =
+    !isNarrow && (hideCenterFloatingToolbar || isPlaygroundRoute) && (!isSplit(view) || isFullScreenSplitCanvas);
+  const floatingLeftOffset = treeVisible ? treeWidth + 24 : 12;
+  const floatingCardShadow =
+    colorMode === "dark"
+      ? "0 12px 36px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.28)"
+      : "0 10px 32px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.05)";
+
   return (
     <div
       style={{
         display: "flex",
-        flex: isNarrow ? 1 : isSplit(view) ? "none" : 1,
-        width: isNarrow
-          ? "100%"
-          : isSplit(view) && view === MorselView.SPLIT_COLUMNS
-            ? `${(1 - splitRatio) * 100}%`
-            : isSplit(view)
-              ? undefined
+        flex: isNarrow || isFullScreenSplitCanvas ? 1 : isSplit(view) ? "none" : 1,
+        width:
+          isNarrow || isFullScreenSplitCanvas
+            ? "100%"
+            : isSplit(view) && view === MorselView.SPLIT_COLUMNS
+              ? `${splitRatio * 100}%`
+              : isSplit(view)
+                ? undefined
+                : "100%",
+        height:
+          isNarrow || isFullScreenSplitCanvas
+            ? "100%"
+            : isSplit(view) && view === MorselView.SPLIT_ROWS
+              ? `${splitRatio * 100}%`
               : "100%",
-        height: isNarrow
-          ? "100%"
-          : isSplit(view) && view === MorselView.SPLIT_ROWS
-            ? `${(1 - splitRatio) * 100}%`
-            : "100%",
         flexDirection: "column",
         minWidth: 0,
         minHeight: 0,
         position: "relative",
-        backgroundColor: "var(--color-canvas-default)",
+        backgroundColor: "var(--color-canvas-default, #ffffff)",
+        borderRadius: isNarrow || isFloatingLayout ? 0 : 16,
+        border: isNarrow || isFloatingLayout ? "none" : "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))",
+        boxShadow:
+          isSplit(view) && !isFullScreenSplitCanvas && !isNarrow && (hideCenterFloatingToolbar || isPlaygroundRoute)
+            ? floatingCardShadow
+            : undefined,
+        overflow: "hidden",
       }}
     >
       {nestedModels.length > 1 && (
@@ -914,6 +964,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
               {!showResultsView &&
                 !showCadView &&
                 !showAnalysisView &&
+                activeLangInfo.supportsDiagram &&
                 activeLangInfo.diagramTypes &&
                 activeLangInfo.diagramTypes.length > 1 &&
                 setDiagramType && (
@@ -1124,13 +1175,21 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             zIndex: !showResultsView && !showCadView && !showAnalysisView ? 1 : 0,
           }}
         >
-          {/* Hierarchical Drill-Down Breadcrumbs Bar (only when floating toolbar is active) */}
-          {!hideCenterFloatingToolbar && !isPlaygroundRoute && drillDownPath && drillDownPath.length > 0 && (
+          {/* Hierarchical Drill-Down Breadcrumbs Bar */}
+          {drillDownPath && drillDownPath.length > 0 && (
             <div
               style={{
                 position: "absolute",
-                top: hideCenterFloatingToolbar ? 10 : showPalette ? 96 : 56,
-                left: 12,
+                top: isFloatingLayout
+                  ? showPalette
+                    ? 116
+                    : 70
+                  : hideCenterFloatingToolbar
+                    ? 10
+                    : showPalette
+                      ? 96
+                      : 56,
+                left: isFloatingLayout ? floatingLeftOffset : 12,
                 zIndex: 90,
                 display: "flex",
                 alignItems: "center",
@@ -1178,108 +1237,6 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
               height: "100%",
             }}
           >
-            {/* Docked Canvas Sub-Header Bar */}
-            {(hideCenterFloatingToolbar || isPlaygroundRoute) && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "4px 12px",
-                  minHeight: 36,
-                  borderBottom: "1px solid var(--borderColor-muted, var(--ms-divider))",
-                  backgroundColor: "var(--bgColor-muted, var(--ms-bg-elv))",
-                  backdropFilter: "blur(8px)",
-                  gap: 8,
-                  flexShrink: 0,
-                  zIndex: 10,
-                }}
-              >
-                {/* Left: Sidebar Expand & Breadcrumbs */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden" }}>
-                  {!treeVisible && setTreeVisible && (
-                    <IconButton
-                      icon={SidebarExpandIcon}
-                      size="small"
-                      variant="invisible"
-                      aria-label={translations.toggleTree || "Expand Libraries"}
-                      title={translations.toggleTree || "Expand Libraries"}
-                      onClick={() => {
-                        setTreeVisible(true);
-                        if (typeof window !== "undefined") {
-                          window.dispatchEvent(new CustomEvent("morsel:sidebar-changed", { detail: { open: true } }));
-                        }
-                      }}
-                    />
-                  )}
-                  {drillDownPath && drillDownPath.length > 0 ? (
-                    <Breadcrumbs>
-                      <Breadcrumbs.Item
-                        href="#root"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          onDrillRoot?.();
-                        }}
-                      >
-                        Root
-                      </Breadcrumbs.Item>
-                      {drillDownPath.map((seg, idx) => (
-                        <Breadcrumbs.Item
-                          key={`${seg}-${idx}`}
-                          href={`#${seg}`}
-                          selected={idx === drillDownPath.length - 1}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            onDrillUp?.(idx);
-                          }}
-                        >
-                          {seg}
-                        </Breadcrumbs.Item>
-                      ))}
-                    </Breadcrumbs>
-                  ) : (
-                    <div
-                      style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden" }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 600,
-                          color: "var(--fgColor-default, var(--ms-text-1))",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                        title={selectedTreeClassName || activeLangInfo.label || activeLangInfo.name}
-                      >
-                        {selectedTreeClassName || activeLangInfo.label || activeLangInfo.name}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Right: Diagram Type Selector (Diagram | Icon) */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                  {activeLangInfo.diagramTypes && activeLangInfo.diagramTypes.length > 1 && setDiagramType && (
-                    <SegmentedControl
-                      aria-label="Diagram type"
-                      size="small"
-                      onChange={(idx) => {
-                        const dt = activeLangInfo.diagramTypes?.[idx];
-                        if (dt) setDiagramType(dt.id);
-                      }}
-                    >
-                      {activeLangInfo.diagramTypes.map((dt) => (
-                        <SegmentedControl.Button key={dt.id} selected={effectiveDiagramType === dt.id}>
-                          {dt.label}
-                        </SegmentedControl.Button>
-                      ))}
-                    </SegmentedControl>
-                  )}
-                </div>
-              </div>
-            )}
-
             {/* Collapsible Stencil Palette Bar */}
             {(hideCenterFloatingToolbar || isPlaygroundRoute) && showPalette && (
               <div
@@ -1289,11 +1246,26 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   flexWrap: "wrap",
                   gap: 6,
                   padding: "6px 12px",
+                  marginTop: isFloatingLayout ? 70 : 0,
+                  marginLeft: isFloatingLayout ? floatingLeftOffset : 0,
+                  marginRight:
+                    isFullScreenSplitCanvas && view === MorselView.SPLIT_COLUMNS
+                      ? `calc(${(1 - splitRatio) * 100}% + 12px)`
+                      : isFloatingLayout
+                        ? 12
+                        : 0,
+                  borderRadius: isFloatingLayout ? 8 : 0,
+                  border: isFloatingLayout ? "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))" : undefined,
                   borderBottom: "1px solid var(--borderColor-muted, var(--ms-divider))",
-                  backgroundColor: "var(--bgColor-muted, var(--ms-bg-elv))",
+                  backgroundColor: isFloatingLayout
+                    ? colorMode === "dark"
+                      ? "rgba(24, 24, 27, 0.92)"
+                      : "rgba(255, 255, 255, 0.94)"
+                    : "var(--bgColor-muted, var(--ms-bg-elv))",
                   backdropFilter: "blur(12px)",
+                  boxShadow: isFloatingLayout ? floatingCardShadow : undefined,
                   flexShrink: 0,
-                  zIndex: 9,
+                  zIndex: 25,
                 }}
               >
                 <span
@@ -1350,6 +1322,28 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   selectedName={selectedComponent}
                   theme={colorMode === "dark" ? "vs-dark" : "light"}
                   isLoading={isDiagramLoading}
+                  fitInsets={
+                    isFloatingLayout
+                      ? {
+                          top: 84,
+                          left: floatingLeftOffset + 12,
+                          right:
+                            (selectedComponent ? propertiesWidth + 28 : 24) +
+                            (isFullScreenSplitCanvas && view === MorselView.SPLIT_COLUMNS
+                              ? Math.round(
+                                  (1 - splitRatio) * (typeof window !== "undefined" ? window.innerWidth : 1200),
+                                )
+                              : 0),
+                          bottom:
+                            56 +
+                            (isFullScreenSplitCanvas && view === MorselView.SPLIT_ROWS
+                              ? Math.round(
+                                  (1 - splitRatio) * (typeof window !== "undefined" ? window.innerHeight : 800),
+                                )
+                              : 0),
+                        }
+                      : undefined
+                  }
                   onRenderComplete={(data) => {
                     if (!data?.isLoading) {
                       setIsDiagramLoading(false);
@@ -1413,12 +1407,16 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   <div
                     style={{
                       position: "absolute",
-                      bottom: 24,
+                      bottom: 64,
                       left: "50%",
                       transform: "translateX(-50%)",
+                      width: "max-content",
+                      maxWidth: "calc(100% - 32px)",
+                      textAlign: "center",
                       pointerEvents: "none",
                       display: "flex",
                       alignItems: "center",
+                      justifyContent: "center",
                       gap: 6,
                       padding: "6px 14px",
                       borderRadius: "999px",
@@ -1676,25 +1674,6 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 </div>
               )}
 
-              {/* Contextual Selection Micro-Ribbon (Floating Top-Center) */}
-              {selectedComponent &&
-                activeLangInfo.supportsDiagram &&
-                !showResultsView &&
-                !showCadView &&
-                !showAnalysisView && (
-                  <MorselSelectionRibbon
-                    selectedComponent={selectedComponent}
-                    selectedProperties={selectedComponentProperties}
-                    colorMode={colorMode}
-                    onRotate={(deg) => effectiveDiagramRef?.current?.rotateSelected(deg ?? 90)}
-                    onFlip={(axis) => effectiveDiagramRef?.current?.flipSelected?.(axis ?? "x")}
-                    onDuplicate={handleDuplicateSelected}
-                    onInspect={handleInspectSelected}
-                    onDelete={handleDeleteSelected}
-                    onClose={() => handleSelectComponent(null)}
-                  />
-                )}
-
               {/* Floating Command Island (Center-Bottom) */}
               {activeLangInfo.supportsDiagram && !hideCenterFloatingToolbar && (
                 <div
@@ -1933,8 +1912,16 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   className="morsel-viewport-hud"
                   style={{
                     position: "absolute",
-                    bottom: 16,
-                    right: 16,
+                    bottom:
+                      isFullScreenSplitCanvas && view === MorselView.SPLIT_ROWS
+                        ? `calc(${(1 - splitRatio) * 100}% + 16px)`
+                        : 16,
+                    right:
+                      isFullScreenSplitCanvas && view === MorselView.SPLIT_COLUMNS
+                        ? `calc(${(1 - splitRatio) * 100}% + ${selectedComponent ? propertiesWidth + 24 : 16}px)`
+                        : isFloatingLayout && selectedComponent
+                          ? propertiesWidth + 24
+                          : 16,
                     zIndex: 25,
                     display: "inline-flex",
                     alignItems: "center",
@@ -2457,7 +2444,30 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
           </div>
 
           {selectedComponent && (
-            <>
+            <div
+              style={
+                isFloatingLayout
+                  ? {
+                      position: "absolute",
+                      top: 70,
+                      right:
+                        isFullScreenSplitCanvas && view === MorselView.SPLIT_COLUMNS
+                          ? `calc(${(1 - splitRatio) * 100}% + 12px)`
+                          : 12,
+                      bottom:
+                        isFullScreenSplitCanvas && view === MorselView.SPLIT_ROWS
+                          ? `calc(${(1 - splitRatio) * 100}% + 12px)`
+                          : diagnosticsBottomOffset,
+                      zIndex: 26,
+                      display: "flex",
+                      flexDirection: "row",
+                      pointerEvents: "none",
+                    }
+                  : {
+                      display: "contents",
+                    }
+              }
+            >
               <div
                 role="separator"
                 aria-orientation="vertical"
@@ -2480,6 +2490,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   backgroundColor: "transparent",
                   outline: "none",
                   userSelect: "none",
+                  pointerEvents: "auto",
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "ArrowLeft") {
@@ -2587,79 +2598,82 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   }}
                 />
               </div>
-              <PropertiesWidget
-                properties={selectedComponentProperties}
-                isLoading={isPropertiesLoading}
-                width={propertiesWidth}
-                translations={translations}
-                onClose={() => handleSelectComponent(null)}
-                onNameChange={async (newName) => {
-                  if (!selectedComponent) return;
-                  const oldName = selectedComponent;
-                  if (expectedComponentNameRef) expectedComponentNameRef.current = newName;
-                  setSelectedComponent(newName);
-                  enqueueDiagramAction({ type: "updateName", oldName, newName });
-                }}
-                onDescriptionChange={async (newDescription) => {
-                  if (!selectedComponent) return;
-                  enqueueDiagramAction({
-                    type: "updateDescription",
-                    name: selectedComponent,
-                    description: newDescription,
-                  });
-                }}
-                onParameterChange={async (name, value) => {
-                  if (!selectedComponent) return;
-                  let effectiveValue = value;
-                  const declaredType = (selectedComponentProperties as any)?.declaredType;
-                  if (declaredType && Array.isArray(declaredType.elements)) {
-                    for (const el of declaredType.elements) {
-                      if (el && (el as any).name === name) {
-                        const defaultExpr = (el.modification?.expression as any)?.toJSON?.toString();
-                        if (defaultExpr !== undefined && defaultExpr === value) {
-                          effectiveValue = "";
+              <div style={{ pointerEvents: "auto", height: "100%", display: "flex" }}>
+                <PropertiesWidget
+                  properties={selectedComponentProperties}
+                  isLoading={isPropertiesLoading}
+                  width={propertiesWidth}
+                  floating={isFloatingLayout}
+                  translations={translations}
+                  onClose={() => handleSelectComponent(null)}
+                  onNameChange={async (newName) => {
+                    if (!selectedComponent) return;
+                    const oldName = selectedComponent;
+                    if (expectedComponentNameRef) expectedComponentNameRef.current = newName;
+                    setSelectedComponent(newName);
+                    enqueueDiagramAction({ type: "updateName", oldName, newName });
+                  }}
+                  onDescriptionChange={async (newDescription) => {
+                    if (!selectedComponent) return;
+                    enqueueDiagramAction({
+                      type: "updateDescription",
+                      name: selectedComponent,
+                      description: newDescription,
+                    });
+                  }}
+                  onParameterChange={async (name, value) => {
+                    if (!selectedComponent) return;
+                    let effectiveValue = value;
+                    const declaredType = (selectedComponentProperties as any)?.declaredType;
+                    if (declaredType && Array.isArray(declaredType.elements)) {
+                      for (const el of declaredType.elements) {
+                        if (el && (el as any).name === name) {
+                          const defaultExpr = (el.modification?.expression as any)?.toJSON?.toString();
+                          if (defaultExpr !== undefined && defaultExpr === value) {
+                            effectiveValue = "";
+                          }
+                          break;
                         }
-                        break;
                       }
                     }
-                  }
-                  enqueueDiagramAction({
-                    type: "updateParameter",
-                    name: selectedComponent,
-                    parameter: name,
-                    value: effectiveValue,
-                  });
-                }}
-                onLocateComponent={(name) => {
-                  effectiveDiagramRef.current?.centerCell?.(name);
-                }}
-                onGoToSource={(name) => {
-                  onNodeDoubleClick?.(name);
-                }}
-                onDuplicateComponent={(name) => {
-                  const node = diagramData?.nodes?.find((n: any) => n.id === name);
-                  if (node) {
-                    const className =
-                      node.type ||
-                      node.className ||
-                      (node.data as any)?.className ||
-                      selectedComponentProperties?.className;
-                    if (className) {
-                      enqueueDiagramAction({
-                        type: "addComponent",
-                        className,
-                        x: (node.x ?? 100) + 40,
-                        y: (node.y ?? 100) + 40,
-                      });
+                    enqueueDiagramAction({
+                      type: "updateParameter",
+                      name: selectedComponent,
+                      parameter: name,
+                      value: effectiveValue,
+                    });
+                  }}
+                  onLocateComponent={(name) => {
+                    effectiveDiagramRef.current?.centerCell?.(name);
+                  }}
+                  onGoToSource={(name) => {
+                    onNodeDoubleClick?.(name);
+                  }}
+                  onDuplicateComponent={(name) => {
+                    const node = diagramData?.nodes?.find((n: any) => n.id === name);
+                    if (node) {
+                      const className =
+                        node.type ||
+                        node.className ||
+                        (node.data as any)?.className ||
+                        selectedComponentProperties?.className;
+                      if (className) {
+                        enqueueDiagramAction({
+                          type: "addComponent",
+                          className,
+                          x: (node.x ?? 100) + 40,
+                          y: (node.y ?? 100) + 40,
+                        });
+                      }
                     }
-                  }
-                }}
-                onDeleteComponent={(name) => {
-                  enqueueDiagramAction({ type: "deleteComponents", names: [name] });
-                  handleSelectComponent(null);
-                }}
-              />
-            </>
+                  }}
+                  onDeleteComponent={(name) => {
+                    enqueueDiagramAction({ type: "deleteComponents", names: [name] });
+                    handleSelectComponent(null);
+                  }}
+                />
+              </div>
+            </div>
           )}
         </div>
 
@@ -2669,6 +2683,11 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             style={{
               position: "absolute",
               inset: 0,
+              paddingTop: isFloatingLayout ? 70 : 0,
+              paddingLeft: isFloatingLayout ? floatingLeftOffset : 0,
+              paddingRight: isFloatingLayout ? 12 : 0,
+              paddingBottom: isFloatingLayout ? 12 : 0,
+              boxSizing: "border-box",
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
@@ -2700,7 +2719,11 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
           style={{
             position: "absolute",
             inset: 0,
-            paddingTop: hideCenterFloatingToolbar ? 0 : 56,
+            paddingTop: isFloatingLayout ? 70 : hideCenterFloatingToolbar ? 0 : 56,
+            paddingLeft: isFloatingLayout ? floatingLeftOffset : 0,
+            paddingRight: isFloatingLayout ? 12 : 0,
+            paddingBottom: isFloatingLayout ? 12 : 0,
+            boxSizing: "border-box",
             display: showResultsView && !showAnalysisView ? "flex" : "none",
             flexDirection: "column",
             overflow: "hidden",
@@ -2804,7 +2827,11 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
           style={{
             position: "absolute",
             inset: 0,
-            paddingTop: hideCenterFloatingToolbar ? 0 : nestedModels.length > 1 ? 96 : 64,
+            paddingTop: isFloatingLayout ? 70 : hideCenterFloatingToolbar ? 0 : nestedModels.length > 1 ? 96 : 64,
+            paddingLeft: isFloatingLayout ? floatingLeftOffset : 0,
+            paddingRight: isFloatingLayout ? 12 : 0,
+            paddingBottom: isFloatingLayout ? 12 : 0,
+            boxSizing: "border-box",
             display: showAnalysisView ? "flex" : "none",
             flexDirection: "column",
             overflow: "hidden",

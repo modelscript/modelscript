@@ -4,20 +4,14 @@
  * Parser for Planet / TIA-329 (*.pat, *.msi) antenna radiation pattern files.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/ran/wasm-parser";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type { AntennaCut, AntennaPatternDeck, AntennaPatternPoint, AntennaPolarization } from "../types.js";
 import { computeFrontToBackRatio, computeHalfPowerBeamwidth } from "./nsma-parser.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getRanWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/ran/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("ran", import.meta.url, createWasmParserSync);
 }
 
 export function parsePlanetPat(content: string, filename = "antenna.pat"): AntennaPatternDeck {

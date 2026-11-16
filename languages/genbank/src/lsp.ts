@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { lowerGenbankToDae } from "./dae/genbank-to-dae.js";
 import { getFeatureDisplayName, lintGenbank } from "./lints/index.js";
-import { parseGenbank } from "./parser/genbank-parser.js";
+import { getGenbankWasmParser, parseGenbank } from "./parser/genbank-parser.js";
 import { genbankToModelica, genbankToSbolXml } from "./projections/genbank-projections.js";
 import { RESTRICTION_ENZYMES, analyzeGenbankSequence } from "./solvers/sequence-solver.js";
 import type { SequenceAnalysisOptions } from "./types.js";
@@ -80,10 +81,35 @@ export interface LspCompletionItem {
 
 export function validateGenbank(text: string): LspDiagnostic[] {
   try {
+    const cstTree = getGenbankWasmParser().parse(text);
+    const syntaxDiags: LspDiagnostic[] = collectWasmSyntaxErrors(cstTree?.rootNode).map((err) => ({
+      range: {
+        start: { line: Math.max(0, err.startLine - 1), character: Math.max(0, err.startColumn - 1) },
+        end: { line: Math.max(0, err.endLine - 1), character: Math.max(0, err.endColumn - 1) },
+      },
+      severity: 1,
+      code: "M9350",
+      source: "genbank-parser",
+      message: err.message,
+    }));
+    if (syntaxDiags.length === 0 && cstTree?.rootNode?.hasError) {
+      const ep = cstTree.rootNode.endPosition ?? { row: 0, column: 0 };
+      syntaxDiags.push({
+        range: {
+          start: { line: Math.max(0, ep.row), character: Math.max(0, ep.column - 1) },
+          end: { line: Math.max(0, ep.row), character: Math.max(1, ep.column) },
+        },
+        severity: 1,
+        code: "M9350",
+        source: "genbank-parser",
+        message: "Syntax error: incomplete or unclosed GenBank/FASTA record.",
+      });
+    }
+
     const doc = parseGenbank(text);
     const diags = lintGenbank(doc);
 
-    return diags.map((d) => {
+    const semanticDiags: LspDiagnostic[] = diags.map((d) => {
       const line = d.range ? Math.max(0, d.range.startLine - 1) : 0;
       const col = d.range ? Math.max(0, d.range.startColumn - 1) : 0;
       const endLine = d.range ? Math.max(0, d.range.endLine - 1) : line;
@@ -104,6 +130,8 @@ export function validateGenbank(text: string): LspDiagnostic[] {
         message: d.message,
       };
     });
+
+    return [...syntaxDiags, ...semanticDiags];
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     return [

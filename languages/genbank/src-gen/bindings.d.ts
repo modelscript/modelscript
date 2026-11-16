@@ -1358,34 +1358,85 @@ export declare function createWasmParserSync(
   facade: LspFacade;
   parser: TreeSitterParser;
 };
+/**
+ * Registers a pre-instantiated WebAssembly GLR parser in `globalThis.__msWasmParsers`
+ * so synchronous language parsers and workspace linters can use it inside browser WebWorkers
+ * without Node.js `fs` or `node:module`.
+ */
+export declare function registerPreloadedWasmParser(
+  langId: string,
+  parser: TreeSitterParser | null | undefined,
+  facade?: LspFacade | null,
+): void;
+/**
+ * Retrieves a pre-instantiated WebAssembly GLR parser from `globalThis` if registered
+ * by `ParserService` (browser WebWorker or Node LSP server).
+ */
+export declare function getPreloadedWasmParser(
+  langId: string,
+): TreeSitterParser | undefined;
+/**
+ * Resolves the filesystem path or URL to a language package's `parser.wasm` without `node:module`.
+ */
+export declare function resolveLanguageWasmPath(
+  importMetaUrl: string,
+  langId?: string,
+): string;
+/**
+ * Isomorphic helper that returns the pre-loaded WASM GLR parser in browser WebWorkers
+ * (`globalThis.__msWasmParsers`) and lazily loads `parser.wasm` synchronously in Node.js CLI/tests.
+ */
+export declare function getOrLoadLanguageWasmParser<TParser = TreeSitterParser>(
+  langId: string,
+  importMetaUrl: string,
+  syncFactory?: (wasmPath: string) => {
+    parser: TParser;
+  },
+): TParser;
+export interface WasmSyntaxErrorSpan {
+  message: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+}
+/**
+ * Walks a WASM GLR `SyntaxNode` root and extracts bounded `ERROR` / `isMissing` syntax error spans
+ * (1-indexed lines and columns).
+ */
+export declare function collectWasmSyntaxErrors(
+  rootNode: unknown,
+  maxErrors?: number,
+): WasmSyntaxErrorSpan[];
 
 export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Document = 10,
-  IniSectionHeader = 11,
-  IniKeyValue = 12,
-  IniRecord = 13,
-  IniScalar = 14,
-  IniString = 15,
-  START = 16,
-  _START = 16,
-  IniIdentifier = 22,
-  IniNumber = 23,
-  IniComment = 25,
+  GenbankDocument = 19,
+  GenbankRecord = 20,
+  LineToken = 21,
+  ParenGroup = 22,
+  BracketGroup = 23,
+  FastaStream = 24,
+  START = 25,
+  _START = 25,
+  RecordEnd = 34,
+  FastaHeader = 35,
+  FastaComment = 36,
+  RangeDots = 37,
+  Punct = 38,
+  AlnumHyphen = 39,
+  Identifier = 40,
+  NumberLiteral = 41,
+  StringLiteral = 42,
+  HashComment = 43,
   EOF = 1023,
 }
 
 export declare enum FieldId {
-  SectionName = 1,
-  sectionName = 1,
-  Key = 2,
-  key = 2,
-  Value = 3,
-  value = 3,
-  Head = 4,
-  head = 4,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1393,96 +1444,151 @@ export declare function normalizeToken(token: string | null | undefined): string
 
 /** Returns the normalized type of a CST node (stripped of quotes). */
 export declare function cstKind(node: SyntaxNode | null | undefined): string;
-export interface DocumentNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.Document;
+export interface GenbankDocumentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.GenbankDocument;
 }
-export declare function isDocument(node: SyntaxNode | null | undefined): node is DocumentNode;
-export interface IniSectionHeaderNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.IniSectionHeader;
+export declare function isGenbankDocument(node: SyntaxNode | null | undefined): node is GenbankDocumentNode;
+export interface GenbankRecordNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.GenbankRecord;
 }
-export declare function isIniSectionHeader(node: SyntaxNode | null | undefined): node is IniSectionHeaderNode;
-export interface IniKeyValueNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.IniKeyValue;
+export declare function isGenbankRecord(node: SyntaxNode | null | undefined): node is GenbankRecordNode;
+export interface LineTokenNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.LineToken;
 }
-export declare function isIniKeyValue(node: SyntaxNode | null | undefined): node is IniKeyValueNode;
-export interface IniRecordNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.IniRecord;
+export declare function isLineToken(node: SyntaxNode | null | undefined): node is LineTokenNode;
+export interface ParenGroupNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ParenGroup;
 }
-export declare function isIniRecord(node: SyntaxNode | null | undefined): node is IniRecordNode;
-export interface IniScalarNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.IniScalar;
+export declare function isParenGroup(node: SyntaxNode | null | undefined): node is ParenGroupNode;
+export interface BracketGroupNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.BracketGroup;
 }
-export declare function isIniScalar(node: SyntaxNode | null | undefined): node is IniScalarNode;
-export interface IniStringNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.IniString;
+export declare function isBracketGroup(node: SyntaxNode | null | undefined): node is BracketGroupNode;
+export interface FastaStreamNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FastaStream;
 }
-export declare function isIniString(node: SyntaxNode | null | undefined): node is IniStringNode;
-export interface IniIdentifierNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.IniIdentifier;
+export declare function isFastaStream(node: SyntaxNode | null | undefined): node is FastaStreamNode;
+export interface RecordEndNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.RecordEnd;
 }
-export declare function isIniIdentifier(node: SyntaxNode | null | undefined): node is IniIdentifierNode;
-export interface IniNumberNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.IniNumber;
+export declare function isRecordEnd(node: SyntaxNode | null | undefined): node is RecordEndNode;
+export interface FastaHeaderNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FastaHeader;
 }
-export declare function isIniNumber(node: SyntaxNode | null | undefined): node is IniNumberNode;
-export interface IniCommentNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.IniComment;
+export declare function isFastaHeader(node: SyntaxNode | null | undefined): node is FastaHeaderNode;
+export interface FastaCommentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FastaComment;
 }
-export declare function isIniComment(node: SyntaxNode | null | undefined): node is IniCommentNode;
+export declare function isFastaComment(node: SyntaxNode | null | undefined): node is FastaCommentNode;
+export interface RangeDotsNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.RangeDots;
+}
+export declare function isRangeDots(node: SyntaxNode | null | undefined): node is RangeDotsNode;
+export interface PunctNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Punct;
+}
+export declare function isPunct(node: SyntaxNode | null | undefined): node is PunctNode;
+export interface AlnumHyphenNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.AlnumHyphen;
+}
+export declare function isAlnumHyphen(node: SyntaxNode | null | undefined): node is AlnumHyphenNode;
+export interface IdentifierNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Identifier;
+}
+export declare function isIdentifier(node: SyntaxNode | null | undefined): node is IdentifierNode;
+export interface NumberLiteralNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.NumberLiteral;
+}
+export declare function isNumberLiteral(node: SyntaxNode | null | undefined): node is NumberLiteralNode;
+export interface StringLiteralNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.StringLiteral;
+}
+export declare function isStringLiteral(node: SyntaxNode | null | undefined): node is StringLiteralNode;
+export interface HashCommentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.HashComment;
+}
+export declare function isHashComment(node: SyntaxNode | null | undefined): node is HashCommentNode;
 export declare namespace Cst {
   export function kind(node: SyntaxNode | null | undefined): string;
   export function normalize(token: string | null | undefined): string;
-  export const Document: {
+  export const GenbankDocument: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DocumentNode;
+    is(node: SyntaxNode | null | undefined): node is GenbankDocumentNode;
   };
-  export const IniSectionHeader: {
+  export const GenbankRecord: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is IniSectionHeaderNode;
-    sectionName(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    sectionNameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    is(node: SyntaxNode | null | undefined): node is GenbankRecordNode;
   };
-  export const IniKeyValue: {
+  export const LineToken: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is IniKeyValueNode;
-    key(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    keyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    is(node: SyntaxNode | null | undefined): node is LineTokenNode;
   };
-  export const IniRecord: {
+  export const ParenGroup: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is IniRecordNode;
-    head(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    headList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    is(node: SyntaxNode | null | undefined): node is ParenGroupNode;
   };
-  export const IniScalar: {
+  export const BracketGroup: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is IniScalarNode;
+    is(node: SyntaxNode | null | undefined): node is BracketGroupNode;
   };
-  export const IniString: {
+  export const FastaStream: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is IniStringNode;
+    is(node: SyntaxNode | null | undefined): node is FastaStreamNode;
   };
-  export const IniIdentifier: {
+  export const RecordEnd: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is IniIdentifierNode;
+    is(node: SyntaxNode | null | undefined): node is RecordEndNode;
   };
-  export const IniNumber: {
+  export const FastaHeader: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is IniNumberNode;
+    is(node: SyntaxNode | null | undefined): node is FastaHeaderNode;
   };
-  export const IniComment: {
+  export const FastaComment: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is IniCommentNode;
+    is(node: SyntaxNode | null | undefined): node is FastaCommentNode;
+  };
+  export const RangeDots: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is RangeDotsNode;
+  };
+  export const Punct: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is PunctNode;
+  };
+  export const AlnumHyphen: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is AlnumHyphenNode;
+  };
+  export const Identifier: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IdentifierNode;
+  };
+  export const NumberLiteral: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is NumberLiteralNode;
+  };
+  export const StringLiteral: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is StringLiteralNode;
+  };
+  export const HashComment: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is HashCommentNode;
   };
 }

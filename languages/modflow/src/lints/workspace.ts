@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/modflow/wasm-parser";
 import {
   collectWorkspaceDocuments,
@@ -8,18 +9,11 @@ import {
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import { parseModflow } from "../parser/index.js";
 import { lintModflow } from "./index.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getModflowWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/modflow/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("modflow", import.meta.url, createWasmParserSync);
 }
 
 const MODFLOW_NAM_PACKAGES = new Set([

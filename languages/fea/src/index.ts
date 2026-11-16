@@ -13,4 +13,5 @@ export { materializeFeaDeck as materializeCalculixDeck } from "./materializer.js
 export * from "./mesh.js";
 export * from "./projections/index.js";
 export * from "./types.js";
+export * from "./wasm-loader.js";
 export type InpDeckData = import("./types.js").FeaModelData;

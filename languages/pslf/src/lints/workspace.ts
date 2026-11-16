@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/pslf/wasm-parser";
 import {
   collectWorkspaceDocuments,
@@ -7,19 +8,12 @@ import {
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import { parsePslfDyd } from "../parser/dyd-parser.js";
 import { parsePslfEpc } from "../parser/epc-parser.js";
 import { lintPslfDyd, lintPslfEpc } from "./index.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getPslfWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/pslf/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("pslf", import.meta.url, createWasmParserSync);
 }
 
 /**

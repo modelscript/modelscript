@@ -14,22 +14,40 @@ export const PlaygroundContainer = styled.div`
 `;
 
 export const PlaygroundNavbar = styled.header`
-  height: 44px;
-  min-height: 44px;
-  background-color: var(--color-canvas-subtle);
-  border-bottom: 1px solid var(--color-border-default);
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  height: 48px;
+  min-height: 48px;
+  background-color: var(--ms-surface-glass, rgba(255, 255, 255, 0.94));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08));
+  border-radius: 14px;
+  box-shadow:
+    0 8px 28px rgba(15, 23, 42, 0.08),
+    0 1px 4px rgba(15, 23, 42, 0.05);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: 0 14px;
   gap: 8px;
-  z-index: 20;
+  z-index: 40;
   container-type: inline-size;
   overflow: hidden;
 
+  button {
+    border-radius: 9px;
+  }
+
   @media (max-width: 768px) {
+    top: 8px;
+    left: 8px;
+    right: 8px;
     padding: 0 8px;
     gap: 6px;
+    border-radius: 12px;
   }
 
   @container (max-width: 1400px) {
@@ -143,7 +161,8 @@ export const NavCenter = styled.div`
       color 0.15s ease,
       border-color 0.15s ease !important;
     height: 100% !important;
-    padding: 0 10px !important;
+    min-width: 28px !important;
+    padding: 0 8px !important;
     box-sizing: border-box !important;
   }
 
@@ -179,13 +198,13 @@ export const NavCenter = styled.div`
 
   ul[data-size="small"] button[aria-current="true"],
   li button[aria-current="true"] {
-    border: 1px solid color-mix(in srgb, var(--ms-brand) 45%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 45%, transparent) !important;
     border-radius: 8px !important;
     outline: none !important;
     font-weight: 600 !important;
-    background-color: var(--ms-brand-soft) !important;
-    color: var(--fgColor-accent, var(--ms-brand)) !important;
-    padding: 0 10px !important;
+    background-color: var(--ms-brand-soft, rgba(8, 145, 178, 0.14)) !important;
+    color: var(--fgColor-accent, var(--ms-brand, #0891b2)) !important;
+    padding: 0 8px !important;
   }
 
   ul[data-size="small"] button[aria-current="true"] [class*="Content"],
@@ -361,8 +380,8 @@ export const NavText = styled.span`
 export const EditorArea = styled.main`
   flex: 1;
   width: 100%;
-  height: calc(100vh - 44px);
-  height: calc(100dvh - 44px);
+  height: 100%;
+  min-height: 0;
   position: relative;
   overflow: hidden;
 `;
@@ -378,29 +397,6 @@ export const NavDivider = styled.span`
   }
   @media (max-width: 900px) {
     display: none;
-  }
-`;
-
-export const NavBackLink = styled.a`
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 3px 8px;
-  border-radius: var(--ms-radius-sm, 6px);
-  color: var(--color-fg-muted);
-  text-decoration: none;
-  background: transparent;
-  border: 1px solid transparent;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-
-  &:hover {
-    text-decoration: none;
-    color: var(--color-fg-default);
-    background: var(--color-action-list-item-default-hover-bg, rgba(125, 125, 125, 0.08));
-    border-color: var(--color-border-subtle, rgba(0, 0, 0, 0.08));
   }
 `;
 

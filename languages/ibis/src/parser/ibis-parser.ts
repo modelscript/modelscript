@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
 import type { IbisComponent, IbisDeck, IbisModel, IbisModelType, IbisWaveform, TableRow, Triplet } from "../types.js";
+import { getIbisWasmParser } from "./wasm-loader.js";
+
+export * from "./wasm-loader.js";
 
 function isWhitespace(ch: string): boolean {
   return ch === " " || ch === "\t" || ch === "\r" || ch === "\n";
@@ -90,9 +94,12 @@ export function splitWords(s: string): string[] {
 }
 
 /**
- * Zero-regex parser for ANSI/EIA-656-B IBIS files.
+ * WASM GLR CST-driven parser for ANSI/EIA-656-B IBIS files.
  */
-export function parseIbis(content: string, filename?: string): IbisDeck {
+export function parseIbis(content: string, filename?: string, existingTree?: { rootNode?: unknown } | null): IbisDeck {
+  const cstTree = existingTree ?? getIbisWasmParser().parse(content);
+  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode as CstNodeLike | null | undefined);
+
   const comments: string[] = [];
   const components = new Map<string, IbisComponent>();
   const models = new Map<string, IbisModel>();
@@ -108,26 +115,8 @@ export function parseIbis(content: string, filename?: string): IbisDeck {
   let currentSection = "";
   let currentWaveform: IbisWaveform | null = null;
 
-  // Split lines manually
-  const lines: string[] = [];
-  let lineStart = 0;
-  const len = content.length;
-  for (let i = 0; i < len; i++) {
-    if (content[i] === "\n") {
-      lines.push(content.slice(lineStart, i));
-      lineStart = i + 1;
-    } else if (content[i] === "\r") {
-      lines.push(content.slice(lineStart, i));
-      if (i + 1 < len && content[i + 1] === "\n") i++;
-      lineStart = i + 1;
-    }
-  }
-  if (lineStart < len) {
-    lines.push(content.slice(lineStart));
-  }
-
-  for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-    let lineText = lines[lineNum]!;
+  for (const { row: lineNum, tokens: cstTokens } of cstLines) {
+    let lineText = cstLineText(content, cstTokens);
 
     // Strip comments starting with '|'
     const barIdx = lineText.indexOf("|");

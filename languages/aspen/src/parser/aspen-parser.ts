@@ -6,7 +6,11 @@
  * Preserves exact 1-indexed source line, column, and character offsets for AST nodes.
  */
 
+import { groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
 import type { AspenBlock, AspenBlockType, AspenComponent, AspenDeck, AspenStream, SourceLocation } from "../types.js";
+import { getAspenWasmParser } from "./wasm-loader.js";
+
+export * from "./wasm-loader.js";
 
 export interface AspenToken {
   type: "IDENT" | "NUMBER" | "STRING" | "EQUALS" | "SLASH" | "COLON" | "NEWLINE" | "EOF";
@@ -701,9 +705,150 @@ export class AspenParser {
   }
 }
 
-export function parseAspen(sourceText: string): AspenDeck {
-  const lexer = new AspenLexer(sourceText);
-  const tokens = lexer.tokenize();
+function isNumericAspenToken(raw: string, leafType?: string): boolean {
+  if (leafType === "DeckNumber") return true;
+  if (raw.length === 0) return false;
+  const c0 = raw.charCodeAt(0);
+  if (c0 >= 48 && c0 <= 57) return true;
+  if ((raw[0] === "-" || raw[0] === "+" || raw[0] === ".") && raw.length > 1) {
+    const c1 = raw.charCodeAt(1);
+    if (c1 >= 48 && c1 <= 57) return true;
+    if (raw[0] !== "." && raw[1] === "." && raw.length > 2) {
+      const c2 = raw.charCodeAt(2);
+      return c2 >= 48 && c2 <= 57;
+    }
+  }
+  return false;
+}
+
+function tokenizeAspenFromCst(sourceText: string, rootNode: CstNodeLike): AspenToken[] {
+  const tokens: AspenToken[] = [];
+  const cstLines = groupAllCstTokensByLine(rootNode);
+
+  for (const { row, tokens: lineLeaves } of cstLines) {
+    if (lineLeaves.length === 0) continue;
+
+    const firstLeaf = lineLeaves[0]!;
+    const firstText = firstLeaf.text ?? "";
+    const firstCol = firstLeaf.startPosition?.column ?? 0;
+    const firstStartIdx = firstLeaf.startIndex ?? 0;
+
+    // Aspen full-line comments starting with '*' or column-1 'C '
+    if (
+      firstText === "*" ||
+      ((firstText === "C" || firstText === "c") &&
+        firstCol === 0 &&
+        firstStartIdx + 1 < sourceText.length &&
+        sourceText[firstStartIdx + 1] === " ")
+    ) {
+      continue;
+    }
+
+    let lastEndCol = 1;
+    let lastEndOffset = firstStartIdx;
+    let emittedOnLine = false;
+
+    for (const leaf of lineLeaves) {
+      const raw = leaf.text ?? "";
+      if (!raw || leaf.type === "ERROR") continue;
+
+      // Trailing '*' comment after whitespace
+      if (raw === "*") {
+        const startIdx = leaf.startIndex ?? 0;
+        const prevCh = startIdx > 0 ? sourceText[startIdx - 1] : " ";
+        if ((leaf.startPosition?.column ?? 0) === 0 || prevCh === " " || prevCh === "\t" || prevCh === "\f") {
+          break;
+        }
+      }
+
+      if (raw === "(" || raw === ")") continue;
+
+      const startLine = (leaf.startPosition?.row ?? row) + 1;
+      const startColumn = (leaf.startPosition?.column ?? 0) + 1;
+      const endLine = startLine;
+      const endColumn = startColumn + raw.length;
+      const startOffset = leaf.startIndex ?? 0;
+      const endOffset = leaf.endIndex ?? startOffset + raw.length;
+
+      let type: AspenToken["type"] = "IDENT";
+      let value = raw;
+
+      if (raw === "=") {
+        type = "EQUALS";
+      } else if (raw === "/") {
+        type = "SLASH";
+      } else if (raw === ":") {
+        type = "COLON";
+      } else if (
+        (raw.startsWith("'") && raw.endsWith("'") && raw.length >= 2) ||
+        (raw.startsWith('"') && raw.endsWith('"') && raw.length >= 2)
+      ) {
+        type = "STRING";
+        value = raw.slice(1, -1);
+      } else if (isNumericAspenToken(raw, leaf.type)) {
+        type = "NUMBER";
+      }
+
+      tokens.push({
+        type,
+        value,
+        startLine,
+        startColumn,
+        endLine,
+        endColumn,
+        startOffset,
+        endOffset,
+      });
+      lastEndCol = endColumn;
+      lastEndOffset = endOffset;
+      emittedOnLine = true;
+    }
+
+    if (emittedOnLine && (tokens.length === 0 || tokens[tokens.length - 1]!.type !== "NEWLINE")) {
+      const lineNum = row + 1;
+      tokens.push({
+        type: "NEWLINE",
+        value: "\n",
+        startLine: lineNum,
+        startColumn: lastEndCol,
+        endLine: lineNum,
+        endColumn: lastEndCol + 1,
+        startOffset: lastEndOffset,
+        endOffset: Math.min(sourceText.length, lastEndOffset + 1),
+      });
+    }
+  }
+
+  let eofLine = 1;
+  let eofCol = 1;
+  for (let i = 0; i < sourceText.length; i++) {
+    if (sourceText[i] === "\n") {
+      eofLine++;
+      eofCol = 1;
+    } else {
+      eofCol++;
+    }
+  }
+
+  tokens.push({
+    type: "EOF",
+    value: "",
+    startLine: eofLine,
+    startColumn: eofCol,
+    endLine: eofLine,
+    endColumn: eofCol,
+    startOffset: sourceText.length,
+    endOffset: sourceText.length,
+  });
+
+  return tokens;
+}
+
+export function parseAspen(sourceText: string, existingTree?: { rootNode?: unknown } | null): AspenDeck {
+  const cstTree = existingTree ?? getAspenWasmParser().parse(sourceText);
+  const rootNode = cstTree?.rootNode as (CstNodeLike & { hasError?: boolean }) | null | undefined;
+  const tokens =
+    rootNode && !rootNode.hasError ? tokenizeAspenFromCst(sourceText, rootNode) : new AspenLexer(sourceText).tokenize();
   const parser = new AspenParser(tokens);
   return parser.parse();
 }

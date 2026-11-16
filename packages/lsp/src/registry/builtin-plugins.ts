@@ -1643,7 +1643,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         getReqifDefinition(text, offset, uri ?? "file:///requirements.reqif", workspaceManager.unifiedWorkspace),
       references: (offset: number, text: string, uri?: string) =>
         getReqifReferences(text, offset, uri ?? "file:///requirements.reqif", workspaceManager.unifiedWorkspace),
-      validate: (doc: any) => validateReqif(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any, cstTree?: any) =>
+        validateReqif(typeof doc?.getText === "function" ? doc.getText() : String(doc), cstTree),
     },
     actionHandlers: {
       lint_reqif: async (ctx: any, params: any) => {

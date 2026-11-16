@@ -95,3 +95,22 @@ test("IBIS LSP: executeIbisAction executes registered actions", async () => {
   assert.strictEqual(evalRes.modelName, "LVCMOS_OUT");
   assert(evalRes.resistance.rOnLow > 0);
 });
+
+test("IBIS LSP: WASM GLR parser parses Morsel defaultCode cleanly and surfaces M8300 on invalid syntax", async () => {
+  const { getIbisWasmParser } = await import("../src/index.js");
+  const morselDefault = `[IBIS Ver] 7.0
+[File Name] transceiver.ibs
+[File Rev] 1.0
+[Component] SerDes_IO
+[Manufacturer] ModelScript Semiconductor
+[Package]
+R_pkg 120m 80m 160m
+L_pkg 1.8n 1.2n 2.4n
+C_pkg 0.6p 0.4p 0.8p
+`;
+  const tree = getIbisWasmParser().parse(morselDefault);
+  assert.strictEqual(tree?.rootNode.hasError, false);
+
+  const badDiags = validateIbis("[IBIS Ver 3.2\n[Component] BROKEN {{\n");
+  assert(badDiags.some((d) => d.code === "M8300" && d.severity === 1));
+});

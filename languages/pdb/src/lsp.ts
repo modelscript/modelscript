@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import { lowerPdbToDae, type PdbDaeOptions } from "./dae/pdb-to-dae.js";
 import { lintPdb } from "./lints/index.js";
-import { parsePdb } from "./parser/pdb-parser.js";
+import { getPdbWasmParser, parsePdb } from "./parser/pdb-parser.js";
 import { pdbToModelica } from "./projections/pdb-to-modelica.js";
 import { solveProteinBiophysics, type ProteinBiophysicsOptions } from "./solvers/protein-biophysics-solver.js";
 
@@ -77,12 +78,66 @@ export interface LspCompletionItem {
   documentation?: string | undefined;
 }
 
+interface ErrNode {
+  hasError?: boolean;
+  isError?: boolean;
+  text?: string;
+  startPosition?: { row?: number; column?: number };
+  endPosition?: { row?: number; column?: number };
+  children?: unknown[];
+}
+
+function collectAllWasmErrors(rootNode: unknown) {
+  const errs = collectWasmSyntaxErrors(rootNode);
+  if (errs.length > 0 || !rootNode || typeof rootNode !== "object") return errs;
+  const root = rootNode as ErrNode;
+  if (!root.hasError) return errs;
+  let target: ErrNode = root;
+  let cur: ErrNode | undefined = root;
+  while (cur && Array.isArray(cur.children)) {
+    const next: ErrNode | undefined = cur.children.find((c): c is ErrNode =>
+      Boolean(c && typeof c === "object" && ((c as ErrNode).isError || (c as ErrNode).hasError)),
+    );
+    if (!next) break;
+    target = next;
+    cur = next;
+  }
+  const sp = target.startPosition ?? { row: 0, column: 0 };
+  const ep = target.endPosition ?? sp;
+  const snippet = (target.text ?? "").trim().replace(/\s+/g, " ").slice(0, 32);
+  return [
+    {
+      message: snippet ? `Unexpected or unclosed syntax near '${snippet}'.` : "Syntax error in input.",
+      startLine: (sp.row ?? 0) + 1,
+      startColumn: (sp.column ?? 0) + 1,
+      endLine: (ep.row ?? sp.row ?? 0) + 1,
+      endColumn: Math.max((sp.column ?? 0) + 2, (ep.column ?? 0) + 1),
+      startOffset: 0,
+      endOffset: 0,
+    },
+  ];
+}
+
 export function validatePdb(text: string, sourceFile?: string): LspDiagnostic[] {
   try {
-    const doc = parsePdb(text, sourceFile);
-    const diags = lintPdb(doc);
+    const cstTree = getPdbWasmParser().parse(text);
+    const syntaxDiags: LspDiagnostic[] = collectAllWasmErrors(cstTree?.rootNode).map((err) => ({
+      range: {
+        start: { line: Math.max(0, err.startLine - 1), character: Math.max(0, err.startColumn - 1) },
+        end: { line: Math.max(0, err.endLine - 1), character: Math.max(0, err.endColumn - 1) },
+      },
+      severity: 1,
+      code: "M9250",
+      source: "pdb-parser",
+      message: err.message,
+    }));
 
-    return diags.map((d) => {
+    const doc = parsePdb(text, sourceFile, cstTree);
+    const diags = lintPdb(doc).filter(
+      (d) => !(syntaxDiags.length > 0 && doc.atoms.length === 0 && doc.hetAtoms.length === 0 && d.code === 9260),
+    );
+
+    const lintDiags: LspDiagnostic[] = diags.map((d) => {
       const line = d.range ? Math.max(0, d.range.startLine - 1) : 0;
       const col = d.range ? Math.max(0, d.range.startColumn - 1) : 0;
       const endLine = d.range ? Math.max(0, d.range.endLine - 1) : line;
@@ -103,6 +158,8 @@ export function validatePdb(text: string, sourceFile?: string): LspDiagnostic[] 
         message: d.message,
       };
     });
+
+    return [...syntaxDiags, ...lintDiags];
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     return [

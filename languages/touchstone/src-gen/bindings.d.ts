@@ -1358,19 +1358,73 @@ export declare function createWasmParserSync(
   facade: LspFacade;
   parser: TreeSitterParser;
 };
+/**
+ * Registers a pre-instantiated WebAssembly GLR parser in `globalThis.__msWasmParsers`
+ * so synchronous language parsers and workspace linters can use it inside browser WebWorkers
+ * without Node.js `fs` or `node:module`.
+ */
+export declare function registerPreloadedWasmParser(
+  langId: string,
+  parser: TreeSitterParser | null | undefined,
+  facade?: LspFacade | null,
+): void;
+/**
+ * Retrieves a pre-instantiated WebAssembly GLR parser from `globalThis` if registered
+ * by `ParserService` (browser WebWorker or Node LSP server).
+ */
+export declare function getPreloadedWasmParser(
+  langId: string,
+): TreeSitterParser | undefined;
+/**
+ * Resolves the filesystem path or URL to a language package's `parser.wasm` without `node:module`.
+ */
+export declare function resolveLanguageWasmPath(
+  importMetaUrl: string,
+  langId?: string,
+): string;
+/**
+ * Isomorphic helper that returns the pre-loaded WASM GLR parser in browser WebWorkers
+ * (`globalThis.__msWasmParsers`) and lazily loads `parser.wasm` synchronously in Node.js CLI/tests.
+ */
+export declare function getOrLoadLanguageWasmParser<TParser = TreeSitterParser>(
+  langId: string,
+  importMetaUrl: string,
+  syncFactory?: (wasmPath: string) => {
+    parser: TParser;
+  },
+): TParser;
+export interface WasmSyntaxErrorSpan {
+  message: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+}
+/**
+ * Walks a WASM GLR `SyntaxNode` root and extracts bounded `ERROR` / `isMissing` syntax error spans
+ * (1-indexed lines and columns).
+ */
+export declare function collectWasmSyntaxErrors(
+  rootNode: unknown,
+  maxErrors?: number,
+): WasmSyntaxErrorSpan[];
 
 export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Document = 6,
-  DeckToken = 7,
-  START = 8,
-  _START = 8,
-  DeckNumber = 11,
-  DeckString = 12,
-  DeckIdentifier = 13,
-  DeckPunct = 14,
+  Document = 9,
+  Item = 10,
+  KeywordHeader = 11,
+  START = 12,
+  _START = 12,
+  OptionMarker = 17,
+  TouchstoneComment = 18,
+  DeckNumber = 19,
+  DeckIdentifier = 20,
+  DeckColon = 21,
   EOF = 1023,
 }
 
@@ -1386,26 +1440,34 @@ export interface DocumentNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Document;
 }
 export declare function isDocument(node: SyntaxNode | null | undefined): node is DocumentNode;
-export interface DeckTokenNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DeckToken;
+export interface ItemNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Item;
 }
-export declare function isDeckToken(node: SyntaxNode | null | undefined): node is DeckTokenNode;
+export declare function isItem(node: SyntaxNode | null | undefined): node is ItemNode;
+export interface KeywordHeaderNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.KeywordHeader;
+}
+export declare function isKeywordHeader(node: SyntaxNode | null | undefined): node is KeywordHeaderNode;
+export interface OptionMarkerNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.OptionMarker;
+}
+export declare function isOptionMarker(node: SyntaxNode | null | undefined): node is OptionMarkerNode;
+export interface TouchstoneCommentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.TouchstoneComment;
+}
+export declare function isTouchstoneComment(node: SyntaxNode | null | undefined): node is TouchstoneCommentNode;
 export interface DeckNumberNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DeckNumber;
 }
 export declare function isDeckNumber(node: SyntaxNode | null | undefined): node is DeckNumberNode;
-export interface DeckStringNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DeckString;
-}
-export declare function isDeckString(node: SyntaxNode | null | undefined): node is DeckStringNode;
 export interface DeckIdentifierNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DeckIdentifier;
 }
 export declare function isDeckIdentifier(node: SyntaxNode | null | undefined): node is DeckIdentifierNode;
-export interface DeckPunctNode extends SyntaxNode {
-  readonly typeId: SyntaxKind.DeckPunct;
+export interface DeckColonNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DeckColon;
 }
-export declare function isDeckPunct(node: SyntaxNode | null | undefined): node is DeckPunctNode;
+export declare function isDeckColon(node: SyntaxNode | null | undefined): node is DeckColonNode;
 export declare namespace Cst {
   export function kind(node: SyntaxNode | null | undefined): string;
   export function normalize(token: string | null | undefined): string;
@@ -1414,29 +1476,39 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DocumentNode;
   };
-  export const DeckToken: {
+  export const Item: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DeckTokenNode;
+    is(node: SyntaxNode | null | undefined): node is ItemNode;
+  };
+  export const KeywordHeader: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is KeywordHeaderNode;
+  };
+  export const OptionMarker: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is OptionMarkerNode;
+  };
+  export const TouchstoneComment: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is TouchstoneCommentNode;
   };
   export const DeckNumber: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DeckNumberNode;
   };
-  export const DeckString: {
-    readonly typeId: number;
-    readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DeckStringNode;
-  };
   export const DeckIdentifier: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DeckIdentifierNode;
   };
-  export const DeckPunct: {
+  export const DeckColon: {
     readonly typeId: number;
     readonly type: string;
-    is(node: SyntaxNode | null | undefined): node is DeckPunctNode;
+    is(node: SyntaxNode | null | undefined): node is DeckColonNode;
   };
 }

@@ -1,3 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./cantera-parser.js";
+export * from "./wasm-loader.js";

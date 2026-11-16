@@ -6,9 +6,9 @@
  * Extracts TITLE, NEURON, PARAMETER, ASSIGNED, STATE, BREAKPOINT, and DERIVATIVE blocks.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/nmodl/wasm-parser";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type {
   NmodlDocument,
   NmodlEquation,
@@ -19,14 +19,8 @@ import type {
   NmodlVariable,
 } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getNmodlWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/nmodl/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("nmodl", import.meta.url, createWasmParserSync);
 }
 
 function stripComments(line: string): string {

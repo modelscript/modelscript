@@ -4,19 +4,13 @@
  * High-performance MATPOWER case file (.m) parser.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/matpower/wasm-parser";
 import { groupCstLeavesByLine, type CstNodeLike } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type { MatpowerBranch, MatpowerBus, MatpowerCase, MatpowerGen, MatpowerGenCost } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getMatpowerWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/matpower/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("matpower", import.meta.url, createWasmParserSync);
 }
 
 type CstLine = { row: number; tokens: CstNodeLike[] };

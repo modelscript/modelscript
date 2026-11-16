@@ -13,4 +13,5 @@ export { materializeCfdConfig as materializeSu2Config } from "./materializer.js"
 export * from "./mesh.js";
 export * from "./projections/index.js";
 export * from "./types.js";
+export * from "./wasm-loader.js";
 export type Su2ConfigData = import("./types.js").CfdModelData;

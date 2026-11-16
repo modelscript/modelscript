@@ -6579,3 +6579,204 @@ export function createWasmParserSync(
   parser.setLanguage(facade);
   return { facade, parser };
 }
+
+const nodeLoadedWasmParsers = new Map<string, TreeSitterParser>();
+
+function getGlobalParserMap(): Map<string, TreeSitterParser> {
+  const g = globalThis as Record<string, unknown>;
+  let map = g["__msWasmParsers"] as Map<string, TreeSitterParser> | undefined;
+  if (!(map instanceof Map)) {
+    map = new Map<string, TreeSitterParser>();
+    g["__msWasmParsers"] = map;
+  }
+  return map;
+}
+
+/**
+ * Registers a pre-instantiated WebAssembly GLR parser in `globalThis.__msWasmParsers`
+ * so synchronous language parsers and workspace linters can use it inside browser WebWorkers
+ * without Node.js `fs` or `node:module`.
+ */
+export function registerPreloadedWasmParser(
+  langId: string,
+  parser: TreeSitterParser | null | undefined,
+  facade?: LspFacade | null,
+): void {
+  const norm = langId.trim().toLowerCase();
+  if (!norm) return;
+  const map = getGlobalParserMap();
+  if (parser) {
+    map.set(norm, parser);
+  } else {
+    map.delete(norm);
+  }
+  if (facade !== undefined) {
+    const g = globalThis as Record<string, unknown>;
+    let fMap = g["__msWasmFacades"] as Map<string, LspFacade> | undefined;
+    if (!(fMap instanceof Map)) {
+      fMap = new Map<string, LspFacade>();
+      g["__msWasmFacades"] = fMap;
+    }
+    if (facade) {
+      fMap.set(norm, facade);
+    } else {
+      fMap.delete(norm);
+    }
+  }
+}
+
+/**
+ * Retrieves a pre-instantiated WebAssembly GLR parser from `globalThis` if registered
+ * by `ParserService` (browser WebWorker or Node LSP server).
+ */
+export function getPreloadedWasmParser(langId: string): TreeSitterParser | undefined {
+  const norm = langId.trim().toLowerCase();
+  if (!norm) return undefined;
+  const fromMap = getGlobalParserMap().get(norm);
+  if (fromMap) return fromMap;
+  const camel = norm.replace(/-([a-z0-9])/g, (_, ch: string) => ch.toUpperCase());
+  const g = globalThis as Record<string, unknown>;
+  const legacy = (g[`${camel}Parser`] ?? g[`${norm}Parser`]) as TreeSitterParser | undefined;
+  return legacy && typeof legacy.parse === "function" ? legacy : undefined;
+}
+
+/**
+ * Resolves the filesystem path or URL to a language package's `parser.wasm` without `node:module`.
+ */
+export function resolveLanguageWasmPath(importMetaUrl: string, langId?: string): string {
+  const relCandidates = importMetaUrl.includes("/dist/src/")
+    ? ["../../parser.wasm", "../../../parser.wasm", "../parser.wasm"]
+    : importMetaUrl.includes("/dist/")
+      ? ["../parser.wasm", "../../parser.wasm", "./parser.wasm"]
+      : ["../../dist/parser.wasm", "../../../dist/parser.wasm", "../dist/parser.wasm"];
+
+  let fsModule: { existsSync?: (p: string) => boolean } | undefined;
+  try {
+    if (
+      typeof process !== "undefined" &&
+      typeof (process as { getBuiltinModule?: unknown }).getBuiltinModule === "function"
+    ) {
+      fsModule = (
+        process as { getBuiltinModule: (id: string) => { existsSync?: (p: string) => boolean } }
+      ).getBuiltinModule("node:fs");
+    }
+  } catch {}
+
+  const toLocalPath = (u: URL): string => {
+    const pathname = decodeURIComponent(u.pathname);
+    return typeof process !== "undefined" && process?.platform === "win32" && pathname.startsWith("/")
+      ? pathname.slice(1)
+      : pathname;
+  };
+
+  for (const rel of relCandidates) {
+    try {
+      const url = new URL(rel, importMetaUrl);
+      if (url.protocol === "file:") {
+        const p = toLocalPath(url);
+        if (!fsModule?.existsSync || fsModule.existsSync(p)) {
+          return p;
+        }
+      } else {
+        return url.href;
+      }
+    } catch {}
+  }
+
+  if (langId && fsModule?.existsSync && typeof process !== "undefined" && typeof process.cwd === "function") {
+    const cwdCandidate = `${process.cwd()}/languages/${langId}/dist/parser.wasm`;
+    if (fsModule.existsSync(cwdCandidate)) {
+      return cwdCandidate;
+    }
+  }
+
+  const fallbackUrl = new URL(relCandidates[0]!, importMetaUrl);
+  return fallbackUrl.protocol === "file:" ? toLocalPath(fallbackUrl) : fallbackUrl.href;
+}
+
+/**
+ * Isomorphic helper that returns the pre-loaded WASM GLR parser in browser WebWorkers
+ * (`globalThis.__msWasmParsers`) and lazily loads `parser.wasm` synchronously in Node.js CLI/tests.
+ */
+export function getOrLoadLanguageWasmParser<TParser = TreeSitterParser>(
+  langId: string,
+  importMetaUrl: string,
+  syncFactory?: (wasmPath: string) => { parser: TParser },
+): TParser {
+  const norm = langId.trim().toLowerCase();
+  const preloaded = getPreloadedWasmParser(norm);
+  if (preloaded) return preloaded as unknown as TParser;
+
+  const cached = nodeLoadedWasmParsers.get(norm);
+  if (cached) return cached as unknown as TParser;
+
+  const wasmPath = resolveLanguageWasmPath(importMetaUrl, norm);
+  const created = syncFactory ? syncFactory(wasmPath) : createWasmParserSync(wasmPath);
+  const parser = created.parser as unknown as TreeSitterParser;
+  nodeLoadedWasmParsers.set(norm, parser);
+  registerPreloadedWasmParser(norm, parser);
+  return created.parser;
+}
+
+export interface WasmSyntaxErrorSpan {
+  message: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+}
+
+/**
+ * Walks a WASM GLR `SyntaxNode` root and extracts bounded `ERROR` / `isMissing` syntax error spans
+ * (1-indexed lines and columns).
+ */
+export function collectWasmSyntaxErrors(rootNode: unknown, maxErrors = 25): WasmSyntaxErrorSpan[] {
+  const out: WasmSyntaxErrorSpan[] = [];
+  if (!rootNode || typeof rootNode !== "object") return out;
+
+  const visit = (node: Record<string, unknown>): void => {
+    if (out.length >= maxErrors) return;
+    const type = String(node["type"] ?? "");
+    const rawIsMissing = node["isMissing"];
+    const isMissing = typeof rawIsMissing === "function" ? Boolean(rawIsMissing.call(node)) : Boolean(rawIsMissing);
+    if (type === "ERROR" || isMissing) {
+      const sp = (node["startPosition"] as { row?: number; column?: number } | undefined) ?? {};
+      const ep = (node["endPosition"] as { row?: number; column?: number } | undefined) ?? {};
+      const startOffset = Number(node["startIndex"] ?? node["startOffset"] ?? 0);
+      const endOffset = Math.max(startOffset, Number(node["endIndex"] ?? node["endOffset"] ?? startOffset));
+      const rawText = String(node["text"] ?? "")
+        .trim()
+        .replace(/\s+/g, " ");
+      const snippet = rawText.length > 32 ? `${rawText.slice(0, 32)}...` : rawText;
+      out.push({
+        message: isMissing
+          ? `Missing expected syntax element${type && type !== "ERROR" ? ` '${type}'` : ""}.`
+          : snippet
+            ? `Unexpected syntax near '${snippet}'.`
+            : "Syntax error in input.",
+        startLine: (sp.row ?? 0) + 1,
+        startColumn: (sp.column ?? 0) + 1,
+        endLine: (ep.row ?? sp.row ?? 0) + 1,
+        endColumn: Math.max((sp.column ?? 0) + 2, (ep.column ?? 0) + 1),
+        startOffset,
+        endOffset,
+      });
+      return;
+    }
+    const rawHasError = node["hasError"];
+    const hasError = typeof rawHasError === "function" ? Boolean(rawHasError.call(node)) : Boolean(rawHasError);
+    if (!hasError) return;
+    const children = node["children"];
+    if (Array.isArray(children)) {
+      for (const ch of children) {
+        if (ch && typeof ch === "object") visit(ch as Record<string, unknown>);
+        if (out.length >= maxErrors) break;
+      }
+    }
+  };
+
+  visit(rootNode as Record<string, unknown>);
+  return out;
+}

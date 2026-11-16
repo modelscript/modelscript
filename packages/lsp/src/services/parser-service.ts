@@ -2,9 +2,10 @@
 
 // ts-check
 
-import { createWasmParser } from "@modelscript/dsl/bindings";
+import { createWasmParser, registerPreloadedWasmParser } from "@modelscript/dsl/bindings";
 import { getStdlibsForLanguage } from "@modelscript/exchange/catalog";
 import { ArenaQueryFlattener } from "@modelscript/modelica/flattener";
+import { ensureBuiltInPscadLibraryRegistered } from "@modelscript/pscad";
 import {
   FederatedQueryCacheStore,
   IndexedDBQueryCacheStore,
@@ -21,6 +22,7 @@ import {
   type XmlFallbackTree,
 } from "../utils/ast-utils.js";
 import type { SyntaxNode, Tree as TreeSitterTree } from "../utils/cst-facade.js";
+import { mountedLibraryMetadata } from "../utils/hierarchy-utils.js";
 import { LineIndex, TokenData } from "../utils/line-index.js";
 import { BrowserFileSystem } from "../vfs/browser-file-system.js";
 import {
@@ -85,6 +87,10 @@ export class ParserService {
             }
           }
         }
+      }
+      registerPreloadedWasmParser(norm, parser, resolvedFacade);
+      if (alt) {
+        registerPreloadedWasmParser(alt, parser, resolvedFacade);
       }
       const setGlobalPlain = (key: string, val: any) => {
         const desc = Object.getOwnPropertyDescriptor(globalThis, key);
@@ -1018,6 +1024,22 @@ export class ParserService {
 
   private async ensureStdlibForLanguage(langId: string): Promise<void> {
     const norm = langId.toLowerCase();
+    if (norm === "pscad" || norm === "pscx" || norm === "pslx") {
+      if (mountedLibraryMetadata.has("MASTER")) return;
+      const pkg = ensureBuiltInPscadLibraryRegistered();
+      if (pkg) {
+        mountedLibraryMetadata.set("MASTER", {
+          name: "MASTER",
+          version: pkg.version,
+          language: "pscad",
+          description: "PSCAD Master Library (@modelscript/pscad-master-lib)",
+          category: "library",
+        });
+        this.sendProjectTreeChanged();
+      }
+      return;
+    }
+
     const depName =
       norm === "modelica" || norm === "modelscript"
         ? "Modelica"
@@ -1465,7 +1487,7 @@ export class ParserService {
         }
         const stdlibPromises: Promise<void>[] = [];
         for (const langId of initialTargets) {
-          if (langId === "modelica" || langId === "modelscript" || langId === "sysml2") {
+          if (langId === "modelica" || langId === "modelscript" || langId === "sysml2" || langId === "pscad") {
             stdlibPromises.push(this.ensureStdlibForLanguage(langId));
           }
         }

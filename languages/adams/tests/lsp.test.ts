@@ -44,3 +44,32 @@ test("Adams LSP - contextual hover", () => {
   assert.ok(hoverJoint);
   assert.ok(hoverJoint.contents.value.includes("REVOLUTE"));
 });
+
+test("Adams WASM GLR Parser & LSP - Morsel defaultCode and syntax error reporting", async () => {
+  const { getAdamsWasmParser } = await import("../src/parser/wasm-loader.js");
+  const { collectWasmSyntaxErrors } = await import("@modelscript/dsl");
+
+  const morselDefaultCode = `ADAMS/View Pendulum Dataset
+PART/1, GROUND
+PART/2, MASS = 2.5, CM = 20, IP = 0.1, 0.1, 0.1
+MARKER/10, PART = 1, QP = 0, 0, 0
+MARKER/20, PART = 2, QP = 0, -0.5, 0
+JOINT/1, REVOLUTE, I = 10, J = 20
+ACCGRAV/JGRAV = -9.80665
+END
+`;
+
+  const tree = getAdamsWasmParser().parse(morselDefaultCode);
+  assert.ok(tree?.rootNode);
+  assert.equal(tree.rootNode.hasError, false);
+  assert.equal(collectWasmSyntaxErrors(tree.rootNode).length, 0);
+  assert.equal(validateAdams(morselDefaultCode).filter((d) => d.code === "M7300").length, 0);
+
+  const brokenDeck = `PART/1, GROUND
+MOTION/1, JOINT = 1, FUNCTION = 30D * SIN(TIME
+`;
+  const brokenTree = getAdamsWasmParser().parse(brokenDeck);
+  assert.equal(brokenTree?.rootNode.hasError, true);
+  const brokenDiags = validateAdams(brokenDeck);
+  assert.ok(brokenDiags.some((d) => d.code === "M7300" && d.source === "adams-parser"));
+});

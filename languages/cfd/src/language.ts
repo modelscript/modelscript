@@ -230,13 +230,13 @@ export const cfdLanguage = language({
     lineComment: "%",
   },
 
-  extras: () => [/[ \t\r]+/],
+  extras: () => [/[ \t\r\n]+/, /(?:%|\/\/|#)[^\r\n]*/, /\/\*[\s\S]*?\*\//],
 
   rules: {
     // Root configuration file rule exposing Salsa instantiation and name-resolution queries
     SourceFile: ($) =>
       def({
-        syntax: repeat(choice($["CommentLine"]!, $["Directive"]!, $["_newline"]!)),
+        syntax: repeat(choice($["Directive"]!, $["NUMBER"]!)),
         symbol: () => ({
           kind: "Class",
           name: "CfdConfig",
@@ -256,18 +256,16 @@ export const cfdLanguage = language({
         },
       }),
 
-    CommentLine: () => /(?:%|\/\/|#)[^\n]*/,
-
-    _newline: () => /\n/,
-
-    // Key-value configuration directive (`KEY = VALUE`) indexed as a Property symbol
+    // Key-value configuration directive (`KEY = VALUE` or OpenFOAM dictionary entry/block)
     Directive: ($) =>
       def({
         syntax: seq(
-          field("key", $["IDENTIFIER"]!),
-          "=",
-          field("value", choice($["TupleValue"]!, $["ScalarValue"]!, $["EmbeddedExpression"]!)),
-          choice($["_newline"]!, optional(/\r?\n/)),
+          field("key", choice($["IDENTIFIER"]!, $["QUALIFIED_IDENT"]!, $["STRING"]!)),
+          choice(
+            seq("=", field("value", $["DirectiveValue"]!)),
+            seq("{", repeat($["Directive"]!), "}", optional(";")),
+            seq(optional(field("value", $["FoamValue"]!)), ";"),
+          ),
         ),
         symbol: (self: Record<string, string>) => ({
           kind: "Property",
@@ -275,15 +273,43 @@ export const cfdLanguage = language({
         }),
       }),
 
-    TupleValue: ($) =>
-      seq(
-        "(",
-        choice($["ScalarValue"]!, $["EmbeddedExpression"]!),
-        repeat(seq(",", choice($["ScalarValue"]!, $["EmbeddedExpression"]!))),
-        ")",
+    DirectiveValue: ($) => choice($["TupleValue"]!, seq($["ScalarOrExpr"]!, repeat(seq(",", $["ScalarOrExpr"]!)))),
+
+    TupleValue: ($) => seq("(", optional(seq($["ScalarOrExpr"]!, repeat(seq(",", $["ScalarOrExpr"]!)))), ")"),
+
+    ScalarOrExpr: ($) => choice($["ScalarValue"]!, $["EmbeddedExpression"]!),
+
+    ScalarValue: ($) =>
+      choice(
+        $["NUMBER"]!,
+        $["STRING"]!,
+        seq(
+          choice($["IDENTIFIER"]!, $["QUALIFIED_IDENT"]!),
+          repeat(
+            choice(
+              seq("/", choice($["IDENTIFIER"]!, $["QUALIFIED_IDENT"]!, $["NUMBER"]!)),
+              seq("-", choice($["IDENTIFIER"]!, $["QUALIFIED_IDENT"]!)),
+              seq("[", choice($["NUMBER"]!, $["IDENTIFIER"]!), "]"),
+            ),
+          ),
+        ),
       ),
 
-    ScalarValue: ($) => choice($["NUMBER"]!, $["IDENTIFIER"]!, $["STRING"]!),
+    FoamValue: ($) => seq($["FoamAtom"]!, repeat($["FoamAtom"]!)),
+
+    FoamAtom: ($) =>
+      choice(
+        $["NUMBER"]!,
+        $["STRING"]!,
+        $["QUALIFIED_IDENT"]!,
+        $["IDENTIFIER"]!,
+        $["EmbeddedExpression"]!,
+        $["FoamParenList"]!,
+        $["FoamBracketList"]!,
+      ),
+
+    FoamParenList: ($) => seq("(", repeat(choice($["FoamAtom"]!, ",")), ")"),
+    FoamBracketList: ($) => seq("[", repeat(choice($["FoamAtom"]!, ",")), "]"),
 
     // Embedded template expression (`{{ expr }}`) for parametric CFD materialization
     EmbeddedExpression: ($) =>
@@ -306,13 +332,28 @@ export const cfdLanguage = language({
 
     UnaryExpression: ($) => prec(PREC.UNARY, seq(choice("+", "-"), $["Expression"]!)),
 
+    CallExpression: ($) =>
+      seq(
+        field("callee", $["QualifiedIdentifier"]!),
+        "(",
+        optional(seq($["Expression"]!, repeat(seq(",", $["Expression"]!)))),
+        ")",
+      ),
+
     PrimaryExpression: ($) =>
-      choice($["QualifiedIdentifier"]!, $["NUMBER"]!, $["STRING"]!, seq("(", $["Expression"]!, ")")),
+      choice(
+        $["CallExpression"]!,
+        $["QualifiedIdentifier"]!,
+        $["NUMBER"]!,
+        $["STRING"]!,
+        seq("(", $["Expression"]!, ")"),
+      ),
 
-    QualifiedIdentifier: ($) => seq($["IDENTIFIER"]!, repeat(seq(".", $["IDENTIFIER"]!))),
+    QualifiedIdentifier: ($) => choice($["IDENTIFIER"]!, $["QUALIFIED_IDENT"]!),
 
+    QUALIFIED_IDENT: () => /[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+/,
     IDENTIFIER: () => /[A-Za-z_][A-Za-z0-9_]*/,
     NUMBER: () => /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/,
-    STRING: () => /"[^"\\]*(?:\\.[^"\\]*)*"/,
+    STRING: () => /"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'/,
   },
 });

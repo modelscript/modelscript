@@ -7,6 +7,7 @@
  * PHASES, and END blocks with 1-indexed line, column, and character offset ranges.
  */
 
+import { groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
 import type {
   PhreeqcDocument,
   PhreeqcEquilibriumPhase,
@@ -19,6 +20,9 @@ import type {
   PhreeqcSoluteSpec,
   PhreeqcSolution,
 } from "../types.js";
+import { getPhreeqcWasmParser } from "./wasm-loader.js";
+
+export { getPhreeqcWasmParser, type PhreeqcWasmParser } from "./wasm-loader.js";
 
 export interface PhreeqcWordToken {
   text: string;
@@ -121,7 +125,21 @@ function parseNumberStrict(str: string): number | null {
  * Scans PHREEQC source text character-by-character into logical lines of whitespace-delimited tokens,
  * stripping `#` comments without using any regular expressions.
  */
-export function scanPhreeqcLines(source: string): PhreeqcLine[] {
+export function scanPhreeqcLines(source: string, cstRoot?: CstNodeLike | null): PhreeqcLine[] {
+  const activeRows = new Set<number>();
+  if (cstRoot) {
+    for (const { row, tokens } of groupAllCstTokensByLine(cstRoot)) {
+      if (
+        tokens.some((t) => {
+          const txt = (t.text ?? "").trim();
+          return txt.length > 0 && txt !== ";";
+        })
+      ) {
+        activeRows.add(row);
+      }
+    }
+  }
+
   const lines: PhreeqcLine[] = [];
   const len = source.length;
   let pos = 0;
@@ -135,6 +153,14 @@ export function scanPhreeqcLines(source: string): PhreeqcLine[] {
     let lineEndOffset = pos;
     while (lineEndOffset < len && source[lineEndOffset] !== "\n" && source[lineEndOffset] !== "\r") {
       lineEndOffset++;
+    }
+
+    if (cstRoot && !activeRows.has(currentLineNum - 1)) {
+      pos = lineEndOffset;
+      if (pos < len && source[pos] === "\r") pos++;
+      if (pos < len && source[pos] === "\n") pos++;
+      lineNum++;
+      continue;
     }
 
     // Scan characters in [lineStartOffset, lineEndOffset)
@@ -314,7 +340,8 @@ function parseHeaderNumberAndName(words: PhreeqcWordToken[]): { number: number; 
 }
 
 export function parsePhreeqc(sourceText: string, sourceFile?: string): PhreeqcDocument {
-  const lines = scanPhreeqcLines(sourceText);
+  const cstTree = getPhreeqcWasmParser().parse(sourceText);
+  const lines = scanPhreeqcLines(sourceText, cstTree?.rootNode as CstNodeLike | undefined);
   const doc: PhreeqcDocument = {
     solutions: new Map(),
     equilibriumPhases: [],

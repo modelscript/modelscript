@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/gtfs/wasm-parser";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type { GtfsFeed, GtfsRoute, GtfsStop, GtfsStopTime, GtfsTrip, VehicleKinematicsParams } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getGtfsWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/gtfs/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("gtfs", import.meta.url, createWasmParserSync);
 }
 
 /**

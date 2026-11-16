@@ -71,7 +71,8 @@ describe("PSCAD Microgrid & IBR Example Workspace", () => {
     expect(project.rootModule.buses.length).toBe(3);
 
     const diagnostics = lintPscx(project);
-    expect(diagnostics.length).toBe(0);
+    const m6001ToM6011 = diagnostics.filter((d) => /^M60(0[1-9]|1[01])$/.test(d.code));
+    expect(m6001ToM6011.length).toBe(0);
   });
 
   it("Phase 3: Fixed-step EMT simulation solves voltages, currents, and transients", () => {

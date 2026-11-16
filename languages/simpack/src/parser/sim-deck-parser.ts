@@ -59,18 +59,12 @@ export function tokenizeSimpackLine(line: string): string[] {
   return tokens;
 }
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
 import { createWasmParserSync } from "@modelscript/simpack/wasm-parser";
-import { createRequire } from "node:module";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getSimpackWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/simpack/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("simpack", import.meta.url, createWasmParserSync);
 }
 
 /**

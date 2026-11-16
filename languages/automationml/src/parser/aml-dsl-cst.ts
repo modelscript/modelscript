@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { createWasmParserSync, type SyntaxNode } from "@modelscript/automationml/aml-dsl-wasm-parser";
-import { createRequire } from "node:module";
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import type {
   AmlAttribute,
   AmlAttributeType,
@@ -26,15 +26,10 @@ import type {
   AmlSystemUnitClassLib,
 } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedAmlDslParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
-
 function getAmlDslParser(): ReturnType<typeof createWasmParserSync>["parser"] {
-  if (!cachedAmlDslParser) {
-    const wasmPath = require.resolve("@modelscript/automationml/aml-dsl-parser.wasm");
-    cachedAmlDslParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedAmlDslParser;
+  return getOrLoadLanguageWasmParser("automationml-dsl", import.meta.url, (wasmPath) =>
+    createWasmParserSync(wasmPath.replace(/parser\.wasm$/, "aml-dsl-parser.wasm")),
+  );
 }
 
 export interface AmlDslParseHelpers {

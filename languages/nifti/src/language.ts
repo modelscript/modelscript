@@ -8,7 +8,7 @@
  * linear-memory compartmental DAEBuilder lowering, and OpenSCAD / STEP projections.
  */
 
-import { language } from "@modelscript/dsl";
+import { choice, field, jsonRules, language, optional, repeat, seq } from "@modelscript/dsl";
 import { indexNiftiFile } from "./indexing.js";
 import { lintNiftiDocument } from "./lints/rules.js";
 import { extractIsoSurfaceMesh, lowerNiftiToDae } from "./mesh/index.js";
@@ -21,14 +21,59 @@ export const niftiLanguage = language({
   name: "nifti",
   fileExtensions: [".nii.json", ".nii.gz", ".nii", ".nrrd", ".nhdr"],
   maturity: "beta",
+  word: ($) => $["Identifier"]!,
+  extras: () => [/[ \t\r\n]+/, /(?:#|\/\/)[^\r\n]*/, /<!--[\s\S]*?-->/, /<\?[\s\S]*?\?>/],
   lsp: {
     fileExtensions: [".nii.json", ".nii.gz", ".nii", ".nrrd", ".nhdr"],
+    folding: ["JsonObject", "JsonArray", "NrrdDocument", "DslDocument"],
+    outline: ["JsonPair", "NrrdDocument", "DslStatement"],
   },
   indexing: {
     indexFile: indexNiftiFile,
   },
   rules: {
-    Root: () => "nifti",
+    ...jsonRules,
+
+    Document: ($) => optional(choice($["JsonValue"]!, $["NrrdDocument"]!, $["XmlElement"]!, $["DslDocument"]!)),
+
+    NrrdDocument: ($) => seq(field("magic", $["NrrdMagic"]!), repeat(choice($["NrrdField"]!, $["NumberVal"]!))),
+
+    NrrdMagic: () => /NRRD000[0-9]/i,
+    NrrdField: () => /[A-Za-z][A-Za-z0-9_ -]*:=?[^\r\n]*/,
+
+    XmlElement: ($) =>
+      choice(
+        $["EmptyTag"]!,
+        seq(
+          $["StartTag"]!,
+          repeat(choice($["XmlElement"]!, $["Identifier"]!, $["NumberVal"]!, $["JsonString"]!)),
+          $["CloseTag"]!,
+        ),
+      ),
+
+    EmptyTag: () =>
+      /<[A-Za-z_:][A-Za-z0-9_.:-]*([ \t\r\n]+[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*=[ \t\r\n]*("[^"]*"|'[^']*'))*[ \t\r\n]*\/>/,
+    StartTag: () =>
+      /<[A-Za-z_:][A-Za-z0-9_.:-]*([ \t\r\n]+[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*=[ \t\r\n]*("[^"]*"|'[^']*'))*[ \t\r\n]*>/,
+    CloseTag: () => /<\/[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*>/,
+
+    DslDocument: ($) => seq($["DslStatement"]!, repeat($["DslStatement"]!)),
+
+    DslStatement: ($) =>
+      seq(
+        field(
+          "keyword",
+          choice("NIFTI", "VOLUME", "DIM", "PIXDIM", "SPACING", "QFORM", "SFORM", "SCALING", "LABEL", "ROI", "VOXELS"),
+        ),
+        repeat(choice($["DslAssign"]!, $["DslAtom"]!)),
+      ),
+
+    DslAssign: ($) => seq(field("key", $["Identifier"]!), "=", field("value", $["DslValue"]!)),
+    DslValue: ($) => choice($["JsonString"]!, $["NumberVal"]!, $["JsonBoolean"]!, $["Identifier"]!, $["JsonArray"]!),
+    DslAtom: ($) => choice($["NumberVal"]!, $["JsonString"]!, $["Identifier"]!),
+
+    NumberVal: ($) => choice($["JsonNumber"]!, /\+(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/),
+    Identifier: () => /[A-Za-z_][A-Za-z0-9_.-]*/,
   },
 
   actions: [

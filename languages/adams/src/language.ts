@@ -13,6 +13,8 @@ export const adamsLanguage = language({
   name: "adams",
   fileExtensions: [".adm", ".cmd", ".acf"],
   maturity: "experimental",
+  word: ($) => $["Identifier"]!,
+  extras: ($) => [/[ \t\r\n]+/, "&", $["Comment"]!],
   indexing: {
     indexFile: indexAdamsDocument,
   },
@@ -21,7 +23,7 @@ export const adamsLanguage = language({
   },
 
   rules: {
-    Deck: ($) => repeat(choice($["CardStatement"]!, $["Comment"]!)),
+    Deck: ($) => repeat($["CardStatement"]!),
 
     CardStatement: ($) =>
       choice(
@@ -32,63 +34,59 @@ export const adamsLanguage = language({
         $["MotionCard"]!,
         $["SimulateCard"]!,
         $["GenericCard"]!,
+        $["EndCard"]!,
       ),
 
     PartCard: ($) =>
-      seq(
-        choice("PART", "part"),
-        "/",
-        field("id", $["Identifier"]!),
-        repeat(choice(",", "=", $["Identifier"]!, $["NumberLiteral"]!)),
-      ),
+      seq($["PartHeader"]!, field("id", choice($["NumberLiteral"]!, $["Identifier"]!)), repeat($["CardArg"]!)),
 
     MarkerCard: ($) =>
-      seq(
-        choice("MARKER", "marker"),
-        "/",
-        field("id", $["Identifier"]!),
-        repeat(choice(",", "=", $["Identifier"]!, $["NumberLiteral"]!)),
-      ),
+      seq($["MarkerHeader"]!, field("id", choice($["NumberLiteral"]!, $["Identifier"]!)), repeat($["CardArg"]!)),
 
     JointCard: ($) =>
-      seq(
-        choice("JOINT", "joint"),
-        "/",
-        field("id", $["Identifier"]!),
-        repeat(choice(",", "=", $["Identifier"]!, $["NumberLiteral"]!)),
-      ),
+      seq($["JointHeader"]!, field("id", choice($["NumberLiteral"]!, $["Identifier"]!)), repeat($["CardArg"]!)),
 
     ForceCard: ($) =>
-      seq(
-        choice("SPRINGDAMPER", "SFORCE", "VFORCE", "GFORCE", "BUSHING"),
-        "/",
-        field("id", $["Identifier"]!),
-        repeat(choice(",", "=", $["Identifier"]!, $["NumberLiteral"]!, $["StringLiteral"]!)),
-      ),
+      seq($["ForceHeader"]!, field("id", choice($["NumberLiteral"]!, $["Identifier"]!)), repeat($["CardArg"]!)),
 
     MotionCard: ($) =>
-      seq(
-        choice("MOTION", "motion"),
+      seq($["MotionHeader"]!, field("id", choice($["NumberLiteral"]!, $["Identifier"]!)), repeat($["CardArg"]!)),
+
+    SimulateCard: ($) => seq($["SimulateHeader"]!, field("type", $["Identifier"]!), repeat($["CardArg"]!)),
+
+    GenericCard: ($) => seq($["GenericHeader"]!, repeat($["CardArg"]!)),
+
+    EndCard: () => choice("END", "end"),
+
+    CardArg: ($) =>
+      choice(
+        ",",
+        "=",
+        "+",
+        "-",
+        "*",
         "/",
-        field("id", $["Identifier"]!),
-        repeat(choice(",", "=", $["Identifier"]!, $["NumberLiteral"]!, $["StringLiteral"]!)),
+        "^",
+        $["ParenExpr"]!,
+        $["Identifier"]!,
+        $["NumberLiteral"]!,
+        $["StringLiteral"]!,
       ),
 
-    SimulateCard: ($) =>
-      seq(
-        choice("SIMULATE", "simulate"),
-        "/",
-        field("type", $["Identifier"]!),
-        repeat(choice(",", "=", $["Identifier"]!, $["NumberLiteral"]!)),
-      ),
+    ParenExpr: ($) => seq("(", repeat($["CardArg"]!), ")"),
 
-    GenericCard: ($) =>
-      seq($["Identifier"]!, repeat(choice("/", ",", "=", $["Identifier"]!, $["NumberLiteral"]!, $["StringLiteral"]!))),
+    PartHeader: () => /(?:PART|part)\//,
+    MarkerHeader: () => /(?:MARKER|marker)\//,
+    JointHeader: () => /(?:JOINT|joint)\//,
+    ForceHeader: () => /(?:SPRINGDAMPER|springdamper|SFORCE|sforce|VFORCE|vforce|GFORCE|gforce|BUSHING|bushing)\//,
+    MotionHeader: () => /(?:MOTION|motion)\//,
+    SimulateHeader: () => /(?:SIMULATE|simulate)\//,
+    GenericHeader: () => /[A-Za-z_][A-Za-z0-9_.:]*\//,
 
-    Identifier: () => /[A-Za-z_$][A-Za-z0-9_:-]*/,
-    NumberLiteral: () => /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?(?:D|d)?/,
-    StringLiteral: () => /"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'/,
-    Comment: () => /(?:!.*|\$.*|\/\/.*)/,
+    Identifier: () => /[A-Za-z_][A-Za-z0-9_.:]*/,
+    NumberLiteral: () => /(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?[dD]?/,
+    StringLiteral: () => /"[^"\\\r\n]*(?:\\.[^"\\\r\n]*)*"|'[^'\\\r\n]*(?:\\.[^'\\\r\n]*)*'/,
+    Comment: () => /(?:!|\$|\/\/)[^\r\n]*/,
   },
 });
 

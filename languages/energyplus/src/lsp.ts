@@ -4,6 +4,8 @@
  * @modelscript/energyplus — Language Server Protocol (LSP) Service Integration.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { createWasmParserSync } from "@modelscript/energyplus/wasm-parser";
 import { lowerEnergyPlusToDae } from "./dae/energyplus-to-dae.js";
 import { lintEnergyPlus } from "./lints/rules.js";
 import { parseEnergyPlus } from "./parser/index.js";
@@ -77,6 +79,11 @@ export interface LspHover {
 export function validateEnergyPlus(content: string): LspDiagnostic[] {
   let doc: EnergyPlusDocument;
   try {
+    try {
+      getOrLoadLanguageWasmParser("energyplus", import.meta.url, createWasmParserSync).parse(content);
+    } catch {
+      // Fall back cleanly if WASM parser is unavailable
+    }
     doc = parseEnergyPlus(content);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

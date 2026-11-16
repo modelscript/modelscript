@@ -160,4 +160,5 @@ export interface NmtranControlStream {
 export interface NmtranDocument {
   controlStream: NmtranControlStream;
   sourceFile?: string | undefined;
+  syntaxErrors?: import("@modelscript/dsl").WasmSyntaxErrorSpan[] | undefined;
 }

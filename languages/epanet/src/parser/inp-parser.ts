@@ -7,9 +7,9 @@
  * whitespace tokenization, inline comment stripping, and line/col tracking.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { createWasmParserSync } from "@modelscript/epanet/wasm-parser";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { createRequire } from "node:module";
 import type {
   EpanetControl,
   EpanetFlowUnits,
@@ -19,14 +19,8 @@ import type {
   EpanetValveType,
 } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getEpanetWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/epanet/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("epanet", import.meta.url, createWasmParserSync);
 }
 
 export function parseInp(source: string, filename?: string): EpanetNetwork {

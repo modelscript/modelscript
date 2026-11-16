@@ -86,6 +86,7 @@ interface DiagramEditorProps {
   onInteractiveWrite?: ((variableName: string, value: any, nodeId: string) => void) | undefined;
   onShowProperties?: ((nodeId: string, cachedProps?: any, isLoading?: boolean) => void) | undefined;
   onNodeDoubleClick?: ((nodeId: string, nodeData?: any) => void) | undefined;
+  fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
 }
 
 type DiagramGraphInstance = {
@@ -185,8 +186,57 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       onUndo: () => propsRef.current.onUndo?.(),
       onRedo: () => propsRef.current.onRedo?.(),
       onAutoLayout: () => propsRef.current.onAutoLayout?.(),
+      fitInsets: propsRef.current.fitInsets,
     });
     attachGraphListeners();
+  };
+
+  const applyDiagramViewportFit = (g: any, cw: number, ch: number, padding = 24) => {
+    const insets = propsRef.current.fitInsets;
+    const top = insets?.top ?? 0;
+    const right = insets?.right ?? 0;
+    const bottom = insets?.bottom ?? 0;
+    const left = insets?.left ?? 0;
+    const vw = Math.max(120, cw - left - right);
+    const vh = Math.max(120, ch - top - bottom);
+    const viewportArea = { x: left, y: top, width: vw, height: vh };
+    const shiftX = (left - right) / 2;
+    const shiftY = (top - bottom) / 2;
+
+    const cs = propsRef.current.diagramData?.coordinateSystem;
+    const hasExplicitCoordBounds = Boolean(
+      cs && (cs.boundsStyle?.visible !== false || cs.axesStyle?.visible !== false),
+    );
+    if (hasExplicitCoordBounds && cs) {
+      const expandedRect = {
+        x: cs.x - cs.width * 0.125,
+        y: cs.y - cs.height * 0.125,
+        width: cs.width * 1.25,
+        height: cs.height * 1.25,
+      };
+      if (typeof g.zoomToRect === "function") {
+        g.zoomToRect(expandedRect, { viewportArea });
+      } else {
+        g.zoomToFit?.({ maxScale: 1, padding, viewportArea });
+      }
+      const ox = cs.axesStyle?.origin?.[0] ?? 0;
+      const oy = cs.axesStyle?.origin?.[1] ?? 0;
+      if (typeof g.centerPoint === "function") {
+        g.centerPoint(ox, oy);
+      } else if (typeof g.centerContent === "function") {
+        g.centerContent();
+      }
+    } else if (typeof g.zoomToFit === "function") {
+      g.zoomToFit({ maxScale: 1, padding, viewportArea });
+      g.centerContent?.();
+    }
+
+    if ((shiftX !== 0 || shiftY !== 0) && typeof g.translate === "function") {
+      const cur = g.translate();
+      if (cur && typeof cur.tx === "number" && typeof cur.ty === "number") {
+        g.translate(cur.tx + shiftX, cur.ty + shiftY);
+      }
+    }
   };
 
   useImperativeHandle(ref, () => ({
@@ -204,29 +254,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           if (typeof (g as any).resize === "function" && cw > 0 && ch > 0) {
             (g as any).resize(cw, ch);
           }
-          if (propsRef.current.diagramData?.coordinateSystem) {
-            const cs = propsRef.current.diagramData.coordinateSystem;
-            const expandedRect = {
-              x: cs.x - cs.width * 0.125,
-              y: cs.y - cs.height * 0.125,
-              width: cs.width * 1.25,
-              height: cs.height * 1.25,
-            };
-            const zoomable = g as unknown as {
-              zoomToRect?: (rect: unknown, options?: unknown) => void;
-            };
-            zoomable.zoomToRect?.(expandedRect, { viewportArea: { x: 0, y: 0, width: cw, height: ch } });
-            const ox = cs.axesStyle?.origin?.[0] ?? 0;
-            const oy = cs.axesStyle?.origin?.[1] ?? 0;
-            if (typeof (g as any).centerPoint === "function") {
-              (g as any).centerPoint(ox, oy);
-            } else if (typeof (g as any).centerContent === "function") {
-              (g as any).centerContent();
-            }
-          } else {
-            g.zoomToFit({ maxScale: 1, padding: 20 });
-            (g as any).centerContent?.();
-          }
+          applyDiagramViewportFit(g, cw, ch, 20);
           if (typeof (g as any).zoom === "function") {
             propsRef.current.onZoomChange?.(Math.round((g as any).zoom() * 100) / 100);
           }
@@ -292,6 +320,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       }
     },
     zoomToFit: () => {
+      syncDiagramOptions();
       const container = containerRef.current;
       const g = (getGraph(container) ?? getGraph()) as any;
       if (g && typeof g.zoomToFit === "function") {
@@ -305,31 +334,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         if (typeof g.resize === "function" && cw > 0 && ch > 0) {
           g.resize(cw, ch);
         }
-        if (propsRef.current.diagramData?.coordinateSystem) {
-          const cs = propsRef.current.diagramData.coordinateSystem;
-          const expandedRect = {
-            x: cs.x - cs.width * 0.125,
-            y: cs.y - cs.height * 0.125,
-            width: cs.width * 1.25,
-            height: cs.height * 1.25,
-          };
-          if (typeof g.zoomToRect === "function") {
-            g.zoomToRect(expandedRect, { viewportArea: { x: 0, y: 0, width: cw, height: ch } });
-          } else {
-            g.zoomToFit({ maxScale: 1, padding: 24 });
-            g.centerContent?.();
-          }
-          const ox = cs.axesStyle?.origin?.[0] ?? 0;
-          const oy = cs.axesStyle?.origin?.[1] ?? 0;
-          if (typeof g.centerPoint === "function") {
-            g.centerPoint(ox, oy);
-          } else if (typeof g.centerContent === "function") {
-            g.centerContent();
-          }
-        } else {
-          g.zoomToFit({ maxScale: 1, padding: 24 });
-          g.centerContent?.();
-        }
+        applyDiagramViewportFit(g, cw, ch, 24);
         if (typeof g.zoom === "function") {
           propsRef.current.onZoomChange?.(Math.round(g.zoom() * 100) / 100);
         }
@@ -429,26 +434,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
                   !propsRef.current.diagramData.isLoading
                 ) {
                   hasFittedViewportRef.current = true;
-                  if (propsRef.current.diagramData.coordinateSystem) {
-                    const cs = propsRef.current.diagramData.coordinateSystem;
-                    const expandedRect = {
-                      x: cs.x - cs.width * 0.125,
-                      y: cs.y - cs.height * 0.125,
-                      width: cs.width * 1.25,
-                      height: cs.height * 1.25,
-                    };
-                    zoomable.zoomToRect?.(expandedRect, { viewportArea: { x: 0, y: 0, width, height } });
-                    const ox = cs.axesStyle?.origin?.[0] ?? 0;
-                    const oy = cs.axesStyle?.origin?.[1] ?? 0;
-                    if (typeof (g as any).centerPoint === "function") {
-                      (g as any).centerPoint(ox, oy);
-                    } else if (typeof zoomable.centerContent === "function") {
-                      zoomable.centerContent();
-                    }
-                  } else if (typeof zoomable.zoomToFit === "function") {
-                    zoomable.zoomToFit({ maxScale: 1, padding: 24 });
-                    zoomable.centerContent?.();
-                  }
+                  applyDiagramViewportFit(g, width, height, 24);
                 }
                 if (typeof (g as any).zoom === "function") {
                   propsRef.current.onZoomChange?.(Math.round((g as any).zoom() * 100) / 100);
@@ -466,6 +452,12 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       disposeDiagram(container);
     };
   }, []);
+
+  useEffect(() => {
+    if (containerRef.current && getGraph(containerRef.current)) {
+      syncDiagramOptions();
+    }
+  }, [props.fitInsets?.top, props.fitInsets?.right, props.fitInsets?.bottom, props.fitInsets?.left]);
 
   useEffect(() => {
     if (props.diagramData && containerRef.current) {
@@ -532,25 +524,80 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   useEffect(() => {
     if (typeof window === "undefined") return;
     let currentHighlightedContainer: HTMLElement | null = null;
+    let currentGlowElement: SVGElement | null = null;
+
+    const clearHighlight = () => {
+      if (currentGlowElement) {
+        currentGlowElement.remove();
+        currentGlowElement = null;
+      }
+      if (currentHighlightedContainer) {
+        currentHighlightedContainer.classList.remove("modelscript-hover-halo");
+        currentHighlightedContainer = null;
+      }
+    };
 
     const handleHighlight = (e: Event) => {
       const detail = (e as CustomEvent<{ name?: string | null }>).detail;
       const targetName = detail?.name;
 
-      if (currentHighlightedContainer) {
-        currentHighlightedContainer.classList.remove("modelscript-hover-halo");
-        currentHighlightedContainer = null;
-      }
+      clearHighlight();
 
       if (targetName && containerRef.current) {
         const g = getGraph(containerRef.current) as DiagramGraphInstance | null;
         if (g) {
-          const cell = g.getCellById(targetName);
+          const cell = g.getCellById?.(targetName);
           if (cell) {
-            const cellView = g.findViewByCell(cell);
+            const cellView = g.findViewByCell?.(cell);
             if (cellView?.container) {
+              const svgNs = "http://www.w3.org/2000/svg";
+              const size = (cell as { getSize?: () => { width?: number; height?: number } }).getSize?.();
+              const width = size?.width && size.width > 0 ? size.width : 40;
+              const height = size?.height && size.height > 0 ? size.height : 40;
+              const cx = width / 2;
+              const cy = height / 2;
+              const radius = Math.max(width, height) * 0.9;
+              const gradId = "modelscript-hover-radial-glow";
+
+              const glowGroup = document.createElementNS(svgNs, "g");
+              glowGroup.setAttribute("class", "modelscript-hover-glow");
+              glowGroup.setAttribute("pointer-events", "none");
+
+              const defs = document.createElementNS(svgNs, "defs");
+              const grad = document.createElementNS(svgNs, "radialGradient");
+              grad.setAttribute("id", gradId);
+              grad.setAttribute("cx", "50%");
+              grad.setAttribute("cy", "50%");
+              grad.setAttribute("r", "50%");
+
+              const stops: Array<[string, string]> = [
+                ["0%", "0.45"],
+                ["45%", "0.24"],
+                ["75%", "0.08"],
+                ["100%", "0"],
+              ];
+              for (const [offset, opacity] of stops) {
+                const stop = document.createElementNS(svgNs, "stop");
+                stop.setAttribute("offset", offset);
+                stop.setAttribute("stop-color", "#0ea5e9");
+                stop.setAttribute("stop-opacity", opacity);
+                grad.appendChild(stop);
+              }
+              defs.appendChild(grad);
+              glowGroup.appendChild(defs);
+
+              const circle = document.createElementNS(svgNs, "circle");
+              circle.setAttribute("cx", String(cx));
+              circle.setAttribute("cy", String(cy));
+              circle.setAttribute("r", String(radius));
+              circle.setAttribute("fill", `url(#${gradId})`);
+              circle.setAttribute("pointer-events", "none");
+              glowGroup.appendChild(circle);
+
+              cellView.container.insertBefore(glowGroup, cellView.container.firstChild);
               cellView.container.classList.add("modelscript-hover-halo");
               currentHighlightedContainer = cellView.container;
+              currentGlowElement = glowGroup;
             }
           }
         }
@@ -559,9 +606,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
 
     window.addEventListener("morsel:highlight-component", handleHighlight);
     return () => {
-      if (currentHighlightedContainer) {
-        currentHighlightedContainer.classList.remove("modelscript-hover-halo");
-      }
+      clearHighlight();
       window.removeEventListener("morsel:highlight-component", handleHighlight);
     };
   }, []);
@@ -658,31 +703,67 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
               ))}
         </div>
       )}
-      {props.isLoading && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: props.theme === "vs-dark" ? "rgba(30,30,30,0.6)" : "rgba(255,255,255,0.6)",
-            zIndex: 1000,
-            pointerEvents: "none",
-          }}
-        >
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              border: `3px solid ${props.theme === "vs-dark" ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}`,
-              borderTopColor: props.theme === "vs-dark" ? "#ccc" : "#333",
-              borderRadius: "50%",
-              animation: "diagram-spin 0.7s linear infinite",
-            }}
-          />
-        </div>
-      )}
+      {props.isLoading &&
+        (() => {
+          const g = getGraph(containerRef.current) as {
+            scale?: () => { sx: number; sy: number };
+            translate?: () => { tx: number; ty: number };
+          } | null;
+          const cs = props.diagramData?.coordinateSystem;
+          const ox = cs?.axesStyle?.origin?.[0] ?? 0;
+          const oy = cs?.axesStyle?.origin?.[1] ?? 0;
+          let originScreenPos: { x: number; y: number } | null = null;
+          if (g && hasFittedViewportRef.current && typeof g.scale === "function" && typeof g.translate === "function") {
+            const s = g.scale();
+            const t = g.translate();
+            if (s && t && typeof s.sx === "number" && typeof t.tx === "number") {
+              originScreenPos = { x: ox * s.sx + t.tx, y: oy * s.sy + t.ty };
+            }
+          }
+          return (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingTop: originScreenPos ? 0 : (props.fitInsets?.top ?? 0),
+                paddingRight: originScreenPos ? 0 : (props.fitInsets?.right ?? 0),
+                paddingBottom: originScreenPos ? 0 : (props.fitInsets?.bottom ?? 0),
+                paddingLeft: originScreenPos ? 0 : (props.fitInsets?.left ?? 0),
+                boxSizing: "border-box",
+                backgroundColor: props.theme === "vs-dark" ? "rgba(30,30,30,0.6)" : "rgba(255,255,255,0.6)",
+                zIndex: 1000,
+                pointerEvents: "none",
+              }}
+            >
+              <div
+                style={
+                  originScreenPos
+                    ? {
+                        position: "absolute",
+                        left: originScreenPos.x,
+                        top: originScreenPos.y,
+                        transform: "translate(-50%, -50%)",
+                      }
+                    : undefined
+                }
+              >
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    border: `3px solid ${props.theme === "vs-dark" ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"}`,
+                    borderTopColor: props.theme === "vs-dark" ? "#ccc" : "#333",
+                    borderRadius: "50%",
+                    animation: "diagram-spin 0.7s linear infinite",
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })()}
       <style>{`
         @keyframes diagram-spin { to { transform: rotate(360deg); } }
       `}</style>

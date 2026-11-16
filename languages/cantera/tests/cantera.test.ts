@@ -433,3 +433,39 @@ test("Cantera Modelica Projection, UnifiedWorkspace, and LSP Services", async ()
   assert.equal(daeSummary.variableCount, daeSummary.equationCount);
   assert.equal(canteraLanguage.name, "cantera");
 });
+
+test("Cantera WASM GLR Parser & LSP: parses Morsel defaultCode without error and reports syntax errors", async () => {
+  const { getCanteraWasmParser } = await import("../src/parser/wasm-loader.js");
+  const { collectWasmSyntaxErrors } = await import("@modelscript/dsl");
+
+  const morselDefaultCode = `phases:
+  - name: h2_air_mix
+    thermo: ideal-gas
+    elements: [H, O, N]
+    species: [H2, O2, H2O, OH, H, O, N2]
+    kinetics: gas
+    state:
+      T: 1100.0
+      P: 101325.0
+reactions:
+  - equation: H + O2 <=> O + OH
+    rate-constant: {A: 3.55e+15, b: -0.41, Ea: 16600.0}
+`;
+
+  const tree = getCanteraWasmParser().parse(morselDefaultCode);
+  assert.ok(tree?.rootNode);
+  assert.equal(tree.rootNode.hasError, false);
+  assert.equal(collectWasmSyntaxErrors(tree.rootNode).length, 0);
+  assert.equal(validateCantera(morselDefaultCode).filter((d) => d.code === "M9200").length, 0);
+
+  const validFullTree = getCanteraWasmParser().parse(VALID_H2O2_YAML);
+  assert.equal(validFullTree?.rootNode.hasError, false);
+
+  const brokenYaml = `phases:
+  - name: h2_air_mix
+    elements: [H, O, N
+`;
+  const brokenTree = getCanteraWasmParser().parse(brokenYaml);
+  assert.equal(brokenTree?.rootNode.hasError, true);
+  assert.ok(validateCantera(brokenYaml).some((d) => d.code === "M9200" && d.source === "cantera-parser"));
+});

@@ -7,18 +7,18 @@
  * enabling compilation into native WebAssembly GLR parse tables and linear-memory CST.
  */
 
-import { choice, field, language, repeat, semanticToken, seq } from "@modelscript/dsl";
+import { choice, field, language, optional, repeat, semanticToken, seq } from "@modelscript/dsl";
 
 export const pdbGrammar = language({
   name: "Pdb",
   word: ($) => $.Identifier,
-  extras: ($) => [/[ \t\r\n]+/, $.CommentLine],
+  extras: ($) => [/[ \t]+/, $.CommentLine],
   lsp: {
     folding: ["HelixRecord", "SheetRecord"],
     outline: ["HeaderRecord", "TitleRecord", "HelixRecord", "SheetRecord", "AtomRecord", "HetatmRecord"],
   },
   rules: {
-    Structure: ($) => repeat(choice($.Record, $.CommentLine)),
+    Structure: ($) => seq(optional($.Newline), optional(seq($.Record, repeat(seq($.Newline, optional($.Record)))))),
 
     Record: ($) =>
       choice(
@@ -35,25 +35,25 @@ export const pdbGrammar = language({
         $.GenericRecord,
       ),
 
-    HeaderRecord: ($) => seq(semanticToken("keyword", "HEADER"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
+    HeaderRecord: ($) => seq(semanticToken("keyword", "HEADER"), repeat($.FieldToken)),
 
-    TitleRecord: ($) => seq(semanticToken("keyword", "TITLE"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
+    TitleRecord: ($) => seq(semanticToken("keyword", "TITLE"), repeat($.FieldToken)),
 
-    HelixRecord: ($) => seq(semanticToken("keyword", "HELIX"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
+    HelixRecord: ($) => seq(semanticToken("keyword", "HELIX"), repeat($.FieldToken)),
 
-    SheetRecord: ($) => seq(semanticToken("keyword", "SHEET"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
+    SheetRecord: ($) => seq(semanticToken("keyword", "SHEET"), repeat($.FieldToken)),
 
-    SsbondRecord: ($) => seq(semanticToken("keyword", "SSBOND"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
+    SsbondRecord: ($) => seq(semanticToken("keyword", "SSBOND"), repeat($.FieldToken)),
 
-    AtomRecord: ($) => seq(semanticToken("keyword", "ATOM"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
+    AtomRecord: ($) => seq(semanticToken("keyword", "ATOM"), repeat($.FieldToken)),
 
-    HetatmRecord: ($) => seq(semanticToken("keyword", "HETATM"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
+    HetatmRecord: ($) => seq(semanticToken("keyword", "HETATM"), repeat($.FieldToken)),
 
-    TerRecord: ($) => seq(semanticToken("keyword", "TER"), repeat(choice($.Identifier, $.NumberLiteral, "-"))),
+    TerRecord: ($) => seq(semanticToken("keyword", "TER"), repeat($.FieldToken)),
 
-    ConectRecord: ($) => seq(semanticToken("keyword", "CONECT"), repeat(choice($.NumberLiteral, $.Identifier))),
+    ConectRecord: ($) => seq(semanticToken("keyword", "CONECT"), repeat($.FieldToken)),
 
-    EndRecord: () => semanticToken("keyword", choice("END", "ENDMDL")),
+    EndRecord: ($) => seq(semanticToken("keyword", choice("END", "ENDMDL")), repeat($.FieldToken)),
 
     GenericRecord: ($) =>
       seq(
@@ -78,13 +78,21 @@ export const pdbGrammar = language({
             "MODEL",
             "MASTER",
             $.Identifier,
+            $.NumberLiteral,
+            $.QuotedString,
+            $.RecordPunct,
           ),
         ),
-        repeat(choice($.Identifier, $.NumberLiteral, "-")),
+        repeat($.FieldToken),
       ),
 
-    CommentLine: () => /#[^\n]*/,
-    Identifier: () => /[a-zA-Z_][a-zA-Z0-9_]*/,
+    FieldToken: ($) => choice($.Identifier, $.NumberLiteral, $.QuotedString, $.RecordPunct),
+
+    QuotedString: () => /'[^'\r\n]*'|"[^"\r\n]*"/,
+    RecordPunct: () => /[.,:;()[\]+*/=?%&-]/,
+    Newline: () => /[\r\n]+/,
+    CommentLine: () => /#[^\r\n]*/,
+    Identifier: () => /[a-zA-Z_][a-zA-Z0-9_.]*'?/,
     NumberLiteral: () => /[-+]?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?/,
   },
 });

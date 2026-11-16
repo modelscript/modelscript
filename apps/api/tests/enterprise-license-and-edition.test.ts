@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: LicenseRef-ModelScript-Enterprise
+// SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -10,9 +10,10 @@ import request from "supertest";
 
 process.env["NODE_ENV"] = "test";
 
-import { createApp } from "../../apps/api/src/app.js";
-import { LibraryDatabase } from "../../apps/api/src/database.js";
-import { OidcService as BridgeOidcService } from "../../apps/api/src/services/oidc.js";
+import { createApp } from "../src/app.js";
+import { LibraryDatabase } from "../src/database.js";
+import { OidcService as BridgeOidcService } from "../src/services/oidc.js";
+// eslint-disable-next-line no-restricted-imports
 import {
   ALL_ENTERPRISE_FEATURES,
   checkEnterpriseDesktopAirgapCompliance,
@@ -32,7 +33,7 @@ import {
   verifyEnterpriseCollabSession,
   verifyEnterpriseLicense,
   verifyPrivateVisibilityEntitlement,
-} from "../src/index.js";
+} from "@modelscript/ee";
 
 describe("Enterprise Edition (ee/) Subsystems (Batches A–I) & CE/EE Isolation", () => {
   let tmpDir: string;

@@ -1358,29 +1358,85 @@ export declare function createWasmParserSync(
   facade: LspFacade;
   parser: TreeSitterParser;
 };
+/**
+ * Registers a pre-instantiated WebAssembly GLR parser in `globalThis.__msWasmParsers`
+ * so synchronous language parsers and workspace linters can use it inside browser WebWorkers
+ * without Node.js `fs` or `node:module`.
+ */
+export declare function registerPreloadedWasmParser(
+  langId: string,
+  parser: TreeSitterParser | null | undefined,
+  facade?: LspFacade | null,
+): void;
+/**
+ * Retrieves a pre-instantiated WebAssembly GLR parser from `globalThis` if registered
+ * by `ParserService` (browser WebWorker or Node LSP server).
+ */
+export declare function getPreloadedWasmParser(
+  langId: string,
+): TreeSitterParser | undefined;
+/**
+ * Resolves the filesystem path or URL to a language package's `parser.wasm` without `node:module`.
+ */
+export declare function resolveLanguageWasmPath(
+  importMetaUrl: string,
+  langId?: string,
+): string;
+/**
+ * Isomorphic helper that returns the pre-loaded WASM GLR parser in browser WebWorkers
+ * (`globalThis.__msWasmParsers`) and lazily loads `parser.wasm` synchronously in Node.js CLI/tests.
+ */
+export declare function getOrLoadLanguageWasmParser<TParser = TreeSitterParser>(
+  langId: string,
+  importMetaUrl: string,
+  syncFactory?: (wasmPath: string) => {
+    parser: TParser;
+  },
+): TParser;
+export interface WasmSyntaxErrorSpan {
+  message: string;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  startOffset: number;
+  endOffset: number;
+}
+/**
+ * Walks a WASM GLR `SyntaxNode` root and extracts bounded `ERROR` / `isMissing` syntax error spans
+ * (1-indexed lines and columns).
+ */
+export declare function collectWasmSyntaxErrors(
+  rootNode: unknown,
+  maxErrors?: number,
+): WasmSyntaxErrorSpan[];
 
 export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: string[] };
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Structure = 34,
-  Record = 35,
-  HeaderRecord = 36,
-  TitleRecord = 37,
-  HelixRecord = 38,
-  SheetRecord = 39,
-  SsbondRecord = 40,
-  AtomRecord = 41,
-  HetatmRecord = 42,
-  TerRecord = 43,
-  ConectRecord = 44,
-  EndRecord = 45,
-  GenericRecord = 46,
-  START = 47,
-  _START = 47,
-  CommentLine = 57,
-  Identifier = 58,
-  NumberLiteral = 59,
+  Structure = 36,
+  Record = 37,
+  HeaderRecord = 38,
+  TitleRecord = 39,
+  HelixRecord = 40,
+  SheetRecord = 41,
+  SsbondRecord = 42,
+  AtomRecord = 43,
+  HetatmRecord = 44,
+  TerRecord = 45,
+  ConectRecord = 46,
+  EndRecord = 47,
+  GenericRecord = 48,
+  FieldToken = 49,
+  START = 50,
+  _START = 50,
+  QuotedString = 60,
+  RecordPunct = 61,
+  Newline = 62,
+  CommentLine = 63,
+  Identifier = 64,
+  NumberLiteral = 65,
   EOF = 1023,
 }
 
@@ -1446,6 +1502,22 @@ export interface GenericRecordNode extends SyntaxNode {
   readonly typeId: SyntaxKind.GenericRecord;
 }
 export declare function isGenericRecord(node: SyntaxNode | null | undefined): node is GenericRecordNode;
+export interface FieldTokenNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FieldToken;
+}
+export declare function isFieldToken(node: SyntaxNode | null | undefined): node is FieldTokenNode;
+export interface QuotedStringNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.QuotedString;
+}
+export declare function isQuotedString(node: SyntaxNode | null | undefined): node is QuotedStringNode;
+export interface RecordPunctNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.RecordPunct;
+}
+export declare function isRecordPunct(node: SyntaxNode | null | undefined): node is RecordPunctNode;
+export interface NewlineNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Newline;
+}
+export declare function isNewline(node: SyntaxNode | null | undefined): node is NewlineNode;
 export interface CommentLineNode extends SyntaxNode {
   readonly typeId: SyntaxKind.CommentLine;
 }
@@ -1527,6 +1599,26 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is GenericRecordNode;
     recordType(node: SyntaxNode | null | undefined): SyntaxNode | null;
     recordTypeList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const FieldToken: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FieldTokenNode;
+  };
+  export const QuotedString: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is QuotedStringNode;
+  };
+  export const RecordPunct: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is RecordPunctNode;
+  };
+  export const Newline: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is NewlineNode;
   };
   export const CommentLine: {
     readonly typeId: number;

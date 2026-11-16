@@ -94,6 +94,7 @@ export interface FeaModelData {
   sectionLines?: Map<string, number> | undefined;
   boundaryLines?: number[] | undefined;
   includes?: string[] | undefined;
+  syntaxErrors?: import("@modelscript/dsl").WasmSyntaxErrorSpan[] | undefined;
 }
 
 export type ParameterLookup = (name: string) => number | string | undefined;

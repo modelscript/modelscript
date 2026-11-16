@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { cardDeckRules, language, type ActionExecutionContext } from "@modelscript/dsl";
+import { choice, language, repeat, seq, type ActionExecutionContext } from "@modelscript/dsl";
 import { lowerGpromsToDae } from "./dae/gproms-to-dae.js";
 import { indexGpromsDocument } from "./indexing.js";
 import { lintGproms } from "./lints/index.js";
@@ -8,6 +8,40 @@ import { parseGproms } from "./parser/gproms-parser.js";
 import { gpromsToModelica } from "./projections/gproms-to-modelica.js";
 import { solveGpromsProcess, type GpromsSolverOptions } from "./solvers/gproms-solver.js";
 import { gpromsPolyglotConfig } from "./tgg/index.js";
+
+const gpromsGrammar = language({
+  name: "gproms",
+  extras: ($) => [/[ \t\r\n]+/, $.LineComment, $.BraceComment, $.BlockComment],
+  rules: {
+    Document: ($) => repeat($.Item),
+    Item: ($) =>
+      choice(
+        $.ParenGroup,
+        $.BracketGroup,
+        $.AssignOp,
+        $.PowerOp,
+        $.CompareOp,
+        $.DomainInteriorOp,
+        $.StringLiteral,
+        $.NumberLiteral,
+        $.Identifier,
+        $.SymbolToken,
+      ),
+    ParenGroup: ($) => seq("(", repeat($.Item), ")"),
+    BracketGroup: ($) => seq("[", repeat($.Item), "]"),
+    AssignOp: () => ":=",
+    PowerOp: () => "**",
+    CompareOp: () => choice("<=", ">=", "<>", "=="),
+    DomainInteriorOp: () => /\|\+|\|-/,
+    StringLiteral: () => /"[^"\r\n]*"|'[^'\r\n]*'/,
+    NumberLiteral: () => /[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?|\.[0-9]+([eE][-+]?[0-9]+)?/,
+    Identifier: () => /[A-Za-z_][A-Za-z0-9_]*/,
+    SymbolToken: () => /[$=:;,.+\-*/^<>]/,
+    LineComment: () => /(#|\/\/)[^\r\n]*/,
+    BraceComment: () => /\{[^}]*\}/,
+    BlockComment: () => /\/\*[^*]*\*+([^/*][^*]*\*+)*\//,
+  },
+});
 
 /**
  * ModelScript gPROMS Process Modeling Language (.gproms, .pml) Language Definition.
@@ -17,6 +51,8 @@ export const gpromsLanguage = language({
   name: "gproms",
   fileExtensions: [".gproms", ".pml"],
   maturity: "experimental",
+  extras: gpromsGrammar.extras,
+  rules: gpromsGrammar.rules,
   lsp: {
     fileExtensions: [".gproms", ".pml"],
     icons: {
@@ -113,8 +149,6 @@ export const gpromsLanguage = language({
       },
     },
   ],
-  extras: () => [/[ \t\r\n]+/],
-  rules: cardDeckRules,
 });
 
 export default gpromsLanguage;

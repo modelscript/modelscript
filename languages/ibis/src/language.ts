@@ -1,12 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { cardDeckRules, language } from "@modelscript/dsl";
+import { choice, language, repeat, repeat1, seq } from "@modelscript/dsl";
 import { lowerIbisToDae } from "./dae/ibis-to-dae.js";
 import { lintIbis } from "./lints/index.js";
 import { parseIbis } from "./parser/ibis-parser.js";
 import { ibisToModelica } from "./projections/ibis-to-modelica.js";
 import { calculateOutputResistance, evaluateBufferCurrent } from "./solvers/buffer-solver.js";
 import { ibisPolyglotConfig } from "./tgg/index.js";
+
+const ibisGrammar = language({
+  name: "ibis",
+  extras: () => [/[ \t\r\n]+/],
+  rules: {
+    Document: ($) => repeat($.Item),
+    Item: ($) => choice($.SectionHeader, $.IbisComment, $.DeckString, $.DeckNumber, $.DeckIdentifier, $.DeckPunct),
+    SectionHeader: ($) => seq("[", repeat1(choice($.DeckIdentifier, $.DeckNumber)), "]"),
+    IbisComment: () => /\|[^\r\n]*/,
+    DeckString: () => /"[^"\r\n]*"/,
+    DeckNumber: () => /[-+]?[0-9]*\.?[0-9]+([eEdD][-+]?[0-9]+)?/,
+    DeckIdentifier: () => /[A-Za-z_][A-Za-z0-9_./+-]*/,
+    DeckPunct: () => /[,:=+/*()-]+/,
+  },
+});
 
 /**
  * ModelScript ANSI/EIA-656-B IBIS (.ibs) Language Definition.
@@ -16,6 +31,8 @@ export const ibisLanguage = language({
   name: "ibis",
   fileExtensions: [".ibs"],
   maturity: "experimental",
+  extras: ibisGrammar.extras,
+  rules: ibisGrammar.rules,
   lsp: {
     fileExtensions: [".ibs"],
     icons: {
@@ -160,8 +177,6 @@ export const ibisLanguage = language({
       },
     },
   ],
-  extras: () => [/[ \t\r\n]+/],
-  rules: cardDeckRules,
 });
 
 export default ibisLanguage;

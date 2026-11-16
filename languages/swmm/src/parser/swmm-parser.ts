@@ -4,9 +4,9 @@
  * @modelscript/swmm — High-Performance Zero-Regex Parser & Serializer for US EPA SWMM 5.x (.inp) Decks.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
 import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
 import { createWasmParserSync } from "@modelscript/swmm/wasm-parser";
-import { createRequire } from "node:module";
 import type {
   SwmmCrossSection,
   SwmmDeck,
@@ -17,14 +17,8 @@ import type {
   SwmmWeir,
 } from "../types.js";
 
-const require = createRequire(import.meta.url);
-let cachedParser: ReturnType<typeof createWasmParserSync>["parser"] | undefined;
 function getSwmmWasmParser() {
-  if (!cachedParser) {
-    const wasmPath = require.resolve("@modelscript/swmm/parser.wasm");
-    cachedParser = createWasmParserSync(wasmPath).parser;
-  }
-  return cachedParser;
+  return getOrLoadLanguageWasmParser("swmm", import.meta.url, createWasmParserSync);
 }
 
 interface RawToken {

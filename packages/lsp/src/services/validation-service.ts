@@ -9,6 +9,7 @@ import { ParserService } from "./parser-service.js";
 import { hasWorkspaceLinter, runWorkspaceLinterForDocument } from "./workspace-linter-dispatch.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
+import { parseXmlSync } from "@modelscript/dsl/xml";
 import { getModelicaErrorCodeDef } from "@modelscript/modelica";
 import {
   type CorrespondenceDiagnostic,
@@ -2134,15 +2135,71 @@ export class ValidationService {
       const revisionAtStart = this.documentRevisions.get(uri) ?? null;
       const isStale = () => revisionAtStart !== null && (this.documentRevisions.get(uri) ?? 0) !== revisionAtStart;
       try {
-        const res = await plugin.customHandlers.validate(textDocument);
+        await this.parserService.ensureLanguageParserLoaded(plugin.id);
         if (isStale()) return;
-        if (res !== undefined) {
+        const existingCached = this.documentManager.documentTrees.get(uri);
+        const wasmTree = this.parseIncrementalWasmTree(uri, plugin.id, text, plugin);
+        const res = await (plugin.customHandlers.validate as (d: TextDocument, t?: unknown) => unknown)(
+          textDocument,
+          wasmTree ?? undefined,
+        );
+        if (isStale()) return;
+        if (Array.isArray(res)) {
           const diags = normalizePluginDiagnostics(res, plugin.id);
-          const docTree = { rootNode: { text } } as any;
+          const head = text
+            .slice(0, 512)
+            .replace(/^\uFEFF/, "")
+            .trimStart();
+          const isXmlDoc =
+            head.startsWith("<?xml") ||
+            /^<!DOCTYPE\b/i.test(head) ||
+            (head.startsWith("<") &&
+              (/\.(xml|reqif|reqifz|urdf|sdf|xacro|sbml|cellml|sedml|arxml|osim|aml|plcopen|xodr|xosc|qif|sbol|3mf|feb|scl|scd|icd|cid|pscx|owx|rdf)$/i.test(
+                uri,
+              ) ||
+                Boolean((plugin.languageDef as { grammar?: { xmlRules?: unknown } } | undefined)?.grammar?.xmlRules)));
+          const usesNativeXmlWasm = (plugin.id === "reqif" || plugin.id === "pscad") && text.length <= 2 * 1024 * 1024;
+          if (isXmlDoc && !usesNativeXmlWasm) {
+            const xmlDoc = parseXmlSync(text);
+            if (xmlDoc.errors.length > 0) {
+              const hasNonZeroSyntaxDiag = diags.some(
+                (d) =>
+                  d.severity === DiagnosticSeverity.Error &&
+                  (d.range.start.line > 0 || d.range.start.character > 0) &&
+                  (d.code === "REQIF-PARSE-ERROR" || String(d.code ?? "").startsWith("XML-")),
+              );
+              if (!hasNonZeroSyntaxDiag) {
+                const filtered = diags.filter(
+                  (d) =>
+                    !(
+                      d.severity === DiagnosticSeverity.Error &&
+                      d.range.start.line === 0 &&
+                      d.range.start.character === 0 &&
+                      /parse|syntax|xml/i.test(d.message)
+                    ),
+                );
+                diags.length = 0;
+                diags.push(...filtered);
+                for (const err of xmlDoc.errors) {
+                  diags.push({
+                    range: {
+                      start: textDocument.positionAt(err.start),
+                      end: textDocument.positionAt(Math.max(err.start + 1, err.end)),
+                    },
+                    severity: DiagnosticSeverity.Error,
+                    code: err.code ?? "XML-PARSE-ERROR",
+                    source: plugin.id,
+                    message: err.message || "XML syntax error",
+                  });
+                }
+              }
+            }
+          }
+          const docTree: any = wasmTree ?? { rootNode: { text } };
           this.documentManager.documentTrees.set(uri, {
             text,
             tree: docTree,
-            classCache: new Map(),
+            classCache: existingCached?.classCache ?? new Map(),
           });
           const contentChanged = this.lastIndexedText.get(uri) !== text;
           if ((plugin.languageDef as any)?.indexing?.indexFile) {
@@ -2803,6 +2860,14 @@ export class ValidationService {
         }
       }
 
+      // Stream core compiler lints immediately before running heavier post-validation hooks
+      // (abstract interpretation, DAE reachability, cross-language drift, workspace linters).
+      if (isStale()) return;
+      const earlyDiags = deduplicateAllDiagnostics([...baseDiagnostics, ...newSemanticDiagnostics]);
+      if (earlyDiags.length > 1000) earlyDiags.length = 1000;
+      this.connection.sendDiagnostics({ uri, diagnostics: earlyDiags });
+      this.sendProjectTreeChanged(uri);
+
       // ── Step 6: Domain Post-Validation Hooks ──────────────────────────────
       if (plugin?.customHandlers?.postValidate && textDocument) {
         await plugin.customHandlers.postValidate(textDocument, context, newSemanticDiagnostics);
@@ -2878,8 +2943,22 @@ export class ValidationService {
       const rawDiagnostics = [...baseDiagnostics, ...finalSemanticDiags];
       const diagnostics = deduplicateAllDiagnostics(rawDiagnostics);
       if (diagnostics.length > 1000) diagnostics.length = 1000;
-      this.connection.sendDiagnostics({ uri, diagnostics });
-      this.sendProjectTreeChanged(uri);
+      const unchangedFromEarly =
+        diagnostics.length === earlyDiags.length &&
+        diagnostics.every((d, i) => {
+          const early = earlyDiags[i];
+          return (
+            early !== undefined &&
+            d.message === early.message &&
+            d.code === early.code &&
+            d.range.start.line === early.range.start.line &&
+            d.range.start.character === early.range.start.character
+          );
+        });
+      if (!unchangedFromEarly) {
+        this.connection.sendDiagnostics({ uri, diagnostics });
+        this.sendProjectTreeChanged(uri);
+      }
 
       if ((textChanged || (changedNames && changedNames.size > 0)) && !this.isCascadeRevalidationActive) {
         await this.revalidateCrossLanguageDependents(effectiveUri);
@@ -4116,12 +4195,56 @@ export class ValidationService {
     return Math.min(lineText.length, startCol + 1);
   }
 
-  public async validatePscadDocument(textDocument: TextDocument, _plugin?: LanguagePlugin): Promise<void> {
+  private parseIncrementalWasmTree(uri: string, langId: string, text: string, plugin?: LanguagePlugin): any | null {
+    if (isLargeXmlForWasm(uri, text, plugin)) return null;
+    const wasmParser = plugin?.parser ?? this.parserService.getParser(langId);
+    if (!wasmParser || typeof wasmParser.parse !== "function") return null;
+
+    const cached = this.documentManager.documentTrees.get(uri);
+    const cachedTree = cached?.tree as
+      | {
+          rootNode?: unknown;
+          edit?: (e: unknown) => void;
+          delete?: () => void;
+        }
+      | undefined;
+
+    if (cached?.text === text && cachedTree?.rootNode && typeof cachedTree.edit === "function") {
+      return cachedTree;
+    }
+
+    try {
+      if (cachedTree && cached?.text && cached.text !== text && typeof cachedTree.edit === "function") {
+        const activeFacade = (plugin?.facade ?? this.parserService.getFacade(langId)) as
+          | { lastAstRoot?: number }
+          | undefined;
+        if (!activeFacade || isWasmTreeActiveInFacade(cachedTree, activeFacade)) {
+          const edit = computeTreeEdit(cached.text, text);
+          cachedTree.edit(edit as never);
+          const nextTree = wasmParser.parse(text, cachedTree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
+          if (nextTree && nextTree !== cachedTree) {
+            cachedTree.delete?.();
+          }
+          return nextTree ?? null;
+        }
+      }
+      const freshTree = wasmParser.parse(text);
+      if (cachedTree && cachedTree !== freshTree) {
+        cachedTree.delete?.();
+      }
+      return freshTree ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  public async validatePscadDocument(textDocument: TextDocument, plugin?: LanguagePlugin): Promise<void> {
     const text = textDocument.getText();
     const pscadDiagnostics: Diagnostic[] = [];
 
     try {
       this.connection.console.info(`[pscad] Validating ${textDocument.uri} (${text.length} chars)`);
+      await this.parserService.ensureLanguageParserLoaded("pscad");
       const { parsePscx, lintPscx, pscadLanguage, registerPscadSource } = await import("@modelscript/pscad");
       if (typeof this.documentManager?.documents?.all === "function") {
         for (const doc of this.documentManager.documents.all()) {
@@ -4131,7 +4254,8 @@ export class ValidationService {
         }
       }
       registerPscadSource(textDocument.uri, text);
-      const project = parsePscx(text);
+      const wasmTree = this.parseIncrementalWasmTree(textDocument.uri, "pscad", text, plugin);
+      const project = parsePscx(text, { cstTree: wasmTree });
       const lints = lintPscx(project);
 
       for (const lint of lints) {
@@ -4161,11 +4285,20 @@ export class ValidationService {
         });
       }
 
-      this.documentManager.documentTrees.set(textDocument.uri, {
-        text,
-        tree: { rootNode: { text, data: project } },
-        classCache: new Map(),
-      });
+      if (wasmTree?.rootNode) {
+        (wasmTree.rootNode as { data?: unknown }).data = project;
+        this.documentManager.documentTrees.set(textDocument.uri, {
+          text,
+          tree: wasmTree,
+          classCache: new Map(),
+        });
+      } else {
+        this.documentManager.documentTrees.set(textDocument.uri, {
+          text,
+          tree: { rootNode: { text, data: project } },
+          classCache: new Map(),
+        });
+      }
 
       // Index symbols for Library Tree panel and navigation
       if (this.indexNativeDslDocument(textDocument.uri, text, "pscad", pscadLanguage)) {

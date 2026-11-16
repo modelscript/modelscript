@@ -7,6 +7,7 @@
  * ACCESSION, VERSION, KEYWORDS, SOURCE, ORGANISM, FEATURES, ORIGIN, //) and FASTA sequence files.
  */
 
+import { groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
 import type {
   GenbankDocument,
   GenbankFeature,
@@ -18,6 +19,9 @@ import type {
   GenbankRecord,
   GenbankTopology,
 } from "../types.js";
+import { getGenbankWasmParser } from "./wasm-loader.js";
+
+export { getGenbankWasmParser, type GenbankWasmParser } from "./wasm-loader.js";
 
 interface LineInfo {
   lineNumber: number;
@@ -130,31 +134,47 @@ function parseSignedInt(str: string): number {
   return foundDigit ? sign * val : 0;
 }
 
-function splitLines(source: string): LineInfo[] {
+function splitLines(source: string, cstRoot?: CstNodeLike | null): LineInfo[] {
+  const activeRows = new Set<number>();
+  if (cstRoot) {
+    for (const { row, tokens } of groupAllCstTokensByLine(cstRoot)) {
+      if (tokens.some((t) => (t.text ?? "").trim().length > 0)) {
+        activeRows.add(row);
+      }
+    }
+  }
+
   const lines: LineInfo[] = [];
   let lineStart = 0;
   let lineNum = 1;
   for (let i = 0; i < source.length; i++) {
     if (source[i] === "\n") {
       const endOffset = i > lineStart && source[i - 1] === "\r" ? i - 1 : i;
-      lines.push({
-        lineNumber: lineNum++,
-        startOffset: lineStart,
-        endOffset,
-        text: source.slice(lineStart, endOffset),
-      });
+      const row = lineNum - 1;
+      if (!cstRoot || activeRows.has(row)) {
+        lines.push({
+          lineNumber: lineNum,
+          startOffset: lineStart,
+          endOffset,
+          text: source.slice(lineStart, endOffset),
+        });
+      }
+      lineNum++;
       lineStart = i + 1;
     }
   }
   if (lineStart <= source.length) {
     const endOffset =
       source.length > lineStart && source[source.length - 1] === "\r" ? source.length - 1 : source.length;
-    lines.push({
-      lineNumber: lineNum,
-      startOffset: lineStart,
-      endOffset,
-      text: source.slice(lineStart, endOffset),
-    });
+    const row = lineNum - 1;
+    if (!cstRoot || activeRows.has(row)) {
+      lines.push({
+        lineNumber: lineNum,
+        startOffset: lineStart,
+        endOffset,
+        text: source.slice(lineStart, endOffset),
+      });
+    }
   }
   return lines;
 }
@@ -446,7 +466,8 @@ function finalizeQualifierValue(key: string, rawVal: string): string {
 }
 
 export function parseFasta(text: string, sourceFile?: string): GenbankDocument {
-  const lines = splitLines(text);
+  const cstTree = getGenbankWasmParser().parse(text);
+  const lines = splitLines(text, cstTree?.rootNode as CstNodeLike | undefined);
   const records: GenbankRecord[] = [];
 
   let currentRecord: GenbankRecord | null = null;
@@ -509,7 +530,8 @@ export function parseGenbank(text: string, sourceFile?: string): GenbankDocument
     return parseFasta(text, sourceFile);
   }
 
-  const lines = splitLines(text);
+  const cstTree = getGenbankWasmParser().parse(text);
+  const lines = splitLines(text, cstTree?.rootNode as CstNodeLike | undefined);
   const records: GenbankRecord[] = [];
 
   let currentRecord: GenbankRecord | null = null;
