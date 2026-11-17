@@ -265,3 +265,48 @@ test("Generic digital thread: records surgical valueStart/valueEnd spans for SPI
     "12.0",
   );
 });
+
+test("Generic Digital Thread: SysML v2 import + SCAD + Modelica detects twin drift and satisfies aligned thread", () => {
+  const sysml = `package ThermalSystemThread {
+  import ThermalPlant::*;
+
+  part def HeatsinkAssembly {
+    attribute fin_height_mm = 25.0 [mm];
+    attribute T_max = 85.0 [degC];
+  }
+
+  requirement def <'REQ-THM-01'> MaxTempRequirement {
+    subject plant : ThermalPlant;
+    require constraint { ThermalPlant.T_max <= 85.0 }
+  }
+}`;
+
+  const scadAligned = `// @twin: fin_height_mm <-> ThermalSystemThread::HeatsinkAssembly.fin_height_mm
+// @unit: fin_height_mm = mm
+fin_height_mm = 25.0;`;
+
+  const scadDrifted = `// @twin: fin_height_mm <-> ThermalSystemThread::HeatsinkAssembly.fin_height_mm
+// @unit: fin_height_mm = mm
+fin_height_mm = 12.0;`;
+
+  const modelica = `model ThermalPlant
+  parameter Real fin_height_mm(unit="mm") = 25.0 annotation(twin = "ThermalSystemThread::HeatsinkAssembly.fin_height_mm");
+  parameter Real T_max(unit="degC") = 85.0;
+end ThermalPlant;`;
+
+  const satRes = evaluateGenericDigitalThread([
+    { fileName: "Requirements.sysml", content: sysml },
+    { fileName: "Enclosure.scad", content: scadAligned },
+    { fileName: "ThermalPlant.mo", content: modelica },
+  ]);
+  assert.strictEqual(satRes.isSat, true);
+  assert.ok(satRes.variableLinks.length >= 2, "Expected SysML+SCAD+Modelica links");
+
+  const unsatRes = evaluateGenericDigitalThread([
+    { fileName: "Requirements.sysml", content: sysml },
+    { fileName: "Enclosure.scad", content: scadDrifted },
+    { fileName: "ThermalPlant.mo", content: modelica },
+  ]);
+  assert.strictEqual(unsatRes.isSat, false);
+  assert.ok(unsatRes.conflicts.length > 0, "Expected drift conflict when SCAD fin_height_mm drifts");
+});

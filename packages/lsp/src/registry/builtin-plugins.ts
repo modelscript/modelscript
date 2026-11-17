@@ -167,7 +167,7 @@ import {
 } from "@modelscript/touchstone";
 import { getToughDocumentSymbols, getToughHover, toughLanguage, validateTough } from "@modelscript/tough";
 import { getUrdfDocumentSymbols, getUrdfHover, urdfLanguage, validateUrdf } from "@modelscript/urdf";
-import { usdLanguage, UsdLspService } from "@modelscript/usd";
+import { extractUsdCadComponents, usdLanguage, UsdLspService } from "@modelscript/usd";
 import {
   getVerilogADocumentSymbols,
   getVerilogAHover,
@@ -640,11 +640,6 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         getPscadDefinitionLocation(text, offset, uri ?? "", collectPscadDocs(), workspaceManager.unifiedWorkspace),
       references: (offset: number, text: string, uri?: string) =>
         getPscadReferences(text, offset, uri ?? "", collectPscadDocs(), workspaceManager.unifiedWorkspace),
-      validate: async (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
-        const { parsePscx, lintPscx } = await import("@modelscript/pscad");
-        return lintPscx(parsePscx(text));
-      },
     },
     actionHandlers: {
       lint_pscad_project: async (ctx: any, params: any) => {
@@ -3693,6 +3688,16 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         usdLspService.getDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => usdLspService.getHover(text, offsetToPosition(text, offset)),
       validate: (doc: any) => usdLspService.validate(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    handlers: {
+      "modelscript/getCadComponents": (context: any, params: any) => {
+        const text =
+          params?.documentText ??
+          params?.text ??
+          context?.documentManager?.documents?.get(params?.uri)?.getText() ??
+          "";
+        return typeof text === "string" && text.trim() ? extractUsdCadComponents(text) : [];
+      },
     },
     disposables: [],
   });

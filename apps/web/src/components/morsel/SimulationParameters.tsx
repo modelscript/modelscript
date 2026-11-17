@@ -375,6 +375,8 @@ export interface ExperimentOverrides {
   atol?: number | undefined;
   equidistant?: boolean | undefined;
   steadyStateOnly?: boolean | undefined;
+  maxIterations?: number | undefined;
+  presolve?: boolean | undefined;
 }
 
 export function SimulationExperimentSettings({
@@ -590,6 +592,103 @@ export function SimulationExperimentSettings({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+export function OptimizationExperimentSettings({
+  overrides,
+  onChange,
+  onReset,
+}: {
+  overrides: ExperimentOverrides;
+  onChange: (name: keyof ExperimentOverrides, value: number | string | boolean) => void;
+  onReset: (name: keyof ExperimentOverrides) => void;
+}) {
+  const defaultTolerance = 1e-6;
+  const defaultMaxIterations = 1000;
+  const defaultSolver = "auto";
+  const defaultPresolve = true;
+
+  const currentTolerance = overrides.tolerance ?? defaultTolerance;
+  const currentMaxIterations = overrides.maxIterations ?? defaultMaxIterations;
+  const currentSolver = overrides.solver ?? defaultSolver;
+  const currentPresolve = overrides.presolve ?? defaultPresolve;
+  const isSolverOverridden = overrides.solver !== undefined && overrides.solver !== defaultSolver;
+
+  return (
+    <div style={{ paddingTop: 4, paddingBottom: 4 }}>
+      <NumericParameterRow
+        info={{ name: "Tolerance", type: "real", defaultValue: defaultTolerance }}
+        currentValue={currentTolerance}
+        isOverridden={overrides.tolerance !== undefined && overrides.tolerance !== defaultTolerance}
+        onChange={(_, val) => onChange("tolerance", val)}
+        onReset={() => onReset("tolerance")}
+      />
+      <NumericParameterRow
+        info={{ name: "Max Iterations", type: "integer", defaultValue: defaultMaxIterations }}
+        currentValue={currentMaxIterations}
+        isOverridden={overrides.maxIterations !== undefined && overrides.maxIterations !== defaultMaxIterations}
+        onChange={(_, val) => onChange("maxIterations", Math.max(1, Math.round(val)))}
+        onReset={() => onReset("maxIterations")}
+      />
+
+      {/* Optimization Solver Engine Selector */}
+      <div style={ROW_STYLE}>
+        <ResetButton visible={isSolverOverridden} name="solver" onReset={() => onReset("solver")} />
+        <span style={labelStyle(isSolverOverridden)} title="WASM Mathematical Optimization Solver">
+          Solver
+        </span>
+        <select
+          value={currentSolver}
+          onChange={(e) => onChange("solver", e.target.value)}
+          style={{
+            fontSize: "12px",
+            padding: "3px 6px",
+            borderRadius: "6px",
+            border: "1px solid var(--ms-border, var(--color-border-default))",
+            background: "var(--ms-bg, var(--color-canvas-default, #ffffff))",
+            color: "var(--ms-text-1, var(--color-fg-default, #24292f))",
+            width: 140,
+            cursor: "pointer",
+            outline: "none",
+          }}
+          title="Select WASM optimization solver"
+        >
+          <option value="auto">Auto (Best WASM)</option>
+          <option value="clp">CLP (COIN-OR LP)</option>
+          <option value="cbc">CBC (COIN-OR MILP)</option>
+          <option value="ipopt">IPOPT (COIN-OR NLP)</option>
+          <option value="bonmin">Bonmin (MINLP)</option>
+          <option value="couenne">Couenne (Global MINLP)</option>
+          <option value="highs">HiGHS (LP / MILP)</option>
+          <option value="pure-js">Pure-JS (Simplex / B&amp;B)</option>
+        </select>
+      </div>
+
+      {/* Presolve Toggle */}
+      <div style={{ ...ROW_STYLE, paddingTop: 4 }}>
+        <div style={{ width: 24, flexShrink: 0 }} />
+        <label
+          style={{
+            flex: 1,
+            fontSize: 12,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            cursor: "pointer",
+            color: "var(--ms-text-1, var(--color-fg-default))",
+          }}
+        >
+          <span>Presolve</span>
+          <input
+            type="checkbox"
+            checked={currentPresolve}
+            onChange={(e) => onChange("presolve", e.target.checked)}
+            style={{ cursor: "pointer", accentColor: "var(--ms-brand)" }}
+          />
+        </label>
+      </div>
     </div>
   );
 }

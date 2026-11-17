@@ -713,8 +713,7 @@ export function buildPscadDiagram(
   const vp = options?.viewport;
   const vpMargin = 160;
   const lodThreshold = options?.lodComponentThreshold ?? 500;
-  const isLowDetail =
-    (options?.zoom !== undefined && options.zoom < 0.45) || mod.components.length > lodThreshold;
+  const isLowDetail = (options?.zoom !== undefined && options.zoom < 0.45) || mod.components.length > lodThreshold;
 
   const isInViewport = (x: number, y: number, w = 0, h = 0): boolean => {
     if (!vp) return true;
@@ -991,7 +990,7 @@ export function buildPscadDiagram(
   }
 
   // 3. Convert Components to Power Glyph or Modular IC Nodes
-  const hasLayeredComponents = mod.components.some((c) => (c.z ?? 0) >= 0);
+  const hasLayeredComponents = mod.components.some((c) => c.z !== undefined && c.z >= 0);
 
   for (const cmp of mod.components) {
     // In projects with layered components (e.g. master.pslx), ignore suppressed/hidden components (z < 0)

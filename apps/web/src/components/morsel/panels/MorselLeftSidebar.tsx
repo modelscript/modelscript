@@ -3,18 +3,25 @@
 import {
   ChevronDownIcon,
   ChevronRightIcon,
+  FileDirectoryIcon,
+  FileIcon,
+  KebabHorizontalIcon,
+  PencilIcon,
   PlusIcon,
   SearchIcon,
   ServerIcon,
   SidebarCollapseIcon,
+  TrashIcon,
   XIcon,
 } from "@primer/octicons-react";
-import { Button, IconButton, TextInput } from "@primer/react";
+import { ActionList, ActionMenu, Button, IconButton, TextInput } from "@primer/react";
 import React, { useRef, useState } from "react";
 import { useCapabilities } from "../../../CapabilitiesContext";
 import Spinner from "../../Spinner";
 import ComponentList from "../ComponentList";
+import { getLanguageInfo } from "../constants";
 import {
+  OptimizationExperimentSettings,
   SimulationExperimentSettings,
   SimulationParameters,
   type ExperimentOverrides,
@@ -68,6 +75,14 @@ export interface MorselLeftSidebarProps {
   onOpenCloud: () => void;
   isSimulating: boolean;
   floating?: boolean | undefined;
+  projectFiles?: Record<string, string> | undefined;
+  activeFileName?: string | undefined;
+  onSelectProjectFile?: ((fileName: string) => void) | undefined;
+  onAddProjectFile?: ((fileName: string) => void) | undefined;
+  onRemoveProjectFile?: ((fileName: string) => void) | undefined;
+  onRenameProjectFile?: ((oldName: string, newName: string) => void) | undefined;
+  onMoveProjectFile?: ((fileName: string, targetDir: string) => void) | undefined;
+  fileDiagnosticCounts?: Record<string, { errors: number; warnings: number }> | undefined;
 }
 
 export type MobileSidebarSection = "parameters" | "variables" | "components" | "libraries" | "solver";
@@ -115,6 +130,14 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   onOpenCloud,
   isSimulating,
   floating = false,
+  projectFiles,
+  activeFileName,
+  onSelectProjectFile,
+  onAddProjectFile,
+  onRemoveProjectFile,
+  onRenameProjectFile,
+  onMoveProjectFile,
+  fileDiagnosticCounts,
 }) => {
   const { hasCapability } = useCapabilities();
   const isCaeComputeEnabled = hasCapability("caeCompute");
@@ -124,19 +147,27 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   const [librariesSplit, setLibrariesSplit] = useState(0.55);
   const [isSplitting, setIsSplitting] = useState(false);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(true);
+  const [isAddingFile, setIsAddingFile] = useState(false);
+  const [newFileName, setNewFileName] = useState("");
+  const [editingFileOp, setEditingFileOp] = useState<{ fileName: string; mode: "rename" | "move" } | null>(null);
+  const [editingValue, setEditingValue] = useState("");
   const [mobileSection, setMobileSection] = useState<MobileSidebarSection>(() =>
     simulationParameters.length > 0 ? "parameters" : showResultsView ? "variables" : "components",
   );
 
   if (!treeVisible) return null;
 
+  const langInfo = getLanguageInfo(language || "modelica");
+  const isAmpl = langInfo.id === "ampl";
+  const isSimulatable = langInfo.supportsSimulation;
+
   const showLibrariesSection = isNarrow ? mobileSection === "libraries" : !showResultsView;
   const showComponentsSection = isNarrow ? mobileSection === "components" : !showResultsView;
   const showVariablesSection = isNarrow ? mobileSection === "variables" : showResultsView;
   const showParametersSection = isNarrow
     ? mobileSection === "parameters"
-    : showResultsView && simulationParameters.length > 0;
-  const showSolverSection = isNarrow ? mobileSection === "solver" : showResultsView;
+    : showResultsView && isSimulatable && !isAmpl && simulationParameters.length > 0;
+  const showSolverSection = isNarrow ? mobileSection === "solver" && isSimulatable : showResultsView && isSimulatable;
 
   const isFloating = Boolean(floating && !isNarrow);
   const isStackedFloating = false;
@@ -158,8 +189,8 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
       : "var(--ms-divider, rgba(15, 23, 42, 0.08))";
   const floatingShadow =
     _colorMode === "dark"
-      ? "0 12px 36px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.28)"
-      : "0 10px 32px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.05)";
+      ? "0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 16px 40px -8px rgba(0, 0, 0, 0.56)"
+      : "0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 10px 32px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.05)";
   const floatingCardStyle: React.CSSProperties = {
     display: "flex",
     flexDirection: "column",
@@ -167,11 +198,11 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
     overflow: "hidden",
     boxSizing: "border-box",
     pointerEvents: "auto",
-    backgroundColor: _colorMode === "dark" ? "rgba(24, 24, 27, 0.94)" : "rgba(255, 255, 255, 0.96)",
+    backgroundColor: "var(--ms-surface-glass, rgba(255, 255, 255, 0.86))",
     backdropFilter: "blur(14px)",
     WebkitBackdropFilter: "blur(14px)",
     borderRadius: 12,
-    border: "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))",
+    border: "1px solid var(--ms-border, rgba(15, 23, 42, 0.12))",
     boxShadow: floatingShadow,
   };
 
@@ -181,9 +212,9 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
         isFloating
           ? {
               position: "absolute",
-              top: 70,
+              top: 72,
               left: 12,
-              bottom: 16,
+              bottom: 12,
               zIndex: 30,
               display: "flex",
               flexDirection: "row",
@@ -209,14 +240,12 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
           boxSizing: "border-box",
           pointerEvents: "auto",
           backgroundColor: isFloating
-            ? _colorMode === "dark"
-              ? "rgba(24, 24, 27, 0.94)"
-              : "rgba(255, 255, 255, 0.96)"
+            ? "var(--ms-surface-glass, rgba(255, 255, 255, 0.86))"
             : "var(--bgColor-muted, var(--ms-bg-alt))",
           backdropFilter: isFloating ? "blur(14px)" : undefined,
           WebkitBackdropFilter: isFloating ? "blur(14px)" : undefined,
           borderRadius: isNarrow ? 0 : 12,
-          border: isNarrow ? "none" : "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))",
+          border: isNarrow ? "none" : "1px solid var(--ms-border, rgba(15, 23, 42, 0.12))",
           boxShadow: isFloating ? floatingShadow : undefined,
         }}
       >
@@ -294,6 +323,409 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 </button>
               );
             })}
+          </div>
+        )}
+
+        {showLibrariesSection && projectFiles !== undefined && (
+          <div
+            role="region"
+            aria-label="Project files"
+            style={
+              isStackedFloating
+                ? {
+                    ...floatingCardStyle,
+                    flex: "0 0 auto",
+                    maxHeight: 240,
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                  }
+                : {
+                    display: "flex",
+                    flexDirection: "column",
+                    flex: "0 0 auto",
+                    maxHeight: 240,
+                    borderBottom: `1px solid ${dividerColor}`,
+                    overflow: "hidden",
+                  }
+            }
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "8px 16px",
+                minHeight: 40,
+                gap: 6,
+                borderBottom: `1px solid ${dividerColor}`,
+                boxSizing: "border-box",
+                flexShrink: 0,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  color: "var(--ms-text-2, var(--color-fg-muted))",
+                  whiteSpace: "nowrap",
+                  userSelect: "none",
+                }}
+              >
+                Files ({Object.keys(projectFiles).length})
+              </div>
+              {onAddProjectFile && (
+                <IconButton
+                  icon={PlusIcon}
+                  size="small"
+                  variant="invisible"
+                  aria-label="Add file to morsel"
+                  title="Add file"
+                  onClick={() => setIsAddingFile(true)}
+                />
+              )}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+                padding: "6px 8px",
+                overflowY: "auto",
+                minHeight: 0,
+              }}
+            >
+              {Object.keys(projectFiles).length === 0 && !isAddingFile && (
+                <div
+                  style={{
+                    padding: "8px 10px",
+                    fontSize: 12,
+                    color: "var(--ms-text-2, var(--color-fg-muted))",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Workspace is empty. Click <strong>+</strong> or <strong>Add Model</strong> to add files.
+                </div>
+              )}
+              {(() => {
+                const sortedFiles = Object.keys(projectFiles).sort((a, b) => {
+                  const aSlash = a.lastIndexOf("/");
+                  const bSlash = b.lastIndexOf("/");
+                  const aDir = aSlash >= 0 ? a.slice(0, aSlash) : "";
+                  const bDir = bSlash >= 0 ? b.slice(0, bSlash) : "";
+                  if (aDir !== bDir) {
+                    if (!aDir) return -1;
+                    if (!bDir) return 1;
+                    return aDir.localeCompare(bDir);
+                  }
+                  return a.localeCompare(b);
+                });
+
+                let lastRenderedDir: string | null = null;
+
+                return sortedFiles.map((fileName) => {
+                  const slashIdx = fileName.lastIndexOf("/");
+                  const dir = slashIdx >= 0 ? fileName.slice(0, slashIdx) : "";
+                  const baseName = slashIdx >= 0 ? fileName.slice(slashIdx + 1) : fileName;
+                  const showDirHeader = Boolean(dir) && dir !== lastRenderedDir;
+                  lastRenderedDir = dir;
+
+                  const isSelected = fileName === activeFileName;
+                  const isEditingThis = editingFileOp?.fileName === fileName;
+                  const hasActions = Boolean(onRenameProjectFile || onMoveProjectFile || onRemoveProjectFile);
+
+                  const commitEdit = () => {
+                    if (!editingFileOp) return;
+                    const trimmed = editingValue.trim();
+                    if (editingFileOp.mode === "rename") {
+                      if (trimmed) {
+                        const nextPath = trimmed.includes("/")
+                          ? trimmed.replace(/^\/+/, "")
+                          : dir
+                            ? `${dir}/${trimmed}`
+                            : trimmed;
+                        if (nextPath !== fileName && !(nextPath in projectFiles)) {
+                          onRenameProjectFile?.(fileName, nextPath);
+                        }
+                      }
+                    } else if (editingFileOp.mode === "move") {
+                      const cleanDir = trimmed.replace(/^\/+|\/+$/g, "");
+                      if (cleanDir !== dir) {
+                        onMoveProjectFile?.(fileName, cleanDir);
+                      }
+                    }
+                    setEditingFileOp(null);
+                    setEditingValue("");
+                  };
+
+                  return (
+                    <React.Fragment key={fileName}>
+                      {showDirHeader && (
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "4px 8px 2px",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: "var(--ms-text-2, var(--color-fg-muted))",
+                            fontFamily: "var(--font-mono, monospace)",
+                            userSelect: "none",
+                          }}
+                          title={dir}
+                        >
+                          <FileDirectoryIcon size={12} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {dir}
+                          </span>
+                        </div>
+                      )}
+                      {isEditingThis ? (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            commitEdit();
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            padding: "2px 4px",
+                            paddingLeft: dir ? 16 : 4,
+                          }}
+                        >
+                          <input
+                            type="text"
+                            autoFocus
+                            value={editingValue}
+                            onChange={(e) => setEditingValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") {
+                                setEditingFileOp(null);
+                                setEditingValue("");
+                              }
+                            }}
+                            onBlur={commitEdit}
+                            placeholder={editingFileOp.mode === "move" ? "Directory (empty for root)" : "New file name"}
+                            aria-label={
+                              editingFileOp.mode === "move" ? `Change directory for ${fileName}` : `Rename ${fileName}`
+                            }
+                            style={{
+                              width: "100%",
+                              padding: "4px 8px",
+                              borderRadius: 6,
+                              border: "1px solid var(--ms-brand, #0891b2)",
+                              background: "var(--bgColor-default, #ffffff)",
+                              color: "var(--fgColor-default, #0f172a)",
+                              fontFamily: "var(--font-mono, monospace)",
+                              fontSize: 12,
+                              outline: "none",
+                              boxSizing: "border-box",
+                            }}
+                          />
+                        </form>
+                      ) : (
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                            borderRadius: 6,
+                            paddingLeft: dir ? 10 : 0,
+                            backgroundColor: isSelected
+                              ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))"
+                              : "transparent",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            aria-current={isSelected ? "true" : undefined}
+                            onClick={() => onSelectProjectFile?.(fileName)}
+                            title={fileName}
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              padding: "5px 8px",
+                              border: "none",
+                              background: "transparent",
+                              color: isSelected
+                                ? "var(--ms-link, var(--ms-brand, #0891b2))"
+                                : "var(--fgColor-default, var(--color-fg-default))",
+                              fontFamily: "var(--font-mono, monospace)",
+                              fontSize: 12,
+                              fontWeight: isSelected ? 600 : 400,
+                              textAlign: "left",
+                              cursor: "pointer",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <span style={{ flexShrink: 0, display: "inline-flex", opacity: isSelected ? 1 : 0.65 }}>
+                              <FileIcon size={13} />
+                            </span>
+                            <span
+                              style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                            >
+                              {baseName}
+                            </span>
+                            {(() => {
+                              const counts = fileDiagnosticCounts?.[fileName];
+                              if (!counts || (counts.errors === 0 && counts.warnings === 0)) return null;
+                              return (
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                                  {counts.errors > 0 && (
+                                    <span
+                                      title={`${counts.errors} error(s)`}
+                                      style={{
+                                        padding: "0 5px",
+                                        borderRadius: 999,
+                                        fontSize: 10,
+                                        fontWeight: 700,
+                                        lineHeight: "16px",
+                                        backgroundColor: "var(--ms-status-fail-bg, rgba(251, 113, 133, 0.16))",
+                                        color: "var(--ms-status-fail-fg, #fb7185)",
+                                      }}
+                                    >
+                                      {counts.errors}
+                                    </span>
+                                  )}
+                                  {counts.warnings > 0 && (
+                                    <span
+                                      title={`${counts.warnings} warning(s)`}
+                                      style={{
+                                        padding: "0 5px",
+                                        borderRadius: 999,
+                                        fontSize: 10,
+                                        fontWeight: 700,
+                                        lineHeight: "16px",
+                                        backgroundColor: "var(--ms-status-warn-bg, rgba(251, 191, 36, 0.16))",
+                                        color: "var(--ms-status-warn-fg, #fbbf24)",
+                                      }}
+                                    >
+                                      {counts.warnings}
+                                    </span>
+                                  )}
+                                </span>
+                              );
+                            })()}
+                          </button>
+                          {hasActions && (
+                            <ActionMenu>
+                              <ActionMenu.Anchor>
+                                <IconButton
+                                  icon={KebabHorizontalIcon}
+                                  size="small"
+                                  variant="invisible"
+                                  aria-label={`File actions for ${fileName}`}
+                                  title={`Actions for ${fileName}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  style={{ flexShrink: 0, opacity: 0.75 }}
+                                />
+                              </ActionMenu.Anchor>
+                              <ActionMenu.Overlay width="small">
+                                <ActionList>
+                                  {onRenameProjectFile && (
+                                    <ActionList.Item
+                                      onSelect={() => {
+                                        setEditingFileOp({ fileName, mode: "rename" });
+                                        setEditingValue(baseName);
+                                      }}
+                                    >
+                                      <ActionList.LeadingVisual>
+                                        <PencilIcon />
+                                      </ActionList.LeadingVisual>
+                                      Rename
+                                    </ActionList.Item>
+                                  )}
+                                  {onMoveProjectFile && (
+                                    <ActionList.Item
+                                      onSelect={() => {
+                                        setEditingFileOp({ fileName, mode: "move" });
+                                        setEditingValue(dir);
+                                      }}
+                                    >
+                                      <ActionList.LeadingVisual>
+                                        <FileDirectoryIcon />
+                                      </ActionList.LeadingVisual>
+                                      Change directory
+                                    </ActionList.Item>
+                                  )}
+                                  {onRemoveProjectFile && (
+                                    <ActionList.Item variant="danger" onSelect={() => onRemoveProjectFile(fileName)}>
+                                      <ActionList.LeadingVisual>
+                                        <TrashIcon />
+                                      </ActionList.LeadingVisual>
+                                      Delete
+                                    </ActionList.Item>
+                                  )}
+                                </ActionList>
+                              </ActionMenu.Overlay>
+                            </ActionMenu>
+                          )}
+                        </div>
+                      )}
+                    </React.Fragment>
+                  );
+                });
+              })()}
+              {isAddingFile && onAddProjectFile && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const trimmed = newFileName.trim();
+                    if (trimmed) {
+                      onAddProjectFile(trimmed);
+                    }
+                    setIsAddingFile(false);
+                    setNewFileName("");
+                  }}
+                  style={{ display: "flex", alignItems: "center", padding: "2px 4px" }}
+                >
+                  <input
+                    type="text"
+                    autoFocus
+                    value={newFileName}
+                    onChange={(e) => setNewFileName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        setIsAddingFile(false);
+                        setNewFileName("");
+                      }
+                    }}
+                    onBlur={() => {
+                      const trimmed = newFileName.trim();
+                      if (trimmed) {
+                        onAddProjectFile(trimmed);
+                      }
+                      setIsAddingFile(false);
+                      setNewFileName("");
+                    }}
+                    placeholder="params.ssv or dir/model.mo"
+                    style={{
+                      width: "100%",
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      border: "1px solid var(--borderColor-default, rgba(15, 23, 42, 0.2))",
+                      background: "var(--bgColor-default, #ffffff)",
+                      color: "var(--fgColor-default, #0f172a)",
+                      fontFamily: "var(--font-mono, monospace)",
+                      fontSize: 12,
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </form>
+              )}
+            </div>
           </div>
         )}
 
@@ -484,7 +916,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
             ariaValueMax={80}
             isDragging={isSplitting}
             style={{
-              height: 8,
+              height: isStackedFloating ? 12 : 8,
               width: "100%",
               marginTop: isStackedFloating ? 0 : -4,
               marginBottom: isStackedFloating ? 0 : -4,
@@ -607,7 +1039,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                   flexShrink: 0,
                 }}
               >
-                <span>{showVariablesSection ? "Simulation Variables" : translations.components}</span>
+                <span>{showVariablesSection ? "Plot Variables" : translations.components}</span>
                 {showComponentsSection && componentCount > 0 && (
                   <span
                     style={{
@@ -730,22 +1162,29 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                   userSelect: "none",
                 }}
               >
-                <span>Simulation Settings</span>
+                <span>{isAmpl ? "Optimization Settings" : "Simulation Settings"}</span>
                 {isSettingsExpanded ? <ChevronDownIcon size={14} /> : <ChevronRightIcon size={14} />}
               </button>
             )}
             <div style={{ padding: "0" }}>
-              {(isNarrow || isSettingsExpanded) && (
-                <SimulationExperimentSettings
-                  experiment={cachedSimulator?.dae?.experiment}
-                  overrides={experimentOverrides}
-                  onChange={onExperimentOverrideChange}
-                  onReset={onExperimentOverrideReset}
-                />
-              )}
+              {(isNarrow || isSettingsExpanded) &&
+                (isAmpl ? (
+                  <OptimizationExperimentSettings
+                    overrides={experimentOverrides}
+                    onChange={onExperimentOverrideChange}
+                    onReset={onExperimentOverrideReset}
+                  />
+                ) : (
+                  <SimulationExperimentSettings
+                    experiment={cachedSimulator?.dae?.experiment}
+                    overrides={experimentOverrides}
+                    onChange={onExperimentOverrideChange}
+                    onReset={onExperimentOverrideReset}
+                  />
+                ))}
               <div className="p-3" style={{ display: "flex", gap: 8 }}>
                 <Button variant="primary" block onClick={onSimulate} disabled={isSimulating}>
-                  Simulate
+                  {isAmpl ? (isSimulating ? "Optimizing…" : "Optimize") : isSimulating ? "Simulating…" : "Simulate"}
                 </Button>
                 {isCaeComputeEnabled && (
                   <Button

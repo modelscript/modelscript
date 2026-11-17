@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { buildProjectModel, parsePscx } from "@modelscript/pscad";
+import { parsePscx } from "@modelscript/pscad";
 import type { SymbolEntry, SymbolIndex } from "@modelscript/runtime";
 import { lintSimulinkModel, parseSimulink } from "@modelscript/simulink";
 import { lintSpiceCircuit, SpiceParser } from "@modelscript/spice";
@@ -260,29 +260,16 @@ describe("Cross-Language Diagram Component Drops & Parity Fallback Removal", () 
       ],
     });
     assert.strictEqual(batchRes.renderHint, "immediate");
-    assert.ok(batchRes.edits.length >= 2);
+    assert.ok(batchRes.edits.length >= 1);
 
     let updated = applyAndSave(uri, filePath, "pscad", batchRes.edits);
     let parsed = parsePscx(updated);
-    let model = buildProjectModel(updated);
 
-    const defMatches = updated.match(/<Definition\b[^>]*name="BlackBox_MotorController"/g) ?? [];
-    assert.strictEqual(defMatches.length, 1, "Expected exactly one BlackBox_MotorController Definition stub");
-    assert.ok(parsed.definitions.has("BlackBox_MotorController"));
+    assert.ok(!updated.includes("BlackBox_"), "Must not synthesize BlackBox_ UserCmpDefn stubs");
+    assert.ok(!updated.includes("@twin"), "Must not synthesize @twin markers");
 
-    const defn = model.definitions.get("BlackBox_MotorController");
-    assert.ok(defn, "Expected BlackBox_MotorController in project definitions");
-    assert.ok(
-      defn.ports.some((p) => p.name === "u"),
-      "Expected input port 'u'",
-    );
-    assert.ok(
-      defn.ports.some((p) => p.name === "y"),
-      "Expected output port 'y'",
-    );
-
-    const userMatches = updated.match(/<User\b[^>]*defn="MicrogridProj:BlackBox_MotorController"/g) ?? [];
-    assert.strictEqual(userMatches.length, 2, "Expected two UserCmp instances referencing BlackBox_MotorController");
+    const userMatches = updated.match(/<User\b[^>]*defn="Controller\.MotorController"/g) ?? [];
+    assert.strictEqual(userMatches.length, 2, "Expected two UserCmp instances referencing Controller.MotorController");
 
     const diagData = await dispatch.getData({ uri });
     assert.ok(
@@ -294,7 +281,7 @@ describe("Cross-Language Diagram Component Drops & Parity Fallback Removal", () 
     assert.ok(props, "Expected properties for dropped PSCAD foreign component");
     assert.ok(props.parameters.some((p) => p.name === "kp" && p.value === "2.5"));
 
-    // Third drop in a follow-up edit reuses existing BlackBox_MotorController and drops SysML2 BatteryPack
+    // Third drop in a follow-up edit reuses direct reference and drops SysML2 BatteryPack
     const secondRes = await dispatch.applyEdits({
       uri,
       seq: 2,
@@ -304,21 +291,11 @@ describe("Cross-Language Diagram Component Drops & Parity Fallback Removal", () 
       ],
     });
     updated = applyAndSave(uri, filePath, "pscad", secondRes.edits);
-    parsed = parsePscx(updated);
-    model = buildProjectModel(updated);
 
-    assert.strictEqual(
-      (updated.match(/<Definition\b[^>]*name="BlackBox_MotorController"/g) ?? []).length,
-      1,
-      "Follow-up drop must reuse existing BlackBox_MotorController Definition",
-    );
-    assert.strictEqual((updated.match(/<User\b[^>]*defn="MicrogridProj:BlackBox_MotorController"/g) ?? []).length, 3);
-    const batDefn = model.definitions.get("BlackBox_BatteryPack");
-    assert.ok(batDefn, "Expected BlackBox_BatteryPack stub for SysML2 drop");
-    assert.ok(batDefn.ports.some((p) => p.name === "v_cmd"));
-    assert.ok(batDefn.ports.some((p) => p.name === "soc"));
+    assert.strictEqual((updated.match(/<User\b[^>]*defn="Controller\.MotorController"/g) ?? []).length, 3);
+    assert.strictEqual((updated.match(/<User\b[^>]*defn="BatteryPack"/g) ?? []).length, 1);
 
-    // Native PSCAD master schema drop still works cleanly without creating a BlackBox_ stub
+    // Native PSCAD master schema drop still works cleanly
     const nativeRes = await dispatch.applyEdits({
       uri,
       seq: 3,

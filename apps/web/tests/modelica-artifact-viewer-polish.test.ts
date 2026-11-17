@@ -64,8 +64,8 @@ end RLC;`;
       "MorselVisualizerPane must suppress starter modal when user code is present or in embedded viewer mode",
     );
     assert.ok(
-      paneSrc.includes("Equation-based model · No schematic components"),
-      "MorselVisualizerPane must show a non-intrusive watermark for equation-only models instead of a modal dialog",
+      !paneSrc.includes("Equation-based model · No schematic components"),
+      "MorselVisualizerPane must not render the Equation-based model floating pill that overlaps canvas controls",
     );
   });
 

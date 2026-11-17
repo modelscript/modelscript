@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { TextEdit } from "vscode-languageserver";
-import type { DiagramBackend, DiagramDispatchDeps } from "../diagramApi.js";
+import { resolveCrossLanguageComponentDrop } from "../cross-language-drop.js";
+import { getUnifiedIndexFromDeps, type DiagramBackend, type DiagramDispatchDeps } from "../diagramApi.js";
 import type {
   ComponentPropertyData,
   DiagramApplyEditsParams,
@@ -577,7 +578,16 @@ export function createPsseDiagramBackend(backends: DiagramDispatchDeps): Diagram
           batchedChanges.set(act.oldName, bag);
         } else if (act.type === "addComponent") {
           flushBatchedChanges();
-          workingText = addPsseDiagramComponent(workingText, act.className, act.x, act.y);
+          const unifiedIndex = getUnifiedIndexFromDeps(backends);
+          const foreignRes = unifiedIndex
+            ? resolveCrossLanguageComponentDrop(unifiedIndex, act.className, "modelica", workingText)
+            : null;
+          if (foreignRes && (foreignRes.sourceLanguage === "modelica" || foreignRes.sourceLanguage === "pscad")) {
+            const sep = workingText.endsWith("\n") || workingText.length === 0 ? "" : "\n";
+            workingText = `${workingText}${sep}@! @polyglot ${foreignRes.className} x=${Math.round(act.x)} y=${Math.round(act.y)}\n`;
+          } else {
+            workingText = addPsseDiagramComponent(workingText, act.className, act.x, act.y);
+          }
         } else if (act.type === "deleteComponents") {
           flushBatchedChanges();
           workingText = deletePsseDiagramComponents(workingText, act.names);

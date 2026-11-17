@@ -358,13 +358,6 @@ function inferSymbolLanguage(sym: SymbolEntry | null, cleanName: string): string
   return "";
 }
 
-function isBuiltinPsseLibrarySymbol(sym: SymbolEntry | null, cleanName: string): boolean {
-  if (sym?.metadata?.["isBuiltin"] === true) return true;
-  if (sym?.resourceId?.startsWith("builtin://")) return true;
-  const segs = splitSegments(cleanName);
-  return segs[0] === "PSSEDynamics" && sym?.ruleName !== "psse_dyr_record" && sym?.ruleName !== "psse_component";
-}
-
 function isConnectorLikeSymbol(sym: SymbolEntry | null): boolean {
   if (!sym) return false;
   if (sym.ruleName === "PortDefinition" || sym.ruleName === "PortUsage") return true;
@@ -380,201 +373,6 @@ function resolveSysmlUsageKind(sym: SymbolEntry | null): "part" | "port" | "attr
   if (sym.ruleName === "AttributeDefinition" || sym.ruleName === "AttributeUsage") return "attribute";
   if (sym.ruleName === "ItemDefinition" || sym.ruleName === "ItemUsage") return "item";
   return "part";
-}
-
-interface ExtractedPort {
-  name: string;
-  direction: "in" | "out" | "inout";
-}
-
-interface ExtractedParam {
-  name: string;
-  kind: "Real" | "Integer" | "Boolean" | "String";
-  valueLiteral?: string | undefined;
-}
-
-function toScalarKind(rawType: unknown, value: unknown): "Real" | "Integer" | "Boolean" | "String" {
-  const t = String(rawType ?? "").toLowerCase();
-  if (t.includes("int")) return "Integer";
-  if (t.includes("bool") || typeof value === "boolean") return "Boolean";
-  if (t.includes("str") || (typeof value === "string" && value !== "" && Number.isNaN(Number(value)))) {
-    return "String";
-  }
-  return "Real";
-}
-
-function formatLiteralForKind(kind: "Real" | "Integer" | "Boolean" | "String", value: unknown): string | undefined {
-  if (value === undefined || value === null || value === "") return undefined;
-  if (kind === "Boolean") {
-    if (value === true || String(value).toLowerCase() === "true") return "true";
-    if (value === false || String(value).toLowerCase() === "false") return "false";
-    return undefined;
-  }
-  if (kind === "String") {
-    return JSON.stringify(String(value));
-  }
-  const num = typeof value === "number" ? value : Number(String(value).trim());
-  if (!Number.isFinite(num)) return undefined;
-  if (kind === "Integer") return String(Math.trunc(num));
-  return Number.isInteger(num) ? `${num}.0` : String(num);
-}
-
-function extractBlackBoxMembers(
-  index: SymbolIndex | null | undefined,
-  sym: SymbolEntry | null,
-): { ports: ExtractedPort[]; params: ExtractedParam[] } {
-  const ports: ExtractedPort[] = [];
-  const params: ExtractedParam[] = [];
-  const seenNames = new Set<string>();
-
-  if (sym && index) {
-    const childIds = index.childrenOf?.get(sym.id) ?? [];
-    for (const cid of childIds) {
-      const child = index.symbols?.get(cid);
-      if (!child?.name) continue;
-      const ident = sanitizeIdentifier(child.name, "field");
-      if (seenNames.has(ident)) continue;
-
-      const isParam =
-        child.ruleName === "pscad_parameter" ||
-        child.ruleName === "AttributeUsage" ||
-        child.metadata?.["variability"] === "parameter";
-      const dirRaw = String(child.metadata?.["causality"] ?? child.metadata?.["direction"] ?? "").toLowerCase();
-      const hasDirectedSignal =
-        dirRaw === "input" || dirRaw === "output" || dirRaw === "in" || dirRaw === "out" || dirRaw === "inout";
-      const isPort =
-        child.ruleName === "pscad_port" ||
-        child.ruleName === "PortUsage" ||
-        child.metadata?.["isConnectorPort"] === true ||
-        (!isParam && hasDirectedSignal);
-      if (isPort) {
-        seenNames.add(ident);
-        const direction: "in" | "out" | "inout" =
-          dirRaw === "input" || dirRaw === "in" ? "in" : dirRaw === "output" || dirRaw === "out" ? "out" : "inout";
-        ports.push({ name: ident, direction });
-        continue;
-      }
-      if (isParam) {
-        seenNames.add(ident);
-        const rawVal = child.metadata?.["defaultValue"] ?? child.metadata?.["value"];
-        const kind = toScalarKind(child.metadata?.["typeSpecifier"], rawVal);
-        params.push({
-          name: ident,
-          kind,
-          valueLiteral: formatLiteralForKind(kind, rawVal),
-        });
-      }
-    }
-  }
-
-  // Extract metadata properties from PSSE .raw/.dyr entries if present
-  const meta = sym?.metadata ?? {};
-  const namedParams = meta["namedParams"];
-  if (namedParams && typeof namedParams === "object") {
-    for (const [key, val] of Object.entries(namedParams as Record<string, unknown>)) {
-      const ident = sanitizeIdentifier(key, "param");
-      if (seenNames.has(ident)) continue;
-      const lit = formatLiteralForKind("Real", val);
-      if (lit !== undefined) {
-        seenNames.add(ident);
-        params.push({ name: ident, kind: "Real", valueLiteral: lit });
-      }
-    }
-  }
-
-  const numericKeys: [string, string][] = [
-    ["baseKv", "baseKv"],
-    ["vm", "vm"],
-    ["va", "va"],
-    ["pg", "pg"],
-    ["qg", "qg"],
-  ];
-  for (const [metaKey, paramName] of numericKeys) {
-    if (seenNames.has(paramName)) continue;
-    const rawVal = meta[metaKey];
-    const lit = formatLiteralForKind("Real", rawVal);
-    if (lit !== undefined) {
-      seenNames.add(paramName);
-      params.push({ name: paramName, kind: "Real", valueLiteral: lit });
-    }
-  }
-
-  if (sym?.ruleName === "psse_component" && ports.length === 0) {
-    if (!seenNames.has("v_pu")) {
-      ports.push({ name: "v_pu", direction: "inout" });
-      seenNames.add("v_pu");
-    }
-  }
-
-  return { ports, params };
-}
-
-function buildModelicaBlackBoxWrapper(
-  stubName: string,
-  srcLang: string,
-  twinTarget: string,
-  members: { ports: ExtractedPort[]; params: ExtractedParam[] },
-): string {
-  const lines: string[] = [`model ${stubName}`];
-  for (const p of members.params) {
-    const eq = p.valueLiteral !== undefined ? ` = ${p.valueLiteral}` : "";
-    lines.push(`  parameter ${p.kind} ${p.name}${eq};`);
-  }
-  for (const port of members.ports) {
-    const prefix = port.direction === "in" ? "input " : port.direction === "out" ? "output " : "";
-    lines.push(`  ${prefix}Real ${port.name};`);
-  }
-  if (members.params.length === 0 && members.ports.length === 0) {
-    lines.push("  Real u;");
-  }
-  lines.push(`annotation(twin = ${JSON.stringify(twinTarget)}, __modelscript_blackbox = ${JSON.stringify(srcLang)});`);
-  lines.push(`end ${stubName};`);
-  return lines.join("\n");
-}
-
-function buildSysmlBlackBoxStub(
-  stubName: string,
-  srcLang: string,
-  twinTarget: string,
-  members: { ports: ExtractedPort[]; params: ExtractedParam[] },
-): string {
-  const lines: string[] = [`part def ${stubName} {`];
-  lines.push(`  doc /* @twin language="${srcLang}" target="${twinTarget}" */`);
-  for (const p of members.params) {
-    const eq = p.valueLiteral !== undefined ? ` = ${p.valueLiteral}` : "";
-    lines.push(`  attribute ${p.name} : ScalarValues::${p.kind}${eq};`);
-  }
-  for (const port of members.ports) {
-    if (port.direction === "in" || port.direction === "out") {
-      lines.push(`  ${port.direction} ${port.name} : ScalarValues::Real;`);
-    } else {
-      lines.push(`  port ${port.name};`);
-    }
-  }
-  lines.push("}");
-  return lines.join("\n");
-}
-
-const MODELICA_STUB_KEYWORDS = new Set(["model", "block", "class", "connector", "record"]);
-
-function hasModelicaStubDeclared(docText: string, stubName: string): boolean {
-  const tokens = tokenizeAsciiWords(docText, 0);
-  for (let i = 0; i + 1 < tokens.length; i++) {
-    if (MODELICA_STUB_KEYWORDS.has(tokens[i]!) && tokens[i + 1] === stubName) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function hasSysmlStubDeclared(docText: string, stubName: string): boolean {
-  const tokens = tokenizeAsciiWords(docText, 0);
-  for (let i = 0; i + 2 < tokens.length; i++) {
-    if (tokens[i] === "part" && tokens[i + 1] === "def" && tokens[i + 2] === stubName) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function hasModelicaImport(docText: string, importTarget: string): boolean {
@@ -604,7 +402,7 @@ export function resolveCrossLanguageComponentDrop(
   index: SymbolIndex | null | undefined,
   rawClassName: string,
   targetLang: "modelica" | "sysml2",
-  docText = "",
+  _docText = "",
 ): CrossLanguageDropResolution {
   const clean = cleanDropClassName(rawClassName);
   const inputSegments = splitSegments(clean);
@@ -622,51 +420,18 @@ export function resolveCrossLanguageComponentDrop(
   const sym = findSymbolInUnifiedIndex(index, clean);
   const srcLang = inferSymbolLanguage(sym, clean);
 
-  // PSSE & PSCAD drops synthesize black-box wrappers (keeping builtin PSSEDynamics.* native in Modelica)
+  // Direct name-based linking for PSCAD & PSSE drops (no _BlackBox / __modelscript_blackbox wrappers)
   if (srcLang === "pscad" || srcLang === "psse") {
-    if (targetLang === "modelica" && srcLang === "psse" && isBuiltinPsseLibrarySymbol(sym, clean)) {
-      const qualSegs = sym && index ? getQualifiedSegmentsFromIndex(index, sym) : inputSegments;
-      const dotName = qualSegs.join(".");
-      const leaf = qualSegs[qualSegs.length - 1] || fallbackLeaf;
-      return {
-        className: dotName,
-        baseName: leaf,
-        sourceLanguage: "psse",
-      };
-    }
-
-    const qualSegs = sym && index ? getQualifiedSegmentsFromIndex(index, sym) : inputSegments;
-    const leafName = qualSegs[qualSegs.length - 1] || fallbackLeaf;
-    const safeStubBase = sanitizeIdentifier(leafName, srcLang === "pscad" ? "PscadComp" : "PsseComp");
-    const stubName = `${safeStubBase}_BlackBox`;
-    const instanceBase = safeStubBase.charAt(0).toLowerCase() + safeStubBase.slice(1);
-    const twinTarget = `${srcLang}://${qualSegs.join(".")}`;
-    const members = extractBlackBoxMembers(index, sym);
-
-    if (targetLang === "modelica") {
-      const stubBlock = hasModelicaStubDeclared(docText, stubName)
-        ? undefined
-        : buildModelicaBlackBoxWrapper(stubName, srcLang, twinTarget, members);
-      return {
-        className: stubName,
-        baseName: safeStubBase,
-        stubName,
-        stubBlock,
-        sourceLanguage: srcLang,
-      };
-    } else {
-      const stubBlock = hasSysmlStubDeclared(docText, stubName)
-        ? undefined
-        : buildSysmlBlackBoxStub(stubName, srcLang, twinTarget, members);
-      return {
-        className: stubName,
-        baseName: instanceBase,
-        sysmlUsageKind: "part",
-        stubName,
-        stubBlock,
-        sourceLanguage: srcLang,
-      };
-    }
+    const rawSegs = sym && index ? getQualifiedSegmentsFromIndex(index, sym) : inputSegments;
+    const qualSegs = rawSegs.map((s) => sanitizeIdentifier(s, "Item"));
+    const leaf = qualSegs[qualSegs.length - 1] || fallbackLeaf;
+    const normalizedName = targetLang === "modelica" ? qualSegs.join(".") : qualSegs.join("::");
+    return {
+      className: normalizedName,
+      baseName: leaf,
+      ...(targetLang === "sysml2" ? { sysmlUsageKind: "part" as const } : {}),
+      sourceLanguage: srcLang,
+    };
   }
 
   // Reconstruct canonical qualified path (`.` vs `::` normalized to target language)
@@ -1099,16 +864,6 @@ function allocateUniqueIdentifier(docText: string, baseName: string, batchState?
   return candidate;
 }
 
-function findFirstXmlElement(root: XmlElement | null, predicate: (el: XmlElement) => boolean): XmlElement | null {
-  if (!root) return null;
-  if (predicate(root)) return root;
-  for (const ch of root.children) {
-    const found = findFirstXmlElement(ch, predicate);
-    if (found) return found;
-  }
-  return null;
-}
-
 function findAllXmlElements(root: XmlElement | null, predicate: (el: XmlElement) => boolean): XmlElement[] {
   const out: XmlElement[] = [];
   const visit = (el: XmlElement) => {
@@ -1255,95 +1010,8 @@ export function computePscadComponentDropEdits(opts: PscadForeignDropOptions): T
     return null;
   }
 
-  const candidateStubName = `BlackBox_${info.shortName}`;
-  const twinDef = existingDefs.find(
-    (d) => d.body.includes(`@twin ${info.cleanName}`) || d.name === candidateStubName || d.name === info.shortName,
-  );
-
-  const projectEl = findFirstXmlElement(xmlDoc.root, (el) => el.name.toLowerCase() === "project");
-  const projectName = (projectEl ? getXmlAttr(projectEl, "name") : "")?.trim() || "";
-  const stubName = twinDef?.name ?? candidateStubName;
-  const defnRef = projectName ? `${projectName}:${stubName}` : stubName;
-
   const edits: TextEdit[] = [];
-  const defBatchKey = `pscad:${stubName}`;
-  const alreadyHasDef = Boolean(twinDef) || Boolean(batchState?.emittedDefs.has(defBatchKey));
-
-  if (!alreadyHasDef) {
-    batchState?.emittedDefs.add(defBatchKey);
-    const defId = allocateUniqueNumericId(xmlDoc.root, 900100, batchState);
-    const inPorts = info.ports.filter((p) => p.direction === "in");
-    const outPorts = info.ports.filter((p) => p.direction === "out");
-    const inoutPorts = info.ports.filter((p) => p.direction === "inout");
-
-    const buildPortXml = (p: DropPortMember, px: number, py: number, mode: number) =>
-      `    <port name="${escapeXmlAttr(p.name)}" type="Real" dir="${p.direction}" x="${px}" y="${py}" dim="1" mode="${mode}" electype="0">` +
-      `<paramlist><param name="Name" value="${escapeXmlAttr(p.name)}" /><param name="dim" value="1" /><param name="mode" value="${mode}" /><param name="electype" value="0" /></paramlist></port>`;
-
-    const portXmlLines: string[] = [];
-    inPorts.forEach((p, idx) => {
-      const py = (idx - (inPorts.length - 1) / 2) * 36;
-      portXmlLines.push(buildPortXml(p, -54, Math.round(py), 1));
-    });
-    outPorts.forEach((p, idx) => {
-      const py = (idx - (outPorts.length - 1) / 2) * 36;
-      portXmlLines.push(buildPortXml(p, 54, Math.round(py), 2));
-    });
-    inoutPorts.forEach((p, idx) => {
-      const px = (idx - (inoutPorts.length - 1) / 2) * 36;
-      portXmlLines.push(buildPortXml(p, Math.round(px), 36, 3));
-    });
-
-    const formParamsXml = info.params
-      .map((p) => {
-        const lowerT = p.typeName.toLowerCase();
-        const pType = lowerT === "integer" || lowerT === "int" ? "Integer" : lowerT === "string" ? "Text" : "Real";
-        return `      <parameter name="${escapeXmlAttr(p.name)}" desc="${escapeXmlAttr(p.name)}" group="Parameters" type="${pType}" content_type="Literal" min="-1e+308" max="1e+308" default="${escapeXmlAttr(p.defaultValue)}" />`;
-      })
-      .join("\n");
-
-    const formSection =
-      info.params.length > 0
-        ? `  <form name="Parameters" w="320" h="240">\n    <category name="Parameters" visible="true">\n${formParamsXml}\n    </category>\n  </form>`
-        : `  <form name="Parameters" w="320" h="240" />`;
-
-    const defXml = [
-      `<Definition classid="UserCmpDefn" name="${escapeXmlAttr(stubName)}" id="${defId}" url="">`,
-      `  <paramlist>`,
-      `    <param name="Description" value="@twin ${escapeXmlAttr(info.cleanName)} (${escapeXmlAttr(info.sourceLanguage)})" />`,
-      `  </paramlist>`,
-      formSection,
-      `  <graphics>`,
-      `    <rect x="-36" y="-24" width="72" height="48" />`,
-      ...portXmlLines,
-      `  </graphics>`,
-      `</Definition>`,
-    ].join("\n");
-
-    const defsEl = findFirstXmlElement(xmlDoc.root, (el) => el.name.toLowerCase() === "definitions");
-    if (defsEl) {
-      edits.push(xmlSpliceToTextEdit(docText, appendChildSplice(defsEl, defXml, docText)));
-    } else {
-      const anchor =
-        projectEl?.children.find((c) => {
-          const n = c.name.toLowerCase();
-          return n === "schematic" || n === "hierarchy";
-        }) ?? null;
-      const anchorOffset = anchor ? anchor.start : (projectEl?.closeStart ?? docText.length);
-      const lineStart = docText.lastIndexOf("\n", anchorOffset - 1) + 1;
-      const indentedDef = defXml
-        .split("\n")
-        .map((l) => `    ${l}`)
-        .join("\n");
-      edits.push(
-        xmlSpliceToTextEdit(docText, {
-          start: lineStart,
-          end: lineStart,
-          text: `  <definitions>\n${indentedDef}\n  </definitions>\n`,
-        }),
-      );
-    }
-  }
+  const defnRef = info.explicitLanguage ? info.cleanName.replace(/^[^:]+::/, "") : info.cleanName;
 
   const baseInstName = info.shortName.charAt(0).toLowerCase() + info.shortName.slice(1);
   const instName = instanceName

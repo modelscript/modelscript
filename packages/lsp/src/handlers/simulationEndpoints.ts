@@ -22,6 +22,13 @@ import {
 } from "@modelscript/runtime";
 import { ArenaSimulator, simulateArena, simulateArenaAsync, Tet4Mesher } from "@modelscript/simulate";
 import { LspContext } from "../lsp-context.js";
+import {
+  detectPolyglotPlan,
+  extractPolyglotBoundaryBindings,
+  flattenModelicaForCosim,
+  runHybridPssePscadModelicaCosim,
+  runModelicaPscadCosim,
+} from "../services/polyglot-cosim-runner.js";
 import { getArenaOutputStringIds, getArenaParameterInfo, getArenaVariableMetadata } from "../utils/arena-utils.js";
 import { getCompositeName } from "../utils/hierarchy-utils.js";
 import { extractNamedCallAttr, hasModelicaClassDefPrefix } from "../utils/lexical-utils.js";
@@ -267,6 +274,53 @@ export function registerSimulationEndpoints(context: LspContext) {
       }
 
       try {
+        const activeText = doc?.getText() ?? context.state.sharedContext?.fs?.read?.(params.uri) ?? "";
+        const unifiedWs = context.workspaceManager?.unifiedWorkspace;
+        const polyglotPlan = activeText ? detectPolyglotPlan(unifiedWs, params.uri, activeText) : null;
+        if (polyglotPlan) {
+          const readUriText = (targetUri: string | undefined) =>
+            targetUri
+              ? (context.documents.get(targetUri)?.getText() ?? context.state.sharedContext?.fs?.read?.(targetUri))
+              : undefined;
+
+          if (polyglotPlan.kind === "psse-pscad" || polyglotPlan.kind === "psse-pscad-modelica") {
+            const { getMergedPsseCase, parseRaw } = await import("@modelscript/psse");
+            const psseUri = polyglotPlan.psseUri ?? params.uri;
+            const psseText = readUriText(psseUri) ?? "";
+            const psseCase =
+              unifiedWs && polyglotPlan.psseUri ? getMergedPsseCase(unifiedWs, psseUri, psseText) : parseRaw(psseText);
+            const moUri = polyglotPlan.modelicaUri;
+            const moText = moUri ? readUriText(moUri) : undefined;
+            const modelicaDae =
+              moText && moUri ? (flattenModelicaForCosim(moText, moUri, params.className) ?? undefined) : undefined;
+            const pscadText = readUriText(polyglotPlan.pscadUri);
+            const bindings = extractPolyglotBoundaryBindings(moText, psseCase);
+            return await runHybridPssePscadModelicaCosim({
+              psseCase,
+              pscadText,
+              boundaryBusNumber: bindings.boundaryBusNumber,
+              modelicaDae,
+              stopTime: typeof params.stopTime === "number" && params.stopTime > 0 ? params.stopTime : undefined,
+              dtTsSec: typeof params.interval === "number" && params.interval > 0 ? params.interval : undefined,
+            });
+          }
+
+          if (polyglotPlan.kind === "modelica-pscad") {
+            const moUri = polyglotPlan.modelicaUri ?? params.uri;
+            const moText = readUriText(moUri) ?? "";
+            const modelicaDae = flattenModelicaForCosim(moText, moUri, params.className);
+            const pscadText = readUriText(polyglotPlan.pscadUri);
+            if (modelicaDae) {
+              return await runModelicaPscadCosim({
+                modelicaDae,
+                pscadText,
+                stopTime: typeof params.stopTime === "number" && params.stopTime > 0 ? params.stopTime : undefined,
+                dtSlowSec: typeof params.interval === "number" && params.interval > 0 ? params.interval : undefined,
+              });
+            }
+          }
+        }
+
         if (/\.(f|for|f77|f90|f95|f03|f08)($|\?|#)/i.test(params.uri)) {
           const text = doc?.getText() ?? context.state.sharedContext?.fs?.read?.(params.uri) ?? "";
           if (!text) {

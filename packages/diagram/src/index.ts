@@ -629,6 +629,14 @@ let activeDefaultConnector: unknown | undefined;
 /** Active diagram metadata (language, wireCrossingStyle, etc.) */
 let activeDiagramMetadata: Record<string, unknown> | undefined;
 
+/** Tracks whether a graph uses Y-up schema coordinates (e.g. Modelica) vs Y-down (e.g. PSCAD). */
+const yUpCoordsByGraph = new WeakMap<Graph, boolean>();
+
+function toSchemaY(targetGraph: Graph, y: number): number {
+  const isYUp = yUpCoordsByGraph.get(targetGraph) ?? true;
+  return Math.round(isYUp ? -y : y);
+}
+
 export { translateConnectedEdgeStubs };
 
 export { applyNodeFlipVisuals } from "./alignment.js";
@@ -727,7 +735,7 @@ export function rerouteEdgeOrthogonal(
 
   const points = [sourcePoint, ...intermediateVertices, targetPoint].map((p: PointLike) => ({
     x: Math.round(p.x),
-    y: Math.round(-p.y),
+    y: toSchemaY(g, p.y),
   }));
 
   const srcStr = source?.port ? `${source.cell}.${source.port}` : String(source?.cell ?? "");
@@ -785,7 +793,7 @@ function getConnectedEdges(
     const regularized = regularizeOrthogonalPolyline(fullPoly, 2, 1.0);
     const points = regularized.map((p: PointLike) => ({
       x: Math.round(p.x),
-      y: Math.round(-p.y),
+      y: toSchemaY(g, p.y),
     }));
     const srcStr = source.port ? `${source.cell}.${source.port}` : String(source.cell ?? "");
     const tgtStr = target.port ? `${target.cell}.${target.port}` : String(target.cell ?? "");
@@ -827,8 +835,8 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
   const placeholder = document.getElementById("placeholder");
   if (placeholder) placeholder.style.display = "none";
 
-  const bgColor = isDark ? "#1e1e1e" : "#ffffff";
-  const gridColor = isDark ? "#2f2f2f" : "#ccc";
+  const bgColor = isDark ? "#121214" : "#f8fafc";
+  const gridColor = isDark ? "rgba(255, 255, 255, 0.055)" : "rgba(15, 23, 42, 0.06)";
 
   const existingInst = containerInstances.get(container);
   if (existingInst && !existingInst.graph.disposed) {
@@ -2485,14 +2493,14 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     // Commit this edge's geometry so subsequent connections on other ports never dynamically reroute it
     edge.removeRouter?.();
 
-    const roundedSrc = { x: Math.round(sourcePoint.x), y: Math.round(-sourcePoint.y) };
-    const roundedTgt = { x: Math.round(targetPoint.x), y: Math.round(-targetPoint.y) };
+    const roundedSrc = { x: Math.round(sourcePoint.x), y: toSchemaY(g, sourcePoint.y) };
+    const roundedTgt = { x: Math.round(targetPoint.x), y: toSchemaY(g, targetPoint.y) };
     const roundedHealed = healOrthogonalVertices(
       roundedSrc,
       roundedTgt,
       simplifiedVertices.map((p: { x: number; y: number }) => ({
         x: Math.round(p.x),
-        y: Math.round(-p.y),
+        y: toSchemaY(g, p.y),
       })),
     );
     const points = simplifyCollinearPoints([roundedSrc, ...roundedHealed, roundedTgt], 0.05);
@@ -2607,14 +2615,14 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           const finalVertices = edge.getVertices() || [];
           const finalSrcPt = edge.getSourcePoint();
           const finalTgtPt = edge.getTargetPoint();
-          const roundedSrc = { x: Math.round(finalSrcPt.x), y: Math.round(-finalSrcPt.y) };
-          const roundedTgt = { x: Math.round(finalTgtPt.x), y: Math.round(-finalTgtPt.y) };
+          const roundedSrc = { x: Math.round(finalSrcPt.x), y: toSchemaY(g, finalSrcPt.y) };
+          const roundedTgt = { x: Math.round(finalTgtPt.x), y: toSchemaY(g, finalTgtPt.y) };
           const roundedHealed = healOrthogonalVertices(
             roundedSrc,
             roundedTgt,
             finalVertices.map((p: PointLike) => ({
               x: Math.round(p.x),
-              y: Math.round(-p.y),
+              y: toSchemaY(g, p.y),
             })),
           );
           const points = simplifyCollinearPoints([roundedSrc, ...roundedHealed, roundedTgt], 0.05);
@@ -3523,7 +3531,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     input.style.width = `${width}px`;
     input.style.height = "24px";
     input.style.boxSizing = "border-box";
-    input.style.background = isDark ? "#1e1e1e" : "#ffffff";
+    input.style.background = isDark ? "#18181b" : "#ffffff";
     input.style.color = isDark ? "#cccccc" : "#333333";
     input.style.border = "1.5px solid #007fd4";
     input.style.borderRadius = "3px";
@@ -4914,6 +4922,7 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     }
 
     // ── Keyed Differential Cell Reconciler (Zero-Flicker) ──
+    yUpCoordsByGraph.set(g, Boolean(data.coordinateSystem));
     g.batchUpdate("diagram-diff", () => {
       if (!data.coordinateSystem) {
         const bg = g.getCellById("__diagram_background__");
@@ -5772,7 +5781,7 @@ export function updateSolderDots(g: Graph) {
         if (existing.attr("arc/stroke") !== crossing.color) {
           existing.attr("arc/stroke", crossing.color);
         }
-        const crossingBg = isDark ? "#1e1e1e" : "#ffffff";
+        const crossingBg = isDark ? "#121214" : "#f8fafc";
         if (crossingStyle === "gap") {
           if (existing.attr("mask/fill") !== crossingBg) {
             existing.attr("mask/fill", crossingBg);

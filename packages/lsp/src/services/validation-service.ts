@@ -3632,17 +3632,6 @@ export class ValidationService {
       fallbackLine: number,
       fallbackCol: number,
     ) => {
-      if (
-        srcEntry.metadata?.["__modelscript_blackbox"] ||
-        (srcEntry.startOffset >= 0 &&
-          srcEntry.endOffset > srcEntry.startOffset &&
-          text
-            .slice(srcEntry.startOffset, Math.min(text.length, srcEntry.endOffset))
-            .includes("__modelscript_blackbox"))
-      ) {
-        return;
-      }
-
       const pairKey = `${srcEntry.id}:${tgtEntry?.id ?? targetNameHint}`;
       if (validatedPairs.has(pairKey)) return;
       validatedPairs.add(pairKey);

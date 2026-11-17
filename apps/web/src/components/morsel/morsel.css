@@ -231,7 +231,9 @@ svg[class*="Spinner"] {
   border-radius: 4px;
   cursor: pointer;
   text-align: left;
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
   user-select: none;
 }
 
@@ -250,7 +252,9 @@ svg[class*="Spinner"] {
   justify-content: center;
   color: var(--ms-text-2, var(--color-fg-muted));
   cursor: pointer;
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
 }
 
 .morsel-toolbar-btn:hover,
@@ -283,3 +287,21 @@ svg[class*="Spinner"] {
   background-color: var(--ms-surface-hover, rgba(125, 125, 125, 0.12)) !important;
 }
 
+.ms-modal-tile {
+  transition:
+    border-color 0.14s ease,
+    background-color 0.14s ease,
+    box-shadow 0.14s ease,
+    transform 0.14s ease;
+}
+
+.ms-modal-tile:hover,
+.ms-modal-tile:focus-visible {
+  border-color: var(--ms-brand, #0891b2) !important;
+  background-color: var(--ms-bg-soft, var(--ms-bg-elv)) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--ms-brand, #0891b2) 35%, transparent),
+    var(--ms-shadow-card, 0 8px 24px -12px rgba(15, 23, 42, 0.16)) !important;
+  transform: translateY(-1px);
+  outline: none;
+}

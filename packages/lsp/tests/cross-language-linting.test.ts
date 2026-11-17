@@ -592,13 +592,11 @@ describe("Seamless Cross-Language Linting & Diagram Integration", () => {
     assert.match(sysmlText, /import PowerPlant::Pin;/);
     assert.match(sysmlText, /port\s+pin\d*\s*:\s*PowerPlant::Pin;/);
 
-    // PSCAD & PSSE -> SysML2 (synthesizes local part def black-box stub once, reuses on 2nd drop)
+    // PSCAD & PSSE -> SysML2 (direct name-based linking)
     const dropPscadOnSysml = await addComponent({ uri: sysmlUri, className: "Microgrid.IbrInverter", x: 50, y: 60 });
     sysmlText = TextDocument.applyEdits(TextDocument.create(sysmlUri, "sysml2", 3, sysmlText), dropPscadOnSysml);
-    assert.match(sysmlText, /part def IbrInverter_BlackBox/);
-    assert.match(sysmlText, /attribute Vbase\s*:\s*ScalarValues::Real\s*=\s*13\.8;/);
-    assert.match(sysmlText, /in P_ref\s*:\s*ScalarValues::Real;/);
-    assert.match(sysmlText, /out V_pcc\s*:\s*ScalarValues::Real;/);
+    assert.match(sysmlText, /part\s+\S+\s*:\s*Microgrid::IbrInverter;/);
+    assert.ok(!sysmlText.includes("_BlackBox"), "Must not synthesize _BlackBox stubs");
 
     await h.setAndValidate(sysmlUri, "sysml2", sysmlText);
     const dropPscadTwiceOnSysml = await addComponent({
@@ -609,14 +607,14 @@ describe("Seamless Cross-Language Linting & Diagram Integration", () => {
     });
     sysmlText = TextDocument.applyEdits(TextDocument.create(sysmlUri, "sysml2", 4, sysmlText), dropPscadTwiceOnSysml);
     assert.equal(
-      (sysmlText.match(/part def IbrInverter_BlackBox/g) ?? []).length,
-      1,
-      "Repeated PSCAD drops onto .sysml must reuse existing IbrInverter_BlackBox stub",
+      (sysmlText.match(/Microgrid::IbrInverter;/g) ?? []).length,
+      2,
+      "Repeated PSCAD drops onto .sysml must emit direct Microgrid::IbrInverter usages",
     );
 
     const dropPsseOnSysml = await addComponent({ uri: sysmlUri, className: "Bus_1", x: 90, y: 100 });
     sysmlText = TextDocument.applyEdits(TextDocument.create(sysmlUri, "sysml2", 5, sysmlText), dropPsseOnSysml);
-    assert.match(sysmlText, /part def Bus_1_BlackBox/);
+    assert.match(sysmlText, /part\s+\S+\s*:\s*(?:GRID_CASE::)?Bus_1;/);
 
     const finalSysmlDiags = await h.setAndValidate(sysmlUri, "sysml2", sysmlText);
     assert.deepEqual(
@@ -638,16 +636,14 @@ describe("Seamless Cross-Language Linting & Diagram Integration", () => {
     await h.setAndValidate(moUri, "modelica", moText);
     const dropPscadOnMo = await addComponent({ uri: moUri, className: "Microgrid.IbrInverter", x: 30, y: 20 });
     moText = TextDocument.applyEdits(TextDocument.create(moUri, "modelica", 2, moText), dropPscadOnMo);
-    assert.match(moText, /model IbrInverter_BlackBox/);
-    assert.match(moText, /input Real P_ref;/);
-    assert.match(moText, /output Real V_pcc;/);
-    assert.match(moText, /parameter Real Vbase = 13\.8;/);
-    assert.match(moText, /__modelscript_blackbox = "pscad"/);
+    assert.match(moText, /Microgrid\.IbrInverter\s+\S+/);
+    assert.ok(!moText.includes("_BlackBox"), "Must not synthesize _BlackBox wrappers");
+    assert.ok(!moText.includes("__modelscript_blackbox"), "Must not emit __modelscript_blackbox annotations");
 
     await h.setAndValidate(moUri, "modelica", moText);
     const dropPsseOnMo = await addComponent({ uri: moUri, className: "Bus_1", x: 50, y: 30 });
     moText = TextDocument.applyEdits(TextDocument.create(moUri, "modelica", 3, moText), dropPsseOnMo);
-    assert.match(moText, /model Bus_1_BlackBox/);
+    assert.match(moText, /(?:GRID_CASE\.)?Bus_1\s+\S+/);
 
     const finalMoDiags = await h.setAndValidate(moUri, "modelica", moText);
     assert.deepEqual(

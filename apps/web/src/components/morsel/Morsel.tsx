@@ -7,7 +7,13 @@ import { type DataUrl } from "parse-data-url";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTheme as useSiteTheme } from "../../theme";
 import type { CodeEditorHandle } from "./Code";
-import { MORSEL_LANGUAGES, getDefaultLanguageView, getLanguageExtension, getLanguageInfo } from "./constants";
+import {
+  MORSEL_LANGUAGES,
+  detectLanguageFromFilename,
+  getDefaultLanguageView,
+  getLanguageExtension,
+  getLanguageInfo,
+} from "./constants";
 import type { DiagramEditorHandle } from "./Diagram";
 import "./morsel.css";
 import { getTranslations, uiLanguages } from "./util/i18n";
@@ -91,6 +97,11 @@ export interface MorselEditorProps {
   projectFiles?: Record<string, string> | undefined;
   activeFileName?: string | undefined;
   onUpdateProjectFile?: ((fileName: string, content: string) => void) | undefined;
+  onSelectProjectFile?: ((fileName: string) => void) | undefined;
+  onAddProjectFile?: ((fileName: string) => void) | undefined;
+  onRemoveProjectFile?: ((fileName: string) => void) | undefined;
+  onRenameProjectFile?: ((oldName: string, newName: string) => void) | undefined;
+  onMoveProjectFile?: ((fileName: string, targetDir: string) => void) | undefined;
 }
 
 const isSplit = (v: View) => v === View.SPLIT_COLUMNS || v === View.SPLIT_ROWS;
@@ -166,11 +177,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       const lower = fileName.toLowerCase();
       if (lower.endsWith(".ssd") || lower.endsWith(".ssv") || lower.endsWith(".ssm")) return "ssp";
       if (lower.endsWith(".xml")) return "xml";
-      if (lower.endsWith(".mo")) return "modelica";
-      if (lower.endsWith(".msx")) return "modelscript";
-      if (lower.endsWith(".sysml") || lower.endsWith(".kerml")) return "sysml2";
-      if (lower.endsWith(".step") || lower.endsWith(".stp")) return "step";
-      if (lower.endsWith(".scad")) return "scad";
+      if (lower.includes(".")) return detectLanguageFromFilename(fileName);
       return dialect;
     };
 
@@ -324,16 +331,69 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT_RATIO);
   const [contextVersion, setContextVersion] = useState(0);
   const [editorDiagnostics, setEditorDiagnostics] = useState<editor.IMarkerData[]>([]);
+  const [diagnosticsByUri, setDiagnosticsByUri] = useState<Map<string, editor.IMarkerData[]>>(() => new Map());
   const [isDiagnosticsExpanded, setIsDiagnosticsExpanded] = useState(false);
   const [diagnosticsPanelHeight, setDiagnosticsPanelHeight] = useState(160);
   const userToggledDiagnosticsRef = useRef(false);
 
-  const handleDiagnosticsChange = useCallback((markers: editor.IMarkerData[]) => {
-    setEditorDiagnostics(markers);
-    if (!userToggledDiagnosticsRef.current) {
-      setIsDiagnosticsExpanded(markers.length > 0);
+  const handleDiagnosticsChange = useCallback((markers: editor.IMarkerData[], uri?: string) => {
+    const targetUri = uri || documentUriRef.current;
+    setDiagnosticsByUri((prev) => {
+      const next = new Map(prev);
+      if (markers.length === 0) {
+        next.delete(targetUri);
+      } else {
+        next.set(targetUri, markers);
+      }
+      return next;
+    });
+    if (!uri || uri === documentUriRef.current) {
+      setEditorDiagnostics(markers);
+    }
+    if (!userToggledDiagnosticsRef.current && markers.length > 0) {
+      setIsDiagnosticsExpanded(true);
     }
   }, []);
+
+  useEffect(() => {
+    setEditorDiagnostics(diagnosticsByUri.get(documentUri) ?? []);
+  }, [documentUri, diagnosticsByUri]);
+
+  const projectDiagnostics = useMemo(() => {
+    if (!props.projectFiles) return undefined;
+    const result: Array<{ fileName: string; uri: string; markers: editor.IMarkerData[] }> = [];
+    for (const fileName of Object.keys(props.projectFiles)) {
+      const cleanName = fileName.replace(/^\/+/, "");
+      const uri = `${embedRootPrefix}/${cleanName}`;
+      const markers = diagnosticsByUri.get(uri);
+      if (markers && markers.length > 0) {
+        result.push({ fileName, uri, markers });
+      }
+    }
+    return result;
+  }, [props.projectFiles, embedRootPrefix, diagnosticsByUri]);
+
+  const fileDiagnosticCounts = useMemo(() => {
+    if (!props.projectFiles) return undefined;
+    const counts: Record<string, { errors: number; warnings: number }> = {};
+    for (const fileName of Object.keys(props.projectFiles)) {
+      const cleanName = fileName.replace(/^\/+/, "");
+      const uri = `${embedRootPrefix}/${cleanName}`;
+      const markers = diagnosticsByUri.get(uri);
+      if (markers && markers.length > 0) {
+        let errors = 0;
+        let warnings = 0;
+        for (const m of markers) {
+          if (m.severity >= 8) errors++;
+          else if (m.severity >= 4) warnings++;
+        }
+        if (errors > 0 || warnings > 0) {
+          counts[fileName] = { errors, warnings };
+        }
+      }
+    }
+    return counts;
+  }, [props.projectFiles, embedRootPrefix, diagnosticsByUri]);
 
   const handleToggleDiagnostics = useCallback(() => {
     userToggledDiagnosticsRef.current = true;
@@ -1647,16 +1707,15 @@ export default function MorselEditor(props: MorselEditorProps) {
       window.location.pathname.startsWith("/morsel"));
   const isFloatingWorkspace =
     !isNarrow && !props.embed && Boolean(props.hideCenterFloatingToolbar || isPlaygroundRoute);
-  const isFullScreenSplitCanvas = isFloatingWorkspace && isSplit(view) && !showResultsView && !showAnalysisView;
-  const isDiagnosticsFullWidth = isDiagnosticsExpanded || editorDiagnostics.length > 0;
+  const isFullScreenSplitCanvas = isFloatingWorkspace && isSplit(view);
   const diagnosticsBottomOffset =
-    !isNarrow && !props.embed && isDiagnosticsFullWidth
-      ? 12 + (isDiagnosticsExpanded ? diagnosticsPanelHeight : COLLAPSED_DIAGNOSTICS_HEIGHT) + 8
+    !isNarrow && !props.embed
+      ? 12 + (isDiagnosticsExpanded ? diagnosticsPanelHeight : COLLAPSED_DIAGNOSTICS_HEIGHT) + 12
       : 16;
   const floatingCardShadow =
     colorMode === "dark"
-      ? "0 12px 36px rgba(0, 0, 0, 0.48), 0 2px 8px rgba(0, 0, 0, 0.28)"
-      : "0 10px 32px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.05)";
+      ? "0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 16px 40px -8px rgba(0, 0, 0, 0.56)"
+      : "0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 10px 32px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.05)";
 
   return (
     <>
@@ -1707,7 +1766,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             position: "relative",
             padding: isNarrow || isFloatingWorkspace ? 0 : 8,
             gap: isNarrow || isFloatingWorkspace ? 0 : 8,
-            backgroundColor: "var(--color-canvas-default, #ffffff)",
+            backgroundColor: "var(--ms-bg-alt, var(--color-canvas-default, #ffffff))",
             boxSizing: "border-box",
           }}
         >
@@ -1754,6 +1813,14 @@ export default function MorselEditor(props: MorselEditorProps) {
             onOpenCloud={() => setIsCloudModalOpen(true)}
             isSimulating={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
             floating={isFloatingWorkspace}
+            projectFiles={props.projectFiles}
+            activeFileName={props.activeFileName}
+            onSelectProjectFile={props.onSelectProjectFile}
+            onAddProjectFile={props.onAddProjectFile}
+            onRemoveProjectFile={props.onRemoveProjectFile}
+            onRenameProjectFile={props.onRenameProjectFile}
+            onMoveProjectFile={props.onMoveProjectFile}
+            fileDiagnosticCounts={fileDiagnosticCounts}
           />
 
           <div
@@ -1783,7 +1850,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                   ? {
                       display: "flex",
                       position: "absolute",
-                      top: 70,
+                      top: 72,
                       left: treeVisible ? treeWidth + 24 : 12,
                       right: 12,
                       bottom: diagnosticsBottomOffset,
@@ -1791,7 +1858,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                       minHeight: 0,
                       minWidth: 0,
                       overflow: "hidden",
-                      gap: 8,
+                      gap: 12,
                     }
                   : {
                       display: isNarrow && mobileTab === "params" ? "none" : "flex",
@@ -1878,6 +1945,10 @@ export default function MorselEditor(props: MorselEditorProps) {
                 showAnalysisView={showAnalysisView}
                 setShowAnalysisView={setShowAnalysisView}
                 documentUri={documentUri}
+                projectFiles={props.projectFiles}
+                activeFileName={props.activeFileName}
+                onSelectProjectFile={props.onSelectProjectFile}
+                onUpdateProjectFile={props.onUpdateProjectFile}
                 loadingProgress={loadingProgress}
                 onLoadStarterExample={handleLoadStarterExample}
                 isSplitActive={isSplit(view)}
@@ -1927,7 +1998,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                     position: isFullScreenSplitCanvas ? "absolute" : "relative",
                     ...(isFullScreenSplitCanvas && view === View.SPLIT_COLUMNS
                       ? {
-                          top: 70,
+                          top: 72,
                           bottom: diagnosticsBottomOffset,
                           left: `max(${treeVisible ? treeWidth + 24 - 4 : 8}px, calc(${splitRatio * 100}% - 4px))`,
                         }
@@ -1935,7 +2006,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                         ? {
                             left: treeVisible ? treeWidth + 24 : 12,
                             right: 12,
-                            top: `max(66px, calc(${splitRatio * 100}% - 4px))`,
+                            top: `max(68px, calc(${splitRatio * 100}% - 4px))`,
                           }
                         : {}),
                     zIndex: isFullScreenSplitCanvas ? 25 : 10,
@@ -2036,9 +2107,9 @@ export default function MorselEditor(props: MorselEditorProps) {
                   top:
                     (isFloatingWorkspace && view === View.CODE) ||
                     (isFullScreenSplitCanvas && view === View.SPLIT_COLUMNS)
-                      ? 70
+                      ? 72
                       : isFullScreenSplitCanvas && view === View.SPLIT_ROWS
-                        ? `max(70px, calc(${splitRatio * 100}% + 4px))`
+                        ? `max(72px, calc(${splitRatio * 100}% + 6px))`
                         : undefined,
                   left:
                     (isFloatingWorkspace && view === View.CODE) || (isFullScreenSplitCanvas && view === View.SPLIT_ROWS)
@@ -2046,7 +2117,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                         ? treeWidth + 24
                         : 12
                       : isFullScreenSplitCanvas && view === View.SPLIT_COLUMNS
-                        ? `max(${treeVisible ? treeWidth + 24 : 12}px, calc(${splitRatio * 100}% + 4px))`
+                        ? `max(${treeVisible ? treeWidth + 24 : 12}px, calc(${splitRatio * 100}% + 6px))`
                         : undefined,
                   right: (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas ? 12 : undefined,
                   bottom:
@@ -2080,11 +2151,11 @@ export default function MorselEditor(props: MorselEditorProps) {
                   border: isNarrow
                     ? "none"
                     : isFloatingWorkspace
-                      ? "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))"
+                      ? "1px solid var(--ms-border, rgba(15, 23, 42, 0.12))"
                       : "1px solid var(--borderColor-muted, var(--ms-divider))",
                   boxShadow: isFloatingWorkspace ? floatingCardShadow : undefined,
                   overflow: "hidden",
-                  backgroundColor: "var(--color-canvas-default, #ffffff)",
+                  backgroundColor: "var(--ms-bg, var(--color-canvas-default, #ffffff))",
                 }}
               >
                 {detectedDialectHint && (
@@ -2171,6 +2242,8 @@ export default function MorselEditor(props: MorselEditorProps) {
             {!isNarrow && !props.embed && (
               <MorselDiagnosticsPanel
                 diagnostics={editorDiagnostics}
+                projectDiagnostics={projectDiagnostics}
+                activeFileName={props.activeFileName}
                 colorMode={colorMode}
                 isFloatingWorkspace={isFloatingWorkspace}
                 treeVisible={treeVisible}
@@ -2180,6 +2253,14 @@ export default function MorselEditor(props: MorselEditorProps) {
                 panelHeight={diagnosticsPanelHeight}
                 onResizeHeight={setDiagnosticsPanelHeight}
                 onSelectDiagnostic={handleSelectDiagnostic}
+                onSelectProjectDiagnostic={(fileName, marker) => {
+                  if (fileName !== props.activeFileName) {
+                    props.onSelectProjectFile?.(fileName);
+                    setTimeout(() => handleSelectDiagnostic(marker), 80);
+                  } else {
+                    handleSelectDiagnostic(marker);
+                  }
+                }}
               />
             )}
           </div>

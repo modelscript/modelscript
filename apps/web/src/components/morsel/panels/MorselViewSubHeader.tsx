@@ -299,7 +299,7 @@ export const MorselViewSubHeader: React.FC<MorselViewSubHeaderProps> = ({
         floating
           ? {
               position: "absolute",
-              top: 70,
+              top: 72,
               left: leftOffset,
               right: 12,
               display: "flex",

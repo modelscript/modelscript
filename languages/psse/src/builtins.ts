@@ -1138,9 +1138,16 @@ export function indexPsseDocument(ctx: DslIndexFileContext): void {
     });
   }
 
-  const caseName = parsedCase.title1 || "PsseCase";
+  const rawTitle = parsedCase.title1?.trim();
+  const caseName = rawTitle
+    ? rawTitle
+        .replace(/[^A-Za-z0-9_]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .replace(/^([0-9])/, "_$1") || "PsseCase"
+    : "PsseCase";
   ctx.emitSymbol({
     name: caseName,
+    ...(rawTitle && rawTitle !== caseName ? { aliases: [rawTitle] } : {}),
     kind: "Class",
     ruleName: "psse_case",
     startOffset: parsedCase.header.span?.startOffset ?? 0,

@@ -41,6 +41,7 @@
     "@modelscript/simulate": "*",
     "@modelscript/swmm": "*",
     "@modelscript/urdf": "*",
+    "@modelscript/usd": "*",
     "@monaco-editor/react": "^4.7.0",
     "@primer/css": "^22.3.2",
     "@primer/octicons-react": "^19.23.1",

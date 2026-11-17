@@ -8,7 +8,6 @@ import {
   FileZipIcon,
   GlobeIcon,
   PackageIcon,
-  PlusIcon,
   SearchIcon,
   SyncIcon,
   TrashIcon,
@@ -946,19 +945,20 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
 
   // Clean design tokens (zero Primer overflow bugs)
   const palette = {
-    bg: isDark ? "#18181b" : "#ffffff",
-    subtleBg: isDark ? "#1e1e22" : "#f6f8fa",
-    cardBg: isDark ? "#1e1e22" : "#ffffff",
-    cardHoverBg: isDark ? "#242429" : "#f8fafc",
+    bg: "var(--ms-bg, #ffffff)",
+    subtleBg: isDark ? "#121214" : "#f6f8fa",
+    cardBg: "var(--ms-bg-elv, #ffffff)",
+    cardHoverBg: "var(--ms-bg-soft, #f1f5f9)",
     stageBg: isDark ? "#121214" : "#f8fafc",
-    border: isDark ? "rgba(255, 255, 255, 0.1)" : "#d8dee4",
-    subtleBorder: isDark ? "rgba(255,255,255,0.07)" : "rgba(15,23,42,0.07)",
-    fg: isDark ? "#e6edf3" : "#1f2328",
-    muted: isDark ? "#8b949e" : "#59636e",
-    accent: "#2563eb",
-    accentSoft: isDark ? "rgba(59, 130, 246, 0.16)" : "rgba(37, 99, 235, 0.10)",
-    success: isDark ? "#3fb950" : "#1a7f37",
-    successSoft: isDark ? "rgba(63, 185, 80, 0.15)" : "rgba(26, 127, 55, 0.10)",
+    border: "var(--ms-border, rgba(15, 23, 42, 0.12))",
+    subtleBorder: "var(--ms-divider, rgba(15, 23, 42, 0.08))",
+    fg: "var(--ms-text-1, #0f172a)",
+    muted: "var(--ms-text-2, #475569)",
+    accent: isDark ? "var(--ms-link, #22d3ee)" : "var(--ms-brand, #0e7490)",
+    accentBg: "var(--ms-brand, #0e7490)",
+    accentSoft: "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))",
+    success: "var(--ms-status-pass-fg, #047857)",
+    successSoft: "var(--ms-status-pass-bg, rgba(5, 150, 105, 0.12))",
   };
 
   const mountedVisibleCount = Array.from(mountedMap.keys()).filter(
@@ -978,7 +978,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
         position: "fixed",
         inset: 0,
         zIndex: 10000,
-        backgroundColor: isDark ? "rgba(3, 7, 15, 0.74)" : "rgba(15, 23, 42, 0.45)",
+        backgroundColor: isDark ? "rgba(0, 0, 0, 0.68)" : "rgba(15, 23, 42, 0.48)",
         backdropFilter: "blur(8px)",
         WebkitBackdropFilter: "blur(8px)",
         display: "flex",
@@ -991,15 +991,13 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
       <div
         style={{
           width: "100%",
-          maxWidth: 980,
-          height: "min(740px, calc(100dvh - 32px))",
+          maxWidth: 1080,
+          height: "min(760px, calc(100dvh - 32px))",
           backgroundColor: palette.bg,
           color: palette.fg,
           border: `1px solid ${palette.border}`,
           borderRadius: 16,
-          boxShadow: isDark
-            ? "0 28px 80px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(59,130,246,0.18)"
-            : "0 24px 64px rgba(15, 23, 42, 0.22)",
+          boxShadow: "var(--ms-shadow-pop, 0 24px 64px rgba(15, 23, 42, 0.22))",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -1418,10 +1416,21 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                       return (
                         <div
                           key={comp.id}
-                          draggable
+                          className="ms-modal-tile"
+                          role="button"
+                          tabIndex={0}
+                          draggable={!isBusy}
                           onDragStart={(e) => handleComponentDragStart(e, comp)}
-                          onClick={() => setInspectedComponent((prev) => (prev?.id === comp.id ? null : comp))}
-                          title={`${comp.fqn}\nDrag onto schematic canvas or click Place`}
+                          onClick={() => {
+                            if (!isBusy) void handlePlaceComponent(comp);
+                          }}
+                          onKeyDown={(e) => {
+                            if ((e.key === "Enter" || e.key === " ") && !isBusy) {
+                              e.preventDefault();
+                              void handlePlaceComponent(comp);
+                            }
+                          }}
+                          title={`${comp.fqn}\nClick to place or drag onto schematic canvas`}
                           style={{
                             border: `1px solid ${isSelected ? palette.accent : palette.border}`,
                             borderRadius: 12,
@@ -1429,7 +1438,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                             display: "flex",
                             flexDirection: "column",
                             overflow: "hidden",
-                            cursor: "grab",
+                            cursor: isBusy ? "wait" : "pointer",
                             transition: "border-color 0.14s ease, transform 0.14s ease, box-shadow 0.14s ease",
                             boxShadow: isSelected ? `0 0 0 2px ${palette.accentSoft}` : "none",
                           }}
@@ -1565,31 +1574,11 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                                 <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{comp.packageName}</span>
                               </span>
 
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handlePlaceComponent(comp);
-                                }}
-                                style={{
-                                  border: "none",
-                                  borderRadius: 6,
-                                  padding: "4px 10px",
-                                  fontSize: 11.5,
-                                  fontWeight: 600,
-                                  backgroundColor: palette.accent,
-                                  color: "#ffffff",
-                                  cursor: isBusy ? "wait" : "pointer",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 4,
-                                  flexShrink: 0,
-                                }}
-                              >
-                                <PlusIcon size={12} />
-                                <span>{isBusy ? "Adding…" : "Place"}</span>
-                              </button>
+                              {isBusy && (
+                                <span style={{ fontSize: 11, fontWeight: 600, color: palette.accent, flexShrink: 0 }}>
+                                  Adding…
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>

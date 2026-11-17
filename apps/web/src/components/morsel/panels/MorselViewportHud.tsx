@@ -72,8 +72,8 @@ export const MorselViewportHud: React.FC<MorselViewportHudProps> = ({
         background: "var(--ms-surface-glass)",
         backdropFilter: "blur(16px)",
         WebkitBackdropFilter: "blur(16px)",
-        border: "1px solid var(--borderColor-muted, var(--ms-divider))",
-        boxShadow: "var(--ms-shadow-card, 0 8px 24px -4px rgba(0, 0, 0, 0.25))",
+        border: "1px solid var(--ms-border, var(--ms-divider))",
+        boxShadow: "var(--ms-shadow-pop, 0 8px 24px -4px rgba(0, 0, 0, 0.25))",
         userSelect: "none",
       }}
     >

@@ -7,6 +7,7 @@ import {
   type ModelicaTelemetryParams,
   type SpoolKinematicsSpec,
 } from "@modelscript/cad";
+import { extractUsdCadComponents } from "@modelscript/usd/cad";
 import type { editor } from "monaco-editor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useModelingPreferences } from "../../../ModelingPreferencesContext";
@@ -1211,9 +1212,11 @@ export function useMorselEngine({
   }, [buildExperimentMeta]);
 
   // ── CAD & 3D Animation State ──
-  const [cadComponents, setCadComponents] = useState<CadComponent[]>(() =>
-    content ? extractCadComponents(parseSourceCadVariables(content)) : [],
-  );
+  const [cadComponents, setCadComponents] = useState<CadComponent[]>(() => {
+    if (!content) return [];
+    if (dialect === "usd") return extractUsdCadComponents(content) as CadComponent[];
+    return extractCadComponents(parseSourceCadVariables(content));
+  });
   const [gdtOverlay, setGdtOverlay] = useState<GdtOverlayPayload | null>(null);
   const lastCompiledStepRef = useRef<CachedMorselStepCompilation | null>(null);
   const [vtkBuffer, setVtkBuffer] = useState<Uint8Array | null>(null);
@@ -1535,6 +1538,12 @@ export function useMorselEngine({
       const { components: scadComps } = tessellateScadSource(editorValue);
       setVtkBuffer(null);
       setCadComponents(attachScadKinematicController(editorValue, scadComps, animationControllerRef, setAnimationMode));
+    } else if (dialect === "usd") {
+      const usdComps = extractUsdCadComponents(editorValue) as CadComponent[];
+      setGdtOverlay(null);
+      setVtkBuffer(null);
+      setCadComponents(usdComps);
+      return;
     }
 
     const hasPairedCadArtifacts = Object.keys(effectiveFiles).some((p) => /\.(scad|qif|step|stp|p21)$/i.test(p));
@@ -1760,6 +1769,12 @@ export function useMorselEngine({
         const liveText = editor?.getValue() ?? editorValue ?? content;
         const solveRes = await executeLspAction("ampl_solve", "ampl", documentUri, {
           documentText: liveText,
+          options: {
+            solver: experimentOverrides.solver ?? "auto",
+            tolerance: experimentOverrides.tolerance,
+            maxIterations: experimentOverrides.maxIterations,
+            presolve: experimentOverrides.presolve,
+          },
         });
         if (!solveRes) {
           throw new Error("AMPL solver returned no result.");

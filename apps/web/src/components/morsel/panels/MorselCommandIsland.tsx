@@ -61,8 +61,8 @@ export const MorselCommandIsland: React.FC<MorselCommandIslandProps> = ({
         background: "var(--ms-surface-glass)",
         backdropFilter: "blur(16px)",
         WebkitBackdropFilter: "blur(16px)",
-        border: "1px solid var(--borderColor-muted, var(--ms-divider))",
-        boxShadow: "var(--ms-shadow-card, 0 8px 28px -4px rgba(0, 0, 0, 0.3))",
+        border: "1px solid var(--ms-border, var(--ms-divider))",
+        boxShadow: "var(--ms-shadow-pop, 0 8px 28px -4px rgba(0, 0, 0, 0.3))",
         userSelect: "none",
         transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
       }}

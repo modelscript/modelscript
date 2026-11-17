@@ -201,7 +201,7 @@ function componentXml(
       : `${indent}  <paramlist link="-1" name="" crc="0">${eol}${params}${eol}${indent}  </paramlist>`;
   return (
     `<User classid="UserCmp" id="${id}" name="${escapeAttr(op.defn)}" x="${Math.round(op.x)}" y="${Math.round(op.y)}" ` +
-    `w="${op.w ?? 60}" h="${op.h ?? 60}" z="-1" orient="${op.orient ?? 0}" defn="${escapeAttr(op.defn)}" link="-1" q="4" disable="false">${eol}` +
+    `w="${op.w ?? 60}" h="${op.h ?? 60}" z="1" orient="${op.orient ?? 0}" defn="${escapeAttr(op.defn)}" link="-1" q="4" disable="false">${eol}` +
     `${body}${eol}${indent}</User>`
   );
 }

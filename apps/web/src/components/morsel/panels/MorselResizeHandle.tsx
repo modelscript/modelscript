@@ -19,8 +19,12 @@ export interface MorselResizeHandleProps {
   onKeyDown?: ((e: React.KeyboardEvent<HTMLDivElement>) => void) | undefined;
 }
 
-const HANDLE_COLOR = "var(--ms-text-3, #6b7280)";
-const HANDLE_GLOW = "0 0 6px color-mix(in srgb, var(--ms-text-3, #6b7280) 40%, transparent)";
+const TRACK_COLOR_HOVER = "color-mix(in srgb, var(--ms-text-3, #94a3b8) 28%, transparent)";
+const TRACK_COLOR_DRAG = "color-mix(in srgb, var(--ms-text-3, #94a3b8) 48%, transparent)";
+const PILL_COLOR_HOVER = "var(--borderColor-emphasis, #cbd5e1)";
+const PILL_COLOR_DRAG = "var(--ms-text-3, #94a3b8)";
+const PILL_SHADOW =
+  "0 1px 4px rgba(15, 23, 42, 0.10), 0 0 0 1px color-mix(in srgb, var(--color-canvas-default, #ffffff) 65%, transparent)";
 
 export const MorselResizeHandle: React.FC<MorselResizeHandleProps> = ({
   orientation,
@@ -39,8 +43,12 @@ export const MorselResizeHandle: React.FC<MorselResizeHandleProps> = ({
   onKeyDown,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const isVertical = orientation === "vertical";
-  const isActive = isHovered || isDragging;
+  const isActive = isHovered || isDragging || isFocused;
+
+  const trackColor = isDragging ? TRACK_COLOR_DRAG : isActive ? TRACK_COLOR_HOVER : "transparent";
+  const pillColor = isDragging ? PILL_COLOR_DRAG : PILL_COLOR_HOVER;
 
   return (
     <div
@@ -59,6 +67,8 @@ export const MorselResizeHandle: React.FC<MorselResizeHandleProps> = ({
       onKeyDown={onKeyDown}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
       style={{
         display: "flex",
         alignItems: "center",
@@ -74,30 +84,36 @@ export const MorselResizeHandle: React.FC<MorselResizeHandleProps> = ({
         ...style,
       }}
     >
-      {/* Active highlight line centered on the handle */}
+      {/* Subtle inset hairline centered on the handle */}
       <div
         style={{
-          width: isVertical ? 3 : "100%",
-          height: isVertical ? "100%" : 3,
+          width: isVertical ? 2 : "calc(100% - 16px)",
+          height: isVertical ? "calc(100% - 16px)" : 2,
           borderRadius: 999,
-          backgroundColor: isActive ? HANDLE_COLOR : "transparent",
-          transition: "background-color 0.15s ease",
+          backgroundColor: trackColor,
+          transition: "background-color 0.16s cubic-bezier(0.22, 1, 0.36, 1)",
+          pointerEvents: "none",
         }}
       />
-      {/* Grab pill in the center */}
+      {/* Sleek capsule grab pill in the center */}
       <div
         style={{
           position: "absolute",
           top: "50%",
           left: "50%",
-          transform: "translate(-50%, -50%)",
-          width: isVertical ? 6 : 32,
-          height: isVertical ? 32 : 6,
+          transform: isDragging
+            ? "translate(-50%, -50%) scale(1.08)"
+            : isActive
+              ? "translate(-50%, -50%) scale(1)"
+              : "translate(-50%, -50%) scale(0.85)",
+          width: isVertical ? 4 : 36,
+          height: isVertical ? 36 : 4,
           borderRadius: 999,
-          backgroundColor: isActive ? HANDLE_COLOR : "transparent",
-          boxShadow: isActive ? HANDLE_GLOW : "none",
+          backgroundColor: pillColor,
+          boxShadow: isActive ? PILL_SHADOW : "none",
           opacity: isActive ? 1 : 0,
-          transition: "opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease",
+          transition:
+            "opacity 0.16s ease, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.16s ease, box-shadow 0.16s ease",
           pointerEvents: "none",
         }}
       />

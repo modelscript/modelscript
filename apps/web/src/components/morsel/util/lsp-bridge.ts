@@ -983,3 +983,144 @@ export async function getStepMeshesInMorsel(uri: string, documentText?: string):
   });
   return Array.isArray(res) ? res : [];
 }
+
+// ────────────────────────────────────────────────────────────────────
+// Digital Thread & Cross-Artifact Verification
+// ────────────────────────────────────────────────────────────────────
+
+export interface MorselThreadGraphNode {
+  domain: string;
+  domainIndex: number;
+  nodeId: number;
+  name: string;
+  status: "synced" | "stale" | "conflict" | "unverified" | "removed";
+  uri?: string | undefined;
+  line?: number | undefined;
+  column?: number | undefined;
+  properties?: Record<string, unknown> | undefined;
+}
+
+export interface MorselThreadGraphItem {
+  threadId: number | string;
+  revision: number;
+  status: "synced" | "stale" | "conflict" | "removed";
+  nodes: MorselThreadGraphNode[];
+  diagnostics?: Array<{
+    domain: string;
+    elementName: string;
+    severity: "error" | "warning" | "info";
+    message: string;
+    line: number;
+    column: number;
+    code?: string | undefined;
+    sourceDomain?: string | undefined;
+    sourceValue?: number | undefined;
+    targetDomain?: string | undefined;
+    targetValue?: number | undefined;
+    simplexConsensus?: number | undefined;
+    unit?: string | undefined;
+  }>;
+}
+
+export interface MorselThreadGraphResponse {
+  threads: MorselThreadGraphItem[];
+  domains: string[];
+  summary: {
+    totalThreads: number;
+    synced: number;
+    stale: number;
+    conflict: number;
+    unverified: number;
+  };
+}
+
+export interface MorselBlastRadiusResult {
+  impactedThreads: Array<number | string>;
+  impactedNodes: Array<{ domain: string; nodeId: number }>;
+  totalImpactedCount: number;
+}
+
+export interface MorselReconcileResult {
+  success: boolean;
+  message: string;
+  reconciledValue?: number | undefined;
+}
+
+export interface MorselVerifyAllReport {
+  uri?: string | undefined;
+  summary?: {
+    overallPassed?: boolean;
+    totalErrors?: number;
+    totalWarnings?: number;
+  };
+  polyglotDigitalThread?: {
+    mode?: string;
+    scenarioId?: string;
+    scenarioTitle?: string;
+    fileCount?: number;
+    isSat?: boolean;
+    variableLinks?: Array<{
+      symbol: string;
+      canonicalFqn: string;
+      bindingMechanism: string;
+      label: string;
+      valueFormatted: string;
+      boundsFormatted: string;
+      unit: string;
+      sourceDomain: string;
+      targetDomains: string[];
+      oracleName: string;
+      status: "SAT" | "UNSAT";
+      marginText: string;
+    }>;
+    portBindings?: Array<Record<string, unknown>>;
+    conflicts?: Array<{ message?: string; explanation?: string; [key: string]: unknown }>;
+    suggestedEdits?: Array<{
+      uri?: string;
+      fileIndex: number;
+      fileName?: string;
+      startLine?: number;
+      startCol?: number;
+      endLine?: number;
+      endCol?: number;
+      newText: string;
+      description?: string;
+    }>;
+    hypergraphNodes?: Array<{ domainName: string; name: string; [key: string]: unknown }>;
+  };
+  stages?: Record<string, { passed?: boolean; [key: string]: unknown }>;
+  [key: string]: unknown;
+}
+
+export async function getThreadGraph(): Promise<MorselThreadGraphResponse> {
+  const c = await lsp();
+  return c.sendRequest<MorselThreadGraphResponse>("modelscript/getThreadGraph");
+}
+
+export async function getBlastRadius(domain: string, nodeId: number): Promise<MorselBlastRadiusResult> {
+  const c = await lsp();
+  return c.sendRequest<MorselBlastRadiusResult>("modelscript/getBlastRadius", { domain, nodeId });
+}
+
+export async function reconcileThreadSlot(
+  slot: number,
+  strategy: "physics-simplex" | "source-wins" | "target-wins" | "custom" = "physics-simplex",
+  customValue?: number,
+): Promise<MorselReconcileResult> {
+  const c = await lsp();
+  return c.sendRequest<MorselReconcileResult>("modelscript/reconcileThreadSlot", {
+    slot,
+    strategy,
+    ...(customValue !== undefined ? { customValue } : {}),
+  });
+}
+
+export async function runVerification(uri: string): Promise<{ ok: boolean; error?: string | undefined }> {
+  const c = await lsp();
+  return c.sendRequest<{ ok: boolean; error?: string | undefined }>("modelscript/runVerification", { uri });
+}
+
+export async function verifyAll(uri: string): Promise<MorselVerifyAllReport> {
+  const c = await lsp();
+  return c.sendRequest<MorselVerifyAllReport>("modelscript/verifyAll", { uri });
+}

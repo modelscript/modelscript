@@ -28,6 +28,7 @@ import { CosimPanel, type HistorianSession } from "../CosimPanel";
 import DiagramEditor, { type DiagramEditorHandle } from "../Diagram";
 import PropertiesWidget from "../Properties";
 import { AmplOptimizationResults } from "./AmplOptimizationResults";
+import { MorselDigitalThreadPanel } from "./MorselDigitalThreadPanel";
 import type { MobileTab } from "./MorselMobileTabBar";
 import { PolyglotDomainPanel } from "./PolyglotDomainPanel";
 import { MorselView } from "./types";
@@ -325,6 +326,10 @@ export interface MorselVisualizerPaneProps {
   onToggleSplit?: (() => void) | undefined;
   treeWidth?: number | undefined;
   diagnosticsBottomOffset?: number | undefined;
+  projectFiles?: Record<string, string> | undefined;
+  activeFileName?: string | undefined;
+  onSelectProjectFile?: ((fileName: string) => void) | undefined;
+  onUpdateProjectFile?: ((fileName: string, content: string) => void) | undefined;
 }
 
 const isSplit = (v: MorselView) => v === MorselView.SPLIT_COLUMNS || v === MorselView.SPLIT_ROWS;
@@ -390,7 +395,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   handleVariablesLoaded,
   treeVisible,
   setTreeVisible,
-  setView,
+  setView: _setView,
   onAutoLayout,
   onSimulate,
   onOpenCloudModal: _onOpenCloudModal,
@@ -402,12 +407,16 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   loadingProgress,
   onLoadStarterExample,
   isSplitActive: _isSplitActive,
-  canSplit = true,
+  canSplit: _canSplit = true,
   splitOrientation: _splitOrientation = "columns",
-  onSelectView,
-  onToggleSplit,
+  onSelectView: _onSelectView,
+  onToggleSplit: _onToggleSplit,
   treeWidth = 260,
   diagnosticsBottomOffset = 12,
+  projectFiles,
+  activeFileName,
+  onSelectProjectFile,
+  onUpdateProjectFile,
 }) => {
   const { hasCapability } = useCapabilities();
   const _isCaeComputeEnabled = useFeatureFlag("cae_cloud_solver");
@@ -418,6 +427,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const [isPropResizerHovered, setIsPropResizerHovered] = useState(false);
   const [isPropResizerDragging, setIsPropResizerDragging] = useState(false);
   const [isEmptyStateDismissed, setIsEmptyStateDismissed] = useState(false);
+  const hasMultiFileProject = Boolean(projectFiles && Object.keys(projectFiles).length >= 2);
+  const [inspectorSubtab, setInspectorSubtab] = useState<"domain" | "thread">("domain");
 
   useEffect(() => {
     setIsEmptyStateDismissed(false);
@@ -779,12 +790,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
     return null;
   }
 
-  const isFullScreenSplitCanvas =
-    !isNarrow &&
-    (hideCenterFloatingToolbar || isPlaygroundRoute) &&
-    isSplit(view) &&
-    !showResultsView &&
-    !showAnalysisView;
+  const isFullScreenSplitCanvas = !isNarrow && (hideCenterFloatingToolbar || isPlaygroundRoute) && isSplit(view);
   const isFloatingLayout =
     !isNarrow && (hideCenterFloatingToolbar || isPlaygroundRoute) && (!isSplit(view) || isFullScreenSplitCanvas);
   const floatingLeftOffset = treeVisible ? treeWidth + 24 : 12;
@@ -1338,7 +1344,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                                 )
                               : 0),
                           bottom:
-                            56 +
+                            Math.max(56, diagnosticsBottomOffset + 12) +
                             (isFullScreenSplitCanvas && view === MorselView.SPLIT_ROWS
                               ? Math.round(
                                   (1 - splitRatio) * (typeof window !== "undefined" ? window.innerHeight : 800),
@@ -1400,71 +1406,6 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   onAutoLayout={onAutoLayout}
                 />
               </Suspense>
-
-              {hasUserCode &&
-                (!diagramData?.nodes || diagramData.nodes.length === 0) &&
-                !isDiagramLoading &&
-                !showResultsView &&
-                !showCadView &&
-                !showAnalysisView && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      bottom: isFloatingLayout ? Math.max(20, diagnosticsBottomOffset) : 64,
-                      left: "50%",
-                      transform: "translateX(-50%)",
-                      width: "max-content",
-                      maxWidth: "calc(100% - 32px)",
-                      textAlign: "center",
-                      pointerEvents: "auto",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 8,
-                      padding: "6px 12px 6px 14px",
-                      borderRadius: "999px",
-                      background: "var(--ms-surface-glass)",
-                      backdropFilter: "blur(14px)",
-                      WebkitBackdropFilter: "blur(14px)",
-                      border: "1px solid var(--borderColor-muted, var(--ms-divider))",
-                      color: "var(--fgColor-muted, var(--ms-text-2))",
-                      fontSize: 11,
-                      fontWeight: 500,
-                      zIndex: 15,
-                      userSelect: "none",
-                      boxShadow: "0 4px 16px rgba(0, 0, 0, 0.08)",
-                    }}
-                  >
-                    <span>Equation-based model · No schematic components</span>
-                    {!isSplit(view) && (onToggleSplit || onSelectView || setView) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (onToggleSplit && canSplit !== false) {
-                            onToggleSplit();
-                          } else if (onSelectView) {
-                            onSelectView("code");
-                          } else {
-                            setView?.(MorselView.CODE);
-                          }
-                        }}
-                        style={{
-                          border: "none",
-                          background: "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))",
-                          color: colorMode === "dark" ? "var(--ms-link, #22d3ee)" : "var(--ms-brand, #0e7490)",
-                          fontSize: 11,
-                          fontWeight: 600,
-                          padding: "3px 9px",
-                          borderRadius: 999,
-                          cursor: "pointer",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {onToggleSplit && canSplit !== false ? "Open Split View" : "View Code"}
-                      </button>
-                    )}
-                  </div>
-                )}
 
               {showEmptyState && (
                 <div
@@ -2482,7 +2423,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 isFloatingLayout
                   ? {
                       position: "absolute",
-                      top: 70,
+                      top: 72,
                       right:
                         isFullScreenSplitCanvas && view === MorselView.SPLIT_COLUMNS
                           ? `calc(${(1 - splitRatio) * 100}% + 12px)`
@@ -2767,8 +2708,18 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             inset: 0,
             paddingTop: isFloatingLayout ? 70 : hideCenterFloatingToolbar ? 0 : 56,
             paddingLeft: isFloatingLayout ? floatingLeftOffset : 0,
-            paddingRight: isFloatingLayout ? 12 : 0,
-            paddingBottom: isFloatingLayout ? 12 : 0,
+            paddingRight:
+              isFullScreenSplitCanvas && view === MorselView.SPLIT_COLUMNS
+                ? `calc(${(1 - splitRatio) * 100}% + 12px)`
+                : isFloatingLayout
+                  ? 12
+                  : 0,
+            paddingBottom:
+              isFullScreenSplitCanvas && view === MorselView.SPLIT_ROWS
+                ? `calc(${(1 - splitRatio) * 100}% + 12px)`
+                : isFloatingLayout
+                  ? Math.max(12, diagnosticsBottomOffset)
+                  : 0,
             boxSizing: "border-box",
             display: showResultsView && !showAnalysisView ? "flex" : "none",
             flexDirection: "column",
@@ -2884,8 +2835,18 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             inset: 0,
             paddingTop: isFloatingLayout ? 70 : hideCenterFloatingToolbar ? 0 : nestedModels.length > 1 ? 96 : 64,
             paddingLeft: isFloatingLayout ? floatingLeftOffset : 0,
-            paddingRight: isFloatingLayout ? 12 : 0,
-            paddingBottom: isFloatingLayout ? 12 : 0,
+            paddingRight:
+              isFullScreenSplitCanvas && view === MorselView.SPLIT_COLUMNS
+                ? `calc(${(1 - splitRatio) * 100}% + 12px)`
+                : isFloatingLayout
+                  ? 12
+                  : 0,
+            paddingBottom:
+              isFullScreenSplitCanvas && view === MorselView.SPLIT_ROWS
+                ? `calc(${(1 - splitRatio) * 100}% + 12px)`
+                : isFloatingLayout
+                  ? Math.max(12, diagnosticsBottomOffset)
+                  : 0,
             boxSizing: "border-box",
             display: showAnalysisView ? "flex" : "none",
             flexDirection: "column",
@@ -2895,21 +2856,60 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             backgroundColor: "var(--color-canvas-default)",
           }}
         >
-          <PolyglotDomainPanel
-            dialect={dialect}
-            code={editorValue}
-            colorMode={colorMode}
-            isVisible={showAnalysisView}
-            documentUri={documentUri}
-            activeClassName={selectedTreeClassName ?? nestedModels[selectedModelIndex]?.name ?? undefined}
-            onRevealLine={onRevealLine}
-            onCodeChange={(nextCode) => {
-              const targetEditor = editorRef.current ?? editor;
-              if (targetEditor && targetEditor.getValue() !== nextCode) {
-                targetEditor.setValue(nextCode);
-              }
-            }}
-          />
+          {hasMultiFileProject && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 16px",
+                borderBottom: `1px solid ${colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.08)"}`,
+                flexShrink: 0,
+              }}
+            >
+              <SegmentedControl
+                aria-label="Inspector Mode"
+                size="small"
+                onChange={(idx) => setInspectorSubtab(idx === 1 ? "thread" : "domain")}
+              >
+                <SegmentedControl.Button selected={inspectorSubtab === "domain"}>
+                  Domain Inspector
+                </SegmentedControl.Button>
+                <SegmentedControl.Button selected={inspectorSubtab === "thread"}>
+                  Digital Thread
+                </SegmentedControl.Button>
+              </SegmentedControl>
+            </div>
+          )}
+          <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            {hasMultiFileProject && inspectorSubtab === "thread" ? (
+              <MorselDigitalThreadPanel
+                projectFiles={projectFiles}
+                activeFileName={activeFileName}
+                documentUri={documentUri}
+                colorMode={colorMode}
+                onSelectProjectFile={onSelectProjectFile}
+                onUpdateProjectFile={onUpdateProjectFile}
+                onRevealLine={onRevealLine}
+              />
+            ) : (
+              <PolyglotDomainPanel
+                dialect={dialect}
+                code={editorValue}
+                colorMode={colorMode}
+                isVisible={showAnalysisView && (!hasMultiFileProject || inspectorSubtab === "domain")}
+                documentUri={documentUri}
+                activeClassName={selectedTreeClassName ?? nestedModels[selectedModelIndex]?.name ?? undefined}
+                onRevealLine={onRevealLine}
+                onCodeChange={(nextCode) => {
+                  const targetEditor = editorRef.current ?? editor;
+                  if (targetEditor && targetEditor.getValue() !== nextCode) {
+                    targetEditor.setValue(nextCode);
+                  }
+                }}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

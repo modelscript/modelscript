@@ -704,19 +704,86 @@ END_PROGRAM
     family: "c",
     defaultCode: `#usda 1.0
 (
-    defaultPrim = "World"
+    defaultPrim = "DigitalTwinCell"
     metersPerUnit = 1.0
     upAxis = "Z"
 )
 
-def Xform "World"
+def Xform "DigitalTwinCell" (
+    kind = "assembly"
+)
 {
-    def Mesh "Box"
+    def Xform "BasePedestal" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+    )
     {
-        float3[] points = [(-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (0.5, 0.5, 0.0), (-0.5, 0.5, 0.0)]
-        int[] faceVertexCounts = [4]
-        int[] faceVertexIndices = [0, 1, 2, 3]
-        color3f[] primvars:displayColor = [(0.2, 0.6, 1.0)]
+        bool physics:rigidBodyEnabled = true
+        float physics:mass = 24.0
+        float3 physics:diagonalInertia = (1.8, 1.8, 0.9)
+
+        def Cylinder "Plinth"
+        {
+            double radius = 0.45
+            double height = 0.25
+            uniform token axis = "Z"
+            double3 xformOp:translate = (0.0, 0.0, 0.125)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.18, 0.22, 0.28)]
+        }
+
+        def Cylinder "Column"
+        {
+            double radius = 0.16
+            double height = 0.70
+            uniform token axis = "Z"
+            double3 xformOp:translate = (0.0, 0.0, 0.60)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.24, 0.56, 0.88)]
+        }
+    }
+
+    def Xform "ShoulderLink" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+    )
+    {
+        bool physics:rigidBodyEnabled = true
+        float physics:mass = 8.5
+        float3 physics:diagonalInertia = (0.6, 0.6, 0.25)
+        double3 xformOp:translate = (0.0, 0.0, 1.0)
+        float3 xformOp:rotateXYZ = (0.0, 28.0, 0.0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+
+        def Sphere "ShoulderJoint"
+        {
+            double radius = 0.19
+            color3f[] primvars:displayColor = [(0.92, 0.58, 0.16)]
+        }
+
+        def Cube "UpperArm"
+        {
+            double size = 1.0
+            double3 xformOp:translate = (0.45, 0.0, 0.0)
+            double3 xformOp:scale = (0.90, 0.16, 0.16)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            color3f[] primvars:displayColor = [(0.24, 0.56, 0.88)]
+        }
+
+        def Sphere "WristEndEffector"
+        {
+            double radius = 0.13
+            double3 xformOp:translate = (0.95, 0.0, 0.0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.22, 0.78, 0.52)]
+        }
+    }
+
+    def PhysicsRevoluteJoint "ShoulderRevolute"
+    {
+        rel physics:body0 = </DigitalTwinCell/BasePedestal>
+        rel physics:body1 = </DigitalTwinCell/ShoulderLink>
+        uniform token physics:axis = "Y"
+        float physics:lowerLimit = -2.35619
+        float physics:upperLimit = 2.35619
     }
 }
 `,

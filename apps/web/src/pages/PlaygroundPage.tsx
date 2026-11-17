@@ -33,6 +33,7 @@ import {
   CreatePlaygroundRepoModal,
   DEFAULT_EMPTY_MODELICA_CODE,
   EditorArea,
+  FileConflictModal,
   HERO_EXAMPLES,
   type HeroExample,
   type MorselDecodedPayload,
@@ -42,6 +43,26 @@ import {
   PlaygroundShareModal,
   TemplateGalleryModal,
 } from "./playground";
+
+function sanitizeModelFileName(title: string): string {
+  const leaf = title.includes(".") ? title.slice(title.lastIndexOf(".") + 1) : title;
+  const cleaned = leaf
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return cleaned || "model";
+}
+
+function resolveTemplateFiles(ex: HeroExample): { files: Record<string, string>; activeFile: string } {
+  if (ex.files && Object.keys(ex.files).length > 0) {
+    const active = ex.activeFile && ex.activeFile in ex.files ? ex.activeFile : Object.keys(ex.files)[0]!;
+    return { files: { ...ex.files }, activeFile: active };
+  }
+  const ext = getLanguageInfo(ex.lang).ext || "mo";
+  const base = sanitizeModelFileName(ex.title);
+  const fileName = base.endsWith(`.${ext}`) ? base : `${base}.${ext}`;
+  return { files: { [fileName]: ex.code }, activeFile: fileName };
+}
 
 function mountArtifactDependencies(deps?: unknown): void {
   if (!Array.isArray(deps) || deps.length === 0) return;
@@ -219,6 +240,14 @@ export const PlaygroundPage: React.FC = () => {
   );
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const [pendingExample, setPendingExample] = useState<HeroExample | null>(null);
+  const [pendingClearWorkspace, setPendingClearWorkspace] = useState<boolean>(false);
+  const [pendingFileConflict, setPendingFileConflict] = useState<{
+    templateTitle: string;
+    templateLang: string;
+    baseFiles: Record<string, string>;
+    incomingFiles: Record<string, string>;
+    incomingActiveFile: string;
+  } | null>(null);
   const baselineCodeRef = useRef<string>(defaultInitialCode);
 
   usePageTitle(currentTitle ? `${currentTitle} — Morsel` : "Morsel", { includeBrand: false });
@@ -853,11 +882,15 @@ export const PlaygroundPage: React.FC = () => {
   }, []);
 
   const applySelectedExample = (ex: HeroExample) => {
-    baselineCodeRef.current = ex.code;
+    const nextFiles = ex.files ? { ...ex.files } : null;
+    const nextActiveFile = nextFiles ? (ex.activeFile ?? Object.keys(nextFiles)[0] ?? null) : null;
+    const initialCode = nextFiles && nextActiveFile ? (nextFiles[nextActiveFile] ?? ex.code) : ex.code;
+
+    baselineCodeRef.current = initialCode;
     setIsDirty(false);
-    setProjectFiles(null);
-    setActiveFile(null);
-    setCurrentCode(ex.code);
+    setProjectFiles(nextFiles);
+    setActiveFile(nextActiveFile);
+    setCurrentCode(initialCode);
     setCurrentTitle(ex.title);
     if (ex.lang !== currentLang) {
       const nextDefault = getDefaultLanguageView(getLanguageInfo(ex.lang));
@@ -868,7 +901,7 @@ export const PlaygroundPage: React.FC = () => {
     setPayload({
       v: 1,
       lang: ex.lang,
-      code: ex.code,
+      code: initialCode,
       title: ex.title,
     });
     clearPlaygroundUrl(location.pathname);
@@ -1168,9 +1201,6 @@ export const PlaygroundPage: React.FC = () => {
     }
   };
 
-  const [isAddingFile, setIsAddingFile] = useState(false);
-  const [newFileName, setNewFileName] = useState("");
-
   const handleSwitchProjectFile = (fileName: string) => {
     if (!projectFiles || fileName === activeFile || !(fileName in projectFiles)) return;
     const updatedFiles = activeFile ? { ...projectFiles, [activeFile]: currentCode } : projectFiles;
@@ -1184,18 +1214,12 @@ export const PlaygroundPage: React.FC = () => {
 
   const handleAddProjectFile = (rawName: string) => {
     const trimmed = rawName.trim().replace(/^\/+/, "");
-    if (!trimmed) {
-      setIsAddingFile(false);
-      setNewFileName("");
-      return;
-    }
+    if (!trimmed) return;
     const baseFiles: Record<string, string> = projectFiles
       ? { ...projectFiles, ...(activeFile ? { [activeFile]: currentCode } : {}) }
       : { [`model.${getLanguageInfo(currentLang).ext}`]: currentCode };
     if (trimmed in baseFiles) {
       handleSwitchProjectFile(trimmed);
-      setIsAddingFile(false);
-      setNewFileName("");
       return;
     }
     const nextFiles = { ...baseFiles, [trimmed]: "" };
@@ -1205,12 +1229,10 @@ export const PlaygroundPage: React.FC = () => {
     setCurrentCode("");
     setCurrentLang(nextDialect);
     setIsDirty(true);
-    setIsAddingFile(false);
-    setNewFileName("");
   };
 
   const handleRemoveProjectFile = (fileName: string) => {
-    if (!projectFiles || Object.keys(projectFiles).length <= 1 || !(fileName in projectFiles)) return;
+    if (!projectFiles || !(fileName in projectFiles)) return;
     const { [fileName]: _removed, ...updatedFiles } = projectFiles;
     if (activeFile && activeFile !== fileName) {
       updatedFiles[activeFile] = currentCode;
@@ -1219,11 +1241,122 @@ export const PlaygroundPage: React.FC = () => {
     const nextActive = fileName === activeFile ? (remainingKeys[0] ?? null) : activeFile;
     setProjectFiles(updatedFiles);
     setActiveFile(nextActive);
-    if (nextActive && fileName === activeFile) {
-      setCurrentCode(updatedFiles[nextActive] ?? "");
-      setCurrentLang(inferDialectFromFilename(nextActive) || currentLang);
+    if (fileName === activeFile) {
+      if (nextActive) {
+        setCurrentCode(updatedFiles[nextActive] ?? "");
+        setCurrentLang(inferDialectFromFilename(nextActive) || currentLang);
+      } else {
+        setCurrentCode("");
+      }
     }
     setIsDirty(true);
+  };
+
+  const handleRenameProjectFile = (oldName: string, newName: string) => {
+    const trimmed = newName.trim().replace(/^\/+/, "");
+    if (!projectFiles || !trimmed || trimmed === oldName || !(oldName in projectFiles)) return;
+    if (trimmed in projectFiles) return;
+    const nextFiles: Record<string, string> = {};
+    for (const [k, v] of Object.entries(projectFiles)) {
+      const content = k === activeFile ? currentCode : v;
+      if (k === oldName) {
+        nextFiles[trimmed] = content;
+      } else {
+        nextFiles[k] = content;
+      }
+    }
+    setProjectFiles(nextFiles);
+    if (activeFile === oldName) {
+      setActiveFile(trimmed);
+      setCurrentLang(inferDialectFromFilename(trimmed) || currentLang);
+    }
+    setIsDirty(true);
+  };
+
+  const handleMoveProjectFile = (fileName: string, targetDir: string) => {
+    if (!projectFiles || !(fileName in projectFiles)) return;
+    const cleanDir = targetDir.trim().replace(/^\/+|\/+$/g, "");
+    const baseName = fileName.includes("/") ? fileName.slice(fileName.lastIndexOf("/") + 1) : fileName;
+    const nextPath = cleanDir ? `${cleanDir}/${baseName}` : baseName;
+    handleRenameProjectFile(fileName, nextPath);
+  };
+
+  const applyClearWorkspace = () => {
+    baselineCodeRef.current = "";
+    setIsDirty(false);
+    setProjectFiles({});
+    setActiveFile(null);
+    setCurrentCode("");
+    setCurrentTitle("Untitled Workspace");
+    setPayload({
+      v: 1,
+      lang: currentLang,
+      code: "",
+      title: "Untitled Workspace",
+    });
+    clearPlaygroundUrl(location.pathname);
+  };
+
+  const handleClearWorkspace = () => {
+    const hasFiles = projectFiles ? Object.keys(projectFiles).length > 0 : Boolean(currentCode.trim());
+    if (isDirty && hasFiles) {
+      setPendingClearWorkspace(true);
+      return;
+    }
+    applyClearWorkspace();
+  };
+
+  const applyAddFilesToWorkspace = (
+    baseFiles: Record<string, string>,
+    addedFiles: Record<string, string>,
+    nextActiveFile: string,
+    templateLang: string,
+    templateTitle: string,
+  ) => {
+    const mergedFiles = { ...baseFiles, ...addedFiles };
+    const nextCode = mergedFiles[nextActiveFile] ?? "";
+    const resolvedLang = inferDialectFromFilename(nextActiveFile) || templateLang || currentLang;
+    setProjectFiles(mergedFiles);
+    setActiveFile(nextActiveFile);
+    setCurrentCode(nextCode);
+    if (Object.keys(baseFiles).length === 0) {
+      setCurrentTitle(templateTitle);
+    }
+    if (resolvedLang !== currentLang) {
+      const nextDefault = getDefaultLanguageView(getLanguageInfo(resolvedLang));
+      setCurrentView(nextDefault.view);
+      setIsSplit(nextDefault.isSplit);
+    }
+    setCurrentLang(resolvedLang);
+    setIsDirty(true);
+  };
+
+  const handleAddModelFromTemplate = (ex: HeroExample) => {
+    const { files: incomingFiles, activeFile: incomingActiveFile } = resolveTemplateFiles(ex);
+    const baseFiles: Record<string, string> =
+      projectFiles !== null
+        ? { ...projectFiles, ...(activeFile ? { [activeFile]: currentCode } : {}) }
+        : currentCode.trim()
+          ? {
+              [activeFile ||
+              `${sanitizeModelFileName(currentTitle || "model")}.${getLanguageInfo(currentLang).ext || "mo"}`]:
+                currentCode,
+            }
+          : {};
+
+    const hasConflict = Object.keys(incomingFiles).some((name) => name in baseFiles);
+    if (hasConflict) {
+      setPendingFileConflict({
+        templateTitle: ex.title,
+        templateLang: ex.lang,
+        baseFiles,
+        incomingFiles,
+        incomingActiveFile,
+      });
+      return;
+    }
+
+    applyAddFilesToWorkspace(baseFiles, incomingFiles, incomingActiveFile, ex.lang, ex.title);
   };
 
   type PlaygroundView = "diagram" | "code" | "split" | "simulation" | "3d" | "inspector";
@@ -1487,6 +1620,7 @@ export const PlaygroundPage: React.FC = () => {
         onSimulate={handleRunSimulation}
         onOpenInVsCode={handleOpenInVsCode}
         onOpenTemplates={() => setIsTemplatesModalOpen(true)}
+        onClearWorkspace={handleClearWorkspace}
         onSaveToArtifact={handleSaveToArtifact}
         onCreateRepo={handleOpenCreateRepo}
         onDownloadModel={handleDownloadModel}
@@ -1494,170 +1628,6 @@ export const PlaygroundPage: React.FC = () => {
         onOpenShare={() => setShareModalOpen(true)}
         onPublishToFeed={handlePublishToFeed}
       />
-
-      {projectFiles && Object.keys(projectFiles).length >= 1 && (
-        <div
-          role="tablist"
-          aria-label="Project files"
-          style={{
-            position: "absolute",
-            bottom: 16,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 35,
-            maxWidth: "calc(100% - 24px)",
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            padding: "4px 10px",
-            borderRadius: 12,
-            backgroundColor: "var(--ms-surface-glass, rgba(255, 255, 255, 0.94))",
-            backdropFilter: "blur(14px)",
-            WebkitBackdropFilter: "blur(14px)",
-            border: "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))",
-            boxShadow: "0 8px 24px rgba(15, 23, 42, 0.08), 0 1px 4px rgba(15, 23, 42, 0.05)",
-            overflowX: "auto",
-            flexShrink: 0,
-          }}
-        >
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: "var(--color-fg-muted)",
-              marginRight: 6,
-              textTransform: "uppercase",
-              letterSpacing: "0.04em",
-            }}
-          >
-            Files ({Object.keys(projectFiles).length})
-          </span>
-          {Object.keys(projectFiles).map((fileName) => {
-            const isSelected = fileName === activeFile;
-            const canRemove = Object.keys(projectFiles).length > 1;
-            return (
-              <div
-                key={fileName}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 2,
-                  borderRadius: 6,
-                  border: isSelected ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
-                  backgroundColor: isSelected ? "rgba(6, 182, 212, 0.14)" : "transparent",
-                  paddingRight: canRemove ? 4 : 0,
-                }}
-              >
-                <button
-                  role="tab"
-                  type="button"
-                  aria-selected={isSelected}
-                  onClick={() => handleSwitchProjectFile(fileName)}
-                  style={{
-                    padding: canRemove ? "4px 6px 4px 10px" : "4px 10px",
-                    border: "none",
-                    background: "transparent",
-                    color: isSelected ? "var(--ms-accent-cyan, #06b6d4)" : "var(--color-fg-muted)",
-                    fontFamily: "var(--font-mono, monospace)",
-                    fontSize: 12,
-                    fontWeight: isSelected ? 600 : 500,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {fileName}
-                </button>
-                {canRemove && (
-                  <button
-                    type="button"
-                    aria-label={`Remove ${fileName}`}
-                    title={`Remove ${fileName}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveProjectFile(fileName);
-                    }}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      color: "var(--color-fg-muted)",
-                      fontSize: 12,
-                      lineHeight: 1,
-                      padding: "2px 4px",
-                      borderRadius: 4,
-                      cursor: "pointer",
-                      opacity: 0.7,
-                    }}
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            );
-          })}
-          {isAddingFile ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleAddProjectFile(newFileName);
-              }}
-              style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 4 }}
-            >
-              <input
-                type="text"
-                autoFocus
-                value={newFileName}
-                onChange={(e) => setNewFileName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setIsAddingFile(false);
-                    setNewFileName("");
-                  }
-                }}
-                onBlur={() => {
-                  if (newFileName.trim()) {
-                    handleAddProjectFile(newFileName);
-                  } else {
-                    setIsAddingFile(false);
-                  }
-                }}
-                placeholder="params.ssv"
-                style={{
-                  width: 120,
-                  padding: "3px 6px",
-                  borderRadius: 6,
-                  border: "1px solid var(--borderColor-default, rgba(15, 23, 42, 0.2))",
-                  background: "var(--bgColor-default, #ffffff)",
-                  color: "var(--fgColor-default, #0f172a)",
-                  fontFamily: "var(--font-mono, monospace)",
-                  fontSize: 12,
-                  outline: "none",
-                }}
-              />
-            </form>
-          ) : (
-            <button
-              type="button"
-              aria-label="Add file to morsel"
-              title="Add file"
-              onClick={() => setIsAddingFile(true)}
-              style={{
-                padding: "3px 8px",
-                marginLeft: 2,
-                borderRadius: 6,
-                border: "1px dashed var(--borderColor-muted, rgba(15, 23, 42, 0.2))",
-                background: "transparent",
-                color: "var(--color-fg-muted)",
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              +
-            </button>
-          )}
-        </div>
-      )}
 
       <EditorArea>
         {isLoadingArtifact ? (
@@ -1751,6 +1721,11 @@ export const PlaygroundPage: React.FC = () => {
               initialCode={currentCode}
               projectFiles={projectFiles ?? undefined}
               activeFileName={activeFile ?? undefined}
+              onSelectProjectFile={handleSwitchProjectFile}
+              onAddProjectFile={handleAddProjectFile}
+              onRemoveProjectFile={handleRemoveProjectFile}
+              onRenameProjectFile={handleRenameProjectFile}
+              onMoveProjectFile={handleMoveProjectFile}
               onUpdateProjectFile={(fileName, nextContent) => {
                 setProjectFiles((prev) => {
                   if (!prev || prev[fileName] === nextContent) return prev;
@@ -1877,6 +1852,77 @@ export const PlaygroundPage: React.FC = () => {
         </div>
       )}
 
+      {pendingClearWorkspace && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="playground-clear-modal-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.55)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2000,
+          }}
+          onClick={() => setPendingClearWorkspace(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              margin: "0 16px",
+              padding: 20,
+              borderRadius: 12,
+              backgroundColor: "var(--color-canvas-overlay, var(--color-canvas-default))",
+              border: "1px solid var(--color-border-default)",
+              boxShadow: "0 16px 48px rgba(0, 0, 0, 0.4)",
+              color: "var(--color-fg-default)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="playground-clear-modal-title" style={{ margin: "0 0 8px 0", fontSize: 16, fontWeight: 600 }}>
+              Clear Workspace
+            </h3>
+            <p style={{ margin: "0 0 20px 0", fontSize: 13, color: "var(--color-fg-muted)", lineHeight: 1.5 }}>
+              Discard unsaved changes and remove all files from the workspace?
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <Button size="small" variant="default" onClick={() => setPendingClearWorkspace(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="small"
+                variant="danger"
+                onClick={() => {
+                  setPendingClearWorkspace(false);
+                  applyClearWorkspace();
+                }}
+              >
+                Discard & Clear
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <FileConflictModal
+        isOpen={Boolean(pendingFileConflict)}
+        templateTitle={pendingFileConflict?.templateTitle ?? ""}
+        existingFiles={pendingFileConflict?.baseFiles ?? {}}
+        incomingFiles={pendingFileConflict?.incomingFiles ?? {}}
+        incomingActiveFile={pendingFileConflict?.incomingActiveFile ?? ""}
+        onCancel={() => setPendingFileConflict(null)}
+        onConfirm={(renamedFiles, resolvedActiveFile) => {
+          if (!pendingFileConflict) return;
+          const { baseFiles, templateLang, templateTitle } = pendingFileConflict;
+          setPendingFileConflict(null);
+          applyAddFilesToWorkspace(baseFiles, renamedFiles, resolvedActiveFile, templateLang, templateTitle);
+        }}
+      />
+
       <PlaygroundShareModal
         isOpen={isShareModalOpen}
         onClose={() => setShareModalOpen(false)}
@@ -1891,7 +1937,7 @@ export const PlaygroundPage: React.FC = () => {
       <TemplateGalleryModal
         isOpen={isTemplatesModalOpen}
         onClose={() => setIsTemplatesModalOpen(false)}
-        onSelectTemplate={handleSelectExample}
+        onSelectTemplate={handleAddModelFromTemplate}
         currentLang={currentLang}
       />
 

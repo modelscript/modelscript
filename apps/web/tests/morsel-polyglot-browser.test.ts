@@ -393,3 +393,128 @@ describe("@modelscript/web 3D CAD WebGL2 E2E (Morsel & Ansatz)", () => {
     }
   });
 });
+
+describe("@modelscript/web Morsel Digital Thread Composition & Verification E2E", () => {
+  it("renders Digital Thread SVG graph, composes links, runs Formal (SMT) + Simulation verification, and shows cross-file diagnostics", async (t) => {
+    const indexHtml = path.join(DIST_DIR, "index.html");
+    if (!fs.existsSync(indexHtml)) {
+      t.skip("apps/web/dist/index.html not built; run npm run build --workspace=@modelscript/web first");
+      return;
+    }
+
+    const playwright = await import("playwright");
+    const { chromium } = playwright;
+    if (!fs.existsSync(chromium.executablePath())) {
+      t.skip(`Playwright Chromium binary not installed at ${chromium.executablePath()}`);
+      return;
+    }
+
+    const sysmlCode = `package ThermalSystemThread {
+  import ThermalPlant::*;
+
+  part def HeatsinkAssembly {
+    attribute fin_height_mm = 25.0 [mm];
+    attribute max_temp_C = 85.0 [degC];
+  }
+
+  part def ThermalPlant {
+    attribute T = 25.0 [degC];
+  }
+
+  requirement def <'REQ-THM-01'> MaxTempRequirement {
+    subject plant : ThermalPlant;
+    require constraint { ThermalPlant.T_max <= 85.0 }
+  }
+
+  verification def ThermalSimVerification {
+    subject plant : ThermalPlant;
+    verify requirement MaxTempRequirement;
+  }
+}`;
+
+    const scadCode = `// @twin: fin_height_mm <-> ThermalSystemThread::HeatsinkAssembly.fin_height_mm
+// @unit: fin_height_mm = mm
+fin_height_mm = 12.0;
+cube([60, 40, 4]);`;
+
+    const modelicaCode = `model ThermalPlant
+  parameter Real fin_height_mm(unit="mm") = 25.0 annotation(twin = "ThermalSystemThread::HeatsinkAssembly.fin_height_mm");
+  parameter Real T_max(unit="degC") = 85.0 annotation(twin = "ThermalSystemThread::HeatsinkAssembly.max_temp_C");
+  parameter Real Q_in = 40.0;
+  parameter Real C_th = 120.0;
+  parameter Real G_conv = 0.85;
+  Real T(start = 25.0);
+equation
+  C_th * der(T) = Q_in - G_conv * (T - 25.0);
+  annotation(implements="ThermalPlant", experiment(StartTime = 0, StopTime = 300, Interval = 1));
+end ThermalPlant;`;
+
+    const handoffUrl = await buildMorselHandoffUrl(
+      "http://127.0.0.1",
+      [
+        { fileName: "Requirements.sysml", langSlug: "sysml2", code: sysmlCode },
+        { fileName: "Enclosure.scad", langSlug: "scad", code: scadCode },
+        { fileName: "ThermalPlant.mo", langSlug: "modelica", code: modelicaCode },
+      ],
+      0,
+    );
+    const hash = handoffUrl.slice(handoffUrl.indexOf("#"));
+
+    const { server, port } = await startSpaServer(DIST_DIR);
+    let browser: import("playwright").Browser | undefined;
+    try {
+      browser = await chromium.launch({ headless: true, args: CHROMIUM_WEBGL_ARGS });
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
+      const page = await context.newPage();
+      const pageErrors: string[] = [];
+      page.on("pageerror", (err) => pageErrors.push(err.stack || err.message));
+
+      await page.route("**/api/**", (route) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+      );
+
+      await page.goto(`http://127.0.0.1:${port}/morsel?view=split&subview=inspector${hash}`, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+
+      // Switch to Digital Thread sub-tab inside Inspector
+      const threadTabBtn = page.locator('button:has-text("Digital Thread")').first();
+      await threadTabBtn.waitFor({ state: "visible", timeout: 25000 });
+      await threadTabBtn.click();
+
+      // Verify SVG node-link graph renders with all 3 files
+      const graphEl = page.locator('[data-testid="morsel-digital-thread-graph"]');
+      await graphEl.waitFor({ state: "visible", timeout: 15000 });
+      await graphEl.locator('text="Requirements.sysml"').waitFor({ state: "visible", timeout: 10000 });
+      await graphEl.locator('text="Enclosure.scad"').waitFor({ state: "visible", timeout: 10000 });
+      await graphEl.locator('text="ThermalPlant.mo"').waitFor({ state: "visible", timeout: 10000 });
+
+      // Run Formal Verification (SMT) and verify UNSAT drift + Apply Fix appears
+      const verifyFormalBtn = page.locator('button:has-text("Verify Formal (SMT)")').first();
+      await verifyFormalBtn.click();
+      await page.locator("text=/UNSAT/").first().waitFor({ state: "visible", timeout: 20000 });
+      await page.locator('button:has-text("Apply Fix")').first().waitFor({ state: "visible", timeout: 15000 });
+
+      // Open Link Artifacts composer
+      const linkBtn = page.locator('button:has-text("Link Artifacts")').first();
+      await linkBtn.click();
+      await page.locator('text="Compose Cross-Artifact Link"').first().waitFor({ state: "visible", timeout: 5000 });
+
+      // Run Simulation Verification
+      const verifySimBtn = page.locator('button:has-text("Verify Simulation")').first();
+      await verifySimBtn.click();
+      const simBanner = page.locator('[data-testid="morsel-sim-status"]');
+      await simBanner.waitFor({ state: "visible", timeout: 10000 });
+      await page.locator('[data-testid="morsel-sim-status"]:not([data-state="running"])').waitFor({
+        state: "visible",
+        timeout: 25000,
+      });
+
+      assert.deepStrictEqual(pageErrors, [], `Unexpected pageerror(s): ${pageErrors.join("; ")}`);
+    } finally {
+      await browser?.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});

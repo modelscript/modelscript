@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PackageIcon, PlusIcon, SearchIcon, XIcon } from "@primer/octicons-react";
+import { ChevronRightIcon, PackageIcon, PlusIcon, SearchIcon, XIcon } from "@primer/octicons-react";
 import { IconButton, useTheme } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -97,6 +97,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
   const [selectedDomain, setSelectedDomain] = useState<EngineeringDomainId>("all");
   const [packageFilter, setPackageFilter] = useState<string | null>(null);
   const [mountedOnlyFilter, setMountedOnlyFilter] = useState(false);
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
   const [mountedLibs, setMountedLibs] = useState<MountedLibraryEntry[]>([]);
   const [streamedModels, setStreamedModels] = useState<StreamedRegistryModelItem[]>([]);
@@ -454,19 +455,18 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
   if (!isOpen || typeof document === "undefined") return null;
 
   const palette = {
-    bg: isDark ? "var(--ms-bg, #18181b)" : "var(--ms-bg, #ffffff)",
-    subtleBg: isDark ? "var(--ms-bg-alt, #1e1e22)" : "var(--ms-bg-alt, #f6f8fa)",
-    cardBg: isDark ? "var(--ms-surface, #1f1f24)" : "var(--ms-surface, #ffffff)",
+    bg: "var(--ms-bg, #ffffff)",
+    subtleBg: isDark ? "#121214" : "#f6f8fa",
+    cardBg: "var(--ms-bg-elv, #ffffff)",
     stageBg: isDark ? "#121214" : "#f8fafc",
-    border: isDark ? "var(--ms-border, rgba(255, 255, 255, 0.1))" : "var(--ms-border, #d8dee4)",
-    subtleBorder: isDark ? "rgba(255,255,255,0.07)" : "rgba(15,23,42,0.07)",
-    fg: isDark ? "var(--ms-text-1, #e6edf3)" : "var(--ms-text-1, #1f2328)",
-    muted: isDark ? "var(--ms-text-2, #8b949e)" : "var(--ms-text-2, #59636e)",
-    accent: "var(--ms-accent-teal, var(--ms-brand, #0891b2))",
-    accentSoft: isDark
-      ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.16))"
-      : "var(--ms-brand-soft, rgba(8, 145, 178, 0.10))",
-    success: isDark ? "#3fb950" : "#1a7f37",
+    border: "var(--ms-border, rgba(15, 23, 42, 0.12))",
+    subtleBorder: "var(--ms-divider, rgba(15, 23, 42, 0.08))",
+    fg: "var(--ms-text-1, #0f172a)",
+    muted: "var(--ms-text-2, #475569)",
+    accent: isDark ? "var(--ms-link, #22d3ee)" : "var(--ms-brand, #0e7490)",
+    accentBg: "var(--ms-brand, #0e7490)",
+    accentSoft: "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))",
+    success: "var(--ms-status-pass-fg, #047857)",
   };
 
   const totalCount = isModelicaSelected
@@ -483,6 +483,8 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
       category: "Blank",
       lang: selectedLang,
       code: blankCode,
+      ...(selectedLangInfo.defaultFiles ? { files: { ...selectedLangInfo.defaultFiles } } : {}),
+      ...(selectedLangInfo.defaultActiveFile ? { activeFile: selectedLangInfo.defaultActiveFile } : {}),
     });
     onClose();
   };
@@ -501,6 +503,12 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
           setSelectedLang(lang.id);
           setSelectedDomain("all");
           setPackageFilter(null);
+        }}
+        onMouseEnter={(e) => {
+          if (!isSelected) e.currentTarget.style.backgroundColor = "var(--ms-surface-hover)";
+        }}
+        onMouseLeave={(e) => {
+          if (!isSelected) e.currentTarget.style.backgroundColor = "transparent";
         }}
         style={{
           width: "100%",
@@ -560,7 +568,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="New Model & Starter Templates"
+      aria-label="Add Model & Starter Templates"
       data-testid="template-gallery-modal"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -569,7 +577,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
         position: "fixed",
         inset: 0,
         zIndex: 10000,
-        backgroundColor: isDark ? "rgba(3, 7, 15, 0.74)" : "rgba(15, 23, 42, 0.45)",
+        backgroundColor: isDark ? "rgba(0, 0, 0, 0.68)" : "rgba(15, 23, 42, 0.48)",
         backdropFilter: "blur(8px)",
         WebkitBackdropFilter: "blur(8px)",
         display: "flex",
@@ -588,9 +596,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
           color: palette.fg,
           border: `1px solid ${palette.border}`,
           borderRadius: 16,
-          boxShadow: isDark
-            ? "0 28px 80px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(8, 145, 178, 0.18)"
-            : "0 24px 64px rgba(15, 23, 42, 0.22)",
+          boxShadow: "var(--ms-shadow-pop, 0 24px 64px rgba(15, 23, 42, 0.22))",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -627,17 +633,17 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
               <PackageIcon size={16} />
             </div>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 650, lineHeight: 1.2 }}>New Model</div>
+              <div style={{ fontSize: 15, fontWeight: 650, lineHeight: 1.2 }}>Add Model</div>
               <div style={{ fontSize: 11.5, color: palette.muted }}>
-                Choose a language, start from a blank canvas, or pick a starter template ({totalCount.toLocaleString()}{" "}
-                in {selectedLangOption.label})
+                Choose a language, add a blank model, or pick a starter template ({totalCount.toLocaleString()} in{" "}
+                {selectedLangOption.label})
               </div>
             </div>
           </div>
 
           <IconButton
             icon={XIcon}
-            aria-label="Close New Model gallery"
+            aria-label="Close Add Model gallery"
             variant="invisible"
             size="small"
             onClick={onClose}
@@ -716,45 +722,106 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                   {filteredLanguages.map((lang) => renderLangRailItem(lang))}
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  {pinnedLanguages.length > 0 && (
-                    <div>
-                      <div
-                        style={{
-                          padding: "4px 10px",
-                          fontSize: 10.5,
-                          fontWeight: 700,
-                          letterSpacing: "0.04em",
-                          textTransform: "uppercase",
-                          color: palette.muted,
-                        }}
-                      >
-                        Popular
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {[
+                    ...(pinnedLanguages.length > 0
+                      ? [{ key: "Popular", title: "Popular", items: pinnedLanguages, prefix: "pinned-" }]
+                      : []),
+                    ...groupedLanguages.map((g) => ({
+                      key: g.title,
+                      title: g.title,
+                      items: g.items,
+                      prefix: "",
+                    })),
+                  ].map((section) => {
+                    const isCollapsed = Boolean(collapsedCategories[section.key]);
+                    const hasActiveChild = section.items.some((l) => l.id.toLowerCase() === selectedLang.toLowerCase());
+                    return (
+                      <div key={section.key}>
+                        <button
+                          type="button"
+                          aria-expanded={!isCollapsed}
+                          onClick={() =>
+                            setCollapsedCategories((prev) => ({
+                              ...prev,
+                              [section.key]: !prev[section.key],
+                            }))
+                          }
+                          onMouseEnter={(e) => {
+                            if (!hasActiveChild) e.currentTarget.style.backgroundColor = "var(--ms-surface-hover)";
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!hasActiveChild) e.currentTarget.style.backgroundColor = "transparent";
+                          }}
+                          style={{
+                            width: "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 6,
+                            padding: "6px 8px",
+                            borderRadius: 8,
+                            border: "none",
+                            backgroundColor: hasActiveChild ? "var(--ms-surface-hover)" : "transparent",
+                            color: palette.fg,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            letterSpacing: "0.04em",
+                            textTransform: "uppercase",
+                            cursor: "pointer",
+                            textAlign: "left",
+                            transition: "background-color 0.12s ease",
+                          }}
+                        >
+                          <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                color: hasActiveChild ? palette.accent : palette.muted,
+                                transform: isCollapsed ? "rotate(0deg)" : "rotate(90deg)",
+                                transition: "transform 0.14s ease",
+                                flexShrink: 0,
+                              }}
+                            >
+                              <ChevronRightIcon size={12} />
+                            </span>
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {section.title}
+                            </span>
+                          </span>
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 600,
+                              padding: "1px 6px",
+                              borderRadius: 999,
+                              backgroundColor: palette.subtleBorder,
+                              color: palette.muted,
+                              fontVariantNumeric: "tabular-nums",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {section.items.length}
+                          </span>
+                        </button>
+                        {!isCollapsed && (
+                          <div
+                            style={{
+                              marginLeft: 13,
+                              paddingLeft: 8,
+                              marginTop: 3,
+                              borderLeft: `1px solid ${palette.border}`,
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 2,
+                            }}
+                          >
+                            {section.items.map((lang) => renderLangRailItem(lang, section.prefix))}
+                          </div>
+                        )}
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                        {pinnedLanguages.map((lang) => renderLangRailItem(lang, "pinned-"))}
-                      </div>
-                    </div>
-                  )}
-                  {groupedLanguages.map((group) => (
-                    <div key={group.title}>
-                      <div
-                        style={{
-                          padding: "4px 10px",
-                          fontSize: 10.5,
-                          fontWeight: 700,
-                          letterSpacing: "0.04em",
-                          textTransform: "uppercase",
-                          color: palette.muted,
-                        }}
-                      >
-                        {group.title}
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                        {group.items.map((lang) => renderLangRailItem(lang))}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -822,7 +889,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                     fontWeight: 600,
                     padding: "5px 12px",
                     borderRadius: 8,
-                    backgroundColor: palette.accent,
+                    backgroundColor: palette.accentBg,
                     color: "#ffffff",
                     flexShrink: 0,
                   }}
@@ -1093,8 +1160,28 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                     return (
                       <div
                         key={model.id}
-                        onDoubleClick={() => void handleOpenRegistryModel(model)}
-                        title={`${model.fqn}\nDouble-click or click Open to load model`}
+                        className="ms-modal-tile"
+                        role="button"
+                        tabIndex={0}
+                        draggable={!isBusy}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", model.fqn);
+                          e.dataTransfer.setData("application/modelscript-model", JSON.stringify(model));
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
+                        onClick={() => {
+                          if (!isBusy) void handleOpenRegistryModel(model);
+                        }}
+                        onDoubleClick={() => {
+                          if (!isBusy) void handleOpenRegistryModel(model);
+                        }}
+                        onKeyDown={(e) => {
+                          if ((e.key === "Enter" || e.key === " ") && !isBusy) {
+                            e.preventDefault();
+                            void handleOpenRegistryModel(model);
+                          }
+                        }}
+                        title={`${model.fqn}\nClick to open or drag onto workspace`}
                         style={{
                           border: `1px solid ${isCurrent ? palette.accent : palette.border}`,
                           borderRadius: 12,
@@ -1102,7 +1189,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                           display: "flex",
                           flexDirection: "column",
                           overflow: "hidden",
-                          cursor: "pointer",
+                          cursor: isBusy ? "wait" : "pointer",
                           transition: "border-color 0.14s ease, box-shadow 0.14s ease",
                           boxShadow: isCurrent ? `0 0 0 2px ${palette.accentSoft}` : "none",
                         }}
@@ -1277,27 +1364,11 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                               <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{model.packageName}</span>
                             </button>
 
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleOpenRegistryModel(model);
-                              }}
-                              style={{
-                                border: "none",
-                                borderRadius: 6,
-                                backgroundColor: palette.accent,
-                                color: "#ffffff",
-                                padding: "4px 10px",
-                                fontSize: 11.5,
-                                fontWeight: 600,
-                                cursor: isBusy ? "wait" : "pointer",
-                                flexShrink: 0,
-                              }}
-                            >
-                              {isBusy ? "Opening…" : "Open"}
-                            </button>
+                            {isBusy && (
+                              <span style={{ fontSize: 11, fontWeight: 600, color: palette.accent, flexShrink: 0 }}>
+                                Opening…
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1312,10 +1383,31 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                     return (
                       <div
                         key={ex.id}
+                        className="ms-modal-tile"
+                        role="button"
+                        tabIndex={0}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", ex.code);
+                          e.dataTransfer.setData("application/modelscript-template", JSON.stringify(ex));
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
+                        onClick={() => {
+                          onSelectTemplate(ex);
+                          onClose();
+                        }}
                         onDoubleClick={() => {
                           onSelectTemplate(ex);
                           onClose();
                         }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onSelectTemplate(ex);
+                            onClose();
+                          }
+                        }}
+                        title={`${ex.title}\nClick to open or drag onto workspace`}
                         style={{
                           border: `1px solid ${isCurrent ? palette.accent : palette.border}`,
                           borderRadius: 12,
@@ -1424,27 +1516,6 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                             }}
                           >
                             <span style={{ fontSize: 11, color: palette.muted }}>{ex.category}</span>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectTemplate(ex);
-                                onClose();
-                              }}
-                              style={{
-                                border: "none",
-                                borderRadius: 6,
-                                backgroundColor: palette.accent,
-                                color: "#ffffff",
-                                padding: "4px 10px",
-                                fontSize: 11.5,
-                                fontWeight: 600,
-                                cursor: "pointer",
-                                flexShrink: 0,
-                              }}
-                            >
-                              Open
-                            </button>
                           </div>
                         </div>
                       </div>

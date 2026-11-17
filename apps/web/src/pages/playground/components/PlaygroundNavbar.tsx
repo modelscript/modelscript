@@ -22,6 +22,7 @@ import {
   SunIcon,
   TableIcon,
   TerminalIcon,
+  TrashIcon,
   WorkflowIcon,
   ZapIcon,
 } from "@primer/octicons-react";
@@ -71,6 +72,7 @@ export interface PlaygroundNavbarProps {
   onSimulate?: () => void;
   onOpenInVsCode?: () => void;
   onOpenTemplates?: () => void;
+  onClearWorkspace?: () => void;
   onSaveToArtifact?: () => void;
   onCreateRepo?: () => void;
   runStatus?: {
@@ -110,6 +112,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   onSimulate,
   onOpenInVsCode,
   onOpenTemplates,
+  onClearWorkspace,
   onSaveToArtifact,
   onCreateRepo,
   onDownloadModel,
@@ -313,15 +316,16 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           </Link>
         )}
 
-        {/* New Model CTA + Static Colored Language Label */}
+        {/* Add Model & Clear Workspace CTAs + Static Colored Language Label */}
         <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", minWidth: 0, flexShrink: 1 }}>
           {onOpenTemplates && (
             <Button
               size="small"
-              variant="default"
+              variant="invisible"
               leadingVisual={PlusIcon}
               onClick={onOpenTemplates}
-              title="Create a new model or browse starter templates"
+              title="Add a model or starter template to the workspace"
+              data-testid="playground-add-model-btn"
               style={{
                 height: 30,
                 borderRadius: 8,
@@ -331,7 +335,28 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
                 flexShrink: 0,
               }}
             >
-              <NavText>New Model</NavText>
+              <NavText>Add Model</NavText>
+            </Button>
+          )}
+
+          {onClearWorkspace && (
+            <Button
+              size="small"
+              variant="invisible"
+              leadingVisual={TrashIcon}
+              onClick={onClearWorkspace}
+              title="Clear all files from the workspace"
+              data-testid="playground-clear-workspace-btn"
+              style={{
+                height: 30,
+                borderRadius: 8,
+                fontWeight: 600,
+                fontSize: 12,
+                padding: "0 10px",
+                flexShrink: 0,
+              }}
+            >
+              <NavText>Clear Workspace</NavText>
             </Button>
           )}
 

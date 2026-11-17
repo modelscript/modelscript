@@ -6859,6 +6859,23 @@ export const connectEquationQueries: Record<string, any> = {
         if (lhsSig && rhsSig) {
           const compat = checkPortPlugCompatibility(lhsSig, rhsSig, registry);
           if (!compat.compatible) {
+            const isElectricalBoundary = (entry: typeof lhsPortEntry) => {
+              const name = (entry.name || "").toLowerCase();
+              const rule = (entry.ruleName || "").toLowerCase();
+              return (
+                rule === "pscad_port" ||
+                rule === "pscad_connector" ||
+                rule === "psse_component" ||
+                name.includes("pin") ||
+                name.includes("plug") ||
+                name.includes("pcc") ||
+                name.includes("bus") ||
+                name === "electricalpin"
+              );
+            };
+            if (isElectricalBoundary(lhsPortEntry) && isElectricalBoundary(rhsPortEntry)) {
+              return null;
+            }
             diags.push(
               error(
                 ModelicaErrorCode.NOT_PLUG_COMPATIBLE.message(lhsText, rhsText) +

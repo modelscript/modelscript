@@ -23,11 +23,11 @@ export const PlaygroundNavbar = styled.header`
   background-color: var(--ms-surface-glass, rgba(255, 255, 255, 0.94));
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border: 1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08));
+  border: 1px solid var(--ms-border, rgba(15, 23, 42, 0.12));
   border-radius: 12px;
   box-shadow:
-    0 8px 28px rgba(15, 23, 42, 0.08),
-    0 1px 4px rgba(15, 23, 42, 0.05);
+    0 4px 12px -4px rgba(15, 23, 42, 0.18),
+    0 1px 2px rgba(15, 23, 42, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;

@@ -601,18 +601,67 @@ function extractGenericArtifact(
         }
       }
     }
+    const maskedSysml = maskCommentsPreservingOffsets(file.content);
+    const importedTargets: Array<{ pkg: string; line: number }> = [];
+    const importRegex = /\bimport\s+([A-Za-z_][A-Za-z0-9_:]*)(?:::\*|::([A-Za-z_]\w*))?\s*;/g;
+    let impMatch: RegExpExecArray | null;
+    while ((impMatch = importRegex.exec(maskedSysml)) !== null) {
+      const targetPkg = impMatch[1]!.replace(/::+$/, "");
+      if (targetPkg) {
+        importedTargets.push({ pkg: targetPkg, line: lineColAtOffset(file.content, impMatch.index).line });
+      }
+    }
+
+    const findAttrLine = (attr: string, fallback: number): number => {
+      const short = attr.split(/::|\./).pop() ?? attr;
+      const idx = maskedSysml.indexOf(attr);
+      if (idx >= 0) return lineColAtOffset(file.content, idx).line;
+      const shortIdx = maskedSysml.indexOf(short);
+      if (shortIdx >= 0) return lineColAtOffset(file.content, shortIdx).line;
+      return fallback;
+    };
+
     for (const req of requirements) {
+      const reqLine = req.targetAttribute ? findAttrLine(req.targetAttribute, 1) : 1;
       if (req.subjectName) {
         directives.push({
           fileIndex: index,
           fileName: file.fileName,
-          line: 1,
+          line: reqLine,
           kind: "subject",
           sourceExpr: req.subjectName,
           direction: "<->",
           targetExpr: req.targetAttribute,
           rawText: `subject ${req.subjectName};`,
         });
+      }
+      if (req.targetAttribute) {
+        const attrLine = findAttrLine(req.targetAttribute, reqLine);
+        if (req.targetAttribute.includes(".") || req.targetAttribute.includes("::")) {
+          directives.push({
+            fileIndex: index,
+            fileName: file.fileName,
+            line: attrLine,
+            kind: "subject",
+            sourceExpr: req.targetAttribute,
+            direction: "<->",
+            targetExpr: req.targetAttribute.replace(/\./g, "::"),
+            rawText: req.expressionText ?? req.targetAttribute,
+          });
+        } else {
+          for (const imp of importedTargets) {
+            directives.push({
+              fileIndex: index,
+              fileName: file.fileName,
+              line: attrLine > 1 ? attrLine : imp.line,
+              kind: "subject",
+              sourceExpr: req.targetAttribute,
+              direction: "<->",
+              targetExpr: `${imp.pkg}::${req.targetAttribute}`,
+              rawText: `import ${imp.pkg}::*; // ${req.targetAttribute}`,
+            });
+          }
+        }
       }
     }
   } else if (lang === "modelica") {

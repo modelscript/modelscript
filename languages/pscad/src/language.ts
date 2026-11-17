@@ -8,8 +8,10 @@
  */
 
 import { language, xmlRules } from "@modelscript/dsl";
+import type { FmiLsEmtCompanionInstance } from "@modelscript/exchange";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { buildPscadBuiltinSymbols } from "./builtins.js";
 import { instantiateWasmCompanionsForNetlist } from "./catalog/wasm-companion-loader.js";
 import { emtResultToComtrade, writeComtrade } from "./comtrade/comtrade-writer.js";
 import { writePscadOut, type PscadOutResult } from "./comtrade/pscad-out-writer.js";
@@ -66,6 +68,8 @@ export interface PscadSimulationPipelineOptions {
    * or if the extracted netlist contains no sources.
    */
   strictNetlist?: boolean | undefined;
+  /** Optional `fmi-ls-emt` Norton-companion instances (e.g. compiled Modelica electrical leaves) keyed by component/FMU ID. */
+  fmuCompanions?: Map<string, FmiLsEmtCompanionInstance> | undefined;
   /** Optional external EMT solver callback (e.g., `@modelscript/simulate` Dommel solver); falls back to built-in companion synthesizer when omitted. */
   solverRunner?:
     | ((
@@ -96,8 +100,14 @@ function synthesizeCompanionTrajectory(
   netlist: ReturnType<typeof extractEmtNetlist>,
   timeStepSec: number,
   durationSec: number,
+  extraCompanions?: Map<string, FmiLsEmtCompanionInstance>,
 ) {
   const fmuCompanions = instantiateWasmCompanionsForNetlist(netlist);
+  if (extraCompanions) {
+    for (const [k, v] of extraCompanions) {
+      fmuCompanions.set(k, v);
+    }
+  }
   const solver = new EmtSolver(netlist, {
     timeStepSec,
     durationSec,
@@ -256,7 +266,7 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
           });
       simulationReport.injectedReferenceBuses = isolatedUnsourced;
       simulationReport.synthesizedIbr = !isControlOnly && (netlist.fmuInstances ?? []).length > 0;
-      simulationResult = synthesizeCompanionTrajectory(netlist, timeStepSec, durationSec);
+      simulationResult = synthesizeCompanionTrajectory(netlist, timeStepSec, durationSec, options.fmuCompanions);
       if (simulationReport.injectedReferenceBuses.length > 0 || simulationReport.synthesizedIbr) {
         diagnostics.push({
           code: "P6102",
@@ -399,6 +409,7 @@ export const pscadLanguage = language({
   },
   extras: ($) => [/[ \t\r\n]+/, $["COMMENT"]!, $["PROCESSING_INSTRUCTION"]!],
   indexing: {
+    builtins: buildPscadBuiltinSymbols,
     indexFile: indexPscadDocument,
   },
 

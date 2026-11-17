@@ -945,7 +945,7 @@ export default function CadViewer({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: dark ? "#1e1e1e" : "#f5f5f5",
+          background: dark ? "#121214" : "#f8fafc",
           color: dark ? "#e57373" : "#d32f2f",
           fontFamily: "system-ui, sans-serif",
           fontSize: 14,
@@ -964,7 +964,7 @@ export default function CadViewer({
 
   if (components.length === 0 && !vtkBuffer) {
     return (
-      <div style={{ height: "100%", position: "relative", background: dark ? "#1e1e1e" : "#f5f5f5" }}>
+      <div style={{ height: "100%", position: "relative", background: dark ? "#121214" : "#f8fafc" }}>
         <EmptyState dark={dark} fitInsets={fitInsets} />
       </div>
     );

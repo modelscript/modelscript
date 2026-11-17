@@ -12,8 +12,16 @@ import type { editor } from "monaco-editor";
 import React, { useMemo, useRef, useState } from "react";
 import { MorselResizeHandle } from "./MorselResizeHandle";
 
+export interface ProjectDiagnosticGroup {
+  fileName: string;
+  uri: string;
+  markers: editor.IMarkerData[];
+}
+
 export interface MorselDiagnosticsPanelProps {
   diagnostics: editor.IMarkerData[];
+  projectDiagnostics?: ProjectDiagnosticGroup[] | undefined;
+  activeFileName?: string | undefined;
   colorMode: "dark" | "light";
   isFloatingWorkspace: boolean;
   treeVisible: boolean;
@@ -23,14 +31,16 @@ export interface MorselDiagnosticsPanelProps {
   panelHeight: number;
   onResizeHeight: (height: number) => void;
   onSelectDiagnostic: (marker: editor.IMarkerData) => void;
+  onSelectProjectDiagnostic?: ((fileName: string, marker: editor.IMarkerData) => void) | undefined;
 }
 
 type SeverityFilter = "all" | "error" | "warning";
+type ScopeFilter = "file" | "project";
 
 const SEVERITY_ERROR = 8;
 const SEVERITY_WARNING = 4;
 
-export const COLLAPSED_DIAGNOSTICS_HEIGHT = 44;
+export const COLLAPSED_DIAGNOSTICS_HEIGHT = 48;
 
 function formatMarkerCode(code: editor.IMarkerData["code"]): string | null {
   if (!code) return null;
@@ -43,6 +53,8 @@ function formatMarkerCode(code: editor.IMarkerData["code"]): string | null {
 
 export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
   diagnostics,
+  projectDiagnostics,
+  activeFileName,
   colorMode,
   isFloatingWorkspace,
   treeVisible,
@@ -52,36 +64,58 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
   panelHeight,
   onResizeHeight,
   onSelectDiagnostic,
+  onSelectProjectDiagnostic,
 }) => {
   const [filter, setFilter] = useState<SeverityFilter>("all");
+  const [scope, setScope] = useState<ScopeFilter>("project");
   const [isResizing, setIsResizing] = useState(false);
   const isResizingRef = useRef(false);
 
   const isDark = colorMode === "dark";
 
+  const hasProjectScope = Boolean(projectDiagnostics && projectDiagnostics.length > 0);
+  const effectiveScope: ScopeFilter = hasProjectScope ? scope : "file";
+
+  const scopedEntries = useMemo(() => {
+    if (effectiveScope === "project" && projectDiagnostics) {
+      const entries: Array<{ fileName?: string; marker: editor.IMarkerData }> = [];
+      for (const group of projectDiagnostics) {
+        for (const marker of group.markers) {
+          entries.push({ fileName: group.fileName, marker });
+        }
+      }
+      return entries;
+    }
+    return diagnostics.map((marker) => ({ fileName: activeFileName, marker }));
+  }, [effectiveScope, projectDiagnostics, diagnostics, activeFileName]);
+
   const counts = useMemo(() => {
     let errors = 0;
     let warnings = 0;
     let infos = 0;
-    for (const d of diagnostics) {
+    for (const { marker: d } of scopedEntries) {
       if (d.severity >= SEVERITY_ERROR) errors++;
       else if (d.severity >= SEVERITY_WARNING) warnings++;
       else infos++;
     }
-    return { errors, warnings, infos, total: diagnostics.length };
-  }, [diagnostics]);
+    return { errors, warnings, infos, total: scopedEntries.length };
+  }, [scopedEntries]);
 
   const filteredDiagnostics = useMemo(() => {
-    const sorted = [...diagnostics].sort((a, b) => {
-      if (b.severity !== a.severity) return b.severity - a.severity;
-      if (a.startLineNumber !== b.startLineNumber) return a.startLineNumber - b.startLineNumber;
-      return a.startColumn - b.startColumn;
+    const sorted = [...scopedEntries].sort((a, b) => {
+      if (b.marker.severity !== a.marker.severity) return b.marker.severity - a.marker.severity;
+      if ((a.fileName ?? "") !== (b.fileName ?? "")) return (a.fileName ?? "").localeCompare(b.fileName ?? "");
+      if (a.marker.startLineNumber !== b.marker.startLineNumber) {
+        return a.marker.startLineNumber - b.marker.startLineNumber;
+      }
+      return a.marker.startColumn - b.marker.startColumn;
     });
-    if (filter === "error") return sorted.filter((d) => d.severity >= SEVERITY_ERROR);
-    if (filter === "warning")
-      return sorted.filter((d) => d.severity >= SEVERITY_WARNING && d.severity < SEVERITY_ERROR);
+    if (filter === "error") return sorted.filter((e) => e.marker.severity >= SEVERITY_ERROR);
+    if (filter === "warning") {
+      return sorted.filter((e) => e.marker.severity >= SEVERITY_WARNING && e.marker.severity < SEVERITY_ERROR);
+    }
     return sorted;
-  }, [diagnostics, filter]);
+  }, [scopedEntries, filter]);
 
   const handleResizeMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -143,18 +177,18 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
     document.body.style.userSelect = "none";
   };
 
-  const isCompactPill = isFloatingWorkspace && !isExpanded && counts.total === 0;
-  const headerHeight = isCompactPill ? 36 : COLLAPSED_DIAGNOSTICS_HEIGHT;
+  const headerHeight = COLLAPSED_DIAGNOSTICS_HEIGHT;
 
   const floatingShadow = isDark
-    ? "0 12px 32px rgba(0, 0, 0, 0.48), 0 0 0 1px rgba(255, 255, 255, 0.04)"
-    : "0 12px 32px rgba(15, 23, 42, 0.10), 0 1px 3px rgba(15, 23, 42, 0.05)";
+    ? "0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 16px 40px -8px rgba(0, 0, 0, 0.56)"
+    : "0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 12px 32px rgba(15, 23, 42, 0.10), 0 1px 3px rgba(15, 23, 42, 0.05)";
 
   const outerStyle: React.CSSProperties = isFloatingWorkspace
     ? {
         position: "absolute",
         left: treeVisible ? treeWidth + 24 : 12,
-        ...(isCompactPill ? { right: "auto", bottom: 16 } : { right: 12, bottom: 12 }),
+        right: 12,
+        bottom: 12,
         height: isExpanded ? panelHeight : headerHeight,
         zIndex: 30,
         overflow: "visible",
@@ -171,15 +205,15 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
       };
 
   const cardStyle: React.CSSProperties = {
-    width: isCompactPill ? "auto" : "100%",
+    width: "100%",
     height: "100%",
     display: "flex",
     flexDirection: "column",
     borderRadius: 12,
     border: isFloatingWorkspace
-      ? "1px solid var(--borderColor-muted, rgba(15, 23, 42, 0.08))"
+      ? "1px solid var(--ms-border, rgba(15, 23, 42, 0.12))"
       : "1px solid var(--borderColor-muted, var(--ms-divider))",
-    backgroundColor: isDark ? "rgba(24, 24, 27, 0.94)" : "rgba(255, 255, 255, 0.96)",
+    backgroundColor: "var(--ms-surface-glass, rgba(255, 255, 255, 0.86))",
     backdropFilter: "blur(14px)",
     WebkitBackdropFilter: "blur(14px)",
     boxShadow: floatingShadow,
@@ -187,9 +221,9 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
     pointerEvents: "auto",
   };
 
-  const textPrimary = isDark ? "#e4e4e7" : "#0f172a";
-  const textMuted = isDark ? "#a1a1aa" : "#64748b";
-  const borderColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(15, 23, 42, 0.08)";
+  const textPrimary = "var(--ms-text-1, #f4f4f5)";
+  const textMuted = "var(--ms-text-2, #a1a1aa)";
+  const borderColor = "var(--ms-divider, rgba(255, 255, 255, 0.08))";
 
   return (
     <div style={outerStyle} role="region" aria-label="Diagnostics panel">
@@ -235,8 +269,8 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            gap: isCompactPill ? 8 : 12,
-            padding: isCompactPill ? "0 12px" : "8px 16px",
+            gap: 8,
+            padding: "0 12px",
             boxSizing: "border-box",
             cursor: "pointer",
             userSelect: "none",
@@ -246,7 +280,9 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-            {!isCompactPill && <span style={{ fontWeight: 600, letterSpacing: "0.01em" }}>Diagnostics</span>}
+            {(isExpanded || counts.total > 0) && (
+              <span style={{ fontWeight: 600, letterSpacing: "0.01em" }}>Diagnostics</span>
+            )}
 
             {counts.total === 0 ? (
               <span
@@ -255,8 +291,8 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
                   alignItems: "center",
                   gap: 5,
                   fontSize: 11,
-                  fontWeight: isCompactPill ? 500 : 400,
-                  color: isDark ? "#4ade80" : "#16a34a",
+                  fontWeight: 500,
+                  color: "var(--ms-status-pass-fg, #34d399)",
                   whiteSpace: "nowrap",
                 }}
               >
@@ -275,8 +311,8 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
                       borderRadius: 999,
                       fontSize: 11,
                       fontWeight: 600,
-                      backgroundColor: isDark ? "rgba(248, 81, 73, 0.16)" : "rgba(220, 38, 38, 0.10)",
-                      color: isDark ? "#f85149" : "#dc2626",
+                      backgroundColor: "var(--ms-status-fail-bg, rgba(251, 113, 133, 0.15))",
+                      color: "var(--ms-status-fail-fg, #fb7185)",
                     }}
                   >
                     <XCircleFillIcon size={11} />
@@ -293,8 +329,8 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
                       borderRadius: 999,
                       fontSize: 11,
                       fontWeight: 600,
-                      backgroundColor: isDark ? "rgba(210, 153, 34, 0.18)" : "rgba(217, 119, 6, 0.10)",
-                      color: isDark ? "#e3b341" : "#d97706",
+                      backgroundColor: "var(--ms-status-warn-bg, rgba(251, 191, 36, 0.15))",
+                      color: "var(--ms-status-warn-fg, #fbbf24)",
                     }}
                   >
                     <AlertIcon size={11} />
@@ -311,8 +347,8 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
                       borderRadius: 999,
                       fontSize: 11,
                       fontWeight: 600,
-                      backgroundColor: isDark ? "rgba(56, 189, 248, 0.16)" : "rgba(2, 132, 199, 0.10)",
-                      color: isDark ? "#38bdf8" : "#0284c7",
+                      backgroundColor: "var(--ms-status-info-bg, rgba(56, 189, 248, 0.15))",
+                      color: "var(--ms-status-info-fg, #38bdf8)",
                     }}
                   >
                     <InfoIcon size={11} />
@@ -324,6 +360,46 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {isExpanded && hasProjectScope && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 2,
+                  marginRight: 6,
+                  paddingRight: 6,
+                  borderRight: `1px solid ${borderColor}`,
+                }}
+              >
+                {(["project", "file"] as ScopeFilter[]).map((key) => {
+                  const active = effectiveScope === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setScope(key)}
+                      style={{
+                        padding: "2px 8px",
+                        fontSize: 11,
+                        fontWeight: active ? 600 : 500,
+                        borderRadius: 6,
+                        border: "none",
+                        cursor: "pointer",
+                        backgroundColor: active
+                          ? isDark
+                            ? "rgba(56, 189, 248, 0.16)"
+                            : "rgba(8, 145, 178, 0.12)"
+                          : "transparent",
+                        color: active ? (isDark ? "#38bdf8" : "#0891b2") : textMuted,
+                      }}
+                    >
+                      {key === "project" ? "All Files" : "Current File"}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {isExpanded && counts.total > 0 && (
               <div
                 onClick={(e) => e.stopPropagation()}
@@ -415,16 +491,22 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
                   : "No diagnostics match the selected filter."}
               </div>
             ) : (
-              filteredDiagnostics.map((d, idx) => {
+              filteredDiagnostics.map(({ fileName, marker: d }, idx) => {
                 const isErr = d.severity >= SEVERITY_ERROR;
                 const isWarn = !isErr && d.severity >= SEVERITY_WARNING;
                 const codeStr = formatMarkerCode(d.code);
                 const sourceLabel = d.source ? (codeStr ? `${d.source}(${codeStr})` : d.source) : codeStr;
                 return (
                   <button
-                    key={`${d.startLineNumber}:${d.startColumn}:${codeStr ?? ""}:${idx}`}
+                    key={`${fileName ?? ""}:${d.startLineNumber}:${d.startColumn}:${codeStr ?? ""}:${idx}`}
                     type="button"
-                    onClick={() => onSelectDiagnostic(d)}
+                    onClick={() => {
+                      if (fileName && onSelectProjectDiagnostic) {
+                        onSelectProjectDiagnostic(fileName, d);
+                      } else {
+                        onSelectDiagnostic(d);
+                      }
+                    }}
                     style={{
                       width: "100%",
                       display: "flex",
@@ -474,6 +556,22 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
                         <InfoIcon size={13} />
                       )}
                     </span>
+
+                    {effectiveScope === "project" && fileName && (
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          padding: "1px 6px",
+                          borderRadius: 4,
+                          fontSize: 11,
+                          fontFamily: "var(--ms-font-mono, ui-monospace, monospace)",
+                          backgroundColor: isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(15, 23, 42, 0.06)",
+                          color: isDark ? "#e2e8f0" : "#334155",
+                        }}
+                      >
+                        {fileName}
+                      </span>
+                    )}
 
                     <span
                       style={{

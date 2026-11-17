@@ -479,6 +479,7 @@ export interface AmplSolverOptions {
     | "clp"
     | "cbc"
     | "ipopt"
+    | "bonmin"
     | "couenne"
     | "pure-js"
     | "cplex"

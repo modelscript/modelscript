@@ -100,15 +100,30 @@ export function VariablesTree({ variables, selectedVariables, onToggleVariable }
     );
   };
 
+  const rootItems = Array.from(treeRoot.children.values()).sort((a, b) => {
+    if (a.children.size > 0 && b.children.size === 0) return -1;
+    if (a.children.size === 0 && b.children.size > 0) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  if (rootItems.length === 0) {
+    return (
+      <div
+        style={{
+          padding: "20px 14px",
+          textAlign: "center",
+          color: "var(--ms-text-2, var(--color-fg-muted))",
+          fontSize: 12,
+        }}
+      >
+        No plot variables available.
+      </div>
+    );
+  }
+
   return (
-    <TreeView aria-label="Simulation Variables">
-      {Array.from(treeRoot.children.values())
-        .sort((a, b) => {
-          if (a.children.size > 0 && b.children.size === 0) return -1;
-          if (a.children.size === 0 && b.children.size > 0) return 1;
-          return a.name.localeCompare(b.name);
-        })
-        .map(renderNode)}
-    </TreeView>
+    <div style={{ padding: "6px 10px" }}>
+      <TreeView aria-label="Plot variables">{rootItems.map(renderNode)}</TreeView>
+    </div>
   );
 }

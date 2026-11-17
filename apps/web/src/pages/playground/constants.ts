@@ -10,6 +10,8 @@ export interface HeroExample {
   category: string;
   lang: string;
   code: string;
+  files?: Record<string, string> | undefined;
+  activeFile?: string | undefined;
   domain?: string;
   description?: string;
   tags?: string[];
@@ -710,5 +712,88 @@ Municipal Water Distribution Network Two-Loop System
     </listOfReactions>
   </model>
 </sbml>`,
+  },
+  {
+    id: "digital-thread-sysml-scad-modelica",
+    title: "Digital Thread: SysML v2 + SCAD + Modelica",
+    category: "SysML v2 Systems",
+    domain: "Systems & Controls",
+    description:
+      "Multi-artifact digital thread linking SysML v2 thermal requirements, OpenSCAD heatsink geometry, and Modelica thermal plant dynamics with formal & simulation verification.",
+    tags: ["Digital Thread", "SysML v2", "OpenSCAD", "Modelica", "Verification"],
+    lang: "sysml2",
+    activeFile: "Requirements.sysml",
+    code: `package ThermalSystemThread {
+  import ThermalPlant::*;
+
+  part def HeatsinkAssembly {
+    attribute fin_height_mm = 25.0 [mm];
+    attribute max_temp_C = 85.0 [degC];
+  }
+
+  part def ThermalPlant {
+    attribute T = 25.0 [degC];
+  }
+
+  requirement def <'REQ-THM-01'> MaxTempRequirement {
+    doc /* Plant steady-state temperature shall remain below 85 degC */
+    subject plant : ThermalPlant;
+    require constraint { ThermalPlant.T_max <= 85.0 }
+  }
+
+  verification def ThermalSimVerification {
+    subject plant : ThermalPlant;
+    verify requirement MaxTempRequirement;
+  }
+}`,
+    files: {
+      "Requirements.sysml": `package ThermalSystemThread {
+  import ThermalPlant::*;
+
+  part def HeatsinkAssembly {
+    attribute fin_height_mm = 25.0 [mm];
+    attribute max_temp_C = 85.0 [degC];
+  }
+
+  part def ThermalPlant {
+    attribute T = 25.0 [degC];
+  }
+
+  requirement def <'REQ-THM-01'> MaxTempRequirement {
+    doc /* Plant steady-state temperature shall remain below 85 degC */
+    subject plant : ThermalPlant;
+    require constraint { ThermalPlant.T_max <= 85.0 }
+  }
+
+  verification def ThermalSimVerification {
+    subject plant : ThermalPlant;
+    verify requirement MaxTempRequirement;
+  }
+}`,
+      "Enclosure.scad": `// @twin: fin_height_mm <-> ThermalSystemThread::HeatsinkAssembly.fin_height_mm
+// @unit: fin_height_mm = mm
+fin_height_mm = 25.0;
+base_w = 60;
+base_d = 40;
+
+union() {
+  cube([base_w, base_d, 4]);
+  for (i = [0 : 4]) {
+    translate([4 + i * 12, 0, 4])
+      cube([3, base_d, fin_height_mm]);
+  }
+}`,
+      "ThermalPlant.mo": `model ThermalPlant
+  parameter Real fin_height_mm(unit="mm") = 25.0 annotation(twin = "ThermalSystemThread::HeatsinkAssembly.fin_height_mm");
+  parameter Real T_max(unit="degC") = 85.0 annotation(twin = "ThermalSystemThread::HeatsinkAssembly.max_temp_C");
+  parameter Real Q_in = 40.0;
+  parameter Real C_th = 120.0;
+  parameter Real G_conv = 0.85;
+  Real T(start = 25.0);
+equation
+  C_th * der(T) = Q_in - G_conv * (T - 25.0);
+  annotation(implements="ThermalPlant", experiment(StartTime = 0, StopTime = 300, Interval = 1));
+end ThermalPlant;`,
+    },
   },
 ];

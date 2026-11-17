@@ -696,7 +696,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
               .map(([varName, val]) => (
                 <span key={varName} style={{ display: "inline-flex", gap: 4 }}>
                   <span style={{ opacity: 0.75 }}>{varName}:</span>
-                  <span style={{ fontWeight: 600, color: props.theme === "vs-dark" ? "#3fb950" : "#1a7f37" }}>
+                  <span style={{ fontWeight: 600, color: "var(--ms-status-pass-fg, #34d399)" }}>
                     {typeof val === "number" && Number.isFinite(val) ? val.toFixed(3) : String(val)}
                   </span>
                 </span>
@@ -733,7 +733,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
                 paddingBottom: originScreenPos ? 0 : (props.fitInsets?.bottom ?? 0),
                 paddingLeft: originScreenPos ? 0 : (props.fitInsets?.left ?? 0),
                 boxSizing: "border-box",
-                backgroundColor: props.theme === "vs-dark" ? "rgba(30,30,30,0.6)" : "rgba(255,255,255,0.6)",
+                backgroundColor: props.theme === "vs-dark" ? "rgba(18, 18, 20, 0.72)" : "rgba(248, 250, 252, 0.72)",
                 zIndex: 1000,
                 pointerEvents: "none",
               }}

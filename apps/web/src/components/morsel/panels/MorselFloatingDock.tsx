@@ -319,7 +319,7 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
       </div>
       {activeLangInfo.supportsSimulation && (
         <>
-          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <div style={{ width: 1, height: 20, backgroundColor: "var(--ms-divider, rgba(255, 255, 255, 0.08))" }} />
           <IconButton
             icon={PlayIcon}
             size="small"
@@ -350,7 +350,7 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
       )}
       {!isPlaygroundRoute && (
         <>
-          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <div style={{ width: 1, height: 20, backgroundColor: "var(--ms-divider, rgba(255, 255, 255, 0.08))" }} />
           <IconButton
             icon={ShareAndroidIcon}
             size="small"
@@ -361,7 +361,7 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
           />
         </>
       )}
-      <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+      <div style={{ width: 1, height: 20, backgroundColor: "var(--ms-divider, rgba(255, 255, 255, 0.08))" }} />
       {availableLanguages.length > 0 && (
         <>
           <ActionMenu>
@@ -379,7 +379,9 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
                   }
                 />
                 {language && (
-                  <span style={{ fontSize: 10, color: "#8b949e", fontWeight: 600, letterSpacing: 0.5 }}>
+                  <span
+                    style={{ fontSize: 10, color: "var(--ms-text-2, #a1a1aa)", fontWeight: 600, letterSpacing: 0.5 }}
+                  >
                     {language.toUpperCase()}
                   </span>
                 )}
@@ -411,7 +413,7 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
               </ActionList>
             </ActionMenu.Overlay>
           </ActionMenu>
-          <div style={{ width: 1, height: 20, backgroundColor: colorMode === "dark" ? "#30363d" : "#d0d7de" }} />
+          <div style={{ width: 1, height: 20, backgroundColor: "var(--ms-divider, rgba(255, 255, 255, 0.08))" }} />
         </>
       )}
       <IconButton

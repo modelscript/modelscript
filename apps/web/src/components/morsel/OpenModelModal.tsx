@@ -123,7 +123,7 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
   const [domain, setDomain] = useState<EngineeringDomainId>("all");
   const [packageFilter, setPackageFilter] = useState<string>("all");
   const [query, setQuery] = useState<string>("");
-  const [selectedId, setSelectedId] = useState<string>(CURATED_OPEN_MODELS[0]?.id ?? "chua-circuit");
+  const [selectedId, _setSelectedId] = useState<string>(CURATED_OPEN_MODELS[0]?.id ?? "chua-circuit");
 
   const [mountedLibs, setMountedLibs] = useState<MountedLibraryEntry[]>([]);
   const [livePreviews, setLivePreviews] = useState<Record<string, DiagramPreviewResultItem>>({});
@@ -760,14 +760,14 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
 
   if (!isOpen || typeof document === "undefined") return null;
 
-  const surfaceBg = isDark ? "#0b1120" : "#ffffff";
-  const panelBg = isDark ? "#0f172a" : "#f8fafc";
-  const cardBg = isDark ? "#111827" : "#ffffff";
-  const stageBg = isDark ? "#0d131f" : "#f8fafc";
-  const borderCol = isDark ? "rgba(148, 163, 184, 0.18)" : "rgba(15, 23, 42, 0.11)";
-  const textPrimary = isDark ? "#f8fafc" : "#0f172a";
-  const textMuted = isDark ? "#94a3b8" : "#64748b";
-  const brand = "#2563eb";
+  const surfaceBg = "var(--ms-bg, #ffffff)";
+  const panelBg = isDark ? "#121214" : "#f6f8fa";
+  const cardBg = "var(--ms-bg-elv, #ffffff)";
+  const stageBg = isDark ? "#121214" : "#f8fafc";
+  const borderCol = "var(--ms-border, rgba(15, 23, 42, 0.12))";
+  const textPrimary = "var(--ms-text-1, #0f172a)";
+  const textMuted = "var(--ms-text-2, #475569)";
+  const brand = "var(--ms-brand, #0e7490)";
 
   return createPortal(
     <div
@@ -781,26 +781,26 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
         position: "fixed",
         inset: 0,
         zIndex: 10050,
-        backgroundColor: isDark ? "rgba(2, 6, 23, 0.72)" : "rgba(15, 23, 42, 0.48)",
-        backdropFilter: "blur(6px)",
+        backgroundColor: isDark ? "rgba(0, 0, 0, 0.68)" : "rgba(15, 23, 42, 0.48)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 20,
-        fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+        padding: 16,
+        fontFamily: "var(--ms-font-sans, Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif)",
       }}
     >
       <div
         style={{
-          width: "min(1060px, 96vw)",
-          height: "min(760px, 90vh)",
+          width: "100%",
+          maxWidth: 1080,
+          height: "min(760px, calc(100dvh - 32px))",
           backgroundColor: surfaceBg,
           color: textPrimary,
           borderRadius: 16,
           border: `1px solid ${borderCol}`,
-          boxShadow: isDark
-            ? "0 28px 70px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255,255,255,0.04)"
-            : "0 24px 60px rgba(15, 23, 42, 0.22)",
+          boxShadow: "var(--ms-shadow-pop, 0 24px 60px rgba(15, 23, 42, 0.22))",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -1090,21 +1090,37 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                     return (
                       <div
                         key={item.id}
-                        onClick={() => setSelectedId(item.id)}
-                        onDoubleClick={() => void handleOpenCuratedModel(item, "split")}
+                        className="ms-modal-tile"
+                        role="button"
+                        tabIndex={0}
+                        draggable={!isBusy}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", item.fqn || item.suggestedFilename || item.title);
+                          e.dataTransfer.setData("application/modelscript-model", JSON.stringify(item));
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
+                        onClick={() => {
+                          if (!isBusy) void handleOpenCuratedModel(item, "split");
+                        }}
+                        onDoubleClick={() => {
+                          if (!isBusy) void handleOpenCuratedModel(item, "split");
+                        }}
+                        onKeyDown={(e) => {
+                          if ((e.key === "Enter" || e.key === " ") && !isBusy) {
+                            e.preventDefault();
+                            void handleOpenCuratedModel(item, "split");
+                          }
+                        }}
+                        title={`${item.fqn || item.title}\nClick to open or drag onto workspace`}
                         style={{
                           borderRadius: 12,
-                          border: `1.5px solid ${isSelected ? brand : borderCol}`,
+                          border: `1px solid ${isSelected ? brand : borderCol}`,
                           backgroundColor: cardBg,
                           display: "flex",
                           flexDirection: "column",
                           overflow: "hidden",
-                          cursor: "pointer",
-                          boxShadow: isSelected
-                            ? "0 0 0 3px rgba(37, 99, 235, 0.18)"
-                            : isDark
-                              ? "0 4px 14px rgba(0,0,0,0.22)"
-                              : "0 2px 8px rgba(15,23,42,0.05)",
+                          cursor: isBusy ? "wait" : "pointer",
+                          boxShadow: isSelected ? "0 0 0 2px var(--ms-brand-soft)" : "none",
                           transition: "border-color 0.14s ease, box-shadow 0.14s ease",
                         }}
                       >
@@ -1271,26 +1287,11 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                               >
                                 Diagram
                               </button>
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handleOpenCuratedModel(item, "split");
-                                }}
-                                style={{
-                                  border: "none",
-                                  backgroundColor: brand,
-                                  color: "#ffffff",
-                                  borderRadius: 7,
-                                  padding: "5px 11px",
-                                  fontSize: 11.5,
-                                  fontWeight: 600,
-                                  cursor: isBusy ? "wait" : "pointer",
-                                }}
-                              >
-                                {isBusy ? "Opening…" : "Open"}
-                              </button>
+                              {isBusy && (
+                                <span style={{ fontSize: 11, fontWeight: 600, color: brand, flexShrink: 0 }}>
+                                  Opening…
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1310,21 +1311,37 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                     return (
                       <div
                         key={reg.id}
-                        onClick={() => setSelectedId(reg.id)}
-                        onDoubleClick={() => void handleOpenStreamedModel(reg, "split")}
+                        className="ms-modal-tile"
+                        role="button"
+                        tabIndex={0}
+                        draggable={!isBusy}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", reg.fqn);
+                          e.dataTransfer.setData("application/modelscript-model", JSON.stringify(reg));
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
+                        onClick={() => {
+                          if (!isBusy) void handleOpenStreamedModel(reg, "split");
+                        }}
+                        onDoubleClick={() => {
+                          if (!isBusy) void handleOpenStreamedModel(reg, "split");
+                        }}
+                        onKeyDown={(e) => {
+                          if ((e.key === "Enter" || e.key === " ") && !isBusy) {
+                            e.preventDefault();
+                            void handleOpenStreamedModel(reg, "split");
+                          }
+                        }}
+                        title={`${reg.fqn}\nClick to open or drag onto workspace`}
                         style={{
                           borderRadius: 12,
-                          border: `1.5px solid ${isSelected ? brand : borderCol}`,
+                          border: `1px solid ${isSelected ? brand : borderCol}`,
                           backgroundColor: cardBg,
                           display: "flex",
                           flexDirection: "column",
                           overflow: "hidden",
-                          cursor: "pointer",
-                          boxShadow: isSelected
-                            ? "0 0 0 3px rgba(37, 99, 235, 0.18)"
-                            : isDark
-                              ? "0 4px 14px rgba(0,0,0,0.22)"
-                              : "0 2px 8px rgba(15,23,42,0.05)",
+                          cursor: isBusy ? "wait" : "pointer",
+                          boxShadow: isSelected ? "0 0 0 2px var(--ms-brand-soft)" : "none",
                           transition: "border-color 0.14s ease, box-shadow 0.14s ease",
                         }}
                       >
@@ -1485,26 +1502,11 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                               >
                                 Diagram
                               </button>
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handleOpenStreamedModel(reg, "split");
-                                }}
-                                style={{
-                                  border: "none",
-                                  backgroundColor: brand,
-                                  color: "#ffffff",
-                                  borderRadius: 7,
-                                  padding: "5px 11px",
-                                  fontSize: 11.5,
-                                  fontWeight: 600,
-                                  cursor: isBusy ? "wait" : "pointer",
-                                }}
-                              >
-                                {isBusy ? "Opening…" : "Open"}
-                              </button>
+                              {isBusy && (
+                                <span style={{ fontSize: 11, fontWeight: 600, color: brand, flexShrink: 0 }}>
+                                  Opening…
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1522,16 +1524,38 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                     return (
                       <div
                         key={dyn.id}
-                        onClick={() => setSelectedId(dyn.id)}
-                        onDoubleClick={() => void handleOpenDynamicModel(dyn, "split")}
+                        className="ms-modal-tile"
+                        role="button"
+                        tabIndex={0}
+                        draggable={!isBusy}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", dyn.fqn);
+                          e.dataTransfer.setData("application/modelscript-model", JSON.stringify(dyn));
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
+                        onClick={() => {
+                          if (!isBusy) void handleOpenDynamicModel(dyn, "split");
+                        }}
+                        onDoubleClick={() => {
+                          if (!isBusy) void handleOpenDynamicModel(dyn, "split");
+                        }}
+                        onKeyDown={(e) => {
+                          if ((e.key === "Enter" || e.key === " ") && !isBusy) {
+                            e.preventDefault();
+                            void handleOpenDynamicModel(dyn, "split");
+                          }
+                        }}
+                        title={`${dyn.fqn}\nClick to open or drag onto workspace`}
                         style={{
                           borderRadius: 12,
-                          border: `1.5px solid ${isSelected ? brand : borderCol}`,
+                          border: `1px solid ${isSelected ? brand : borderCol}`,
                           backgroundColor: cardBg,
                           display: "flex",
                           flexDirection: "column",
                           overflow: "hidden",
-                          cursor: "pointer",
+                          cursor: isBusy ? "wait" : "pointer",
+                          boxShadow: isSelected ? "0 0 0 2px var(--ms-brand-soft)" : "none",
+                          transition: "border-color 0.14s ease, box-shadow 0.14s ease",
                         }}
                       >
                         <div
@@ -1612,26 +1636,11 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                             >
                               {dyn.fqn}
                             </span>
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleOpenDynamicModel(dyn, "split");
-                              }}
-                              style={{
-                                border: "none",
-                                backgroundColor: brand,
-                                color: "#ffffff",
-                                borderRadius: 7,
-                                padding: "5px 12px",
-                                fontSize: 11.5,
-                                fontWeight: 600,
-                                cursor: isBusy ? "wait" : "pointer",
-                              }}
-                            >
-                              {isBusy ? "Opening…" : "Open"}
-                            </button>
+                            {isBusy && (
+                              <span style={{ fontSize: 11, fontWeight: 600, color: brand, flexShrink: 0 }}>
+                                Opening…
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>

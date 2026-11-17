@@ -158,7 +158,7 @@ interface CodeEditorProps {
   onPaste?: ((pastedText: string, fullText: string) => void) | undefined;
   onProgress?: ((progress: number, message: string) => void) | undefined;
   onParsed?: (() => void) | undefined;
-  onDiagnostics?: ((markers: editor.IMarkerData[]) => void) | undefined;
+  onDiagnostics?: ((markers: editor.IMarkerData[], uri?: string) => void) | undefined;
   onStatusChange?: ((state: string, message: string) => void) | undefined;
   onSimulate?: (() => void | Promise<void>) | undefined;
   theme: Theme;
@@ -274,9 +274,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       // Register Monaco providers that proxy to the LSP
       adapterDisposableRef.current = setupMonacoLspAdapter(monaco, connection as any, uriRef.current, {
         onDiagnostics: (_uri, markers) => {
-          if (_uri === uriRef.current) {
-            props.onDiagnostics?.(markers);
-          }
+          props.onDiagnostics?.(markers, _uri);
         },
         onStatus: (state, message) => {
           props.onStatusChange?.(state, message);
@@ -591,6 +589,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
                     indentation: true,
                   },
                   readOnly: Boolean(props.readOnly),
+                  padding: { top: 16, bottom: 16 },
                   "semanticHighlighting.enabled": true,
                 }
               : {

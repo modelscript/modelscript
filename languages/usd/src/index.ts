@@ -4,6 +4,7 @@
  * @modelscript/usd — Alliance for OpenUSD & UsdPhysics Engine for ModelScript.
  */
 
+export * from "./cad.js";
 export * from "./dae/index.js";
 export * from "./errors.js";
 export * from "./indexing.js";

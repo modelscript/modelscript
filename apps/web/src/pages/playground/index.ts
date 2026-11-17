@@ -2,6 +2,8 @@
 
 export { CreatePlaygroundRepoModal } from "./components/CreatePlaygroundRepoModal";
 export type { CreatePlaygroundRepoModalProps } from "./components/CreatePlaygroundRepoModal";
+export { FileConflictModal } from "./components/FileConflictModal";
+export type { FileConflictModalProps } from "./components/FileConflictModal";
 export { PlaygroundNavbar } from "./components/PlaygroundNavbar";
 export type { PlaygroundNavbarProps } from "./components/PlaygroundNavbar";
 export { PlaygroundShareModal } from "./components/PlaygroundShareModal";
