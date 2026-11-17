@@ -513,9 +513,14 @@ Model {
         playgroundSrc.includes("resolveMorselShortlink") && embedSrc.includes("resolveMorselShortlink"),
         "Both PlaygroundPage and EmbedPlaygroundPage must share resolveMorselShortlink for ?morsel=<id> parity",
       );
+      const sidebarSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselLeftSidebar.tsx"),
+        "utf8",
+      );
       assert.ok(
-        playgroundSrc.includes('aria-label="Project files"') && playgroundSrc.includes("onActiveViewChange"),
-        "PlaygroundPage must render multi-file project tabs and synchronize active view changes",
+        (playgroundSrc.includes('aria-label="Project files"') || sidebarSrc.includes('aria-label="Project files"')) &&
+          playgroundSrc.includes("onActiveViewChange"),
+        "PlaygroundPage/MorselLeftSidebar must render multi-file project tabs and synchronize active view changes",
       );
     });
 

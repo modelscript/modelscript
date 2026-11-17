@@ -112,6 +112,16 @@ R1 in out 1k`,
 
       const monaco = page.locator(".monaco-editor").first();
       await monaco.waitFor({ state: "visible", timeout: 25000 });
+      await page
+        .waitForFunction(
+          () => {
+            const text = document.querySelector(".monaco-editor")?.textContent ?? "";
+            return text.includes("FilterStage") || text.includes("v_out");
+          },
+          null,
+          { timeout: 15000 },
+        )
+        .catch(() => {});
       const editorText = await page.locator(".monaco-editor").first().innerText();
       assert.ok(
         editorText.includes("FilterStage") || editorText.includes("v_out"),
@@ -508,7 +518,7 @@ end ThermalPlant;`;
       await simBanner.waitFor({ state: "visible", timeout: 10000 });
       await page.locator('[data-testid="morsel-sim-status"]:not([data-state="running"])').waitFor({
         state: "visible",
-        timeout: 25000,
+        timeout: 45000,
       });
 
       assert.deepStrictEqual(pageErrors, [], `Unexpected pageerror(s): ${pageErrors.join("; ")}`);

@@ -70,6 +70,7 @@ export default defineConfig([
       "**/.cache/**",
       "**/.vitepress/cache/**",
       "**/.vitepress/dist/**",
+      "**/.vitepress/.temp/**",
       "**/dist/**",
       "**/build/**",
       "**/coverage/**",
