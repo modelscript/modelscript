@@ -29,11 +29,11 @@ describe("Morsel Properties Panel Zero-Flicker & Smooth Synchronization", () => 
       "handleSelectComponent must detect when the event targets the already-selected component",
     );
     assert.ok(
-      morselSrc.includes("const hasRichProps = Boolean("),
+      morselSrc.includes("const hasRichProps = isRichProps(currentProps);"),
       "handleSelectComponent must check whether rich properties are already loaded",
     );
     assert.ok(
-      morselSrc.includes("const isSkeleton = Boolean(cachedProps && !cachedProps.schema && !cachedProps.parameters);"),
+      morselSrc.includes("const isSkeleton = Boolean(cachedProps && !isRichProps(cachedProps));"),
       "handleSelectComponent must identify lightweight skeleton properties",
     );
     assert.ok(

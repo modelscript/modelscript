@@ -875,7 +875,7 @@
         "SSP"
       ]
     },
-    "ruleCount": 17
+    "ruleCount": 53
   },
   {
     "slug": "psse",
@@ -927,7 +927,7 @@
         "Modelica"
       ]
     },
-    "ruleCount": 16
+    "ruleCount": 64
   },
   {
     "slug": "powerfactory",

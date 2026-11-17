@@ -4119,6 +4119,222 @@
         "rule": "component-check-warning",
         "severity": "warning",
         "message": "Component '<cmpName>' check warning: <reason>."
+      },
+      {
+        "code": "M6021",
+        "rule": "unresolved-component-definition",
+        "severity": "warning",
+        "message": "Component '<cmpName>' references definition '<defName>', which is not found in the project or loaded .pslx libraries."
+      },
+      {
+        "code": "M6022",
+        "rule": "wire-near-miss",
+        "severity": "warning",
+        "message": "Wire '<wireId>' endpoint is <value> px from '<targetName>' (outside snap tolerance 4 px), leaving an unintentional open circuit."
+      },
+      {
+        "code": "M6023",
+        "rule": "overlapping-wire-segments",
+        "severity": "warning",
+        "message": "Wire '<wireA>' overlaps collinearly with wire '<wireB>'; verify whether a junction or unintentional short exists."
+      },
+      {
+        "code": "M6024",
+        "rule": "dangling-wireless-signal",
+        "severity": "warning",
+        "message": "Wireless signal tag '<tagName>' (<kind>) is dangling: <reason>."
+      },
+      {
+        "code": "M6025",
+        "rule": "vector-signal-dimension-mismatch",
+        "severity": "error",
+        "message": "Signal vector dimension mismatch: '<srcPort>' (dim=<srcDim>) cannot connect directly to '<dstPort>' (dim=<dstDim>)."
+      },
+      {
+        "code": "M6026",
+        "rule": "phase-dimension-mismatch",
+        "severity": "error",
+        "message": "Wire '<wireId>' connects 3-phase port '<port3p>' directly to 1-phase port '<port1p>' without a breakout block."
+      },
+      {
+        "code": "M6027",
+        "rule": "submodule-port-interface-mismatch",
+        "severity": "error",
+        "message": "Submodule instance '<cmpName>' (<defName>) port interface mismatch: <detail>."
+      },
+      {
+        "code": "M6028",
+        "rule": "unlowered-simulatable-component",
+        "severity": "info",
+        "message": "Component '<cmpName>' (<defName>) is not lowered into the native EMT netlist and will be omitted from standalone simulation."
+      },
+      {
+        "code": "M6029",
+        "rule": "parameter-expression-eval-error",
+        "severity": "error",
+        "message": "Component '<cmpName>' parameter '<paramKey>' expression '<rawExpr>' failed to evaluate to a finite value."
+      },
+      {
+        "code": "M6030",
+        "rule": "pgb-output-channel-duplicate-or-unwired",
+        "severity": "warning",
+        "message": "Output channel (pgb) '<channelName>' <reason>."
+      },
+      {
+        "code": "M6031",
+        "rule": "system-frequency-mismatch",
+        "severity": "warning",
+        "message": "Element '<elemName>' is rated at <elemFreqHz> Hz, which differs from the project system frequency (<sysFreqHz> Hz)."
+      },
+      {
+        "code": "M6032",
+        "rule": "rms-vs-peak-voltage-entry-suspect",
+        "severity": "warning",
+        "message": "Source '<srcName>' voltage (<enteredKv> kV) differs from connected bus '<busName>' (<busKv> kV L-L RMS) by <hint>."
+      },
+      {
+        "code": "M6040",
+        "rule": "pwm-step-nyquist-violation",
+        "severity": "warning",
+        "message": "PWM/switching block '<cmpName>' operates at <carrierHz> Hz while EMT time step \\u0394t=<dtUs> us yields <10 steps/cycle (recommend \\u0394t <= <value> us)."
+      },
+      {
+        "code": "M6041",
+        "rule": "control-time-constant-underflow",
+        "severity": "warning",
+        "message": "CSMF control block '<blockId>' has time constant <value> us < 2*\\u0394t (<value> us), causing numerical aliasing/instability."
+      },
+      {
+        "code": "M6042",
+        "rule": "plot-step-aliasing-hazard",
+        "severity": "warning",
+        "message": "Plot sampling step (<plotStepUs> us > 10*\\u0394t where \\u0394t=<dtUs> us) lowers Nyquist frequency to <value> Hz and risks aliasing switching harmonics."
+      },
+      {
+        "code": "M6043",
+        "rule": "cutset-of-inductors-and-current-sources",
+        "severity": "error",
+        "message": "Inductive/current-source cutset at bus '<busId>' for '<elemId>' has no parallel resistive/snubber path (causes DAE index-2 di/dt impulse)."
+      },
+      {
+        "code": "M6044",
+        "rule": "loop-of-capacitors-and-voltage-sources",
+        "severity": "error",
+        "message": "Zero-impedance closed loop detected across switches/jumpers (<cycleDesc>), making the Dommel nodal matrix singular."
+      },
+      {
+        "code": "M6045",
+        "rule": "missing-switch-snubber-chatter-risk",
+        "severity": "warning",
+        "message": "Switching device '<elemName>' (<defName>) has no RC snubber parameters while CDA chatter elimination is disabled."
+      },
+      {
+        "code": "M6046",
+        "rule": "nodal-conductance-matrix-ill-conditioned",
+        "severity": "warning",
+        "message": "Dommel nodal conductance ratio Gmax/Gmin = <value> (<value> S / <value> S) exceeds 1e11 and risks IEEE-754 mantissa loss."
+      },
+      {
+        "code": "M6047",
+        "rule": "ulm-vector-fitting-passivity-violation",
+        "severity": "error",
+        "message": "Transmission line '<lineId>' rational vector fit violates passivity: <detail>."
+      },
+      {
+        "code": "M6048",
+        "rule": "transformer-magnetizing-inrush-remanence-invalid",
+        "severity": "error",
+        "message": "Saturable transformer '<xfmrId>' magnetizing/remanence configuration is invalid: <detail>."
+      },
+      {
+        "code": "M6049",
+        "rule": "subsynchronous-series-resonance-risk",
+        "severity": "warning",
+        "message": "Series capacitor '<capId>' in series with inductive element '<indId>' resonates at <value> Hz (< <fBaseHz> Hz nominal), creating subsynchronous resonance (SSR/SSCI) risk."
+      },
+      {
+        "code": "M6060",
+        "rule": "csmf-dead-limiter-never-activates",
+        "severity": "info",
+        "message": "Limiter '<blockId>' never saturates: input interval [<inLo>, <inHi>] stays strictly inside limits [<limLo>, <limHi>]."
+      },
+      {
+        "code": "M6061",
+        "rule": "csmf-domain-hazard",
+        "severity": "error",
+        "message": "CSMF block '<blockId>' (<kind>) has a mathematical domain hazard: <reason>."
+      },
+      {
+        "code": "M6062",
+        "rule": "pi-integrator-unbounded",
+        "severity": "warning",
+        "message": "CSMF '<kind>' block '<blockId>' has unbounded output limits and may wind up indefinitely under saturation."
+      },
+      {
+        "code": "M6063",
+        "rule": "csmf-relational-cancelation-zonotope",
+        "severity": "info",
+        "message": "Zonotope analysis tightened correlated control block '<blockId>' from [<value>, <value>] to [<value>, <value>]."
+      },
+      {
+        "code": "M6064",
+        "rule": "pll-bandwidth-weak-grid-instability",
+        "severity": "warning",
+        "message": "PLL '<pllName>' high bandwidth (<value> Hz > 25 Hz) coupled to weak grid (SCR = <value> < 2.0) risks synchronization instability."
+      },
+      {
+        "code": "M6065",
+        "rule": "fortran-udm-hazard",
+        "severity": "error",
+        "message": "Definition '<defName>' Fortran segment '<segmentName>' hazard: <reason>."
+      },
+      {
+        "code": "M6066",
+        "rule": "fortran-udm-uninitialized-history-state",
+        "severity": "warning",
+        "message": "Definition '<defName>' segment '<segName>' reads '<arrayName>' before any prior store or TIMEZERO initialization guard."
+      },
+      {
+        "code": "M6067",
+        "rule": "fortran-udm-non-reentrant-global-common",
+        "severity": "error",
+        "message": "Definition '<defName>' uses a shared Fortran COMMON block while instantiated <instances> times in the project (causes cross-instance state corruption; use STORF/STORI instead)."
+      },
+      {
+        "code": "M6068",
+        "rule": "oem-dll-abi-and-license-preflight",
+        "severity": "warning",
+        "message": "OEM black-box DLL block '<cmpName>' pre-flight warning: <detail>."
+      },
+      {
+        "code": "M6069",
+        "rule": "c-udm-hazard",
+        "severity": "error",
+        "message": "Definition '<defName>' C segment '<segmentName>' hazard: <reason>."
+      },
+      {
+        "code": "M6080",
+        "rule": "protection-breaker-state-machine-deadlock",
+        "severity": "error",
+        "message": "Protection state machine hazard on '<target>': <detail>."
+      },
+      {
+        "code": "M6081",
+        "rule": "time-delay-control-loop-instability",
+        "severity": "warning",
+        "message": "Time-delay control loop through '<blockId>' shows DDE instability risk: <detail>."
+      },
+      {
+        "code": "M6082",
+        "rule": "converter-overcurrent-overvoltage-flowpipe",
+        "severity": "warning",
+        "message": "Converter '<unitId>' zonotope reachable flowpipe breached safety envelope: <detail>."
+      },
+      {
+        "code": "M6083",
+        "rule": "ieee2800-stl-specification-synthesis",
+        "severity": "warning",
+        "message": "IEEE 2800 STL specification '<clause>' failed with robustness \\u03C1=<value>."
       }
     ]
   },
@@ -4150,6 +4366,24 @@
         "message": "Duplicate generator ID '<genId>' at bus <busId>."
       },
       {
+        "code": "P1004",
+        "rule": "raw-version-column-mismatch",
+        "severity": "warning",
+        "message": "PSS/E RAW revision mismatch (REV=<rev>): <detail>."
+      },
+      {
+        "code": "P1005",
+        "rule": "unterminated-raw-section",
+        "severity": "warning",
+        "message": "PSS/E RAW section <sectionIndex> reached EOF without a terminating '0 / END OF ...' delimiter."
+      },
+      {
+        "code": "P1006",
+        "rule": "invalid-area-zone-owner-ref",
+        "severity": "warning",
+        "message": "<entityDesc> references area <areaId>, which is not declared in Area Interchange Data."
+      },
+      {
         "code": "P2001",
         "rule": "isolated-bus",
         "severity": "warning",
@@ -4178,6 +4412,30 @@
         "rule": "substation-voltage-violation-nerc",
         "severity": "warning",
         "message": "Bus <busId> voltage magnitude (<value> pu) violates NERC standard transmission bounds [0.90, 1.10 pu]."
+      },
+      {
+        "code": "P2006",
+        "rule": "type4-bus-with-inservice-equipment",
+        "severity": "error",
+        "message": "Isolated bus <busId> (IDE = 4) has in-service <equipDesc>, creating a TREE topology inconsistency."
+      },
+      {
+        "code": "P2007",
+        "rule": "pv-bus-without-online-reactive-source",
+        "severity": "warning",
+        "message": "PV/Swing bus <busId> ('<busName>') has no in-service generator or regulating reactive source."
+      },
+      {
+        "code": "P2008",
+        "rule": "generator-on-pq-bus",
+        "severity": "warning",
+        "message": "In-service generator '<genId>' is attached to PQ bus <busId> (IDE = 1) and will not regulate voltage."
+      },
+      {
+        "code": "P2009",
+        "rule": "conflicting-remote-voltage-regulation",
+        "severity": "warning",
+        "message": "Remote voltage regulation conflict at regulated bus <busId>: <reason>."
       },
       {
         "code": "P3001",
@@ -4226,6 +4484,252 @@
         "rule": "branch-thermal-rating-zero",
         "severity": "warning",
         "message": "Transmission branch '<ckt>' between bus <fromBus> and <toBus> has zero MVA thermal rating."
+      },
+      {
+        "code": "P4005",
+        "rule": "branch-extreme-impedance",
+        "severity": "warning",
+        "message": "Transmission branch '<ckt>' between bus <fromBus> and <toBus> has <detail>."
+      },
+      {
+        "code": "P4006",
+        "rule": "branch-rating-hierarchy-inverted",
+        "severity": "warning",
+        "message": "Branch '<ckt>' (<fromBus>-<toBus>) thermal ratings violate RATEA <= RATEB <= RATEC (<rateA>, <rateB>, <rateC>)."
+      },
+      {
+        "code": "P4007",
+        "rule": "line-charging-mvar-vs-pu-confusion",
+        "severity": "warning",
+        "message": "Branch '<ckt>' (<fromBus>-<toBus>) charging susceptance B = <b> p.u. is unusually large (> 5.0); verify MVAR vs p.u. units."
+      },
+      {
+        "code": "P4008",
+        "rule": "transformer-cz-cw-cm-unit-mismatch",
+        "severity": "warning",
+        "message": "Transformer '<ckt>' (<fromBus>-<toBus>) unit code mismatch: <detail>."
+      },
+      {
+        "code": "P4009",
+        "rule": "three-winding-star-point-negative-reactance",
+        "severity": "warning",
+        "message": "3-winding transformer '<ckt>' (<i>-<j>-<k>) star-equivalent reactance X1 = <value> p.u. is strongly negative."
+      },
+      {
+        "code": "P4010",
+        "rule": "switched-shunt-band-inverted",
+        "severity": "error",
+        "message": "Switched shunt at bus <busId> has inverted voltage band: VSWLO (<vswlo>) >= VSWHI (<vswhi>)."
+      },
+      {
+        "code": "P5001",
+        "rule": "dyr-param-count-schema-mismatch",
+        "severity": "warning",
+        "message": "Dynamic model '<model>' at Bus <busId> specifies <actual> CON parameters, expected <expected>."
+      },
+      {
+        "code": "P5002",
+        "rule": "dyr-duplicate-slot-assignment",
+        "severity": "error",
+        "message": "Duplicate dynamic <category> model assigned to machine (<busId>, '<id>')."
+      },
+      {
+        "code": "P5003",
+        "rule": "dyr-orphan-controller",
+        "severity": "warning",
+        "message": "Dynamic <category> '<model>' for (<busId>, '<id>') has no matching generator/IBR dynamic model."
+      },
+      {
+        "code": "P5004",
+        "rule": "dyr-online-gen-missing-dynamics",
+        "severity": "warning",
+        "message": "In-service generator '<genId>' at bus <busId> (Pg=<value> MW) has no dynamic model in .dyr."
+      },
+      {
+        "code": "P5005",
+        "rule": "dyr-reactance-timeconstant-hierarchy",
+        "severity": "error",
+        "message": "Dynamic machine '<model>' at bus <busId> violates physical parameter ordering: <detail>."
+      },
+      {
+        "code": "P5006",
+        "rule": "dyr-raw-source-impedance-mismatch",
+        "severity": "warning",
+        "message": "Generator '<genId>' at bus <busId> has RAW ZX=<value> p.u. vs DYR subtransient/transient reactance <value> p.u."
+      },
+      {
+        "code": "P5007",
+        "rule": "seq-zero-negative-sequence-gaps",
+        "severity": "warning",
+        "message": "Sequence data (.seq) gap: <detail>."
+      },
+      {
+        "code": "P5008",
+        "rule": "seq-transformer-vector-group-invalid",
+        "severity": "warning",
+        "message": "Transformer (<iBus>-<jBus> CKT '<ckt>') zero-sequence connection invalid: <detail>."
+      },
+      {
+        "code": "P5009",
+        "rule": "con-target-not-found",
+        "severity": "warning",
+        "message": "Contingency '<contId>' references unresolved element: <detail>."
+      },
+      {
+        "code": "P5010",
+        "rule": "dyr-bus-not-found",
+        "severity": "error",
+        "message": "DYR model '<model>' references bus <busId>, which does not exist in RAW case '<rawUri>'."
+      },
+      {
+        "code": "P5011",
+        "rule": "dyr-machine-not-found",
+        "severity": "warning",
+        "message": "DYR model '<model>' references machine (<busId>, '<id>') not present in RAW generators."
+      },
+      {
+        "code": "P5012",
+        "rule": "seq-bus-not-found",
+        "severity": "error",
+        "message": "SEQ record references bus <busId>, which does not exist in RAW case '<rawUri>'."
+      },
+      {
+        "code": "P5013",
+        "rule": "dyr-icon-invalid-value",
+        "severity": "error",
+        "message": "Dynamic model '<model>' at bus <busId> has invalid ICON '<iconName>' = <actual> (expected one of: <valid>)."
+      },
+      {
+        "code": "P5014",
+        "rule": "dyr-con-physical-bounds",
+        "severity": "warning",
+        "message": "Dynamic model '<model>' at bus <busId> parameter '<paramName>' = <actual> is outside expected physical bounds [<min>, <max>]."
+      },
+      {
+        "code": "P5015",
+        "rule": "dyr-leadlag-ratio-extreme",
+        "severity": "warning",
+        "message": "Dynamic model '<model>' at bus <busId> has extreme lead/lag ratio <tcName>/<tbName> = <value> (> 25.0)."
+      },
+      {
+        "code": "P5016",
+        "rule": "dyr-saturation-non-monotonic",
+        "severity": "error",
+        "message": "Dynamic model '<model>' at bus <busId> has non-monotonic saturation factors: S(1.0)=<s10>, S(1.2)=<s12>."
+      },
+      {
+        "code": "P5017",
+        "rule": "dyr-composite-load-fraction-sum",
+        "severity": "error",
+        "message": "Dynamic composite load '<model>' at bus <busId> motor/electronic fractions sum to <value> (must be within [0, 1.0])."
+      },
+      {
+        "code": "P5018",
+        "rule": "dyr-remote-bus-not-found",
+        "severity": "error",
+        "message": "Dynamic model '<model>' at bus <busId> ICON '<iconName>' references non-existent bus <remoteBus>."
+      },
+      {
+        "code": "P5019",
+        "rule": "dyr-hvdc-facts-link-not-found",
+        "severity": "error",
+        "message": "Dynamic HVDC/FACTS model '<model>' references '<deviceName>', which is not declared in .raw DC/FACTS sections."
+      },
+      {
+        "code": "P5020",
+        "rule": "dyr-usrmdl-unmapped-custom",
+        "severity": "info",
+        "message": "User-defined USRMDL '<model>' at bus <busId> is not a standard built-in alias; attach an AssemblyScript/FMU/DLL module for active stepping."
+      },
+      {
+        "code": "P6001",
+        "rule": "unanchored-energized-island",
+        "severity": "error",
+        "message": "Energized network island (<islandSize> bus(es), including bus <sampleBus>) contains no swing/slack bus (IDE = 3)."
+      },
+      {
+        "code": "P6002",
+        "rule": "single-branch-cut-bridge",
+        "severity": "info",
+        "message": "<kind> '<ckt>' (<fromBus>-<toBus>) is a topological N-1 cut bridge; its outage islands <value> MW of generation/load."
+      },
+      {
+        "code": "P6003",
+        "rule": "pocket-short-circuit-ratio-weak-ibr",
+        "severity": "warning",
+        "message": "IBR POI bus <busId> has low driving-point Short-Circuit Ratio (SCR = <value> < 1.5; S_sc = <value> MVA for <value> MVA IBR)."
+      },
+      {
+        "code": "P6004",
+        "rule": "jacobian-high-condition-number-voltage-collapse",
+        "severity": "warning",
+        "message": "Reduced Q-V Jacobian indicates proximity to voltage collapse (min eigenvalue \\u03C3_min=<value>, max dV/dQ=<value> pu/pu at bus <weakestBus>)."
+      },
+      {
+        "code": "P6005",
+        "rule": "dae-structural-singularity-or-high-index",
+        "severity": "error",
+        "message": "Lowered PSS/E DAE system is structurally unbalanced (<varCount> variables vs <eqCount> equations)."
+      },
+      {
+        "code": "P6006",
+        "rule": "poorly-damped-interarea-or-local-mode",
+        "severity": "warning",
+        "message": "Small-signal eigenvalue check detected <unstableCount> unstable / poorly damped mode(s) (min damping \\u03B6=<value>% at <value> Hz, dominant: <machine>)."
+      },
+      {
+        "code": "P7001",
+        "rule": "dyr-initial-condition-limit-violation",
+        "severity": "warning",
+        "message": "INITIAL CONDITIONS SUSPECT for generator '<genId>' at bus <busId>: <reason>."
+      },
+      {
+        "code": "P7002",
+        "rule": "generator-d-curve-reactive-infeasibility",
+        "severity": "warning",
+        "message": "Generator '<genId>' at bus <busId> violates nameplate capability envelope: <detail>."
+      },
+      {
+        "code": "P7003",
+        "rule": "powerflow-unsolvable-pocket-certificate",
+        "severity": "error",
+        "message": "Load pocket at bus <busId> requires <value> MVA, exceeding theoretical static transfer capacity (<value> MVA) across incident lines."
+      },
+      {
+        "code": "P7004",
+        "rule": "ibr-control-priority-conflict",
+        "severity": "error",
+        "message": "IBR control model '<model>' at bus <busId> has conflicting limit/deadband settings: <detail>."
+      },
+      {
+        "code": "P7005",
+        "rule": "idv-psspy-script-mutation-hazards",
+        "severity": "warning",
+        "message": "PSS/E IDV script hazard at line <lineNo> (<cmd>): <detail>."
+      },
+      {
+        "code": "P8001",
+        "rule": "ras-sps-chattering-or-race-condition",
+        "severity": "error",
+        "message": "Formal BMC/SAT check proved contradictory RAS/SPS race on '<target>': '<schemeA>' and '<schemeB>' can trigger opposing actions simultaneously."
+      },
+      {
+        "code": "P8002",
+        "rule": "transient-critical-clearing-barrier-violation",
+        "severity": "warning",
+        "message": "Generator '<genId>' at bus <busId> critical clearing time (<value> ms) < clearing time (<value> ms); post-fault swing breaches Lyapunov/SOS barrier."
+      },
+      {
+        "code": "P8003",
+        "rule": "frequency-nadir-ufls-reachability",
+        "severity": "warning",
+        "message": "Zonotope reachability proves largest contingency loss (<value> MW, H_eq=<value> s) can drive frequency nadir to <value> Hz <= UFLS stage (<value> Hz)."
+      },
+      {
+        "code": "P8004",
+        "rule": "nerc-prc-voltage-frequency-stl-robustness",
+        "severity": "warning",
+        "message": "NERC PRC-024/029 STL specification violated on '<signal>' (robustness \\u03C1=<value> at t=<value> s)."
       }
     ]
   },

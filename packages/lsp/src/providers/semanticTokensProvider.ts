@@ -924,22 +924,29 @@ function computeFeaSemanticTokens(
       }
       if (node.type === "KeywordCard") {
         const children = getChildren(node);
-        const star = children[0];
-        const cardName = children[1];
+        const first = children[0];
+        const second = children[1];
+        if (first?.type === "CARD_HEADER") {
+          collector.pushNode(first, "keyword");
+          for (let i = 1; i < children.length; i++) {
+            visit(children[i], "card");
+          }
+          return;
+        }
         if (
-          star?.text === "*" &&
-          cardName?.type === "CARD_NAME" &&
-          typeof star.startIndex === "number" &&
-          typeof cardName.endIndex === "number"
+          first?.text === "*" &&
+          second?.type === "CARD_NAME" &&
+          typeof first.startIndex === "number" &&
+          typeof second.endIndex === "number"
         ) {
-          collector.pushOffsetSpan(text, lineIndex, star.startIndex, cardName.endIndex, "keyword");
+          collector.pushOffsetSpan(text, lineIndex, first.startIndex, second.endIndex, "keyword");
           for (let i = 2; i < children.length; i++) {
             visit(children[i], "card");
           }
           return;
         }
       }
-      if (node.type === "CARD_NAME") {
+      if (node.type === "CARD_NAME" || node.type === "CARD_HEADER") {
         collector.pushNode(node, "keyword");
         return;
       }

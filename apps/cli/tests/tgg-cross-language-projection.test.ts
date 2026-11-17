@@ -65,7 +65,8 @@ test("Cross-Language TGG Polyglot Rules across 8 engineering domains", () => {
   {
     assert.ok(stepConfig.polyglot, "STEP should define polyglot configuration");
     const compiled = compileTGGRules(stepConfig.polyglot);
-    assert.strictEqual(compiled.ruleCount, 3, "STEP should have 3 TGG transformation rules");
+    assert.strictEqual(compiled.ruleCount, 6, "STEP should have 6 TGG transformation rules");
+    assert.ok(compiled.ruleNames.includes("StepProductToSysmlPartDef"));
     assert.ok(compiled.ruleNames.includes("StepProductToSysmlPart"));
     assert.ok(compiled.ruleNames.includes("StepProductToModelicaModel"));
     assert.ok(compiled.ruleNames.includes("StepPointToSysmlAttribute"));

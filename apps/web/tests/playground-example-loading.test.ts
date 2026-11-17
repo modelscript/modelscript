@@ -100,7 +100,7 @@ end RLC;`;
 
     assert.ok(
       content.includes("onDoubleClick={() => {") &&
-        content.includes("onSelectTemplate(template);") &&
+        content.includes("onSelectTemplate(ex);") &&
         content.includes("onClose();"),
       "TemplateGalleryModal.tsx must support double-click on template card to select and close",
     );

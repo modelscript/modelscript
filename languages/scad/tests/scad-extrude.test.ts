@@ -113,8 +113,8 @@ async function main() {
   assert(solid4, "Solid4 must not be null");
   assert.strictEqual(
     solid4.kind,
-    SolidKind.Polyhedron,
-    `Hollow closed polygon rotate_extrude should produce exact Polyhedron lathe, got kind=${solid4.kind}`,
+    SolidKind.Revolve,
+    `Hollow closed polygon rotate_extrude should produce Revolve solid, got kind=${solid4.kind}`,
   );
   const mesh4 = ManifoldWorker.evaluateSolid(solid4);
   assert(mesh4.vertices.length > 0 && mesh4.indices.length > 0, "Revolved ring mesh must be non-empty");
@@ -133,7 +133,7 @@ async function main() {
   }
   `;
   const solidCw = new ScadEvaluator().evaluate(parser.parse(cwScad).rootNode);
-  assert(solidCw && solidCw.kind === SolidKind.Polyhedron);
+  assert(solidCw && solidCw.kind === SolidKind.Revolve);
   const statsCw = computeMeshVolumeAndArea(ManifoldWorker.evaluateSolid(solidCw));
   assert(statsCw.volume > 0, `Expected positive outward volume for CW revolved ring, got ${statsCw.volume}`);
 
@@ -146,7 +146,7 @@ async function main() {
   const tree5 = parser.parse(coneProfileScad);
   const solid5 = new ScadEvaluator().evaluate(tree5.rootNode);
   assert(solid5, "Solid5 must not be null");
-  assert.strictEqual(solid5.kind, SolidKind.Polyhedron);
+  assert.strictEqual(solid5.kind, SolidKind.Revolve);
   const mesh5 = ManifoldWorker.evaluateSolid(solid5);
   assert(mesh5.vertices.length > 0 && mesh5.indices.length > 0, "Axis-touching nose cone mesh must be non-empty");
   const stats5 = computeMeshVolumeAndArea(mesh5);

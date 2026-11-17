@@ -2135,7 +2135,7 @@ export class ValidationService {
       const revisionAtStart = this.documentRevisions.get(uri) ?? null;
       const isStale = () => revisionAtStart !== null && (this.documentRevisions.get(uri) ?? 0) !== revisionAtStart;
       try {
-        await this.parserService.ensureLanguageParserLoaded(plugin.id);
+        await this.parserService?.ensureLanguageParserLoaded?.(plugin.id);
         if (isStale()) return;
         const existingCached = this.documentManager.documentTrees.get(uri);
         const wasmTree = this.parseIncrementalWasmTree(uri, plugin.id, text, plugin);
@@ -4234,7 +4234,7 @@ export class ValidationService {
 
   private parseIncrementalWasmTree(uri: string, langId: string, text: string, plugin?: LanguagePlugin): any | null {
     if (isLargeXmlForWasm(uri, text, plugin)) return null;
-    const wasmParser = plugin?.parser ?? this.parserService.getParser(langId);
+    const wasmParser = plugin?.parser ?? this.parserService?.getParser?.(langId);
     if (!wasmParser || typeof wasmParser.parse !== "function") return null;
 
     const cached = this.documentManager.documentTrees.get(uri);
@@ -4281,7 +4281,7 @@ export class ValidationService {
 
     try {
       this.connection.console.info(`[pscad] Validating ${textDocument.uri} (${text.length} chars)`);
-      await this.parserService.ensureLanguageParserLoaded("pscad");
+      await this.parserService?.ensureLanguageParserLoaded?.("pscad");
       const { parsePscx, lintPscx, pscadLanguage, registerPscadSource } = await import("@modelscript/pscad");
       if (typeof this.documentManager?.documents?.all === "function") {
         for (const doc of this.documentManager.documents.all()) {

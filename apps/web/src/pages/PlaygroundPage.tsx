@@ -152,17 +152,56 @@ export const PlaygroundPage: React.FC = () => {
     (location.hash && location.hash.length > 1),
   );
 
-  const defaultInitialCode = hasInitialTarget ? "" : DEFAULT_EMPTY_MODELICA_CODE;
+  const initialHashPayload = useMemo(() => {
+    if (
+      !location.hash ||
+      location.hash.length <= 1 ||
+      location.hash.startsWith("#memfs:") ||
+      location.hash.startsWith("#m=artifact-") ||
+      /^#m=\d+$/.test(location.hash)
+    ) {
+      return null;
+    }
+    return decompressMorselPayload(location.hash) as
+      | (MorselDecodedPayload & {
+          files?: Record<string, string>;
+          activeFile?: string;
+          isMultiFile?: boolean;
+          artifactId?: string | number;
+        })
+      | null;
+  }, [location.hash]);
+
+  const initialFilesFromHash =
+    initialHashPayload?.files &&
+    typeof initialHashPayload.files === "object" &&
+    Object.keys(initialHashPayload.files).length > 1
+      ? initialHashPayload.files
+      : null;
+  const initialActiveFromHash = initialFilesFromHash
+    ? initialHashPayload?.activeFile || Object.keys(initialFilesFromHash)[0] || null
+    : null;
+  const initialLangFromHash = initialHashPayload?.code
+    ? initialHashPayload.lang ||
+      langParam ||
+      inferDialectFromFilename(initialHashPayload.activeFile || initialHashPayload.title || titleParam) ||
+      "modelica"
+    : null;
+
+  const defaultInitialCode = initialHashPayload?.code ?? (hasInitialTarget ? "" : DEFAULT_EMPTY_MODELICA_CODE);
   const defaultInitialTitle =
-    titleParam || (hasInitialArtifactTarget ? "Loading Artifact…" : hasInitialTarget ? "" : "Untitled Model");
-  const defaultInitialLang = langParam || "modelica";
+    initialHashPayload?.title ||
+    titleParam ||
+    (hasInitialArtifactTarget ? "Loading Artifact…" : hasInitialTarget ? "" : "Untitled Model");
+  const defaultInitialLang = initialLangFromHash || langParam || "modelica";
 
   const [isLoadingArtifact, setIsLoadingArtifact] = useState<boolean>(hasInitialArtifactTarget);
   const [currentCode, setCurrentCode] = useState<string>(defaultInitialCode);
-  const [projectFiles, setProjectFiles] = useState<Record<string, string> | null>(null);
-  const [activeFile, setActiveFile] = useState<string | null>(null);
+  const [projectFiles, setProjectFiles] = useState<Record<string, string> | null>(initialFilesFromHash);
+  const [activeFile, setActiveFile] = useState<string | null>(initialActiveFromHash);
   const [currentTitle, setCurrentTitle] = useState<string>(defaultInitialTitle);
   const [currentLang, setCurrentLang] = useState<string>(defaultInitialLang);
+  const [initialSubview] = useState<string | null>(subviewParam);
   const [resolvedFromArtifact, setResolvedFromArtifact] = useState<string | null>(fromArtifactParam);
   const [initialSimVars, setInitialSimVars] = useState<string[] | undefined>(() =>
     simVarsParam
@@ -242,6 +281,8 @@ export const PlaygroundPage: React.FC = () => {
       }
     } catch {}
   }, [hasInitialTarget]);
+
+  const hasHydratedFromUrlRef = useRef<boolean>(false);
 
   // Initialize from URL hash, query params, location.state, ?morsel=<id>, or ?fromArtifact=<id>
   useEffect(() => {
@@ -478,6 +519,7 @@ export const PlaygroundPage: React.FC = () => {
           if (p.dependencies) {
             mountArtifactDependencies(p.dependencies);
           }
+          hasHydratedFromUrlRef.current = true;
           clearPlaygroundUrl(location.pathname);
           return;
         }
@@ -763,7 +805,7 @@ export const PlaygroundPage: React.FC = () => {
       }
     } else if (titleParam) {
       setCurrentTitle(titleParam);
-    } else if (!hasInitialTarget) {
+    } else if (!hasInitialTarget && !hasHydratedFromUrlRef.current) {
       baselineCodeRef.current = DEFAULT_EMPTY_MODELICA_CODE;
       setIsDirty(false);
       setProjectFiles(null);
@@ -1731,11 +1773,11 @@ export const PlaygroundPage: React.FC = () => {
                 currentView === "inspector" ||
                 currentView === "diagram"
                   ? currentView
-                  : subviewParam === "simulation" ||
-                      subviewParam === "3d" ||
-                      subviewParam === "inspector" ||
-                      subviewParam === "diagram"
-                    ? subviewParam
+                  : (subviewParam ?? initialSubview) === "simulation" ||
+                      (subviewParam ?? initialSubview) === "3d" ||
+                      (subviewParam ?? initialSubview) === "inspector" ||
+                      (subviewParam ?? initialSubview) === "diagram"
+                    ? ((subviewParam ?? initialSubview) as "simulation" | "3d" | "inspector" | "diagram")
                     : undefined
               }
               initialSimulationVariables={initialSimVars}

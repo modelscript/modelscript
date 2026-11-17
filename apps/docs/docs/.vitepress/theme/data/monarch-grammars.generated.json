@@ -1,21 +1,8 @@
 {
   "adams": {
     "keywords": [
-      "BUSHING",
-      "GFORCE",
-      "JOINT",
-      "MARKER",
-      "MOTION",
-      "PART",
-      "SFORCE",
-      "SIMULATE",
-      "SPRINGDAMPER",
-      "VFORCE",
-      "joint",
-      "marker",
-      "motion",
-      "part",
-      "simulate"
+      "END",
+      "end"
     ],
     "types": [],
     "lineComments": [
@@ -96,10 +83,31 @@
     ]
   },
   "bngl": {
-    "keywords": [],
+    "keywords": [
+      "BEGIN",
+      "END",
+      "MODEL",
+      "actions",
+      "begin",
+      "compartments",
+      "end",
+      "functions",
+      "model",
+      "molecule",
+      "molecule_types",
+      "observables",
+      "parameters",
+      "reaction",
+      "reaction_rules",
+      "rules",
+      "seed",
+      "seed_species",
+      "species",
+      "types"
+    ],
     "types": [],
     "lineComments": [
-      "[;#].*$"
+      "#.*$"
     ]
   },
   "c": {
@@ -168,33 +176,7 @@
     ]
   },
   "cantera": {
-    "keywords": [
-      "composition",
-      "description",
-      "duplicate",
-      "element",
-      "elements",
-      "equation",
-      "falloff_reaction",
-      "gas",
-      "generator",
-      "ideal_gas",
-      "name",
-      "note",
-      "orders",
-      "phases",
-      "plog_reaction",
-      "reaction",
-      "reactions",
-      "reversible",
-      "species",
-      "thermo",
-      "three_body_reaction",
-      "transport",
-      "troe",
-      "type",
-      "units"
-    ],
+    "keywords": [],
     "types": [],
     "lineComments": [
       "#.*$"
@@ -497,10 +479,16 @@
     ]
   },
   "genbank": {
-    "keywords": [],
+    "keywords": [
+      "LOCUS"
+    ],
     "types": [],
     "lineComments": [
-      "[;#].*$"
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
     ]
   },
   "gensys": {
@@ -838,13 +826,7 @@
   "nifti": {
     "keywords": [],
     "types": [],
-    "lineComments": [
-      "//.*$"
-    ],
-    "blockComment": [
-      "/\\*",
-      "\\*/"
-    ]
+    "lineComments": []
   },
   "nmodl": {
     "keywords": [
@@ -908,11 +890,15 @@
     "keywords": [
       "BLOCK",
       "DADT",
+      "DIAG",
+      "DIAGONAL",
       "ELSE",
       "ENDIF",
+      "FIX",
       "FIXED",
       "IF",
       "INF",
+      "INFINITY",
       "SAME",
       "THEN",
       "else",
@@ -1204,10 +1190,42 @@
     ]
   },
   "phreeqc": {
-    "keywords": [],
+    "keywords": [
+      "ADVECTION",
+      "COPY",
+      "END",
+      "EQUILIBRIUM_PHASES",
+      "EXCHANGE",
+      "GAS_PHASE",
+      "INCREMENTAL_REACTIONS",
+      "KINETICS",
+      "KNOBS",
+      "MIX",
+      "PHASES",
+      "PRINT",
+      "PURE_PHASES",
+      "RATES",
+      "REACTION",
+      "REMARKS",
+      "SAVE",
+      "SELECTED_OUTPUT",
+      "SOLID_SOLUTIONS",
+      "SOLUTION",
+      "SOLUTION_MASTER_SPECIES",
+      "SOLUTION_SPECIES",
+      "SURFACE",
+      "TITLE",
+      "TRANSPORT",
+      "USE",
+      "USER_PUNCH"
+    ],
     "types": [],
     "lineComments": [
-      "[;#].*$"
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
     ]
   },
   "plcopen": {
@@ -1250,7 +1268,11 @@
     "keywords": [],
     "types": [],
     "lineComments": [
-      "/.*$"
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
     ]
   },
   "qif": {
@@ -1276,28 +1298,22 @@
   "relap5": {
     "keywords": [
       "END",
+      "accum",
       "annulus",
       "branch",
       "end",
-      "eq",
-      "ge",
-      "gt",
-      "latch",
-      "le",
-      "lt",
-      "ne",
-      "new",
-      "nlat",
+      "mtplj",
       "pipe",
+      "prizer",
       "pump",
-      "restart",
       "single_volume",
+      "snglj",
       "sngljn",
       "snglvol",
       "tmdj",
+      "tmdpj",
       "tmdpvol",
       "tmdv",
-      "transnt",
       "valve"
     ],
     "types": [],

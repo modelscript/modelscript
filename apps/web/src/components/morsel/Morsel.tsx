@@ -100,6 +100,11 @@ export default function MorselEditor(props: MorselEditorProps) {
   const resolvedInitialDialect = props.initialDialect ?? props.initialLanguage;
   const initialLangInfo = getLanguageInfo(resolvedInitialDialect);
   const [dialect, setDialectState] = useState<string>(initialLangInfo.id);
+  useEffect(() => {
+    if (!props.initialDialect) return;
+    const nextInfo = getLanguageInfo(props.initialDialect);
+    setDialectState((prev) => (prev === nextInfo.id ? prev : nextInfo.id));
+  }, [props.initialDialect]);
   const [diagramType, setDiagramTypeState] = useState<string>(() => {
     const requested = props.diagramType ?? props.initialDiagramType;
     if (requested) {

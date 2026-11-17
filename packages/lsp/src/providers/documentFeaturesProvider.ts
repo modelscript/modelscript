@@ -535,15 +535,17 @@ export function registerDocumentFeaturesProvider(
     });
   });
 
-  connection.onRequest("modelscript/getDefaultFoldLines", (params: { textDocument?: { uri?: string } }) => {
-    const uri = params?.textDocument?.uri;
-    if (!uri) return { lines: [] };
-    const ranges = computeFoldingRanges(uri);
-    const lines = Array.from(
-      new Set(ranges.filter((r) => r.defaultCollapsed && r.endLine > r.startLine).map((r) => r.startLine)),
-    ).sort((a, b) => a - b);
-    return { lines };
-  });
+  if (typeof connection.onRequest === "function") {
+    connection.onRequest("modelscript/getDefaultFoldLines", (params: { textDocument?: { uri?: string } }) => {
+      const uri = params?.textDocument?.uri;
+      if (!uri) return { lines: [] };
+      const ranges = computeFoldingRanges(uri);
+      const lines = Array.from(
+        new Set(ranges.filter((r) => r.defaultCollapsed && r.endLine > r.startLine).map((r) => r.startLine)),
+      ).sort((a, b) => a - b);
+      return { lines };
+    });
+  }
 
   /* Selection Ranges — enables smart Expand/Shrink selection */
   connection.onSelectionRanges((params) => {

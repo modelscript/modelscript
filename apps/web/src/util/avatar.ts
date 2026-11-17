@@ -66,7 +66,11 @@ export function getAvatarUrl(username?: string | null, originalUrl?: string | nu
         ? originalUrl
         : "?";
 
-  const initials = escapeXmlText(effectiveUsername.substring(0, 2).toUpperCase());
+  const rawInitials = effectiveUsername
+    .substring(0, 2)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  const initials = escapeXmlText(rawInitials || "?");
   let hash = 0;
   for (let i = 0; i < effectiveUsername.length; i++) {
     hash = effectiveUsername.charCodeAt(i) + ((hash << 5) - hash);

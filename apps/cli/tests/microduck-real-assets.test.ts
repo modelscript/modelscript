@@ -104,7 +104,7 @@ describe("Real MicroDuck 14-DOF MJCF + velstand.onnx + Compiled C99 FMU Python C
     },
   );
 
-  it("should compile generated C99 DuckPlant.fmu into a shared library and step it from Python", async () => {
+  it("should compile generated C99 DuckPlant.fmu into a shared library and step it from Python", async (t) => {
     await initBltWasm();
 
     // Build a compact 6-DOF + servo + thermal + battery plant and compile it to native .so + .fmu

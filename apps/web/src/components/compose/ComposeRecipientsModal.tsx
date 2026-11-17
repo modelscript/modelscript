@@ -37,12 +37,20 @@ export const ComposeRecipientsModal: React.FC<ComposeRecipientsModalProps> = ({
 
   const others = allMentionedUsers.filter((u) => u !== authorUsername);
 
+  const rawAvatarSrc = getAvatarUrl(authorUsername.replace(/[^a-zA-Z0-9_.-]/g, ""), avatarUrl);
+  const safeAvatarSrc =
+    /^(?:https?:\/\/|\/(?!\/)|data:image\/(?:png|jpeg|jpg|gif|webp|avif|svg\+xml);base64,[a-zA-Z0-9+/=]+$)/.test(
+      rawAvatarSrc,
+    )
+      ? rawAvatarSrc
+      : undefined;
+
   return (
     <Dialog title="Replying to" width="medium" onClose={onClose}>
       <Box display="flex" flexDirection="column" maxHeight="70vh" overflowY="auto">
         <Box display="flex" alignItems="center" mb={3}>
           <img
-            src={getAvatarUrl(authorUsername, avatarUrl)}
+            src={safeAvatarSrc}
             alt="avatar"
             style={{
               width: "40px",

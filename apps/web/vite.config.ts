@@ -443,6 +443,10 @@ export default defineConfig({
           dest: "lsp/server/dist",
         },
         {
+          src: "../../node_modules/sql.js/dist/sql-wasm-browser.wasm",
+          dest: "lsp/server/dist",
+        },
+        {
           src: "../../scripts/ModelicaStandardLibrary_v4.1.0.zip",
           dest: "lsp/server/dist",
         },

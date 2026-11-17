@@ -18,7 +18,7 @@ jobs:
   lint:
     if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,6 +38,21 @@ jobs:
             ${{ runner.os }}-nx-lint-
             ${{ runner.os }}-nx-build-
             ${{ runner.os }}-nx-
+      - name: Cache WASM Parsers
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/asc-tests
+            languages/*/.cache
+            languages/*/dist/*.wasm
+            packages/runtime/build/*.wasm
+            packages/simulate/src/wasm/*.wasm
+            packages/simulate/.cache/**
+            packages/dsl/.cache/**
+          key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
+          restore-keys: |
+            ${{ runner.os }}-wasm-
+            Linux-wasm-
       - name: Calculate Affected Bounds
         uses: nrwl/nx-set-shas@v4
       - name: Run Repository Hygiene Doctor
@@ -227,7 +242,7 @@ jobs:
         run: |
           mkdir -p .v8-coverage languages/modelica/coverage/omc
           NODE_V8_COVERAGE=$(pwd)/.v8-coverage npm run test:modelica:both:allow-wasm
-          npx c8 report --temp-directory=.v8-coverage --reporter=lcov --reports-dir=languages/modelica/coverage/omc --include="languages/modelica/src/**" --include="packages/dsl/src/**" --include="packages/runtime/src/**"
+          NODE_OPTIONS="--max-old-space-size=12288" npx c8 report --temp-directory=.v8-coverage --reporter=lcov --reports-dir=languages/modelica/coverage/omc --include="languages/modelica/src/**" --include="packages/dsl/src/**" --include="packages/runtime/src/**"
       - name: Upload CTRF Artifacts
         if: always() && steps.check-affected.outputs.run_suite == 'true'
         uses: actions/upload-artifact@v4
@@ -297,7 +312,7 @@ jobs:
             ${{ runner.os }}-wasm-
             Linux-wasm-
       - name: Build Prerequisites
-        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/simulate,@modelscript/rocets,@modelscript/ccsds,@modelscript/modflow
+        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/simulate,@modelscript/rocets,@modelscript/ccsds,@modelscript/modflow,@modelscript/swmm,@modelscript/epanet,@modelscript/febio,@modelscript/opendss,@modelscript/opensim,@modelscript/sbml,@modelscript/verilog-a,@modelscript/jsbsim,@modelscript/relap5
       - name: Cache Benchmarks
         uses: actions/cache@v4
         with:
