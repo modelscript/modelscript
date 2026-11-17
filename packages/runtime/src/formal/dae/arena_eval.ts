@@ -392,6 +392,18 @@ export function evalArenaExpr<T>(
       case "smooth":
         // smooth(p, expr): value is expr (second argument); a single argument is passed through.
         return argCount >= 2 ? a1() : a0;
+      case "homotopy": {
+        // homotopy(actual, simplified): during normal simulation (lambda = 1 or unset) evaluates to actual;
+        // during homotopy continuation (0 <= lambda < 1), blends lambda * actual + (1 - lambda) * simplified.
+        const lambda = (arena as { homotopyLambda?: number }).homotopyLambda;
+        if (argCount >= 2 && typeof lambda === "number" && lambda < 1.0) {
+          const clamped = Math.max(0, Math.min(1, lambda));
+          const wActual = domain.constant(clamped);
+          const wSimp = domain.constant(1 - clamped);
+          return domain.add(domain.mul(wActual, a0), domain.mul(wSimp, a1()));
+        }
+        return a0;
+      }
       case "min":
         return argCount >= 2 ? domain.min(a0, a1()) : a0;
       case "max":

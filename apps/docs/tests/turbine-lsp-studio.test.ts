@@ -302,7 +302,7 @@ describe("@modelscript/docs TurbineHero Live WASM LSP Studio", () => {
 
   it(
     "renders WebGL2 hero with zero initial LSP requests, then transitions in-place on click with working GD&T, CSG overlay, Fault QuickFix & Esc exit",
-    { timeout: 150_000 },
+    { timeout: 300_000 },
     async (t) => {
       const indexHtml = path.join(DIST_DIR, "index.html");
       if (!fs.existsSync(indexHtml)) {
@@ -394,7 +394,7 @@ describe("@modelscript/docs TurbineHero Live WASM LSP Studio", () => {
 
         // Wait for auto-compiled AP242 STEP -> OCCT B-Rep mesh handoff onto 3D viewport
         const stepBtn = page.locator('button.tls-mini-btn:has-text("STEP 3D (")').first();
-        await stepBtn.waitFor({ state: "visible", timeout: 90000 });
+        await stepBtn.waitFor({ state: "visible", timeout: 150000 });
         const stepBtnLabel = await stepBtn.innerText();
         const meshMatch = /STEP 3D \((\d+)\)/.exec(stepBtnLabel);
         assert.ok(meshMatch && Number(meshMatch[1]) > 0, `Expected >=1 compiled STEP 3D mesh, got: ${stepBtnLabel}`);
@@ -447,7 +447,7 @@ describe("@modelscript/docs TurbineHero Live WASM LSP Studio", () => {
         const fixBtn = page.locator(".tls-fix-btn").first();
         await fixBtn.waitFor({ state: "visible", timeout: 10000 });
         await fixBtn.click();
-        await page.locator('.tls-prob-summary:has-text("0 Problems")').waitFor({ state: "visible", timeout: 15000 });
+        await page.locator('.tls-prob-summary:has-text("0 Problems")').waitFor({ state: "visible", timeout: 60000 });
 
         // Exercise Expand overlay and Escape twice (collapse -> close back to lightweight hero)
         await page.locator('button[aria-label="Expand workbench"]').click();

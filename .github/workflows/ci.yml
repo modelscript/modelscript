@@ -312,7 +312,7 @@ jobs:
             ${{ runner.os }}-wasm-
             Linux-wasm-
       - name: Build Prerequisites
-        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/simulate,@modelscript/rocets,@modelscript/ccsds,@modelscript/modflow,@modelscript/swmm,@modelscript/epanet,@modelscript/febio,@modelscript/opendss,@modelscript/opensim,@modelscript/sbml,@modelscript/verilog-a,@modelscript/jsbsim,@modelscript/relap5
+        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/simulate,@modelscript/antimony,@modelscript/aspen,@modelscript/bngl,@modelscript/cantera,@modelscript/ccsds,@modelscript/cfd,@modelscript/cgmes,@modelscript/eclipse,@modelscript/epanet,@modelscript/fea,@modelscript/febio,@modelscript/fiber,@modelscript/fortran,@modelscript/genbank,@modelscript/gproms,@modelscript/gtfs,@modelscript/hec-ras,@modelscript/ibis,@modelscript/jsbsim,@modelscript/landgem,@modelscript/modflow,@modelscript/nmtran,@modelscript/ocpp,@modelscript/openadr,@modelscript/opendss,@modelscript/openscenario,@modelscript/opensim,@modelscript/optical,@modelscript/pdb,@modelscript/phreeqc,@modelscript/ran,@modelscript/relap5,@modelscript/rocets,@modelscript/sbml,@modelscript/sbol,@modelscript/sedml,@modelscript/sima,@modelscript/smiles,@modelscript/swmm,@modelscript/touchstone,@modelscript/tough,@modelscript/usd,@modelscript/verilog-a
       - name: Cache Benchmarks
         uses: actions/cache@v4
         with:

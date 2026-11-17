@@ -3,7 +3,7 @@
 import type { DslBuiltinSymbol } from "@modelscript/dsl";
 import { getMasterLibrarySchemas, type PscadComponentSchema } from "./catalog/master-library-schemas.js";
 
-export const PSCAD_MASTER_RESOURCE_ID = "library-bundle:/PSCAD-Master-Library@5.0.0";
+export const PSCAD_MASTER_RESOURCE_ID = "builtin://pscad";
 
 function buildPscadComponentSymbol(schema: PscadComponentSchema): DslBuiltinSymbol {
   const children: DslBuiltinSymbol[] = [];

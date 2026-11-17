@@ -913,10 +913,15 @@ export class DaeBltReachabilityEngine {
     if (!isRegular) {
       const isDefinite = detJ.isDefiniteZero();
       const varNames = block.vars.map((v) => `'${this.arena.getVarName(v)}'`).join(", ");
+      const primaryVarIdx = block.vars[0];
+      const primaryVarName = primaryVarIdx !== undefined ? this.arena.getVarName(primaryVarIdx) : undefined;
       issues.push({
         kind: "singular_algebraic_loop",
         severity: isDefinite ? "definite" : "possible",
         exprId: block.eqIdxs[0] ?? -1,
+        varIdx: primaryVarIdx,
+        varName: primaryVarName,
+        eqIdx: block.eqIdxs[0],
         message: `Algebraic loop block #${blockId} (${n} equations in ${varNames}) has singular interval Jacobian: det(J) \u2208 [${detJ.low}, ${detJ.high}] contains 0. Newton-Raphson solver may fail to converge.`,
         interval: detJ,
       });

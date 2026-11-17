@@ -363,6 +363,36 @@ describe("BLT singularity check uses sound derivatives", () => {
       ]),
     });
     const summary = engine.verify(blt);
-    assert.ok(summary.issues.some((i) => i.kind === "singular_algebraic_loop"));
+    const issue = summary.issues.find((i) => i.kind === "singular_algebraic_loop");
+    assert.ok(issue !== undefined);
+    assert.strictEqual(issue.varName, "y");
+    assert.strictEqual(issue.eqIdx, blt.blocks[0]!.eqIdxs[0]);
+  });
+
+  it("evaluates homotopy(actual, simplified) without returning [-Infinity, Infinity]", () => {
+    const arena = new DAEBuilder();
+    const uIdx = arena.addVariable("u", VarType.Real, Variability.Parameter);
+    const yIdx = arena.addVariable("y", VarType.Real, Variability.Continuous);
+    const sIdx = arena.addVariable("s", VarType.Real, Variability.Continuous);
+    // y = homotopy(u, s) -> derivative w.r.t. y is 1, not [-Infinity, Infinity]
+    const rhs = arena.addCallExpr("homotopy", [arena.addNameExpr("u"), arena.addNameExpr("s")]);
+    const eq1 = arena.addEquation(EqKind.Simple, arena.addNameExpr("y"), rhs);
+    const eq2 = arena.addEquation(EqKind.Simple, arena.addNameExpr("s"), arena.addNameExpr("u"));
+    const blt: ArenaBltResult = {
+      sortedEquations: [eq1, eq2],
+      blocks: [
+        { eqIdxs: [eq2], vars: [sIdx] },
+        { eqIdxs: [eq1], vars: [yIdx] },
+      ],
+    };
+    const engine = new DaeBltReachabilityEngine(arena, {
+      initialBounds: new Map([
+        [uIdx, new NumericalInterval(1.0, 2.0)],
+        [yIdx, new NumericalInterval(0.0, 3.0)],
+        [sIdx, new NumericalInterval(1.0, 2.0)],
+      ]),
+    });
+    const summary = engine.verify(blt);
+    assert.ok(!summary.issues.some((i) => i.kind === "singular_algebraic_loop"));
   });
 });

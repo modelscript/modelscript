@@ -6743,7 +6743,26 @@ export class ValidationService {
           const reachSummary = reachEngine.verify(bltResult);
           const hybridVerifier = new HybridModeConsistencyVerifier(arena);
           const hybridResult = hybridVerifier.verify();
-          const allIssues = [...reachSummary.issues, ...hybridResult.issues];
+
+          // When a model is structurally underdetermined (e.g., unconnected blocks on a canvas),
+          // BLT matching is arbitrary and can invert blocks backward, causing spurious algebraic loop warnings.
+          const matchedVars = new Set<number>();
+          for (const blk of bltResult.blocks) {
+            for (const v of blk.vars) matchedVars.add(v);
+          }
+          let isUnderdetermined = false;
+          for (let i = 0; i < arena.varCount; i++) {
+            if (stateVars.has(i) || matchedVars.has(i)) continue;
+            const variability = arena.getVarVariability(i);
+            if (variability === Variability.Continuous || variability === Variability.Discrete) {
+              isUnderdetermined = true;
+              break;
+            }
+          }
+          const reachIssues = isUnderdetermined
+            ? reachSummary.issues.filter((iss) => iss.kind !== "singular_algebraic_loop")
+            : reachSummary.issues;
+          const allIssues = [...reachIssues, ...hybridResult.issues];
 
           const namedBounds = new Map<string, any>();
           let unboundedVariables = 0;

@@ -159,6 +159,7 @@ const allProblems = computed<ScopedDiagEntry[]>(() => {
   const out: ScopedDiagEntry[] = [];
   for (const tab of artifacts.value) {
     for (const diag of diagnosticsByUri.value[tab.uri] ?? []) {
+      if ((diag.severity ?? 1) > 2) continue;
       out.push({ tab, diag, key: diagKey(tab.uri, diag) });
     }
   }
@@ -383,7 +384,10 @@ async function toggleStepWire(): Promise<void> {
   }
 }
 
+let suppressCodeChange = false;
+
 function onCodeChange(nextCode: string): void {
+  if (suppressCodeChange) return;
   const tab = activeTab.value;
   if (tab.readOnly) return;
   tab.code = nextCode;
@@ -462,10 +466,19 @@ function buildFallbackFixForProblem(entry: ScopedDiagEntry): { title: string; ne
 }
 
 async function applyFixForProblem(entry: ScopedDiagEntry): Promise<void> {
+  if (stepCompileTimer) {
+    clearTimeout(stepCompileTimer);
+    stepCompileTimer = null;
+  }
+  if (verifyAllTimer) {
+    clearTimeout(verifyAllTimer);
+    verifyAllTimer = null;
+  }
   const lspFix = quickFixByDiagKey.value[entry.key];
   if (lspFix?.changes) {
     let touchedStep = false;
     let touchedCadSource = false;
+    const nextDiags = { ...diagnosticsByUri.value };
     for (const [uri, textEdits] of Object.entries(lspFix.changes)) {
       const targetTab = artifacts.value.find((t) => t.uri === uri);
       if (!targetTab || !Array.isArray(textEdits)) continue;
@@ -482,22 +495,29 @@ async function applyFixForProblem(entry: ScopedDiagEntry): Promise<void> {
       }
       targetTab.code = nextCode;
       targetTab.faulted = false;
-      monacoHandle?.setValueForUri(targetTab.uri, nextCode, targetTab.langSlug);
+      nextDiags[targetTab.uri] = [];
+      suppressCodeChange = true;
+      try {
+        monacoHandle?.setValueForUri(targetTab.uri, nextCode, targetTab.langSlug);
+      } finally {
+        suppressCodeChange = false;
+      }
       if (targetTab.id === "step") {
         touchedStep = true;
-      } else if (targetTab.id === "scad" || targetTab.id === "qif") {
+      } else if (targetTab.id === "scad") {
         touchedCadSource = true;
       }
     }
+    diagnosticsByUri.value = nextDiags;
     faultBanner.value = null;
     emitTelemetry();
     await syncAllBuffers({ skipStep: !touchedStep });
+    await verifyAllDocsLsp(activeTab.value.uri).catch(() => {});
     if (touchedStep) {
       await compileStepAndDrive3D(true);
     } else if (touchedCadSource) {
-      scheduleStepCompile(260);
+      scheduleStepCompile(400);
     }
-    scheduleVerifyAll(activeTab.value.uri, 500);
     return;
   }
 
@@ -506,15 +526,24 @@ async function applyFixForProblem(entry: ScopedDiagEntry): Promise<void> {
     entry.tab.code = fb.nextCode;
     entry.tab.faulted = false;
     faultBanner.value = null;
-    monacoHandle?.setValueForUri(entry.tab.uri, fb.nextCode, entry.tab.langSlug);
+    diagnosticsByUri.value = {
+      ...diagnosticsByUri.value,
+      [entry.tab.uri]: [],
+    };
+    suppressCodeChange = true;
+    try {
+      monacoHandle?.setValueForUri(entry.tab.uri, fb.nextCode, entry.tab.langSlug);
+    } finally {
+      suppressCodeChange = false;
+    }
     emitTelemetry();
     await syncAllBuffers({ skipStep: entry.tab.id !== "step" });
+    await verifyAllDocsLsp(activeTab.value.uri).catch(() => {});
     if (entry.tab.id === "step") {
       await compileStepAndDrive3D(true);
-    } else if (entry.tab.id === "scad" || entry.tab.id === "qif") {
-      scheduleStepCompile(260);
+    } else if (entry.tab.id === "scad") {
+      scheduleStepCompile(400);
     }
-    scheduleVerifyAll(activeTab.value.uri, 500);
   }
 }
 
@@ -530,10 +559,15 @@ async function toggleFaultOnActiveTab(): Promise<void> {
       tab.code = clean.code;
       tab.faulted = false;
       faultBanner.value = null;
-      monacoHandle?.setValueForUri(tab.uri, clean.code, tab.langSlug);
+      suppressCodeChange = true;
+      try {
+        monacoHandle?.setValueForUri(tab.uri, clean.code, tab.langSlug);
+      } finally {
+        suppressCodeChange = false;
+      }
       emitTelemetry();
       await syncAllBuffers();
-      if (tab.id === "scad" || tab.id === "qif" || tab.id === "step") {
+      if (tab.id === "scad" || tab.id === "step") {
         await compileStepAndDrive3D(true);
       }
       scheduleVerifyAll(tab.uri, 500);
@@ -546,13 +580,18 @@ async function toggleFaultOnActiveTab(): Promise<void> {
   tab.faulted = true;
   faultBanner.value = res.label;
   problemsExpanded.value = true;
-  monacoHandle?.setValueForUri(tab.uri, res.code, tab.langSlug);
+  suppressCodeChange = true;
+  try {
+    monacoHandle?.setValueForUri(tab.uri, res.code, tab.langSlug);
+  } finally {
+    suppressCodeChange = false;
+  }
   if (props.view === "3d" || props.view === "diagram") {
     emit("update:view", "split");
   }
   await syncAllBuffers();
-  if (tab.id === "scad" || tab.id === "qif") {
-    scheduleStepCompile(380);
+  if (tab.id === "scad") {
+    scheduleStepCompile(1500);
   }
   scheduleVerifyAll(tab.uri, 1100);
 }

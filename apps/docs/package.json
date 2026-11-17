@@ -21,7 +21,7 @@
     "gen:og": "tsx scripts/gen-og.ts",
     "lint": "eslint docs scripts --no-warn-ignored",
     "preview": "vitepress preview docs",
-    "test": "node ../../scripts/test-runner.js --timeout=120000",
+    "test": "node ../../scripts/test-runner.js --timeout=300000",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

@@ -137,12 +137,12 @@ describe("PSCAD LSP Integration Suite", () => {
 
     const { getTreeChildrenFast } = await import("../src/utils/hierarchy-utils.js");
 
-    // Root level: should return Component_Lib package
+    // Root level: should return Component_Lib package (alongside any registered PSCAD built-in libraries)
     const rootNodes = await getTreeChildrenFast(index, undefined);
-    assert.equal(rootNodes.length, 1);
-    assert.equal(rootNodes[0].name, "Component_Lib");
-    assert.equal(rootNodes[0].classKind, "package");
-    assert.equal(rootNodes[0].hasChildren, true);
+    const compLib = rootNodes.find((n) => n.name === "Component_Lib");
+    assert.ok(compLib, "Should include Component_Lib root package");
+    assert.equal(compLib.classKind, "package");
+    assert.equal(compLib.hasChildren, true);
 
     // Children under Component_Lib: should return all 4 components (Flag, Main, PF_Meter, Rational_Operator)
     const childNodes = await getTreeChildrenFast(index, "Component_Lib");
