@@ -1299,8 +1299,8 @@ function heapifySemanticTokens(flatPtr: usize, n: u32, i: u32): void {
 
 /**
  * Extracts all foldable block ranges from the AST.
- * Filters nodes based on the generated `type_is_folding` boolean map.
- * @returns The number of folding records inside `t_lspBinaryBuffer` (2 u32s per range).
+ * Filters nodes based on the generated `type_is_folding` bitmask map.
+ * @returns The number of folding records inside `t_lspBinaryBuffer` (3 u32s per range: start, end, flags).
  */
 export function lsp_getFoldingRanges(astRoot: u32): u32 {
   ensureLspBuffers();
@@ -1358,6 +1358,7 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
 
         t_lspBinaryBuffer.push(nodeStart);
         t_lspBinaryBuffer.push(nodeEnd);
+        t_lspBinaryBuffer.push(isFolding);
       }
     }
 
@@ -1407,7 +1408,7 @@ export function lsp_getFoldingRanges(astRoot: u32): u32 {
     t_cachedFoldingBuffer.push(t_lspBinaryBuffer[i]);
   }
   t_cachedFoldingRoot = astRoot;
-  t_cachedFoldingCount = fLen / 2;
+  t_cachedFoldingCount = fLen / 3;
 
   return t_cachedFoldingCount;
 }

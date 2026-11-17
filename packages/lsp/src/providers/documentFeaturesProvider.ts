@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { getPscadDocumentSymbols, getPscadFoldingRanges } from "@modelscript/pscad";
-import { Connection, DocumentHighlightKind, DocumentSymbol, TextDocuments } from "vscode-languageserver";
+import { Connection, DocumentHighlightKind, DocumentSymbol, FoldingRange, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
@@ -193,7 +193,7 @@ export function registerDocumentFeaturesProvider(
         }
       }
 
-      if (!bridge) {
+      if (!bridge && (!plugin?.customHandlers?.symbols || plugin?.queryEngine)) {
         const doc = getDoc(params.textDocument.uri);
         const treeWrapper = getDocumentTree(params.textDocument.uri);
         const text = doc?.getText() ?? treeWrapper?.text;
@@ -211,7 +211,9 @@ export function registerDocumentFeaturesProvider(
       if (!bridge) {
         if (plugin) {
           if (plugin.customHandlers?.symbols) {
-            return sanitizeDocumentSymbols(plugin.customHandlers.symbols(getDocumentTree(params.textDocument.uri)));
+            const treeOrText =
+              getDocumentTree(params.textDocument.uri) ?? getDoc(params.textDocument.uri)?.getText() ?? "";
+            return sanitizeDocumentSymbols(plugin.customHandlers.symbols(treeOrText));
           }
           if (plugin.facade?.getDocumentSymbols && parser) {
             try {
@@ -242,16 +244,144 @@ export function registerDocumentFeaturesProvider(
     }
   });
 
-  /* Folding Ranges — enables code folding for classes, sections, and control structures */
-  connection.onFoldingRanges((params) => {
-    const document = documents.get(params.textDocument.uri);
+  /* Folding Ranges — enables code folding for classes, sections, annotations, comments, and control structures */
+  type InternalFoldingRange = {
+    startLine: number;
+    startCharacter?: number | undefined;
+    endLine: number;
+    endCharacter?: number | undefined;
+    kind?: "comment" | "imports" | "region" | undefined;
+    collapsedText?: string | undefined;
+    defaultCollapsed?: boolean | undefined;
+  };
+
+  type NormalizedFoldRule = {
+    kind?: "comment" | "imports" | "region" | undefined;
+    defaultCollapsed?: boolean | undefined;
+    collapsedText?: string | undefined;
+  };
+
+  type FoldRulePlugin = {
+    languageDef?: {
+      lsp?: {
+        folding?: Array<
+          | string
+          | {
+              rule?: string;
+              kind?: "comment" | "imports" | "region";
+              defaultCollapsed?: boolean;
+              collapsedText?: string;
+            }
+        >;
+      };
+    };
+  };
+
+  const buildFoldRuleMap = (plugin: FoldRulePlugin | null | undefined): Map<string, NormalizedFoldRule> => {
+    const map = new Map<string, NormalizedFoldRule>();
+    const folding = plugin?.languageDef?.lsp?.folding;
+    if (!Array.isArray(folding)) return map;
+    for (const item of folding) {
+      if (typeof item === "string") {
+        map.set(item, {});
+      } else if (item && typeof item === "object" && typeof item.rule === "string") {
+        map.set(item.rule, {
+          kind: item.kind,
+          defaultCollapsed: item.defaultCollapsed,
+          collapsedText: item.collapsedText,
+        });
+      }
+    }
+    return map;
+  };
+
+  const scanCommentFoldingRanges = (text: string): InternalFoldingRange[] => {
+    const out: InternalFoldingRange[] = [];
+    const lines = text.split(/\r?\n/);
+    let inBlock: { startLine: number; endToken: string } | null = null;
+    let lineCommentStart = -1;
+    let lineCommentEnd = -1;
+
+    const flushLineComment = () => {
+      if (lineCommentStart !== -1 && lineCommentEnd > lineCommentStart) {
+        out.push({ startLine: lineCommentStart, endLine: lineCommentEnd, kind: "comment" });
+      }
+      lineCommentStart = -1;
+      lineCommentEnd = -1;
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i]!.trim();
+      if (inBlock) {
+        if (trimmed.includes(inBlock.endToken)) {
+          if (i > inBlock.startLine) {
+            out.push({ startLine: inBlock.startLine, endLine: i, kind: "comment" });
+          }
+          inBlock = null;
+        }
+        continue;
+      }
+
+      if (trimmed.startsWith("/*") && !trimmed.includes("*/")) {
+        flushLineComment();
+        inBlock = { startLine: i, endToken: "*/" };
+        continue;
+      }
+      if (trimmed.startsWith("<!--") && !trimmed.includes("-->")) {
+        flushLineComment();
+        inBlock = { startLine: i, endToken: "-->" };
+        continue;
+      }
+      if (trimmed.startsWith("(*") && !trimmed.includes("*)")) {
+        flushLineComment();
+        inBlock = { startLine: i, endToken: "*)" };
+        continue;
+      }
+
+      if (trimmed.startsWith("//") && !trimmed.startsWith("///")) {
+        if (lineCommentStart === -1) lineCommentStart = i;
+        lineCommentEnd = i;
+      } else {
+        flushLineComment();
+      }
+    }
+    flushLineComment();
+    return out;
+  };
+
+  const FOLDABLE_NODES = new Set([
+    "ClassDefinition",
+    "EquationSection",
+    "InitialEquationSection",
+    "AlgorithmSection",
+    "InitialAlgorithmSection",
+    "IfEquation",
+    "ForEquation",
+    "WhenEquation",
+    "IfStatement",
+    "ForStatement",
+    "WhileStatement",
+    "WhenStatement",
+    "AnnotationClause",
+    "annotation_clause",
+    "ExternalClause",
+    "external_clause",
+    "Package",
+    "LibraryPackage",
+    "Namespace",
+  ]);
+
+  const DEFAULT_COLLAPSED_FALLBACK_NODES = new Set(["AnnotationClause", "annotation_clause"]);
+
+  const computeFoldingRanges = (uri: string): InternalFoldingRange[] => {
+    const document = documents.get(uri);
     if (!document) return [];
 
-    if (/\.(pscx|pslx|pswx|psmx)$/i.test(params.textDocument.uri)) {
-      return getPscadFoldingRanges(document.getText());
+    if (/\.(pscx|pslx|pswx|psmx)$/i.test(uri)) {
+      return getPscadFoldingRanges(document.getText()) as InternalFoldingRange[];
     }
 
-    const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
+    const plugin = globalLanguageRegistry.getPluginForUri(uri);
     const parser = plugin?.parser ?? (isParserReady() ? (validationService as any)?.parserService?.parser : undefined);
 
     const treeWrapper = getDocumentTree(document.uri);
@@ -263,71 +393,156 @@ export function registerDocumentFeaturesProvider(
         ownsTree = true;
       } catch {}
     }
-    if (!tree) return [];
+    if (!tree) return scanCommentFoldingRanges(document.getText());
 
     try {
       const rootNode = tree.rootNode ?? tree;
       const rootPtr = rootNode?.id ?? rootNode?.ptr ?? (tree as any)?.rootPtr ?? 0;
 
-      if (plugin?.facade?.getFoldingRanges && rootPtr) {
+      if (plugin?.customHandlers?.folding) {
         try {
-          const folds = plugin.facade.getFoldingRanges(rootPtr);
-          if (folds && folds.length > 0) return folds;
+          const customFolds = plugin.customHandlers.folding(tree);
+          if (Array.isArray(customFolds) && customFolds.length > 0) {
+            return customFolds;
+          }
         } catch {}
       }
 
-      const ranges: { startLine: number; endLine: number; kind?: string | undefined }[] = [];
-      const FOLDABLE_NODES = new Set([
-        "ClassDefinition",
-        "EquationSection",
-        "InitialEquationSection",
-        "AlgorithmSection",
-        "InitialAlgorithmSection",
-        "IfEquation",
-        "ForEquation",
-        "WhenEquation",
-        "IfStatement",
-        "ForStatement",
-        "WhileStatement",
-        "WhenStatement",
-        "AnnotationClause",
-        "Package",
-        "LibraryPackage",
-        "Namespace",
-      ]);
-
-      const collectFolds = (node: any) => {
-        if (!node) return;
-        const t = node.type || "";
-        const isComment = t === "Comment" || t === "comment";
-        const isFoldable =
-          FOLDABLE_NODES.has(t) || t.endsWith("Definition") || t.endsWith("Usage") || t.endsWith("Block") || isComment;
-
-        if (isFoldable && node.startPosition && node.endPosition) {
-          const startLine = node.startPosition.row ?? node.startPosition.line;
-          const endLine = node.endPosition.row ?? node.endPosition.line;
-          if (endLine > startLine) {
-            ranges.push({
-              startLine,
-              endLine,
-              kind: isComment ? "comment" : undefined,
-            });
-          }
-        }
-
-        const children = node.children || [];
-        for (let i = 0; i < children.length; i++) {
-          collectFolds(children[i]);
+      const ruleMap = buildFoldRuleMap(plugin);
+      const rangeMap = new Map<string, InternalFoldingRange>();
+      const addRange = (r: InternalFoldingRange) => {
+        if (r.endLine <= r.startLine) return;
+        const key = `${r.startLine}:${r.endLine}`;
+        const existing = rangeMap.get(key);
+        if (!existing) {
+          rangeMap.set(key, r);
+        } else {
+          if (r.kind && !existing.kind) existing.kind = r.kind;
+          if (r.defaultCollapsed) existing.defaultCollapsed = true;
+          if (r.collapsedText && !existing.collapsedText) existing.collapsedText = r.collapsedText;
         }
       };
 
-      collectFolds(rootNode);
-      return ranges as any[];
+      if (plugin?.facade?.getFoldingRanges && rootPtr) {
+        try {
+          const folds = plugin.facade.getFoldingRanges(rootPtr);
+          if (Array.isArray(folds)) {
+            for (const f of folds) {
+              if (!f || typeof f !== "object") continue;
+              if (typeof f.startLine === "number" && typeof f.endLine === "number") {
+                addRange(f as InternalFoldingRange);
+              } else if (f.start && f.end && typeof f.start.line === "number" && typeof f.end.line === "number") {
+                if (f.end.line > f.start.line) {
+                  let kind: "comment" | "imports" | "region" | undefined = f.kind;
+                  if (!kind) {
+                    const lineStart = document
+                      .getText({
+                        start: { line: f.start.line, character: f.start.character ?? 0 },
+                        end: { line: f.start.line + 1, character: 0 },
+                      })
+                      .trimStart();
+                    if (
+                      lineStart.startsWith("/*") ||
+                      lineStart.startsWith("//") ||
+                      lineStart.startsWith("(*") ||
+                      lineStart.startsWith("<!--")
+                    ) {
+                      kind = "comment";
+                    }
+                  }
+                  addRange({
+                    startLine: f.start.line,
+                    startCharacter: f.start.character,
+                    endLine: f.end.line,
+                    endCharacter: f.end.character,
+                    kind,
+                    defaultCollapsed: f.defaultCollapsed,
+                    collapsedText: f.collapsedText,
+                  });
+                }
+              }
+            }
+          }
+        } catch {}
+      }
+
+      // Walk CST to cover newly-configured rules on older WASMs, attach collapsedText/defaultCollapsed,
+      // or provide fallback folding when facade.getFoldingRanges is unavailable.
+      const needsCstWalk = rangeMap.size === 0 || ruleMap.size > 0;
+      if (needsCstWalk && rootNode) {
+        type FoldCstNode = {
+          type?: string;
+          startPosition?: { row?: number; line?: number; column?: number };
+          endPosition?: { row?: number; line?: number; column?: number };
+          children?: FoldCstNode[];
+        };
+        const collectFolds = (node: FoldCstNode | undefined) => {
+          if (!node) return;
+          const t = node.type || "";
+          const isComment = t === "Comment" || t === "comment";
+          const ruleCfg = ruleMap.get(t);
+          const isFoldable =
+            Boolean(ruleCfg) ||
+            (rangeMap.size === 0 &&
+              (FOLDABLE_NODES.has(t) ||
+                t.endsWith("Definition") ||
+                t.endsWith("Usage") ||
+                t.endsWith("Block") ||
+                isComment));
+
+          if (isFoldable && node.startPosition && node.endPosition) {
+            const startLine = node.startPosition.row ?? node.startPosition.line;
+            const endLine = node.endPosition.row ?? node.endPosition.line;
+            if (startLine !== undefined && endLine !== undefined && endLine > startLine) {
+              addRange({
+                startLine,
+                endLine,
+                kind: ruleCfg?.kind ?? (isComment ? "comment" : undefined),
+                defaultCollapsed: ruleCfg?.defaultCollapsed ?? (DEFAULT_COLLAPSED_FALLBACK_NODES.has(t) || undefined),
+                collapsedText: ruleCfg?.collapsedText,
+              });
+            }
+          }
+
+          const children = node.children || [];
+          for (let i = 0; i < children.length; i++) {
+            collectFolds(children[i]);
+          }
+        };
+        collectFolds(rootNode as FoldCstNode);
+      }
+
+      for (const commentRange of scanCommentFoldingRanges(document.getText())) {
+        addRange(commentRange);
+      }
+
+      return Array.from(rangeMap.values());
     } finally {
       if (ownsTree) {
         tree?.delete?.();
       }
     }
+  };
+
+  connection.onFoldingRanges((params): FoldingRange[] => {
+    return computeFoldingRanges(params.textDocument.uri).map((r) => {
+      const fr: FoldingRange = { startLine: r.startLine, endLine: r.endLine };
+      if (r.startCharacter !== undefined) fr.startCharacter = r.startCharacter;
+      if (r.endCharacter !== undefined) fr.endCharacter = r.endCharacter;
+      if (r.kind !== undefined) fr.kind = r.kind;
+      if (r.collapsedText !== undefined) fr.collapsedText = r.collapsedText;
+      return fr;
+    });
+  });
+
+  connection.onRequest("modelscript/getDefaultFoldLines", (params: { textDocument?: { uri?: string } }) => {
+    const uri = params?.textDocument?.uri;
+    if (!uri) return { lines: [] };
+    const ranges = computeFoldingRanges(uri);
+    const lines = Array.from(
+      new Set(ranges.filter((r) => r.defaultCollapsed && r.endLine > r.startLine).map((r) => r.startLine)),
+    ).sort((a, b) => a - b);
+    return { lines };
   });
 
   /* Selection Ranges — enables smart Expand/Shrink selection */

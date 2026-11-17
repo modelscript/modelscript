@@ -985,6 +985,7 @@ export function parsePscxCst(
     subModules,
     linkedLibraries,
     definitions: projectDefinitions,
+    ...(doc.errors.length > 0 ? { xmlErrors: doc.errors } : {}),
   };
 }
 

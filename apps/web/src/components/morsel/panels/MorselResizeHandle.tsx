@@ -19,8 +19,8 @@ export interface MorselResizeHandleProps {
   onKeyDown?: ((e: React.KeyboardEvent<HTMLDivElement>) => void) | undefined;
 }
 
-const BRAND_COLOR = "var(--ms-brand, #0891b2)";
-const BRAND_GLOW = "0 0 6px color-mix(in srgb, var(--ms-brand, #0891b2) 50%, transparent)";
+const HANDLE_COLOR = "var(--ms-text-3, #6b7280)";
+const HANDLE_GLOW = "0 0 6px color-mix(in srgb, var(--ms-text-3, #6b7280) 40%, transparent)";
 
 export const MorselResizeHandle: React.FC<MorselResizeHandleProps> = ({
   orientation,
@@ -80,7 +80,7 @@ export const MorselResizeHandle: React.FC<MorselResizeHandleProps> = ({
           width: isVertical ? 3 : "100%",
           height: isVertical ? "100%" : 3,
           borderRadius: 999,
-          backgroundColor: isActive ? BRAND_COLOR : "transparent",
+          backgroundColor: isActive ? HANDLE_COLOR : "transparent",
           transition: "background-color 0.15s ease",
         }}
       />
@@ -94,8 +94,8 @@ export const MorselResizeHandle: React.FC<MorselResizeHandleProps> = ({
           width: isVertical ? 6 : 32,
           height: isVertical ? 32 : 6,
           borderRadius: 999,
-          backgroundColor: isActive ? BRAND_COLOR : "transparent",
-          boxShadow: isActive ? BRAND_GLOW : "none",
+          backgroundColor: isActive ? HANDLE_COLOR : "transparent",
+          boxShadow: isActive ? HANDLE_GLOW : "none",
           opacity: isActive ? 1 : 0,
           transition: "opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease",
           pointerEvents: "none",

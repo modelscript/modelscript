@@ -386,7 +386,7 @@ export const pscadLanguage = language({
   maturity: "stable",
   lsp: {
     fileExtensions: [".pscx", ".pslx", ".pswx", ".psmx", ".psout"],
-    folding: ["Element", "COMMENT"],
+    folding: ["Element", { rule: "COMMENT", kind: "comment", defaultCollapsed: true }],
     outline: ["Element"],
     icons: {
       light: "./assets/pscad/icon-light.png",

@@ -32,18 +32,103 @@ import type {
   AmplVarColumnSpec,
   AmplVarDecl,
   AmplVarType,
+  SourceRange,
 } from "../types.js";
 import { AmplLexer, type Token } from "./ampl-lexer.js";
+
+export interface AmplParseError {
+  message: string;
+  range: SourceRange;
+}
+
+export interface AmplParseResult {
+  model: AmplModel;
+  errors: AmplParseError[];
+}
+
+class AmplSyntaxError extends Error {
+  public readonly range: SourceRange;
+  constructor(message: string, range: SourceRange) {
+    super(message);
+    this.name = "AmplSyntaxError";
+    this.range = range;
+  }
+}
+
+const TOP_LEVEL_DECL_KEYWORDS = new Set([
+  "set",
+  "param",
+  "var",
+  "minimize",
+  "maximize",
+  "subject",
+  "s.t.",
+  "node",
+  "arc",
+  "function",
+  "suffix",
+  "problem",
+  "table",
+  "check",
+  "solve",
+  "display",
+  "let",
+  "fix",
+  "unfix",
+  "drop",
+  "restore",
+  "data",
+  "model",
+  "reset",
+  "end",
+]);
 
 export class AmplModParser {
   private tokens: Token[];
   private pos = 0;
+  private errors: AmplParseError[] = [];
+  private collectErrors = false;
 
   constructor(tokensOrInput: Token[] | string) {
     if (typeof tokensOrInput === "string") {
       this.tokens = new AmplLexer(tokensOrInput).tokenize();
     } else {
       this.tokens = tokensOrInput;
+    }
+  }
+
+  public parseWithDiagnostics(): AmplParseResult {
+    this.pos = 0;
+    this.errors = [];
+    this.collectErrors = true;
+    try {
+      const model = this.parse();
+      return { model, errors: this.errors };
+    } finally {
+      this.collectErrors = false;
+    }
+  }
+
+  private isTopLevelDeclStart(): boolean {
+    const tok = this.peek();
+    if (tok.type !== "KEYWORD" && tok.type !== "IDENTIFIER") return false;
+    return TOP_LEVEL_DECL_KEYWORDS.has(tok.value.toLowerCase());
+  }
+
+  private recordError(message: string, range: SourceRange): void {
+    this.errors.push({ message, range });
+  }
+
+  private synchronize(): void {
+    while (!this.isAtEnd()) {
+      if (this.checkPunctuation(";")) {
+        this.advance();
+        return;
+      }
+      if (this.isTopLevelDeclStart()) {
+        return;
+      }
+      this.advance();
     }
   }
 
@@ -65,58 +150,79 @@ export class AmplModParser {
     };
 
     while (!this.isAtEnd()) {
-      if (this.matchKeyword("set")) {
-        this.parseSetDecl(model);
-      } else if (this.matchKeyword("param")) {
-        this.parseParamDecl(model);
-      } else if (this.matchKeyword("var")) {
-        this.parseVarDecl(model);
-      } else if (this.matchKeyword("minimize") || this.matchKeyword("maximize")) {
-        this.parseObjectiveDecl(model);
-      } else if (this.matchKeyword("subject") || this.matchKeyword("s.t.")) {
-        if (this.previous().value.toLowerCase() === "subject") {
-          this.consumeKeyword("to", "Expected 'to' after 'subject'");
-        }
-        this.parseConstraintDecl(model);
-      } else if (this.matchKeyword("node")) {
-        this.parseNodeDecl(model);
-      } else if (this.matchKeyword("arc")) {
-        this.parseArcDecl(model);
-      } else if (this.matchKeyword("function")) {
-        this.parseFunctionDecl(model);
-      } else if (this.matchKeyword("suffix")) {
-        this.parseSuffixDecl(model);
-      } else if (this.matchKeyword("problem")) {
-        const next1 = this.peekNext();
-        if (next1 && (next1.value === ":" || next1.value === "{")) {
-          this.parseProblemDecl(model);
-        } else {
-          const startRange = this.previous().range;
-          let name = "";
-          if (this.isNameToken(this.peek())) {
-            name = this.advance().value;
+      const startPos = this.pos;
+      try {
+        if (this.matchKeyword("set")) {
+          this.parseSetDecl(model);
+        } else if (this.matchKeyword("param")) {
+          this.parseParamDecl(model);
+        } else if (this.matchKeyword("var")) {
+          this.parseVarDecl(model);
+        } else if (this.matchKeyword("minimize") || this.matchKeyword("maximize")) {
+          this.parseObjectiveDecl(model);
+        } else if (this.matchKeyword("subject") || this.matchKeyword("s.t.")) {
+          if (this.previous().value.toLowerCase() === "subject") {
+            this.consumeKeyword("to", "Expected 'to' after 'subject'");
           }
-          this.consumePunctuation(";", "Expected ';' after problem statement");
-          model.statements!.push({ kind: "problem_cmd", name, range: startRange });
-        }
-      } else if (this.matchKeyword("table")) {
-        this.parseTableDecl(model);
-      } else if (this.matchKeyword("check")) {
-        this.parseCheckDecl(model);
-      } else if (this.isCommandStart()) {
-        const stmt = this.parseStatement(model);
-        if (stmt) {
-          model.statements!.push(stmt);
-        }
-      } else if (this.peek().type === "PUNCTUATION" && this.peek().value === ";") {
-        this.advance();
-      } else {
-        // If an identifier is followed by colon or indexing then colon, it is an unnamed-keyword constraint
-        if (this.isNameToken(this.peek()) && (this.peekNext().value === ":" || this.peekNext().value === "{")) {
           this.parseConstraintDecl(model);
+        } else if (this.matchKeyword("node")) {
+          this.parseNodeDecl(model);
+        } else if (this.matchKeyword("arc")) {
+          this.parseArcDecl(model);
+        } else if (this.matchKeyword("function")) {
+          this.parseFunctionDecl(model);
+        } else if (this.matchKeyword("suffix")) {
+          this.parseSuffixDecl(model);
+        } else if (this.matchKeyword("problem")) {
+          const next1 = this.peekNext();
+          if (next1 && (next1.value === ":" || next1.value === "{")) {
+            this.parseProblemDecl(model);
+          } else {
+            const startRange = this.previous().range;
+            let name = "";
+            if (this.isNameToken(this.peek())) {
+              name = this.advance().value;
+            }
+            this.consumePunctuation(";", "Expected ';' after problem statement");
+            model.statements!.push({ kind: "problem_cmd", name, range: startRange });
+          }
+        } else if (this.matchKeyword("table")) {
+          this.parseTableDecl(model);
+        } else if (this.matchKeyword("check")) {
+          this.parseCheckDecl(model);
+        } else if (this.isCommandStart()) {
+          const stmt = this.parseStatement(model);
+          if (stmt) {
+            model.statements!.push(stmt);
+          }
+        } else if (this.peek().type === "PUNCTUATION" && this.peek().value === ";") {
+          this.advance();
         } else {
+          // If an identifier is followed by colon or indexing then colon, it is an unnamed-keyword constraint
+          if (this.isNameToken(this.peek()) && (this.peekNext().value === ":" || this.peekNext().value === "{")) {
+            this.parseConstraintDecl(model);
+          } else if (this.collectErrors) {
+            const bad = this.peek();
+            this.recordError(
+              `Unexpected token '${bad.value}' at line ${bad.range.start.line}, column ${bad.range.start.column}`,
+              bad.range,
+            );
+            this.advance();
+            this.synchronize();
+          } else {
+            this.advance();
+          }
+        }
+      } catch (err) {
+        if (!this.collectErrors) throw err;
+        const tok = this.peek();
+        const range = err instanceof AmplSyntaxError ? err.range : tok.range;
+        const msg = err instanceof Error ? err.message : String(err);
+        this.recordError(msg, range);
+        if (this.pos === startPos && !this.isAtEnd()) {
           this.advance();
         }
+        this.synchronize();
       }
     }
 
@@ -143,6 +249,7 @@ export class AmplModParser {
     let assignExpr: AmplExpr | undefined;
 
     while (!this.checkPunctuation(";") && !this.isAtEnd()) {
+      if (this.collectErrors && this.isTopLevelDeclStart()) break;
       if (this.matchPunctuation(",")) {
         continue;
       } else if (this.matchKeyword("dimen")) {
@@ -198,6 +305,7 @@ export class AmplModParser {
     let assignExpr: AmplExpr | undefined;
 
     while (!this.checkPunctuation(";") && !this.isAtEnd()) {
+      if (this.collectErrors && this.isTopLevelDeclStart()) break;
       if (this.matchPunctuation(",")) {
         continue;
       } else if (this.matchKeyword("binary")) {
@@ -260,6 +368,7 @@ export class AmplModParser {
     let columnSpec: AmplVarColumnSpec | undefined;
 
     while (!this.checkPunctuation(";") && !this.isAtEnd()) {
+      if (this.collectErrors && this.isTopLevelDeclStart()) break;
       if (this.matchPunctuation(",")) {
         continue;
       } else if (this.matchKeyword("binary")) {
@@ -1660,8 +1769,9 @@ export class AmplModParser {
       };
     }
 
-    throw new Error(
+    throw new AmplSyntaxError(
       `Unexpected token '${token.value}' at line ${token.range.start.line}, column ${token.range.start.column}`,
+      token.range,
     );
   }
 
@@ -1772,8 +1882,10 @@ export class AmplModParser {
 
   private consumeName(message: string): Token {
     if (this.isNameToken(this.peek())) return this.advance();
-    throw new Error(
-      `${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`,
+    const tok = this.peek();
+    throw new AmplSyntaxError(
+      `${message}. Found '${tok.value}' at line ${tok.range.start.line}, column ${tok.range.start.column}`,
+      tok.range,
     );
   }
 
@@ -1844,8 +1956,10 @@ export class AmplModParser {
 
   private consume(type: Token["type"], message: string): Token {
     if (this.check(type)) return this.advance();
-    throw new Error(
-      `${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`,
+    const tok = this.peek();
+    throw new AmplSyntaxError(
+      `${message}. Found '${tok.value}' at line ${tok.range.start.line}, column ${tok.range.start.column}`,
+      tok.range,
     );
   }
 
@@ -1856,26 +1970,39 @@ export class AmplModParser {
     ) {
       return this.advance();
     }
-    throw new Error(
-      `${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`,
+    const tok = this.peek();
+    throw new AmplSyntaxError(
+      `${message}. Found '${tok.value}' at line ${tok.range.start.line}, column ${tok.range.start.column}`,
+      tok.range,
     );
   }
 
   private consumeOperator(val: string, message: string): Token {
     if (this.checkOperator(val)) return this.advance();
-    throw new Error(
-      `${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`,
+    const tok = this.peek();
+    throw new AmplSyntaxError(
+      `${message}. Found '${tok.value}' at line ${tok.range.start.line}, column ${tok.range.start.column}`,
+      tok.range,
     );
   }
 
   private consumePunctuation(val: string, message: string): Token {
     if (this.checkPunctuation(val)) return this.advance();
-    throw new Error(
-      `${message}. Found '${this.peek().value}' at line ${this.peek().range.start.line}, column ${this.peek().range.start.column}`,
+    const tok = this.peek();
+    const prev = this.pos > 0 ? this.previous() : tok;
+    const range =
+      val === ";" && (tok.type === "EOF" || tok.range.start.line > prev.range.end.line) ? prev.range : tok.range;
+    throw new AmplSyntaxError(
+      `${message}. Found '${tok.value}' at line ${tok.range.start.line}, column ${tok.range.start.column}`,
+      range,
     );
   }
 }
 
 export function parseAmplModel(input: string): AmplModel {
   return new AmplModParser(input).parse();
+}
+
+export function parseAmplModelWithDiagnostics(input: string): AmplParseResult {
+  return new AmplModParser(input).parseWithDiagnostics();
 }

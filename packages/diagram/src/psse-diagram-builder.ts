@@ -63,6 +63,7 @@ export interface PsseGeneratorLike {
   pt?: number | undefined;
   pb?: number | undefined;
   stat: number;
+  position?: { x: number; y: number } | undefined;
 }
 
 export interface PsseLoadLike {
@@ -75,6 +76,7 @@ export interface PsseLoadLike {
   yp?: number | undefined;
   yq?: number | undefined;
   status: number;
+  position?: { x: number; y: number } | undefined;
 }
 
 export interface PsseFixedShuntLike {
@@ -83,6 +85,7 @@ export interface PsseFixedShuntLike {
   status: number;
   gl: number;
   bl: number;
+  position?: { x: number; y: number } | undefined;
 }
 
 export interface PsseSwitchedShuntLike {
@@ -541,65 +544,62 @@ export function buildPsseDiagram(
   }
 
   // 1. Position and create bus nodes in voltage-level tiers (wrapping into rows of <= 4 buses)
-  const hasExplicitPositions = busList.some((b) => b.position?.x !== undefined);
   const busCoords = new Map<number, { x: number; y: number }>();
 
-  if (hasExplicitPositions) {
-    for (const b of busList) {
-      const x = b.position?.x ?? 200;
-      const y = b.position?.y ?? 200;
-      busCoords.set(b.i, { x, y });
-    }
-  } else {
-    // Group buses into voltage-level tiers and wrap wide tiers into balanced multi-row bands
-    const tier1: PsseBusLike[] = []; // >= 345 kV
-    const tier2: PsseBusLike[] = []; // 161 - 344 kV
-    const tier3: PsseBusLike[] = []; // 100 - 160 kV (e.g. 138 kV)
-    const tier4: PsseBusLike[] = []; // 50 - 99 kV (e.g. 69 kV)
-    const tier5: PsseBusLike[] = []; // < 50 kV
+  // Group buses into voltage-level tiers and wrap wide tiers into balanced multi-row bands
+  const tier1: PsseBusLike[] = []; // >= 345 kV
+  const tier2: PsseBusLike[] = []; // 161 - 344 kV
+  const tier3: PsseBusLike[] = []; // 100 - 160 kV (e.g. 138 kV)
+  const tier4: PsseBusLike[] = []; // 50 - 99 kV (e.g. 69 kV)
+  const tier5: PsseBusLike[] = []; // < 50 kV
 
-    for (const b of busList) {
-      if (b.baseKv >= 345) tier1.push(b);
-      else if (b.baseKv >= 161) tier2.push(b);
-      else if (b.baseKv >= 100) tier3.push(b);
-      else if (b.baseKv >= 50) tier4.push(b);
-      else tier5.push(b);
-    }
+  for (const b of busList) {
+    if (b.baseKv >= 345) tier1.push(b);
+    else if (b.baseKv >= 161) tier2.push(b);
+    else if (b.baseKv >= 100) tier3.push(b);
+    else if (b.baseKv >= 50) tier4.push(b);
+    else tier5.push(b);
+  }
 
-    const rawTiers = [tier1, tier2, tier3, tier4, tier5].filter((t) => t.length > 0);
-    const maxCols = busList.length <= 16 ? 4 : Math.min(32, Math.max(6, Math.ceil(Math.sqrt(busList.length * 2.2))));
-    const rows: PsseBusLike[][] = [];
-    for (const tier of rawTiers) {
-      if (tier.length <= maxCols) {
-        rows.push([...tier]);
-      } else {
-        const perRow = Math.min(maxCols, Math.ceil(tier.length / Math.ceil(tier.length / maxCols)));
-        for (let i = 0; i < tier.length; i += perRow) {
-          rows.push(tier.slice(i, i + perRow));
-        }
+  const rawTiers = [tier1, tier2, tier3, tier4, tier5].filter((t) => t.length > 0);
+  const maxCols = busList.length <= 16 ? 4 : Math.min(32, Math.max(6, Math.ceil(Math.sqrt(busList.length * 2.2))));
+  const rows: PsseBusLike[][] = [];
+  for (const tier of rawTiers) {
+    if (tier.length <= maxCols) {
+      rows.push([...tier]);
+    } else {
+      const perRow = Math.min(maxCols, Math.ceil(tier.length / Math.ceil(tier.length / maxCols)));
+      for (let i = 0; i < tier.length; i += perRow) {
+        rows.push(tier.slice(i, i + perRow));
       }
     }
+  }
 
-    // Apply Sugiyama barycenter ordering within rows to minimize crossings
-    orderRowsByBarycenter(rows, neighbors);
+  // Apply Sugiyama barycenter ordering within rows to minimize crossings
+  orderRowsByBarycenter(rows, neighbors);
 
-    const startY = 150;
-    const rowSpacingY = 230;
-    const busSpacingX = 250;
+  const startY = 150;
+  const rowSpacingY = 230;
+  const busSpacingX = 250;
 
-    for (let rIdx = 0; rIdx < rows.length; rIdx++) {
-      const rowBuses = rows[rIdx]!;
-      const yBase = startY + rIdx * rowSpacingY;
-      const rowWidth = (rowBuses.length - 1) * busSpacingX;
-      const startX = Math.max(160, Math.round(540 - rowWidth / 2) + (rIdx % 2 === 1 && rowBuses.length > 1 ? 35 : 0));
+  for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+    const rowBuses = rows[rIdx]!;
+    const yBase = startY + rIdx * rowSpacingY;
+    const rowWidth = (rowBuses.length - 1) * busSpacingX;
+    const startX = Math.max(160, Math.round(540 - rowWidth / 2) + (rIdx % 2 === 1 && rowBuses.length > 1 ? 35 : 0));
 
-      for (let bIdx = 0; bIdx < rowBuses.length; bIdx++) {
-        const b = rowBuses[bIdx]!;
-        const x = startX + bIdx * busSpacingX;
-        // Slight vertical stagger on middle buses in a wide row so horizontal tie-lines don't overlap busbars
-        const staggerY = rowBuses.length >= 3 && bIdx % 2 === 1 ? 30 : 0;
-        busCoords.set(b.i, { x, y: yBase + staggerY });
-      }
+    for (let bIdx = 0; bIdx < rowBuses.length; bIdx++) {
+      const b = rowBuses[bIdx]!;
+      const x = startX + bIdx * busSpacingX;
+      // Slight vertical stagger on middle buses in a wide row so horizontal tie-lines don't overlap busbars
+      const staggerY = rowBuses.length >= 3 && bIdx % 2 === 1 ? 30 : 0;
+      busCoords.set(b.i, { x, y: yBase + staggerY });
+    }
+  }
+
+  for (const b of busList) {
+    if (b.position?.x !== undefined && b.position?.y !== undefined) {
+      busCoords.set(b.i, { x: b.position.x, y: b.position.y });
     }
   }
 
@@ -720,8 +720,8 @@ export function buildPsseDiagram(
         const genIdClean = g.id.trim() || "1";
         const genNodeId = `gen_${g.i}_${genIdClean}`;
         const offsetX = genCount > 1 ? (idx - (genCount - 1) / 2) * 72 : 0;
-        const gx = bPos.x + offsetX;
-        const gy = bPos.y - 74;
+        const gx = g.position?.x ?? bPos.x + offsetX;
+        const gy = g.position?.y ?? bPos.y - 74;
 
         const genKind = classifyGeneratorKind(g, hostBus?.name);
         const kindBadge =
@@ -794,8 +794,8 @@ export function buildPsseDiagram(
         const loadIdClean = l.id.trim() || "1";
         const loadNodeId = `load_${l.i}_${loadIdClean}`;
         const offsetX = loadCount > 1 ? (idx - (loadCount - 1) / 2) * 92 : 0;
-        const lx = bPos.x + offsetX;
-        const ly = bPos.y + 68;
+        const lx = l.position?.x ?? bPos.x + offsetX;
+        const ly = l.position?.y ?? bPos.y + 68;
         const loadLabel = `Load ${l.pl.toFixed(1)} MW\n${l.ql.toFixed(1)} Mvar`;
 
         cells.push({
@@ -858,6 +858,7 @@ export function buildPsseDiagram(
       bMvar: number;
       gMw: number;
       isSwitched: boolean;
+      position?: { x: number; y: number } | undefined;
     }
     const shuntsByBus = new Map<number, ShuntEntry[]>();
     if (c.fixedShunts) {
@@ -872,6 +873,7 @@ export function buildPsseDiagram(
           bMvar: s.bl,
           gMw: s.gl,
           isSwitched: false,
+          position: s.position,
         });
         shuntsByBus.set(s.i, arr);
       }
@@ -899,8 +901,8 @@ export function buildPsseDiagram(
 
       shunts.forEach((sh, idx) => {
         // Place shunt bank to the bottom-right if bus already has a load below it, or directly below
-        const sx = hasLoadOnBus ? bPos.x + 76 + idx * 66 : bPos.x + idx * 66;
-        const sy = bPos.y + 66;
+        const sx = sh.position?.x ?? (hasLoadOnBus ? bPos.x + 76 + idx * 66 : bPos.x + idx * 66);
+        const sy = sh.position?.y ?? bPos.y + 66;
         const isCap = sh.bMvar >= 0;
         const typeTag = sh.isSwitched ? (isCap ? "SwCap" : "SwReac") : isCap ? "Cap" : "Reac";
         const sign = sh.bMvar >= 0 ? "+" : "";

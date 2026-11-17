@@ -1,32 +1,42 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PackageIcon, SearchIcon, XIcon } from "@primer/octicons-react";
+import { PackageIcon, PlusIcon, SearchIcon, XIcon } from "@primer/octicons-react";
 import { IconButton, useTheme } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { sanitizeSvgMarkup } from "../../../components/artifacts/PolyglotArtifactViewer";
 import { DOMAIN_FILTERS, type EngineeringDomainId } from "../../../components/morsel/componentGalleryCatalog";
+import { getLanguageInfo } from "../../../components/morsel/constants";
 import { buildEquationFallbackPreviewSvg } from "../../../components/morsel/openModelCatalog";
 import {
-  type DiagramPreviewResultItem,
   getClassSource,
   getDiagramPreviewSvgs,
   getMountedLibraries,
   installDependency,
+  type DiagramPreviewResultItem,
   type MountedLibraryEntry,
 } from "../../../components/morsel/util/lsp-bridge";
 import {
   fetchRegistryClassSource,
-  type StreamedRegistryModelItem,
   streamRegistryModels,
+  type StreamedRegistryModelItem,
 } from "../../../components/morsel/util/registry-stream";
-import { HERO_EXAMPLES, type HeroExample } from "../constants";
+import {
+  DEFAULT_EMPTY_MODELICA_CODE,
+  HERO_EXAMPLES,
+  PINNED_PLAYGROUND_LANGUAGE_IDS,
+  PLAYGROUND_LANGUAGE_DOMAINS,
+  getPlaygroundLanguageDomain,
+  useVisiblePlaygroundLanguages,
+  type HeroExample,
+} from "../constants";
 
 export interface TemplateGalleryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectTemplate: (template: HeroExample) => void;
   currentTemplateId?: string | undefined;
+  currentLang?: string | undefined;
 }
 
 const MODEL_PAGE_SIZE = 48;
@@ -75,10 +85,14 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
   onClose,
   onSelectTemplate,
   currentTemplateId,
+  currentLang = "modelica",
 }) => {
   const { colorMode: themeMode, resolvedColorMode } = useTheme();
   const isDark = (resolvedColorMode || themeMode) !== "day";
+  const visiblePlaygroundLanguages = useVisiblePlaygroundLanguages();
 
+  const [selectedLang, setSelectedLang] = useState<string>(currentLang || "modelica");
+  const [langSearch, setLangSearch] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDomain, setSelectedDomain] = useState<EngineeringDomainId>("all");
   const [packageFilter, setPackageFilter] = useState<string | null>(null);
@@ -110,9 +124,11 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
     return map;
   }, [mountedLibs]);
 
-  // Sync mounted packages & focus search input when modal opens
+  // Sync selected language, mounted packages & focus search input when modal opens
   useEffect(() => {
     if (!isOpen) return;
+    setSelectedLang(currentLang || "modelica");
+    setLangSearch("");
     setErrorMsg(null);
     void getMountedLibraries()
       .then((res) => setMountedLibs(Array.isArray(res?.mounted) ? res.mounted : []))
@@ -121,7 +137,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
       });
     const timer = setTimeout(() => searchInputRef.current?.focus(), 60);
     return () => clearTimeout(timer);
-  }, [isOpen]);
+  }, [isOpen, currentLang]);
 
   // Escape key to close
   useEffect(() => {
@@ -237,10 +253,13 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
       });
   }, [registryHasMore, searchQuery, selectedDomain, packageFilter, registryOffset]);
 
+  const isModelicaSelected = selectedLang.toLowerCase() === "modelica";
+
   const filteredRegistryModels = useMemo(() => {
+    if (!isModelicaSelected) return [];
     if (!mountedOnlyFilter) return streamedModels;
     return streamedModels.filter((m) => mountedMap.has(m.packageName.toLowerCase()));
-  }, [streamedModels, mountedOnlyFilter, mountedMap]);
+  }, [isModelicaSelected, streamedModels, mountedOnlyFilter, mountedMap]);
 
   // Hydrate missing diagram thumbnails via LSP worker for visible models without diagramSvg
   useEffect(() => {
@@ -269,12 +288,87 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
     };
   }, [isOpen, filteredRegistryModels, livePreviews, isDark]);
 
-  // Offline / fallback curated starters when Ansatz registry is unavailable
+  const selectedLangOption = useMemo(
+    () =>
+      visiblePlaygroundLanguages.find((l) => l.id === selectedLang) || {
+        id: selectedLang,
+        label: selectedLang.toUpperCase(),
+        ext: `.${selectedLang}`,
+      },
+    [visiblePlaygroundLanguages, selectedLang],
+  );
+  const selectedLangInfo = useMemo(() => getLanguageInfo(selectedLang), [selectedLang]);
+
+  const exampleCountsByLang = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const ex of HERO_EXAMPLES) {
+      const id = ex.lang.toLowerCase();
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    return counts;
+  }, []);
+
+  const normalizedLangQuery = langSearch.trim().toLowerCase();
+  const filteredLanguages = useMemo(() => {
+    if (!normalizedLangQuery) return visiblePlaygroundLanguages;
+    return visiblePlaygroundLanguages.filter((lang) => {
+      const domain = getPlaygroundLanguageDomain(lang.id).toLowerCase();
+      return (
+        lang.label.toLowerCase().includes(normalizedLangQuery) ||
+        lang.id.toLowerCase().includes(normalizedLangQuery) ||
+        lang.ext.toLowerCase().includes(normalizedLangQuery) ||
+        domain.includes(normalizedLangQuery)
+      );
+    });
+  }, [visiblePlaygroundLanguages, normalizedLangQuery]);
+
+  const pinnedLanguages = useMemo(() => {
+    const byId = new Map(visiblePlaygroundLanguages.map((l) => [l.id, l]));
+    return PINNED_PLAYGROUND_LANGUAGE_IDS.map((id) => byId.get(id)).filter((l): l is NonNullable<typeof l> =>
+      Boolean(l),
+    );
+  }, [visiblePlaygroundLanguages]);
+
+  const groupedLanguages = useMemo(() => {
+    const byId = new Map(visiblePlaygroundLanguages.map((l) => [l.id, l]));
+    const assigned = new Set<string>();
+    const groups: Array<{ title: string; items: typeof visiblePlaygroundLanguages }> = [];
+    for (const domain of PLAYGROUND_LANGUAGE_DOMAINS) {
+      const items = domain.ids.map((id) => byId.get(id)).filter((l): l is NonNullable<typeof l> => Boolean(l));
+      if (items.length > 0) {
+        items.forEach((l) => assigned.add(l.id));
+        groups.push({ title: domain.title, items });
+      }
+    }
+    const remaining = visiblePlaygroundLanguages.filter((l) => !assigned.has(l.id));
+    if (remaining.length > 0) {
+      groups.push({ title: "Other", items: remaining });
+    }
+    return groups;
+  }, [visiblePlaygroundLanguages]);
+
+  // Curated starters for the selected language (and fallback when Modelica registry is offline)
   const fallbackStarters = useMemo(() => {
-    if (registryFromApi !== false) return [];
+    if (isModelicaSelected && registryFromApi !== false) return [];
     const q = searchQuery.trim().toLowerCase();
-    return HERO_EXAMPLES.filter((ex) => {
-      if (selectedDomain !== "all" && mapHeroDomain(ex) !== selectedDomain) return false;
+    const langMatches = HERO_EXAMPLES.filter((ex) => ex.lang.toLowerCase() === selectedLang.toLowerCase());
+    const baseList: HeroExample[] =
+      langMatches.length > 0
+        ? langMatches
+        : selectedLangInfo.defaultCode
+          ? [
+              {
+                id: `starter-${selectedLang}`,
+                title: `${selectedLangOption.label} Starter`,
+                category: getPlaygroundLanguageDomain(selectedLang),
+                lang: selectedLang,
+                description: `Minimal starter ${selectedLangOption.label} (${selectedLangOption.ext}) model`,
+                code: selectedLangInfo.defaultCode,
+              },
+            ]
+          : [];
+    return baseList.filter((ex) => {
+      if (isModelicaSelected && selectedDomain !== "all" && mapHeroDomain(ex) !== selectedDomain) return false;
       if (!q) return true;
       return (
         ex.title.toLowerCase().includes(q) ||
@@ -284,7 +378,15 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
         Boolean(ex.tags?.some((t) => t.toLowerCase().includes(q)))
       );
     });
-  }, [registryFromApi, searchQuery, selectedDomain]);
+  }, [
+    isModelicaSelected,
+    registryFromApi,
+    searchQuery,
+    selectedDomain,
+    selectedLang,
+    selectedLangInfo,
+    selectedLangOption,
+  ]);
 
   const ensurePackageMounted = useCallback(
     async (pkgName: string, pkgVersion: string) => {
@@ -352,29 +454,113 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
   if (!isOpen || typeof document === "undefined") return null;
 
   const palette = {
-    bg: isDark ? "#18181b" : "#ffffff",
-    subtleBg: isDark ? "#1e1e22" : "#f6f8fa",
-    cardBg: isDark ? "#1f1f24" : "#ffffff",
+    bg: isDark ? "var(--ms-bg, #18181b)" : "var(--ms-bg, #ffffff)",
+    subtleBg: isDark ? "var(--ms-bg-alt, #1e1e22)" : "var(--ms-bg-alt, #f6f8fa)",
+    cardBg: isDark ? "var(--ms-surface, #1f1f24)" : "var(--ms-surface, #ffffff)",
     stageBg: isDark ? "#121214" : "#f8fafc",
-    border: isDark ? "rgba(255, 255, 255, 0.1)" : "#d8dee4",
+    border: isDark ? "var(--ms-border, rgba(255, 255, 255, 0.1))" : "var(--ms-border, #d8dee4)",
     subtleBorder: isDark ? "rgba(255,255,255,0.07)" : "rgba(15,23,42,0.07)",
-    fg: isDark ? "#e6edf3" : "#1f2328",
-    muted: isDark ? "#8b949e" : "#59636e",
-    accent: "#2563eb",
-    accentSoft: isDark ? "rgba(59, 130, 246, 0.16)" : "rgba(37, 99, 235, 0.10)",
+    fg: isDark ? "var(--ms-text-1, #e6edf3)" : "var(--ms-text-1, #1f2328)",
+    muted: isDark ? "var(--ms-text-2, #8b949e)" : "var(--ms-text-2, #59636e)",
+    accent: "var(--ms-accent-teal, var(--ms-brand, #0891b2))",
+    accentSoft: isDark
+      ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.16))"
+      : "var(--ms-brand-soft, rgba(8, 145, 178, 0.10))",
     success: isDark ? "#3fb950" : "#1a7f37",
   };
 
-  const totalCount =
-    registryFromApi === false
+  const totalCount = isModelicaSelected
+    ? registryFromApi === false
       ? fallbackStarters.length
-      : Math.max(filteredRegistryModels.length, !mountedOnlyFilter && registryTotal !== null ? registryTotal : 0);
+      : Math.max(filteredRegistryModels.length, !mountedOnlyFilter && registryTotal !== null ? registryTotal : 0)
+    : fallbackStarters.length;
+
+  const handleCreateBlank = () => {
+    const blankCode = selectedLangInfo.defaultCode || (isModelicaSelected ? DEFAULT_EMPTY_MODELICA_CODE : "");
+    onSelectTemplate({
+      id: `blank-${selectedLang}`,
+      title: "Untitled Model",
+      category: "Blank",
+      lang: selectedLang,
+      code: blankCode,
+    });
+    onClose();
+  };
+
+  const renderLangRailItem = (lang: (typeof visiblePlaygroundLanguages)[number], keyPrefix = "") => {
+    const isSelected = lang.id.toLowerCase() === selectedLang.toLowerCase();
+    const count =
+      lang.id.toLowerCase() === "modelica" && registryTotal !== null
+        ? registryTotal
+        : (exampleCountsByLang.get(lang.id.toLowerCase()) ?? 0);
+    return (
+      <button
+        key={`${keyPrefix}${lang.id}`}
+        type="button"
+        onClick={() => {
+          setSelectedLang(lang.id);
+          setSelectedDomain("all");
+          setPackageFilter(null);
+        }}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          padding: "6px 10px",
+          borderRadius: 8,
+          border: "none",
+          backgroundColor: isSelected ? palette.accentSoft : "transparent",
+          color: isSelected ? palette.accent : palette.fg,
+          fontSize: 12,
+          fontWeight: isSelected ? 600 : 500,
+          cursor: "pointer",
+          textAlign: "left",
+          transition: "background-color 0.12s ease",
+        }}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+          {lang.label}
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+          {count > 0 && (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                padding: "1px 5px",
+                borderRadius: 999,
+                backgroundColor: isSelected
+                  ? "color-mix(in srgb, var(--ms-brand, #0891b2) 18%, transparent)"
+                  : palette.subtleBorder,
+                color: isSelected ? palette.accent : palette.muted,
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {count > 999 ? `${Math.floor(count / 1000)}k+` : count}
+            </span>
+          )}
+          <span
+            style={{
+              fontSize: 10,
+              color: palette.muted,
+              fontFamily: "var(--ms-font-mono, monospace)",
+              opacity: 0.8,
+            }}
+          >
+            {lang.ext}
+          </span>
+        </span>
+      </button>
+    );
+  };
 
   return createPortal(
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Starter Engineering Templates"
+      aria-label="New Model & Starter Templates"
       data-testid="template-gallery-modal"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -396,14 +582,14 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
       <div
         style={{
           width: "100%",
-          maxWidth: 980,
-          height: "min(740px, calc(100dvh - 32px))",
+          maxWidth: 1080,
+          height: "min(760px, calc(100dvh - 32px))",
           backgroundColor: palette.bg,
           color: palette.fg,
           border: `1px solid ${palette.border}`,
           borderRadius: 16,
           boxShadow: isDark
-            ? "0 28px 80px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(59,130,246,0.18)"
+            ? "0 28px 80px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(8, 145, 178, 0.18)"
             : "0 24px 64px rgba(15, 23, 42, 0.22)",
           display: "flex",
           flexDirection: "column",
@@ -430,7 +616,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                 width: 30,
                 height: 30,
                 borderRadius: 8,
-                background: "linear-gradient(135deg, #2563eb 0%, #0891b2 100%)",
+                background: "linear-gradient(135deg, var(--ms-accent-teal, #14b8a6) 0%, var(--ms-brand, #0891b2) 100%)",
                 color: "#ffffff",
                 display: "flex",
                 alignItems: "center",
@@ -441,108 +627,71 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
               <PackageIcon size={16} />
             </div>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 650, lineHeight: 1.2 }}>Starter Engineering Templates</div>
+              <div style={{ fontSize: 15, fontWeight: 650, lineHeight: 1.2 }}>New Model</div>
               <div style={{ fontSize: 11.5, color: palette.muted }}>
-                Openable models from the Ansatz package registry ({totalCount.toLocaleString()} available)
+                Choose a language, start from a blank canvas, or pick a starter template ({totalCount.toLocaleString()}{" "}
+                in {selectedLangOption.label})
               </div>
             </div>
           </div>
 
           <IconButton
             icon={XIcon}
-            aria-label="Close Starter Engineering Templates"
+            aria-label="Close New Model gallery"
             variant="invisible"
             size="small"
             onClick={onClose}
           />
         </div>
 
-        {/* ── Search + Domain Filter Toolbar ── */}
-        <div
-          style={{
-            padding: "12px 20px",
-            borderBottom: `1px solid ${palette.border}`,
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            backgroundColor: palette.bg,
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {/* ── Two-Pane Body: Language Rail (Left) + Blank Tile & Templates (Right) ── */}
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", overflow: "hidden" }}>
+          {/* Left Language Rail */}
+          <aside
+            aria-label="Languages"
+            style={{
+              width: 244,
+              flexShrink: 0,
+              borderRight: `1px solid ${palette.border}`,
+              backgroundColor: palette.subtleBg,
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
+            }}
+          >
             <div
               style={{
-                flex: 1,
+                padding: "10px 12px",
+                borderBottom: `1px solid ${palette.border}`,
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
-                padding: "0 12px",
-                height: 38,
-                borderRadius: 10,
-                border: `1px solid ${palette.border}`,
-                backgroundColor: palette.subtleBg,
+                gap: 6,
+                flexShrink: 0,
               }}
             >
-              <span style={{ color: palette.muted, display: "flex" }}>
-                <SearchIcon size={15} />
-              </span>
-              {packageFilter && (
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 5,
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    padding: "2px 8px",
-                    borderRadius: 6,
-                    backgroundColor: palette.accentSoft,
-                    color: isDark ? "#60a5fa" : "#2563eb",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {packageFilter}
-                  <button
-                    type="button"
-                    onClick={() => setPackageFilter(null)}
-                    aria-label="Clear package filter"
-                    style={{
-                      border: "none",
-                      background: "none",
-                      color: "inherit",
-                      cursor: "pointer",
-                      padding: 0,
-                      display: "flex",
-                    }}
-                  >
-                    <XIcon size={12} />
-                  </button>
-                </span>
-              )}
+              <SearchIcon size={13} style={{ color: palette.muted, flexShrink: 0 }} />
               <input
-                ref={searchInputRef}
                 type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search Ansatz models by name, package, domain, or keyword..."
+                value={langSearch}
+                onChange={(e) => setLangSearch(e.target.value)}
+                placeholder={`Filter ${visiblePlaygroundLanguages.length} languages…`}
+                aria-label="Filter languages"
                 style={{
                   flex: 1,
+                  minWidth: 0,
                   border: "none",
                   outline: "none",
                   background: "transparent",
                   color: palette.fg,
-                  fontSize: 13.5,
-                  minWidth: 100,
+                  fontSize: 12,
+                  fontFamily: "inherit",
                 }}
               />
-              {isStreaming && (
-                <span style={{ fontSize: 11, color: palette.muted, whiteSpace: "nowrap" }}>Streaming…</span>
-              )}
-              {searchQuery && (
+              {langSearch && (
                 <button
                   type="button"
-                  aria-label="Clear search"
-                  onClick={() => setSearchQuery("")}
+                  onClick={() => setLangSearch("")}
+                  aria-label="Clear language filter"
                   style={{
                     border: "none",
                     background: "transparent",
@@ -552,531 +701,759 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                     padding: 2,
                   }}
                 >
-                  <XIcon size={14} />
+                  <XIcon size={12} />
                 </button>
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={() => setMountedOnlyFilter((v) => !v)}
-              style={{
-                height: 38,
-                padding: "0 12px",
-                borderRadius: 10,
-                border: `1px solid ${mountedOnlyFilter ? palette.accent : palette.border}`,
-                backgroundColor: mountedOnlyFilter ? palette.accentSoft : palette.subtleBg,
-                color: mountedOnlyFilter ? (isDark ? "#60a5fa" : "#2563eb") : palette.muted,
-                fontSize: 12,
-                fontWeight: 550,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {mountedOnlyFilter ? "Mounted only ✓" : "All packages"}
-            </button>
-          </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "8px 8px 16px 8px" }}>
+              {filteredLanguages.length === 0 ? (
+                <div style={{ padding: "20px 12px", textAlign: "center", fontSize: 12, color: palette.muted }}>
+                  No languages matching "{langSearch}"
+                </div>
+              ) : normalizedLangQuery ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  {filteredLanguages.map((lang) => renderLangRailItem(lang))}
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {pinnedLanguages.length > 0 && (
+                    <div>
+                      <div
+                        style={{
+                          padding: "4px 10px",
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
+                          color: palette.muted,
+                        }}
+                      >
+                        Popular
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        {pinnedLanguages.map((lang) => renderLangRailItem(lang, "pinned-"))}
+                      </div>
+                    </div>
+                  )}
+                  {groupedLanguages.map((group) => (
+                    <div key={group.title}>
+                      <div
+                        style={{
+                          padding: "4px 10px",
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
+                          color: palette.muted,
+                        }}
+                      >
+                        {group.title}
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        {group.items.map((lang) => renderLangRailItem(lang))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </aside>
 
-          {/* Vector Domain Filter Pills */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            {DOMAIN_FILTERS.map((dom) => {
-              const active = selectedDomain === dom.id;
-              return (
-                <button
-                  key={dom.id}
-                  type="button"
-                  onClick={() => setSelectedDomain(dom.id)}
-                  style={{
-                    border: `1px solid ${active ? dom.accent : palette.border}`,
-                    backgroundColor: active ? `${dom.accent}1f` : "transparent",
-                    color: active ? (isDark ? "#f0f6fc" : dom.accent) : palette.muted,
-                    borderRadius: 999,
-                    padding: "4px 10px",
-                    fontSize: 11.5,
-                    fontWeight: active ? 600 : 500,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 5,
-                    cursor: "pointer",
-                    transition: "all 0.12s ease",
-                  }}
-                >
-                  <DomainGlyph svgInner={dom.svgInner} size={13} />
-                  <span>{dom.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Inline Error Banner */}
-        {errorMsg && (
-          <div
-            style={{
-              padding: "8px 20px",
-              backgroundColor: isDark ? "rgba(248, 81, 73, 0.14)" : "rgba(207, 34, 46, 0.08)",
-              borderBottom: `1px solid ${palette.border}`,
-              color: isDark ? "#ff7b72" : "#cf222e",
-              fontSize: 12,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <span>{errorMsg}</span>
-            <button
-              type="button"
-              onClick={() => setErrorMsg(null)}
-              style={{
-                border: "none",
-                background: "transparent",
-                color: "inherit",
-                cursor: "pointer",
-                display: "flex",
-              }}
-            >
-              <XIcon size={13} />
-            </button>
-          </div>
-        )}
-
-        {/* ── Main Scrollable Model Grid ── */}
-        <div
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            if (el.scrollTop + el.clientHeight >= el.scrollHeight - 320 && registryHasMore) {
-              loadMoreModels();
-            }
-          }}
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflowY: "auto",
-            overflowX: "hidden",
-            padding: "16px 20px",
-          }}
-        >
-          {filteredRegistryModels.length === 0 && fallbackStarters.length === 0 ? (
+          {/* Right Main Content */}
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            {/* Big Fixed Blank Model Hero Tile */}
             <div
               style={{
-                padding: "56px 24px",
-                textAlign: "center",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 10,
-                color: palette.muted,
+                padding: "14px 20px 10px 20px",
+                backgroundColor: palette.bg,
+                flexShrink: 0,
               }}
             >
-              <div style={{ fontSize: 14, fontWeight: 600, color: palette.fg }}>
-                {isStreaming
-                  ? "Loading models from Ansatz package registry…"
-                  : `No models found${searchQuery ? ` matching "${searchQuery}"` : ""}`}
-              </div>
-              {!isStreaming && (searchQuery || selectedDomain !== "all" || packageFilter || mountedOnlyFilter) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery("");
-                    setSelectedDomain("all");
-                    setPackageFilter(null);
-                    setMountedOnlyFilter(false);
-                  }}
+              <button
+                type="button"
+                data-testid="new-blank-model-tile"
+                onClick={handleCreateBlank}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 14,
+                  padding: "14px 16px",
+                  borderRadius: 12,
+                  border: `1px dashed ${palette.accent}`,
+                  backgroundColor: palette.accentSoft,
+                  color: palette.fg,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  transition: "transform 0.12s ease, box-shadow 0.12s ease",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                  <div
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 10,
+                      background:
+                        "linear-gradient(135deg, var(--ms-accent-teal, #14b8a6) 0%, var(--ms-brand, #0891b2) 100%)",
+                      color: "#ffffff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <PlusIcon size={18} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 650, color: palette.fg }}>
+                      Blank {selectedLangOption.label} Model
+                    </div>
+                    <div style={{ fontSize: 11.5, color: palette.muted, marginTop: 2 }}>
+                      Start with an empty canvas &amp; editor ({selectedLangOption.ext})
+                    </div>
+                  </div>
+                </div>
+                <span
                   style={{
-                    marginTop: 4,
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    padding: "5px 12px",
+                    borderRadius: 8,
+                    backgroundColor: palette.accent,
+                    color: "#ffffff",
+                    flexShrink: 0,
+                  }}
+                >
+                  Create Blank
+                </span>
+              </button>
+            </div>
+
+            {/* ── Search + Domain Filter Toolbar ── */}
+            <div
+              style={{
+                padding: "12px 20px",
+                borderBottom: `1px solid ${palette.border}`,
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                backgroundColor: palette.bg,
+                flexShrink: 0,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "0 12px",
+                    height: 38,
+                    borderRadius: 10,
                     border: `1px solid ${palette.border}`,
                     backgroundColor: palette.subtleBg,
-                    color: palette.fg,
-                    borderRadius: 8,
-                    padding: "6px 12px",
+                  }}
+                >
+                  <span style={{ color: palette.muted, display: "flex" }}>
+                    <SearchIcon size={15} />
+                  </span>
+                  {packageFilter && (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        padding: "2px 8px",
+                        borderRadius: 6,
+                        backgroundColor: palette.accentSoft,
+                        color: isDark ? "#60a5fa" : "#2563eb",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {packageFilter}
+                      <button
+                        type="button"
+                        onClick={() => setPackageFilter(null)}
+                        aria-label="Clear package filter"
+                        style={{
+                          border: "none",
+                          background: "none",
+                          color: "inherit",
+                          cursor: "pointer",
+                          padding: 0,
+                          display: "flex",
+                        }}
+                      >
+                        <XIcon size={12} />
+                      </button>
+                    </span>
+                  )}
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search Ansatz models by name, package, domain, or keyword..."
+                    style={{
+                      flex: 1,
+                      border: "none",
+                      outline: "none",
+                      background: "transparent",
+                      color: palette.fg,
+                      fontSize: 13.5,
+                      minWidth: 100,
+                    }}
+                  />
+                  {isStreaming && (
+                    <span style={{ fontSize: 11, color: palette.muted, whiteSpace: "nowrap" }}>Streaming…</span>
+                  )}
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      aria-label="Clear search"
+                      onClick={() => setSearchQuery("")}
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        color: palette.muted,
+                        cursor: "pointer",
+                        display: "flex",
+                        padding: 2,
+                      }}
+                    >
+                      <XIcon size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setMountedOnlyFilter((v) => !v)}
+                  style={{
+                    height: 38,
+                    padding: "0 12px",
+                    borderRadius: 10,
+                    border: `1px solid ${mountedOnlyFilter ? palette.accent : palette.border}`,
+                    backgroundColor: mountedOnlyFilter ? palette.accentSoft : palette.subtleBg,
+                    color: mountedOnlyFilter ? (isDark ? "#60a5fa" : "#2563eb") : palette.muted,
                     fontSize: 12,
                     fontWeight: 550,
                     cursor: "pointer",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  Clear filters
+                  {mountedOnlyFilter ? "Mounted only ✓" : "All packages"}
                 </button>
-              )}
+              </div>
+
+              {/* Vector Domain Filter Pills */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                {DOMAIN_FILTERS.map((dom) => {
+                  const active = selectedDomain === dom.id;
+                  return (
+                    <button
+                      key={dom.id}
+                      type="button"
+                      onClick={() => setSelectedDomain(dom.id)}
+                      style={{
+                        border: `1px solid ${active ? dom.accent : palette.border}`,
+                        backgroundColor: active ? `${dom.accent}1f` : "transparent",
+                        color: active ? (isDark ? "#f0f6fc" : dom.accent) : palette.muted,
+                        borderRadius: 999,
+                        padding: "4px 10px",
+                        fontSize: 11.5,
+                        fontWeight: active ? 600 : 500,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                        cursor: "pointer",
+                        transition: "all 0.12s ease",
+                      }}
+                    >
+                      <DomainGlyph svgInner={dom.svgInner} size={13} />
+                      <span>{dom.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          ) : (
+
+            {/* Inline Error Banner */}
+            {errorMsg && (
+              <div
+                style={{
+                  padding: "8px 20px",
+                  backgroundColor: isDark ? "rgba(248, 81, 73, 0.14)" : "rgba(207, 34, 46, 0.08)",
+                  borderBottom: `1px solid ${palette.border}`,
+                  color: isDark ? "#ff7b72" : "#cf222e",
+                  fontSize: 12,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span>{errorMsg}</span>
+                <button
+                  type="button"
+                  onClick={() => setErrorMsg(null)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "inherit",
+                    cursor: "pointer",
+                    display: "flex",
+                  }}
+                >
+                  <XIcon size={13} />
+                </button>
+              </div>
+            )}
+
+            {/* ── Main Scrollable Model Grid ── */}
             <div
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                if (el.scrollTop + el.clientHeight >= el.scrollHeight - 320 && registryHasMore) {
+                  loadMoreModels();
+                }
+              }}
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(225px, 1fr))",
-                gap: 12,
+                flex: 1,
+                minHeight: 0,
+                overflowY: "auto",
+                overflowX: "hidden",
+                padding: "16px 20px",
               }}
             >
-              {filteredRegistryModels.map((model) => {
-                const isPkgMounted = mountedMap.has(model.packageName.toLowerCase());
-                const isBusy = busyId === model.id;
-                const isCurrent = currentTemplateId === model.id;
-                const previewSvg =
-                  livePreviews[model.id]?.svg ||
-                  model.diagramSvg ||
-                  buildEquationFallbackPreviewSvg(model.title, model.fqn, isDark);
-
-                return (
-                  <div
-                    key={model.id}
-                    onDoubleClick={() => void handleOpenRegistryModel(model)}
-                    title={`${model.fqn}\nDouble-click or click Open to load model`}
-                    style={{
-                      border: `1px solid ${isCurrent ? palette.accent : palette.border}`,
-                      borderRadius: 12,
-                      backgroundColor: palette.cardBg,
-                      display: "flex",
-                      flexDirection: "column",
-                      overflow: "hidden",
-                      cursor: "pointer",
-                      transition: "border-color 0.14s ease, box-shadow 0.14s ease",
-                      boxShadow: isCurrent ? `0 0 0 2px ${palette.accentSoft}` : "none",
-                    }}
-                  >
-                    {/* Graphical Diagram Thumbnail Stage */}
-                    <div
+              {filteredRegistryModels.length === 0 && fallbackStarters.length === 0 ? (
+                <div
+                  style={{
+                    padding: "56px 24px",
+                    textAlign: "center",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 10,
+                    color: palette.muted,
+                  }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 600, color: palette.fg }}>
+                    {isStreaming
+                      ? "Loading models from Ansatz package registry…"
+                      : `No models found${searchQuery ? ` matching "${searchQuery}"` : ""}`}
+                  </div>
+                  {!isStreaming && (searchQuery || selectedDomain !== "all" || packageFilter || mountedOnlyFilter) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSelectedDomain("all");
+                        setPackageFilter(null);
+                        setMountedOnlyFilter(false);
+                      }}
                       style={{
-                        height: 124,
-                        backgroundColor: palette.stageBg,
-                        backgroundImage: isDark
-                          ? "radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px)"
-                          : "radial-gradient(rgba(15,23,42,0.08) 1px, transparent 1px)",
-                        backgroundSize: "12px 12px",
-                        borderBottom: `1px solid ${palette.subtleBorder}`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        position: "relative",
-                        padding: "8px 10px",
-                        overflow: "hidden",
+                        marginTop: 4,
+                        border: `1px solid ${palette.border}`,
+                        backgroundColor: palette.subtleBg,
+                        color: palette.fg,
+                        borderRadius: 8,
+                        padding: "6px 12px",
+                        fontSize: 12,
+                        fontWeight: 550,
+                        cursor: "pointer",
                       }}
                     >
-                      <div
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                        dangerouslySetInnerHTML={{
-                          __html: sanitizeSvgMarkup(previewSvg, { isDark, maxHeight: "108px" }),
-                        }}
-                      />
-                      <span
-                        style={{
-                          position: "absolute",
-                          top: 6,
-                          right: 7,
-                          fontSize: 9.5,
-                          fontWeight: 600,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.03em",
-                          padding: "1px 5px",
-                          borderRadius: 4,
-                          backgroundColor: isDark ? "rgba(15, 23, 42, 0.85)" : "rgba(255, 255, 255, 0.9)",
-                          border: `1px solid ${palette.subtleBorder}`,
-                          color: palette.muted,
-                          fontFamily: "var(--ms-font-mono, monospace)",
-                        }}
-                      >
-                        {model.kind}
-                      </span>
-                      {model.dialect && model.dialect !== "modelica" && (
-                        <span
-                          style={{
-                            position: "absolute",
-                            top: 6,
-                            left: 7,
-                            fontSize: 9.5,
-                            fontWeight: 600,
-                            textTransform: "uppercase",
-                            letterSpacing: "0.03em",
-                            padding: "1px 5px",
-                            borderRadius: 4,
-                            backgroundColor: isDark ? "rgba(15, 23, 42, 0.85)" : "rgba(255, 255, 255, 0.9)",
-                            border: `1px solid ${palette.subtleBorder}`,
-                            color: isDark ? "#60a5fa" : "#2563eb",
-                            fontFamily: "var(--ms-font-mono, monospace)",
-                          }}
-                        >
-                          {model.dialect}
-                        </span>
-                      )}
-                    </div>
+                      Clear filters
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(225px, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  {filteredRegistryModels.map((model) => {
+                    const isPkgMounted = mountedMap.has(model.packageName.toLowerCase());
+                    const isBusy = busyId === model.id;
+                    const isCurrent = currentTemplateId === model.id;
+                    const previewSvg =
+                      livePreviews[model.id]?.svg ||
+                      model.diagramSvg ||
+                      buildEquationFallbackPreviewSvg(model.title, model.fqn, isDark);
 
-                    {/* Model Metadata + Open Button */}
-                    <div
-                      style={{
-                        padding: "10px 12px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 5,
-                        flex: 1,
-                      }}
-                    >
+                    return (
                       <div
+                        key={model.id}
+                        onDoubleClick={() => void handleOpenRegistryModel(model)}
+                        title={`${model.fqn}\nDouble-click or click Open to load model`}
                         style={{
-                          fontSize: 13.5,
-                          fontWeight: 650,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {model.title}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11.5,
-                          color: palette.muted,
-                          lineHeight: 1.35,
-                          display: "-webkit-box",
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: "vertical",
-                          overflow: "hidden",
-                          minHeight: 31,
-                        }}
-                      >
-                        {model.summary}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 10.5,
-                          color: "var(--fgColor-accent, var(--ms-brand))",
-                          fontFamily: "var(--ms-font-mono, monospace)",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        title={model.fqn}
-                      >
-                        {model.fqn}
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: "auto",
-                          paddingTop: 7,
-                          borderTop: `1px solid ${palette.subtleBorder}`,
+                          border: `1px solid ${isCurrent ? palette.accent : palette.border}`,
+                          borderRadius: 12,
+                          backgroundColor: palette.cardBg,
                           display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 6,
+                          flexDirection: "column",
+                          overflow: "hidden",
+                          cursor: "pointer",
+                          transition: "border-color 0.14s ease, box-shadow 0.14s ease",
+                          boxShadow: isCurrent ? `0 0 0 2px ${palette.accentSoft}` : "none",
                         }}
                       >
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPackageFilter((prev) => (prev === model.packageName ? null : model.packageName));
-                          }}
+                        {/* Graphical Diagram Thumbnail Stage */}
+                        <div
                           style={{
-                            border: "none",
-                            background: "transparent",
-                            padding: 0,
-                            display: "inline-flex",
+                            height: 124,
+                            backgroundColor: palette.stageBg,
+                            backgroundImage: isDark
+                              ? "radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px)"
+                              : "radial-gradient(rgba(15,23,42,0.08) 1px, transparent 1px)",
+                            backgroundSize: "12px 12px",
+                            borderBottom: `1px solid ${palette.subtleBorder}`,
+                            display: "flex",
                             alignItems: "center",
-                            gap: 5,
-                            fontSize: 11,
-                            color: palette.muted,
+                            justifyContent: "center",
+                            position: "relative",
+                            padding: "8px 10px",
                             overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            cursor: "pointer",
                           }}
-                          title={
-                            isPkgMounted
-                              ? `${model.packageName} (mounted) — click to filter`
-                              : `${model.packageName} (auto-mounts on open) — click to filter`
-                          }
                         >
-                          <span
+                          <div
                             style={{
-                              width: 6,
-                              height: 6,
-                              borderRadius: "50%",
-                              backgroundColor: isPkgMounted ? palette.success : "#f59e0b",
-                              flexShrink: 0,
+                              width: "100%",
+                              height: "100%",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                            dangerouslySetInnerHTML={{
+                              __html: sanitizeSvgMarkup(previewSvg, { isDark, maxHeight: "108px" }),
                             }}
                           />
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{model.packageName}</span>
-                        </button>
+                          <span
+                            style={{
+                              position: "absolute",
+                              top: 6,
+                              right: 7,
+                              fontSize: 9.5,
+                              fontWeight: 600,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.03em",
+                              padding: "1px 5px",
+                              borderRadius: 4,
+                              backgroundColor: isDark ? "rgba(15, 23, 42, 0.85)" : "rgba(255, 255, 255, 0.9)",
+                              border: `1px solid ${palette.subtleBorder}`,
+                              color: palette.muted,
+                              fontFamily: "var(--ms-font-mono, monospace)",
+                            }}
+                          >
+                            {model.kind}
+                          </span>
+                          {model.dialect && model.dialect !== "modelica" && (
+                            <span
+                              style={{
+                                position: "absolute",
+                                top: 6,
+                                left: 7,
+                                fontSize: 9.5,
+                                fontWeight: 600,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.03em",
+                                padding: "1px 5px",
+                                borderRadius: 4,
+                                backgroundColor: isDark ? "rgba(15, 23, 42, 0.85)" : "rgba(255, 255, 255, 0.9)",
+                                border: `1px solid ${palette.subtleBorder}`,
+                                color: isDark ? "#60a5fa" : "#2563eb",
+                                fontFamily: "var(--ms-font-mono, monospace)",
+                              }}
+                            >
+                              {model.dialect}
+                            </span>
+                          )}
+                        </div>
 
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void handleOpenRegistryModel(model);
-                          }}
+                        {/* Model Metadata + Open Button */}
+                        <div
                           style={{
-                            border: "none",
-                            borderRadius: 6,
-                            backgroundColor: palette.accent,
-                            color: "#ffffff",
-                            padding: "4px 10px",
-                            fontSize: 11.5,
-                            fontWeight: 600,
-                            cursor: isBusy ? "wait" : "pointer",
-                            flexShrink: 0,
+                            padding: "10px 12px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 5,
+                            flex: 1,
                           }}
                         >
-                          {isBusy ? "Opening…" : "Open"}
-                        </button>
+                          <div
+                            style={{
+                              fontSize: 13.5,
+                              fontWeight: 650,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {model.title}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 11.5,
+                              color: palette.muted,
+                              lineHeight: 1.35,
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                              minHeight: 31,
+                            }}
+                          >
+                            {model.summary}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 10.5,
+                              color: "var(--fgColor-accent, var(--ms-brand))",
+                              fontFamily: "var(--ms-font-mono, monospace)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                            title={model.fqn}
+                          >
+                            {model.fqn}
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop: "auto",
+                              paddingTop: 7,
+                              borderTop: `1px solid ${palette.subtleBorder}`,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 6,
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPackageFilter((prev) => (prev === model.packageName ? null : model.packageName));
+                              }}
+                              style={{
+                                border: "none",
+                                background: "transparent",
+                                padding: 0,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 5,
+                                fontSize: 11,
+                                color: palette.muted,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                cursor: "pointer",
+                              }}
+                              title={
+                                isPkgMounted
+                                  ? `${model.packageName} (mounted) — click to filter`
+                                  : `${model.packageName} (auto-mounts on open) — click to filter`
+                              }
+                            >
+                              <span
+                                style={{
+                                  width: 6,
+                                  height: 6,
+                                  borderRadius: "50%",
+                                  backgroundColor: isPkgMounted ? palette.success : "#f59e0b",
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{model.packageName}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleOpenRegistryModel(model);
+                              }}
+                              style={{
+                                border: "none",
+                                borderRadius: 6,
+                                backgroundColor: palette.accent,
+                                color: "#ffffff",
+                                padding: "4px 10px",
+                                fontSize: 11.5,
+                                fontWeight: 600,
+                                cursor: isBusy ? "wait" : "pointer",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {isBusy ? "Opening…" : "Open"}
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })}
 
-              {/* Fallback Curated Starters when offline / registry unreachable */}
-              {fallbackStarters.map((ex) => {
-                const isCurrent = currentTemplateId === ex.id;
-                const previewSvg = buildEquationFallbackPreviewSvg(ex.title, ex.category, isDark);
+                  {/* Fallback Curated Starters when offline / registry unreachable */}
+                  {fallbackStarters.map((ex) => {
+                    const isCurrent = currentTemplateId === ex.id;
+                    const previewSvg = buildEquationFallbackPreviewSvg(ex.title, ex.category, isDark);
 
-                return (
-                  <div
-                    key={ex.id}
-                    onDoubleClick={() => {
-                      onSelectTemplate(ex);
-                      onClose();
-                    }}
-                    style={{
-                      border: `1px solid ${isCurrent ? palette.accent : palette.border}`,
-                      borderRadius: 12,
-                      backgroundColor: palette.cardBg,
-                      display: "flex",
-                      flexDirection: "column",
-                      overflow: "hidden",
-                      cursor: "pointer",
-                      boxShadow: isCurrent ? `0 0 0 2px ${palette.accentSoft}` : "none",
-                    }}
-                  >
-                    <div
-                      style={{
-                        height: 124,
-                        backgroundColor: palette.stageBg,
-                        backgroundImage: isDark
-                          ? "radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px)"
-                          : "radial-gradient(rgba(15,23,42,0.08) 1px, transparent 1px)",
-                        backgroundSize: "12px 12px",
-                        borderBottom: `1px solid ${palette.subtleBorder}`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        position: "relative",
-                        padding: "8px 10px",
-                        overflow: "hidden",
-                      }}
-                    >
+                    return (
                       <div
+                        key={ex.id}
+                        onDoubleClick={() => {
+                          onSelectTemplate(ex);
+                          onClose();
+                        }}
                         style={{
-                          width: "100%",
-                          height: "100%",
+                          border: `1px solid ${isCurrent ? palette.accent : palette.border}`,
+                          borderRadius: 12,
+                          backgroundColor: palette.cardBg,
                           display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                        dangerouslySetInnerHTML={{
-                          __html: sanitizeSvgMarkup(previewSvg, { isDark, maxHeight: "108px" }),
-                        }}
-                      />
-                      <span
-                        style={{
-                          position: "absolute",
-                          top: 6,
-                          right: 7,
-                          fontSize: 9.5,
-                          fontWeight: 600,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.03em",
-                          padding: "1px 5px",
-                          borderRadius: 4,
-                          backgroundColor: isDark ? "rgba(15, 23, 42, 0.85)" : "rgba(255, 255, 255, 0.9)",
-                          border: `1px solid ${palette.subtleBorder}`,
-                          color: palette.muted,
-                          fontFamily: "var(--ms-font-mono, monospace)",
-                        }}
-                      >
-                        {ex.lang}
-                      </span>
-                    </div>
-
-                    <div
-                      style={{
-                        padding: "10px 12px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 5,
-                        flex: 1,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 13.5,
-                          fontWeight: 650,
+                          flexDirection: "column",
                           overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          cursor: "pointer",
+                          boxShadow: isCurrent ? `0 0 0 2px ${palette.accentSoft}` : "none",
                         }}
                       >
-                        {ex.title}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11.5,
-                          color: palette.muted,
-                          lineHeight: 1.35,
-                          display: "-webkit-box",
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: "vertical",
-                          overflow: "hidden",
-                          minHeight: 31,
-                        }}
-                      >
-                        {ex.description || ex.category}
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: "auto",
-                          paddingTop: 7,
-                          borderTop: `1px solid ${palette.subtleBorder}`,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 6,
-                        }}
-                      >
-                        <span style={{ fontSize: 11, color: palette.muted }}>{ex.category}</span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelectTemplate(ex);
-                            onClose();
-                          }}
+                        <div
                           style={{
-                            border: "none",
-                            borderRadius: 6,
-                            backgroundColor: palette.accent,
-                            color: "#ffffff",
-                            padding: "4px 10px",
-                            fontSize: 11.5,
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            flexShrink: 0,
+                            height: 124,
+                            backgroundColor: palette.stageBg,
+                            backgroundImage: isDark
+                              ? "radial-gradient(rgba(255,255,255,0.08) 1px, transparent 1px)"
+                              : "radial-gradient(rgba(15,23,42,0.08) 1px, transparent 1px)",
+                            backgroundSize: "12px 12px",
+                            borderBottom: `1px solid ${palette.subtleBorder}`,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            position: "relative",
+                            padding: "8px 10px",
+                            overflow: "hidden",
                           }}
                         >
-                          Open
-                        </button>
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                            dangerouslySetInnerHTML={{
+                              __html: sanitizeSvgMarkup(previewSvg, { isDark, maxHeight: "108px" }),
+                            }}
+                          />
+                          <span
+                            style={{
+                              position: "absolute",
+                              top: 6,
+                              right: 7,
+                              fontSize: 9.5,
+                              fontWeight: 600,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.03em",
+                              padding: "1px 5px",
+                              borderRadius: 4,
+                              backgroundColor: isDark ? "rgba(15, 23, 42, 0.85)" : "rgba(255, 255, 255, 0.9)",
+                              border: `1px solid ${palette.subtleBorder}`,
+                              color: palette.muted,
+                              fontFamily: "var(--ms-font-mono, monospace)",
+                            }}
+                          >
+                            {ex.lang}
+                          </span>
+                        </div>
+
+                        <div
+                          style={{
+                            padding: "10px 12px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 5,
+                            flex: 1,
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 13.5,
+                              fontWeight: 650,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {ex.title}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 11.5,
+                              color: palette.muted,
+                              lineHeight: 1.35,
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                              minHeight: 31,
+                            }}
+                          >
+                            {ex.description || ex.category}
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop: "auto",
+                              paddingTop: 7,
+                              borderTop: `1px solid ${palette.subtleBorder}`,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 6,
+                            }}
+                          >
+                            <span style={{ fontSize: 11, color: palette.muted }}>{ex.category}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectTemplate(ex);
+                                onClose();
+                              }}
+                              style={{
+                                border: "none",
+                                borderRadius: 6,
+                                backgroundColor: palette.accent,
+                                color: "#ffffff",
+                                padding: "4px 10px",
+                                fontSize: 11.5,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                flexShrink: 0,
+                              }}
+                            >
+                              Open
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>,

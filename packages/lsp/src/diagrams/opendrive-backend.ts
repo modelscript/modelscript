@@ -251,10 +251,184 @@ export function createOpenDriveDiagramBackend(backends: DiagramDispatchDeps): Di
     },
 
     async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
-      if (backends.generic) {
-        return await backends.generic.applyEdits(params);
+      const text = await readOpenDriveSource(params.uri);
+      if (!text) {
+        return backends.generic
+          ? await backends.generic.applyEdits(params)
+          : { seq: params.seq, edits: [], renderHint: "none" };
       }
-      return { seq: params.seq, edits: [], renderHint: "none" };
+
+      const spatialActions: DiagramApplyEditsParams["actions"] = [];
+      let workingText = text;
+      let hasStructural = false;
+
+      const escRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const parseEntity = (id: string): { kind: "road" | "junction"; id: string } | null => {
+        if (id.startsWith("road_")) return { kind: "road", id: id.slice(5) };
+        if (id.startsWith("junc_")) return { kind: "junction", id: id.slice(5) };
+        return null;
+      };
+      const nextId = (tag: "road" | "junction"): string => {
+        const re = new RegExp(`<${tag}\\b[^>]*\\bid=["'](\\d+)["']`, "gi");
+        let maxId = 0;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(workingText)) !== null) {
+          const n = Number.parseInt(m[1]!, 10);
+          if (Number.isFinite(n) && n > maxId) maxId = n;
+        }
+        return String(maxId + 1);
+      };
+      const updateEntityAttr = (kind: "road" | "junction", id: string, attr: string, value: string): void => {
+        const openRe = new RegExp(`<${kind}\\b[^>]*\\bid=["']${escRe(id)}["'][^>]*>`, "i");
+        workingText = workingText.replace(openRe, (tag) => {
+          const attrRe = new RegExp(`(\\b${escRe(attr)}=["'])([^"']*)(["'])`, "i");
+          if (attrRe.test(tag)) return tag.replace(attrRe, `$1${value}$3`);
+          return tag.replace(/>$/, ` ${attr}="${value}">`);
+        });
+      };
+
+      for (const action of params.actions) {
+        if (
+          action.type === "move" ||
+          action.type === "resize" ||
+          action.type === "rotate" ||
+          action.type === "moveEdge"
+        ) {
+          spatialActions.push(action);
+        } else if (action.type === "addComponent") {
+          const isJunc = /junction/i.test(action.className);
+          const closeIdx = workingText.lastIndexOf("</OpenDRIVE>");
+          if (closeIdx !== -1) {
+            if (isJunc) {
+              const id = nextId("junction");
+              const juncName = action.name || `Junction_${id}`;
+              const snippet = `  <junction id="${id}" name="${juncName}">\n  </junction>\n`;
+              workingText = workingText.slice(0, closeIdx) + snippet + workingText.slice(closeIdx);
+            } else {
+              const id = nextId("road");
+              const roadName = action.name || `Road_${id}`;
+              const snippet =
+                `  <road name="${roadName}" length="100.0" id="${id}" junction="-1">\n` +
+                `    <planView>\n` +
+                `      <geometry s="0.0" x="${Math.round(action.x)}" y="${Math.round(action.y)}" hdg="0.0" length="100.0">\n` +
+                `        <line/>\n` +
+                `      </geometry>\n` +
+                `    </planView>\n` +
+                `    <lanes><laneSection s="0.0"><center><lane id="0" type="none" level="false"/></center></laneSection></lanes>\n` +
+                `  </road>\n`;
+              workingText = workingText.slice(0, closeIdx) + snippet + workingText.slice(closeIdx);
+            }
+            hasStructural = true;
+          }
+        } else if (action.type === "deleteComponents") {
+          for (const rawName of action.names) {
+            const ent = parseEntity(rawName);
+            if (!ent) continue;
+            const blockRe = new RegExp(
+              `^[ \\t]*<${ent.kind}\\b[^>]*\\bid=["']${escRe(ent.id)}["'][^>]*>[\\s\\S]*?<\\/${ent.kind}>[ \\t]*\\r?\\n?`,
+              "gim",
+            );
+            const next = workingText.replace(blockRe, "");
+            if (next !== workingText) {
+              workingText = next;
+              hasStructural = true;
+            }
+          }
+        } else if (action.type === "updateName") {
+          const ent = parseEntity(action.oldName);
+          if (ent) {
+            updateEntityAttr(ent.kind, ent.id, "name", action.newName);
+            hasStructural = true;
+          }
+        } else if (action.type === "updateParameter" || action.type === "updateProperty") {
+          const ent = parseEntity(action.name);
+          const key = action.type === "updateParameter" ? action.parameter : action.key;
+          if (ent) {
+            updateEntityAttr(ent.kind, ent.id, key, String(action.value ?? ""));
+          }
+        } else if (action.type === "connect" || action.type === "reconnect") {
+          const srcId = action.type === "connect" ? action.source : action.newSource;
+          const dstId = action.type === "connect" ? action.target : action.newTarget;
+          const src = parseEntity(srcId);
+          const dst = parseEntity(dstId);
+          if (src?.kind === "road" && dst?.kind === "road") {
+            const roadRe = new RegExp(
+              `(<road\\b[^>]*\\bid=["']${escRe(src.id)}["'][^>]*>)([\\s\\S]*?)(<\\/road>)`,
+              "i",
+            );
+            workingText = workingText.replace(roadRe, (_m, open: string, body: string, close: string) => {
+              const succTag = `<successor elementType="road" elementId="${dst.id}" contactPoint="start"/>`;
+              if (/<link\b[^>]*>[\s\S]*?<\/link>/i.test(body)) {
+                const updatedBody = body.replace(
+                  /<link\b[^>]*>([\s\S]*?)<\/link>/i,
+                  (_lm: string, linkInner: string) => {
+                    if (/<successor\b[^>]*\/?>/i.test(linkInner)) {
+                      return `<link>${linkInner.replace(/<successor\b[^>]*\/?>/i, succTag)}</link>`;
+                    }
+                    return `<link>${linkInner}\n      ${succTag}\n    </link>`;
+                  },
+                );
+                return `${open}${updatedBody}${close}`;
+              }
+              return `${open}\n    <link>\n      ${succTag}\n    </link>${body}${close}`;
+            });
+            hasStructural = true;
+          }
+        } else if (action.type === "disconnect") {
+          const src = parseEntity(action.source);
+          const dst = parseEntity(action.target);
+          if (src?.kind === "road" && dst?.kind === "road") {
+            const roadRe = new RegExp(
+              `(<road\\b[^>]*\\bid=["']${escRe(src.id)}["'][^>]*>)([\\s\\S]*?)(<\\/road>)`,
+              "i",
+            );
+            workingText = workingText.replace(roadRe, (_m, open: string, body: string, close: string) => {
+              const updatedBody = body.replace(
+                new RegExp(
+                  `^[ \\t]*<successor\\b[^>]*\\belementId=["']${escRe(dst.id)}["'][^>]*\\/>[ \\t]*\\r?\\n?`,
+                  "gim",
+                ),
+                "",
+              );
+              return `${open}${updatedBody}${close}`;
+            });
+            hasStructural = true;
+          }
+        }
+      }
+
+      const edits: Array<{
+        range: { start: { line: number; character: number }; end: { line: number; character: number } };
+        newText: string;
+      }> = [];
+      if (workingText !== text) {
+        const origLines = text.split("\n");
+        const lastLine = Math.max(0, origLines.length - 1);
+        const lastChar = origLines[lastLine]?.length ?? 0;
+        edits.push({
+          range: { start: { line: 0, character: 0 }, end: { line: lastLine, character: lastChar } },
+          newText: workingText,
+        });
+      }
+
+      if (spatialActions.length > 0 && backends.generic) {
+        const genericRes = await backends.generic.applyEdits({ ...params, actions: spatialActions });
+        if (genericRes?.edits?.length) {
+          edits.push(...genericRes.edits);
+        }
+        return {
+          seq: params.seq,
+          edits,
+          sidecarContent: genericRes?.sidecarContent,
+          renderHint: hasStructural ? "immediate" : (genericRes?.renderHint ?? "none"),
+        };
+      }
+
+      return {
+        seq: params.seq,
+        edits,
+        renderHint: hasStructural ? "immediate" : "none",
+      };
     },
 
     async getPalette(): Promise<DiagramPalette> {

@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { lintAmpl, parseAmplModel } from "../src/index.js";
+import { getAmplDiagnostics, getAmplDocumentSymbols, lintAmpl, parseAmplModel } from "../src/index.js";
 
 test("AMPL Linter — detects undeclared sets, variables, and bounds conflicts", () => {
   const badModelSrc = `
@@ -48,4 +48,25 @@ test("AMPL Linter — detects nonlinear terms on integer variables", () => {
   const warn = diags.find((d) => d.code === 9508);
   assert.ok(warn, "Expected M9508 nonlinear integer constraint warning");
   assert.strictEqual(warn.severity, "warning");
+});
+
+test("AMPL LSP Diagnostics — reports syntax errors with accurate ranges and recovers", () => {
+  const broken = `var x1 >= 0;
+foo bar baz;
+maximize Profit:
+  3 * x1 + ;
+var x2 >= 0
+var x3 >= 0;
+`;
+
+  const diags = getAmplDiagnostics(broken);
+  assert.ok(diags.length >= 3, `Expected at least 3 syntax errors, got ${diags.length}`);
+  assert.strictEqual(diags[0]!.range.start.line, 1);
+  assert.strictEqual(diags[1]!.range.start.line, 3);
+  assert.strictEqual(diags[2]!.range.start.line, 4);
+
+  const symbols = getAmplDocumentSymbols(broken);
+  const names = symbols.map((s) => s.name);
+  assert.ok(names.includes("x1"), "Expected x1 symbol to be recovered");
+  assert.ok(names.includes("x3"), "Expected x3 symbol to be recovered");
 });

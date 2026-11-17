@@ -27,6 +27,7 @@ import { getLanguageInfo } from "../constants";
 import { CosimPanel, type HistorianSession } from "../CosimPanel";
 import DiagramEditor, { type DiagramEditorHandle } from "../Diagram";
 import PropertiesWidget from "../Properties";
+import { AmplOptimizationResults } from "./AmplOptimizationResults";
 import type { MobileTab } from "./MorselMobileTabBar";
 import { PolyglotDomainPanel } from "./PolyglotDomainPanel";
 import { MorselView } from "./types";
@@ -269,6 +270,7 @@ export interface MorselVisualizerPaneProps {
   translations: any;
   showResultsView: boolean;
   setShowResultsView: (v: boolean) => void;
+  amplSolveResult?: React.ComponentProps<typeof AmplOptimizationResults>["result"];
   showCadView: boolean;
   setShowCadView: (v: boolean) => void;
   cadComponents: CadComponent[];
@@ -351,6 +353,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   translations,
   showResultsView,
   setShowResultsView,
+  amplSolveResult,
   showCadView,
   setShowCadView,
   cadComponents,
@@ -2603,7 +2606,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     width: 2,
                     height: "100%",
                     backgroundColor:
-                      isPropResizerHovered || isPropResizerDragging ? "var(--ms-brand, #0891b2)" : "transparent",
+                      isPropResizerHovered || isPropResizerDragging ? "var(--ms-text-3, #6b7280)" : "transparent",
                     transition: "background-color 0.15s ease",
                   }}
                 />
@@ -2617,10 +2620,10 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                     height: 28,
                     borderRadius: 999,
                     backgroundColor:
-                      isPropResizerHovered || isPropResizerDragging ? "var(--ms-brand, #0891b2)" : "transparent",
+                      isPropResizerHovered || isPropResizerDragging ? "var(--ms-text-3, #6b7280)" : "transparent",
                     boxShadow:
                       isPropResizerHovered || isPropResizerDragging
-                        ? "0 0 6px color-mix(in srgb, var(--ms-brand, #0891b2) 50%, transparent)"
+                        ? "0 0 6px color-mix(in srgb, var(--ms-text-3, #6b7280) 40%, transparent)"
                         : "none",
                     opacity: isPropResizerHovered || isPropResizerDragging ? 1 : 0,
                     transition: "opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease",
@@ -2713,11 +2716,6 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             style={{
               position: "absolute",
               inset: 0,
-              paddingTop: isFloatingLayout ? 70 : 0,
-              paddingLeft: isFloatingLayout ? floatingLeftOffset : 0,
-              paddingRight: isFloatingLayout ? 12 : 0,
-              paddingBottom: isFloatingLayout ? 12 : 0,
-              boxSizing: "border-box",
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
@@ -2739,6 +2737,24 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 onSaveBindings={handleSaveCadBindings}
                 vtkBuffer={vtkBuffer ?? undefined}
                 gdtOverlay={gdtOverlay}
+                fitInsets={
+                  isFloatingLayout
+                    ? {
+                        top: 84,
+                        left: floatingLeftOffset + 12,
+                        right:
+                          24 +
+                          (isFullScreenSplitCanvas && view === MorselView.SPLIT_COLUMNS
+                            ? Math.round((1 - splitRatio) * (typeof window !== "undefined" ? window.innerWidth : 1200))
+                            : 0),
+                        bottom:
+                          56 +
+                          (isFullScreenSplitCanvas && view === MorselView.SPLIT_ROWS
+                            ? Math.round((1 - splitRatio) * (typeof window !== "undefined" ? window.innerHeight : 800))
+                            : 0),
+                      }
+                    : undefined
+                }
               />
             </Suspense>
           </div>
@@ -2794,7 +2810,16 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
               sessionId={selectedTreeClassName ? `live-${dialect}-${selectedTreeClassName}` : `live-${dialect}-default`}
             />
           )}
-          {localSimulationData || simulationStatus?.status === "failed" ? (
+          {dialect.toLowerCase() === "ampl" ? (
+            <AmplOptimizationResults
+              result={amplSolveResult ?? null}
+              status={simulationStatus}
+              documentUri={documentUri}
+              documentText={editorValue}
+              onSolve={() => onSimulate?.()}
+              onBackToInspector={() => setShowResultsView(false)}
+            />
+          ) : localSimulationData || simulationStatus?.status === "failed" ? (
             <Suspense fallback={null}>
               <SimulationResults
                 localData={localSimulationData}

@@ -63,6 +63,30 @@ export function createSpiceDiagramBackend(backends: DiagramDispatchDeps): Diagra
         const { parseSpice, buildSpiceDiagram } = await import("@modelscript/spice");
         const circuit = parseSpice(text);
         const rawDiagram = buildSpiceDiagram(circuit);
+        const posByComp = new Map<string, { x: number; y: number }>();
+        for (const line of text.split(/\r?\n/)) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("*") || trimmed.startsWith(".")) continue;
+          const m = /;\s*@pos\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/i.exec(trimmed);
+          if (m) {
+            const compName = trimmed.split(/\s+/)[0]?.toLowerCase();
+            if (compName) {
+              posByComp.set(compName, { x: Number(m[1]), y: Number(m[2]) });
+            }
+          }
+        }
+        if (posByComp.size > 0 && Array.isArray(rawDiagram?.cells)) {
+          for (const cell of rawDiagram.cells) {
+            if (cell.shape === "edge") continue;
+            const id = String(cell.id ?? "");
+            const clean = (id.startsWith("cmp_") ? id.slice(4) : id).toLowerCase();
+            const pos = posByComp.get(clean);
+            if (pos) {
+              cell.x = pos.x;
+              cell.y = pos.y;
+            }
+          }
+        }
         return formatSpiceDiagramData(rawDiagram, {
           componentCount: circuit.components.length,
           directiveCount: circuit.directives.length,
@@ -158,8 +182,31 @@ export function createSpiceDiagramBackend(backends: DiagramDispatchDeps): Diagra
         if (!text) return { seq: params.seq, edits: [], renderHint: "none" };
         const unifiedIndex = getUnifiedIndexFromDeps(backends);
         const batchState = createDropBatchState();
-        const allEdits: TextEdit[] = [];
-        let renderHint: "none" | "immediate" | "debounced" = "none";
+        const addEdits: TextEdit[] = [];
+        const lines = text.split(/\r?\n/);
+        let hasStructural = false;
+        let textMutated = false;
+
+        const stripCmp = (n: string): string => (n.startsWith("cmp_") ? n.slice(4) : n);
+        const findCompLineIdx = (compName: string): number => {
+          const target = compName.toLowerCase();
+          return lines.findIndex((l) => {
+            const t = l.trim();
+            if (!t || t.startsWith("*") || t.startsWith(".")) return false;
+            return t.split(/\s+/)[0]?.toLowerCase() === target;
+          });
+        };
+        const upsertPosOnLine = (line: string, x: number, y: number): string => {
+          const tag = `@pos(${Math.round(x)}, ${Math.round(y)})`;
+          if (/@pos\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/i.test(line)) {
+            return line.replace(/@pos\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/i, tag);
+          }
+          const semiIdx = line.indexOf(";");
+          if (semiIdx !== -1) {
+            return `${line.trimEnd()} ${tag}`;
+          }
+          return `${line.trimEnd()} ; ${tag}`;
+        };
 
         for (const action of params.actions) {
           if (action.type === "addComponent") {
@@ -170,15 +217,88 @@ export function createSpiceDiagramBackend(backends: DiagramDispatchDeps): Diagra
               unifiedIndex,
               batchState,
             });
-            allEdits.push(...edits);
-            if (edits.length > 0) renderHint = "immediate";
+            addEdits.push(...edits);
+            if (edits.length > 0) hasStructural = true;
+          } else if (action.type === "move") {
+            for (const item of action.items) {
+              const idx = findCompLineIdx(stripCmp(item.name));
+              if (idx !== -1) {
+                lines[idx] = upsertPosOnLine(lines[idx]!, item.x, item.y);
+                textMutated = true;
+              }
+            }
+          } else if (action.type === "deleteComponents") {
+            const toDelete = new Set(action.names.map((n) => stripCmp(n).toLowerCase()));
+            for (let i = lines.length - 1; i >= 0; i--) {
+              const t = lines[i]!.trim();
+              if (!t || t.startsWith("*") || t.startsWith(".")) continue;
+              const name = t.split(/\s+/)[0]?.toLowerCase();
+              if (name && toDelete.has(name)) {
+                lines.splice(i, 1);
+                textMutated = true;
+                hasStructural = true;
+              }
+            }
+          } else if (action.type === "updateName") {
+            const oldN = stripCmp(action.oldName);
+            const newN = stripCmp(action.newName);
+            const idx = findCompLineIdx(oldN);
+            if (idx !== -1) {
+              lines[idx] = lines[idx]!.replace(
+                new RegExp(`^(\\s*)${oldN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\b)`),
+                `$1${newN}$2`,
+              );
+              textMutated = true;
+              hasStructural = true;
+            }
+          } else if (action.type === "updateParameter" || action.type === "updateProperty") {
+            const compName = stripCmp(action.name);
+            const key = action.type === "updateParameter" ? action.parameter : action.key;
+            const valStr = String(action.value ?? "").trim();
+            const idx = findCompLineIdx(compName);
+            if (idx !== -1 && valStr) {
+              const line = lines[idx]!;
+              const semiIdx = line.indexOf(";");
+              const body = semiIdx !== -1 ? line.slice(0, semiIdx).trimEnd() : line.trimEnd();
+              const comment = semiIdx !== -1 ? ` ${line.slice(semiIdx)}` : "";
+              const escKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const paramRe = new RegExp(`(\\b${escKey}\\s*=\\s*)([^\\s;]+)`, "i");
+              if (paramRe.test(body)) {
+                lines[idx] = body.replace(paramRe, `$1${valStr}`) + comment;
+                textMutated = true;
+              } else if (key.toLowerCase() === "value" || key.toLowerCase() === "model") {
+                const tokens = body.trim().split(/\s+/);
+                // Replace the last non-key=val positional token (after component name and nodes)
+                let valIdx = tokens.length - 1;
+                while (valIdx > 1 && tokens[valIdx]!.includes("=")) valIdx--;
+                if (valIdx >= 2) {
+                  tokens[valIdx] = valStr;
+                  lines[idx] = tokens.join(" ") + comment;
+                  textMutated = true;
+                }
+              } else {
+                lines[idx] = `${body} ${key}=${valStr}${comment}`;
+                textMutated = true;
+              }
+            }
           }
+        }
+
+        const allEdits: TextEdit[] = [...addEdits];
+        if (textMutated) {
+          const origLines = text.split(/\r?\n/);
+          const lastLine = Math.max(0, origLines.length - 1);
+          const lastChar = origLines[lastLine]?.length ?? 0;
+          allEdits.push({
+            range: { start: { line: 0, character: 0 }, end: { line: lastLine, character: lastChar } },
+            newText: lines.join("\n"),
+          });
         }
 
         return {
           seq: params.seq,
           edits: deduplicateAndSort(mergeCoincidentInsertEdits(allEdits)),
-          renderHint,
+          renderHint: hasStructural ? "immediate" : "none",
         };
       } catch {
         return { seq: params.seq, edits: [], renderHint: "none" };

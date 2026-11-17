@@ -40,4 +40,20 @@ describe("Title & SEO Infrastructure", () => {
     assert.ok(content.includes("<urlset"), "Must have urlset root");
     assert.ok(content.includes("/explore"), "Must list explore route");
   });
+
+  it("sets Morsel page title without Ansatz suffix on initial load and after mount", () => {
+    const indexHtml = fs.readFileSync(path.resolve(__dirname, "../index.html"), "utf-8");
+    const playgroundPage = fs.readFileSync(path.resolve(__dirname, "../src/pages/PlaygroundPage.tsx"), "utf-8");
+
+    assert.ok(
+      indexHtml.includes('document.title = "Morsel"'),
+      "index.html must set initial document.title to Morsel for /morsel routes",
+    );
+    assert.ok(
+      playgroundPage.includes(
+        'usePageTitle(currentTitle ? `${currentTitle} — Morsel` : "Morsel", { includeBrand: false })',
+      ),
+      "PlaygroundPage must call usePageTitle with includeBrand: false",
+    );
+  });
 });

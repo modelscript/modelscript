@@ -421,6 +421,14 @@ export declare class LspFacade {
   getFoldingRanges(astRoot: number): {
     start: Position;
     end: Position;
+    kind?: "comment" | "imports" | "region";
+    defaultCollapsed?: boolean;
+  }[];
+  /** Retrieves 1-based Monaco FoldingRange entries from the parsed syntax tree. */
+  getMonacoFoldingRanges(astRoot: number): {
+    start: number;
+    end: number;
+    kind?: "comment" | "imports" | "region";
   }[];
   /** Extracts document symbols (e.g. classes, functions) for the document outline view. */
   getDocumentSymbols(astRoot: number): {

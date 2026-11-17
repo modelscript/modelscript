@@ -37,6 +37,7 @@ export interface EdgeUpdate {
 }
 
 export interface PlacementItem {
+  id?: string | undefined;
   name: string;
   x: number;
   y: number;

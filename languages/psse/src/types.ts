@@ -55,6 +55,7 @@ export interface BusRecord {
   evlo?: number | undefined;
   span?: SourceSpan | undefined;
   fieldSpans?: SourceSpan[] | undefined;
+  position?: { x: number; y: number } | undefined;
 }
 
 /**
@@ -76,6 +77,7 @@ export interface LoadRecord {
   scale: number;
   intrct: number;
   span?: SourceSpan | undefined;
+  position?: { x: number; y: number } | undefined;
 }
 
 /**
@@ -88,6 +90,7 @@ export interface FixedShuntRecord {
   gl: number;
   bl: number;
   span?: SourceSpan | undefined;
+  position?: { x: number; y: number } | undefined;
 }
 
 /**
@@ -116,6 +119,7 @@ export interface GeneratorRecord {
   f1?: number | undefined;
   span?: SourceSpan | undefined;
   fieldSpans?: SourceSpan[] | undefined;
+  position?: { x: number; y: number } | undefined;
 }
 
 /**

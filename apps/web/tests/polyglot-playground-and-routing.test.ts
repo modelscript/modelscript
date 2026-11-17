@@ -11,7 +11,12 @@ import {
   MORSEL_LANGUAGES,
 } from "../src/components/morsel/constants.js";
 import { decompressMorselPayload } from "../src/components/morsel/util/permalink.js";
-import { DEFAULT_EMPTY_MODELICA_CODE, HERO_EXAMPLES, TEMPLATE_CATEGORIES } from "../src/pages/playground/constants.js";
+import {
+  ALL_PLAYGROUND_LANGUAGES,
+  DEFAULT_EMPTY_MODELICA_CODE,
+  HERO_EXAMPLES,
+  TEMPLATE_CATEGORIES,
+} from "../src/pages/playground/constants.js";
 import {
   buildEditorUrlForArtifact,
   inferDialectFromArtifact,
@@ -328,5 +333,35 @@ describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Ro
       src.includes("clearPlaygroundUrl(location.pathname);"),
       "PlaygroundPage.tsx must clear query string and hash after resolving loads and edits",
     );
+  });
+
+  it("resolves DIgSILENT PowerFactory (powerfactory) to PowerFactory XML starter code instead of Modelica fallback", () => {
+    const pfInfo = getLanguageInfo("powerfactory");
+    assert.equal(pfInfo.id, "powerfactory");
+    assert.equal(pfInfo.ext, "dgs");
+    assert.ok(pfInfo.defaultCode.includes("<PowerFactory"), "Starter code must be PowerFactory XML");
+    assert.ok(pfInfo.defaultCode.includes('class="ElmTerm"'), "Starter code must include ElmTerm buses");
+    assert.ok(
+      !pfInfo.defaultCode.includes("Modelica.Blocks.Sources.Sine"),
+      "Must not fall back to Modelica Sine model",
+    );
+  });
+
+  it("ensures every language in ALL_PLAYGROUND_LANGUAGES resolves to itself in getLanguageInfo without Modelica fallback", () => {
+    for (const pgLang of ALL_PLAYGROUND_LANGUAGES) {
+      const info = getLanguageInfo(pgLang.id);
+      assert.equal(
+        info.id,
+        pgLang.id.toLowerCase(),
+        `Language '${pgLang.id}' (${pgLang.label}) fell back to '${info.id}' in getLanguageInfo()`,
+      );
+      assert.ok(info.defaultCode.trim().length > 0, `Language '${pgLang.id}' must have non-empty defaultCode`);
+      if (pgLang.id !== "modelica") {
+        assert.ok(
+          !info.defaultCode.includes("Modelica.Blocks.Sources.Sine"),
+          `Language '${pgLang.id}' must not use Modelica's Sine starter code`,
+        );
+      }
+    }
   });
 });

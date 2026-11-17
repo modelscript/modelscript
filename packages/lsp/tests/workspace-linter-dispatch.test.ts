@@ -416,3 +416,29 @@ test("WASM CST workspace linters detect and resolve cross-file references across
     );
   }
 });
+
+test("runWorkspaceLinterForDocument preserves full attribute value range for SSP3001", async () => {
+  const ssd = `<?xml version="1.0" encoding="UTF-8"?>
+<ssd:SystemStructureDescription xmlns:ssd="http://ssp-standard.org/SSP1/SystemStructureDescription" name="DriveSystem" version="1.0">
+  <ssd:System name="Root">
+    <ssd:Elements>
+      <ssd:Component name="Controller" source="resources/Controller.fmu" />
+      <ssd:Component name="Plant" source="resources/Plant.fmu" />
+    </ssd:Elements>
+  </ssd:System>
+</ssd:SystemStructureDescription>
+`;
+  const diags: Diagnostic[] = [];
+  await runWorkspaceLinterForDocument("ssp", { "file:///document.ssd": ssd }, "file:///document.ssd", diags);
+  const sspDiags = diags.filter((d) => d.code === "SSP3001");
+  assert.equal(sspDiags.length, 2);
+
+  const lines = ssd.split("\n");
+  for (const [idx, expectedVal] of ["resources/Controller.fmu", "resources/Plant.fmu"].entries()) {
+    const d = sspDiags[idx]!;
+    assert.equal(d.range.start.line, 4 + idx);
+    assert.equal(d.range.end.line, 4 + idx);
+    const slice = lines[d.range.start.line]!.slice(d.range.start.character, d.range.end.character);
+    assert.equal(slice, expectedVal);
+  }
+});

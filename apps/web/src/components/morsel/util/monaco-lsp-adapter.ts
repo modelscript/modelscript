@@ -1130,6 +1130,7 @@ export function setupMonacoLspAdapter(
   connection: {
     onNotification: (method: string, handler: (params: any) => void) => Monaco.IDisposable;
     sendRequest: (method: string, params?: any) => Promise<any>;
+    onRequest?: (method: string, handler: (params: unknown) => unknown) => Monaco.IDisposable;
   },
   _documentUri?: string,
   callbacks?: MonacoLspAdapterCallbacks,
@@ -1296,8 +1297,19 @@ export function setupMonacoLspAdapter(
   );
 
   // ── Semantic Tokens ──
+  const semanticTokensEmitter = new monaco.Emitter<void>();
+  disposables.push(semanticTokensEmitter);
+  if (typeof connection.onRequest === "function") {
+    disposables.push(
+      connection.onRequest("workspace/semanticTokens/refresh", () => {
+        semanticTokensEmitter.fire();
+        return null;
+      }),
+    );
+  }
   disposables.push(
     monaco.languages.registerDocumentSemanticTokensProvider(languageSelector, {
+      onDidChange: semanticTokensEmitter.event,
       getLegend: () => SEMANTIC_LEGEND,
       provideDocumentSemanticTokens: async (model) => {
         try {

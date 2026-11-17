@@ -183,8 +183,45 @@ export function createSimulinkDiagramBackend(backends: DiagramDispatchDeps): Dia
         }
         const unifiedIndex = getUnifiedIndexFromDeps(backends);
         const batchState = createDropBatchState();
-        const allEdits: TextEdit[] = [];
-        let renderHint: "none" | "immediate" | "debounced" = "none";
+        const addEdits: TextEdit[] = [];
+        let workingText = raw;
+        let hasStructural = false;
+
+        const stripBlk = (n: string): string => (n.startsWith("block_") ? n.slice(6) : n);
+        const escRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const findBlockRange = (text: string, blockName: string): { start: number; end: number } | null => {
+          const openRe = new RegExp(`<Block\\b[^>]*\\bName=["']${escRe(blockName)}["'][^>]*>`, "i");
+          const m = openRe.exec(text);
+          if (!m) return null;
+          if (m[0].endsWith("/>")) return { start: m.index, end: m.index + m[0].length };
+          const closeIdx = text.indexOf("</Block>", m.index + m[0].length);
+          if (closeIdx === -1) return null;
+          return { start: m.index, end: closeIdx + "</Block>".length };
+        };
+        const upsertBlockParam = (text: string, blockName: string, key: string, value: string): string => {
+          const range = findBlockRange(text, blockName);
+          if (!range) return text;
+          const blockXml = text.slice(range.start, range.end);
+          const pRe = new RegExp(`(<P\\b[^>]*\\bName=["']${escRe(key)}["'][^>]*>)([\\s\\S]*?)(</P>)`, "i");
+          let nextBlock: string;
+          if (pRe.test(blockXml)) {
+            nextBlock = blockXml.replace(pRe, `$1${value}$3`);
+          } else {
+            const closeTag = "</Block>";
+            const idx = blockXml.lastIndexOf(closeTag);
+            if (idx === -1) return text;
+            nextBlock = `${blockXml.slice(0, idx)}  <P Name="${key}">${value}</P>\n${blockXml.slice(idx)}`;
+          }
+          return text.slice(0, range.start) + nextBlock + text.slice(range.end);
+        };
+        const insertLineXml = (text: string, src: string, dst: string, srcPort = "1", dstPort = "1"): string => {
+          const lineXml = `  <Line>\n    <P Name="SrcBlock">${src}</P>\n    <P Name="SrcPort">${srcPort}</P>\n    <P Name="DstBlock">${dst}</P>\n    <P Name="DstPort">${dstPort}</P>\n  </Line>\n`;
+          const sysClose = text.lastIndexOf("</System>");
+          if (sysClose === -1) return text;
+          return text.slice(0, sysClose) + lineXml + text.slice(sysClose);
+        };
+        const removeLinesXml = (text: string, matchFn: (lineXml: string) => boolean): string =>
+          text.replace(/^[ \t]*<Line\b[\s\S]*?<\/Line>[ \t]*\r?\n?/gim, (m) => (matchFn(m) ? "" : m));
 
         for (const action of params.actions) {
           if (action.type === "addComponent") {
@@ -198,11 +235,103 @@ export function createSimulinkDiagramBackend(backends: DiagramDispatchDeps): Dia
               unifiedIndex,
               batchState,
             });
-            allEdits.push(...edits);
-            if (edits.length > 0) renderHint = "immediate";
+            addEdits.push(...edits);
+            if (edits.length > 0) hasStructural = true;
+          } else if (action.type === "move") {
+            for (const item of action.items) {
+              const name = stripBlk(item.name);
+              const x1 = Math.round(item.x);
+              const y1 = Math.round(item.y);
+              const x2 = Math.round(item.x + (item.width ?? 80));
+              const y2 = Math.round(item.y + (item.height ?? 50));
+              workingText = upsertBlockParam(workingText, name, "Position", `[${x1}, ${y1}, ${x2}, ${y2}]`);
+            }
+          } else if (action.type === "resize") {
+            const item = action.item;
+            const name = stripBlk(item.name);
+            const x1 = Math.round(item.x);
+            const y1 = Math.round(item.y);
+            const x2 = Math.round(item.x + (item.width ?? 80));
+            const y2 = Math.round(item.y + (item.height ?? 50));
+            workingText = upsertBlockParam(workingText, name, "Position", `[${x1}, ${y1}, ${x2}, ${y2}]`);
+          } else if (action.type === "updateParameter") {
+            workingText = upsertBlockParam(workingText, stripBlk(action.name), action.parameter, String(action.value));
+          } else if (action.type === "updateProperty") {
+            workingText = upsertBlockParam(workingText, stripBlk(action.name), action.key, String(action.value ?? ""));
+          } else if (action.type === "updateName") {
+            const oldN = stripBlk(action.oldName);
+            const newN = stripBlk(action.newName);
+            const range = findBlockRange(workingText, oldN);
+            if (range) {
+              const blockXml = workingText.slice(range.start, range.end);
+              const renamedBlock = blockXml.replace(
+                new RegExp(`(\\bName=["'])${escRe(oldN)}(["'])`, "i"),
+                `$1${newN}$2`,
+              );
+              workingText = workingText.slice(0, range.start) + renamedBlock + workingText.slice(range.end);
+              workingText = workingText.replace(
+                new RegExp(`(<P\\b[^>]*\\bName=["'](?:SrcBlock|DstBlock)["'][^>]*>)${escRe(oldN)}(</P>)`, "gi"),
+                `$1${newN}$2`,
+              );
+              hasStructural = true;
+            }
+          } else if (action.type === "deleteComponents") {
+            for (const rawName of action.names) {
+              const name = stripBlk(rawName);
+              const range = findBlockRange(workingText, name);
+              if (range) {
+                let start = range.start;
+                while (start > 0 && (workingText[start - 1] === " " || workingText[start - 1] === "\t")) start--;
+                let end = range.end;
+                if (workingText[end] === "\r") end++;
+                if (workingText[end] === "\n") end++;
+                workingText = workingText.slice(0, start) + workingText.slice(end);
+                hasStructural = true;
+              }
+              const blkRe = new RegExp(`<P\\b[^>]*\\bName=["'](?:SrcBlock|DstBlock)["'][^>]*>${escRe(name)}</P>`, "i");
+              workingText = removeLinesXml(workingText, (lineXml) => blkRe.test(lineXml));
+            }
+          } else if (action.type === "connect") {
+            const src = stripBlk(action.source);
+            const dst = stripBlk(action.target);
+            const sp = action.sourcePort?.replace(/\D+/g, "") || "1";
+            const dp = action.targetPort?.replace(/\D+/g, "") || "1";
+            workingText = insertLineXml(workingText, src, dst, sp, dp);
+            hasStructural = true;
+          } else if (action.type === "disconnect") {
+            const src = stripBlk(action.source);
+            const dst = stripBlk(action.target);
+            const sRe = new RegExp(`<P\\b[^>]*\\bName=["']SrcBlock["'][^>]*>${escRe(src)}</P>`, "i");
+            const dRe = new RegExp(`<P\\b[^>]*\\bName=["']DstBlock["'][^>]*>${escRe(dst)}</P>`, "i");
+            workingText = removeLinesXml(workingText, (lineXml) => sRe.test(lineXml) && dRe.test(lineXml));
+            hasStructural = true;
+          } else if (action.type === "reconnect") {
+            const oldS = stripBlk(action.oldSource);
+            const oldD = stripBlk(action.oldTarget);
+            const sRe = new RegExp(`<P\\b[^>]*\\bName=["']SrcBlock["'][^>]*>${escRe(oldS)}</P>`, "i");
+            const dRe = new RegExp(`<P\\b[^>]*\\bName=["']DstBlock["'][^>]*>${escRe(oldD)}</P>`, "i");
+            workingText = removeLinesXml(workingText, (lineXml) => sRe.test(lineXml) && dRe.test(lineXml));
+            const newS = stripBlk(action.newSource);
+            const newD = stripBlk(action.newTarget);
+            const sp = action.newSourcePort?.replace(/\D+/g, "") || "1";
+            const dp = action.newTargetPort?.replace(/\D+/g, "") || "1";
+            workingText = insertLineXml(workingText, newS, newD, sp, dp);
+            hasStructural = true;
           }
         }
 
+        const allEdits: TextEdit[] = [...addEdits];
+        if (workingText !== raw) {
+          const lines = raw.split("\n");
+          const lastLine = Math.max(0, lines.length - 1);
+          const lastChar = lines[lastLine]?.length ?? 0;
+          allEdits.push({
+            range: { start: { line: 0, character: 0 }, end: { line: lastLine, character: lastChar } },
+            newText: workingText,
+          });
+        }
+
+        const renderHint: "none" | "immediate" | "debounced" = hasStructural ? "immediate" : "none";
         return {
           seq: params.seq,
           edits: deduplicateAndSort(mergeCoincidentInsertEdits(allEdits)),

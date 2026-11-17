@@ -639,7 +639,7 @@ documents.onDidChangeContent((change) => {
           const latestDoc = documents.get(uri);
           await validationService.validateTextDocument(latestDoc ?? change.document);
         },
-        hasCustomValidator ? 60 : 100,
+        hasCustomValidator ? 15 : 100,
       ),
     );
     return;

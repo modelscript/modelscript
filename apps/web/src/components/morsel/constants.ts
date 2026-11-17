@@ -52,6 +52,8 @@ export type MorselSyntaxFamily =
   | "plcopen"
   | "simulink";
 
+export type MorselDefaultView = "diagram" | "3d" | "simulation" | "inspector" | "code";
+
 export interface MorselLanguageInfo {
   id: string;
   name: string;
@@ -61,9 +63,15 @@ export interface MorselLanguageInfo {
   extensions: string[];
   family: MorselSyntaxFamily;
   defaultCode: string;
+  defaultFiles?: Record<string, string> | undefined;
+  defaultActiveFile?: string | undefined;
   supportsDiagram: boolean;
   supportsSimulation: boolean;
   supports3d: boolean;
+  /** Preferred default visualizer/editor view for this language (defaults to diagram, or 3d when 2D diagram is unsupported). */
+  defaultView?: MorselDefaultView | undefined;
+  /** Whether to open in split code+visualizer mode by default (defaults to true unless defaultView is "code"). */
+  defaultSplit?: boolean | undefined;
   diagramTypes?: MorselDiagramTypeOption[];
   featureFlag?: string | undefined;
   hiddenByDefault?: boolean | undefined;
@@ -161,7 +169,7 @@ s.t. Resource:
   3 * x1 + 2 * x2 <= 18;
 `,
     supportsDiagram: false,
-    supportsSimulation: false,
+    supportsSimulation: true,
     supports3d: false,
   },
   {
@@ -216,9 +224,10 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 `,
-    supportsDiagram: true,
+    supportsDiagram: false,
     supportsSimulation: false,
     supports3d: true,
+    defaultView: "3d",
   },
   {
     id: "owl2",
@@ -264,6 +273,7 @@ difference() {
     supportsDiagram: false,
     supportsSimulation: false,
     supports3d: true,
+    defaultView: "3d",
   },
   {
     id: "csv",
@@ -411,10 +421,19 @@ endmodule
     family: "spice",
     defaultCode: `0, 100.0, 33, 0, 1, 60.0 / PSS/E 3-Bus Sample
 1, 'BUS_1   ', 230.0, 3, 1, 1, 1, 1.02, 0.0
-2, 'BUS_2   ', 230.0, 1, 1, 1, 1, 1.00, -2.5
+2, 'BUS_2   ', 230.0, 2, 1, 1, 1, 1.01, -1.0
+3, 'BUS_3   ', 230.0, 1, 1, 1, 1, 1.00, -2.5
 0 / END OF BUS DATA, BEGIN LOAD DATA
-2, '1 ', 1, 1, 1, 120.0, 40.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0
-0 / END OF LOAD DATA
+3, '1 ', 1, 1, 1, 120.0, 40.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0
+0 / END OF LOAD DATA, BEGIN FIXED SHUNT DATA
+0 / END OF FIXED SHUNT DATA, BEGIN GENERATOR DATA
+1, '1 ', 70.0, 20.0, 100.0, -50.0, 1.02, 0, 100.0, 0.0, 0.2, 0.0, 0.0, 1.0, 1, 100.0, 150.0, 0.0
+2, '1 ', 50.0, 15.0, 100.0, -50.0, 1.01, 0, 100.0, 0.0, 0.25, 0.0, 0.0, 1.0, 1, 100.0, 100.0, 0.0
+0 / END OF GENERATOR DATA, BEGIN BRANCH DATA
+1, 2, '1 ', 0.01, 0.05, 0.02, 200.0, 200.0, 200.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 1.0
+1, 3, '1 ', 0.015, 0.08, 0.03, 200.0, 200.0, 200.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 1.0
+2, 3, '1 ', 0.01, 0.06, 0.02, 200.0, 200.0, 200.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 1.0
+0 / END OF BRANCH DATA
 `,
     supportsDiagram: true,
     supportsSimulation: true,
@@ -436,6 +455,76 @@ Solve
     supportsDiagram: true,
     supportsSimulation: true,
     supports3d: false,
+  },
+  {
+    id: "powerfactory",
+    name: "DIgSILENT PowerFactory",
+    tier: "beta",
+    ext: "dgs",
+    extensions: [".dgs", ".pfd", ".dz", ".dsl", ".xml"],
+    family: "xml",
+    defaultCode: `<?xml version="1.0" encoding="UTF-8"?>
+<PowerFactory version="2024">
+  <DataObject class="ElmSubstat" loc_name="Substation_1"></DataObject>
+  <DataObject class="ElmSubstat" loc_name="Substation_2"></DataObject>
+  <DataObject class="ElmSubstat" loc_name="Substation_3"></DataObject>
+
+  <DataObject class="ElmTerm" loc_name="Bus_1"><uknom>110.0</uknom><fnom>50.0</fnom></DataObject>
+  <DataObject class="ElmTerm" loc_name="Bus_2"><uknom>110.0</uknom><fnom>50.0</fnom></DataObject>
+  <DataObject class="ElmTerm" loc_name="Bus_3"><uknom>110.0</uknom><fnom>50.0</fnom></DataObject>
+
+  <DataObject class="ElmLne" loc_name="Line_1_2">
+    <bus1>Bus_1</bus1>
+    <bus2>Bus_2</bus2>
+    <dline>20.0</dline>
+    <r1>2.42</r1>
+    <x1>7.26</x1>
+    <b1>15.0</b1>
+  </DataObject>
+
+  <DataObject class="ElmLne" loc_name="Line_2_3">
+    <bus1>Bus_2</bus1>
+    <bus2>Bus_3</bus2>
+    <dline>15.0</dline>
+    <r1>1.81</r1>
+    <x1>5.44</x1>
+    <b1>12.0</b1>
+  </DataObject>
+
+  <DataObject class="ElmLne" loc_name="Line_1_3">
+    <bus1>Bus_1</bus1>
+    <bus2>Bus_3</bus2>
+    <dline>25.0</dline>
+    <r1>3.02</r1>
+    <x1>9.07</x1>
+    <b1>18.0</b1>
+  </DataObject>
+
+  <DataObject class="ElmSym" loc_name="Gen_1">
+    <bus1>Bus_1</bus1>
+    <pgini>70.0</pgini>
+    <qgini>15.0</qgini>
+    <usetp>1.02</usetp>
+  </DataObject>
+
+  <DataObject class="ElmSym" loc_name="Gen_3">
+    <bus1>Bus_3</bus1>
+    <pgini>30.0</pgini>
+    <qgini>10.0</qgini>
+    <usetp>1.00</usetp>
+  </DataObject>
+
+  <DataObject class="ElmLod" loc_name="Load_2">
+    <bus1>Bus_2</bus1>
+    <plini>80.0</plini>
+    <qlini>25.0</qlini>
+  </DataObject>
+</PowerFactory>
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
   },
   {
     id: "comtrade",
@@ -549,6 +638,35 @@ END_PROGRAM
   </ssd:System>
 </ssd:SystemStructureDescription>
 `,
+    defaultActiveFile: "SystemStructure.ssd",
+    defaultFiles: {
+      "SystemStructure.ssd": `<?xml version="1.0" encoding="UTF-8"?>
+<ssd:SystemStructureDescription xmlns:ssd="http://ssp-standard.org/SSP1/SystemStructureDescription" name="DriveSystem" version="1.0">
+  <ssd:System name="Root">
+    <ssd:Elements>
+      <ssd:Component name="Controller" source="resources/Controller.fmu" />
+      <ssd:Component name="Plant" source="resources/Plant.fmu" />
+    </ssd:Elements>
+  </ssd:System>
+</ssd:SystemStructureDescription>
+`,
+      "resources/Controller.fmu/modelDescription.xml": `<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="Controller" guid="{00000000-0000-0000-0000-000000000001}">
+  <ModelVariables>
+    <ScalarVariable name="u" valueReference="0" causality="input"><Real start="0.0" /></ScalarVariable>
+    <ScalarVariable name="y" valueReference="1" causality="output"><Real /></ScalarVariable>
+  </ModelVariables>
+</fmiModelDescription>
+`,
+      "resources/Plant.fmu/modelDescription.xml": `<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="Plant" guid="{00000000-0000-0000-0000-000000000002}">
+  <ModelVariables>
+    <ScalarVariable name="u" valueReference="0" causality="input"><Real start="0.0" /></ScalarVariable>
+    <ScalarVariable name="y" valueReference="1" causality="output"><Real /></ScalarVariable>
+  </ModelVariables>
+</fmiModelDescription>
+`,
+    },
     supportsDiagram: true,
     supportsSimulation: true,
     supports3d: false,
@@ -605,6 +723,7 @@ def Xform "World"
     supportsDiagram: false,
     supportsSimulation: true,
     supports3d: true,
+    defaultView: "3d",
   },
   {
     id: "adams",
@@ -680,6 +799,7 @@ MESH_FILENAME= mesh_naca0012.su2
     supportsDiagram: false,
     supportsSimulation: true,
     supports3d: true,
+    defaultView: "3d",
   },
   {
     id: "fea",
@@ -703,6 +823,7 @@ Cantilever Beam Linear Static Analysis
     supportsDiagram: false,
     supportsSimulation: true,
     supports3d: true,
+    defaultView: "3d",
   },
   {
     id: "easy5",
@@ -1792,6 +1913,536 @@ i:So/ProtonPencil/NumberOfHistoriesInRun = 50000
     supportsSimulation: true,
     supports3d: true,
   },
+  {
+    id: "gtfs",
+    name: "GTFS Transit",
+    tier: "alpha",
+    ext: "gtfs",
+    extensions: [".gtfs", ".txt"],
+    family: "csv",
+    defaultCode: `route_id,agency_id,route_short_name,route_long_name,route_type
+R1,METRO,1,Red Line Express,1
+R2,METRO,2,Blue Line Crosstown,3
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "pslf",
+    name: "GE Vernova PSLF",
+    tier: "alpha",
+    ext: "epc",
+    extensions: [".epc", ".dyd"],
+    family: "spice",
+    defaultCode: `title
+PSLF 3-Bus Sample System
+bus data
+1 "BUS_1" 230.0 "Area1" 1 1.02 0.0
+2 "BUS_2" 230.0 "Area1" 2 1.01 -1.2
+3 "BUS_3" 230.0 "Area1" 0 1.00 -2.5
+branch data
+1 2 "1" 1 0.01 0.05 0.02 200.0
+1 3 "1" 1 0.015 0.08 0.03 200.0
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "cgmes",
+    name: "CIM / CGMES",
+    tier: "alpha",
+    ext: "cgmes",
+    extensions: [".cgmes", ".xml", ".rdf"],
+    family: "xml",
+    defaultCode: `<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:cim="http://iec.ch/TC57/2013/CIM-schema-cim16#">
+  <cim:BaseVoltage rdf:ID="_BV_110">
+    <cim:BaseVoltage.nominalVoltage>110</cim:BaseVoltage.nominalVoltage>
+  </cim:BaseVoltage>
+  <cim:Substation rdf:ID="_SUB_1">
+    <cim:IdentifiedObject.name>Substation_Alpha</cim:IdentifiedObject.name>
+  </cim:Substation>
+</rdf:RDF>
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "ocpp",
+    name: "OCPP EV Charging",
+    tier: "alpha",
+    ext: "ocpp",
+    extensions: [".ocpp", ".ocpp.json"],
+    family: "xml",
+    defaultCode: `{
+  "protocol": "OCPP 2.0.1",
+  "stationId": "EVSE_001",
+  "messageType": "BootNotificationRequest",
+  "chargingStation": {
+    "model": "FastCharger-350kW",
+    "vendorName": "GridCharge"
+  },
+  "reason": "PowerUp"
+}
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "openadr",
+    name: "OpenADR Demand Response",
+    tier: "alpha",
+    ext: "oadr",
+    extensions: [".oadr", ".openadr.xml"],
+    family: "xml",
+    defaultCode: `<?xml version="1.0" encoding="UTF-8"?>
+<oadrPayload xmlns="http://openadr.org/oadr-2.0b/2012/07">
+  <oadrSignedObject>
+    <oadrDistributeEvent>
+      <vtnID>VTN_GRID_01</vtnID>
+      <oadrEvent>
+        <eiEvent>
+          <eventDescriptor>
+            <eventID>DR_PEAK_SHAVE_01</eventID>
+            <eventStatus>active</eventStatus>
+          </eventDescriptor>
+        </eiEvent>
+      </oadrEvent>
+    </oadrDistributeEvent>
+  </oadrSignedObject>
+</oadrPayload>
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "tough",
+    name: "LBNL TOUGH Subsurface",
+    tier: "alpha",
+    ext: "tgh",
+    extensions: [".tgh", ".tough"],
+    family: "ini",
+    defaultCode: `TOUGH2 1D Geothermal Reservoir Simulation
+ROCKS----1----*----2----*----3----*----4----*----5----*----6----*----7----*----8
+SAND1    2      2600.     0.20  1.0e-13  1.0e-13  1.0e-13     2.51     1000.
+PARAM----1----*----2----*----3----*----4----*----5----*----6----*----7----*----8
+    2 1000   1000000 0000000000000000000000000
+ENDCY
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "matpower",
+    name: "MATPOWER OPF",
+    tier: "alpha",
+    ext: "m",
+    extensions: [".m"],
+    family: "c",
+    defaultCode: `function mpc = case3_sample
+mpc.version = '2';
+mpc.baseMVA = 100;
+mpc.bus = [
+  1 3 0   0  0 0 1 1.02 0  230 1 1.05 0.95;
+  2 2 0   0  0 0 1 1.01 0  230 1 1.05 0.95;
+  3 1 80  25 0 0 1 1.00 0  230 1 1.05 0.95;
+];
+mpc.gen = [
+  1 70 0 50 -50 1.02 100 1 150 10;
+  2 30 0 40 -40 1.01 100 1 100 10;
+];
+mpc.branch = [
+  1 2 0.01 0.05 0.02 200 200 200 0 0 1 -360 360;
+  2 3 0.01 0.06 0.02 200 200 200 0 0 1 -360 360;
+];
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "scl",
+    name: "IEC 61850 SCL",
+    tier: "alpha",
+    ext: "scd",
+    extensions: [".scd", ".icd", ".cid"],
+    family: "xml",
+    defaultCode: `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
+  <Header id="Substation_Alpha_SCD" version="1" revision="0"/>
+  <Substation name="Substation_1">
+    <VoltageLevel name="110kV">
+      <Bay name="Feeder_Bay_1"/>
+    </VoltageLevel>
+  </Substation>
+  <IED name="Relay_PROT_1"/>
+</SCL>
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "atp",
+    name: "ATP-EMTP",
+    tier: "alpha",
+    ext: "atp",
+    extensions: [".atp"],
+    family: "spice",
+    defaultCode: `BEGIN NEW DATA CASE
+C ATP-EMTP Switching Transient Sample
+   1.0E-6   0.05
+/BRANCH
+  BUS1  BUS2            0.5    15.0    0.01
+/SWITCH
+  BUS2  LOAD            0.01   0.05
+/SOURCE
+14BUS1                  169.7E3  60.0
+BLANK CARD ENDING CASE
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "dnp3",
+    name: "IEEE 1815 / DNP3",
+    tier: "alpha",
+    ext: "dnp3",
+    extensions: [".dnp3"],
+    family: "ini",
+    defaultCode: `[DNP3_OUTSTATION]
+masterAddress = 1
+outstationAddress = 10
+port = 20000
+
+[POINTS]
+BI_0 = "Breaker_1_Closed", class=1
+AI_0 = "Bus_1_Voltage_kV", class=2, deadband=0.5
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "oneliner",
+    name: "ASPEN OneLiner / CAPE",
+    tier: "alpha",
+    ext: "olx",
+    extensions: [".olx", ".dxt"],
+    family: "ini",
+    defaultCode: `[ASPEN_ONELINER]
+SystemMVA = 100.0
+FrequencyHz = 60.0
+
+[BUS]
+1, "BUS_HV_230", 230.0
+2, "BUS_LV_69", 69.0
+
+[TRANSFORMER]
+"T1", 1, 2, 100.0, X1=0.08, X0=0.07
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "sel",
+    name: "SEL Relay Settings",
+    tier: "alpha",
+    ext: "rdb",
+    extensions: [".rdb", ".txt"],
+    family: "ini",
+    defaultCode: `[SEL-421 PROTECTION SETTINGS]
+RID = "FEEDER_1_LINE_PROT"
+CTR = 240
+PTR = 2000
+E21P = 2
+Z1MAG = 4.50
+Z1ANG = 82.5
+50P1P = 12.0
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "optical",
+    name: "OpenROADM & Telcordia .sor",
+    tier: "alpha",
+    ext: "sor",
+    extensions: [".sor", ".opt"],
+    family: "ini",
+    defaultCode: `[OTDR_TRACE]
+wavelength_nm = 1550
+pulse_width_ns = 100
+fiber_length_km = 42.5
+attenuation_db_per_km = 0.19
+events = [
+  { distance_km: 12.4, splice_loss_db: 0.08 },
+  { distance_km: 28.1, splice_loss_db: 0.11 }
+]
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "ran",
+    name: "NSMA WG16 & Planet Antenna",
+    tier: "alpha",
+    ext: "adf",
+    extensions: [".adf", ".pat", ".msi"],
+    family: "ini",
+    defaultCode: `REVNUM:,NSMA WG16.99.050
+ANTMAN:,ModelScript RF
+MODNUM:,NR_3500_64T64R
+LOWFRQ:,3300
+HGHFRQ:,3800
+GAIN:,18.5 dBi
+HWIDTH:,65
+VWIDTH:,12
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "fiber",
+    name: "TIA-598-D Outside Plant",
+    tier: "beta",
+    ext: "geojson",
+    extensions: [".geojson", ".kml"],
+    family: "xml",
+    defaultCode: `{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "id": "DUCT_01", "fiberCount": 144, "standard": "TIA-598-D" },
+      "geometry": { "type": "LineString", "coordinates": [[-73.985, 40.748], [-73.978, 40.754]] }
+    }
+  ]
+}
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "hec-ras",
+    name: "USACE HEC-RAS",
+    tier: "alpha",
+    ext: "g01",
+    extensions: [".g01", ".prj"],
+    family: "ini",
+    defaultCode: `Geom Title=River_Reach_1D
+Program Version=6.41
+River Reach=ClearCreek      ,UpperReach
+XS GIS Cut Line=2
+  0.0  100.0
+  50.0 95.0
+  100.0 100.0
+Manning's n=0.035,0.030,0.035
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "modflow",
+    name: "USGS MODFLOW",
+    tier: "alpha",
+    ext: "dis",
+    extensions: [".dis", ".nam"],
+    family: "ini",
+    defaultCode: `# MODFLOW 6 Discretization (DIS)
+BEGIN OPTIONS
+  LENGTH_UNITS METERS
+END OPTIONS
+
+BEGIN DIMENSIONS
+  NLAY 1
+  NROW 10
+  NCOL 10
+END DIMENSIONS
+
+BEGIN GRIDDATA
+  DELR CONSTANT 100.0
+  DELC CONSTANT 100.0
+  TOP CONSTANT 50.0
+  BOTM CONSTANT 0.0
+END GRIDDATA
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "landgem",
+    name: "EPA LandGEM",
+    tier: "alpha",
+    ext: "landgem",
+    extensions: [".landgem"],
+    family: "ini",
+    defaultCode: `[LANDGEM_MODEL]
+LandfillName = Regional_MSW_Cell_1
+OpenYear = 2005
+ClosureYear = 2025
+MethaneGenerationRate_k = 0.05
+PotentialMethaneCapacity_L0 = 170
+NMOC_Concentration_ppmv = 4000
+MethaneContent_pct = 50
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "hec-hms",
+    name: "USACE HEC-HMS",
+    tier: "alpha",
+    ext: "basin",
+    extensions: [".basin"],
+    family: "ini",
+    defaultCode: `Basin: Watershed_North
+     Last Modified Date: 16 November 2026
+End:
+
+Subbasin: Upper_Basin
+     Area: 42.5
+     LossRate: SCS
+     Curve Number: 72
+     Transform: SCS
+     Lag: 120
+End:
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "waterml",
+    name: "OGC WaterML 2.0",
+    tier: "alpha",
+    ext: "waterml",
+    extensions: [".waterml", ".xml"],
+    family: "xml",
+    defaultCode: `<?xml version="1.0" encoding="UTF-8"?>
+<wml2:Collection xmlns:wml2="http://www.opengis.net/waterml/2.0">
+  <wml2:observationMember>
+    <wml2:MeasurementTimeseries>
+      <wml2:point>
+        <wml2:MeasurementTVP>
+          <wml2:time>2026-11-16T12:00:00Z</wml2:time>
+          <wml2:value>14.2</wml2:value>
+        </wml2:MeasurementTVP>
+      </wml2:point>
+    </wml2:MeasurementTimeseries>
+  </wml2:observationMember>
+</wml2:Collection>
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "asm",
+    name: "IWA Activated Sludge Models",
+    tier: "alpha",
+    ext: "asm",
+    extensions: [".asm"],
+    family: "ini",
+    defaultCode: `model ASM1_Aeration_Basin
+# State variables (g COD/m3, g N/m3)
+S_I = 30.0
+S_S = 69.5
+X_BH = 28.2
+S_O = 2.0
+S_NH = 31.6
+mu_H = 6.0
+K_S = 20.0
+Y_H = 0.67
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "mlxtran",
+    name: "MLXTRAN (Monolix)",
+    tier: "alpha",
+    ext: "mlxtran",
+    extensions: [".mlxtran"],
+    family: "ini",
+    defaultCode: `[LONGITUDINAL]
+input = {ka, V, Cl}
+
+EQUATION:
+Cc = pkmodel(ka, V, Cl)
+
+OUTPUT:
+output = Cc
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
+  {
+    id: "nmodl",
+    name: "NMODL (NEURON)",
+    tier: "alpha",
+    ext: "mod",
+    extensions: [".mod", ".nmodl"],
+    family: "c",
+    defaultCode: `TITLE Hodgkin-Huxley Sodium Channel
+NEURON {
+  SUFFIX hh_na
+  USEION na READ ena WRITE ina
+  RANGE gnabar, ina
+}
+PARAMETER {
+  gnabar = 0.12 (S/cm2)
+}
+STATE { m h }
+BREAKPOINT {
+  SOLVE states METHOD cnexp
+  ina = gnabar * m*m*m*h * (v - ena)
+}
+`,
+    supportsDiagram: false,
+    supportsSimulation: false,
+    supports3d: false,
+    defaultView: "inspector",
+  },
 ];
 
 export const MORSEL_LANGUAGES: readonly MorselLanguageInfo[] = ALL_MORSEL_LANGUAGES.filter((lang) =>
@@ -1830,6 +2481,39 @@ export function getLanguageInfo(idOrAlias?: string | null): MorselLanguageInfo {
 
 export function getLanguageExtension(idOrAlias?: string | null): string {
   return getLanguageInfo(idOrAlias).ext;
+}
+
+/**
+ * Resolves the default view and split mode for a language from its per-language
+ * configuration (`defaultView` / `defaultSplit`), falling back based on
+ * capabilities (2D diagram -> 3D canvas -> simulation -> inspector) with split enabled.
+ */
+export function getDefaultLanguageView(langInfo: MorselLanguageInfo): {
+  view: MorselDefaultView;
+  isSplit: boolean;
+} {
+  const isViewSupported = (candidate: MorselDefaultView): boolean => {
+    if (candidate === "diagram") return langInfo.supportsDiagram;
+    if (candidate === "3d") return langInfo.supports3d;
+    if (candidate === "simulation") return langInfo.supportsSimulation;
+    return true;
+  };
+
+  let view: MorselDefaultView;
+  if (langInfo.defaultView && isViewSupported(langInfo.defaultView)) {
+    view = langInfo.defaultView;
+  } else if (langInfo.supportsDiagram) {
+    view = "diagram";
+  } else if (langInfo.supports3d) {
+    view = "3d";
+  } else if (langInfo.supportsSimulation) {
+    view = "simulation";
+  } else {
+    view = "inspector";
+  }
+
+  const isSplit = view === "code" ? false : (langInfo.defaultSplit ?? true);
+  return { view, isSplit };
 }
 
 export function detectLanguageFromFilename(filename: string): string {

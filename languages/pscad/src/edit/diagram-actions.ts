@@ -271,9 +271,12 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
     switch (action.type) {
       case "move": {
         const a = action as Extract<DiagramAction, { type: "move" }>;
-        for (const item of a.items) {
-          if (item.name.startsWith("bus_")) {
-            const busId = stripPrefix(item.name);
+        for (const item of a.items as Array<
+          Extract<DiagramAction, { type: "move" }>["items"][number] & { id?: string }
+        >) {
+          const targetKey = item.id || item.name;
+          if (targetKey.startsWith("bus_") || item.name.startsWith("bus_")) {
+            const busId = stripPrefix(targetKey.startsWith("bus_") ? targetKey : item.name);
             ops.push({
               type: "resizeBus",
               id: busId,
@@ -285,8 +288,8 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
             renderHint = "immediate";
             continue;
           }
-          if (item.name.startsWith("sticky_")) {
-            const stickyId = stripPrefix(item.name);
+          if (targetKey.startsWith("sticky_") || item.name.startsWith("sticky_")) {
+            const stickyId = stripPrefix(targetKey.startsWith("sticky_") ? targetKey : item.name);
             ops.push({
               type: "editSticky",
               id: stickyId,
@@ -298,7 +301,7 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
             renderHint = "immediate";
             continue;
           }
-          const hit = findInst(item.name);
+          const hit = (item.id ? findInst(item.id) : undefined) ?? findInst(item.name);
           if (!hit) {
             unresolved.push(item.name);
             continue;

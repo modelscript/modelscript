@@ -15,9 +15,11 @@ import { type CadComponent } from "../cad-viewer";
 import { AnimationController } from "../cad-viewer/animation-controller";
 import { extractCadComponents, parseSourceCadVariables } from "../cad-viewer/parse-cad-annotations";
 import { type HistorianSession } from "../CosimPanel";
+import { type AmplSolveResultData } from "../panels/AmplOptimizationResults";
 import { type ExperimentOverrides, type ParameterInfo, type SweepState } from "../SimulationParameters";
 import {
   compileStepFromSourcesInMorsel,
+  executeLspAction,
   extractPrimaryModelicaClassName,
   getCadComponents,
   getStepMeshesInMorsel,
@@ -1078,6 +1080,10 @@ export function useMorselEngine({
 
   // ── Live Editor Value Tracking ──
   const [editorValue, setEditorValue] = useState<string>(content);
+  const [amplSolveResult, setAmplSolveResult] = useState<AmplSolveResultData | null>(null);
+  useEffect(() => {
+    setAmplSolveResult(null);
+  }, [dialect, documentUri]);
   useEffect(() => {
     setEditorValue(content || editor?.getValue() || "");
   }, [content, editor, contextVersion]);
@@ -1750,6 +1756,30 @@ export function useMorselEngine({
     setLocalSimulationData(null);
 
     try {
+      if (dialect === "ampl") {
+        const liveText = editor?.getValue() ?? editorValue ?? content;
+        const solveRes = await executeLspAction("ampl_solve", "ampl", documentUri, {
+          documentText: liveText,
+        });
+        if (!solveRes) {
+          throw new Error("AMPL solver returned no result.");
+        }
+        if (solveRes.error) {
+          throw new Error(String(solveRes.error));
+        }
+        setAmplSolveResult(solveRes);
+        setSimulationStatus({ status: "completed" });
+        if (!showCadView) {
+          setShowResultsView(true);
+          if (isNarrow) {
+            setMobileTab("results");
+            setTreeVisible(false);
+            setView(viewDiagramEnum);
+          }
+        }
+        return;
+      }
+
       const overrideObj = Object.fromEntries(parameterOverrides);
       const targetClass = selectedTreeClassName || extractPrimaryModelicaClassName(editorValue || content) || undefined;
 
@@ -1957,5 +1987,6 @@ export function useMorselEngine({
     handleReplaySession,
     handleSaveCadBindings,
     handleSimulate,
+    amplSolveResult,
   };
 }

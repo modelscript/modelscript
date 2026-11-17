@@ -2263,6 +2263,7 @@ export function registerSemanticTokensProvider(
   getSysml2Parser: () => CstParserLike | null | undefined,
   isSysml2ParserReady: () => boolean,
   parseFallback?: (ext: string, text: string) => DocumentTreeEntryLike | CstTreeLike | null | undefined,
+  ensureParserLoaded?: (languageIdOrUri: string) => Promise<void>,
 ) {
   const tokensCache = new Map<string, { version: number; tokens: SemanticTokens }>();
 
@@ -2394,7 +2395,7 @@ export function registerSemanticTokensProvider(
         let tokenType: string | null = null;
         let modifier = 0;
 
-        if (node.type === "IDENT" || node.type === "identifier") {
+        if (node.type === "IDENT" || node.type === "identifier" || node.type === "IDENTIFIER") {
           const parent = node.parent;
           let p = parent;
           while (p && (p.type === "Name" || p.type === "name" || p.type === "component_reference")) {
@@ -2457,10 +2458,20 @@ export function registerSemanticTokensProvider(
               tokenType = "variable";
               modifier = 1;
             }
+          } else if (parent?.type === "Argument") {
+            tokenType = "parameter";
+          } else if (parent?.type === "ModuleDeclaration" || parent?.type === "FunctionDeclaration") {
+            tokenType = "function";
+            modifier = 1;
+          } else if (parent?.type === "VariableDeclaration") {
+            tokenType = "variable";
+            modifier = 1;
           } else if (
             parent?.type === "function_call" ||
             p?.type === "function_call" ||
-            parent?.type === "function_call_args"
+            parent?.type === "function_call_args" ||
+            parent?.type === "ModuleCall" ||
+            parent?.type === "FunctionCall"
           ) {
             tokenType = "function";
           } else {
@@ -2472,17 +2483,46 @@ export function registerSemanticTokensProvider(
           node.type === "UNSIGNED_INTEGER" ||
           node.type === "UNSIGNED_REAL" ||
           node.type === "unsigned_integer" ||
-          node.type === "unsigned_real"
+          node.type === "unsigned_real" ||
+          node.type === "NUMBER"
         ) {
           tokenType = "number";
-        } else if (node.type === "comment" || node.type === "line_comment" || node.type === "block_comment") {
+        } else if (node.type === "BOOLEAN") {
+          tokenType = "keyword";
+        } else if (
+          node.type === "comment" ||
+          node.type === "line_comment" ||
+          node.type === "block_comment" ||
+          node.type === "COMMENT"
+        ) {
           tokenType = "comment";
         } else if (["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "==", "<>", "!="].includes(node.type)) {
           tokenType = "operator";
+        } else if (!isModelica && (!node.children || node.children.length === 0)) {
+          if (typeKws.includes(node.text)) {
+            tokenType = "type";
+          } else if (langKws.has(node.text)) {
+            tokenType = "keyword";
+          } else if (
+            node.parent &&
+            /^(BooleanOp|TransformOp|ExtrudeOp|.*Primitive)$/.test(node.parent.type) &&
+            /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(node.text)
+          ) {
+            tokenType = "function";
+          }
         }
 
         if (tokenType !== null) {
           collector.pushNode(node, tokenType, modifier);
+          if (
+            node.type === "IDENTIFIER" ||
+            node.type === "NUMBER" ||
+            node.type === "STRING" ||
+            node.type === "BOOLEAN" ||
+            node.type === "COMMENT"
+          ) {
+            return;
+          }
         }
 
         for (const child of node.children || []) {
@@ -2491,6 +2531,13 @@ export function registerSemanticTokensProvider(
       };
 
       traverseTree(tree.rootNode);
+      if (!isModelica) {
+        const lineIndex = new LineIndex(text);
+        collectCstGapComments(tree.rootNode, text, lineIndex, collector, (src, gs, ge, li, col) => {
+          emitGapBlockComments(src, gs, ge, li, col);
+          emitGapLineComments(["//"], src, gs, ge, li, col);
+        });
+      }
       return cacheResult(collector.flushTo(builder));
     } finally {
       if (ownsFallbackTree) {
@@ -2503,6 +2550,12 @@ export function registerSemanticTokensProvider(
     const document = documents.get(params.textDocument.uri);
     if (!document) {
       return { data: [] };
+    }
+    if (ensureParserLoaded && !getDocumentTree(document.uri)) {
+      return ensureParserLoaded(document.languageId || document.uri).then(
+        () => computeSemanticTokens(document),
+        () => computeSemanticTokens(document),
+      );
     }
     return computeSemanticTokens(document);
   });

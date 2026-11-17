@@ -9,10 +9,10 @@
  */
 
 import type { DynamicBindingConfig } from "@modelscript/cad";
-import { CheckIcon, PlayIcon, PlusIcon, SyncIcon, TrashIcon, XIcon } from "@primer/octicons-react";
+import { CheckIcon, PlayIcon, PlusIcon, SyncIcon, TrashIcon } from "@primer/octicons-react";
 import { Button, Dialog, IconButton, Select, TextInput } from "@primer/react";
 import { useEffect, useState } from "react";
-import type { CadComponent } from "./CadViewer";
+import { type CadComponent, formatCadAssetLabel } from "./CadViewer";
 import type { AnimationController } from "./animation-controller";
 
 interface CadBindingPickerModalProps {
@@ -163,62 +163,36 @@ export function CadBindingPickerModal({
   return (
     <Dialog
       onClose={onClose}
-      aria-labelledby="cad-binding-title"
+      title={
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+          <span>🧵</span>
+          <span>Link 3D CAD Geometry to Simulation Variables</span>
+        </span>
+      }
+      subtitle={
+        <span>
+          Component:{" "}
+          <code style={{ color: "var(--fgColor-accent, var(--ms-brand))", fontWeight: 600 }}>{component.name}</code>
+          {component.cad.uri && ` • Asset: ${formatCadAssetLabel(component.cad.uri)}`}
+        </span>
+      }
       width="xlarge"
-      style={{
-        width: "min(95vw, 800px)",
-        maxWidth: "850px",
-        maxHeight: "90vh",
-        display: "flex",
-        flexDirection: "column",
-        backgroundColor: "var(--surface-overlay)",
-        color: "var(--color-fg-default)",
-        border: "1px solid var(--color-border-default)",
-        borderRadius: "12px",
-        boxShadow: dark ? "0 16px 32px rgba(0,0,0,0.6)" : "0 16px 32px rgba(0,0,0,0.15)",
-      }}
+      footerButtons={[
+        {
+          buttonType: "default",
+          content: "Cancel",
+          onClick: onClose,
+        },
+        {
+          buttonType: "primary",
+          content: "Apply & Save to Modelica",
+          leadingVisual: CheckIcon,
+          onClick: handleSave,
+        },
+      ]}
     >
-      <Dialog.Header
-        id="cad-binding-title"
+      <div
         style={{
-          backgroundColor: "var(--color-canvas-subtle)",
-          borderBottom: "1px solid var(--color-border-default)",
-          padding: "16px 20px",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "20px" }}>🧵</span>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: "16px", color: "var(--color-fg-default)" }}>
-                Link 3D CAD Geometry to Simulation Variables
-              </div>
-              <div style={{ fontSize: "12px", color: "var(--color-fg-muted)" }}>
-                Component:{" "}
-                <code style={{ color: "var(--fgColor-accent, var(--ms-brand))", fontWeight: 600 }}>
-                  {component.name}
-                </code>
-                {component.cad.uri && ` • Asset: ${component.cad.uri.split("/").pop()}`}
-              </div>
-            </div>
-          </div>
-          <IconButton
-            icon={XIcon}
-            aria-label="Close"
-            variant="invisible"
-            size="small"
-            onClick={onClose}
-            style={{ color: dark ? "#8b949e" : "#57606a" }}
-          />
-        </div>
-      </Dialog.Header>
-
-      <Dialog.Body
-        style={{
-          padding: "20px",
-          overflowY: "auto",
-          flex: 1,
-          minHeight: 0,
           display: "flex",
           flexDirection: "column",
           gap: "16px",
@@ -447,25 +421,7 @@ export function CadBindingPickerModal({
             </Button>
           )}
         </div>
-      </Dialog.Body>
-
-      <Dialog.Footer
-        style={{
-          backgroundColor: "var(--color-canvas-subtle)",
-          borderTop: "1px solid var(--color-border-default)",
-          padding: "12px 20px",
-          display: "flex",
-          justifyContent: "flex-end",
-          gap: "10px",
-        }}
-      >
-        <Button variant="default" size="small" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button variant="primary" size="small" leadingVisual={CheckIcon} onClick={handleSave}>
-          Apply & Save to Modelica
-        </Button>
-      </Dialog.Footer>
+      </div>
     </Dialog>
   );
 }

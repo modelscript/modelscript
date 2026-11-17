@@ -3,16 +3,12 @@
 import {
   AlertIcon,
   BookmarkIcon,
-  ChevronDownIcon,
   CodeIcon,
   ColumnsIcon,
-  CrossReferenceIcon,
   DownloadIcon,
-  FileIcon,
   GraphIcon,
   ImageIcon,
   MoonIcon,
-  PencilIcon,
   PlayIcon,
   PlusIcon,
   RepoForkedIcon,
@@ -26,29 +22,19 @@ import {
   SunIcon,
   TableIcon,
   TerminalIcon,
-  TriangleDownIcon,
   WorkflowIcon,
-  XIcon,
   ZapIcon,
 } from "@primer/octicons-react";
-import { ActionList, ActionMenu, AnchoredOverlay, Button, IconButton, SegmentedControl } from "@primer/react";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ActionList, ActionMenu, Button, IconButton, SegmentedControl } from "@primer/react";
+import React from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../AuthContext";
 import { MorselIcon } from "../../../components/icons";
-import { MORSEL_LANGUAGE_MAP, getLanguageInfo } from "../../../components/morsel/constants";
+import { getLanguageInfo } from "../../../components/morsel/constants";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
 import { getExtensionForDialect } from "../../../util/editor-routing";
-import {
-  DEFAULT_EMPTY_MODELICA_CODE,
-  HERO_EXAMPLES,
-  PINNED_PLAYGROUND_LANGUAGE_IDS,
-  PLAYGROUND_LANGUAGE_DOMAINS,
-  getPlaygroundLanguageDomain,
-  useVisiblePlaygroundLanguages,
-  type HeroExample,
-} from "../constants";
+import { useVisiblePlaygroundLanguages, type HeroExample } from "../constants";
 import {
   Badge,
   BrandLink,
@@ -101,7 +87,7 @@ export interface PlaygroundNavbarProps {
 
 export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   fromArtifactParam,
-  currentTitle,
+  currentTitle: _currentTitle,
   currentLang = "modelica",
   currentView = "diagram",
   diagramType = "diagram",
@@ -116,9 +102,9 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   publishLabel,
   isSidebarOpen,
   onToggleSidebar,
-  onTitleChange,
-  onSelectExample,
-  onSelectLang,
+  onTitleChange: _onTitleChange,
+  onSelectExample: _onSelectExample,
+  onSelectLang: _onSelectLang,
   onSelectDiagramType,
   onViewChange,
   onSimulate,
@@ -136,34 +122,8 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   const branding = useInstanceBranding();
   const visiblePlaygroundLanguages = useVisiblePlaygroundLanguages();
   const customLogoSrc = theme === "dark" ? branding.brandLogoDarkUrl || branding.brandLogoUrl : branding.brandLogoUrl;
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [draftTitle, setDraftTitle] = useState(currentTitle);
-  const [langMenuOpen, setLangMenuOpen] = useState(false);
-  const [langSearch, setLangSearch] = useState("");
-  const langSearchInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setDraftTitle(currentTitle);
-  }, [currentTitle]);
-
-  useEffect(() => {
-    if (langMenuOpen) {
-      const id = requestAnimationFrame(() => langSearchInputRef.current?.focus());
-      return () => cancelAnimationFrame(id);
-    }
-  }, [langMenuOpen]);
 
   const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/i.test(navigator.platform);
-
-  const commitTitleChange = () => {
-    setIsEditingTitle(false);
-    const trimmed = draftTitle.trim();
-    if (trimmed && trimmed !== currentTitle) {
-      onTitleChange?.(trimmed);
-    } else {
-      setDraftTitle(currentTitle);
-    }
-  };
 
   const currentLangOption = visiblePlaygroundLanguages.find((l) => l.id === currentLang) || {
     id: currentLang,
@@ -171,50 +131,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
     ext: getExtensionForDialect(currentLang),
   };
 
-  const normalizedLangQuery = langSearch.trim().toLowerCase();
-  const filteredLanguages = useMemo(() => {
-    if (!normalizedLangQuery) return visiblePlaygroundLanguages;
-    return visiblePlaygroundLanguages.filter((lang) => {
-      const domain = getPlaygroundLanguageDomain(lang.id).toLowerCase();
-      return (
-        lang.label.toLowerCase().includes(normalizedLangQuery) ||
-        lang.id.toLowerCase().includes(normalizedLangQuery) ||
-        lang.ext.toLowerCase().includes(normalizedLangQuery) ||
-        domain.includes(normalizedLangQuery)
-      );
-    });
-  }, [visiblePlaygroundLanguages, normalizedLangQuery]);
-
-  const pinnedLanguages = useMemo(() => {
-    const byId = new Map(visiblePlaygroundLanguages.map((l) => [l.id, l]));
-    return PINNED_PLAYGROUND_LANGUAGE_IDS.map((id) => byId.get(id)).filter((l): l is NonNullable<typeof l> =>
-      Boolean(l),
-    );
-  }, [visiblePlaygroundLanguages]);
-
-  const groupedLanguages = useMemo(() => {
-    const byId = new Map(visiblePlaygroundLanguages.map((l) => [l.id, l]));
-    const assigned = new Set<string>();
-    const groups: Array<{ title: string; items: typeof visiblePlaygroundLanguages }> = [];
-    for (const domain of PLAYGROUND_LANGUAGE_DOMAINS) {
-      const items = domain.ids.map((id) => byId.get(id)).filter((l): l is NonNullable<typeof l> => Boolean(l));
-      if (items.length > 0) {
-        items.forEach((l) => assigned.add(l.id));
-        groups.push({ title: domain.title, items });
-      }
-    }
-    const remaining = visiblePlaygroundLanguages.filter((l) => !assigned.has(l.id));
-    if (remaining.length > 0) {
-      groups.push({ title: "Other", items: remaining });
-    }
-    return groups;
-  }, [visiblePlaygroundLanguages]);
-
   const effectivePublishLabel = publishLabel || (fromArtifactParam ? "Post your fork" : "Post");
-  const displayTitle =
-    currentTitle.includes(".") && !currentTitle.includes(" ")
-      ? currentTitle.split(".").pop() || currentTitle
-      : currentTitle;
 
   const activeLangInfo = getLanguageInfo(currentLang);
   const supportsDiagram = activeLangInfo.supportsDiagram ?? true;
@@ -222,7 +139,13 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   const hasIconMode = Boolean(supportsDiagram && activeLangInfo.diagramTypes?.some((dt) => dt.id === "icon"));
   const supports3dView = Boolean(activeLangInfo.supports3d);
   const inspectorLabel =
-    activeLangInfo.id === "owl2" ? "Reasoner" : activeLangInfo.id === "sysml2" ? "Requirements" : "Inspector";
+    activeLangInfo.id === "owl2"
+      ? "Reasoner"
+      : activeLangInfo.id === "sysml2"
+        ? "Requirements"
+        : activeLangInfo.id === "csv"
+          ? "Table"
+          : "Inspector";
 
   type ViewTabId = "diagram" | "icon" | "3d" | "simulation" | "inspector" | "code";
   const viewTabs: Array<{
@@ -390,391 +313,83 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           </Link>
         )}
 
-        {/* Document Title + Status + Attached Dialect Badge (Option C) */}
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", minWidth: 0, flexShrink: 1 }}>
-          {isEditingTitle ? (
-            <input
-              type="text"
-              value={draftTitle}
-              aria-label="Model title"
-              autoFocus
-              onChange={(e) => setDraftTitle(e.target.value)}
-              onBlur={commitTitleChange}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  commitTitleChange();
-                } else if (e.key === "Escape") {
-                  setDraftTitle(currentTitle);
-                  setIsEditingTitle(false);
-                }
-              }}
+        {/* New Model CTA + Static Colored Language Label */}
+        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", minWidth: 0, flexShrink: 1 }}>
+          {onOpenTemplates && (
+            <Button
+              size="small"
+              variant="default"
+              leadingVisual={PlusIcon}
+              onClick={onOpenTemplates}
+              title="Create a new model or browse starter templates"
               style={{
-                width: 180,
-                maxWidth: "38vw",
-                height: 28,
-                padding: "2px 8px",
-                fontSize: 13,
+                height: 30,
+                borderRadius: 8,
                 fontWeight: 600,
-                borderRadius: "var(--ms-radius-sm, 6px)",
-                border: "1px solid var(--ms-brand, #0891b2)",
-                boxShadow: "var(--ms-focus-ring, 0 0 0 3px rgba(8, 145, 178, 0.25))",
-                background: "var(--color-canvas-default)",
-                color: "var(--color-fg-default)",
-                outline: "none",
-                fontFamily: "inherit",
+                fontSize: 12,
+                padding: "0 10px",
+                flexShrink: 0,
               }}
-            />
-          ) : (
-            <ActionMenu>
-              <ActionMenu.Button
-                size="small"
-                variant="invisible"
-                trailingVisual={ChevronDownIcon}
-                trailingAction={null}
-                title={
-                  onTitleChange
-                    ? `${currentTitle} — Click for model options & templates, double-click to rename`
-                    : currentTitle
-                }
-                onDoubleClick={(e) => {
-                  if (onTitleChange) {
-                    e.stopPropagation();
-                    setDraftTitle(currentTitle);
-                    setIsEditingTitle(true);
-                  }
-                }}
-                style={{
-                  height: 28,
-                  borderRadius: "var(--ms-radius-sm, 6px)",
-                  fontWeight: 600,
-                  fontSize: 13,
-                  padding: "0 6px",
-                  color: "var(--color-fg-default)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                  minWidth: 0,
-                }}
-              >
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 }}>
-                  {isDirty && (
-                    <span
-                      title="Unsaved changes"
-                      aria-label="Unsaved changes"
-                      style={{
-                        display: "inline-block",
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        backgroundColor: "var(--ms-warning, #d97706)",
-                        boxShadow: "0 0 4px var(--ms-warning, #d97706)",
-                        flexShrink: 0,
-                      }}
-                    />
-                  )}
-                  <span
-                    style={{
-                      display: "inline-block",
-                      minWidth: 0,
-                      maxWidth: "clamp(90px, 14vw, 200px)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      verticalAlign: "bottom",
-                    }}
-                  >
-                    {displayTitle}
-                  </span>
-                </span>
-              </ActionMenu.Button>
-              <ActionMenu.Overlay width="large">
-                <ActionList>
-                  {onTitleChange && (
-                    <>
-                      <ActionList.Item
-                        onSelect={() => {
-                          setDraftTitle(currentTitle);
-                          setIsEditingTitle(true);
-                        }}
-                      >
-                        <ActionList.LeadingVisual>
-                          <PencilIcon />
-                        </ActionList.LeadingVisual>
-                        Rename Model…
-                      </ActionList.Item>
-                      <ActionList.Divider />
-                    </>
-                  )}
-                  <ActionList.Item
-                    onSelect={() =>
-                      onSelectExample({
-                        id: "untitled",
-                        title: "Untitled Model",
-                        category: "General",
-                        lang: currentLang,
-                        code: DEFAULT_EMPTY_MODELICA_CODE,
-                      })
-                    }
-                  >
-                    <ActionList.LeadingVisual>
-                      <PlusIcon />
-                    </ActionList.LeadingVisual>
-                    New Blank Model
-                    <ActionList.Description variant="inline">Reset to empty canvas</ActionList.Description>
-                  </ActionList.Item>
-                  {onOpenTemplates && (
-                    <ActionList.Item onSelect={onOpenTemplates}>
-                      <ActionList.LeadingVisual>
-                        <CrossReferenceIcon />
-                      </ActionList.LeadingVisual>
-                      Browse Starter Templates…
-                      <ActionList.Description variant="inline">Explore multi-physics gallery</ActionList.Description>
-                    </ActionList.Item>
-                  )}
-                  <ActionList.Divider />
-                  <ActionList.Group title="Curated Starter Models">
-                    {HERO_EXAMPLES.slice(0, 7).map((ex) => (
-                      <ActionList.Item key={ex.id} onSelect={() => onSelectExample(ex)}>
-                        <ActionList.LeadingVisual>
-                          <FileIcon />
-                        </ActionList.LeadingVisual>
-                        {ex.title}
-                        <ActionList.Description variant="inline">{ex.category}</ActionList.Description>
-                      </ActionList.Item>
-                    ))}
-                    {onOpenTemplates && (
-                      <ActionList.Item onSelect={onOpenTemplates}>
-                        <ActionList.LeadingVisual>
-                          <CrossReferenceIcon />
-                        </ActionList.LeadingVisual>
-                        <span style={{ color: "var(--ms-link, var(--color-accent-fg, #0891b2))", fontWeight: 600 }}>
-                          View all in template gallery →
-                        </span>
-                      </ActionList.Item>
-                    )}
-                  </ActionList.Group>
-                </ActionList>
-              </ActionMenu.Overlay>
-            </ActionMenu>
+            >
+              <NavText>New Model</NavText>
+            </Button>
           )}
 
-          {/* Attached Dialect / Language Badge with Searchable Picker */}
-          {onSelectLang && (
-            <AnchoredOverlay
-              open={langMenuOpen}
-              onOpen={() => {
-                setLangSearch("");
-                setLangMenuOpen(true);
+          <span
+            data-testid="morsel-language-badge"
+            title={`Active language: ${currentLangOption.label} (${currentLangOption.ext})`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              height: 26,
+              padding: "0 10px",
+              borderRadius: 999,
+              fontSize: 11,
+              fontWeight: 600,
+              color: "var(--ms-brand, #0891b2)",
+              background: "var(--ms-brand-soft, rgba(8, 145, 178, 0.10))",
+              border: "1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 22%, transparent)",
+              whiteSpace: "nowrap",
+              userSelect: "none",
+              flexShrink: 1,
+              minWidth: 0,
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                backgroundColor: "var(--ms-brand, #0891b2)",
+                flexShrink: 0,
               }}
-              onClose={() => setLangMenuOpen(false)}
-              renderAnchor={(anchorProps) => (
-                <Button
-                  {...anchorProps}
-                  size="small"
-                  aria-label="Select engineering dialect"
-                  title={`Engineering Dialect: ${currentLangOption.label} (${currentLangOption.ext}) — ${visiblePlaygroundLanguages.length} languages`}
-                  trailingAction={TriangleDownIcon}
-                  style={{
-                    height: 30,
-                    borderRadius: 6,
-                    color: "var(--ms-brand, #0891b2)",
-                    background: "var(--ms-brand-soft, rgba(8, 145, 178, 0.08))",
-                    border: "1px solid color-mix(in srgb, var(--ms-brand, #0891b2) 24%, transparent)",
-                    flexShrink: 1,
-                    minWidth: 0,
-                  }}
-                >
-                  <span
-                    style={{
-                      display: "inline-block",
-                      maxWidth: "clamp(54px, 9vw, 110px)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      verticalAlign: "bottom",
-                    }}
-                  >
-                    {currentLangOption.label}
-                  </span>
-                </Button>
-              )}
+            />
+            <span
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
             >
-              <div
-                style={{
-                  width: 310,
-                  maxWidth: "90vw",
-                  display: "flex",
-                  flexDirection: "column",
-                  maxHeight: 420,
-                  background: "var(--color-canvas-overlay, var(--color-canvas-default))",
-                }}
-              >
-                <div
-                  style={{
-                    padding: "8px 16px",
-                    minHeight: 44,
-                    boxSizing: "border-box",
-                    borderBottom: "1px solid var(--borderColor-muted, var(--ms-divider))",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    flexShrink: 0,
-                  }}
-                >
-                  <SearchIcon size={14} style={{ color: "var(--color-fg-muted)", flexShrink: 0 }} />
-                  <input
-                    ref={langSearchInputRef}
-                    type="text"
-                    value={langSearch}
-                    onChange={(e) => setLangSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") {
-                        setLangMenuOpen(false);
-                      } else if (e.key === "Enter" && filteredLanguages.length > 0) {
-                        onSelectLang(filteredLanguages[0].id);
-                        setLangMenuOpen(false);
-                      }
-                      e.stopPropagation();
-                    }}
-                    placeholder={`Search ${visiblePlaygroundLanguages.length} languages or .ext…`}
-                    aria-label="Search engineering languages"
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      border: "none",
-                      outline: "none",
-                      background: "transparent",
-                      color: "var(--color-fg-default)",
-                      fontSize: 12,
-                      fontFamily: "inherit",
-                    }}
-                  />
-                  {langSearch && (
-                    <IconButton
-                      icon={XIcon}
-                      size="small"
-                      variant="invisible"
-                      aria-label="Clear language search"
-                      onClick={() => {
-                        setLangSearch("");
-                        langSearchInputRef.current?.focus();
-                      }}
-                      style={{ width: 20, height: 20 }}
-                    />
-                  )}
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 600,
-                      color: "var(--color-fg-muted)",
-                      fontFamily: "var(--ms-font-mono, monospace)",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {filteredLanguages.length}
-                  </span>
-                </div>
+              {currentLangOption.label}
+            </span>
+          </span>
 
-                <div style={{ overflowY: "auto", flex: 1 }}>
-                  {(() => {
-                    const renderLangItem = (lang: (typeof visiblePlaygroundLanguages)[number], keyPrefix = "") => {
-                      const tier = MORSEL_LANGUAGE_MAP.get(lang.id.toLowerCase())?.tier ?? "alpha";
-                      const isBeta = tier === "beta";
-                      const isPreAlpha = tier === "pre-alpha";
-                      const badgeLabel = isBeta ? "Beta" : isPreAlpha ? "Pre-Alpha" : "Alpha";
-                      const badgeBg = isBeta
-                        ? theme === "dark"
-                          ? "rgba(34, 197, 94, 0.16)"
-                          : "rgba(22, 163, 74, 0.10)"
-                        : isPreAlpha
-                          ? theme === "dark"
-                            ? "rgba(168, 85, 247, 0.16)"
-                            : "rgba(147, 51, 234, 0.10)"
-                          : theme === "dark"
-                            ? "rgba(217, 119, 6, 0.16)"
-                            : "rgba(217, 119, 6, 0.10)";
-                      const badgeColor = isBeta
-                        ? theme === "dark"
-                          ? "#4ade80"
-                          : "#15803d"
-                        : isPreAlpha
-                          ? theme === "dark"
-                            ? "#c084fc"
-                            : "#7e22ce"
-                          : theme === "dark"
-                            ? "#fbbf24"
-                            : "#b45309";
-                      return (
-                        <ActionList.Item
-                          key={`${keyPrefix}${lang.id}`}
-                          selected={lang.id === currentLang}
-                          onSelect={() => {
-                            onSelectLang(lang.id);
-                            setLangMenuOpen(false);
-                          }}
-                        >
-                          {lang.label}
-                          <ActionList.Description variant="inline">{lang.ext}</ActionList.Description>
-                          <ActionList.TrailingVisual>
-                            <span
-                              style={{
-                                fontSize: 10,
-                                fontWeight: 600,
-                                lineHeight: "14px",
-                                padding: "1px 6px",
-                                borderRadius: 999,
-                                backgroundColor: badgeBg,
-                                color: badgeColor,
-                                textTransform: "uppercase",
-                                letterSpacing: "0.03em",
-                              }}
-                            >
-                              {badgeLabel}
-                            </span>
-                          </ActionList.TrailingVisual>
-                        </ActionList.Item>
-                      );
-                    };
-
-                    if (filteredLanguages.length === 0) {
-                      return (
-                        <div
-                          style={{
-                            padding: "20px 12px",
-                            textAlign: "center",
-                            fontSize: 12,
-                            color: "var(--color-fg-muted)",
-                          }}
-                        >
-                          No languages matching "{langSearch}"
-                        </div>
-                      );
-                    }
-                    if (normalizedLangQuery) {
-                      return (
-                        <ActionList selectionVariant="single">
-                          {filteredLanguages.map((lang) => renderLangItem(lang))}
-                        </ActionList>
-                      );
-                    }
-                    return (
-                      <ActionList selectionVariant="single">
-                        {pinnedLanguages.length > 0 && (
-                          <ActionList.Group title="Popular">
-                            {pinnedLanguages.map((lang) => renderLangItem(lang, "pinned-"))}
-                          </ActionList.Group>
-                        )}
-                        {groupedLanguages.map((group) => (
-                          <ActionList.Group key={group.title} title={`${group.title} (${group.items.length})`}>
-                            {group.items.map((lang) => renderLangItem(lang))}
-                          </ActionList.Group>
-                        ))}
-                      </ActionList>
-                    );
-                  })()}
-                </div>
-              </div>
-            </AnchoredOverlay>
+          {isDirty && (
+            <span
+              title="Unsaved changes"
+              aria-label="Unsaved changes"
+              style={{
+                display: "inline-block",
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                backgroundColor: "var(--ms-warning, #d97706)",
+                boxShadow: "0 0 4px var(--ms-warning, #d97706)",
+                flexShrink: 0,
+              }}
+            />
           )}
         </div>
       </NavLeft>

@@ -2257,21 +2257,56 @@ export class LspFacade {
   }
 
   /** Retrieves a list of collapsable folding ranges from the parsed syntax tree. */
-  getFoldingRanges(astRoot: number): { start: Position; end: Position }[] {
+  getFoldingRanges(
+    astRoot: number,
+  ): { start: Position; end: Position; kind?: "comment" | "imports" | "region"; defaultCollapsed?: boolean }[] {
     if (!this.exports.lsp_getFoldingRanges || !this.exports.lsp_getBinaryBuffer) return [];
     const lineStarts = this.getLineStarts();
     const numElements = this.exports.lsp_getFoldingRanges(astRoot);
-    const ranges: { start: Position; end: Position }[] = [];
+    const ranges: {
+      start: Position;
+      end: Position;
+      kind?: "comment" | "imports" | "region";
+      defaultCollapsed?: boolean;
+    }[] = [];
     if (numElements === 0) return ranges;
+    const totalU32s = this.exports.lsp_getBinaryLength ? this.exports.lsp_getBinaryLength() : numElements * 2;
+    const stride = totalU32s >= numElements * 3 ? 3 : 2;
     const mem32 = this._u32();
     const dirPtr = this.exports.lsp_getBinaryBuffer();
-    for (let i = 0; i < numElements * 2; i += 2) {
-      ranges.push({
-        start: this.offsetToPos(mem32[(dirPtr >> 2) + i], lineStarts),
-        end: this.offsetToPos(mem32[(dirPtr >> 2) + i + 1], lineStarts),
-      });
+    const base = dirPtr >> 2;
+    for (let i = 0; i < numElements * stride; i += stride) {
+      const entry: {
+        start: Position;
+        end: Position;
+        kind?: "comment" | "imports" | "region";
+        defaultCollapsed?: boolean;
+      } = {
+        start: this.offsetToPos(mem32[base + i], lineStarts),
+        end: this.offsetToPos(mem32[base + i + 1], lineStarts),
+      };
+      if (stride === 3) {
+        const flags = mem32[base + i + 2] ?? 0;
+        const kindBits = (flags >> 1) & 3;
+        if (kindBits === 1) entry.kind = "comment";
+        else if (kindBits === 2) entry.kind = "imports";
+        else if (kindBits === 3) entry.kind = "region";
+        if ((flags & (1 << 3)) !== 0) entry.defaultCollapsed = true;
+      }
+      ranges.push(entry);
     }
     return ranges;
+  }
+
+  /** Retrieves 1-based Monaco FoldingRange entries from the parsed syntax tree. */
+  getMonacoFoldingRanges(astRoot: number): { start: number; end: number; kind?: "comment" | "imports" | "region" }[] {
+    return this.getFoldingRanges(astRoot)
+      .filter((r) => r.end.line > r.start.line)
+      .map((r) => ({
+        start: r.start.line + 1,
+        end: r.end.line + 1,
+        ...(r.kind ? { kind: r.kind } : {}),
+      }));
   }
 
   /** Extracts document symbols (e.g. classes, functions) for the document outline view. */

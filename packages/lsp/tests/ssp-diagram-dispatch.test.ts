@@ -48,3 +48,13 @@ test("SSP Diagram Dispatch resolves in-memory .ssd documents with builtin plugin
   assert.ok(dataFromParam, "Expected non-null DiagramData when documentText is passed directly");
   assert.equal(dataFromParam.nodes.length, 2);
 });
+
+test("SSP SystemStructure.ssd lowers to DAE and simulates without class-lookup error", async () => {
+  const { initBltWasm } = await import("@modelscript/runtime");
+  await initBltWasm();
+  const { parseSsd, lowerSspToDae } = await import("@modelscript/ssp");
+  const { simulateArenaAsync } = await import("@modelscript/simulate");
+  const arena = lowerSspToDae(parseSsd(SAMPLE_SSD));
+  const sim = await simulateArenaAsync(arena, { startTime: 0, stopTime: 1, step: 0.1 });
+  assert.ok(Array.isArray(sim.t) && sim.t.length > 0, "Expected non-empty simulation time grid");
+});

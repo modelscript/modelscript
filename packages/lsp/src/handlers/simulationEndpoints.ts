@@ -333,7 +333,90 @@ export function registerSimulationEndpoints(context: LspContext) {
           };
         }
 
-        const flat = flattenTargetClass(context, params.uri, params.className);
+        if (/\.(pscx|pslx|pswx|psmx)($|\?|#)/i.test(params.uri) || doc?.languageId === "pscad") {
+          const text = doc?.getText() ?? context.state.sharedContext?.fs?.read?.(params.uri) ?? "";
+          if (!text) {
+            return { t: [], y: [], states: [], error: `Could not read PSCAD source for ${params.uri}` };
+          }
+          const t0 = Date.now();
+          const { registerPscadSource, runPscadSimulationPipeline } = await import("@modelscript/pscad");
+          if (typeof context.documents?.all === "function") {
+            for (const openDoc of context.documents.all()) {
+              if (/\.(pscx|pslx|pswx|psmx)($|\?|#)/i.test(openDoc.uri)) {
+                registerPscadSource(openDoc.uri, openDoc.getText());
+              }
+            }
+          }
+          registerPscadSource(params.uri, text);
+          const result = runPscadSimulationPipeline({
+            documentText: text,
+            runSimulation: true,
+            durationSec: typeof params.stopTime === "number" && params.stopTime > 0 ? params.stopTime : undefined,
+            timeStepSec: typeof params.interval === "number" && params.interval > 0 ? params.interval : undefined,
+            exportComtrade: false,
+            exportOut: false,
+            exportPsout: false,
+          });
+          const sim = result.simulationResult;
+          if (!sim) {
+            const firstErr = result.diagnostics.find((d) => d.severity === "error");
+            return {
+              t: [],
+              y: [],
+              states: [],
+              error: firstErr?.message ?? "No simulation result returned from PSCAD EMT solver.",
+            };
+          }
+          const states: string[] = [];
+          const series: Float64Array[] = [];
+          for (const [bus, vals] of sim.busVoltages.entries()) {
+            states.push(`V_${bus}`);
+            series.push(vals);
+          }
+          for (const [br, vals] of sim.branchCurrents.entries()) {
+            states.push(`I_${br}`);
+            series.push(vals);
+          }
+          if (sim.controlSignals) {
+            for (const [sig, vals] of sim.controlSignals.entries()) {
+              states.push(sig);
+              series.push(vals);
+            }
+          }
+          const tArr = Array.from(sim.time);
+          const yArr: number[][] = new Array(tArr.length);
+          const nStates = series.length;
+          for (let ti = 0; ti < tArr.length; ti++) {
+            const row = new Array<number>(nStates);
+            for (let si = 0; si < nStates; si++) {
+              row[si] = series[si]?.[ti] ?? 0;
+            }
+            yArr[ti] = row;
+          }
+          const durationSec = tArr.length > 0 ? tArr[tArr.length - 1]! : (params.stopTime ?? 0.2);
+          const dt = tArr.length > 1 ? tArr[1]! - tArr[0]! : (params.interval ?? 50e-6);
+          return {
+            t: tArr,
+            y: yArr,
+            states,
+            experiment: { startTime: 0, stopTime: durationSec, interval: dt, tolerance: 1e-4 },
+            telemetry: { executionTimeMs: Date.now() - t0, stepCount: tArr.length },
+          };
+        }
+
+        let flat: ReturnType<typeof flattenTargetClass>;
+        if (/\.(ssd)($|\?|#)/i.test(params.uri) || doc?.languageId === "ssp") {
+          const text = doc?.getText() ?? context.state.sharedContext?.fs?.read?.(params.uri) ?? "";
+          if (!text) {
+            return { t: [], y: [], states: [], error: `Could not read SSP source for ${params.uri}` };
+          }
+          const { parseSsd, lowerSspToDae } = await import("@modelscript/ssp");
+          const sys = parseSsd(text);
+          const arena = lowerSspToDae(sys);
+          flat = { arena, target: { symbolId: 0, className: sys.name || "SspSystem", classKind: "system" } };
+        } else {
+          flat = flattenTargetClass(context, params.uri, params.className);
+        }
         if ("error" in flat) {
           return { t: [], y: [], states: [], error: flat.error };
         }

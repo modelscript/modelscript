@@ -915,8 +915,18 @@ export function generateParserTables(
   const typeIsFolding: number[] = new Array(maxSymbolId + 1).fill(0);
   if (originalGrammar.lsp && originalGrammar.lsp.folding) {
     for (const f of originalGrammar.lsp.folding) {
-      const id = symToInt.get(f) || symToInt.get(`"${f}"`);
-      if (id !== undefined) typeIsFolding[id] = 1;
+      const ruleName = typeof f === "string" ? f : f.rule;
+      const id = symToInt.get(ruleName) || symToInt.get(`"${ruleName}"`);
+      if (id !== undefined) {
+        let mask = 1;
+        if (typeof f !== "string") {
+          if (f.kind === "comment") mask |= 1 << 1;
+          else if (f.kind === "imports") mask |= 2 << 1;
+          else if (f.kind === "region") mask |= 3 << 1;
+          if (f.defaultCollapsed) mask |= 1 << 3;
+        }
+        typeIsFolding[id] = mask;
+      }
     }
   }
   code += generateStaticArray(typeIsFolding, "type_is_folding");

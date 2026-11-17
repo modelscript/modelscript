@@ -9,7 +9,7 @@ import { useAuth } from "../AuthContext";
 import { analyzeSnippetDiagnostics } from "../components/compose/snippet-diagnostics";
 import { ComposeContext } from "../components/ComposeContext";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { getLanguageInfo, MORSEL_LANGUAGE_MAP } from "../components/morsel/constants";
+import { getDefaultLanguageView, getLanguageInfo, MORSEL_LANGUAGE_MAP } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
 import { extractPrimaryModelicaClassName, installDependency } from "../components/morsel/util/lsp-bridge";
 import {
@@ -182,7 +182,7 @@ export const PlaygroundPage: React.FC = () => {
   const [pendingExample, setPendingExample] = useState<HeroExample | null>(null);
   const baselineCodeRef = useRef<string>(defaultInitialCode);
 
-  usePageTitle(currentTitle ? `${currentTitle} — Morsel` : "Morsel");
+  usePageTitle(currentTitle ? `${currentTitle} — Morsel` : "Morsel", { includeBrand: false });
   const [isShareModalOpen, setShareModalOpen] = useState(false);
   const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
   const [isCreateRepoModalOpen, setIsCreateRepoModalOpen] = useState(false);
@@ -735,13 +735,20 @@ export const PlaygroundPage: React.FC = () => {
       const matchingExample = HERO_EXAMPLES.find((ex) => ex.lang === langParam);
       const langInfo = getLanguageInfo(langParam);
       const langOpt = PLAYGROUND_LANGUAGES.find((l) => l.id === langParam);
-      const nextCode = matchingExample?.code || langInfo?.defaultCode;
+      const hasDefaultFiles = !matchingExample && Boolean(langInfo?.defaultFiles);
+      const initialFiles = hasDefaultFiles ? { ...langInfo!.defaultFiles! } : null;
+      const initialActive =
+        hasDefaultFiles && initialFiles ? (langInfo?.defaultActiveFile ?? Object.keys(initialFiles)[0] ?? null) : null;
+      const nextCode =
+        matchingExample?.code ||
+        (initialFiles && initialActive ? initialFiles[initialActive] : undefined) ||
+        langInfo?.defaultCode;
       const nextTitle = titleParam || matchingExample?.title || langOpt?.label || langInfo?.name;
       if (nextCode) {
         baselineCodeRef.current = nextCode;
         setIsDirty(false);
-        setProjectFiles(null);
-        setActiveFile(null);
+        setProjectFiles(initialFiles);
+        setActiveFile(initialActive);
         setCurrentCode(nextCode);
         if (nextTitle) setCurrentTitle(nextTitle);
         setPayload({
@@ -749,6 +756,7 @@ export const PlaygroundPage: React.FC = () => {
           lang: langParam,
           code: nextCode,
           title: nextTitle,
+          ...(initialFiles ? { files: initialFiles, activeFile: initialActive ?? undefined, isMultiFile: true } : {}),
         });
       } else if (titleParam) {
         setCurrentTitle(titleParam);
@@ -809,6 +817,11 @@ export const PlaygroundPage: React.FC = () => {
     setActiveFile(null);
     setCurrentCode(ex.code);
     setCurrentTitle(ex.title);
+    if (ex.lang !== currentLang) {
+      const nextDefault = getDefaultLanguageView(getLanguageInfo(ex.lang));
+      setCurrentView(nextDefault.view);
+      setIsSplit(nextDefault.isSplit);
+    }
     setCurrentLang(ex.lang);
     setPayload({
       v: 1,
@@ -1113,6 +1126,9 @@ export const PlaygroundPage: React.FC = () => {
     }
   };
 
+  const [isAddingFile, setIsAddingFile] = useState(false);
+  const [newFileName, setNewFileName] = useState("");
+
   const handleSwitchProjectFile = (fileName: string) => {
     if (!projectFiles || fileName === activeFile || !(fileName in projectFiles)) return;
     const updatedFiles = activeFile ? { ...projectFiles, [activeFile]: currentCode } : projectFiles;
@@ -1124,14 +1140,68 @@ export const PlaygroundPage: React.FC = () => {
     setCurrentLang(nextDialect);
   };
 
+  const handleAddProjectFile = (rawName: string) => {
+    const trimmed = rawName.trim().replace(/^\/+/, "");
+    if (!trimmed) {
+      setIsAddingFile(false);
+      setNewFileName("");
+      return;
+    }
+    const baseFiles: Record<string, string> = projectFiles
+      ? { ...projectFiles, ...(activeFile ? { [activeFile]: currentCode } : {}) }
+      : { [`model.${getLanguageInfo(currentLang).ext}`]: currentCode };
+    if (trimmed in baseFiles) {
+      handleSwitchProjectFile(trimmed);
+      setIsAddingFile(false);
+      setNewFileName("");
+      return;
+    }
+    const nextFiles = { ...baseFiles, [trimmed]: "" };
+    const nextDialect = inferDialectFromFilename(trimmed) || currentLang;
+    setProjectFiles(nextFiles);
+    setActiveFile(trimmed);
+    setCurrentCode("");
+    setCurrentLang(nextDialect);
+    setIsDirty(true);
+    setIsAddingFile(false);
+    setNewFileName("");
+  };
+
+  const handleRemoveProjectFile = (fileName: string) => {
+    if (!projectFiles || Object.keys(projectFiles).length <= 1 || !(fileName in projectFiles)) return;
+    const { [fileName]: _removed, ...updatedFiles } = projectFiles;
+    if (activeFile && activeFile !== fileName) {
+      updatedFiles[activeFile] = currentCode;
+    }
+    const remainingKeys = Object.keys(updatedFiles);
+    const nextActive = fileName === activeFile ? (remainingKeys[0] ?? null) : activeFile;
+    setProjectFiles(updatedFiles);
+    setActiveFile(nextActive);
+    if (nextActive && fileName === activeFile) {
+      setCurrentCode(updatedFiles[nextActive] ?? "");
+      setCurrentLang(inferDialectFromFilename(nextActive) || currentLang);
+    }
+    setIsDirty(true);
+  };
+
   type PlaygroundView = "diagram" | "code" | "split" | "simulation" | "3d" | "inspector";
-  const [isSplit, setIsSplit] = useState<boolean>(() => viewParam === "split" || searchParams.get("split") === "1");
+  const splitParam = searchParams.get("split");
+  const initialDefaultLangView = getDefaultLanguageView(getLanguageInfo(defaultInitialLang));
+  const [isSplit, setIsSplit] = useState<boolean>(() => {
+    if (viewParam === "split" || splitParam === "1") return true;
+    if (splitParam === "0" || viewParam === "code") return false;
+    if (viewParam === "diagram" || viewParam === "3d" || viewParam === "simulation" || viewParam === "inspector") {
+      return false;
+    }
+    return initialDefaultLangView.isSplit;
+  });
   const [currentView, setCurrentView] = useState<PlaygroundView>(() => {
     if (viewParam === "code") return "code";
     if (viewParam === "simulation" || subviewParam === "simulation") return "simulation";
     if (viewParam === "3d" || subviewParam === "3d") return "3d";
     if (viewParam === "inspector" || subviewParam === "inspector") return "inspector";
-    return "diagram";
+    if (viewParam === "diagram" || subviewParam === "diagram") return "diagram";
+    return initialDefaultLangView.view;
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
@@ -1244,13 +1314,7 @@ export const PlaygroundPage: React.FC = () => {
       (currentView === "3d" && !langInfo.supports3d) ||
       (currentView === "simulation" && !langInfo.supportsSimulation);
     if (!isUnsupported) return;
-    const fallback: "diagram" | "3d" | "simulation" | "inspector" = langInfo.supportsDiagram
-      ? "diagram"
-      : langInfo.supports3d
-        ? "3d"
-        : langInfo.supportsSimulation
-          ? "simulation"
-          : "inspector";
+    const fallback = getDefaultLanguageView(langInfo).view;
     handleActiveViewChange(fallback);
   }, [currentLang, currentView, handleActiveViewChange]);
 
@@ -1389,7 +1453,7 @@ export const PlaygroundPage: React.FC = () => {
         onPublishToFeed={handlePublishToFeed}
       />
 
-      {projectFiles && Object.keys(projectFiles).length > 1 && (
+      {projectFiles && Object.keys(projectFiles).length >= 1 && (
         <div
           role="tablist"
           aria-label="Project files"
@@ -1428,31 +1492,128 @@ export const PlaygroundPage: React.FC = () => {
           </span>
           {Object.keys(projectFiles).map((fileName) => {
             const isSelected = fileName === activeFile;
+            const canRemove = Object.keys(projectFiles).length > 1;
             return (
-              <button
+              <div
                 key={fileName}
-                role="tab"
-                type="button"
-                aria-selected={isSelected}
-                onClick={() => handleSwitchProjectFile(fileName)}
                 style={{
-                  padding: "4px 10px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 2,
                   borderRadius: 6,
                   border: isSelected ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
                   backgroundColor: isSelected ? "rgba(6, 182, 212, 0.14)" : "transparent",
-                  color: isSelected ? "var(--ms-accent-cyan, #06b6d4)" : "var(--color-fg-muted)",
-                  fontFamily: "var(--font-mono, monospace)",
-                  fontSize: 12,
-                  fontWeight: isSelected ? 600 : 500,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  transition: "all 0.15s ease",
+                  paddingRight: canRemove ? 4 : 0,
                 }}
               >
-                {fileName}
-              </button>
+                <button
+                  role="tab"
+                  type="button"
+                  aria-selected={isSelected}
+                  onClick={() => handleSwitchProjectFile(fileName)}
+                  style={{
+                    padding: canRemove ? "4px 6px 4px 10px" : "4px 10px",
+                    border: "none",
+                    background: "transparent",
+                    color: isSelected ? "var(--ms-accent-cyan, #06b6d4)" : "var(--color-fg-muted)",
+                    fontFamily: "var(--font-mono, monospace)",
+                    fontSize: 12,
+                    fontWeight: isSelected ? 600 : 500,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {fileName}
+                </button>
+                {canRemove && (
+                  <button
+                    type="button"
+                    aria-label={`Remove ${fileName}`}
+                    title={`Remove ${fileName}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveProjectFile(fileName);
+                    }}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      color: "var(--color-fg-muted)",
+                      fontSize: 12,
+                      lineHeight: 1,
+                      padding: "2px 4px",
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      opacity: 0.7,
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             );
           })}
+          {isAddingFile ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleAddProjectFile(newFileName);
+              }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 4 }}
+            >
+              <input
+                type="text"
+                autoFocus
+                value={newFileName}
+                onChange={(e) => setNewFileName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setIsAddingFile(false);
+                    setNewFileName("");
+                  }
+                }}
+                onBlur={() => {
+                  if (newFileName.trim()) {
+                    handleAddProjectFile(newFileName);
+                  } else {
+                    setIsAddingFile(false);
+                  }
+                }}
+                placeholder="params.ssv"
+                style={{
+                  width: 120,
+                  padding: "3px 6px",
+                  borderRadius: 6,
+                  border: "1px solid var(--borderColor-default, rgba(15, 23, 42, 0.2))",
+                  background: "var(--bgColor-default, #ffffff)",
+                  color: "var(--fgColor-default, #0f172a)",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontSize: 12,
+                  outline: "none",
+                }}
+              />
+            </form>
+          ) : (
+            <button
+              type="button"
+              aria-label="Add file to morsel"
+              title="Add file"
+              onClick={() => setIsAddingFile(true)}
+              style={{
+                padding: "3px 8px",
+                marginLeft: 2,
+                borderRadius: 6,
+                border: "1px dashed var(--borderColor-muted, rgba(15, 23, 42, 0.2))",
+                background: "transparent",
+                color: "var(--color-fg-muted)",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              +
+            </button>
+          )}
         </div>
       )}
 
@@ -1597,6 +1758,20 @@ export const PlaygroundPage: React.FC = () => {
               }}
               onDialectChange={(dialect: string) => {
                 setCurrentLang(dialect);
+                const nextInfo = getLanguageInfo(dialect);
+                if (nextInfo.defaultFiles && !isDirty) {
+                  const nextFiles = { ...nextInfo.defaultFiles };
+                  const nextActive = nextInfo.defaultActiveFile ?? Object.keys(nextFiles)[0] ?? null;
+                  setProjectFiles(nextFiles);
+                  setActiveFile(nextActive);
+                  if (nextActive && nextFiles[nextActive] !== undefined) {
+                    setCurrentCode(nextFiles[nextActive]);
+                    baselineCodeRef.current = nextFiles[nextActive];
+                  }
+                } else if (!nextInfo.defaultFiles && !isDirty) {
+                  setProjectFiles(null);
+                  setActiveFile(null);
+                }
               }}
             />
           </ErrorBoundary>
@@ -1675,6 +1850,7 @@ export const PlaygroundPage: React.FC = () => {
         isOpen={isTemplatesModalOpen}
         onClose={() => setIsTemplatesModalOpen(false)}
         onSelectTemplate={handleSelectExample}
+        currentLang={currentLang}
       />
 
       <CreatePlaygroundRepoModal

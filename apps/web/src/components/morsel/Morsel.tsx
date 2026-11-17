@@ -7,7 +7,7 @@ import { type DataUrl } from "parse-data-url";
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTheme as useSiteTheme } from "../../theme";
 import type { CodeEditorHandle } from "./Code";
-import { MORSEL_LANGUAGES, getLanguageExtension, getLanguageInfo } from "./constants";
+import { MORSEL_LANGUAGES, getDefaultLanguageView, getLanguageExtension, getLanguageInfo } from "./constants";
 import type { DiagramEditorHandle } from "./Diagram";
 import "./morsel.css";
 import { getTranslations, uiLanguages } from "./util/i18n";
@@ -130,12 +130,79 @@ export default function MorselEditor(props: MorselEditorProps) {
     () => (props.embed ? `file:///embed_${nextEmbedMorselId++}_document` : "file:///document"),
     [props.embed],
   );
-  const documentUri = useMemo(
-    () => `${instanceDocPrefix}.${getLanguageExtension(dialect)}`,
-    [instanceDocPrefix, dialect],
+  const embedRootPrefix = useMemo(
+    () => (props.embed ? `file:///embed_${nextEmbedMorselId++}` : "file://"),
+    [props.embed],
   );
+  const documentUri = useMemo(() => {
+    if (props.activeFileName) {
+      const cleanName = props.activeFileName.replace(/^\/+/, "");
+      return `${embedRootPrefix}/${cleanName}`;
+    }
+    return `${instanceDocPrefix}.${getLanguageExtension(dialect)}`;
+  }, [embedRootPrefix, instanceDocPrefix, dialect, props.activeFileName]);
   const documentUriRef = useRef(documentUri);
   documentUriRef.current = documentUri;
+
+  const syncedProjectFilesRef = useRef<Map<string, { uri: string; text: string }>>(new Map());
+  useEffect(() => {
+    const files = props.projectFiles;
+    const synced = syncedProjectFilesRef.current;
+
+    if (!files) {
+      for (const [key, entry] of synced.entries()) {
+        didClose(entry.uri);
+        synced.delete(key);
+      }
+      return;
+    }
+
+    const inferLang = (fileName: string): string => {
+      const lower = fileName.toLowerCase();
+      if (lower.endsWith(".ssd") || lower.endsWith(".ssv") || lower.endsWith(".ssm")) return "ssp";
+      if (lower.endsWith(".xml")) return "xml";
+      if (lower.endsWith(".mo")) return "modelica";
+      if (lower.endsWith(".msx")) return "modelscript";
+      if (lower.endsWith(".sysml") || lower.endsWith(".kerml")) return "sysml2";
+      if (lower.endsWith(".step") || lower.endsWith(".stp")) return "step";
+      if (lower.endsWith(".scad")) return "scad";
+      return dialect;
+    };
+
+    for (const [fileName, text] of Object.entries(files)) {
+      if (fileName === props.activeFileName) {
+        synced.delete(fileName);
+        continue;
+      }
+      const cleanName = fileName.replace(/^\/+/, "");
+      const uri = `${embedRootPrefix}/${cleanName}`;
+      const prev = synced.get(fileName);
+      if (!prev || prev.uri !== uri) {
+        if (prev) didClose(prev.uri);
+        void didOpen(uri, text, inferLang(fileName));
+        synced.set(fileName, { uri, text });
+      } else if (prev.text !== text) {
+        void didChange(uri, text);
+        synced.set(fileName, { uri, text });
+      }
+    }
+
+    for (const [fileName, entry] of synced.entries()) {
+      if (!(fileName in files) && fileName !== props.activeFileName) {
+        didClose(entry.uri);
+        synced.delete(fileName);
+      }
+    }
+  }, [props.projectFiles, props.activeFileName, embedRootPrefix, dialect]);
+
+  useEffect(() => {
+    return () => {
+      for (const entry of syncedProjectFilesRef.current.values()) {
+        didClose(entry.uri);
+      }
+      syncedProjectFilesRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (!props.embed) return;
@@ -161,40 +228,54 @@ export default function MorselEditor(props: MorselEditorProps) {
   const content = loadedCodeOverride ?? baseContent;
   const [editor, setEditor] = useState<editor.ICodeEditor | null>(null);
 
-  const isSplitInit =
-    Boolean(props.isSplit) ||
-    props.initialView === "split" ||
-    props.initialView === "split-columns" ||
-    props.initialView === "split-rows";
-
-  const initialIsCad =
+  const defaultLangView = getDefaultLanguageView(initialLangInfo);
+  const hasExplicitSingleView =
+    props.initialView === "code-only" ||
+    props.initialView === "code" ||
+    props.initialView === "diagram-only" ||
+    props.initialView === "diagram" ||
     props.initialView === "cad-only" ||
     props.initialView === "cad" ||
     props.initialView === "3d" ||
-    (isSplitInit && (props.initialVisualizerSubview === "3d" || props.initialView === "3d")) ||
-    (initialLangInfo.supports3d && !initialLangInfo.supportsDiagram);
-  const initialIsPlot =
     props.initialView === "plot-only" ||
     props.initialView === "plot" ||
     props.initialView === "simulation" ||
-    (isSplitInit && (props.initialVisualizerSubview === "simulation" || props.initialView === "simulation"));
-  const initialIsInspector =
-    props.initialView === "inspector" ||
-    (isSplitInit && (props.initialVisualizerSubview === "inspector" || props.initialView === "inspector"));
+    props.initialView === "inspector";
+
+  const isSplitInit =
+    props.isSplit !== undefined
+      ? Boolean(props.isSplit)
+      : props.initialView === "split" || props.initialView === "split-columns" || props.initialView === "split-rows"
+        ? true
+        : hasExplicitSingleView
+          ? false
+          : defaultLangView.isSplit;
+
+  const resolvedInitialSubview =
+    props.initialVisualizerSubview ??
+    (props.initialView === "cad-only" || props.initialView === "cad" || props.initialView === "3d"
+      ? "3d"
+      : props.initialView === "plot-only" || props.initialView === "plot" || props.initialView === "simulation"
+        ? "simulation"
+        : props.initialView === "inspector"
+          ? "inspector"
+          : props.initialView === "diagram-only" || props.initialView === "diagram"
+            ? "diagram"
+            : defaultLangView.view);
+
+  const initialIsCad = resolvedInitialSubview === "3d";
+  const initialIsPlot = resolvedInitialSubview === "simulation";
+  const initialIsInspector = resolvedInitialSubview === "inspector";
   const initialViewMode =
-    props.initialView === "code-only" || props.initialView === "code"
+    props.initialView === "code-only" ||
+    props.initialView === "code" ||
+    (!props.initialView && props.isSplit === undefined && defaultLangView.view === "code")
       ? View.CODE
       : isSplitInit
         ? props.initialView === "split-rows"
           ? View.SPLIT_ROWS
           : View.SPLIT_COLUMNS
-        : props.initialView === "diagram-only" ||
-            props.initialView === "diagram" ||
-            (!isSplitInit && (initialIsCad || initialIsPlot || initialIsInspector))
-          ? View.DIAGRAM
-          : props.initialView === "split-rows"
-            ? View.SPLIT_ROWS
-            : View.SPLIT_COLUMNS;
+        : View.DIAGRAM;
 
   const [view, setView] = useState<View>(initialViewMode);
   const [showResultsView, setShowResultsView] = useState(initialIsPlot);
@@ -234,7 +315,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [treeVisible, setTreeVisible] = useState(!props.embed);
   const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1200);
   const [windowHeight, setWindowHeight] = useState(typeof window !== "undefined" ? window.innerHeight : 800);
-  const [splitRatio, setSplitRatio] = useState(0.5);
+  const DEFAULT_SPLIT_RATIO = 0.62;
+  const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT_RATIO);
   const [contextVersion, setContextVersion] = useState(0);
   const [editorDiagnostics, setEditorDiagnostics] = useState<editor.IMarkerData[]>([]);
   const [isDiagnosticsExpanded, setIsDiagnosticsExpanded] = useState(false);
@@ -480,6 +562,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     handleReplaySession,
     handleSaveCadBindings,
     handleSimulate,
+    amplSolveResult,
   } = useMorselEngine({
     dialect,
     documentUri,
@@ -1110,23 +1193,30 @@ export default function MorselEditor(props: MorselEditorProps) {
       if (!nextInfo.supportsSimulation) {
         setShowResultsView(false);
       }
+      const nextDefaultView = getDefaultLanguageView(nextInfo);
       const keep3dView =
         nextInfo.supports3d && (showCadView || props.initialVisualizerSubview === "3d" || props.initialView === "3d");
-      if ((nextInfo.supports3d && !nextInfo.supportsDiagram) || keep3dView) {
+      if (keep3dView || nextDefaultView.view === "3d") {
         setShowCadView(true);
         setShowResultsView(false);
         setShowAnalysisView(false);
-      } else if (nextInfo.supportsDiagram) {
+      } else if (nextDefaultView.view === "diagram") {
         setShowCadView(false);
-      } else {
+        setShowResultsView(false);
+        setShowAnalysisView(false);
+      } else if (nextDefaultView.view === "simulation") {
         setShowCadView(false);
-        if (nextInfo.supportsSimulation) {
-          setShowResultsView(true);
-          setShowAnalysisView(false);
-        } else {
-          setShowResultsView(false);
-          setShowAnalysisView(true);
-        }
+        setShowResultsView(true);
+        setShowAnalysisView(false);
+      } else if (nextDefaultView.view === "inspector") {
+        setShowCadView(false);
+        setShowResultsView(false);
+        setShowAnalysisView(true);
+      } else if (nextDefaultView.view === "code") {
+        setView(View.CODE);
+        setShowCadView(false);
+        setShowResultsView(false);
+        setShowAnalysisView(false);
       }
 
       const currentVal = editorRef.current?.getValue() || props.initialCode || "";
@@ -1770,6 +1860,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                 localSimulationData={localSimulationData}
                 sweepResults={sweepResults}
                 simulationStatus={simulationStatus}
+                amplSolveResult={amplSolveResult}
                 handleVariablesLoaded={handleVariablesLoaded}
                 treeVisible={treeVisible}
                 setTreeVisible={setTreeVisible}
@@ -1860,7 +1951,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                     }
                   }}
                   onDoubleClick={() => {
-                    setSplitRatio(0.5);
+                    setSplitRatio(DEFAULT_SPLIT_RATIO);
                   }}
                   onTouchStart={() => {
                     isDraggingSplit.current = true;

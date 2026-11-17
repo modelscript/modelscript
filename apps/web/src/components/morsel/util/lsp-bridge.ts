@@ -253,54 +253,12 @@ export async function getComponentProperties(
 
 export async function simulate(uri: string, params: SimulateParams = {}): Promise<SimulateResult> {
   const opened = openedDocuments.get(uri);
-  if (/\.(pscx|pslx)$/i.test(uri) && opened?.text && typeof fetch === "function") {
-    const sources: Array<{ uri: string; text: string }> = [];
-    for (const [docUri, doc] of openedDocuments.entries()) {
-      if (/\.(pscx|pslx|pswx|psmx)$/i.test(docUri) && doc.text) {
-        sources.push({ uri: docUri, text: doc.text });
-      }
-    }
-    const resp = await fetch("/api/v1/pscad/simulate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        documentText: opened.text,
-        sources,
-        durationSec: params.stopTime,
-        timeStepSec: params.interval,
-      }),
-    });
-    let data: any = null;
-    try {
-      data = await resp.json();
-    } catch {
-      data = null;
-    }
-    if (!resp.ok) {
-      return { t: [], y: [], states: [], error: data?.error ?? `HTTP ${resp.status} ${resp.statusText}` };
-    }
-    const sim = data?.simulationResult;
-    if (!sim) {
-      return { t: [], y: [], states: [], error: "No simulation result returned from PSCAD EMT backend." };
-    }
-    const states: string[] = [];
-    const series: number[][] = [];
-    for (const [bus, vals] of Object.entries(sim.busVoltages ?? {})) {
-      states.push(`V_${bus}`);
-      series.push(vals as number[]);
-    }
-    for (const [br, vals] of Object.entries(sim.branchCurrents ?? {})) {
-      states.push(`I_${br}`);
-      series.push(vals as number[]);
-    }
-    const tArr: number[] = sim.time ?? [];
-    const y: number[][] = tArr.map((_, idx) => series.map((col) => col[idx] ?? 0));
-    return { t: tArr, y, states };
-  }
+  const isPscad = /\.(pscx|pslx|pswx|psmx)$/i.test(uri) || opened?.languageId === "pscad";
 
   const conn = await lsp();
   const effectiveClassName =
-    params.className || (opened?.text ? (extractPrimaryModelicaClassName(opened.text) ?? undefined) : undefined);
+    params.className ||
+    (!isPscad && opened?.text ? (extractPrimaryModelicaClassName(opened.text) ?? undefined) : undefined);
   const reqParams = { uri, ...params, className: effectiveClassName };
 
   let res: SimulateResult = await conn.sendRequest("modelscript/simulate", reqParams);
@@ -550,6 +508,20 @@ export async function verifyAllInLsp(
   } = {},
 ): Promise<any> {
   return (await lsp()).sendRequest("modelscript/verifyAll", params);
+}
+
+export async function executeLspAction(
+  actionId: string,
+  languageId: string,
+  uri: string,
+  inputs: Record<string, unknown> = {},
+): Promise<any> {
+  return (await lsp()).sendRequest("modelscript/executeAction", {
+    actionId,
+    languageId,
+    uri,
+    inputs,
+  });
 }
 
 export async function getCodeActionsInLsp(

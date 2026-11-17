@@ -20,6 +20,7 @@ import {
 } from "./inspectors/index.js";
 import { indexLocalSymbolLines, scanModelicaStructure } from "./modelica-scanner.js";
 const ReqifViewer = React.lazy(() => import("../../artifacts/ReqifViewer").then((m) => ({ default: m.ReqifViewer })));
+const CsvViewer = React.lazy(() => import("../../artifacts/CsvViewer").then((m) => ({ default: m.CsvViewer })));
 
 export interface PolyglotDomainPanelProps {
   dialect: string;
@@ -823,6 +824,60 @@ function analyzePowerAndCircuits(dialect: string, _code: string, lines: string[]
         }
       }
     }
+  } else if (dialect === "powerfactory") {
+    const readTag = (block: string, tag: string): string | undefined =>
+      new RegExp(`<${tag}>([^<]*)</${tag}>`, "i").exec(block)?.[1]?.trim();
+
+    let objMatch: RegExpExecArray | null;
+    const objRegex = /<DataObject\b([^>]*?)(?:\/>|>([\s\S]*?)<\/DataObject>)/gi;
+    while ((objMatch = objRegex.exec(_code)) !== null) {
+      const attrs = objMatch[1] ?? "";
+      const body = objMatch[2] ?? "";
+      const cls = /\bclass=["']([^"']+)["']/i.exec(attrs)?.[1] ?? "DataObject";
+      const locName = /\bloc_name=["']([^"']+)["']/i.exec(attrs)?.[1] ?? cls;
+      const line = _code.slice(0, objMatch.index).split("\n").length;
+
+      if (cls === "ElmTerm") {
+        const uknom = readTag(body, "uknom");
+        const fnom = readTag(body, "fnom");
+        busRows.push({
+          id: locName,
+          name: locName,
+          baseKvOrType: uknom ? `${uknom} kV` : "Terminal",
+          voltageOrAngle: fnom ? `${fnom} Hz` : "Nominal",
+          line,
+        });
+      } else if (cls === "ElmLne" || cls === "ElmTr2" || cls === "StaSwitch") {
+        const bus1 = readTag(body, "bus1") ?? "—";
+        const bus2 = readTag(body, "bus2") ?? "—";
+        const r1 = readTag(body, "r1");
+        const x1 = readTag(body, "x1");
+        const onOff = readTag(body, "on_off");
+        const params =
+          cls === "StaSwitch"
+            ? `on_off=${onOff ?? "1"}`
+            : [r1 ? `R1=${r1}` : "", x1 ? `X1=${x1}` : ""].filter(Boolean).join(", ") || "—";
+        branchRows.push({
+          id: locName,
+          category: cls,
+          nodes: `${bus1} → ${bus2}`,
+          params,
+          line,
+        });
+      } else {
+        const bus1 = readTag(body, "bus1") ?? "Substation / Grid";
+        const pgini = readTag(body, "pgini") ?? readTag(body, "plini");
+        const qgini = readTag(body, "qgini") ?? readTag(body, "qlini");
+        const spec = [pgini ? `P=${pgini} MW` : "", qgini ? `Q=${qgini} Mvar` : ""].filter(Boolean).join(", ") || "—";
+        genLoadRows.push({
+          id: locName,
+          kind: cls,
+          busOrNode: bus1,
+          spec,
+          line,
+        });
+      }
+    }
   } else {
     // Verilog-A or PSCAD
     for (let i = 0; i < lines.length; i++) {
@@ -1513,6 +1568,382 @@ function analyzeCae(dialect: string, code: string, lines: string[]): DomainAnaly
   };
 }
 
+// ── 5b. AMPL Mathematical Optimization Inspector ─────────────────────────────
+
+function extractAmplStatements(code: string): Array<{ text: string; line: number }> {
+  const statements: Array<{ text: string; line: number }> = [];
+  let buf = "";
+  let stmtStartLine = 1;
+  let currentLine = 1;
+  let hasContent = false;
+  let inSingle = false;
+  let inDouble = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i]!;
+    const next = code[i + 1] ?? "";
+
+    if (ch === "\n") {
+      inLineComment = false;
+      currentLine++;
+      if (hasContent) buf += " ";
+      continue;
+    }
+    if (inLineComment) continue;
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (!inSingle && !inDouble) {
+      if (ch === "#") {
+        inLineComment = true;
+        continue;
+      }
+      if (ch === "/" && next === "*") {
+        inBlockComment = true;
+        i++;
+        continue;
+      }
+    }
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+    } else if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+    }
+
+    if (!inSingle && !inDouble && ch === ";") {
+      const trimmed = buf.replace(/\s+/g, " ").trim();
+      if (trimmed) {
+        statements.push({ text: trimmed, line: stmtStartLine });
+      }
+      buf = "";
+      hasContent = false;
+      continue;
+    }
+
+    if (!hasContent && /\s/.test(ch)) {
+      continue;
+    }
+    if (!hasContent) {
+      stmtStartLine = currentLine;
+      hasContent = true;
+    }
+    buf += ch;
+  }
+
+  const tail = buf.replace(/\s+/g, " ").trim();
+  if (tail) {
+    statements.push({ text: tail, line: stmtStartLine });
+  }
+  return statements;
+}
+
+function splitBalancedHeaderAndBody(rest: string): {
+  name: string;
+  indexing: string;
+  body: string;
+  hasColon: boolean;
+} {
+  let i = 0;
+  while (i < rest.length && /\s/.test(rest[i]!)) i++;
+  const nameMatch = /^([A-Za-z_]\w*)/.exec(rest.slice(i));
+  const name = nameMatch ? nameMatch[1]! : "unnamed";
+  if (nameMatch) i += nameMatch[0].length;
+  while (i < rest.length && /\s/.test(rest[i]!)) i++;
+
+  let indexing = "—";
+  if (rest[i] === "{") {
+    let depth = 0;
+    const start = i;
+    while (i < rest.length) {
+      if (rest[i] === "{") depth++;
+      else if (rest[i] === "}") {
+        depth--;
+        if (depth === 0) {
+          i++;
+          break;
+        }
+      }
+      i++;
+    }
+    indexing = rest.slice(start, i).trim();
+    while (i < rest.length && /\s/.test(rest[i]!)) i++;
+  }
+
+  if (rest[i] === ":") {
+    return { name, indexing, body: rest.slice(i + 1).trim(), hasColon: true };
+  }
+  return { name, indexing, body: rest.slice(i).trim(), hasColon: false };
+}
+
+function analyzeAmplOptimization(code: string, lines: string[]): DomainAnalysisResult {
+  const statements = extractAmplStatements(code);
+  const objectiveRows: Record<string, unknown>[] = [];
+  const varRows: Record<string, unknown>[] = [];
+  const constraintRows: Record<string, unknown>[] = [];
+  const setParamRows: Record<string, unknown>[] = [];
+  const directiveRows: Record<string, unknown>[] = [];
+
+  let integerOrBinaryCount = 0;
+  let hasNonlinear = false;
+
+  for (const stmt of statements) {
+    const s = stmt.text;
+
+    const objMatch = /^(minimize|maximize)\b\s+([\s\S]+)$/i.exec(s);
+    if (objMatch) {
+      const sense = objMatch[1]!.toLowerCase();
+      const { name, indexing, body } = splitBalancedHeaderAndBody(objMatch[2]!);
+      if (/\b(?:sin|cos|tan|exp|log|sqrt|abs)\s*\(|\^|\*\*/i.test(body)) {
+        hasNonlinear = true;
+      }
+      objectiveRows.push({
+        name,
+        sense,
+        indexing,
+        expression: body.slice(0, 110) || "—",
+        line: stmt.line,
+      });
+      continue;
+    }
+
+    const stMatch = /^(?:subject\s+to|s\.t\.)\b\s+([\s\S]+)$/i.exec(s);
+    if (stMatch) {
+      const { name, indexing, body } = splitBalancedHeaderAndBody(stMatch[1]!);
+      const operator = /<=.*<=/.test(body)
+        ? "range (<=)"
+        : body.includes("<=")
+          ? "<="
+          : body.includes(">=")
+            ? ">="
+            : body.includes("=")
+              ? "="
+              : "logical";
+      if (/\b(?:sin|cos|tan|exp|log|sqrt|abs)\s*\(|\^|\*\*/i.test(body)) {
+        hasNonlinear = true;
+      }
+      constraintRows.push({
+        name,
+        operator,
+        indexing,
+        expression: body.slice(0, 110) || "—",
+        line: stmt.line,
+      });
+      continue;
+    }
+
+    const varMatch = /^var\b\s+([\s\S]+)$/i.exec(s);
+    if (varMatch) {
+      const { name, indexing, body } = splitBalancedHeaderAndBody(varMatch[1]!);
+      const domain = /\bbinary\b/i.test(body)
+        ? "binary"
+        : /\binteger\b/i.test(body)
+          ? "integer"
+          : /\bsemiint\b/i.test(body)
+            ? "semiint"
+            : /\bsemicont\b/i.test(body)
+              ? "semicont"
+              : "continuous";
+      if (domain !== "continuous") integerOrBinaryCount++;
+      const attrs = body
+        .replace(/\b(?:binary|integer|semicont|semiint)\b/gi, "")
+        .replace(/^[,\s]+|[,\s]+$/g, "")
+        .replace(/\s+/g, " ");
+      varRows.push({
+        name,
+        domain,
+        bounds: attrs || "free (-∞, +∞)",
+        indexing,
+        line: stmt.line,
+      });
+      continue;
+    }
+
+    const setMatch = /^set\b\s+([\s\S]+)$/i.exec(s);
+    if (setMatch) {
+      const { name, indexing, body } = splitBalancedHeaderAndBody(setMatch[1]!);
+      setParamRows.push({
+        name,
+        kind: "set",
+        typeOrDimen: /\bdimen\s+\d+/i.exec(body)?.[0] ?? (indexing !== "—" ? `indexed ${indexing}` : "1D set"),
+        value: body || "—",
+        line: stmt.line,
+      });
+      continue;
+    }
+
+    const paramMatch = /^param\b\s+([\s\S]+)$/i.exec(s);
+    if (paramMatch) {
+      const { name, indexing, body } = splitBalancedHeaderAndBody(paramMatch[1]!);
+      const pType = /\bbinary\b/i.test(body)
+        ? "binary"
+        : /\binteger\b/i.test(body)
+          ? "integer"
+          : /\bsymbolic\b/i.test(body)
+            ? "symbolic"
+            : "numeric";
+      setParamRows.push({
+        name,
+        kind: "param",
+        typeOrDimen: indexing !== "—" ? `${pType} ${indexing}` : pType,
+        value: body || "—",
+        line: stmt.line,
+      });
+      continue;
+    }
+
+    const cmdMatch = /^(solve|display|let|fix|unfix|drop|restore|check|table|problem|option|data|model)\b/i.exec(s);
+    if (cmdMatch) {
+      directiveRows.push({
+        kind: cmdMatch[1]!.toLowerCase(),
+        expression: s.slice(0, 110),
+        line: stmt.line,
+      });
+      continue;
+    }
+
+    // Labeled constraint without `s.t.` / `subject to`
+    const labeled = splitBalancedHeaderAndBody(s);
+    if (labeled.hasColon && labeled.body) {
+      const operator = labeled.body.includes("<=")
+        ? "<="
+        : labeled.body.includes(">=")
+          ? ">="
+          : labeled.body.includes("=")
+            ? "="
+            : "constraint";
+      constraintRows.push({
+        name: labeled.name,
+        operator,
+        indexing: labeled.indexing,
+        expression: labeled.body.slice(0, 110),
+        line: stmt.line,
+      });
+    }
+  }
+
+  const problemClass = hasNonlinear
+    ? integerOrBinaryCount > 0
+      ? "MINLP"
+      : "NLP"
+    : integerOrBinaryCount > 0
+      ? "MILP"
+      : "LP";
+
+  const primaryObj = objectiveRows[0];
+  const objKpiValue =
+    objectiveRows.length === 0
+      ? "None"
+      : objectiveRows.length === 1
+        ? `${primaryObj!["sense"] === "maximize" ? "Max" : "Min"} ${primaryObj!["name"]}`
+        : `${objectiveRows.length} objectives`;
+
+  const sections: DomainSection[] = [
+    {
+      title: "Objective Function(s)",
+      columns: [
+        { key: "name", header: "Objective", mono: true },
+        { key: "sense", header: "Sense", badge: true },
+        { key: "expression", header: "Expression", mono: true },
+        { key: "indexing", header: "Indexing", mono: true },
+        { key: "line", header: "Line", mono: true },
+      ],
+      rows: objectiveRows,
+    },
+    {
+      title: "Decision Variables",
+      columns: [
+        { key: "name", header: "Variable", mono: true },
+        { key: "domain", header: "Domain", badge: true },
+        { key: "bounds", header: "Bounds & Attributes", mono: true },
+        { key: "indexing", header: "Indexing", mono: true },
+        { key: "line", header: "Line", mono: true },
+      ],
+      rows: varRows,
+    },
+    {
+      title: "Constraints (subject to)",
+      columns: [
+        { key: "name", header: "Constraint", mono: true },
+        { key: "operator", header: "Relation", badge: true },
+        { key: "expression", header: "Expression", mono: true },
+        { key: "indexing", header: "Indexing", mono: true },
+        { key: "line", header: "Line", mono: true },
+      ],
+      rows: constraintRows,
+    },
+  ];
+
+  if (setParamRows.length > 0) {
+    sections.push({
+      title: "Sets & Parameters",
+      columns: [
+        { key: "name", header: "Identifier", mono: true },
+        { key: "kind", header: "Kind", badge: true },
+        { key: "typeOrDimen", header: "Type / Indexing", mono: true },
+        { key: "value", header: "Specification", mono: true },
+        { key: "line", header: "Line", mono: true },
+      ],
+      rows: setParamRows,
+    });
+  }
+
+  if (directiveRows.length > 0) {
+    sections.push({
+      title: "Solver & Script Directives",
+      columns: [
+        { key: "kind", header: "Directive", badge: true },
+        { key: "expression", header: "Statement", mono: true },
+        { key: "line", header: "Line", mono: true },
+      ],
+      rows: directiveRows,
+    });
+  }
+
+  return {
+    domainGroup: "general",
+    domainLabel: "AMPL Optimization Problem Inspector",
+    kpis: [
+      {
+        label: "Decision Variables",
+        value: varRows.length,
+        sublabel:
+          integerOrBinaryCount > 0
+            ? `${integerOrBinaryCount} integer/binary · ${varRows.length - integerOrBinaryCount} continuous`
+            : `${varRows.length} continuous`,
+        accent: "var(--fgColor-accent, var(--ms-brand))",
+      },
+      {
+        label: "Objective",
+        value: objKpiValue,
+        sublabel: objectiveRows.length > 0 ? "Optimization target" : "Feasibility problem",
+        accent: "#d29922",
+      },
+      {
+        label: "Constraints",
+        value: constraintRows.length,
+        sublabel: "Algebraic & logical relations",
+        accent: "#3fb950",
+      },
+      {
+        label: "Problem Class",
+        value: problemClass,
+        sublabel:
+          setParamRows.length > 0
+            ? `${setParamRows.length} sets/params · ${lines.length} lines`
+            : `${lines.length} source lines`,
+        accent: "#a371f7",
+      },
+    ],
+    sections,
+  };
+}
+
 // ── 6. Modelica / ModelScript / General Polyglot Inspector ──────────────────
 
 function analyzeGeneralModel(
@@ -1856,6 +2287,7 @@ const KNOWN_INSPECTOR_DIALECTS = new Set([
   "psse",
   "opendss",
   "pscad",
+  "powerfactory",
   "spice",
   "verilog-a",
   "touchstone",
@@ -1949,9 +2381,20 @@ export function computeInspectorSubTabs(
   }
 
   if (
-    ["psse", "opendss", "pscad", "spice", "verilog-a", "touchstone", "ibis", "ocpp", "cpo", "openadr", "oadr"].includes(
-      d,
-    ) ||
+    [
+      "psse",
+      "opendss",
+      "pscad",
+      "powerfactory",
+      "spice",
+      "verilog-a",
+      "touchstone",
+      "ibis",
+      "ocpp",
+      "cpo",
+      "openadr",
+      "oadr",
+    ].includes(d) ||
     (allowContentSniff && (code.includes("BUS DATA") || code.includes("BRANCH DATA")))
   ) {
     tabs.push({ id: "power_grid", label: "⚡ Power Grid & Y-Bus" });
@@ -2227,6 +2670,7 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
         "psse",
         "opendss",
         "pscad",
+        "powerfactory",
         "spice",
         "verilog-a",
         "touchstone",
@@ -2268,6 +2712,9 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
     if (["fea", "cfd", "step", "scad"].includes(d) || code.trimStart().startsWith("ISO-10303-21;")) {
       return analyzeCae(d, code, lines);
     }
+    if (d === "ampl") {
+      return analyzeAmplOptimization(code, lines);
+    }
     return analyzeGeneralModel(d, code, lines, effectiveSymbols, activeClassName);
   }, [d, code, lines, effectiveSymbols, activeClassName, isVisible]);
 
@@ -2280,6 +2727,33 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
       <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <React.Suspense fallback={null}>
           <ReqifViewer viewConfig={{ code }} isFullScreen onCodeChange={onCodeChange} onRevealLine={onRevealLine} />
+        </React.Suspense>
+      </div>
+    );
+  }
+
+  if (d === "csv" || d === "tsv" || d === "pdb" || d === "mmcif" || d === "cif" || d === "las") {
+    const isTsvUri = Boolean(documentUri?.toLowerCase().endsWith(".tsv"));
+    const resolvedFormat = d === "tsv" || isTsvUri ? "tsv" : d;
+    const isEditableCsv = d === "csv" || d === "tsv";
+    return (
+      <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <React.Suspense fallback={null}>
+          <CsvViewer
+            viewConfig={{
+              code,
+              format: resolvedFormat,
+              initialMode: "table",
+              title:
+                documentUri?.split("/").pop() ||
+                (isEditableCsv ? "dataset.csv" : d === "las" ? "well_log.las" : "structure.pdb"),
+            }}
+            dialect={d}
+            editable={isEditableCsv}
+            isFullScreen
+            onCodeChange={isEditableCsv ? onCodeChange : undefined}
+            onRevealLine={onRevealLine}
+          />
         </React.Suspense>
       </div>
     );
@@ -2327,23 +2801,25 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={() => void runPolyglotVerify()}
-            disabled={verifyBusy}
-            style={{
-              padding: "5px 10px",
-              borderRadius: 6,
-              border: `1px solid ${borderCol}`,
-              backgroundColor: cardBg,
-              color: textPrimary,
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: verifyBusy ? "wait" : "pointer",
-            }}
-          >
-            {verifyBusy ? "Verifying…" : "Verify Digital Thread"}
-          </button>
+          {d !== "ampl" && (
+            <button
+              type="button"
+              onClick={() => void runPolyglotVerify()}
+              disabled={verifyBusy}
+              style={{
+                padding: "5px 10px",
+                borderRadius: 6,
+                border: `1px solid ${borderCol}`,
+                backgroundColor: cardBg,
+                color: textPrimary,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: verifyBusy ? "wait" : "pointer",
+              }}
+            >
+              {verifyBusy ? "Verifying…" : "Verify Digital Thread"}
+            </button>
+          )}
 
           {availableSubTabs.length > 1 && (
             <InspectorTabs
@@ -2464,7 +2940,7 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
           onRevealLine={onRevealLine}
         />
       ) : effectiveSubTab === "power_grid" ? (
-        <PowerGridInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
+        <PowerGridInspector code={code} lines={lines} colorMode={colorMode} dialect={d} onRevealLine={onRevealLine} />
       ) : effectiveSubTab === "multibody" ? (
         <MultibodyInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
       ) : effectiveSubTab === "thermo_fluid" ? (
@@ -2474,7 +2950,7 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
       ) : effectiveSubTab === "requirements" ? (
         <RequirementsOntologyInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
       ) : effectiveSubTab === "biochem" ? (
-        <BiochemInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
+        <BiochemInspector code={code} lines={lines} colorMode={colorMode} dialect={d} onRevealLine={onRevealLine} />
       ) : effectiveSubTab === "automation" ? (
         <AutomationControlInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
       ) : effectiveSubTab === "hec_ras_hydraulics" ? (

@@ -67,6 +67,14 @@ export interface CadComponent {
   shapeType?: string | undefined;
 }
 
+/** Format a CAD asset URI into a concise human-readable label (hiding inline base64 data URIs). */
+export function formatCadAssetLabel(uri?: string): string {
+  if (!uri) return "3D Mesh";
+  if (uri.startsWith("data:")) return "Embedded 3D Mesh";
+  const lastSegment = uri.split("/").pop();
+  return lastSegment || "3D Mesh";
+}
+
 interface CadViewerProps {
   /** List of components with CAD annotations to render */
   components: CadComponent[];
@@ -94,6 +102,8 @@ interface CadViewerProps {
   verificationOverlay?: Verification3DOverlayPayload | null | undefined;
   /** ASME Y14.5 GD&T MBD callouts and datums overlay */
   gdtOverlay?: GdtOverlayPayload | null | undefined;
+  /** Insets (top/right/bottom/left in px) for floating panels/sidebars so the 3D model centers in the visible area */
+  fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
 }
 
 function computeSceneBounds(components: CadComponent[]): {
@@ -542,6 +552,7 @@ function SceneContents({
   gdtOverlay,
   showGdt,
   sceneBounds,
+  fitInsets,
 }: {
   components: CadComponent[];
   assetBaseUrl: string;
@@ -559,11 +570,32 @@ function SceneContents({
   gdtOverlay?: GdtOverlayPayload | null | undefined;
   showGdt?: boolean | undefined;
   sceneBounds: { center: [number, number, number]; radius: number; minY: number };
+  fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
 }) {
-  const { gl, camera } = useThree();
+  const { gl, camera, size } = useThree();
   const controlsRef = useRef<any>(null);
   const framedSignatureRef = useRef<string>("");
   const sweepPhaseRef = useRef(0);
+
+  // Offset camera frustum so the model orbits and centers within the visible area (excluding floating sidebars/panels)
+  useEffect(() => {
+    if (!(camera instanceof THREE.PerspectiveCamera)) return;
+    if (size.width <= 0 || size.height <= 0) return;
+
+    const top = fitInsets?.top ?? 0;
+    const right = fitInsets?.right ?? 0;
+    const bottom = fitInsets?.bottom ?? 0;
+    const left = fitInsets?.left ?? 0;
+
+    if (top === 0 && right === 0 && bottom === 0 && left === 0) {
+      camera.clearViewOffset();
+    } else {
+      const offsetX = (right - left) / 2;
+      const offsetY = (bottom - top) / 2;
+      camera.setViewOffset(size.width, size.height, offsetX, offsetY, size.width, size.height);
+    }
+    camera.updateProjectionMatrix();
+  }, [camera, size.width, size.height, fitInsets?.top, fitInsets?.right, fitInsets?.bottom, fitInsets?.left]);
 
   useEffect(() => {
     if (components.length === 0) return;
@@ -573,9 +605,21 @@ function SceneContents({
 
     const [cx, cy, cz] = sceneBounds.center;
     const r = sceneBounds.radius;
+    const fovRad = ((camera instanceof THREE.PerspectiveCamera ? camera.fov : 50) * Math.PI) / 180;
+    const tanHalfFov = Math.tan(fovRad / 2);
+    const baseDist = r * Math.hypot(1.4, 1.15, 1.4);
+    let fitDist = baseDist;
+    if (size.width > 0 && size.height > 0 && tanHalfFov > 0) {
+      const visW = Math.max(120, size.width - (fitInsets?.left ?? 0) - (fitInsets?.right ?? 0));
+      const visH = Math.max(120, size.height - (fitInsets?.top ?? 0) - (fitInsets?.bottom ?? 0));
+      const minVis = Math.min(visW, visH);
+      fitDist = Math.max(baseDist, (r / tanHalfFov) * (size.height / minVis) * 1.15);
+    }
+    const dir = new THREE.Vector3(1.4, 1.15, 1.4).normalize();
+
     camera.near = Math.max(0.01, r * 0.002);
-    camera.far = Math.max(1000, r * 30);
-    camera.position.set(cx + r * 1.4, cy + r * 1.15, cz + r * 1.4);
+    camera.far = Math.max(1000, r * 30, fitDist * 10);
+    camera.position.set(cx + dir.x * fitDist, cy + dir.y * fitDist, cz + dir.z * fitDist);
     camera.lookAt(cx, cy, cz);
     camera.updateProjectionMatrix();
 
@@ -583,7 +627,7 @@ function SceneContents({
       controlsRef.current.target.set(cx, cy, cz);
       controlsRef.current.update();
     }
-  }, [components.length, sceneBounds, camera]);
+  }, [components.length, sceneBounds, camera, size.width, size.height, fitInsets]);
 
   useEffect(() => {
     gl.localClippingEnabled = Boolean(solidPlane || wirePlane);
@@ -710,7 +754,10 @@ function SceneContents({
       />
 
       {/* Gizmo */}
-      <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
+      <GizmoHelper
+        alignment="bottom-right"
+        margin={[(fitInsets?.right ?? 0) + (fitInsets ? 44 : 60), (fitInsets?.bottom ?? 0) + (fitInsets ? 44 : 60)]}
+      >
         <GizmoViewport labelColor="white" axisHeadScale={1} />
       </GizmoHelper>
     </>
@@ -719,12 +766,23 @@ function SceneContents({
 
 // ── Empty state ──────────────────────────────────────────────────────────────
 
-function EmptyState({ dark }: { dark?: boolean | undefined }) {
+function EmptyState({
+  dark,
+  fitInsets,
+}: {
+  dark?: boolean | undefined;
+  fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
+}) {
   return (
     <div
       style={{
         position: "absolute",
         inset: 0,
+        paddingTop: fitInsets?.top ?? 0,
+        paddingRight: fitInsets?.right ?? 0,
+        paddingBottom: fitInsets?.bottom ?? 0,
+        paddingLeft: fitInsets?.left ?? 0,
+        boxSizing: "border-box",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -763,6 +821,7 @@ export default function CadViewer({
   touchScrollPassThrough = false,
   verificationOverlay = null,
   gdtOverlay = null,
+  fitInsets,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [isBindingPickerOpen, setIsBindingPickerOpen] = useState(false);
@@ -906,7 +965,7 @@ export default function CadViewer({
   if (components.length === 0 && !vtkBuffer) {
     return (
       <div style={{ height: "100%", position: "relative", background: dark ? "#1e1e1e" : "#f5f5f5" }}>
-        <EmptyState dark={dark} />
+        <EmptyState dark={dark} fitInsets={fitInsets} />
       </div>
     );
   }
@@ -917,8 +976,8 @@ export default function CadViewer({
       <div
         style={{
           position: "absolute",
-          top: 14,
-          right: 14,
+          top: fitInsets ? fitInsets.top : 14,
+          right: fitInsets ? fitInsets.right : 14,
           zIndex: 10,
           display: "flex",
           alignItems: "center",
@@ -1055,8 +1114,8 @@ export default function CadViewer({
         <div
           style={{
             position: "absolute",
-            top: 14,
-            left: 14,
+            top: fitInsets ? fitInsets.top : 14,
+            left: fitInsets ? fitInsets.left : 14,
             zIndex: 10,
             display: "flex",
             alignItems: "center",
@@ -1098,7 +1157,7 @@ export default function CadViewer({
               </span>
             </div>
             <div style={{ fontSize: "11px", color: dark ? "#8b949e" : "#656d76" }}>
-              {selectedComponent.cad.uri ? selectedComponent.cad.uri.split("/").pop() : "3D Mesh"}
+              {formatCadAssetLabel(selectedComponent.cad.uri)}
             </div>
           </div>
           <button
@@ -1151,11 +1210,14 @@ export default function CadViewer({
           gdtOverlay={gdtOverlay}
           showGdt={showGdt}
           sceneBounds={sceneBounds}
+          fitInsets={fitInsets}
         />
       </Canvas>
 
       {/* Animation timeline overlay */}
-      {animationController && <AnimationTimeline controller={animationController} breachMarkers={breachMarkers} />}
+      {animationController && (
+        <AnimationTimeline controller={animationController} breachMarkers={breachMarkers} fitInsets={fitInsets} />
+      )}
 
       {/* Interactive Geometry-to-Variable Binding Picker Modal */}
       {selectedComponent && (

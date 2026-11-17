@@ -190,7 +190,13 @@ export const MorselViewSubHeader: React.FC<MorselViewSubHeaderProps> = ({
   const supportsSimulation = activeLangInfo.supportsSimulation ?? true;
   const hasIconMode = Boolean(supportsDiagram && activeLangInfo.diagramTypes?.some((dt) => dt.id === "icon"));
   const inspectorLabel =
-    activeLangInfo.id === "owl2" ? "Reasoner" : activeLangInfo.id === "sysml2" ? "Requirements" : "Inspector";
+    activeLangInfo.id === "owl2"
+      ? "Reasoner"
+      : activeLangInfo.id === "sysml2"
+        ? "Requirements"
+        : activeLangInfo.id === "csv"
+          ? "Table"
+          : "Inspector";
 
   type ViewTabId = "diagram" | "icon" | "3d" | "simulation" | "inspector" | "code";
   const viewTabs: Array<{

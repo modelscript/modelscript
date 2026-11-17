@@ -2,7 +2,6 @@
 
 import {
   collectWorkspaceDocuments,
-  groupCstLeavesByLine,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
@@ -12,7 +11,6 @@ import { isLikelyDyrContent, parseDyr } from "../parser/dyr-parser.js";
 import { parseIdv } from "../parser/idv-interpreter.js";
 import { parseRaw } from "../parser/raw-parser.js";
 import { parseSeq } from "../parser/seq-parser.js";
-import { getPsseWasmParser } from "../parser/wasm-loader.js";
 import { lintPsse } from "./index.js";
 
 /**
@@ -26,7 +24,6 @@ export function lintPsseWorkspace(workspace: WorkspaceDocumentInput, rootUri?: s
   const entries = Array.from(docs.entries());
   if (entries.length === 0) return diagnostics;
 
-  const parser = getPsseWasmParser();
   let rawUri: string | undefined;
   let rawCase: ReturnType<typeof parseRaw> | undefined;
   const dyrEntries: Array<[string, string]> = [];
@@ -35,8 +32,6 @@ export function lintPsseWorkspace(workspace: WorkspaceDocumentInput, rootUri?: s
   const idvEntries: Array<[string, string]> = [];
 
   for (const [uri, text] of entries) {
-    const cstTree = parser.parse(text);
-    void groupCstLeavesByLine(cstTree?.rootNode);
     const lower = uri.toLowerCase();
     if (lower.endsWith(".idv")) {
       idvEntries.push([uri, text]);

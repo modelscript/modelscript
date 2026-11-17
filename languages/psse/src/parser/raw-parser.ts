@@ -23,6 +23,7 @@ import {
   extractFieldsFromCstTokens,
   isPsseSectionTerminator,
   parsePsseCstDocument,
+  type PsseCstDocument,
   type PsseCstLine,
 } from "./cst-tokens.js";
 
@@ -63,10 +64,22 @@ function parseStr(val: string | undefined, def = ""): string {
 }
 
 /**
+ * Extracts `@pos(x, y)` diagram coordinates from an inline `/` or `/*` comment if present.
+ */
+function parsePosComment(commentText?: string): { x: number; y: number } | undefined {
+  if (!commentText) return undefined;
+  const m = /@pos\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/i.exec(commentText);
+  if (!m) return undefined;
+  const x = Number(m[1]);
+  const y = Number(m[2]);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : undefined;
+}
+
+/**
  * Parses PSS/E RAW format text into a structured `PsseCase` via the native WASM CST.
  */
-export function parseRaw(text: string): PsseCase {
-  const cstDoc = parsePsseCstDocument(text);
+export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): PsseCase {
+  const cstDoc = precomputedCstDoc ?? parsePsseCstDocument(text);
   const lines = cstDoc.lines;
   let lineIdx = 0;
 
@@ -274,6 +287,7 @@ export function parseRaw(text: string): PsseCase {
             evlo: toks[12] !== undefined ? parseNum(toks[12], 0.9) : undefined,
             span,
             fieldSpans,
+            position: parsePosComment(info.commentText),
           };
           buses.set(busNum, bus);
           header.minBusColumnCount =
@@ -304,6 +318,7 @@ export function parseRaw(text: string): PsseCase {
             scale: parseNum(toks[12], 1),
             intrct: parseNum(toks[13], 1),
             span,
+            position: parsePosComment(info.commentText),
           });
         }
         break;
@@ -320,6 +335,7 @@ export function parseRaw(text: string): PsseCase {
             gl: parseNum(toks[3], 0.0),
             bl: parseNum(toks[4], 0.0),
             span,
+            position: parsePosComment(info.commentText),
           });
         }
         break;
@@ -354,6 +370,7 @@ export function parseRaw(text: string): PsseCase {
             f1: toks[19 + off] !== undefined ? parseNum(toks[19 + off], 1.0) : undefined,
             span,
             fieldSpans,
+            position: parsePosComment(info.commentText),
           });
         }
         break;

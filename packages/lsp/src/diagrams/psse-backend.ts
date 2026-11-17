@@ -587,16 +587,43 @@ export function createPsseDiagramBackend(backends: DiagramDispatchDeps): Diagram
         } else if (act.type === "disconnect") {
           flushBatchedChanges();
           workingText = disconnectPsseDiagramBuses(workingText, act.source, act.target);
+        } else if (act.type === "reconnect") {
+          flushBatchedChanges();
+          workingText = disconnectPsseDiagramBuses(workingText, act.oldSource, act.oldTarget);
+          workingText = connectPsseDiagramBuses(workingText, act.newSource, act.newTarget);
+        } else if (act.type === "move") {
+          for (const item of act.items) {
+            const name = item.name;
+            let defaultW = 156;
+            let defaultH = 40;
+            if (name.startsWith("gen_")) {
+              defaultW = 48;
+              defaultH = 48;
+            } else if (name.startsWith("load_")) {
+              defaultW = 84;
+              defaultH = 30;
+            } else if (name.startsWith("shunt_") || name.startsWith("swshunt_")) {
+              defaultW = 64;
+              defaultH = 30;
+            }
+            const cx = Math.round(item.x + (item.width ?? defaultW) / 2);
+            const cy = Math.round(item.y + (item.height ?? defaultH) / 2);
+            const bag = batchedChanges.get(name) ?? {};
+            bag["x"] = cx;
+            bag["y"] = cy;
+            batchedChanges.set(name, bag);
+          }
         }
       }
 
       flushBatchedChanges();
 
       const edits = await computeMinimalPsseTextEdits(initialText, workingText);
+      const isMoveOnly = params.actions.length > 0 && params.actions.every((a) => a.type === "move");
       return {
         seq: params.seq,
         edits,
-        renderHint: edits.length > 0 ? "immediate" : "none",
+        renderHint: edits.length > 0 && !isMoveOnly ? "immediate" : "none",
       };
     },
 

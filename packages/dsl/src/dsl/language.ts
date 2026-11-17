@@ -262,6 +262,21 @@ export interface WorkspaceIndexingHooks {
  */
 export type LanguageMaturity = "stable" | "beta" | "experimental";
 
+/** Standard LSP FoldingRangeKind values. */
+export type FoldingKind = "comment" | "imports" | "region";
+
+/** Declarative folding configuration for a grammar rule. */
+export interface FoldingRuleConfig<RuleName extends string = string> {
+  /** Grammar rule or terminal name to fold. */
+  rule: RuleName;
+  /** Optional LSP FoldingRangeKind ("comment" | "imports" | "region"). */
+  kind?: FoldingKind | undefined;
+  /** When true, editors should collapse this range by default on first open. */
+  defaultCollapsed?: boolean | undefined;
+  /** Optional placeholder text shown when folded (LSP 3.17 collapsedText). */
+  collapsedText?: string | undefined;
+}
+
 /**
  * Configuration options passed to the `language(...)` function.
  * Modeled after Tree-sitter's Grammar API.
@@ -460,8 +475,8 @@ export interface LanguageOptions<
               dark: string;
             }
           | undefined;
-        /** List of node types that can be folded */
-        folding?: NoInfer<RuleName>[] | undefined;
+        /** List of node types that can be folded, optionally with LSP kind and default-collapsed metadata */
+        folding?: (NoInfer<RuleName> | FoldingRuleConfig<NoInfer<RuleName>>)[] | undefined;
         /** List of node types that define a new variable scope */
         outline?: NoInfer<RuleName>[] | undefined;
         /** AssemblyScript callback or function name for goto definition */

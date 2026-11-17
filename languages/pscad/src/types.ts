@@ -163,6 +163,9 @@ export interface PscxProject {
   subModules: Map<string, PscxModule>;
   linkedLibraries: string[];
   definitions?: Map<string, PscxDefinitionGraphic> | undefined;
+  xmlErrors?:
+    | Array<{ start: number; end: number; message?: string | undefined; code?: string | undefined }>
+    | undefined;
 }
 
 // ==========================================

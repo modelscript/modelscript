@@ -101,14 +101,14 @@ export function buildSspDiagramData(input: SspSystem | string) {
       position: "left",
       zIndex: 10,
       attrs: {
-        circle: { r: 4, fill: "#1e293b", stroke: "#3b82f6", strokeWidth: 1.5 },
+        circle: { r: 4, fill: "#ffffff", stroke: "#3b82f6", strokeWidth: 1.5 },
       },
     },
     out: {
       position: "right",
       zIndex: 10,
       attrs: {
-        circle: { r: 4, fill: "#3b82f6", stroke: "#1e293b", strokeWidth: 1.5 },
+        circle: { r: 4, fill: "#3b82f6", stroke: "#ffffff", strokeWidth: 1.5 },
       },
     },
     param: {
@@ -176,11 +176,11 @@ export function buildSspDiagramData(input: SspSystem | string) {
         group: "in",
         args: { x: 0, y: py, angle: 180 },
         attrs: {
-          text: { text: labelText, fill: "#cbd5e1", fontSize: 10 },
+          text: { text: labelText, fill: "#334155", fontSize: 10 },
         },
         markup: {
           tagName: "polygon",
-          attrs: { points: "-5,-5 5,0 -5,5", fill: color, stroke: "#0f172a", "stroke-width": 1 },
+          attrs: { points: "-5,-5 5,0 -5,5", fill: color, stroke: "#ffffff", "stroke-width": 1 },
         },
       });
     });
@@ -196,7 +196,7 @@ export function buildSspDiagramData(input: SspSystem | string) {
         group: "out",
         args: { x: width, y: py, angle: 0 },
         attrs: {
-          text: { text: labelText, fill: "#cbd5e1", fontSize: 10 },
+          text: { text: labelText, fill: "#334155", fontSize: 10 },
         },
         markup: {
           tagName: "polygon",
@@ -256,7 +256,7 @@ export function buildSspDiagramData(input: SspSystem | string) {
       },
       attrs: {
         body: {
-          fill: "#1e293b",
+          fill: "#ffffff",
           stroke: "#10b981",
           strokeWidth: 2,
           rx: 6,
@@ -264,15 +264,20 @@ export function buildSspDiagramData(input: SspSystem | string) {
         },
         header: {
           text: "«FMU Component»",
-          fill: "#10b981",
+          fill: "#059669",
           fontSize: 9,
           fontWeight: "600",
         },
         label: {
           text: cmp.name,
-          fill: "#f8fafc",
+          fill: "#0f172a",
           fontSize: 13,
           fontWeight: "bold",
+        },
+        sublabel: {
+          text: shortSource,
+          fill: "#64748b",
+          fontSize: 10,
         },
       },
       markup: {
@@ -286,7 +291,7 @@ export function buildSspDiagramData(input: SspSystem | string) {
               height,
               rx: 6,
               ry: 6,
-              fill: "#1e293b",
+              fill: "#ffffff",
               stroke: "#10b981",
               "stroke-width": 2,
             },
@@ -299,7 +304,7 @@ export function buildSspDiagramData(input: SspSystem | string) {
               x: width / 2,
               y: 18,
               "text-anchor": "middle",
-              fill: "#10b981",
+              fill: "#059669",
               "font-size": 9,
               "font-weight": 600,
             },
@@ -312,7 +317,7 @@ export function buildSspDiagramData(input: SspSystem | string) {
               x: width / 2,
               y: Math.round(height / 2),
               "text-anchor": "middle",
-              fill: "#f8fafc",
+              fill: "#0f172a",
               "font-size": 13,
               "font-weight": 700,
             },
@@ -325,7 +330,7 @@ export function buildSspDiagramData(input: SspSystem | string) {
               x: width / 2,
               y: Math.round(height / 2) + 18,
               "text-anchor": "middle",
-              fill: "#94a3b8",
+              fill: "#64748b",
               "font-size": 10,
             },
           },
@@ -381,14 +386,14 @@ export function buildSspDiagramData(input: SspSystem | string) {
             args: { x: isInput ? width : 0, y: height / 2, angle: isInput ? 0 : 180 },
             markup: {
               tagName: "circle",
-              attrs: { r: 4, fill: color, stroke: "#0f172a", "stroke-width": 1.5 },
+              attrs: { r: 4, fill: color, stroke: "#ffffff", "stroke-width": 1.5 },
             },
           },
         ],
       },
       attrs: {
-        body: { fill: "#0f172a", stroke: color, strokeWidth: 1.5, rx: 4, ry: 4 },
-        label: { text: conn.name, fill: "#e2e8f0", fontSize: 11, fontWeight: "600" },
+        body: { fill: "#f8fafc", stroke: color, strokeWidth: 1.5, rx: 4, ry: 4 },
+        label: { text: conn.name, fill: "#0f172a", fontSize: 11, fontWeight: "600" },
       },
       markup: {
         tagName: "g",
@@ -401,7 +406,7 @@ export function buildSspDiagramData(input: SspSystem | string) {
               height,
               rx: 4,
               ry: 4,
-              fill: "#0f172a",
+              fill: "#f8fafc",
               stroke: color,
               "stroke-width": 1.5,
               "stroke-dasharray": "4 2",
@@ -415,7 +420,7 @@ export function buildSspDiagramData(input: SspSystem | string) {
               x: width / 2,
               y: height / 2 + 4,
               "text-anchor": "middle",
-              fill: "#e2e8f0",
+              fill: "#0f172a",
               "font-size": 11,
               "font-weight": 600,
             },

@@ -37,14 +37,15 @@ export function formatProfileTitle(tab?: string | null, userLabel?: string | nul
   return cleanUser ? `${canonicalTab} by ${cleanUser}` : canonicalTab;
 }
 
-export function usePageTitle(title: string) {
+export function usePageTitle(title: string, options?: { includeBrand?: boolean }) {
+  const includeBrand = options?.includeBrand ?? true;
   useEffect(() => {
     const prevTitle = document.title;
-    document.title = formatPageTitle(title);
+    document.title = includeBrand ? formatPageTitle(title) : title;
     return () => {
       document.title = prevTitle;
     };
-  }, [title]);
+  }, [title, includeBrand]);
 }
 
 /**

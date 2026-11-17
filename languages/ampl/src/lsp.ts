@@ -13,7 +13,7 @@ import {
   LspSymbolKind,
 } from "@modelscript/runtime";
 import { lintAmpl } from "./lints/index.js";
-import { parseAmplModel } from "./parser/ampl-mod-parser.js";
+import { parseAmplModel, parseAmplModelWithDiagnostics } from "./parser/ampl-mod-parser.js";
 import type { AmplModel, SourceRange } from "./types.js";
 
 export {
@@ -32,23 +32,39 @@ function toLspRange(range?: SourceRange | undefined): LspRange {
       end: { line: 0, character: 0 },
     };
   }
+  const startLine = Math.max(0, range.start.line - 1);
+  const startChar = Math.max(0, range.start.column - 1);
+  const endLine = Math.max(startLine, range.end.line - 1);
+  const endChar =
+    endLine === startLine ? Math.max(startChar + 1, range.end.column - 1) : Math.max(0, range.end.column - 1);
   return {
-    start: { line: Math.max(0, range.start.line - 1), character: Math.max(0, range.start.column - 1) },
-    end: { line: Math.max(0, range.end.line - 1), character: Math.max(0, range.end.column - 1) },
+    start: { line: startLine, character: startChar },
+    end: { line: endLine, character: endChar },
   };
 }
 
 export function getAmplDiagnostics(documentText: string): LspDiagnostic[] {
   try {
-    const model = parseAmplModel(documentText);
-    const diags = lintAmpl(model);
-    return diags.map((d) => ({
-      range: toLspRange(d.range),
-      severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
-      code: `M${d.code}`,
+    const { model, errors } = parseAmplModelWithDiagnostics(documentText);
+    const out: LspDiagnostic[] = errors.map((err) => ({
+      range: toLspRange(err.range),
+      severity: 1,
+      code: "M9501",
       source: "ampl",
-      message: d.message,
+      message: err.message,
     }));
+
+    const diags = lintAmpl(model);
+    for (const d of diags) {
+      out.push({
+        range: toLspRange(d.range),
+        severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
+        code: `M${d.code}`,
+        source: "ampl",
+        message: d.message,
+      });
+    }
+    return out;
   } catch (err) {
     const lines = documentText.split(/\r?\n/);
     let range = { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } };
@@ -81,7 +97,7 @@ export function validateAmpl(documentText: string): LspDiagnostic[] {
 export function getAmplDocumentSymbols(input: string | AmplModel): LspDocumentSymbol[] {
   let model: AmplModel;
   try {
-    model = typeof input === "string" ? parseAmplModel(input) : input;
+    model = typeof input === "string" ? parseAmplModelWithDiagnostics(input).model : input;
   } catch {
     return [];
   }

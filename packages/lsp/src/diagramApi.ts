@@ -2734,6 +2734,9 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
     if (uri.endsWith(".raw") || uri.endsWith(".dyr")) {
       return createPsseDiagramBackend(backends);
     }
+    if (uri.endsWith(".pscx") || uri.endsWith(".pslx") || uri.endsWith(".pswx") || uri.endsWith(".psmx")) {
+      return createPscadDiagramBackend(backends);
+    }
     const plugin = globalLanguageRegistry.getPluginForUri(uri);
     if (plugin?.diagramBackend) {
       return plugin.diagramBackend;
@@ -2749,9 +2752,6 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
         uri.endsWith(".ttl"))
     ) {
       return backends.owl2;
-    }
-    if (uri.endsWith(".pscx") || uri.endsWith(".pslx") || uri.endsWith(".pswx") || uri.endsWith(".psmx")) {
-      return createPscadDiagramBackend(backends);
     }
     if (uri.endsWith(".ssd") || uri.endsWith(".ssp")) {
       return createSspDiagramBackend(backends);

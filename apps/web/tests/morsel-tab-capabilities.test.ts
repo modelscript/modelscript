@@ -113,4 +113,68 @@ describe("Morsel Language Capability Tab Hiding", () => {
     assert.equal(getLanguageInfo("csv").supportsSimulation, false);
     assert.equal(getLanguageInfo("csv").supports3d, false);
   });
+
+  it("resolves per-language defaultView and defaultSplit via getDefaultLanguageView", async () => {
+    const { getDefaultLanguageView } = await import("../src/components/morsel/constants.js");
+
+    // Modelica has 2D diagram support -> defaults to diagram + code split
+    assert.deepEqual(getDefaultLanguageView(getLanguageInfo("modelica")), {
+      view: "diagram",
+      isSplit: true,
+    });
+
+    // OpenSCAD, USD, CFD, FEA lack 2D diagram editing -> default to 3D canvas + code split
+    for (const lang of ["scad", "usd", "cfd", "fea"]) {
+      assert.deepEqual(getDefaultLanguageView(getLanguageInfo(lang)), {
+        view: "3d",
+        isSplit: true,
+      });
+    }
+
+    // Simulation-only language without 2D/3D -> defaults to simulation + code split
+    assert.deepEqual(getDefaultLanguageView(getLanguageInfo("comtrade")), {
+      view: "simulation",
+      isSplit: true,
+    });
+
+    // Inspector-only language -> defaults to inspector + code split
+    assert.deepEqual(getDefaultLanguageView(getLanguageInfo("csv")), {
+      view: "inspector",
+      isSplit: true,
+    });
+
+    // Explicit defaultView / defaultSplit overrides
+    assert.deepEqual(
+      getDefaultLanguageView({
+        ...getLanguageInfo("modelica"),
+        defaultView: "code",
+      }),
+      { view: "code", isSplit: false },
+    );
+    assert.deepEqual(
+      getDefaultLanguageView({
+        ...getLanguageInfo("modelica"),
+        defaultView: "3d",
+        defaultSplit: false,
+      }),
+      { view: "3d", isSplit: false },
+    );
+  });
+
+  it("uses narrower default code editor split ratio and per-language defaults in Morsel and PlaygroundPage", () => {
+    const morselPath = path.resolve(import.meta.dirname, "../src/components/morsel/Morsel.tsx");
+    const morselSrc = fs.readFileSync(morselPath, "utf-8");
+    assert.ok(morselSrc.includes("DEFAULT_SPLIT_RATIO = 0.62"), "Morsel.tsx should default splitRatio to 0.62");
+    assert.ok(
+      morselSrc.includes("getDefaultLanguageView(initialLangInfo)"),
+      "Morsel.tsx should resolve initial view/split from getDefaultLanguageView",
+    );
+
+    const playgroundPath = path.resolve(import.meta.dirname, "../src/pages/PlaygroundPage.tsx");
+    const playgroundSrc = fs.readFileSync(playgroundPath, "utf-8");
+    assert.ok(
+      playgroundSrc.includes("getDefaultLanguageView(getLanguageInfo(defaultInitialLang))"),
+      "PlaygroundPage.tsx should initialize view/split from getDefaultLanguageView",
+    );
+  });
 });

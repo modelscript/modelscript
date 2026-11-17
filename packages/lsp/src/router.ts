@@ -54,6 +54,7 @@ export function registerAllLspProviders(context: LspContext): void {
       }
       return undefined;
     },
+    (langOrUri) => parserService.ensureLanguageParserLoaded(langOrUri),
   );
 
   registerCompletionProvider(connection, documents, validationService.documentLSPBridges);

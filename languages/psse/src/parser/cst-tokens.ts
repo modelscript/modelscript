@@ -102,8 +102,8 @@ export function unquoteCstValue(tok: CstNodeLike): string {
 /**
  * Parses PSS/E text using the native WASM GLR parser and groups CST leaf tokens by line.
  */
-export function parsePsseCstDocument(source: string): PsseCstDocument {
-  const tree = getPsseWasmParser().parse(source);
+export function parsePsseCstDocument(source: string, precomputedTree?: { rootNode?: unknown } | null): PsseCstDocument {
+  const tree = precomputedTree?.rootNode ? precomputedTree : getPsseWasmParser().parse(source);
   const grouped = groupAllCstTokensByLine(tree?.rootNode as CstNodeLike | undefined);
   const lines: PsseCstLine[] = [];
   const byRow = new Map<number, PsseCstLine>();
@@ -163,7 +163,7 @@ export function parsePsseCstDocument(source: string): PsseCstDocument {
     byRow.set(row, entry);
   }
 
-  return { tree, lines, byRow };
+  return { tree: tree as PsseCstDocument["tree"], lines, byRow };
 }
 
 function buildFieldFromTokens(group: CstNodeLike[], source: string): PsseCstField {

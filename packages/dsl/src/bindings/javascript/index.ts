@@ -428,3 +428,55 @@ export declare function cstKind(node: SyntaxNode | null | undefined): string;
 }
 
 export * from "./bindings.js";
+
+/**
+ * Creates a Monaco-compatible `FoldingRangeProvider` backed by a ModelScript WASM parser and LspFacade.
+ * Useful when embedding a DSL in standalone Monaco without a full LSP server connection.
+ */
+interface ParsedFoldTree {
+  rootNode?: { id?: number; ptr?: number };
+  id?: number;
+  ptr?: number;
+  rootPtr?: number;
+  delete?: () => void;
+}
+
+export function createMonacoFoldingRangeProvider(
+  parser: { parse(text: string): ParsedFoldTree | null | undefined },
+  facade: { getFoldingRanges(astRoot: number): { start: { line: number }; end: { line: number }; kind?: string }[] },
+): {
+  provideFoldingRanges(model: {
+    getValue(): string;
+    getLineContent?(lineNumber: number): string;
+  }): { start: number; end: number; kind?: { value: string } }[];
+} {
+  return {
+    provideFoldingRanges(model) {
+      const tree = parser.parse(model.getValue());
+      if (!tree) return [];
+      try {
+        const rootNode = tree.rootNode ?? tree;
+        const rootPtr = rootNode?.id ?? rootNode?.ptr ?? tree?.rootPtr ?? 0;
+        if (!rootPtr) return [];
+        const folds = facade.getFoldingRanges(rootPtr);
+        const result: { start: number; end: number; kind?: { value: string } }[] = [];
+        for (const r of folds) {
+          if (r.end.line <= r.start.line) continue;
+          const start = r.start.line + 1;
+          const end = r.end.line + 1;
+          let kindValue = r.kind;
+          if (!kindValue && model.getLineContent) {
+            const line = model.getLineContent(start).trimStart();
+            if (line.startsWith("/*") || line.startsWith("//") || line.startsWith("(*") || line.startsWith("<!--")) {
+              kindValue = "comment";
+            }
+          }
+          result.push(kindValue ? { start, end, kind: { value: kindValue } } : { start, end });
+        }
+        return result;
+      } finally {
+        tree?.delete?.();
+      }
+    },
+  };
+}

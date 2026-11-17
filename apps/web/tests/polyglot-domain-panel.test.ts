@@ -476,4 +476,24 @@ end BadUnitsAndPendulum;
     assert.ok(html.includes("Solve Power Flow"), "Missing Solve Power Flow button");
     assert.ok(html.includes("Run Transient"), "Missing Run Transient button");
   });
+
+  it("renders PowerFactory XML DataObjects in the Power Grid inspector", () => {
+    const pfCode = `<?xml version="1.0" encoding="UTF-8"?>
+<PowerFactory version="2024">
+  <DataObject class="ElmTerm" loc_name="Bus_1"><uknom>110.0</uknom><fnom>50.0</fnom></DataObject>
+  <DataObject class="ElmLne" loc_name="Line_1_2"><bus1>Bus_1</bus1><bus2>Bus_2</bus2><r1>2.42</r1><x1>7.26</x1></DataObject>
+  <DataObject class="ElmSym" loc_name="Gen_1"><bus1>Bus_1</bus1><pgini>70.0</pgini><qgini>15.0</qgini></DataObject>
+</PowerFactory>`;
+    const html = renderToStaticMarkup(
+      React.createElement(PolyglotDomainPanel, {
+        dialect: "powerfactory",
+        code: pfCode,
+        lines: pfCode.split("\n"),
+        colorMode: "dark",
+      }),
+    );
+    assert.ok(html.includes("Bus_1"), "Missing Bus_1 terminal");
+    assert.ok(html.includes("Line_1_2"), "Missing Line_1_2 branch");
+    assert.ok(html.includes("Gen_1"), "Missing Gen_1 synchronous machine");
+  });
 });

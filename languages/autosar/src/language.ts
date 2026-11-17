@@ -17,7 +17,7 @@ export const autosarLanguage = language({
   },
   lsp: {
     fileExtensions: [".arxml"],
-    folding: ["Element", "COMMENT"],
+    folding: ["Element", { rule: "COMMENT", kind: "comment", defaultCollapsed: true }],
     outline: ["Element"],
   },
   extras: ($) => [/[ \t\r\n]+/, $["COMMENT"]!, $["PROCESSING_INSTRUCTION"]!],

@@ -3,6 +3,8 @@
 import React, { useMemo, useState } from "react";
 import { InspectorTabs } from "./InspectorTabs.js";
 
+const CsvViewer = React.lazy(() => import("../../../artifacts/CsvViewer.js").then((m) => ({ default: m.CsvViewer })));
+
 export interface TransitCockpitInspectorProps {
   code: string;
   lines: string[];
@@ -29,12 +31,12 @@ interface TransitTrip {
 }
 
 export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = ({
-  code: _code,
+  code,
   lines,
   colorMode,
   onRevealLine,
 }) => {
-  const [subTab, setSubTab] = useState<"marey" | "charging" | "fleet">("marey");
+  const [subTab, setSubTab] = useState<"marey" | "charging" | "fleet" | "table">("marey");
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
 
   const isDark = colorMode === "dark";
@@ -164,14 +166,28 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
         <InspectorTabs
           ariaLabel="Transit cockpit views"
           value={subTab}
-          onChange={(id) => setSubTab(id as "marey" | "charging" | "fleet")}
+          onChange={(id) => setSubTab(id as "marey" | "charging" | "fleet" | "table")}
           tabs={[
             { id: "marey", label: `Marey Stringline (${trips.length} Trips)` },
             { id: "charging", label: "Depot Grid & Load Profile" },
             { id: "fleet", label: "Battery SOC Schedule" },
+            { id: "table", label: "📊 Feed Table" },
           ]}
         />
       </div>
+
+      {subTab === "table" && (
+        <div style={{ height: 460, borderRadius: 8, overflow: "hidden", border: `1px solid ${borderCol}` }}>
+          <React.Suspense fallback={null}>
+            <CsvViewer
+              viewConfig={{ code, format: "csv", initialMode: "table", title: "gtfs_feed.txt" }}
+              dialect="gtfs"
+              isFullScreen
+              onRevealLine={onRevealLine}
+            />
+          </React.Suspense>
+        </div>
+      )}
 
       {/* KPI Ribbon */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10 }}>

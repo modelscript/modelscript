@@ -498,6 +498,10 @@ export const modelicaLanguage = language({
       "while_statement",
       "when_equation",
       "when_statement",
+      "external_clause",
+      "class_modification",
+      { rule: "import_clause", kind: "imports" },
+      { rule: "annotation_clause", kind: "region", defaultCollapsed: true, collapsedText: "annotation(...)" },
     ],
     outline: ["component_declaration", "short_class_specifier", "long_class_specifier", "der_class_specifier"],
     handlers: {

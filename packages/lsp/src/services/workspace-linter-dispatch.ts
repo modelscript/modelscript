@@ -474,8 +474,9 @@ export async function runWorkspaceLinterForDocument(
 
     const startLine = Math.max(0, (d.line ?? 1) - 1);
     const startChar = Math.max(0, (d.column ?? 1) - 1);
-    const endLine = startLine;
-    const endChar = startChar;
+    const endLine = d.endLine !== undefined ? Math.max(startLine, d.endLine - 1) : startLine;
+    const endChar =
+      d.endColumn !== undefined ? Math.max(endLine === startLine ? startChar : 0, d.endColumn - 1) : startChar;
 
     existingDiagnostics.push({
       severity: toDiagnosticSeverity(d.severity),

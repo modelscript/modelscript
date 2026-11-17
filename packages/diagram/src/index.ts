@@ -2121,6 +2121,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       }
 
       const items: {
+        id?: string | undefined;
         name: string;
         x: number;
         y: number;
@@ -2142,6 +2143,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           const curData = n.getData?.() || {};
           const name = (curData["name"] as string) || n.id;
           items.push({
+            id: n.id,
             name,
             x: p.x,
             y: p.y,
@@ -4127,7 +4129,12 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
           if (selVal && typeof selVal === "object") {
             const valObj = { ...(selVal as Record<string, unknown>) };
             const isTextSel =
-              selKey === "label" || selKey === "subtitle" || selKey === "stereotype" || selKey.includes("text");
+              selKey === "label" ||
+              selKey === "subtitle" ||
+              selKey === "sublabel" ||
+              selKey === "header" ||
+              selKey === "stereotype" ||
+              selKey.includes("text");
             if (typeof valObj["fill"] === "string" && valObj["fill"] !== "none" && valObj["fill"] !== "transparent") {
               valObj["fill"] = adaptColorForDarkMode(
                 valObj["fill"],

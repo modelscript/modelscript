@@ -175,13 +175,6 @@ import {
   verilogALanguage,
 } from "@modelscript/verilog-a";
 import { getWaterMlDiagnostics, getWaterMlDocumentSymbols, watermlLanguage } from "@modelscript/waterml";
-import {
-  createOpenDriveDiagramBackend,
-  createPscadDiagramBackend,
-  createPsseDiagramBackend,
-  createSimulinkDiagramBackend,
-  createSpiceDiagramBackend,
-} from "../diagrams/index.js";
 import type { ParserService } from "../services/parser-service.js";
 import type { WorkspaceManager } from "../services/workspace-manager.js";
 import { globalLanguageRegistry } from "./LanguageRegistry.js";
@@ -473,20 +466,6 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         getScadDefinition(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
       references: (offset: number, text: string, uri?: string) =>
         getScadReferences(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
-      validate: async (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
-        const uri = typeof doc?.uri === "string" ? doc.uri : undefined;
-        const { lintScadCst, getScadParser } = await import("@modelscript/scad");
-        const parser = parserService?.getParser("scad") ?? (await getScadParser());
-        if (!parser) return [];
-        const tree = parser.parse(text);
-        return tree?.rootNode
-          ? lintScadCst(tree.rootNode, text, {
-              uri,
-              workspace: workspaceManager.unifiedWorkspace,
-            })
-          : [];
-      },
     },
   });
 
@@ -650,9 +629,6 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     name: "PSCAD",
     extensions: [".pscx", ".pslx", ".pswx", ".psmx"],
     languageDef: pscadLanguage,
-    get diagramBackend() {
-      return createPscadDiagramBackend({});
-    },
     customHandlers: {
       symbols: (treeWrapper: any) => {
         const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
@@ -913,9 +889,6 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     get workspaceIndex() {
       return workspaceManager.unifiedWorkspace;
     },
-    get diagramBackend() {
-      return createPsseDiagramBackend({});
-    },
     extractTheoryConstraints: async (text: string) => {
       const { parseRaw } = await import("@modelscript/psse");
       const c = parseRaw(text);
@@ -979,10 +952,10 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const character = lines[lines.length - 1]!.length;
         return getPsseHover(text, { line, character }, uri ?? "", workspaceManager.unifiedWorkspace);
       },
-      validate: (doc: any) => {
+      validate: (doc: any, tree?: unknown) => {
         const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
         const uri = typeof doc?.uri === "string" ? doc.uri : "model.raw";
-        return validatePsse(text, uri);
+        return validatePsse(text, uri, tree);
       },
       definition: (offset: number, text: string, uri?: string) => {
         const lines = text.slice(0, offset).split("\n");
@@ -1241,6 +1214,33 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const { parseAmplModel, instantiateAmpl, amplToModelica } = await import("@modelscript/ampl");
         const problem = instantiateAmpl(parseAmplModel(text));
         return amplToModelica(problem);
+      },
+      ampl_inspect_geometry: async (
+        ctx: { documentText?: string },
+        params?: { documentText?: string; dataText?: string },
+      ) => {
+        const text = params?.documentText ?? ctx.documentText;
+        if (!text) return null;
+        const { inspectAmplGeometry } = await import("@modelscript/ampl");
+        return inspectAmplGeometry(text, params?.dataText);
+      },
+      ampl_sweep: async (
+        ctx: { documentText?: string },
+        params: { documentText?: string } & Parameters<typeof import("@modelscript/ampl").sweepAmplParameter>[1],
+      ) => {
+        const text = params?.documentText ?? ctx.documentText;
+        if (!text) return null;
+        const { sweepAmplParameter } = await import("@modelscript/ampl");
+        return sweepAmplParameter(text, params);
+      },
+      ampl_pareto: async (
+        ctx: { documentText?: string },
+        params: { documentText?: string } & Parameters<typeof import("@modelscript/ampl").computeAmplPareto>[1],
+      ) => {
+        const text = params?.documentText ?? ctx.documentText;
+        if (!text) return null;
+        const { computeAmplPareto } = await import("@modelscript/ampl");
+        return computeAmplPareto(text, params);
       },
     },
     disposables: [],
@@ -1689,9 +1689,6 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     name: "SPICE",
     extensions: [".cir", ".sp", ".net", ".lib"],
     languageDef: spiceLanguage,
-    get diagramBackend() {
-      return createSpiceDiagramBackend({});
-    },
     extractTheoryConstraints: async (text: string) => {
       const { parseSpice, parseSpiceNumber } = await import("@modelscript/spice");
       const circuit = parseSpice(text);
@@ -2069,9 +2066,6 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     name: "ASAM OpenDRIVE",
     extensions: [".xodr", ".xml"],
     languageDef: opendriveLanguage,
-    get diagramBackend() {
-      return createOpenDriveDiagramBackend({});
-    },
     customHandlers: {
       symbols: (treeWrapper: any) =>
         getOpenDriveDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
@@ -2589,9 +2583,6 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     name: "MATLAB Simulink",
     extensions: [".slx", ".mdl"],
     languageDef: simulinkLanguage,
-    get diagramBackend() {
-      return createSimulinkDiagramBackend({});
-    },
     customHandlers: {
       symbols: (treeWrapper: any) =>
         getSimulinkDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),

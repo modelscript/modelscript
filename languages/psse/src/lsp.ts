@@ -11,6 +11,7 @@ import {
   extractDyrCstRecords,
   extractFieldsFromCstTokens,
   getCstFieldIndexAtColumn,
+  isPsseSectionTerminator,
   parsePsseCstDocument,
   type PsseCstDocument,
   type PsseCstLine,
@@ -171,11 +172,166 @@ function findSeqRecordRange(cstDoc: PsseCstDocument, source: string, busNum: num
   return firstTokenRange(cstDoc);
 }
 
+const NUMERIC_RE = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eEdD][-+]?\d+)?$/;
+
+interface RawSyntaxNode {
+  hasError?: boolean;
+  type?: string;
+  isMissing?: boolean;
+  text?: string;
+  startPosition?: { row: number; column: number };
+  endPosition?: { row: number; column: number };
+  children?: RawSyntaxNode[];
+}
+
+function collectRawSyntaxErrors(content: string, cstDoc: PsseCstDocument, precomputedTree?: unknown): LspDiagnostic[] {
+  const syntaxDiags: LspDiagnostic[] = [];
+  const root = (precomputedTree as { rootNode?: RawSyntaxNode } | null | undefined)?.rootNode;
+  if (root?.hasError) {
+    const stack: (RawSyntaxNode | undefined)[] = [root];
+    let guard = 0;
+    while (stack.length > 0 && guard++ < 4096) {
+      const node = stack.pop();
+      if (!node) continue;
+      if (node.type === "ERROR" || node.isMissing) {
+        const sp = node.startPosition ?? { row: 0, column: 0 };
+        const ep = node.endPosition ?? { row: sp.row, column: sp.column + 1 };
+        syntaxDiags.push({
+          range: {
+            start: { line: sp.row, character: sp.column },
+            end: { line: ep.row, character: Math.max(sp.column + 1, ep.column) },
+          },
+          severity: 1,
+          code: "P1001",
+          source: "modelscript-psse",
+          message: node.isMissing
+            ? `Syntax error: missing expected token '${node.type}'.`
+            : `Syntax error: unexpected token '${String(node.text ?? "").slice(0, 32)}'.`,
+        });
+        continue;
+      }
+      if (Array.isArray(node.children)) {
+        for (let i = node.children.length - 1; i >= 0; i--) {
+          stack.push(node.children[i]);
+        }
+      }
+    }
+  }
+
+  // Validate RAW record structure in Bus (0), Load (1), FixedShunt (2), Generator (3), Branch (4) sections
+  const lines = cstDoc.lines;
+  let idx = 0;
+  while (idx < lines.length && lines[idx]!.isCommentOrBlank) idx++;
+  if (idx >= lines.length) return syntaxDiags;
+  // Skip Case Identification line
+  idx++;
+  // Skip up to 2 optional title lines (if they don't look like a bus record)
+  for (let t = 0; t < 2 && idx < lines.length; t++) {
+    const info = lines[idx]!;
+    if (info.isCommentOrBlank) {
+      idx++;
+      continue;
+    }
+    const fields = extractFieldsFromCstTokens(info.tokens, content, "delimited");
+    const busNum = fields[0] ? Number(fields[0].value) : NaN;
+    const baseKv = fields[2] ? Number(fields[2].value) : NaN;
+    const ide = fields[3] ? Number(fields[3].value) : NaN;
+    const looksLikeBus =
+      fields.length >= 4 &&
+      Number.isInteger(busNum) &&
+      busNum > 0 &&
+      Number.isFinite(baseKv) &&
+      baseKv >= 0 &&
+      (ide === 1 || ide === 2 || ide === 3 || ide === 4);
+    if (looksLikeBus) break;
+    idx++;
+  }
+
+  let section = 0;
+  const resolveSec = (commentLine: string, cur: number): number => {
+    const upper = commentLine.toUpperCase();
+    if (upper.includes("BEGIN BUS")) return 0;
+    if (upper.includes("BEGIN LOAD")) return 1;
+    if (upper.includes("BEGIN FIXED SHUNT")) return 2;
+    if (upper.includes("BEGIN GENERATOR")) return 3;
+    if (upper.includes("BEGIN BRANCH") || upper.includes("BEGIN NON-TRANSFORMER")) return 4;
+    if (upper.includes("BEGIN TRANSFORMER")) return 5;
+    if (upper.includes("BEGIN AREA")) return 6;
+    if (upper.includes("BEGIN TWO-TERMINAL DC")) return 7;
+    if (upper.includes("BEGIN VSC DC")) return 8;
+    if (upper.includes("BEGIN SWITCHED SHUNT")) return 9;
+    if (upper.includes("BEGIN SUBSTATION")) return 18;
+    return cur + 1;
+  };
+
+  const requiredNumericCols: Record<number, number[]> = {
+    0: [0, 2, 3, 7, 8],
+    1: [0, 2, 5, 6],
+    2: [0, 2, 3, 4],
+    3: [0, 2, 3, 6],
+    4: [0, 1, 3, 4],
+  };
+
+  while (idx < lines.length) {
+    const info = lines[idx++]!;
+    if (info.isCommentOrBlank) continue;
+    const fields = extractFieldsFromCstTokens(info.tokens, content, "delimited");
+    const rawVals = fields.map((f) => f.value);
+    if (isPsseSectionTerminator(fields)) {
+      if (rawVals[0]?.trim().toUpperCase() === "Q") break;
+      section = resolveSec(info.commentText || info.line, section);
+      continue;
+    }
+    const cols = requiredNumericCols[section];
+    if (!cols) continue;
+
+    if (fields.length === 0 || !NUMERIC_RE.test(fields[0]!.value.trim())) {
+      const f0 = fields[0];
+      syntaxDiags.push({
+        range: f0
+          ? {
+              start: { line: f0.line0, character: f0.startCol0 },
+              end: { line: f0.line0, character: Math.max(f0.startCol0 + 1, f0.endCol0) },
+            }
+          : {
+              start: { line: info.row, character: 0 },
+              end: { line: info.row, character: Math.max(1, info.line.length) },
+            },
+        severity: 1,
+        code: "P1001",
+        source: "modelscript-psse",
+        message: `Syntax error in PSS/E record: expected numeric bus identifier, got '${f0?.value ?? info.line.trim()}'.`,
+      });
+      continue;
+    }
+
+    for (const colIdx of cols) {
+      const field = fields[colIdx];
+      if (!field) continue;
+      const val = field.value.trim();
+      if (val !== "" && !NUMERIC_RE.test(val)) {
+        syntaxDiags.push({
+          range: {
+            start: { line: field.line0, character: field.startCol0 },
+            end: { line: field.line0, character: Math.max(field.startCol0 + 1, field.endCol0) },
+          },
+          severity: 1,
+          code: "P1001",
+          source: "modelscript-psse",
+          message: `Syntax error in PSS/E record: expected numeric value at column ${colIdx + 1}, got '${val}'.`,
+        });
+      }
+    }
+  }
+
+  return syntaxDiags;
+}
+
 /**
  * Validates a PSS/E RAW power flow deck or DYR dynamic data file and returns diagnostics.
  */
-export function validatePsse(content: string, uri: string = "model.raw"): LspDiagnostic[] {
-  const cstDoc = parsePsseCstDocument(content);
+export function validatePsse(content: string, uri: string = "model.raw", precomputedTree?: unknown): LspDiagnostic[] {
+  const cstDoc = parsePsseCstDocument(content, precomputedTree as { rootNode?: unknown } | null | undefined);
   try {
     if (uri.toLowerCase().endsWith(".seq")) {
       const seq = parseSeq(content);
@@ -332,25 +488,29 @@ export function validatePsse(content: string, uri: string = "model.raw"): LspDia
       return diags;
     }
 
-    const psseCase = parseRaw(content);
+    const psseCase = parseRaw(content, cstDoc);
+    const syntaxDiags = collectRawSyntaxErrors(content, cstDoc, precomputedTree);
     const diags = lintPsse(psseCase);
 
-    return diags.map((d) => {
-      const lineNum = Math.max(0, (d.line ?? 1) - 1);
-      const colNum = Math.max(0, (d.column ?? 1) - 1);
-      const lineLen = cstLineLength(cstDoc, lineNum);
+    return [
+      ...syntaxDiags,
+      ...diags.map((d) => {
+        const lineNum = Math.max(0, (d.line ?? 1) - 1);
+        const colNum = Math.max(0, (d.column ?? 1) - 1);
+        const lineLen = cstLineLength(cstDoc, lineNum);
 
-      return {
-        range: {
-          start: { line: lineNum, character: colNum },
-          end: { line: lineNum, character: Math.max(colNum + 1, lineLen) },
-        },
-        severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
-        code: d.code,
-        source: "modelscript-psse",
-        message: d.message,
-      };
-    });
+        return {
+          range: {
+            start: { line: lineNum, character: colNum },
+            end: { line: lineNum, character: Math.max(colNum + 1, lineLen) },
+          },
+          severity: (d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3) as 1 | 2 | 3,
+          code: d.code,
+          source: "modelscript-psse",
+          message: d.message,
+        };
+      }),
+    ];
   } catch (err: unknown) {
     return [
       {
@@ -2016,6 +2176,29 @@ export function applyPsseDiagramWriteback(
     return Number.isFinite(parsed) ? parsed : fallback;
   };
 
+  const posOnly = "x" in changes && "y" in changes && Object.keys(changes).every((k) => k === "x" || k === "y");
+  const posX = "x" in changes ? Math.round(num(changes["x"], 0)) : undefined;
+  const posY = "y" in changes ? Math.round(num(changes["y"], 0)) : undefined;
+
+  const upsertPosComment = (lineText: string, x: number, y: number): string => {
+    const tag = `@pos(${x}, ${y})`;
+    if (/@pos\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/i.test(lineText)) {
+      return lineText.replace(/@pos\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/i, tag);
+    }
+    // Check if the line already has a `/` trailing comment outside quotes
+    let inSingle = false;
+    let inDouble = false;
+    for (let i = 0; i < lineText.length; i++) {
+      const ch = lineText[i];
+      if (ch === "'" && !inDouble) inSingle = !inSingle;
+      else if (ch === '"' && !inSingle) inDouble = !inDouble;
+      else if (ch === "/" && !inSingle && !inDouble) {
+        return `${lineText.trimEnd()} ${tag}`;
+      }
+    }
+    return `${lineText.trimEnd()} / ${tag}`;
+  };
+
   let targetSpan: SourceSpan | undefined;
   let formattedLine: string | undefined;
 
@@ -2152,7 +2335,22 @@ export function applyPsseDiagramWriteback(
     targetSpan.endOffset !== undefined &&
     formattedLine !== undefined
   ) {
-    return sourceText.slice(0, targetSpan.startOffset) + formattedLine + sourceText.slice(targetSpan.endOffset);
+    const origLine = sourceText.slice(targetSpan.startOffset, targetSpan.endOffset);
+    let nextLine: string;
+    if (posOnly && posX !== undefined && posY !== undefined) {
+      nextLine = upsertPosComment(origLine, posX, posY);
+    } else {
+      nextLine = formattedLine;
+      if (posX !== undefined && posY !== undefined) {
+        nextLine = upsertPosComment(nextLine, posX, posY);
+      } else {
+        const existingPos = /@pos\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)/i.exec(origLine);
+        if (existingPos) {
+          nextLine = upsertPosComment(nextLine, Math.round(Number(existingPos[1])), Math.round(Number(existingPos[2])));
+        }
+      }
+    }
+    return sourceText.slice(0, targetSpan.startOffset) + nextLine + sourceText.slice(targetSpan.endOffset);
   }
 
   return writeRaw(psseCase);

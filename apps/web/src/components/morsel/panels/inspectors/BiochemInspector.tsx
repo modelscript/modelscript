@@ -4,10 +4,13 @@
 import React, { useMemo, useState } from "react";
 import { InspectorTabs } from "./InspectorTabs.js";
 
+const CsvViewer = React.lazy(() => import("../../../artifacts/CsvViewer.js").then((m) => ({ default: m.CsvViewer })));
+
 export interface BiochemInspectorProps {
   code: string;
   lines: string[];
   colorMode: "dark" | "light";
+  dialect?: string | undefined;
   onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
 }
 
@@ -277,9 +280,16 @@ export function analyzeBiochemStoichiometry(code: string, lines: string[]): Bioc
   };
 }
 
-export const BiochemInspector: React.FC<BiochemInspectorProps> = ({ code, lines, colorMode, onRevealLine }) => {
+export const BiochemInspector: React.FC<BiochemInspectorProps> = ({
+  code,
+  lines,
+  colorMode,
+  dialect,
+  onRevealLine,
+}) => {
   const isDark = colorMode === "dark";
-  const [subView, setSubView] = useState<"stoich" | "pathway" | "moieties">("stoich");
+  const isSmiles = dialect === "smiles";
+  const [subView, setSubView] = useState<"stoich" | "pathway" | "moieties" | "table">(isSmiles ? "table" : "stoich");
 
   const borderCol = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)";
   const cardBg = isDark ? "rgba(30, 30, 34, 0.75)" : "rgba(255, 255, 255, 0.9)";
@@ -298,11 +308,25 @@ export const BiochemInspector: React.FC<BiochemInspectorProps> = ({ code, lines,
         value={subView}
         onChange={(id) => setSubView(id as typeof subView)}
         tabs={[
+          ...(isSmiles || smilesFormula ? [{ id: "table", label: "📊 Compound Table" }] : []),
           { id: "stoich", label: `🧬 Stoichiometric Matrix S (${species.length}×${reactions.length})` },
           { id: "pathway", label: `🕸️ Reaction Flux Graph (${reactions.length})` },
           { id: "moieties", label: `⚖️ Conserved Moieties (${conservedMoieties.length})` },
         ]}
       />
+
+      {subView === "table" && (isSmiles || smilesFormula) && (
+        <div style={{ height: 460, borderRadius: 8, overflow: "hidden", border: `1px solid ${borderCol}` }}>
+          <React.Suspense fallback={null}>
+            <CsvViewer
+              viewConfig={{ code, format: "smiles", initialMode: "table", title: "compounds.smi" }}
+              dialect="smiles"
+              isFullScreen
+              onRevealLine={onRevealLine}
+            />
+          </React.Suspense>
+        </div>
+      )}
 
       {smilesFormula && (
         <div style={{ padding: 12, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>

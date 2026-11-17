@@ -2293,7 +2293,7 @@ export class ValidationService {
       return;
     }
 
-    const isPscad = textDocument.languageId === "pscad" || /\.(pscx|psl)$/i.test(uri);
+    const isPscad = textDocument.languageId === "pscad" || /\.(pscx|pslx|pswx|psmx)$/i.test(uri);
     if (isPscad) {
       await this.validatePscadDocument(textDocument, plugin);
       return;
@@ -4063,7 +4063,10 @@ export class ValidationService {
           scadDiagnostics.push(...syntaxDiags);
 
           if (syntaxDiags.length === 0) {
-            const semanticDiags = lintScadCst(tree.rootNode, text);
+            const semanticDiags = lintScadCst(tree.rootNode, text, {
+              uri: textDocument.uri,
+              workspace: this.workspaceManager.unifiedWorkspace,
+            });
             for (const d of semanticDiags) {
               scadDiagnostics.push({
                 severity:
@@ -4289,7 +4292,34 @@ export class ValidationService {
       }
       registerPscadSource(textDocument.uri, text);
       const wasmTree = this.parseIncrementalWasmTree(textDocument.uri, "pscad", text, plugin);
+      const syntaxLines = new Set<number>();
+      if (wasmTree?.rootNode) {
+        const { syntaxDiags } = this.collectSyntaxErrors(wasmTree.rootNode, textDocument, plugin);
+        for (const d of syntaxDiags) {
+          syntaxLines.add(d.range.start.line);
+          pscadDiagnostics.push({ ...d, source: "pscad" });
+        }
+      }
       const project = parsePscx(text, { cstTree: wasmTree });
+      const xmlErrors =
+        project.xmlErrors && project.xmlErrors.length > 0 ? project.xmlErrors : parseXmlSync(text).errors;
+      if (xmlErrors.length > 0) {
+        for (const err of xmlErrors) {
+          const start = textDocument.positionAt(err.start);
+          const end = textDocument.positionAt(Math.max(err.start + 1, err.end));
+          if (syntaxLines.has(start.line) && err.code !== "XML-1002" && err.code !== "XML-1003") {
+            continue;
+          }
+          syntaxLines.add(start.line);
+          pscadDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: { start, end },
+            code: err.code ?? "XML-PARSE-ERROR",
+            message: err.message || "XML syntax error",
+            source: "pscad",
+          });
+        }
+      }
       const lints = lintPscx(project);
 
       for (const lint of lints) {
@@ -4340,15 +4370,31 @@ export class ValidationService {
       }
     } catch (err: any) {
       this.connection.console.error(`[pscad] Error validating PSCAD document ${textDocument.uri}: ${err.message}`);
-      pscadDiagnostics.push({
-        severity: DiagnosticSeverity.Error,
-        range: {
-          start: { line: 0, character: 0 },
-          end: { line: 0, character: 1 },
-        },
-        message: `PSCAD Parse Error: ${err.message}`,
-        source: "pscad",
-      });
+      const xmlErrors = parseXmlSync(text).errors;
+      if (xmlErrors.length > 0) {
+        for (const xmlErr of xmlErrors) {
+          pscadDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            range: {
+              start: textDocument.positionAt(xmlErr.start),
+              end: textDocument.positionAt(Math.max(xmlErr.start + 1, xmlErr.end)),
+            },
+            code: xmlErr.code ?? "XML-PARSE-ERROR",
+            message: xmlErr.message || "XML syntax error",
+            source: "pscad",
+          });
+        }
+      } else if (pscadDiagnostics.length === 0) {
+        pscadDiagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: {
+            start: { line: 0, character: 0 },
+            end: { line: 0, character: 1 },
+          },
+          message: `PSCAD Parse Error: ${err.message}`,
+          source: "pscad",
+        });
+      }
     }
 
     await this.finalizeCustomDocument(textDocument, "pscad", pscadDiagnostics);
@@ -4636,6 +4682,20 @@ export class ValidationService {
         /\.ssv($|\?|#)/i.test(textDocument.uri) ||
         text.includes("<ssv:ParameterSet");
 
+      const xmlErrors = parseXmlSync(text).errors;
+      for (const err of xmlErrors) {
+        sspDiagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: {
+            start: textDocument.positionAt(err.start),
+            end: textDocument.positionAt(Math.max(err.start + 1, err.end)),
+          },
+          code: err.code ?? "XML-PARSE-ERROR",
+          message: err.message || "XML syntax error",
+          source: isSsv ? "ssv" : "ssp",
+        });
+      }
+
       const data = isSsv ? parseSsv(text) : parseSsd(text);
       const lints = isSsv ? lintSsv(text) : lintSsd(text);
 
@@ -4664,6 +4724,14 @@ export class ValidationService {
       });
     } catch (err: any) {
       this.connection.console.error(`[ssp] Error validating SSP document ${textDocument.uri}: ${err.message}`);
+      if (sspDiagnostics.length === 0) {
+        sspDiagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+          message: `SSP Parse Error: ${err.message}`,
+          source: "ssp",
+        });
+      }
     }
 
     await this.finalizeCustomDocument(textDocument, "ssp", sspDiagnostics);

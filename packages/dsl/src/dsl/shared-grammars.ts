@@ -111,7 +111,7 @@ export function createXmlLanguage(name: string, overrides?: SharedLanguageOverri
     name,
     extras: ($) => [/\s/, $.COMMENT, $.PROCESSING_INSTRUCTION],
     lsp: {
-      folding: ["Element", "COMMENT"],
+      folding: ["Element", { rule: "COMMENT", kind: "comment", defaultCollapsed: true }],
       outline: ["Element"],
     },
     ...overrides,

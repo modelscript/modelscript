@@ -108,6 +108,11 @@
     <meta name="twitter:image" content="https://ansatz.social/ansatz-social-card.png" />
     <meta name="twitter:image:alt" content="Ansatz | The Federated Scientific &amp; Engineering Network" />
     <title>Ansatz</title>
+    <script>
+      if (/^\/(morsel|playground|sketch)(\/|$)/.test(window.location.pathname)) {
+        document.title = "Morsel";
+      }
+    </script>
   </head>
 
   <body>

@@ -324,6 +324,13 @@ export const STEP_SCHEMA: Record<
       { name: "edge_list", type: "ORIENTED_EDGE[]" },
     ],
   },
+  POLY_LOOP: {
+    description: "A loop defined by a closed polygon of Cartesian points.",
+    parameters: [
+      { name: "name", type: "string" },
+      { name: "polygon", type: "CARTESIAN_POINT[]" },
+    ],
+  },
   FACE_BOUND: {
     description: "A boundary of a face, defined by a loop and an orientation.",
     parameters: [

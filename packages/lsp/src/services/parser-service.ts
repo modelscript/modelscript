@@ -1015,6 +1015,12 @@ export class ParserService {
           }
 
           this.connection.console.info(`ModelScript ${entry.displayName || entry.id} parser initialized`);
+          const connWithReq = this.connection as unknown as {
+            sendRequest?: (method: string) => Promise<unknown>;
+          };
+          if (typeof connWithReq?.sendRequest === "function") {
+            void connWithReq.sendRequest("workspace/semanticTokens/refresh").catch(() => {});
+          }
         }
       } catch (e) {
         this.failedParserLoads.add(entry.id);

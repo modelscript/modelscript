@@ -33,6 +33,7 @@ import { registerRepl } from "./repl-terminal.js";
 import { RequirementsEditorProvider } from "./requirements-editor-provider.js";
 import { registerScmIntegration } from "./scm-integration.js";
 import { registerSemanticDiffComments } from "./semantic-diff-comments.js";
+import { registerAutoFoldService } from "./services/auto-fold-service.js";
 import { DebugAdapterService } from "./services/debug-adapter-service.js";
 import { HostBridgeService } from "./services/host-bridge-service.js";
 import { LspClientManager } from "./services/lsp-client-manager.js";
@@ -273,6 +274,7 @@ export async function activate(context: vscode.ExtensionContext) {
           isScmRegistered = true;
           registerScmIntegration(context, lspManager.client);
           registerSemanticDiffComments(context, lspManager.client);
+          registerAutoFoldService(context, lspManager.client);
         }
 
         setTimeout(() => markdownService.refreshMarkdownData(), 3000);

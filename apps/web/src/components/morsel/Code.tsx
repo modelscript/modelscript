@@ -284,7 +284,9 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
         onExecuteCommand: async (commandId) => {
           if (
             commandId === "modelscript.action.simulate" ||
-            /^modelscript\.[^.]+\.simulate(?:_.*)?$/i.test(commandId)
+            /^modelscript\.[^.]+\.simulate(?:_.*)?$/i.test(commandId) ||
+            commandId === "modelscript.ampl.ampl_solve" ||
+            commandId === "modelscript.action.ampl_solve"
           ) {
             await onSimulateRef.current?.();
             return true;

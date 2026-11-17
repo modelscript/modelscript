@@ -18,10 +18,13 @@ import {
 import React, { useMemo, useRef, useState } from "react";
 import { InspectorTabs } from "./InspectorTabs.js";
 
+const CsvViewer = React.lazy(() => import("../../../artifacts/CsvViewer.js").then((m) => ({ default: m.CsvViewer })));
+
 export interface PowerGridInspectorProps {
   code: string;
   lines: string[];
   colorMode: "dark" | "light";
+  dialect?: string | undefined;
   onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
 }
 
@@ -569,9 +572,16 @@ export function MY_USRMDL_step(t: f64, dt: f64, conPtr: usize, statePtr: usize, 
 }
 `;
 
-export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({ code, lines, colorMode, onRevealLine }) => {
+export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
+  code,
+  lines,
+  colorMode,
+  dialect,
+  onRevealLine,
+}) => {
   const isDark = colorMode === "dark";
-  const [subView, setSubView] = useState<"ybus" | "thermal" | "eigen">("ybus");
+  const isTouchstone = dialect === "touchstone" || lines.some((l) => /^#\s*\w+\s+[SYZGH]\s+/i.test(l.trim()));
+  const [subView, setSubView] = useState<"ybus" | "thermal" | "eigen" | "table">(isTouchstone ? "table" : "ybus");
   const [dyrText, setDyrText] = useState<string | null>(null);
   const [dyrName, setDyrName] = useState<string | null>(null);
   const [seqText, setSeqText] = useState<string | null>(null);
@@ -1111,11 +1121,25 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({ code, li
         value={subView}
         onChange={(id) => setSubView(id as typeof subView)}
         tabs={[
+          ...(isTouchstone ? [{ id: "table", label: "📊 S-Parameter Grid" }] : []),
           { id: "ybus", label: `🕸️ Nodal Admittance Y-Bus (${buses.length}×${buses.length})` },
           { id: "thermal", label: `🔥 Branch Impedance & Loading (${branches.length})` },
           { id: "eigen", label: `📈 Oscillatory Modes (${eigenmodes.length})` },
         ]}
       />
+
+      {subView === "table" && isTouchstone && (
+        <div style={{ height: 460, borderRadius: 8, overflow: "hidden", border: `1px solid ${borderCol}` }}>
+          <React.Suspense fallback={null}>
+            <CsvViewer
+              viewConfig={{ code, format: "touchstone", initialMode: "table", title: "s_parameters.s2p" }}
+              dialect="touchstone"
+              isFullScreen
+              onRevealLine={onRevealLine}
+            />
+          </React.Suspense>
+        </div>
+      )}
 
       {subView === "ybus" && (
         <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>

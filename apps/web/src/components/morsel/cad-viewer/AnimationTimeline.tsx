@@ -22,6 +22,7 @@ export interface BreachMarker {
 interface AnimationTimelineProps {
   controller: AnimationController;
   breachMarkers?: BreachMarker[] | undefined;
+  fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
 }
 
 const SPEED_OPTIONS = [
@@ -43,7 +44,7 @@ function formatTime(t: number): string {
   return `${min}m ${sec}s`;
 }
 
-export function AnimationTimeline({ controller }: AnimationTimelineProps) {
+export function AnimationTimeline({ controller, fitInsets }: AnimationTimelineProps) {
   const [state, setState] = useState<AnimationState>(controller.state);
   const animFrameRef = useRef<number>(0);
   const sliderRef = useRef<HTMLInputElement>(null);
@@ -164,8 +165,8 @@ export function AnimationTimeline({ controller }: AnimationTimelineProps) {
       className="animation-timeline"
       style={{
         position: "absolute",
-        bottom: 72,
-        left: "50%",
+        bottom: fitInsets ? Math.max(72, fitInsets.bottom + 16) : 72,
+        left: fitInsets ? `calc(50% + ${(fitInsets.left - fitInsets.right) / 2}px)` : "50%",
         transform: "translateX(-50%)",
         display: "flex",
         flexWrap: "wrap",
@@ -179,8 +180,10 @@ export function AnimationTimeline({ controller }: AnimationTimelineProps) {
         border: "1px solid var(--color-border-default, rgba(255,255,255,0.1))",
         boxShadow: "0 4px 24px rgba(0,0,0,0.3)",
         zIndex: 100,
-        minWidth: "min(420px, calc(100% - 24px))",
-        maxWidth: "calc(100% - 24px)",
+        minWidth: fitInsets
+          ? `min(420px, calc(100% - ${fitInsets.left + fitInsets.right + 24}px))`
+          : "min(420px, calc(100% - 24px))",
+        maxWidth: fitInsets ? `calc(100% - ${fitInsets.left + fitInsets.right + 24}px)` : "calc(100% - 24px)",
         userSelect: "none",
         color: "var(--color-fg-default, #e6edf3)",
         fontSize: 13,
