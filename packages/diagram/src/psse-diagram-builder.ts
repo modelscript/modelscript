@@ -183,6 +183,9 @@ export interface PsseCaseLike {
   switchedShunts?: PsseSwitchedShuntLike[] | undefined;
   twoTerminalDc?: PsseTwoTerminalDcLike[] | undefined;
   vscDc?: PsseVscDcLike[] | undefined;
+  substations?:
+    | Array<{ lati?: number | undefined; long?: number | undefined; nodes?: Array<{ ibus: number }> | undefined }>
+    | undefined;
   powerflow?: PssePowerFlowOverlay | undefined;
 }
 
@@ -397,6 +400,12 @@ export interface PsseViewportOptions {
   zoom?: number | undefined;
   /** Maximum number of buses to emit in full SVG/X6 mode before enabling LOD simplification. Default: 500. */
   lodBusThreshold?: number | undefined;
+  /** Optional focus bus number for k-hop neighborhood filtering on large grids. */
+  focusBus?: number | undefined;
+  /** Number of topological hops from `focusBus` to include (default: 2). */
+  kHops?: number | undefined;
+  /** Layout mode: `"auto"` (voltage-tier Sugiyama) or `"geographic"` (substation lat/lon projection). */
+  layoutMode?: "auto" | "geographic" | undefined;
 }
 
 export interface PsseCanvasBusNode {
@@ -520,6 +529,26 @@ export function buildPsseDiagram(
     }
   }
 
+  let activeBusList = busList;
+  if (options?.focusBus !== undefined && busMap.has(options.focusBus)) {
+    const maxHops = Math.max(0, options.kHops ?? 2);
+    const visited = new Set<number>([options.focusBus]);
+    let frontier: number[] = [options.focusBus];
+    for (let h = 0; h < maxHops && frontier.length > 0; h++) {
+      const nextFrontier: number[] = [];
+      for (const u of frontier) {
+        for (const v of neighbors.get(u) ?? []) {
+          if (!visited.has(v)) {
+            visited.add(v);
+            nextFrontier.push(v);
+          }
+        }
+      }
+      frontier = nextFrontier;
+    }
+    activeBusList = busList.filter((b) => visited.has(b.i));
+  }
+
   // Count in-service generators per bus so solved bus generation can be apportioned
   const inServiceGensByBus = new Map<number, PsseGeneratorLike[]>();
   if (c.generators) {
@@ -553,7 +582,7 @@ export function buildPsseDiagram(
   const tier4: PsseBusLike[] = []; // 50 - 99 kV (e.g. 69 kV)
   const tier5: PsseBusLike[] = []; // < 50 kV
 
-  for (const b of busList) {
+  for (const b of activeBusList) {
     if (b.baseKv >= 345) tier1.push(b);
     else if (b.baseKv >= 161) tier2.push(b);
     else if (b.baseKv >= 100) tier3.push(b);
@@ -562,7 +591,8 @@ export function buildPsseDiagram(
   }
 
   const rawTiers = [tier1, tier2, tier3, tier4, tier5].filter((t) => t.length > 0);
-  const maxCols = busList.length <= 16 ? 4 : Math.min(32, Math.max(6, Math.ceil(Math.sqrt(busList.length * 2.2))));
+  const maxCols =
+    activeBusList.length <= 16 ? 4 : Math.min(32, Math.max(6, Math.ceil(Math.sqrt(activeBusList.length * 2.2))));
   const rows: PsseBusLike[][] = [];
   for (const tier of rawTiers) {
     if (tier.length <= maxCols) {
@@ -594,6 +624,39 @@ export function buildPsseDiagram(
       // Slight vertical stagger on middle buses in a wide row so horizontal tie-lines don't overlap busbars
       const staggerY = rowBuses.length >= 3 && bIdx % 2 === 1 ? 30 : 0;
       busCoords.set(b.i, { x, y: yBase + staggerY });
+    }
+  }
+
+  if (options?.layoutMode === "geographic" && c.substations && c.substations.length > 0) {
+    const busGeo = new Map<number, { lat: number; lon: number }>();
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    let minLon = Infinity;
+    let maxLon = -Infinity;
+    for (const sub of c.substations) {
+      if (typeof sub.lati !== "number" || typeof sub.long !== "number" || (!sub.lati && !sub.long)) continue;
+      for (const nd of sub.nodes ?? []) {
+        if (nd.ibus > 0) {
+          busGeo.set(nd.ibus, { lat: sub.lati, lon: sub.long });
+          if (sub.lati < minLat) minLat = sub.lati;
+          if (sub.lati > maxLat) maxLat = sub.lati;
+          if (sub.long < minLon) minLon = sub.long;
+          if (sub.long > maxLon) maxLon = sub.long;
+        }
+      }
+    }
+    if (busGeo.size > 0 && Number.isFinite(minLat) && Number.isFinite(minLon)) {
+      const spanLat = Math.max(0.01, maxLat - minLat);
+      const spanLon = Math.max(0.01, maxLon - minLon);
+      const scaleW = Math.max(800, activeBusList.length * 140);
+      const scaleH = Math.max(500, activeBusList.length * 100);
+      for (const [busNum, geo] of busGeo) {
+        const bRec = busMap.get(busNum);
+        if (bRec?.position) continue;
+        const x = Math.round(160 + ((geo.lon - minLon) / spanLon) * scaleW);
+        const y = Math.round(140 + ((maxLat - geo.lat) / spanLat) * scaleH);
+        busCoords.set(busNum, { x, y });
+      }
     }
   }
 
@@ -1580,7 +1643,7 @@ export function renderPsseSvg(
         const angleDeg = (Math.atan2(uy * dirSign, ux * dirSign) * 180) / Math.PI;
 
         svg += `    <g id="${cell.id}" class="sld-edge branch-line">\n`;
-        svg += `      <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${stroke}" stroke-width="${strokeWidth}" ${strokeDash} />\n`;
+        svg += `      <line data-edge="${cell.id}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${stroke}" stroke-width="${strokeWidth}" ${strokeDash} />\n`;
         // Directional flow chevron
         if (len > 110) {
           svg += `      <polygon points="-5,-3.5 5,0 -5,3.5" fill="${stroke}" transform="translate(${arrowX.toFixed(1)},${arrowY.toFixed(1)}) rotate(${angleDeg.toFixed(1)})" opacity="0.9" />\n`;

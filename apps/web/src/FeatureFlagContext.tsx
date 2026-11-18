@@ -162,6 +162,7 @@ export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   mcp_gateway_sse: false,
   composer_ai_polish: false,
   ai_polish: false,
+  morsel_ai: false,
   feeds_page: false,
   rss_feeds: false,
   spaces_hub: false,

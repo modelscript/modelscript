@@ -1431,7 +1431,10 @@ export class ValidationService {
                 wasmLintDiags.push(d);
               }
             }
-            return { syntaxDiags, wasmLintDiags };
+            const rootHasError = typeof rootNode.hasError === "function" ? rootNode.hasError() : rootNode.hasError;
+            if (syntaxDiags.length > 0 || !rootHasError) {
+              return { syntaxDiags, wasmLintDiags };
+            }
           }
         }
       } catch (e) {
@@ -6933,6 +6936,9 @@ export class ValidationService {
           const definite = issue.severity === "definite";
           const code: string = issue.kind;
           const standardClause = (issue as any).standardClause as string | undefined;
+          if (!definite && !standardClause && !this.diagnosticsConfig.formalVerificationOnSave) {
+            continue;
+          }
           const margin = (issue as any).margin as number | undefined;
           diagnostics.push({
             severity: definite ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,

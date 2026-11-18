@@ -8,7 +8,7 @@
  * Modelica linter suites.
  */
 
-import type { CodeGraph, u16, u32, u8 } from "@modelscript/dsl";
+import type { CodeGraph, u16, u32, u64, u8 } from "@modelscript/dsl";
 import type { SIUnit } from "../units.js";
 import { createDimensionless, parseUnit, unitDivide, unitMultiply, unitPower } from "../units.js";
 
@@ -113,6 +113,98 @@ export function hasAnyInnerClass(db: CodeGraph, classNode: u32, $: any): boolean
   }
   db.ast.setCachedHasInnerClass(classNode, false);
   return false;
+}
+
+/**
+ * Returns true if literal `lit` contributes its own type to the value of the expression rooted at
+ * `stopNode` (exclusive). Returns false when, on the path from `lit` up to `stopNode`, the literal is:
+ *
+ * - the condition of an `if`/`elseif` expression branch,
+ * - an operand of a relational (`<`, `==`, …) or logical (`and`, `or`, `not`) operator,
+ * - an argument of a function call, `der(...)`, `pure(...)` or `initial()` primary,
+ * - inside array subscripts.
+ *
+ * Used by binding type checks so that e.g. `Real x = if s == "a" then 1 else 2` or
+ * `Integer i = if r > 0.5 then 1 else 0` are not reported as String/Real bindings.
+ */
+export function isLiteralInValuePosition(db: CodeGraph, lit: u32, stopNode: u32, $: any): boolean {
+  let prev = lit;
+  for (const anc of db.ast.getAncestors(lit)) {
+    if (anc == stopNode) break;
+    const t = db.ast.getType(anc);
+    if ($.array_subscripts != 0 && t == $.array_subscripts) return false;
+    if ($.function_call_args != 0 && t == $.function_call_args) return false;
+    if ($.primary != 0 && t == $.primary) {
+      if (db.ast.getChildByFieldId(anc, "callee") != 0) return false;
+      const first = db.ast.getFirstChild(anc);
+      if (
+        first != 0 &&
+        (db.ast.textEquals(first, "der") || db.ast.textEquals(first, "pure") || db.ast.textEquals(first, "initial"))
+      ) {
+        return false;
+      }
+    }
+    // Inspect direct children for operator tokens and the if/elseif condition slot. Operator tokens
+    // selected via `choice(...)` are wrapped in a hidden node in the WASM CST, so match by text
+    // (no real operand expression has text equal to an operator keyword/symbol).
+    let before: u32 = 0;
+    let ch = db.ast.getFirstChild(anc);
+    while (ch != 0) {
+      if (
+        db.ast.textEquals(ch, "==") ||
+        db.ast.textEquals(ch, "<>") ||
+        db.ast.textEquals(ch, "<") ||
+        db.ast.textEquals(ch, "<=") ||
+        db.ast.textEquals(ch, ">") ||
+        db.ast.textEquals(ch, ">=") ||
+        db.ast.textEquals(ch, "and") ||
+        db.ast.textEquals(ch, "or") ||
+        db.ast.textEquals(ch, "not")
+      ) {
+        return false;
+      }
+      if (ch == prev && before != 0 && (db.ast.textEquals(before, "if") || db.ast.textEquals(before, "elseif"))) {
+        return false;
+      }
+      before = ch;
+      ch = db.ast.getNextSibling(ch);
+    }
+    prev = anc;
+  }
+  return true;
+}
+
+/**
+ * Returns true if literal `lit` under component declaration `declNode` determines the type of the
+ * declaration's binding/modification value: it must be in value position
+ * ({@link isLiteralInValuePosition}), outside descriptions and annotations, and — for string
+ * literals — not the value of a string-typed attribute (`unit`, `displayUnit`, `quantity`).
+ */
+export function isBindingValueLiteral(db: CodeGraph, lit: u32, declNode: u32, isString: boolean, $: any): boolean {
+  for (const anc of db.ast.getAncestors(lit)) {
+    if (anc == declNode) break;
+    const t = db.ast.getType(anc);
+    if (
+      ($.description != 0 && t == $.description) ||
+      ($.description_string != 0 && t == $.description_string) ||
+      ($.annotation_clause != 0 && t == $.annotation_clause)
+    ) {
+      return false;
+    }
+    if (isString && t == $.element_modification) {
+      for (const id of db.ast.getDescendants(anc, $.identifier)) {
+        if (
+          db.ast.textEquals(id, "unit") ||
+          db.ast.textEquals(id, "displayUnit") ||
+          db.ast.textEquals(id, "quantity")
+        ) {
+          return false;
+        }
+        break;
+      }
+    }
+  }
+  return isLiteralInValuePosition(db, lit, declNode, $);
 }
 
 /**
@@ -331,6 +423,9 @@ function findTargetElementInClassRecursive(db: CodeGraph, targetClass: u32, rede
 
     let declId: u32 = 0;
     for (const decl of db.ast.getDescendants(el, $.declaration)) {
+      // Declarations inside a nested class definition (e.g. `model Inner Real x; end Inner;`)
+      // belong to that class, not to `targetClass`.
+      if (isDescendantOfInnerClass(db, decl, targetClass, $)) continue;
       for (const id of db.ast.getDescendants(decl, $.identifier)) {
         declId = id;
         break;
@@ -1243,73 +1338,88 @@ export function isTypeCompatible(actualType: u16, expectedType: u16, allowIntEnu
 }
 
 /**
- * Returns true if the old OpenModelica frontend flag `-d=-newInst` is present in the source.
+ * Returns true if `str` is a string literal carrying OpenModelica command-line options that
+ * disable the new frontend (e.g. `annotation(__OpenModelica_commandLineOptions="-d=-newInst")`).
+ * OMC honours this vendor annotation, so lints mirror old-frontend diagnostics when it is present.
  */
-export function isOldFrontendActive(db: CodeGraph, $: any): boolean {
+export function isOldFrontendFlagString(db: CodeGraph, str: u32): boolean {
+  return (
+    db.ast.textEquals(str, '"-d=-newInst"') ||
+    db.ast.startsWith(str, '"-d=-newInst') ||
+    db.ast.startsWith(str, '"-d=nogen -d=-newInst') ||
+    db.ast.startsWith(str, '"+d=nogen -d=-newInst') ||
+    db.ast.startsWith(str, '"-d=gen -d=-newInst') ||
+    db.ast.startsWith(str, '"+d=-gen -d=-newInst') ||
+    db.ast.startsWith(str, '"-d=noevalfunc,gen -d=-newInst') ||
+    db.ast.startsWith(str, '"+intEnumConversion -d=-newInst') ||
+    db.ast.startsWith(str, '"--ignoreReplaceable -d=-newInst') ||
+    db.ast.startsWith(str, '"+std=2.x -d=-newInst') ||
+    db.ast.startsWith(str, '"--std=2.x -d=-newInst') ||
+    db.ast.startsWith(str, '"+std=1.x -d=-newInst') ||
+    db.ast.startsWith(str, '"+a -d=-newInst') ||
+    db.ast.startsWith(str, '"+t -d=-newInst') ||
+    db.ast.startsWith(str, '"+showAnnotations -d=-newInst') ||
+    db.ast.startsWith(str, '"+orderConnections=false -d=-newInst') ||
+    db.ast.startsWith(str, '"+scalarizeMinMax -d=-newInst') ||
+    db.ast.startsWith(str, '"+scalarizeBindings -d=-newInst') ||
+    db.ast.startsWith(str, '"-i=Ex -d=-newInst') ||
+    db.ast.startsWith(str, '"--flowThreshold=2 -d=-newInst') ||
+    db.ast.startsWith(str, '"--condenseArrays=false -d=-newInst')
+  );
+}
+
+/** Tool flag bit: OMC old frontend (`-d=-newInst`). */
+export const TOOL_FLAG_OLD_FRONTEND: u32 = 1;
+/** Tool flag bit: `--ignoreReplaceable`. */
+export const TOOL_FLAG_IGNORE_REPLACEABLE: u32 = 2;
+/** Tool flag bit: `+intEnumConversion`. */
+export const TOOL_FLAG_INT_ENUM_CONVERSION: u32 = 4;
+/** Per-lint-run memo discriminator for {@link getToolFlags}. */
+export const TOOL_FLAGS_MEMO_KIND: u32 = 0x464c4147;
+
+/**
+ * Returns the bitmask of OpenModelica tool flags declared in the document via
+ * `__OpenModelica_commandLineOptions` / `setCommandLineOptions(...)` string literals.
+ *
+ * The document is scanned once per lint run; subsequent calls hit the per-run memo
+ * (`getCachedByName`), so per-node lints may call this freely.
+ */
+export function getToolFlags(db: CodeGraph, $: any): u32 {
+  const memoSpan: u64 = 0n;
+  const cached = db.ast.getCachedByName(TOOL_FLAGS_MEMO_KIND, memoSpan);
+  if (cached >= 0) return cached as u32;
+  let flags: u32 = 0;
   const docRoot = db.ast.getRootNode();
   if (docRoot != 0 && $.string_literal != 0) {
     for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
-      if (
-        db.ast.textEquals(str, '"-d=-newInst"') ||
-        db.ast.textEquals(str, "-d=-newInst") ||
-        db.ast.textEquals(str, '"-d=nogen -d=-newInst"') ||
-        db.ast.textEquals(str, "-d=nogen -d=-newInst") ||
-        db.ast.startsWith(str, '"-d=-newInst') ||
-        db.ast.startsWith(str, "-d=-newInst") ||
-        db.ast.startsWith(str, '"+d=nogen -d=-newInst') ||
-        db.ast.startsWith(str, "+d=nogen -d=-newInst") ||
-        db.ast.startsWith(str, '"-d=gen -d=-newInst') ||
-        db.ast.startsWith(str, "-d=gen -d=-newInst") ||
-        db.ast.startsWith(str, '"+intEnumConversion -d=-newInst') ||
-        db.ast.startsWith(str, "+intEnumConversion -d=-newInst") ||
-        db.ast.startsWith(str, '"--ignoreReplaceable -d=-newInst') ||
-        db.ast.startsWith(str, "--ignoreReplaceable -d=-newInst")
-      ) {
-        return true;
-      }
+      if (isOldFrontendFlagString(db, str)) flags = flags | TOOL_FLAG_OLD_FRONTEND;
+      if (db.ast.startsWith(str, '"--ignoreReplaceable')) flags = flags | TOOL_FLAG_IGNORE_REPLACEABLE;
+      if (db.ast.startsWith(str, '"+intEnumConversion')) flags = flags | TOOL_FLAG_INT_ENUM_CONVERSION;
     }
   }
-  return false;
+  db.ast.setCachedByName(TOOL_FLAGS_MEMO_KIND, memoSpan, flags);
+  return flags;
+}
+
+/**
+ * Returns true if the old OpenModelica frontend flag `-d=-newInst` is present in the source.
+ */
+export function isOldFrontendActive(db: CodeGraph, $: any): boolean {
+  return (getToolFlags(db, $) & TOOL_FLAG_OLD_FRONTEND) != 0;
 }
 
 /**
  * Returns true if `--ignoreReplaceable` compiler flag is present in the source.
  */
 export function isIgnoreReplaceableActive(db: CodeGraph, $: any): boolean {
-  const docRoot = db.ast.getRootNode();
-  if (docRoot != 0 && $.string_literal != 0) {
-    for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
-      if (
-        db.ast.textEquals(str, '"--ignoreReplaceable"') ||
-        db.ast.textEquals(str, "--ignoreReplaceable") ||
-        db.ast.startsWith(str, '"--ignoreReplaceable') ||
-        db.ast.startsWith(str, "--ignoreReplaceable")
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return (getToolFlags(db, $) & TOOL_FLAG_IGNORE_REPLACEABLE) != 0;
 }
 
 /**
  * Returns true if `+intEnumConversion` compiler flag is present in the source.
  */
 export function isIntEnumConversionActive(db: CodeGraph, $: any): boolean {
-  const docRoot = db.ast.getRootNode();
-  if (docRoot != 0 && $.string_literal != 0) {
-    for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
-      if (
-        db.ast.textEquals(str, '"+intEnumConversion"') ||
-        db.ast.textEquals(str, "+intEnumConversion") ||
-        db.ast.startsWith(str, '"+intEnumConversion') ||
-        db.ast.startsWith(str, "+intEnumConversion")
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
+  return (getToolFlags(db, $) & TOOL_FLAG_INT_ENUM_CONVERSION) != 0;
 }
 
 /**
@@ -1446,65 +1556,97 @@ export function getExpressionVariability(db: CodeGraph, exprNode: u32, $: any): 
 }
 
 /**
- * Fast $O(1)$ check for class kind (e.g. "function", "record", "connector", "model", "block", "package").
- * Inspects immediate class prefix children rather than walking all descendants of the class.
+ * Returns true if `tok` is a leaf keyword token that may appear inside `class_prefixes`
+ * (MLS §A.2.2: `partial`, `class`, `model`, `block`, `type`, `package`, `expandable`, `connector`,
+ * `pure`, `impure`, `function`, `operator`, `record`).
  */
-export function isClassKind(db: CodeGraph, clsNode: u32, kind: string): boolean {
-  if (clsNode == 0) return false;
-  if (db.ast.startsWith(clsNode, kind)) return true;
-  if (kind == "record" && db.ast.startsWith(clsNode, "operator record")) return true;
-  if (kind == "function" && db.ast.startsWith(clsNode, "operator function")) return true;
-  let ch = db.ast.getFirstChild(clsNode);
+export function isClassPrefixKeywordToken(db: CodeGraph, tok: u32): boolean {
+  if (tok == 0 || db.ast.getFirstChild(tok) != 0) return false;
+  return (
+    db.ast.textEquals(tok, "partial") ||
+    db.ast.textEquals(tok, "class") ||
+    db.ast.textEquals(tok, "model") ||
+    db.ast.textEquals(tok, "block") ||
+    db.ast.textEquals(tok, "type") ||
+    db.ast.textEquals(tok, "package") ||
+    db.ast.textEquals(tok, "expandable") ||
+    db.ast.textEquals(tok, "connector") ||
+    db.ast.textEquals(tok, "pure") ||
+    db.ast.textEquals(tok, "impure") ||
+    db.ast.textEquals(tok, "function") ||
+    db.ast.textEquals(tok, "operator") ||
+    db.ast.textEquals(tok, "record")
+  );
+}
+
+/**
+ * Locates the `class_prefixes` node belonging to `clsNode` itself. Accepts a `class_definition`
+ * (via its `class_prefixes` field), a `short_class_definition` or `element` wrapper (direct
+ * children only), or a `class_prefixes` node. Never descends into nested class bodies.
+ *
+ * Note: in the WASM CST, keyword sequences such as `operator record` or `expandable connector`
+ * are wrapped in hidden intermediate nodes, so prefix tokens must be reached via descendants
+ * rather than direct sibling iteration.
+ */
+export function getOwnClassPrefixes(db: CodeGraph, clsNode: u32): u32 {
+  if (clsNode == 0) return 0;
+  const direct = db.ast.getChildByFieldId(clsNode, "class_prefixes");
+  if (direct != 0) return direct;
+  const firstChild = db.ast.getFirstChild(clsNode);
+  if (firstChild == 0) return 0;
+  // Wrapper whose child is a class_definition (e.g. `element`).
+  let ch = firstChild;
   while (ch != 0) {
-    if (
-      db.ast.startsWith(ch, kind) ||
-      db.ast.textEquals(ch, kind) ||
-      (kind == "record" && (db.ast.startsWith(ch, "operator record") || db.ast.textEquals(ch, "operator record"))) ||
-      (kind == "function" && (db.ast.startsWith(ch, "operator function") || db.ast.textEquals(ch, "operator function")))
-    )
-      return true;
-    let sub = db.ast.getFirstChild(ch);
-    while (sub != 0) {
-      if (
-        db.ast.startsWith(sub, kind) ||
-        db.ast.textEquals(sub, kind) ||
-        (kind == "record" &&
-          (db.ast.startsWith(sub, "operator record") || db.ast.textEquals(sub, "operator record"))) ||
-        (kind == "function" &&
-          (db.ast.startsWith(sub, "operator function") || db.ast.textEquals(sub, "operator function")))
-      )
-        return true;
-      let leaf = db.ast.getFirstChild(sub);
-      while (leaf != 0) {
-        if (
-          db.ast.startsWith(leaf, kind) ||
-          db.ast.textEquals(leaf, kind) ||
-          (kind == "record" &&
-            (db.ast.startsWith(leaf, "operator record") || db.ast.textEquals(leaf, "operator record"))) ||
-          (kind == "function" &&
-            (db.ast.startsWith(leaf, "operator function") || db.ast.textEquals(leaf, "operator function")))
-        )
-          return true;
-        let leafSub = db.ast.getFirstChild(leaf);
-        while (leafSub != 0) {
-          if (
-            db.ast.startsWith(leafSub, kind) ||
-            db.ast.textEquals(leafSub, kind) ||
-            (kind == "record" &&
-              (db.ast.startsWith(leafSub, "operator record") || db.ast.textEquals(leafSub, "operator record"))) ||
-            (kind == "function" &&
-              (db.ast.startsWith(leafSub, "operator function") || db.ast.textEquals(leafSub, "operator function")))
-          )
-            return true;
-          leafSub = db.ast.getNextSibling(leafSub);
-        }
-        leaf = db.ast.getNextSibling(leaf);
-      }
-      sub = db.ast.getNextSibling(sub);
-    }
+    const inner = db.ast.getChildByFieldId(ch, "class_prefixes");
+    if (inner != 0) return inner;
     ch = db.ast.getNextSibling(ch);
   }
-  return false;
+  // clsNode is itself a class_prefixes node.
+  if (allLeavesAreClassKeywords(db, clsNode)) return clsNode;
+  // `short_class_definition`: class_prefixes is an unnamed direct child.
+  ch = firstChild;
+  while (ch != 0) {
+    if (db.ast.getFirstChild(ch) != 0 && allLeavesAreClassKeywords(db, ch)) return ch;
+    ch = db.ast.getNextSibling(ch);
+  }
+  return 0;
+}
+
+/**
+ * Returns true if `node` has at least one leaf and every leaf token beneath it is a class-prefix
+ * keyword. Exits on the first non-keyword leaf.
+ */
+export function allLeavesAreClassKeywords(db: CodeGraph, node: u32): boolean {
+  let leafCount: u32 = 0;
+  for (const d of db.ast.getDescendants(node)) {
+    if (db.ast.getFirstChild(d) != 0) continue;
+    if (!isClassPrefixKeywordToken(db, d)) return false;
+    leafCount++;
+  }
+  return leafCount > 0;
+}
+
+/**
+ * Class kind check (e.g. "function", "record", "connector", "model", "block", "package", "partial",
+ * "impure", "expandable", "operator record"). Matches keyword tokens of the class's own
+ * `class_prefixes` exactly, so class names (`model functionGen`) and nested element definitions
+ * never influence the result.
+ */
+export function isClassKind(db: CodeGraph, clsNode: u32, kind: string): boolean {
+  const prefixes = getOwnClassPrefixes(db, clsNode);
+  if (prefixes == 0) return false;
+  const wantsOperatorRecord = kind == "operator record" || kind == "operator_record";
+  let sawOperator = false;
+  let sawRecord = false;
+  for (const tok of db.ast.getDescendants(prefixes)) {
+    if (wantsOperatorRecord) {
+      if (db.ast.textEquals(tok, "operator")) sawOperator = true;
+      if (db.ast.textEquals(tok, "record")) sawRecord = true;
+    } else if (db.ast.textEquals(tok, kind)) {
+      return true;
+    }
+  }
+  return wantsOperatorRecord && sawOperator && sawRecord;
 }
 
 /**
@@ -2077,13 +2219,8 @@ export function findUnresolvedComponentIdent(db: CodeGraph, enclosingClass: u32,
 /**
  * Checks if a class is an expandable connector.
  */
-export function isExpandableConnector(db: CodeGraph, clsNode: u32, $: any): boolean {
+export function isExpandableConnector(db: CodeGraph, clsNode: u32, _$: any): boolean {
   if (clsNode == 0) return false;
-  for (const pfx of db.ast.getDescendants(clsNode, $.class_prefixes)) {
-    if (db.ast.startsWith(pfx, "expandable") || isClassKind(db, pfx, "expandable")) {
-      return true;
-    }
-  }
   return isClassKind(db, clsNode, "expandable");
 }
 
@@ -2256,10 +2393,11 @@ export function isStreamVariable(db: CodeGraph, enclosingClass: u32, varRefNode:
   return isLeafDeclaredStreamInClass(db, currClass, leafId, $, 0);
 }
 
-/**
- * Counts flow variables in `classDefNode` or its base classes.
- */
-export function getFlowVariableCount(db: CodeGraph, classDefNode: u32, $: any): u32 {
+function getFlowVariableCountRecursive(db: CodeGraph, classDefNode: u32, $: any, visited: u32, depth: u32): u32 {
+  if (classDefNode == 0 || depth > 20) return 0;
+  if (db.set.has(visited, classDefNode)) return 0;
+  db.set.add(visited, classDefNode);
+
   let count: u32 = 0;
   for (const comp of db.ast.getDescendants(classDefNode, $.component_clause)) {
     if (isDescendantOfInnerClass(db, comp, classDefNode, $)) continue;
@@ -2281,11 +2419,22 @@ export function getFlowVariableCount(db: CodeGraph, classDefNode: u32, $: any): 
 
       const cls = findClassByName(db, typeSpec, $);
       if (cls != 0) {
-        count += getFlowVariableCount(db, cls, $);
+        count += getFlowVariableCountRecursive(db, cls, $, visited, depth + 1);
       }
     }
   }
 
+  return count;
+}
+
+/**
+ * Counts flow variables in `classDefNode` or its base classes, guarding against extends cycles.
+ */
+export function getFlowVariableCount(db: CodeGraph, classDefNode: u32, $: any): u32 {
+  if (classDefNode == 0) return 0;
+  const visited = db.set.create();
+  const count = getFlowVariableCountRecursive(db, classDefNode, $, visited, 0);
+  db.set.release(visited);
   return count;
 }
 
@@ -3386,9 +3535,16 @@ export function hasExtendsCycleInScope(db: CodeGraph, extNode: u32, $: any): boo
  * Returns the callee/name node of a function_call or primary call node, or 0 if not a call.
  */
 export function getCallCalleeNode(db: CodeGraph, callNode: u32, $: any): u32 {
+  const isPrimary = db.ast.getType(callNode) == $.primary;
   let name = db.ast.getChildByFieldId(callNode, "name");
   if (name == 0) name = db.ast.getChildByFieldId(callNode, "callee");
-  if (name != 0) return name;
+  if (name != 0) {
+    if (!isPrimary) return name;
+    const sib = db.ast.getNextSibling(name);
+    if (sib != 0 && (db.ast.getType(sib) == $.function_call_args || db.ast.startsWith(sib, "("))) {
+      return name;
+    }
+  }
   const fc = db.ast.getFirstChild(callNode);
   if (fc != 0 && db.ast.getType(fc) == $.component_reference) {
     const sib = db.ast.getNextSibling(fc);
@@ -4212,61 +4368,159 @@ export function getContinuousStateInWhenNode(db: CodeGraph, eqNode: u32, $: any)
 }
 
 /**
- * Checks if a transition(...) call has an invalid priority (<= 0) or duplicate priority from the same source state.
+ * Returns the `array_subscripts` declared directly on a component (`declaration` or enclosing
+ * `component_clause`/`component_clause1`), ignoring any subscripts inside binding/modification
+ * expressions or sibling declarations.
  */
-export function getInvalidTransitionPriorityNode(db: CodeGraph, callNode: u32, $: any): u32 {
-  const name = getCallCalleeNode(db, callNode, $);
-  if (name == 0 || !db.ast.textEquals(name, "transition")) return 0;
-
-  // Check named arguments: priority = <expr>
-  if ($.named_argument != 0) {
-    for (const na of db.ast.getDescendants(callNode, $.named_argument)) {
-      let firstId: u32 = 0;
-      for (const id of db.ast.getDescendants(na, $.identifier)) {
-        firstId = id;
-        break;
-      }
-      if (firstId != 0 && db.ast.textEquals(firstId, "priority")) {
-        let valNode: u32 = 0;
-        let ch = db.ast.getFirstChild(na);
-        while (ch != 0) {
-          valNode = ch;
-          ch = db.ast.getNextSibling(ch);
-        }
-        if (valNode != 0 && (db.ast.textEquals(valNode, "0") || db.ast.startsWith(valNode, "-"))) {
-          return valNode;
-        }
-      }
+export function getDeclaredArraySubscripts(db: CodeGraph, compDeclNode: u32, $: any): u32 {
+  if (compDeclNode == 0 || $.array_subscripts == 0) return 0;
+  const decl =
+    db.ast.getType(compDeclNode) == $.declaration
+      ? compDeclNode
+      : db.ast.getChildByFieldId(compDeclNode, "declaration");
+  if (decl != 0) {
+    const declSub = db.ast.getChildByFieldId(decl, "array_subscripts");
+    if (declSub != 0) return declSub;
+    let ch = db.ast.getFirstChild(decl);
+    while (ch != 0) {
+      if (db.ast.getType(ch) == $.array_subscripts) return ch;
+      ch = db.ast.getNextSibling(ch);
     }
   }
+  for (const anc of db.ast.getAncestors(compDeclNode, 0)) {
+    const t = db.ast.getType(anc);
+    if (t == $.component_clause || t == $.component_clause1) {
+      const clauseSub = db.ast.getChildByFieldId(anc, "array_subscripts");
+      if (clauseSub != 0) return clauseSub;
+      let ch = db.ast.getFirstChild(anc);
+      while (ch != 0) {
+        if (db.ast.getType(ch) == $.array_subscripts) return ch;
+        ch = db.ast.getNextSibling(ch);
+      }
+      break;
+    }
+    if (t == $.class_definition) break;
+  }
+  return 0;
+}
 
-  // Check positional arguments (4th or 7th positional argument is priority)
-  let argIdx: u32 = 0;
-  let fromArg: u32 = 0;
-  let prioArg: u32 = 0;
-  for (const arg of db.ast.getDescendants(callNode, $.function_argument)) {
-    let directCall: u32 = 0;
-    for (const anc of db.ast.getAncestors(arg, 0, callNode)) {
-      if (anc != arg) {
+/**
+ * Returns true if `exprNode` is strictly a signed numeric literal (at most one unary `+`/`-` and a
+ * single `unsigned_number`), with no identifiers, function calls, subscripts, or binary operators.
+ * Used before calling `db.ast.parseReal(exprNode)` so symbolic expressions are not parsed as `0.0`.
+ */
+export function isSimpleNumericLiteral(db: CodeGraph, exprNode: u32, $: any): boolean {
+  if (exprNode == 0 || $.unsigned_number == 0) return false;
+  if ($.identifier != 0) {
+    for (const _id of db.ast.getDescendants(exprNode, $.identifier)) {
+      return false;
+    }
+  }
+  let numCount: u32 = 0;
+  for (const _n of db.ast.getDescendants(exprNode, $.unsigned_number)) {
+    numCount++;
+    if (numCount > 1) return false;
+  }
+  if (numCount != 1) return false;
+  let signCount: u32 = 0;
+  for (const d of db.ast.getDescendants(exprNode)) {
+    if (db.ast.getFirstChild(d) != 0) continue;
+    let insideNumber = false;
+    for (const anc of db.ast.getAncestors(d, 0, exprNode)) {
+      if (db.ast.getType(anc) == $.unsigned_number) {
+        insideNumber = true;
+        break;
+      }
+    }
+    if (insideNumber) continue;
+    if (db.ast.textEquals(d, "-") || db.ast.textEquals(d, "+")) {
+      signCount++;
+      if (signCount > 1) return false;
+    } else if (!db.ast.textEquals(d, "(") && !db.ast.textEquals(d, ")")) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Extracts a direct argument of `callNode` by either 1-based positional index `posIndex` (skipping
+ * any `named_argument` slots) or by named argument name `namedKey`.
+ */
+function getCallArg(db: CodeGraph, callNode: u32, posIndex: u32, namedKey: string, $: any): u32 {
+  if (callNode == 0) return 0;
+  if ($.named_argument != 0) {
+    for (const na of db.ast.getDescendants(callNode, $.named_argument)) {
+      let directCall: u32 = 0;
+      for (const anc of db.ast.getAncestors(na, 0, callNode)) {
+        if (anc == na) continue;
         const t = db.ast.getType(anc);
         if (t == $.function_call || (t == $.primary && getCallCalleeNode(db, anc, $) != 0)) {
           directCall = anc;
           break;
         }
       }
-    }
-    if (directCall != callNode) continue;
-    argIdx++;
-    if (argIdx == 1) fromArg = arg;
-    if (argIdx == 4 || argIdx == 7) {
-      if (db.ast.textEquals(arg, "0") || db.ast.startsWith(arg, "-")) {
-        return arg;
+      if (directCall != callNode) continue;
+      let nameId = db.ast.getChildByFieldId(na, "name");
+      if (nameId == 0) {
+        for (const id of db.ast.getDescendants(na, $.identifier)) {
+          nameId = id;
+          break;
+        }
       }
-      prioArg = arg;
+      if (nameId != 0 && db.ast.textEquals(nameId, namedKey)) {
+        const val = db.ast.getChildByFieldId(na, "value");
+        if (val != 0) return val;
+        let last: u32 = 0;
+        let ch = db.ast.getFirstChild(na);
+        while (ch != 0) {
+          last = ch;
+          ch = db.ast.getNextSibling(ch);
+        }
+        return last;
+      }
     }
   }
+  if ($.function_argument != 0 && posIndex > 0) {
+    let idx: u32 = 0;
+    for (const arg of db.ast.getDescendants(callNode, $.function_argument)) {
+      let isNamedOrNested = false;
+      let directCall: u32 = 0;
+      for (const anc of db.ast.getAncestors(arg, 0, callNode)) {
+        if (anc == arg) continue;
+        const t = db.ast.getType(anc);
+        if ($.named_argument != 0 && t == $.named_argument) {
+          isNamedOrNested = true;
+          break;
+        }
+        if (t == $.function_call || (t == $.primary && getCallCalleeNode(db, anc, $) != 0)) {
+          directCall = anc;
+          break;
+        }
+      }
+      if (isNamedOrNested || directCall != callNode) continue;
+      idx++;
+      if (idx == posIndex) return arg;
+    }
+  }
+  return 0;
+}
 
-  // Check for duplicate priority exiting the same 'from' state in the same equation_section
+/**
+ * Checks if a `transition(from, to, condition, immediate, reset, synchronize, priority)` call
+ * (MLS §17.3.2) has an invalid priority (<= 0) or duplicate priority from the same source state.
+ */
+export function getInvalidTransitionPriorityNode(db: CodeGraph, callNode: u32, $: any): u32 {
+  const name = getCallCalleeNode(db, callNode, $);
+  if (name == 0 || !db.ast.textEquals(name, "transition")) return 0;
+
+  // MLS §17.3.2: parameter 7 is `priority` (parameter 4 is `immediate`).
+  const prioArg = getCallArg(db, callNode, 7, "priority", $);
+  if (prioArg != 0 && (db.ast.textEquals(prioArg, "0") || db.ast.startsWith(prioArg, "-"))) {
+    return prioArg;
+  }
+
+  const fromArg = getCallArg(db, callNode, 1, "from", $);
   if (fromArg != 0 && prioArg != 0 && $.equation_section != 0) {
     for (const anc of db.ast.getAncestors(callNode, 0)) {
       if (db.ast.getType(anc) == $.equation_section) {
@@ -4274,14 +4528,8 @@ export function getInvalidTransitionPriorityNode(db: CodeGraph, callNode: u32, $
           if (fc == callNode) continue;
           const fn = getCallCalleeNode(db, fc, $);
           if (fn == 0 || !db.ast.textEquals(fn, "transition")) continue;
-          let idx2: u32 = 0;
-          let from2: u32 = 0;
-          let prio2: u32 = 0;
-          for (const a2 of db.ast.getDescendants(fc, $.function_argument)) {
-            idx2++;
-            if (idx2 == 1) from2 = a2;
-            if (idx2 == 4 || idx2 == 7) prio2 = a2;
-          }
+          const from2 = getCallArg(db, fc, 1, "from", $);
+          const prio2 = getCallArg(db, fc, 7, "priority", $);
           if (
             from2 != 0 &&
             prio2 != 0 &&

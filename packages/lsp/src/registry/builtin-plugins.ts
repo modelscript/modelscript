@@ -20,6 +20,7 @@ import {
 import { autosarLanguage, getAutosarDocumentSymbols, getAutosarHover, validateAutosar } from "@modelscript/autosar";
 import { bnglLanguage, getBnglDocumentSymbols, getBnglHover, validateBngl } from "@modelscript/bngl";
 import { cLanguage } from "@modelscript/c";
+import { c37118Language, getC37118Diagnostics, getC37118DocumentSymbols } from "@modelscript/c37118";
 import { canteraLanguage, getCanteraDocumentSymbols, getCanteraHover, validateCantera } from "@modelscript/cantera";
 import { ccsdsLanguage, getCcsdsDocumentSymbols, getCcsdsHover, validateCcsds } from "@modelscript/ccsds";
 import { cellmlLanguage, getCellmlDocumentSymbols, getCellmlHover, validateCellml } from "@modelscript/cellml";
@@ -27,6 +28,7 @@ import { cfdLanguage, getCfdDocumentSymbols, getCfdHover, validateCfd } from "@m
 import { cgmesLanguage, lintCgmesModel, parseCgmesRdf } from "@modelscript/cgmes";
 import { comtradeLanguage, getComtradeDiagnostics, getComtradeDocumentSymbols } from "@modelscript/comtrade";
 import csvLangFallback from "@modelscript/csv/language";
+import { cymeLanguage, getCymeDiagnostics, getCymeDocumentSymbols } from "@modelscript/cyme";
 import { dicomRtLanguage, getDicomRtDocumentSymbols, getDicomRtHover, validateDicomRt } from "@modelscript/dicom-rt";
 import { dnp3Language, getDnp3Diagnostics, getDnp3DocumentSymbols } from "@modelscript/dnp3";
 import { easy5Language, getEasy5DocumentSymbols, getEasy5Hover, validateEasy5 } from "@modelscript/easy5";
@@ -45,6 +47,12 @@ import { fortranLanguage } from "@modelscript/fortran";
 import { genbankLanguage, getGenbankDocumentSymbols, getGenbankHover, validateGenbank } from "@modelscript/genbank";
 import { gensysLanguage, getGensysDocumentSymbols, getGensysHover, validateGensys } from "@modelscript/gensys";
 import { getGpromsDocumentSymbols, getGpromsHover, gpromsLanguage, validateGproms } from "@modelscript/gproms";
+import {
+  getGridlabdDiagnostics,
+  getGridlabdDocumentSymbols,
+  getGridlabdHover,
+  gridlabdLanguage,
+} from "@modelscript/gridlabd";
 import { getGtfsDocumentSymbols, getGtfsHover, gtfsLanguage, validateGtfs } from "@modelscript/gtfs";
 import { getGtsuiteDocumentSymbols, getGtsuiteHover, gtsuiteLanguage, validateGtsuite } from "@modelscript/gtsuite";
 import {
@@ -54,6 +62,7 @@ import {
 } from "@modelscript/hec-hms";
 import { getHecRasDocumentSymbols, getHecRasHover, hecRasLanguage, validateHecRas } from "@modelscript/hec-ras";
 import { getIbisDocumentSymbols, getIbisHover, ibisLanguage, validateIbis } from "@modelscript/ibis";
+import { getIec104Diagnostics, getIec104DocumentSymbols, iec104Language } from "@modelscript/iec104";
 import { getIgtlDocumentSymbols, getIgtlHover, igtlLanguage, validateIgtl } from "@modelscript/igtl";
 import { getJsbsimDocumentSymbols, getJsbsimHover, jsbsimLanguage, validateJsbsim } from "@modelscript/jsbsim";
 import { getLandgemDocumentSymbols, getLandgemHover, landgemLanguage, validateLandgem } from "@modelscript/landgem";
@@ -96,7 +105,9 @@ import owl2LangFallback from "@modelscript/owl2/language";
 import { getPdbDocumentSymbols, getPdbHover, pdbLanguage, validatePdb } from "@modelscript/pdb";
 import { getPhreeqcDocumentSymbols, getPhreeqcHover, phreeqcLanguage, validatePhreeqc } from "@modelscript/phreeqc";
 import { getPlcopenDocumentSymbols, getPlcopenHover, plcopenLanguage, validatePlcopen } from "@modelscript/plcopen";
+import { getPlsCaddDiagnostics, getPlsCaddDocumentSymbols, plscaddLanguage } from "@modelscript/plscadd";
 import { lintPowerFactoryModel, parsePowerFactoryXml, powerFactoryLanguage } from "@modelscript/powerfactory";
+import { getPowerWorldDiagnostics, getPowerWorldDocumentSymbols, powerworldLanguage } from "@modelscript/powerworld";
 import {
   getPscadCompletions,
   getPscadDefinitionLocation,
@@ -116,6 +127,7 @@ import {
   psseLanguage,
   validatePsse,
 } from "@modelscript/psse";
+import { getPypsaDiagnostics, getPypsaDocumentSymbols, pypsaLanguage } from "@modelscript/pypsa";
 import {
   getQifDefinition,
   getQifDocumentSymbols,
@@ -135,6 +147,7 @@ import {
   validateReqif,
 } from "@modelscript/reqif";
 import { getRocetsDocumentSymbols, getRocetsHover, rocetsLanguage, validateRocets } from "@modelscript/rocets";
+import { getRtdsDiagnostics, getRtdsDocumentSymbols, rtdsLanguage } from "@modelscript/rtds";
 import { getSbmlDocumentSymbols, getSbmlHover, sbmlLanguage, validateSbml } from "@modelscript/sbml";
 import { getSbolDocumentSymbols, getSbolHover, sbolLanguage, validateSbol } from "@modelscript/sbol";
 import { getScadDefinition, getScadReferences } from "@modelscript/scad";
@@ -3888,6 +3901,142 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         getWaterMlDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       validate: (doc: any) => getWaterMlDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 84. GridLAB-D
+  globalLanguageRegistry.register({
+    id: "gridlabd",
+    name: "GridLAB-D",
+    extensions: [".glm"],
+    languageDef: gridlabdLanguage,
+    customHandlers: {
+      symbols: (treeWrapper: string | { text?: string }) =>
+        getGridlabdDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: { getText?(): string } | string) =>
+        getGridlabdDiagnostics(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+        ),
+      hover: (offset: number, text: string) => {
+        const lines = text.slice(0, offset).split("\n");
+        return getGridlabdHover(text, lines.length - 1);
+      },
+    },
+    disposables: [],
+  });
+
+  // 85. PowerWorld AUX
+  globalLanguageRegistry.register({
+    id: "powerworld",
+    name: "PowerWorld",
+    extensions: [".aux"],
+    languageDef: powerworldLanguage,
+    customHandlers: {
+      symbols: (treeWrapper: string | { text?: string }) =>
+        getPowerWorldDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: { getText?(): string } | string) =>
+        getPowerWorldDiagnostics(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+        ),
+    },
+    disposables: [],
+  });
+
+  // 86. IEC 60870-5-104
+  globalLanguageRegistry.register({
+    id: "iec104",
+    name: "IEC 60870-5-104",
+    extensions: [".iec104", ".104"],
+    languageDef: iec104Language,
+    customHandlers: {
+      symbols: (treeWrapper: string | { text?: string }) =>
+        getIec104DocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: { getText?(): string } | string) =>
+        getIec104Diagnostics(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+        ),
+    },
+    disposables: [],
+  });
+
+  // 87. IEEE C37.118
+  globalLanguageRegistry.register({
+    id: "c37118",
+    name: "IEEE C37.118",
+    extensions: [".c37118", ".pmu"],
+    languageDef: c37118Language,
+    customHandlers: {
+      symbols: (treeWrapper: string | { text?: string }) =>
+        getC37118DocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: { getText?(): string } | string) =>
+        getC37118Diagnostics(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+        ),
+    },
+    disposables: [],
+  });
+
+  // 88. PyPSA
+  globalLanguageRegistry.register({
+    id: "pypsa",
+    name: "PyPSA",
+    extensions: [".pypsa", ".pypsa.json"],
+    languageDef: pypsaLanguage,
+    customHandlers: {
+      symbols: (treeWrapper: string | { text?: string }) =>
+        getPypsaDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: { getText?(): string } | string) =>
+        getPypsaDiagnostics(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+        ),
+    },
+    disposables: [],
+  });
+
+  // 89. CYME
+  globalLanguageRegistry.register({
+    id: "cyme",
+    name: "CYME",
+    extensions: [".sxst", ".cyme"],
+    languageDef: cymeLanguage,
+    customHandlers: {
+      symbols: (treeWrapper: string | { text?: string }) =>
+        getCymeDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: { getText?(): string } | string) =>
+        getCymeDiagnostics(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 90. RTDS
+  globalLanguageRegistry.register({
+    id: "rtds",
+    name: "RTDS",
+    extensions: [".dft", ".rtds"],
+    languageDef: rtdsLanguage,
+    customHandlers: {
+      symbols: (treeWrapper: string | { text?: string }) =>
+        getRtdsDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: { getText?(): string } | string) =>
+        getRtdsDiagnostics(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+    },
+    disposables: [],
+  });
+
+  // 91. PLS-CADD
+  globalLanguageRegistry.register({
+    id: "plscadd",
+    name: "PLS-CADD",
+    extensions: [".pol", ".loa", ".plscadd"],
+    languageDef: plscaddLanguage,
+    customHandlers: {
+      symbols: (treeWrapper: string | { text?: string }) =>
+        getPlsCaddDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
+      validate: (doc: { getText?(): string } | string) =>
+        getPlsCaddDiagnostics(
+          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
+        ),
     },
     disposables: [],
   });

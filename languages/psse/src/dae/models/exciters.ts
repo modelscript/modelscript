@@ -232,12 +232,20 @@ export function lowerExciterUnitToDae(
     const e2 = np["E2"] ?? 4.2;
     const se2 = np["SE2"] ?? 0.1;
 
+    const excModel = (dyrExc?.model ?? "").toUpperCase();
+    const kh = excModel.includes("AC2A") ? Math.max(0.0, np["KH"] ?? 1.0) : 0.0;
+    const vlr = excModel.includes("AC2A") ? Math.max(0.5, np["VLR"] ?? 4.4) : 999.0;
+    const klv = excModel.includes("AC3A") ? Math.max(0.0, np["KLV"] ?? 0.0) : 0.0;
+    const vlv = excModel.includes("AC3A") ? Math.max(0.1, np["VLV"] ?? 0.79) : 0.0;
+    const kpAc8 = excModel.includes("AC8B") ? Math.max(0.0, np["KP"] ?? 18.0) : 0.0;
+    const kiAc8 = excModel.includes("AC8B") ? Math.max(0.0, np["KI"] ?? 5.0) : 0.0;
+
     // Steady-state Ve0 solving Efd0 = Ve0 * F_EX(KC * Ifd0 / Ve0)
     const ve0 = Math.max(0.5, efd0 + 0.577 * kc * efd0);
     const satVe0 = evalQuadraticSat(ve0, computeQuadraticSatCoeffs(e1, se1, e2, se2));
     const vfe0 = (ke + satVe0) * ve0 + kd * efd0;
     const vr0 = vfe0;
-    const vref0 = genInit.vt + vr0 / ka;
+    const vref0 = excModel.includes("AC8B") ? genInit.vt : genInit.vt + vr0 / ka;
 
     const veVar = dae.addVariable(`Ve_exc_${gId}`, VarType.Real, Variability.Continuous, Causality.Local, ve0);
     const veExpr = dae.addNameExpr(`Ve_exc_${gId}`);
@@ -258,11 +266,25 @@ export function lowerExciterUnitToDae(
       sub(dae, add(dae, sub(dae, addReal(dae, vref0), vtFiltExpr), vsPssExpr), vfExpr),
       limSummingAdd,
     );
-    const vTgr = emitLeadLag(ctx, `xll_exc_${gId}`, vSum, addReal(dae, tc), addReal(dae, tb), tb, vr0 / ka);
-    const vrExpr = emitNonWindupLag(
+    const vTgr = emitLeadLag(
+      ctx,
+      `xll_exc_${gId}`,
+      vSum,
+      addReal(dae, tc),
+      addReal(dae, tb),
+      tb,
+      excModel.includes("AC8B") ? 0.0 : vr0 / ka,
+    );
+    let avrDrive = vTgr;
+    if (excModel.includes("AC8B")) {
+      const xiVar = dae.addVariable(`xi_ac8b_${gId}`, VarType.Real, Variability.Continuous, Causality.Local, vr0 / ka);
+      dae.addEquation(EqKind.Simple, dae.addDerExpr(xiVar), mul(dae, addReal(dae, kiAc8), vTgr));
+      avrDrive = add(dae, mul(dae, addReal(dae, kpAc8), vTgr), dae.addNameExpr(`xi_ac8b_${gId}`));
+    }
+    const vrExprRaw = emitNonWindupLag(
       ctx,
       `Vr_exc_${gId}`,
-      vTgr,
+      avrDrive,
       addReal(dae, ka),
       addReal(dae, ta),
       ta,
@@ -273,6 +295,17 @@ export function lowerExciterUnitToDae(
 
     const satVe = mul(dae, emitSaturationCurve(ctx, veExpr, e1, se1, e2, se2), veExpr);
     const vfeExpr = add(dae, add(dae, mul(dae, addReal(dae, ke), veExpr), satVe), mul(dae, addReal(dae, kd), ifdExpr));
+    // ESAC2A high-level field current limiter feedback: KH * max(0, Vfe - VLR)
+    const vfeLimFb =
+      kh > 0
+        ? mul(dae, addReal(dae, kh), emitMax(ctx, addReal(dae, 0.0), sub(dae, vfeExpr, addReal(dae, vlr))))
+        : addReal(dae, 0.0);
+    // ESAC3A low-voltage limiter ceiling reduction: KLV * max(0, VLV - Vt)
+    const ac3aLimFb =
+      klv > 0
+        ? mul(dae, addReal(dae, klv), emitMax(ctx, addReal(dae, 0.0), sub(dae, addReal(dae, vlv), vtFiltExpr)))
+        : addReal(dae, 0.0);
+    const vrExpr = sub(dae, sub(dae, vrExprRaw, vfeLimFb), ac3aLimFb);
     // TE * der(Ve) = Vr - Vfe
     dae.addEquation(EqKind.Simple, mul(dae, addReal(dae, te), dae.addDerExpr(veVar)), sub(dae, vrExpr, vfeExpr));
 
@@ -381,7 +414,18 @@ export function lowerExciterUnitToDae(
   const vTgr1 = emitLeadLag(ctx, `xll1_exc_${gId}`, vErrClamped, addReal(dae, tc), addReal(dae, tb), tb, efd0 / ka);
   const vTgr2 = emitLeadLag(ctx, `xll2_exc_${gId}`, vTgr1, addReal(dae, tc1), addReal(dae, tb1), tb1, efd0 / ka);
 
-  const efdCeilingHi = sub(dae, mul(dae, addReal(dae, vrMax), vtBusExpr), mul(dae, addReal(dae, kc), ifdExpr));
+  const ilr = np["ILR"] ?? 4.0;
+  const klr = Math.max(0.0, np["KLR"] ?? 0.0);
+  const lrTerm =
+    dyrExc.model === "ESST1A" && klr > 0
+      ? mul(dae, addReal(dae, klr), emitMax(ctx, addReal(dae, 0.0), sub(dae, ifdExpr, addReal(dae, ilr))))
+      : addReal(dae, 0.0);
+
+  const efdCeilingHi = sub(
+    dae,
+    sub(dae, mul(dae, addReal(dae, vrMax), vtBusExpr), mul(dae, addReal(dae, kc), ifdExpr)),
+    lrTerm,
+  );
   const efdCeilingLo = mul(dae, addReal(dae, vrMin), vtBusExpr);
   const vrOut = emitNonWindupLag(
     ctx,

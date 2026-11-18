@@ -18,6 +18,7 @@ import {
   type Pt,
 } from "../model/pscad-model.js";
 import { registeredExternalDefinitions } from "../model/workspace-registry.js";
+export { applySplices };
 
 /**
  * Structural edit engine for PSCAD projects.
@@ -44,6 +45,16 @@ export type PscadEditOp =
     }
   | { type: "setWirePoints"; id: string; points: Pt[] }
   | { type: "addWire"; definition?: string; points: Pt[] }
+  | {
+      type: "addBus";
+      definition?: string;
+      name?: string;
+      x: number;
+      y: number;
+      w?: number;
+      h?: number;
+      baseKV?: string;
+    }
   | { type: "removeWire"; id: string }
   | { type: "toggleDisable"; id: string; disabled?: boolean | undefined }
   | {
@@ -80,6 +91,88 @@ export type PscadEditOp =
       oldName: string;
       newName: string;
       definition?: string;
+    }
+  | {
+      type: "setScriptSegment";
+      definition: string;
+      segment: string;
+      code: string;
+    }
+  | {
+      type: "addDefinition";
+      name: string;
+      description?: string;
+      ports?: {
+        name: string;
+        mode?: "In" | "Out" | "Electrical";
+        dim?: number;
+        side?: "left" | "right" | "top" | "bottom";
+        x?: number;
+        y?: number;
+      }[];
+      shapes?: {
+        kind: "rect" | "line" | "circle" | "text";
+        x: number;
+        y: number;
+        w?: number;
+        h?: number;
+        x2?: number;
+        y2?: number;
+        r?: number;
+        text?: string;
+        stroke?: string;
+        fill?: string;
+      }[];
+      parameters?: {
+        name: string;
+        label?: string;
+        type?: "Real" | "Integer" | "Text" | "Boolean";
+        defaultValue?: string;
+        unit?: string;
+        cond?: string;
+        vis?: string;
+      }[];
+      dsdyn?: string;
+    }
+  | {
+      type: "updateDefinition";
+      name: string;
+      description?: string;
+      ports?: {
+        name: string;
+        mode?: "In" | "Out" | "Electrical";
+        dim?: number;
+        side?: "left" | "right" | "top" | "bottom";
+        x?: number;
+        y?: number;
+      }[];
+      shapes?: {
+        kind: "rect" | "line" | "circle" | "text";
+        x: number;
+        y: number;
+        w?: number;
+        h?: number;
+        x2?: number;
+        y2?: number;
+        r?: number;
+        text?: string;
+        stroke?: string;
+        fill?: string;
+      }[];
+      parameters?: {
+        name: string;
+        label?: string;
+        type?: "Real" | "Integer" | "Text" | "Boolean";
+        defaultValue?: string;
+        unit?: string;
+        cond?: string;
+        vis?: string;
+      }[];
+      dsdyn?: string;
+    }
+  | {
+      type: "setProjectSettings";
+      settings: Record<string, string | number>;
     }
   | {
       type: "copySelection";
@@ -203,6 +296,78 @@ function componentXml(
     `<User classid="UserCmp" id="${id}" name="${escapeAttr(op.defn)}" x="${Math.round(op.x)}" y="${Math.round(op.y)}" ` +
     `w="${op.w ?? 60}" h="${op.h ?? 60}" z="1" orient="${op.orient ?? 0}" defn="${escapeAttr(op.defn)}" link="-1" q="4" disable="false">${eol}` +
     `${body}${eol}${indent}</User>`
+  );
+}
+
+type DefinitionPortSpec = NonNullable<Extract<PscadEditOp, { type: "addDefinition" }>["ports"]>[number];
+type DefinitionShapeSpec = NonNullable<Extract<PscadEditOp, { type: "addDefinition" }>["shapes"]>[number];
+type DefinitionParamSpec = NonNullable<Extract<PscadEditOp, { type: "addDefinition" }>["parameters"]>[number];
+
+function buildDefinitionXml(
+  op: {
+    name: string;
+    description?: string;
+    ports?: DefinitionPortSpec[];
+    shapes?: DefinitionShapeSpec[];
+    parameters?: DefinitionParamSpec[];
+    dsdyn?: string;
+  },
+  eol: string,
+  extraChildXml = "",
+): string {
+  const ports = op.ports ?? [];
+  const portsXml = ports
+    .map((p, idx) => {
+      const side = p.side ?? (p.mode === "Out" ? "right" : "left");
+      const slotOffset = (idx - (ports.length - 1) / 2) * 18;
+      const defaultX = side === "left" ? -54 : side === "right" ? 54 : Math.round(slotOffset);
+      const defaultY = side === "top" ? -36 : side === "bottom" ? 36 : idx * 18;
+      const x = p.x ?? defaultX;
+      const y = p.y ?? defaultY;
+      const modeNum = p.mode === "Out" ? "2" : p.mode === "In" ? "1" : "3";
+      const portType = p.mode === "Electrical" ? "Electrical" : "Signal";
+      return (
+        `      <port name="${escapeAttr(p.name)}" x="${x}" y="${y}" dim="${p.dim ?? 1}" mode="${modeNum}" type="${portType}">` +
+        `<param name="name" value="${escapeAttr(p.name)}"/>` +
+        `<param name="dim" value="${p.dim ?? 1}"/>` +
+        `<param name="mode" value="${modeNum}"/>` +
+        `</port>`
+      );
+    })
+    .join(eol);
+  const shapesXml = (op.shapes ?? [])
+    .map((s) => {
+      const strokeAttr = s.stroke ? ` stroke="${escapeAttr(s.stroke)}"` : "";
+      const fillAttr = s.fill ? ` fill-style="solid" fill-fg="${escapeAttr(s.fill)}"` : "";
+      if (s.kind === "rect") {
+        return `      <Gfx classid="Graphics.Rectangle" x="${s.x}" y="${s.y}" w="${s.w ?? 40}" h="${s.h ?? 32}"${strokeAttr}${fillAttr}/>`;
+      }
+      if (s.kind === "line") {
+        return `      <Gfx classid="Graphics.Line" x1="${s.x}" y1="${s.y}" x2="${s.x2 ?? s.x + 24}" y2="${s.y2 ?? s.y}"${strokeAttr}/>`;
+      }
+      if (s.kind === "circle") {
+        const d = (s.r ?? 12) * 2;
+        return `      <Gfx classid="Graphics.Ellipse" x="${s.x}" y="${s.y}" w="${d}" h="${d}"${strokeAttr}${fillAttr}/>`;
+      }
+      return `      <Gfx classid="Graphics.Text" x="${s.x}" y="${s.y}"${strokeAttr}><param name="text" value="${escapeAttr(s.text ?? "")}"/></Gfx>`;
+    })
+    .join(eol);
+  const gfxBody = [shapesXml, portsXml].filter(Boolean).join(eol);
+  const paramsXml = (op.parameters ?? [])
+    .map((p) => {
+      const condAttr = p.cond?.trim() ? ` cond="${escapeAttr(p.cond.trim())}"` : "";
+      const visAttr = p.vis?.trim() ? ` vis="${escapeAttr(p.vis.trim())}"` : "";
+      return `        <parameter desc="${escapeAttr(p.label || p.name)}" name="${escapeAttr(p.name)}" type="${p.type ?? "Real"}" unit="${escapeAttr(p.unit ?? "")}" content_type="Literal"${condAttr}${visAttr}><value><![CDATA[${p.defaultValue ?? "0"}]]></value></parameter>`;
+    })
+    .join(eol);
+  const safeDsdyn = (op.dsdyn ?? "").replace(/]]>/g, "]]]]><![CDATA[>");
+  const extraPart = extraChildXml ? `${eol}${extraChildXml}` : "";
+  return (
+    `<Definition classid="UserCmpDefn" name="${escapeAttr(op.name)}" desc="${escapeAttr(op.description ?? op.name)}">` +
+    `${eol}  <graphics>${gfxBody ? eol + gfxBody + eol + "  " : ""}</graphics>` +
+    `${eol}  <form>${eol}    <category name="Parameters">${paramsXml ? eol + paramsXml + eol + "    " : ""}</category>${eol}  </form>` +
+    `${eol}  <script>${eol}    <segment name="Dsdyn"><![CDATA[${safeDsdyn}]]></segment>${eol}  </script>` +
+    `${extraPart}${eol}</Definition>`
   );
 }
 
@@ -373,6 +538,24 @@ export function planPscadEdits(
       case "addWire": {
         const id = newId(used, seed++);
         if (insertInto(op.definition, (indent) => wireXml(id, op.points, eol, indent))) createdIds.push(id);
+        break;
+      }
+      case "addBus": {
+        const id = newId(used, seed++);
+        const busName = op.name || `Bus_${id}`;
+        const bw = Math.round(op.w ?? 0);
+        const bh = Math.round(op.h ?? 72);
+        const bx = Math.round(op.x);
+        const by = Math.round(op.y);
+        const kv = op.baseKV ?? "230.0";
+        const snippet = (indent: string) =>
+          `${indent}<Bus id="${id}" name="${busName}" x="${bx}" y="${by}" w="${bw}" h="${bh}" BaseKV="${kv}">` +
+          `${eol}${indent}  <paramlist>` +
+          `${eol}${indent}    <param name="Name" value="${busName}"/>` +
+          `${eol}${indent}    <param name="BaseKV" value="${kv}"/>` +
+          `${eol}${indent}  </paramlist>` +
+          `${eol}${indent}</Bus>`;
+        if (insertInto(op.definition, snippet)) createdIds.push(id);
         break;
       }
       case "removeWire": {
@@ -583,7 +766,11 @@ export function planPscadEdits(
           break;
         }
         const sch = schematicOf(targetDef);
-        const gfx = childrenNamed(targetDef.element, "graphic")[0];
+        const gfx =
+          childrenNamed(targetDef.element, "graphics")[0] ??
+          childrenNamed(targetDef.element, "Graphics")[0] ??
+          childrenNamed(targetDef.element, "graphic")[0] ??
+          childrenNamed(targetDef.element, "svg")[0];
         if (!sch || !gfx) {
           errors.push(`Submodule '${op.definition}' lacks schematic or graphic section.`);
           break;
@@ -619,6 +806,100 @@ export function planPscadEdits(
           } else {
             writeAttr(existing, "dim", dp.dim);
             writeAttr(existing, "mode", dp.mode);
+          }
+        }
+        break;
+      }
+      case "setScriptSegment": {
+        const cleanTarget = op.definition.includes(":") ? op.definition.split(":").pop()! : op.definition;
+        const targetDef = model.definitions.get(op.definition) ?? model.definitions.get(cleanTarget);
+        if (!targetDef) {
+          errors.push(`Definition '${op.definition}' not found.`);
+          break;
+        }
+        const safeCode = op.code.replace(/]]>/g, "]]]]><![CDATA[>");
+        const scriptEl = childrenNamed(targetDef.element, "script")[0];
+        if (!scriptEl) {
+          const scriptXml = `<script>${eol}  <segment name="${escapeAttr(op.segment)}"><![CDATA[${safeCode}]]></segment>${eol}</script>`;
+          splices.push(appendChildSplice(targetDef.element, scriptXml, text));
+          break;
+        }
+        const segEl = childrenNamed(scriptEl, "segment").find(
+          (s) => (attr(s, "name") ?? "").toLowerCase() === op.segment.toLowerCase(),
+        );
+        if (!segEl) {
+          const segXml = `<segment name="${escapeAttr(op.segment)}"><![CDATA[${safeCode}]]></segment>`;
+          splices.push(appendChildSplice(scriptEl, segXml, text));
+          break;
+        }
+        if (segEl.end > segEl.openEnd && !segEl.selfClosing) {
+          const closeIdx = text.lastIndexOf("</segment>", segEl.end);
+          if (closeIdx >= segEl.openEnd) {
+            splices.push({
+              start: segEl.openEnd,
+              end: closeIdx,
+              text: `<![CDATA[${safeCode}]]>`,
+            });
+          }
+        } else {
+          splices.push({
+            start: segEl.start,
+            end: segEl.end,
+            text: `<segment name="${escapeAttr(op.segment)}"><![CDATA[${safeCode}]]></segment>`,
+          });
+        }
+        break;
+      }
+      case "addDefinition": {
+        const defsEl = childrenNamed(model.root, "definitions")[0] ?? model.root;
+        splices.push(appendChildSplice(defsEl, buildDefinitionXml(op, eol), text));
+        break;
+      }
+      case "updateDefinition": {
+        const defsEl = childrenNamed(model.root, "definitions")[0] ?? model.root;
+        const targetLower = op.name.trim().toLowerCase();
+        const candidates = [...childrenNamed(defsEl, "Definition"), ...childrenNamed(defsEl, "definition")];
+        const existingDef = candidates.find((el) => (attr(el, "name") ?? "").trim().toLowerCase() === targetLower);
+        if (existingDef) {
+          const extraSch = childrenNamed(existingDef, "schematic")
+            .map((sc) => text.slice(sc.start, sc.end))
+            .join(eol);
+          splices.push({
+            start: existingDef.start,
+            end: existingDef.end,
+            text: buildDefinitionXml(op, eol, extraSch ? `  ${extraSch}` : ""),
+          });
+        } else {
+          splices.push(appendChildSplice(defsEl, buildDefinitionXml(op, eol), text));
+        }
+        break;
+      }
+      case "setProjectSettings": {
+        const paramlists = childrenNamed(model.root, "paramlist");
+        const settingsList =
+          paramlists.find((p) => (attr(p, "name") ?? "").toLowerCase() === "settings") ?? paramlists[0];
+        if (!settingsList) {
+          const entries = Object.entries(op.settings)
+            .map(([k, v]) => `    <param name="${escapeAttr(k)}" value="${escapeAttr(String(v))}"/>`)
+            .join(eol);
+          splices.push(
+            appendChildSplice(model.root, `<paramlist name="Settings">${eol}${entries}${eol}</paramlist>`, text),
+          );
+          break;
+        }
+        const existingParams = childrenNamed(settingsList, "param");
+        for (const [k, v] of Object.entries(op.settings)) {
+          const hit = existingParams.find((p) => (attr(p, "name") ?? "").toLowerCase() === k.toLowerCase());
+          if (hit) {
+            writeAttr(hit, "value", String(v));
+          } else {
+            splices.push(
+              appendChildSplice(
+                settingsList,
+                `<param name="${escapeAttr(k)}" value="${escapeAttr(String(v))}"/>`,
+                text,
+              ),
+            );
           }
         }
         break;

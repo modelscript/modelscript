@@ -5733,7 +5733,7 @@ export function updateSolderDots(g: Graph) {
   const existingCrossingIds = new Set<string>(existingCrossings.map((n: Node) => n.id));
   const newCrossingIds = new Set<string>();
 
-  const dotSize = 3;
+  const dotSize = 1.8;
   const radius = dotSize / 2;
 
   g.batchUpdate("solder-dots", () => {
@@ -6200,9 +6200,10 @@ export function setDiagramGrid(mode: DiagramGridMode, g?: Graph | null): void {
     return;
   }
   targetGraph.showGrid?.();
-  const isDark =
-    (targetGraph.options as { background?: { color?: string } } | undefined)?.background?.color !== "#ffffff";
-  const gridColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)";
+  const opts = getOptionsForGraph(targetGraph);
+  const bgColor = (targetGraph.options as { background?: { color?: string } } | undefined)?.background?.color;
+  const isDark = opts?.isDark !== undefined ? opts.isDark : bgColor !== "#ffffff" && bgColor !== "#f8fafc";
+  const gridColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(15, 23, 42, 0.08)";
   if (mode === "dot") {
     targetGraph.drawGrid({
       type: "dot",

@@ -22,6 +22,7 @@ export * from "./lsp.js";
 export * from "./netlist/collector-equivalencer.js";
 export * from "./netlist/node-breaker.js";
 export * from "./netlist/powerflow-netlist.js";
+export * from "./netlist/ward-equivalencer.js";
 export * from "./parser/con-parser.js";
 export * from "./parser/cst-tokens.js";
 export * from "./parser/dyr-parser.js";

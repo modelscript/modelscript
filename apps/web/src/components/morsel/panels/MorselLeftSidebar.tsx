@@ -4,7 +4,6 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   FileDirectoryIcon,
-  FileIcon,
   KebabHorizontalIcon,
   PencilIcon,
   PlusIcon,
@@ -29,6 +28,7 @@ import {
   type SweepState,
 } from "../SimulationParameters";
 import TreeWidget from "../Tree";
+import { getFileIconPath } from "../util/file-icons";
 import { VariablesTree } from "../VariablesTree";
 import { MorselResizeHandle } from "./MorselResizeHandle";
 
@@ -79,6 +79,8 @@ export interface MorselLeftSidebarProps {
   activeFileName?: string | undefined;
   onSelectProjectFile?: ((fileName: string) => void) | undefined;
   onAddProjectFile?: ((fileName: string) => void) | undefined;
+  onOpenNewModelModal?: (() => void) | undefined;
+  isLoadingModel?: boolean | undefined;
   onRemoveProjectFile?: ((fileName: string) => void) | undefined;
   onRenameProjectFile?: ((oldName: string, newName: string) => void) | undefined;
   onMoveProjectFile?: ((fileName: string, targetDir: string) => void) | undefined;
@@ -134,6 +136,8 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   activeFileName,
   onSelectProjectFile,
   onAddProjectFile,
+  onOpenNewModelModal,
+  isLoadingModel,
   onRemoveProjectFile,
   onRenameProjectFile,
   onMoveProjectFile,
@@ -144,8 +148,6 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   const isDraggingTree = useRef(false);
   const columnRef = useRef<HTMLDivElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [librariesSplit, setLibrariesSplit] = useState(0.55);
-  const [isSplitting, setIsSplitting] = useState(false);
   const [isSettingsExpanded, setIsSettingsExpanded] = useState(true);
   const [isAddingFile, setIsAddingFile] = useState(false);
   const [newFileName, setNewFileName] = useState("");
@@ -179,8 +181,6 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
         return !(kind && kind.includes("connector"));
       }).length
     : 0;
-  const hasComponents = componentCount > 0;
-  const canResizeLibrariesSplit = !isNarrow && showLibrariesSection && showComponentsSection && hasComponents;
   const isSearchActive = Boolean(isSearchExpanded || libraryFilter);
 
   const dividerColor =
@@ -334,8 +334,8 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
               isStackedFloating
                 ? {
                     ...floatingCardStyle,
-                    flex: "0 0 auto",
-                    maxHeight: 240,
+                    flex: "0 0 20%",
+                    minHeight: 0,
                     display: "flex",
                     flexDirection: "column",
                     overflow: "hidden",
@@ -343,8 +343,9 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 : {
                     display: "flex",
                     flexDirection: "column",
-                    flex: "0 0 auto",
-                    maxHeight: 240,
+                    flex: isNarrow ? "0 0 auto" : "0 0 20%",
+                    maxHeight: isNarrow ? 240 : undefined,
+                    minHeight: 0,
                     borderBottom: `1px solid ${dividerColor}`,
                     overflow: "hidden",
                   }
@@ -367,6 +368,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 style={{
                   display: "flex",
                   alignItems: "center",
+                  gap: 6,
                   fontSize: 11,
                   fontWeight: 700,
                   letterSpacing: "0.04em",
@@ -376,16 +378,24 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                   userSelect: "none",
                 }}
               >
-                Files ({Object.keys(projectFiles).length})
+                <span>Files ({Object.keys(projectFiles).length})</span>
+                {isLoadingModel && <Spinner size="small" />}
               </div>
-              {onAddProjectFile && (
+              {(onOpenNewModelModal || onAddProjectFile) && (
                 <IconButton
                   icon={PlusIcon}
                   size="small"
                   variant="invisible"
-                  aria-label="Add file to morsel"
-                  title="Add file"
-                  onClick={() => setIsAddingFile(true)}
+                  aria-label="New Model or add file"
+                  title="New Model"
+                  data-testid="files-panel-add-btn"
+                  onClick={() => {
+                    if (onOpenNewModelModal) {
+                      onOpenNewModelModal();
+                    } else {
+                      setIsAddingFile(true);
+                    }
+                  }}
                 />
               )}
             </div>
@@ -408,7 +418,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                     lineHeight: 1.4,
                   }}
                 >
-                  Workspace is empty. Click <strong>+</strong> or <strong>Add Model</strong> to add files.
+                  Workspace is empty. Click <strong>+</strong> to add a model or file.
                 </div>
               )}
               {(() => {
@@ -569,8 +579,21 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                               whiteSpace: "nowrap",
                             }}
                           >
-                            <span style={{ flexShrink: 0, display: "inline-flex", opacity: isSelected ? 1 : 0.65 }}>
-                              <FileIcon size={13} />
+                            <span
+                              style={{
+                                flexShrink: 0,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                opacity: isSelected ? 1 : 0.85,
+                              }}
+                            >
+                              <img
+                                src={getFileIconPath(fileName)}
+                                alt=""
+                                width={14}
+                                height={14}
+                                style={{ display: "block", width: 14, height: 14, objectFit: "contain" }}
+                              />
                             </span>
                             <span
                               style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
@@ -729,22 +752,108 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
           </div>
         )}
 
+        {(showComponentsSection || showVariablesSection) && (
+          <div
+            style={
+              isStackedFloating
+                ? {
+                    ...floatingCardStyle,
+                    flex: showComponentsSection ? "0 0 40%" : "1 1 0%",
+                    minHeight: 0,
+                  }
+                : !isNarrow && showComponentsSection
+                  ? {
+                      display: "flex",
+                      flexDirection: "column",
+                      flex: "0 0 40%",
+                      minHeight: 0,
+                      overflow: "hidden",
+                    }
+                  : { display: "contents" }
+            }
+          >
+            {!isNarrow && (
+              <div
+                className="d-flex flex-items-center flex-justify-between"
+                style={{
+                  minHeight: 44,
+                  padding: "8px 16px",
+                  boxSizing: "border-box",
+                  borderBottom: `1px solid ${dividerColor}`,
+                  backgroundColor: "transparent",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  color: "var(--ms-text-2, var(--color-fg-muted))",
+                  userSelect: "none",
+                  flexShrink: 0,
+                }}
+              >
+                <span>{showVariablesSection ? "Plot Variables" : translations.components}</span>
+                {showComponentsSection && componentCount > 0 && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      padding: "1px 6px",
+                      borderRadius: 999,
+                      backgroundColor: _colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(15, 23, 42, 0.06)",
+                      color: "var(--ms-text-2, var(--color-fg-muted))",
+                    }}
+                  >
+                    {componentCount}
+                  </span>
+                )}
+              </div>
+            )}
+            <div
+              style={{
+                flex: 1,
+                overflow: "auto",
+                minHeight: 0,
+                paddingBottom: isNarrow ? 72 : 0,
+              }}
+            >
+              {showComponentsSection ? (
+                <ComponentList
+                  components={diagramData?.nodes ?? null}
+                  onSelect={onSelectComponent}
+                  onHighlight={onTreeHighlight}
+                  selectedName={selectedComponent}
+                  language={language}
+                  translations={translations}
+                  uri={documentUri}
+                  colorMode={_colorMode}
+                />
+              ) : (
+                <VariablesTree
+                  variables={simulationVariables ?? []}
+                  selectedVariables={selectedSimulationVariables}
+                  onToggleVariable={onToggleSimulationVariable}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
         {showLibrariesSection && (
           <div
             style={
               isStackedFloating
                 ? {
                     ...floatingCardStyle,
-                    flex: hasComponents ? `${librariesSplit} 1 0%` : "1 1 0%",
-                    minHeight: 120,
+                    flex: "0 0 40%",
+                    minHeight: 0,
                   }
-                : canResizeLibrariesSplit
+                : !isNarrow
                   ? {
                       display: "flex",
                       flexDirection: "column",
-                      flex: `${librariesSplit} 1 0%`,
-                      minHeight: 120,
+                      flex: "0 0 40%",
+                      minHeight: 0,
                       overflow: "hidden",
+                      borderTop: `1px solid ${dividerColor}`,
                     }
                   : { display: "contents" }
             }
@@ -768,6 +877,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                   style={{
                     display: "flex",
                     alignItems: "center",
+                    gap: 6,
                     fontSize: 11,
                     fontWeight: 700,
                     letterSpacing: "0.04em",
@@ -778,7 +888,8 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                     flexShrink: 0,
                   }}
                 >
-                  {translations.libraries}
+                  <span>{translations.libraries}</span>
+                  {isLoadingModel && <Spinner size="small" />}
                 </div>
               )}
               <div
@@ -902,179 +1013,6 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 language={language}
                 colorMode={_colorMode}
               />
-            </div>
-          </div>
-        )}
-
-        {canResizeLibrariesSplit ? (
-          <MorselResizeHandle
-            orientation="horizontal"
-            cursor="row-resize"
-            ariaLabel="Resize Libraries and Components"
-            ariaValueNow={Math.round(librariesSplit * 100)}
-            ariaValueMin={25}
-            ariaValueMax={80}
-            isDragging={isSplitting}
-            style={{
-              height: isStackedFloating ? 12 : 8,
-              width: "100%",
-              marginTop: isStackedFloating ? 0 : -4,
-              marginBottom: isStackedFloating ? 0 : -4,
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowUp") {
-                e.preventDefault();
-                setLibrariesSplit((prev) => Math.max(0.25, Number((prev - 0.05).toFixed(2))));
-              } else if (e.key === "ArrowDown") {
-                e.preventDefault();
-                setLibrariesSplit((prev) => Math.min(0.8, Number((prev + 0.05).toFixed(2))));
-              } else if (e.key === "Home") {
-                e.preventDefault();
-                setLibrariesSplit(0.25);
-              } else if (e.key === "End") {
-                e.preventDefault();
-                setLibrariesSplit(0.8);
-              }
-            }}
-            onDoubleClick={() => {
-              setLibrariesSplit(0.55);
-            }}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              setIsSplitting(true);
-              const startY = e.clientY;
-              const startSplit = librariesSplit;
-              const totalHeight = columnRef.current?.clientHeight ?? 600;
-              const usableHeight = Math.max(240, totalHeight - 8);
-
-              const onMouseMove = (ev: MouseEvent) => {
-                const deltaY = ev.clientY - startY;
-                const next = Math.max(0.25, Math.min(0.8, startSplit + deltaY / usableHeight));
-                setLibrariesSplit(next);
-              };
-
-              const onMouseUp = () => {
-                setIsSplitting(false);
-                document.removeEventListener("mousemove", onMouseMove);
-                document.removeEventListener("mouseup", onMouseUp);
-                document.body.style.cursor = "auto";
-                document.body.style.userSelect = "auto";
-              };
-
-              document.addEventListener("mousemove", onMouseMove);
-              document.addEventListener("mouseup", onMouseUp);
-              document.body.style.cursor = "row-resize";
-              document.body.style.userSelect = "none";
-            }}
-            onTouchStart={(e) => {
-              const touch = e.touches[0];
-              if (!touch) return;
-              setIsSplitting(true);
-              const startY = touch.clientY;
-              const startSplit = librariesSplit;
-              const totalHeight = columnRef.current?.clientHeight ?? 600;
-              const usableHeight = Math.max(240, totalHeight - 8);
-
-              const onTouchMove = (ev: TouchEvent) => {
-                const t = ev.touches[0];
-                if (!t) return;
-                const deltaY = t.clientY - startY;
-                const next = Math.max(0.25, Math.min(0.8, startSplit + deltaY / usableHeight));
-                setLibrariesSplit(next);
-              };
-
-              const onTouchEnd = () => {
-                setIsSplitting(false);
-                document.removeEventListener("touchmove", onTouchMove);
-                document.removeEventListener("touchend", onTouchEnd);
-                document.body.style.userSelect = "auto";
-              };
-
-              document.addEventListener("touchmove", onTouchMove, { passive: true });
-              document.addEventListener("touchend", onTouchEnd);
-              document.body.style.userSelect = "none";
-            }}
-          />
-        ) : (
-          isStackedFloating && <div style={{ height: 8, flexShrink: 0 }} />
-        )}
-
-        {(showComponentsSection || showVariablesSection) && (
-          <div
-            style={
-              isStackedFloating
-                ? {
-                    ...floatingCardStyle,
-                    flex: hasComponents ? `${1 - librariesSplit} 1 0%` : "0 0 auto",
-                    minHeight: hasComponents ? 120 : undefined,
-                  }
-                : canResizeLibrariesSplit
-                  ? {
-                      display: "flex",
-                      flexDirection: "column",
-                      flex: `${1 - librariesSplit} 1 0%`,
-                      minHeight: 120,
-                      overflow: "hidden",
-                      borderTop: `1px solid ${dividerColor}`,
-                    }
-                  : { display: "contents" }
-            }
-          >
-            {!isNarrow && (
-              <div
-                className="d-flex flex-items-center flex-justify-between"
-                style={{
-                  minHeight: 44,
-                  padding: "8px 16px",
-                  boxSizing: "border-box",
-                  borderTop: isStackedFloating ? "none" : `1px solid ${dividerColor}`,
-                  borderBottom: `1px solid ${dividerColor}`,
-                  backgroundColor: "transparent",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: "0.04em",
-                  textTransform: "uppercase",
-                  color: "var(--ms-text-2, var(--color-fg-muted))",
-                  userSelect: "none",
-                  flexShrink: 0,
-                }}
-              >
-                <span>{showVariablesSection ? "Plot Variables" : translations.components}</span>
-                {showComponentsSection && componentCount > 0 && (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 600,
-                      padding: "1px 6px",
-                      borderRadius: 999,
-                      backgroundColor: _colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(15, 23, 42, 0.06)",
-                      color: "var(--ms-text-2, var(--color-fg-muted))",
-                    }}
-                  >
-                    {componentCount}
-                  </span>
-                )}
-              </div>
-            )}
-            <div style={{ flex: 1, overflow: "auto", minHeight: 0, paddingBottom: isNarrow ? 72 : 0 }}>
-              {showComponentsSection ? (
-                <ComponentList
-                  components={diagramData?.nodes ?? null}
-                  onSelect={onSelectComponent}
-                  onHighlight={onTreeHighlight}
-                  selectedName={selectedComponent}
-                  language={language}
-                  translations={translations}
-                  uri={documentUri}
-                  colorMode={_colorMode}
-                />
-              ) : (
-                <VariablesTree
-                  variables={simulationVariables ?? []}
-                  selectedVariables={selectedSimulationVariables}
-                  onToggleVariable={onToggleSimulationVariable}
-                />
-              )}
             </div>
           </div>
         )}

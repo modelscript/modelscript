@@ -410,14 +410,16 @@ export function evaluateHarmonicDistortion(
 
   // Select last 1 to 2 fundamental cycles for steady-state harmonic analysis
   const windowCycles = Math.min(2, Math.floor(n / cycleSteps));
-  const windowSteps = windowCycles * cycleSteps;
+  const windowSteps = windowCycles >= 1 ? windowCycles * cycleSteps : n;
   const startIdx = Math.max(0, n - windowSteps);
 
   const harmonics = new Float64Array(maxHarmonic);
-  const N = n - startIdx;
+  const N = Math.max(1, n - startIdx);
   const omega = 2 * Math.PI * nominalFreqHz;
+  const nyquistHz = dt > 0 ? 0.5 / dt : Infinity;
 
   for (let h = 1; h <= maxHarmonic; h++) {
+    if (h * nominalFreqHz > nyquistHz) break;
     let re = 0.0;
     let im = 0.0;
     for (let k = startIdx; k < n; k++) {

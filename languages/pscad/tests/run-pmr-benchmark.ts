@@ -40,7 +40,7 @@ const __filename = fileURLToPath(import.meta.url);
 // =========================================================================
 // WORKER PROCESS IMPLEMENTATION
 // =========================================================================
-if (process.env.IS_PMR_BENCHMARK_WORKER === "1") {
+if (process.env["IS_PMR_BENCHMARK_WORKER"] === "1") {
   let netlist: EmtNetlist | null = null;
 
   process.on("message", (msg: any) => {
@@ -109,7 +109,9 @@ if (process.env.IS_PMR_BENCHMARK_WORKER === "1") {
     console.log("   PSCAD PARALLEL MULTIPLE RUN (PMR) INDUSTRY BENCHMARK ENGINE");
     console.log("=========================================================================");
     console.log(` Target PMR Runs:         ${count.toLocaleString()} EMT simulations`);
-    console.log(` EMT Time Step:           ${(timeStepSec * 1e6).toFixed(1)} µs (${totalStepsPerRun.toLocaleString()} companion steps/run)`);
+    console.log(
+      ` EMT Time Step:           ${(timeStepSec * 1e6).toFixed(1)} µs (${totalStepsPerRun.toLocaleString()} companion steps/run)`,
+    );
     console.log(` Total Companion Steps:   ${(count * totalStepsPerRun).toLocaleString()} steps across study`);
     console.log(` Hardware Available:      ${numCores} CPU Cores | ${(os.totalmem() / 1e9).toFixed(1)} GB RAM`);
     console.log(` PMR Parallel Workers:    ${workerCount} Workers (child processes)`);
@@ -141,7 +143,9 @@ if (process.env.IS_PMR_BENCHMARK_WORKER === "1") {
     for (let i = 0; i < seqBatchSize; i++) {
       seqRecords.push(executePmrRun(netlist, tasks[i]!));
       if ((i + 1) % 10 === 0 || i === seqBatchSize - 1) {
-        process.stdout.write(`\r  [1-Core Baseline] Solved: ${i + 1}/${seqBatchSize} (${(((i + 1) / seqBatchSize) * 100).toFixed(0)}%)`);
+        process.stdout.write(
+          `\r  [1-Core Baseline] Solved: ${i + 1}/${seqBatchSize} (${(((i + 1) / seqBatchSize) * 100).toFixed(0)}%)`,
+        );
       }
     }
     const seqWallClockMs = performance.now() - tSeq0;
@@ -149,7 +153,9 @@ if (process.env.IS_PMR_BENCHMARK_WORKER === "1") {
     const baselineStepsPerSec = baseline1CoreRate * totalStepsPerRun;
     process.stdout.write("\n");
     console.log(`  -> 1-Core Baseline Solved in: ${seqWallClockMs.toFixed(1)} ms`);
-    console.log(`  -> 1-Core Solve Rate:         ${baseline1CoreRate.toFixed(1)} runs/s (${baselineStepsPerSec.toLocaleString()} companion steps/s)`);
+    console.log(
+      `  -> 1-Core Solve Rate:         ${baseline1CoreRate.toFixed(1)} runs/s (${baselineStepsPerSec.toLocaleString()} companion steps/s)`,
+    );
 
     // [3/5] Spawn Parallel Worker Pool
     console.log(`\n[3/5] Spawning ${workerCount} Parallel PMR Worker Processes...`);
@@ -179,7 +185,9 @@ if (process.env.IS_PMR_BENCHMARK_WORKER === "1") {
     console.log(`  -> All ${workerCount} PMR workers warm in memory in ${Date.now() - tWorkers0} ms.`);
 
     // [4/5] Parallel PMR Sweep
-    console.log(`\n[4/5] Executing Parallel Multiple Run (${count.toLocaleString()} runs across ${workerCount} cores)...`);
+    console.log(
+      `\n[4/5] Executing Parallel Multiple Run (${count.toLocaleString()} runs across ${workerCount} cores)...`,
+    );
     const parallelRecords: PmrRunRecord[] = [];
     const chunkSize = Math.max(1, Math.min(20, Math.ceil(count / (workerCount * 8))));
     const chunks: PmrTask[][] = [];
@@ -268,7 +276,10 @@ if (process.env.IS_PMR_BENCHMARK_WORKER === "1") {
     exportPmrToJson(summary, jsonPath);
 
     // Export worst-case transient overvoltage waveform to IEEE COMTRADE and PSCAD v5 .psout
-    const worstRecord = summary.runs.reduce((worst, r) => (r.maxPeakKv > worst.maxPeakKv ? r : worst), summary.runs[0]!);
+    const worstRecord = summary.runs.reduce(
+      (worst, r) => (r.maxPeakKv > worst.maxPeakKv ? r : worst),
+      summary.runs[0]!,
+    );
     const worstTask = tasks.find((t) => t.runIndex === worstRecord.runIndex)!;
     const { trajectory: worstTraj } = executePmrRunWithTrajectory(netlist, worstTask);
 
@@ -285,39 +296,63 @@ if (process.env.IS_PMR_BENCHMARK_WORKER === "1") {
     console.log("=========================================================================");
     console.log(` Total PMR Runs Executed:       ${summary.totalRuns.toLocaleString()}`);
     console.log(` Parallel Worker Count:         ${summary.workerCount} Cores`);
-    console.log(` Total Companion Steps Solved:  ${(summary.totalRuns * summary.totalStepsPerRun).toLocaleString()} steps`);
-    console.log(` Parallel Wall-Clock Time:      ${(summary.wallClockTimeMs / 1000.0).toFixed(2)} s (${summary.wallClockTimeMs.toFixed(1)} ms)`);
+    console.log(
+      ` Total Companion Steps Solved:  ${(summary.totalRuns * summary.totalStepsPerRun).toLocaleString()} steps`,
+    );
+    console.log(
+      ` Parallel Wall-Clock Time:      ${(summary.wallClockTimeMs / 1000.0).toFixed(2)} s (${summary.wallClockTimeMs.toFixed(1)} ms)`,
+    );
     console.log(` Parallel Throughput:           ${summary.throughputRunsPerSec.toFixed(1)} EMT runs/s`);
     console.log(` Companion Step Rate:           ${summary.throughputStepsPerSec.toLocaleString()} steps/s`);
     console.log(` 1-Core Baseline Rate:          ${baseline1CoreRate.toFixed(1)} EMT runs/s`);
     console.log(` Parallel Speedup Factor:       ${summary.speedupFactor}x (over 1-core)`);
-    console.log(` Parallel Scaling Efficiency:   ${summary.parallelEfficiencyPercent}% (across ${summary.workerCount} workers)`);
+    console.log(
+      ` Parallel Scaling Efficiency:   ${summary.parallelEfficiencyPercent}% (across ${summary.workerCount} workers)`,
+    );
 
     console.log("\n--- STATISTICAL SWITCHING OVERVOLTAGE (IEC 60071-2 / IEEE C37.011) ---");
     console.log(` Base Peak L-N Voltage:         ${basePeakKv.toFixed(2)} kV (1.0 p.u.)`);
-    console.log(` Mean Switching Overvoltage:    ${summary.meanPeakKv.toFixed(2)} kV (${(summary.meanPeakKv / basePeakKv).toFixed(3)} p.u.)`);
+    console.log(
+      ` Mean Switching Overvoltage:    ${summary.meanPeakKv.toFixed(2)} kV (${(summary.meanPeakKv / basePeakKv).toFixed(3)} p.u.)`,
+    );
     console.log(` Standard Deviation (sigma):    ${summary.stdDevPeakKv.toFixed(2)} kV`);
-    console.log(` Min Peak Overvoltage:          ${summary.minPeakKv.toFixed(2)} kV (${(summary.minPeakKv / basePeakKv).toFixed(3)} p.u.)`);
-    console.log(` Max Peak Overvoltage:          ${summary.maxPeakKv.toFixed(2)} kV (${(summary.maxPeakKv / basePeakKv).toFixed(3)} p.u.)`);
-    console.log(` 2% Statistical Overvoltage V2%: ${summary.ssovV2PercentKv.toFixed(2)} kV (${summary.ssovV2PercentPu.toFixed(3)} p.u.)`);
+    console.log(
+      ` Min Peak Overvoltage:          ${summary.minPeakKv.toFixed(2)} kV (${(summary.minPeakKv / basePeakKv).toFixed(3)} p.u.)`,
+    );
+    console.log(
+      ` Max Peak Overvoltage:          ${summary.maxPeakKv.toFixed(2)} kV (${(summary.maxPeakKv / basePeakKv).toFixed(3)} p.u.)`,
+    );
+    console.log(
+      ` 2% Statistical Overvoltage V2%: ${summary.ssovV2PercentKv.toFixed(2)} kV (${summary.ssovV2PercentPu.toFixed(3)} p.u.)`,
+    );
 
     console.log("\n--- OVERVOLTAGE DISTRIBUTION HISTOGRAM (10 Bins) ---");
     for (const bin of summary.histogram) {
       const barLength = Math.round(bin.percent / 2.5);
       const bar = "█".repeat(barLength) + "░".repeat(Math.max(0, 20 - barLength));
-      console.log(`   [${bin.binMinKv.toFixed(1)} - ${bin.binMaxKv.toFixed(1)} kV]: ${bar} ${bin.count.toString().padStart(4, " ")} runs (${bin.percent.toFixed(1)}%)`);
+      console.log(
+        `   [${bin.binMinKv.toFixed(1)} - ${bin.binMaxKv.toFixed(1)} kV]: ${bar} ${bin.count.toString().padStart(4, " ")} runs (${bin.percent.toFixed(1)}%)`,
+      );
     }
 
     console.log("\n--- NUMERICAL STABILITY & CHATTER SUPPRESSION ---");
-    console.log(` Numerical Convergence Rate:    ${summary.numericalConvergenceRate.toFixed(1)}% (${summary.runs.filter((r) => r.status === "CONVERGED").length}/${summary.totalRuns})`);
+    console.log(
+      ` Numerical Convergence Rate:    ${summary.numericalConvergenceRate.toFixed(1)}% (${summary.runs.filter((r) => r.status === "CONVERGED").length}/${summary.totalRuns})`,
+    );
     console.log(` Diverged / Singular Runs:      0 (100% stable)`);
-    console.log(` CDA Chatter Damping Rate:      ${summary.cdaChatterEliminationRate.toFixed(1)}% of runs damped at breaker toggle`);
+    console.log(
+      ` CDA Chatter Damping Rate:      ${summary.cdaChatterEliminationRate.toFixed(1)}% of runs damped at breaker toggle`,
+    );
 
     console.log("\n--- INDUSTRY VERIFICATION ARTIFACTS EXPORTED ---");
     console.log(` Tabulated CSV (IEC 60071):      ${csvPath}`);
     console.log(` Full Summary JSON:             ${jsonPath}`);
-    console.log(` Worst-Case COMTRADE (.cff):     ${comtradePath} (${(comtradeMetrics.byteLength / 1024).toFixed(1)} KB, serialized in ${comtradeMetrics.writeTimeMs.toFixed(2)} ms)`);
-    console.log(` Worst-Case PSCAD V5 (.psout):   ${psoutPath} (${(psoutMetrics.byteLength / 1024).toFixed(1)} KB, serialized in ${psoutMetrics.writeTimeMs.toFixed(2)} ms)`);
+    console.log(
+      ` Worst-Case COMTRADE (.cff):     ${comtradePath} (${(comtradeMetrics.byteLength / 1024).toFixed(1)} KB, serialized in ${comtradeMetrics.writeTimeMs.toFixed(2)} ms)`,
+    );
+    console.log(
+      ` Worst-Case PSCAD V5 (.psout):   ${psoutPath} (${(psoutMetrics.byteLength / 1024).toFixed(1)} KB, serialized in ${psoutMetrics.writeTimeMs.toFixed(2)} ms)`,
+    );
     console.log("=========================================================================\n");
   }
 

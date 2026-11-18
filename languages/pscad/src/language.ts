@@ -22,7 +22,7 @@ import { computeSimulationCoverage, type SimulationCoverage } from "./netlist/co
 import { extractEmtNetlist, netlistToEmtCircuit } from "./netlist/emt-netlist.js";
 import { parsePscx } from "./parser/pscx-parser.js";
 import { writePscadPsout } from "./psout/index.js";
-import { EmtSolver } from "./solver/emt-solver.js";
+import { EmtSolver, parsePscadSnapshot, type PscadSnapshot } from "./solver/emt-solver.js";
 import { runFrequencyScan } from "./solver/frequency-scanner.js";
 import { runMultipleRunSweep, runPointOnWaveSweep } from "./solver/parametric-sweep.js";
 import { pscadPolyglotConfig } from "./tgg/pscad-polyglot.js";
@@ -70,6 +70,14 @@ export interface PscadSimulationPipelineOptions {
   strictNetlist?: boolean | undefined;
   /** Optional `fmi-ls-emt` Norton-companion instances (e.g. compiled Modelica electrical leaves) keyed by component/FMU ID. */
   fmuCompanions?: Map<string, FmiLsEmtCompanionInstance> | undefined;
+  /** Optional `.snp` snapshot object or serialized text to warm-start the EMT solver. */
+  initialSnapshot?: PscadSnapshot | string | undefined;
+  /** When true, exports the final `.snp` snapshot state from EmtSolver. */
+  exportSnapshot?: boolean | undefined;
+  /** Optional per-step streaming callback forwarded to EmtSolver. */
+  onStep?:
+    | ((timeSec: number, stepIndex: number, busVoltages: Map<string, { a: number; b: number; c: number }>) => void)
+    | undefined;
   /** Optional external EMT solver callback (e.g., `@modelscript/simulate` Dommel solver); falls back to built-in companion synthesizer when omitted. */
   solverRunner?:
     | ((
@@ -101,6 +109,9 @@ function synthesizeCompanionTrajectory(
   timeStepSec: number,
   durationSec: number,
   extraCompanions?: Map<string, FmiLsEmtCompanionInstance>,
+  initialSnapshot?: PscadSnapshot | string,
+  exportSnapshot?: boolean,
+  onStep?: PscadSimulationPipelineOptions["onStep"],
 ) {
   const fmuCompanions = instantiateWasmCompanionsForNetlist(netlist);
   if (extraCompanions) {
@@ -108,14 +119,23 @@ function synthesizeCompanionTrajectory(
       fmuCompanions.set(k, v);
     }
   }
+  const parsedSnap = initialSnapshot
+    ? typeof initialSnapshot === "string"
+      ? parsePscadSnapshot(initialSnapshot)
+      : initialSnapshot
+    : undefined;
   const solver = new EmtSolver(netlist, {
     timeStepSec,
     durationSec,
     nominalFrequencyHz: netlist.nominalFrequencyHz || 60.0,
     enableCda: true,
     ...(fmuCompanions.size > 0 ? { fmuCompanions } : {}),
+    ...(onStep ? { onStep } : {}),
+    ...(parsedSnap ? { initialSnapshot: parsedSnap } : {}),
   });
-  return solver.solve();
+  const simResult = solver.solve();
+  const snapshot = exportSnapshot ? solver.exportSnapshot() : undefined;
+  return { simResult, snapshot };
 }
 
 /**
@@ -226,6 +246,7 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
     Boolean(options.exportComtrade) ||
     Boolean(options.verifyIeee2800);
 
+  let snapshot: PscadSnapshot | undefined;
   let simulationResult:
     | {
         time: Float64Array;
@@ -266,7 +287,17 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
           });
       simulationReport.injectedReferenceBuses = isolatedUnsourced;
       simulationReport.synthesizedIbr = !isControlOnly && (netlist.fmuInstances ?? []).length > 0;
-      simulationResult = synthesizeCompanionTrajectory(netlist, timeStepSec, durationSec, options.fmuCompanions);
+      const companionOut = synthesizeCompanionTrajectory(
+        netlist,
+        timeStepSec,
+        durationSec,
+        options.fmuCompanions,
+        options.initialSnapshot,
+        options.exportSnapshot,
+        options.onStep,
+      );
+      simulationResult = companionOut.simResult;
+      snapshot = companionOut.snapshot;
       if (simulationReport.injectedReferenceBuses.length > 0 || simulationReport.synthesizedIbr) {
         diagnostics.push({
           code: "P6102",
@@ -284,9 +315,30 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
     }
   }
 
+  if (simulationResult && netlist.pgbChannels && netlist.pgbChannels.length > 0) {
+    const sigMap = new Map<string, Float64Array>(simulationResult.controlSignals ?? []);
+    for (const pgb of netlist.pgbChannels) {
+      if (!pgb.name || sigMap.has(pgb.name)) continue;
+      const srcKey = pgb.sourceSignal;
+      if (!srcKey) continue;
+      const rawArr =
+        sigMap.get(srcKey) ?? simulationResult.busVoltages.get(srcKey) ?? simulationResult.branchCurrents.get(srcKey);
+      if (!rawArr) continue;
+      const scale = pgb.scale !== undefined && Number.isFinite(pgb.scale) ? pgb.scale : 1.0;
+      if (scale === 1.0) {
+        sigMap.set(pgb.name, rawArr);
+      } else {
+        const scaled = new Float64Array(rawArr.length);
+        for (let k = 0; k < rawArr.length; k++) scaled[k] = rawArr[k]! * scale;
+        sigMap.set(pgb.name, scaled);
+      }
+    }
+    simulationResult = { ...simulationResult, controlSignals: sigMap };
+  }
+
   let comtrade: { cfg: string; dat: string } | undefined;
   if (simulationResult && (options.exportComtrade ?? true)) {
-    const record = emtResultToComtrade(simulationResult, project.name, "MSX_EMT");
+    const record = emtResultToComtrade(simulationResult, project.name, "MSX_EMT", netlist.nominalFrequencyHz);
     comtrade = writeComtrade(record);
   }
 
@@ -371,6 +423,7 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
     pscadPsout,
     complianceReport,
     simulationReport,
+    snapshot,
   };
 }
 
@@ -546,7 +599,11 @@ export const pscadLanguage = language({
         if (!text) return null;
         const project = parsePscx(text);
         const netlist = extractEmtNetlist(project);
-        const sim = synthesizeCompanionTrajectory(netlist, 50e-6, Math.min(0.2, project.settings.durationSec || 0.1));
+        const sim = synthesizeCompanionTrajectory(
+          netlist,
+          50e-6,
+          Math.min(0.2, project.settings.durationSec || 0.1),
+        ).simResult;
         const relays = (netlist.protectionRelays ?? []).map((r) => {
           const z1 = r.zone1ReachOhm ?? 15.0;
           const z2 = r.zone2ReachOhm ?? 1.25 * z1;

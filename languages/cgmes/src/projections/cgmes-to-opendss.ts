@@ -12,7 +12,13 @@ import type { CgmesModel } from "../types.js";
  */
 export function cgmesToOpenDss(model: CgmesModel, circuitName = "CGMES_FEEDER"): string {
   const topo = processTopology(model);
-  const lines: string[] = [`Clear`, `New Circuit.${circuitName} basekv=115 pu=1.0`];
+  const firstSource = model.energySources?.values().next().value;
+  const baseKv = firstSource?.nominalVoltageKv ?? 115;
+  const pu =
+    firstSource && firstSource.nominalVoltageKv > 0
+      ? ((firstSource.voltageMagnitudeKv ?? firstSource.nominalVoltageKv) / firstSource.nominalVoltageKv).toFixed(4)
+      : "1.0";
+  const lines: string[] = [`Clear`, `New Circuit.${circuitName} basekv=${baseKv} pu=${pu}`];
 
   // Map ACLineSegment -> number of phases from IEC 61968 ACLineSegmentPhase if available
   const phasesByLine = new Map<string, Set<string>>();
@@ -41,6 +47,17 @@ export function cgmesToOpenDss(model: CgmesModel, circuitName = "CGMES_FEEDER"):
     lines.push(
       `New Line.${safeName} phases=${nPhases} bus1=${buses[0]} bus2=${buses[1]} length=${lenKm} units=km r1=${line.r} x1=${Math.max(line.x, 1e-4)}`,
     );
+  }
+
+  if (model.switches) {
+    for (const sw of model.switches.values()) {
+      const buses = eqTerms.get(sw.mRID);
+      if (!buses || buses.length < 2 || !buses[0] || !buses[1]) continue;
+      const safeName = sw.name.replace(/\s+/g, "_");
+      lines.push(
+        `New Line.${safeName} phases=3 bus1=${buses[0]} bus2=${buses[1]} switch=y${sw.open ? " enabled=false" : ""}`,
+      );
+    }
   }
 
   for (const load of model.loads.values()) {

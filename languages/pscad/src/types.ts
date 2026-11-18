@@ -142,6 +142,8 @@ export interface PscxModule {
   wirelessNets?: Record<string, string[]> | undefined;
   /** Default values of the definition's `<form>` parameters (name → raw expression). */
   parameterDefaults?: Record<string, string> | undefined;
+  /** Real PSCAD `<Frame classid="GraphFrame">` / `<Graph>` definitions inside this schematic. */
+  graphFrames?: PscadGraphFrame[] | undefined;
 }
 
 export interface PscxProjectSettings {
@@ -220,6 +222,34 @@ export interface EmtTransformer {
   leakageReactancePu: number;
   noLoadLossesPu?: number | undefined;
   windingConnection: "Yg-Yg" | "Yg-D" | "D-Yg" | "D-D";
+  /** Optional off-nominal per-unit tap ratio multiplying nominal turns ratio (default: 1.0). */
+  tapPu?: number | undefined;
+  /** True when winding is an autotransformer with series + common sections. */
+  isAutotransformer?: boolean | undefined;
+  /** Optional tertiary bus ID for 3-winding transformer bank. */
+  tertiaryBus?: string | undefined;
+  /** Optional tertiary nominal line-to-line voltage in kV. */
+  tertiaryKv?: number | undefined;
+  /** Optional tertiary star-leg leakage reactance in per-unit on transformer MVA base. */
+  tertiaryLeakagePu?: number | undefined;
+  /** Tertiary winding vector connection (`"D"` / `"Yg"` / `"Y"`). */
+  tertiaryConnection?: "Yg" | "Y" | "D" | undefined;
+  /** Pairwise per-unit leakage reactances for exact T-equivalent 3-winding synthesis. */
+  leakagePsPu?: number | undefined;
+  leakagePtPu?: number | undefined;
+  leakageStPu?: number | undefined;
+  /** On-Load Tap Changer (OLTC) automatic voltage regulator config. */
+  oltc?:
+    | {
+        tapMin?: number | undefined;
+        tapMax?: number | undefined;
+        tapStepPu?: number | undefined;
+        targetBus?: string | undefined;
+        vRefPu?: number | undefined;
+        deadbandPu?: number | undefined;
+        delaySec?: number | undefined;
+      }
+    | undefined;
   /** Whether core saturation modeling is enabled for this transformer. */
   saturation?: boolean | undefined;
   /** Core saturation and hysteresis model type (default: `"PIECEWISE_LINEAR"`). */
@@ -362,6 +392,21 @@ export interface EmtSynchronousMachine {
   dampingPu?: number | undefined;
   mechanicalPowerPu?: number | undefined;
   fieldVoltagePu?: number | undefined;
+  /** Optional CSMF signal ID dynamically driving field voltage Ef (pu). */
+  efSignal?: string | undefined;
+  /** Optional CSMF signal ID dynamically driving mechanical power/torque Pm (pu). */
+  tmSignal?: string | undefined;
+  /** Optional N-mass spring-mass torsional shaft stages (e.g. HP, IP, LP, GEN) for SSR analysis. */
+  torsionalMasses?:
+    | Array<{
+        id: string;
+        hInertiaSec: number;
+        dampingPu?: number | undefined;
+        kShaftPuPerRad?: number | undefined;
+        dampingMutualPu?: number | undefined;
+        torqueFraction?: number | undefined;
+      }>
+    | undefined;
 }
 
 export interface EmtInductionMachine {
@@ -398,6 +443,13 @@ export interface EmtConverterBridge {
   numSubmodulesPerArm?: number | undefined;
   submoduleCapacitanceF?: number | undefined;
   armInductanceH?: number | undefined;
+  dcBus?: string | undefined;
+  dcCapacitanceF?: number | undefined;
+  dcLoadOhm?: number | undefined;
+  vDcRefKv?: number | undefined;
+  pRefMw?: number | undefined;
+  qRefMvar?: number | undefined;
+  controlMode?: "pq" | "vdc_q" | "vf_gfm" | undefined;
 }
 
 export interface EmtProtectionRelay {
@@ -421,6 +473,9 @@ export interface EmtProtectionRelay {
   underFrequencyHz?: number | undefined;
   overFrequencyHz?: number | undefined;
   rocofLimitHzPerSec?: number | undefined;
+  mtaDeg?: number | undefined;
+  ctKneeFluxVs?: number | undefined;
+  ctBurdenOhm?: number | undefined;
 }
 
 export interface EmtControlBlock {
@@ -466,7 +521,18 @@ export interface EmtControlBlock {
     | "inv_abcdq0_c"
     | "abs"
     | "tdelay"
-    | "zminusone";
+    | "zminusone"
+    | "pll"
+    | "freq_meas"
+    | "fft"
+    | "pwm"
+    | "sample_hold"
+    | "flip_flop"
+    | "sequencer"
+    | "ieee_exciter"
+    | "ieee_governor"
+    | "ieee_pss"
+    | "wecc_ibr";
   inputs: string[];
   params: Record<string, number>;
   /** Bus id (`sensor_v`) or branch id (`sensor_i`) measured by a sensor block. */
@@ -494,9 +560,44 @@ export interface EmtNetlist {
   protectionRelays?: EmtProtectionRelay[] | undefined;
   controlBlocks?: EmtControlBlock[] | undefined;
   customFortranBlocks?: EmtCustomFortranBlock[] | undefined;
+  pgbChannels?: PscadPgbChannel[] | undefined;
+  graphFrames?: PscadGraphFrame[] | undefined;
+  voltageDependentLoads?: EmtVoltageDependentLoad[] | undefined;
   /** Defaults the extractor had to assume because a parameter was missing or unrecognised. */
   assumptions?: string[] | undefined;
   nominalFrequencyHz: number;
+}
+
+export interface EmtVoltageDependentLoad {
+  id: string;
+  busId: string;
+  p0Mw: number;
+  q0Mvar: number;
+  v0KvLL: number;
+  np: number;
+  nq: number;
+  kpf: number;
+  kqf: number;
+  f0Hz: number;
+}
+
+export interface PscadPgbChannel {
+  id: string;
+  name: string;
+  group?: string | undefined;
+  min?: number | undefined;
+  max?: number | undefined;
+  scale?: number | undefined;
+  sourceSignal?: string | undefined;
+}
+
+export interface PscadGraphFrame {
+  id: string;
+  title: string;
+  kind: "graphframe" | "overlay" | "poly" | "xy";
+  curves: string[];
+  min?: number | undefined;
+  max?: number | undefined;
 }
 
 export interface EmtCustomFortranBlock {
@@ -509,6 +610,7 @@ export interface EmtCustomFortranBlock {
   inputs?: { portName: string; sourceId?: string | undefined }[] | undefined;
   outputs?: { portName: string; targetId?: string | undefined }[] | undefined;
   step?: ((ctx: import("@modelscript/fortran").FortranExecutionContext) => void) | undefined;
+  dsoutStep?: ((ctx: import("@modelscript/fortran").FortranExecutionContext) => void) | undefined;
   /** Compiled vendor Windows PE .dll, Linux ELF .so, or macOS .dylib binary buffer. */
   binaryBuffer?: Uint8Array | undefined;
   dsdynSymbol?: string | undefined;
@@ -524,6 +626,7 @@ export interface EmtCustomFortranBlock {
   requireHardwareDongle?: boolean | undefined;
   /** Original embedded script source for AST->WASM compilation. */
   scriptSource?: string | undefined;
+  dsoutScriptSource?: string | undefined;
   /** Source language of `scriptSource`. */
   scriptLang?: "fortran" | "c" | undefined;
   /** Evaluated/raw component parameters passed to the UDM. */

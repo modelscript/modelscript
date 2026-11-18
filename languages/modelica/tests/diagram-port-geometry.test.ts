@@ -282,8 +282,10 @@ describe("Diagram Port Centering and Ground Alignment Geometry", () => {
     assert.strictEqual(solderDotNodes.length, 1, "Should precompute 1 solder dot at the T-junction");
     assert.strictEqual(solderDotNodes[0].shape, "circle");
     // In SVG coordinates, center is near (0, 0)
-    assert(Math.abs(solderDotNodes[0].x - -1.5) <= 0.1);
-    assert(Math.abs(solderDotNodes[0].y - -1.5) <= 0.1);
+    const cx = solderDotNodes[0].x + (solderDotNodes[0].width ?? 0) / 2;
+    const cy = solderDotNodes[0].y + (solderDotNodes[0].height ?? 0) / 2;
+    assert(Math.abs(cx) <= 0.1);
+    assert(Math.abs(cy) <= 0.1);
   });
 
   it("should rotate port world coordinates by node angle for rotated RLC components", async () => {

@@ -184,7 +184,8 @@ $IN $OUT 100.0 0 0
 
     const project = parsePscx(pscxXml);
     assert.ok(project.definitions?.has("CustomBlock"));
-    const def = project.definitions.get("CustomBlock")!;
+    const def = project.definitions?.get("CustomBlock");
+    assert.ok(def);
     assert.ok(def.flyBy);
     assert.ok(def.flyBy.summary.includes("Advanced Custom Signal Filter"));
     assert.equal(def.flyBy.ports["IN"], "Input signal terminal");

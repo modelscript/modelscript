@@ -8,8 +8,9 @@
  *
  * Defines structured `ModelicaDiagnostic` records, the `ModelicaErrorCode` catalog
  * (categorized into `1xxx` syntax, `2xxx` name resolution, `3xxx` type checking,
- * `4xxx` structural/inheritance semantics, `5xxx` equations/algorithms/CFA, and
- * `6xxx` synchronous clocks/state machines), and formatting/lookup utilities.
+ * `4xxx` structural/inheritance semantics, `5xxx` equations/algorithms/CFA,
+ * `6xxx` synchronous clocks/state machines, and reserved `7xxx` formal verification),
+ * and formatting/lookup utilities.
  */
 
 import type { Range } from "@modelscript/dsl/utils";
@@ -299,6 +300,12 @@ export const ModelicaErrorCode = {
     message: (lhsUnit: string, rhsUnit: string) =>
       `Unit mismatch: Left-hand side has unit '${lhsUnit}' but right-hand side has incompatible unit '${rhsUnit}'.`,
   },
+  UNIT_MISMATCH_BINDING: {
+    code: 3022,
+    rule: "unit-mismatch-binding",
+    severity: "warning",
+    message: (bindingText: string) => `Unit mismatch in component binding '${bindingText}'.`,
+  },
 
   // ── 4xxx: Structural / Semantic ───────────────────────────────────────
   DIMENSION_NOT_PARAMETER: {
@@ -585,6 +592,12 @@ export const ModelicaErrorCode = {
     rule: "builtin-time-invalid",
     severity: "error",
     message: () => `time is not allowed in a function.`,
+  },
+  RESERVED_BUILTIN_TIME: {
+    code: 2008,
+    rule: "reserved-builtin-time",
+    severity: "error",
+    message: () => `Identifier time is reserved for the built-in element with the same name.`,
   },
   TERMINATE_IN_FUNCTION: {
     code: 4078,

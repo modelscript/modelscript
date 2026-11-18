@@ -190,17 +190,32 @@ export class EmtdcHostBridge {
       subroutineName: block.name,
       numRealStates: Math.max(16, block.numRealStates),
       numIntStates: Math.max(8, block.numIntStates),
-      dsdyn: (state, ports) => {
-        block.step?.({
-          inputs: ports,
-          outputs: ports,
-          storf: state.STORF,
-          stori: state.STORI,
-          time: state.TIME,
-          dt: state.DELT,
-          firstStep: state.FIRSTSTEP,
-        });
-      },
+      dsdyn: block.step
+        ? (state, ports) => {
+            block.step?.({
+              inputs: ports,
+              outputs: ports,
+              storf: state.STORF.subarray(state.NSTORF),
+              stori: state.STORI.subarray(state.NSTORI),
+              time: state.TIME,
+              dt: state.DELT,
+              firstStep: state.FIRSTSTEP,
+            });
+          }
+        : undefined,
+      dsout: block.dsoutStep
+        ? (state, ports) => {
+            block.dsoutStep?.({
+              inputs: ports,
+              outputs: ports,
+              storf: state.STORF.subarray(state.NSTORF),
+              stori: state.STORI.subarray(state.NSTORI),
+              time: state.TIME,
+              dt: state.DELT,
+              firstStep: state.FIRSTSTEP,
+            });
+          }
+        : undefined,
     });
   }
 
@@ -639,6 +654,12 @@ struct {
   int32_t NSTORI;
 } emtdc_s1_;
 
+struct {
+  double VDC[1024];
+  double CCIN[1024];
+  int32_t MAX_NODES;
+} nd2_;
+
 extern void ${subLower}_(${protoArgs});
 
 typedef struct {
@@ -654,6 +675,8 @@ void* fmi3InstantiateCoSimulation(const char* instanceName, const char* instanti
   inst->firstStep = 1;
   memset(&s0_, 0, sizeof(s0_));
   memset(&emtdc_s1_, 0, sizeof(emtdc_s1_));
+  memset(&nd2_, 0, sizeof(nd2_));
+  nd2_.MAX_NODES = 1024;
   return inst;
 }
 

@@ -98,10 +98,24 @@ export function createPscadDiagramBackend(backends: DiagramDispatchDeps): Diagra
 
         if (cmp) {
           const masterSchema = getMasterComponentSchema(cmp.definitionName);
+          const userForm = getUserDefinitionForm(text, cmp.definitionName);
+          const userFormParams = new Map<string, { defaultValue?: string; cond?: string; vis?: string }>();
+          if (userForm) {
+            for (const cat of userForm.categories) {
+              for (const fp of cat.parameters) {
+                userFormParams.set(fp.name, fp);
+              }
+            }
+          }
           const mergedValues: Record<string, any> = {};
           if (masterSchema) {
             for (const p of masterSchema.parameters) {
               mergedValues[p.key] = p.defaultValue;
+            }
+          }
+          for (const [k, fp] of userFormParams.entries()) {
+            if (!(k in mergedValues) && fp.defaultValue !== undefined) {
+              mergedValues[k] = fp.defaultValue;
             }
           }
           for (const [k, v] of Object.entries(cmp.parameters)) {
@@ -118,6 +132,7 @@ export function createPscadDiagramBackend(backends: DiagramDispatchDeps): Diagra
             for (const p of masterSchema.parameters) {
               seenKeys.add(p.key);
               const currentVal = mergedValues[p.key] ?? p.defaultValue;
+              const fp = userFormParams.get(p.key);
               parameters.push({
                 name: p.key,
                 localizedName: p.label,
@@ -144,6 +159,8 @@ export function createPscadDiagramBackend(backends: DiagramDispatchDeps): Diagra
                 unit: p.unit,
                 choices: p.options?.map((o) => ({ label: o.label, value: o.value })),
                 validation: p.min !== undefined || p.max !== undefined ? { min: p.min, max: p.max } : undefined,
+                ...(fp?.cond ? { enabledIf: fp.cond } : {}),
+                ...(fp?.vis ? { visibleIf: fp.vis } : {}),
               };
               groupMap.get(groupName)!.push(field);
             }
@@ -214,6 +231,8 @@ export function createPscadDiagramBackend(backends: DiagramDispatchDeps): Diagra
                   defaultValue: numeric ? Number(p.defaultValue) : p.defaultValue,
                   unit: p.unit || undefined,
                   validation: p.min !== undefined || p.max !== undefined ? { min: p.min, max: p.max } : undefined,
+                  enabledIf: p.cond || undefined,
+                  visibleIf: p.vis || undefined,
                 });
               }
               if (fields.length > 0) {
@@ -348,7 +367,12 @@ export function createPscadDiagramBackend(backends: DiagramDispatchDeps): Diagra
         const foreignEdits: TextEdit[] = [];
         const nativeActions: DiagramApplyEditsParams["actions"] = [];
 
-        for (const action of params.actions) {
+        const activeSection = (params as { className?: string }).className;
+        for (const rawAction of params.actions) {
+          const action =
+            activeSection && !(rawAction as { section?: string }).section
+              ? { ...rawAction, section: activeSection }
+              : rawAction;
           if (action.type === "addComponent") {
             const dropEdits = computePscadComponentDropEdits({
               docText: text,
@@ -397,7 +421,7 @@ export function createPscadDiagramBackend(backends: DiagramDispatchDeps): Diagra
         const { buildPscadDiagram } = await import("@modelscript/diagram/pscad-diagram-builder");
         const project = parsePscx(text);
 
-        const candidateId = params.componentId || params.nodeId || params.componentName || params.className || "";
+        const candidateId = params.componentId || params.nodeId || params.componentName || "";
         const strippedId = candidateId.startsWith("cmp_") ? candidateId.slice(4) : candidateId;
 
         const allComponents = [
@@ -405,8 +429,8 @@ export function createPscadDiagramBackend(backends: DiagramDispatchDeps): Diagra
           ...Array.from(project.subModules.values()).flatMap((m) => m.components),
         ];
 
-        let targetModuleName = params.className || "";
-        if (!targetModuleName || !project.subModules.has(targetModuleName)) {
+        let targetModuleName = "";
+        if (candidateId) {
           const cmp = allComponents.find(
             (c) => c.id === strippedId || c.id === candidateId || c.instanceName === candidateId,
           );
@@ -420,6 +444,9 @@ export function createPscadDiagramBackend(backends: DiagramDispatchDeps): Diagra
           } else if (project.subModules.has(strippedId)) {
             targetModuleName = strippedId;
           }
+        }
+        if (!targetModuleName && params.className && project.subModules.has(params.className)) {
+          targetModuleName = params.className;
         }
 
         if (!targetModuleName || !project.subModules.has(targetModuleName)) {

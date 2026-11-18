@@ -279,6 +279,7 @@ export function emtResultToComtrade(
   result: SimulationResultLike,
   stationName: string = "ModelScript_Station",
   recordingDevId: string = "EMT01",
+  lineFrequencyHz: number = 60.0,
 ): ComtradeRecord {
   const analogChannels: ComtradeRecord["config"]["analogChannels"] = [];
   const analogData = new Map<string, Float64Array>();
@@ -393,7 +394,7 @@ export function emtResultToComtrade(
       standardVersionYear: 1999,
       analogChannels,
       digitalChannels: [],
-      lineFrequencyHz: 60.0,
+      lineFrequencyHz: Number.isFinite(lineFrequencyHz) && lineFrequencyHz > 0 ? lineFrequencyHz : 60.0,
       samplingRates: [{ rateHz, lastSampleNumber: nSamples }],
       startTime: new Date(),
       triggerTime: new Date(),

@@ -363,6 +363,205 @@ export class PsspySession {
     }
   }
 
+  /**
+   * Returns the number of buses in the active case (`psspy.abuscount(sid, flag)`).
+   */
+  public abuscount(_sid = -1, flag = 1): [number, number] {
+    if (!this.activeCase) return [1, 0];
+    const buses = Array.from(this.activeCase.buses.values());
+    const filtered = flag === 1 ? buses.filter((b) => b.ide !== 4) : buses;
+    return [0, filtered.length];
+  }
+
+  /**
+   * Subsystem bus integer array retrieval (`psspy.abusint(sid, flag, string)`).
+   */
+  public abusint(_sid = -1, flag = 1, quantity: "NUMBER" | "TYPE" | "AREA" | "ZONE" | "OWNER"): [number, number[]] {
+    if (!this.activeCase) return [1, []];
+    const buses = Array.from(this.activeCase.buses.values()).filter((b) => (flag === 1 ? b.ide !== 4 : true));
+    return [
+      0,
+      buses.map((b) => {
+        switch (quantity) {
+          case "NUMBER":
+            return b.i;
+          case "TYPE":
+            return b.ide;
+          case "AREA":
+            return b.area;
+          case "ZONE":
+            return b.zone;
+          case "OWNER":
+            return b.owner;
+        }
+      }),
+    ];
+  }
+
+  /**
+   * Subsystem bus real array retrieval (`psspy.abusreal(sid, flag, string)`).
+   */
+  public abusreal(_sid = -1, flag = 1, quantity: "BASE" | "PU" | "KV" | "ANGLED" | "ANGLER"): [number, number[]] {
+    if (!this.activeCase) return [1, []];
+    const buses = Array.from(this.activeCase.buses.values()).filter((b) => (flag === 1 ? b.ide !== 4 : true));
+    return [
+      0,
+      buses.map((b) => {
+        const solved = this.lastPowerFlow?.buses.find((x) => x.busNumber === b.i);
+        const vm = solved?.vm ?? b.vm;
+        const va = solved?.va ?? b.va;
+        switch (quantity) {
+          case "BASE":
+            return b.baseKv;
+          case "PU":
+            return vm;
+          case "KV":
+            return vm * b.baseKv;
+          case "ANGLED":
+            return va;
+          case "ANGLER":
+            return (va * Math.PI) / 180.0;
+        }
+      }),
+    ];
+  }
+
+  /**
+   * Subsystem branch real array retrieval (`psspy.abrnreal(sid, owner, ties, flag, entry, string)`).
+   */
+  public abrnreal(
+    _sid = -1,
+    _owner = 1,
+    _ties = 3,
+    _flag = 1,
+    _entry = 1,
+    quantity: "P" | "Q" | "MVA" | "PCTRTA" | "RATEA",
+  ): [number, number[]] {
+    if (!this.activeCase) return [1, []];
+    if (this.lastPowerFlow) {
+      return [
+        0,
+        this.lastPowerFlow.branches.map((br) => {
+          switch (quantity) {
+            case "P":
+              return br.pFromMw;
+            case "Q":
+              return br.qFromMvar;
+            case "MVA":
+              return br.mvaFlow;
+            case "PCTRTA":
+              return br.loadingPercent ?? 0;
+            case "RATEA":
+              return br.rateMva ?? 0;
+          }
+        }),
+      ];
+    }
+    return [0, this.activeCase.branches.map((br) => (quantity === "RATEA" ? br.rateA : 0))];
+  }
+
+  /**
+   * Subsystem machine real array retrieval (`psspy.amachreal(sid, flag, string)`).
+   */
+  public amachreal(
+    _sid = -1,
+    flag = 1,
+    quantity: "PGEN" | "QGEN" | "PMAX" | "PMIN" | "QMAX" | "QMIN",
+  ): [number, number[]] {
+    if (!this.activeCase) return [1, []];
+    const gens = this.activeCase.generators.filter((g) => (flag === 1 ? g.stat === 1 : true));
+    return [
+      0,
+      gens.map((g) => {
+        switch (quantity) {
+          case "PGEN":
+            return g.pg;
+          case "QGEN":
+            return g.qg;
+          case "PMAX":
+            return g.pt;
+          case "PMIN":
+            return g.pb;
+          case "QMAX":
+            return g.qt;
+          case "QMIN":
+            return g.qb;
+        }
+      }),
+    ];
+  }
+
+  /**
+   * Modifies bus data (`psspy.bus_chng_4(ibus, intgar, realar, name)`).
+   */
+  public bus_chng_4(ibus: number, intgar: number[] = [], realar: number[] = [], name?: string): number {
+    if (!this.activeCase) return 1;
+    const bus = this.activeCase.buses.get(ibus);
+    if (!bus) return 2;
+    if (intgar[0] !== undefined && intgar[0] >= 1 && intgar[0] <= 4) bus.ide = intgar[0];
+    if (intgar[1] !== undefined && intgar[1] > 0) bus.area = intgar[1];
+    if (intgar[2] !== undefined && intgar[2] > 0) bus.zone = intgar[2];
+    if (intgar[3] !== undefined && intgar[3] > 0) bus.owner = intgar[3];
+    if (realar[0] !== undefined && realar[0] > 0) bus.baseKv = realar[0];
+    if (realar[1] !== undefined && realar[1] > 0) bus.vm = realar[1];
+    if (realar[2] !== undefined) bus.va = realar[2];
+    if (typeof name === "string" && name.trim().length > 0) bus.name = name.trim();
+    return 0;
+  }
+
+  /**
+   * Modifies load data (`psspy.load_chng_4(ibus, id, intgar, realar)`).
+   */
+  public load_chng_4(ibus: number, id = "1", intgar: number[] = [], realar: number[] = []): number {
+    if (!this.activeCase) return 1;
+    const cleanId = id.trim() || "1";
+    const load = this.activeCase.loads.find((l) => l.i === ibus && (l.id.trim() || "1") === cleanId);
+    if (!load) return 2;
+    if (intgar[0] !== undefined) load.status = intgar[0] === 0 ? 0 : 1;
+    if (realar[0] !== undefined) load.pl = realar[0];
+    if (realar[1] !== undefined) load.ql = realar[1];
+    if (realar[2] !== undefined) load.ip = realar[2];
+    if (realar[3] !== undefined) load.iq = realar[3];
+    if (realar[4] !== undefined) load.yp = realar[4];
+    if (realar[5] !== undefined) load.yq = realar[5];
+    return 0;
+  }
+
+  /**
+   * Modifies machine/generator data (`psspy.machine_chng_2(ibus, id, intgar, realar)`).
+   */
+  public machine_chng_2(ibus: number, id = "1", intgar: number[] = [], realar: number[] = []): number {
+    if (!this.activeCase) return 1;
+    const cleanId = id.trim() || "1";
+    const gen = this.activeCase.generators.find((g) => g.i === ibus && (g.id.trim() || "1") === cleanId);
+    if (!gen) return 2;
+    if (intgar[0] !== undefined) gen.stat = intgar[0] === 0 ? 0 : 1;
+    if (realar[0] !== undefined) gen.pg = realar[0];
+    if (realar[1] !== undefined) gen.qg = realar[1];
+    if (realar[2] !== undefined) gen.qt = realar[2];
+    if (realar[3] !== undefined) gen.qb = realar[3];
+    if (realar[4] !== undefined && realar[4] > 0) gen.vs = realar[4];
+    return 0;
+  }
+
+  /**
+   * Modifies AC branch data (`psspy.branch_chng_3(ibus, jbus, ckt, intgar, realar)`).
+   */
+  public branch_chng_3(ibus: number, jbus: number, ckt = "1", intgar: number[] = [], realar: number[] = []): number {
+    if (!this.activeCase) return 1;
+    const cleanCkt = ckt.trim() || "1";
+    const br = this.activeCase.branches.find(
+      (b) => ((b.i === ibus && b.j === jbus) || (b.i === jbus && b.j === ibus)) && (b.ckt.trim() || "1") === cleanCkt,
+    );
+    if (!br) return 2;
+    if (intgar[0] !== undefined) br.st = intgar[0] === 0 ? 0 : 1;
+    if (realar[0] !== undefined) br.r = realar[0];
+    if (realar[1] !== undefined) br.x = realar[1];
+    if (realar[2] !== undefined) br.b = realar[2];
+    if (realar[3] !== undefined) br.rateA = realar[3];
+    return 0;
+  }
+
   private syncBusVoltagesFromSolution(sol: PowerFlowSolution): void {
     if (!this.activeCase) return;
     for (const bRes of sol.buses) {
@@ -386,14 +585,125 @@ export const psspy = new PsspySession();
  * `psspy.save`, `psspy.dyre_new`, `psspy.rdseq`, `psspy.fnsl`, `psspy.fdns`, `psspy.dcsc`,
  * `psspy.accc`, `psspy.strt`, `psspy.dist_bus_fault`, `psspy.dist_clear_fault`, `psspy.run`).
  */
+/**
+ * Generates a Python `psspy` module bridge for Pyodide / CPython-WASM runtimes
+ * that delegates every `psspy.*` call directly to an attached JS `PsspySession`.
+ */
+export function generatePyodidePsspyBridgeCode(globalSessionVar = "__ms_psspy_session"): string {
+  return `
+import types, sys
+_psspy = types.ModuleType("psspy")
+def _wrap(name):
+    def _fn(*args, **kwargs):
+        fn = getattr(${globalSessionVar}, name, None)
+        if fn is None:
+            return 0
+        return fn(*args)
+    return _fn
+for _api in [
+    "psseinit", "read", "case", "save", "dyre_new", "rdseq",
+    "fnsl", "fdns", "dcsc", "scmu", "accc", "strt",
+    "dist_bus_fault", "dist_clear_fault", "run",
+    "bus_chng_4", "load_chng_4", "machine_chng_2", "branch_chng_3",
+]:
+    setattr(_psspy, _api, _wrap(_api))
+sys.modules["psspy"] = _psspy
+`.trim();
+}
+
+function expandPythonVariablesAndLoops(scriptText: string): string {
+  const vars = new Map<string, string>();
+  const outLines: string[] = [];
+  const rawLines = scriptText.split(/\r?\n/);
+
+  const substVars = (expr: string): string => {
+    let result = expr;
+    for (const [k, v] of vars) {
+      result = result.replace(new RegExp(`\\b${k}\\b`, "g"), v);
+    }
+    return result;
+  };
+
+  let idx = 0;
+  while (idx < rawLines.length) {
+    const line = rawLines[idx]!;
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      idx++;
+      continue;
+    }
+
+    // Simple `for <var> in <list_or_range>:` loop expansion
+    const forMatch = /^for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+(.+):$/.exec(trimmed);
+    if (forMatch) {
+      const loopVar = forMatch[1]!;
+      const iterExpr = substVars(forMatch[2]!.trim());
+      const baseIndent = line.search(/\S/);
+      const bodyLines: string[] = [];
+      idx++;
+      while (idx < rawLines.length) {
+        const nextLine = rawLines[idx]!;
+        const nextTrim = nextLine.trim();
+        if (!nextTrim) {
+          idx++;
+          continue;
+        }
+        const nextIndent = nextLine.search(/\S/);
+        if (nextIndent <= baseIndent) break;
+        bodyLines.push(nextTrim);
+        idx++;
+      }
+
+      let items: string[] = [];
+      const rangeMatch = /^range\(\s*(-?\d+)\s*(?:,\s*(-?\d+)\s*(?:,\s*(-?\d+)\s*)?)?\)$/.exec(iterExpr);
+      if (rangeMatch) {
+        const start = rangeMatch[2] !== undefined ? Number(rangeMatch[1]) : 0;
+        const stop = rangeMatch[2] !== undefined ? Number(rangeMatch[2]) : Number(rangeMatch[1]);
+        const step = rangeMatch[3] !== undefined ? Number(rangeMatch[3]) : 1;
+        if (step !== 0) {
+          for (let v = start; step > 0 ? v < stop : v > stop; v += step) {
+            items.push(String(v));
+          }
+        }
+      } else if (iterExpr.startsWith("[") && iterExpr.endsWith("]")) {
+        items = iterExpr
+          .slice(1, -1)
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+
+      for (const item of items) {
+        for (const bodyLine of bodyLines) {
+          outLines.push(bodyLine.replace(new RegExp(`\\b${loopVar}\\b`, "g"), item));
+        }
+      }
+      continue;
+    }
+
+    // Simple scalar assignment `x = 123` or `fname = 'case.raw'`
+    const assignMatch = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/.exec(trimmed);
+    if (assignMatch && !trimmed.includes("psspy.")) {
+      vars.set(assignMatch[1]!, substVars(assignMatch[2]!.trim()));
+      idx++;
+      continue;
+    }
+
+    outLines.push(substVars(trimmed));
+    idx++;
+  }
+  return outLines.join("\n");
+}
+
 export function executePythonPsspyScript(
   scriptText: string,
   files?: Record<string, string | Uint8Array>,
 ): PsspySession {
   const session = new PsspySession(files);
+  const expandedScript = expandPythonVariablesAndLoops(scriptText);
   const callRegex = /psspy\.([a-zA-Z0-9_]+)\s*\(([^)]*)\)/g;
 
-  for (const match of scriptText.matchAll(callRegex)) {
+  for (const match of expandedScript.matchAll(callRegex)) {
     const fnName = match[1]!;
     const rawArgs = match[2]!.trim();
     const args = parsePythonCallArgs(rawArgs);
@@ -457,6 +767,47 @@ export function executePythonPsspyScript(
         session.run(0, tpause);
         break;
       }
+      case "bus_chng_4":
+        if (typeof args[0] === "number") {
+          session.bus_chng_4(
+            args[0],
+            Array.isArray(args[1]) ? args[1] : [],
+            Array.isArray(args[2]) ? args[2] : [],
+            typeof args[3] === "string" ? args[3] : undefined,
+          );
+        }
+        break;
+      case "load_chng_4":
+        if (typeof args[0] === "number") {
+          session.load_chng_4(
+            args[0],
+            typeof args[1] === "string" ? args[1] : "1",
+            Array.isArray(args[2]) ? args[2] : [],
+            Array.isArray(args[3]) ? args[3] : [],
+          );
+        }
+        break;
+      case "machine_chng_2":
+        if (typeof args[0] === "number") {
+          session.machine_chng_2(
+            args[0],
+            typeof args[1] === "string" ? args[1] : "1",
+            Array.isArray(args[2]) ? args[2] : [],
+            Array.isArray(args[3]) ? args[3] : [],
+          );
+        }
+        break;
+      case "branch_chng_3":
+        if (typeof args[0] === "number" && typeof args[1] === "number") {
+          session.branch_chng_3(
+            args[0],
+            args[1],
+            typeof args[2] === "string" ? args[2] : "1",
+            Array.isArray(args[3]) ? args[3] : [],
+            Array.isArray(args[4]) ? args[4] : [],
+          );
+        }
+        break;
     }
   }
 
@@ -517,4 +868,28 @@ function parsePythonCallArgs(rawArgs: string): Array<number | string | number[]>
     }
   }
   return results;
+}
+
+export interface PyodideRuntimeLike {
+  globals: { set: (name: string, value: unknown) => void };
+  runPythonAsync: (code: string) => Promise<unknown>;
+}
+
+/**
+ * Executes a Python `psspy` automation script inside a Pyodide WASM CPython runtime
+ * when supplied, or falls back seamlessly to `executePythonPsspyScript`.
+ */
+export async function executePyodidePsspyAsync(
+  scriptText: string,
+  files?: Record<string, string | Uint8Array>,
+  pyodide?: PyodideRuntimeLike,
+): Promise<PsspySession> {
+  if (!pyodide) {
+    return executePythonPsspyScript(scriptText, files);
+  }
+  const session = new PsspySession(files);
+  pyodide.globals.set("__ms_psspy_session", session);
+  await pyodide.runPythonAsync(generatePyodidePsspyBridgeCode("__ms_psspy_session"));
+  await pyodide.runPythonAsync(scriptText);
+  return session;
 }

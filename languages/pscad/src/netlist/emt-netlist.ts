@@ -11,6 +11,8 @@ import { registeredPscadSourceTexts } from "../model/workspace-registry.js";
 import { computePortWorldPosition, parsePscx } from "../parser/pscx-parser.js";
 import { compileCStep } from "../script/c-codegen.js";
 import { compileFortranSegment } from "../script/fortran-codegen.js";
+import { parseBranchSegment } from "../script/script-parser.js";
+import { LineConstantsSolver } from "../solver/line-constants.js";
 import type {
   EmtBranch,
   EmtBus,
@@ -248,6 +250,9 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
   const protectionRelays: EmtProtectionRelay[] = [];
   const controlBlocks: EmtControlBlock[] = [];
   const currentSources: EmtCurrentSource[] = [];
+  const pgbChannels: NonNullable<EmtNetlist["pgbChannels"]> = [];
+  const graphFrames: NonNullable<EmtNetlist["graphFrames"]> = [];
+  const voltageDependentLoads: NonNullable<EmtNetlist["voltageDependentLoads"]> = [];
   const customFortranBlocks: EmtCustomFortranBlock[] = [];
   const vectorBlocks: EmtControlBlock[] = [];
   let virtualBusCounter = 1;
@@ -332,32 +337,40 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         }
       }
 
-      // Check if definition has custom Fortran script segments (<segment name="Fortran"> or "Dsdyn")
+      // Check if definition has custom Fortran script segments (<segment name="Fortran">, "Dsdyn", or "Dsout")
       const cleanDef = (
         cmp.definitionName.includes(":") ? cmp.definitionName.split(":").pop()! : cmp.definitionName
       ).toLowerCase();
       const defGraphic = project.definitions?.get(cleanDef) ?? project.definitions?.get(cmp.definitionName);
       const fortranSeg = defGraphic?.scriptSegments?.get("fortran") ?? defGraphic?.scriptSegments?.get("dsdyn");
-      if (fortranSeg?.content) {
-        try {
-          const compiled = compileFortranSegment(fortranSeg.content, cmp.parameters);
-          const qn = qualifyId(localName(cmp));
-          for (const port of cmp.ports) {
-            const isAssigned = compiled.assignedPorts.some((p) => p.toLowerCase() === port.name.toLowerCase());
-            const isReferenced = compiled.referencedPorts.some((p) => p.toLowerCase() === port.name.toLowerCase());
-            if (isAssigned || isReferenced || port.kind === "signal") {
-              signalPortIds.add(port.id);
-            }
-            if (isAssigned) {
-              const outSigId = `${qn}_${port.name}`;
-              signalOutPortToBlockId.set(port.id, outSigId);
-              if (compiled.assignedPorts.length === 1) {
-                signalOutPortToBlockId.set(port.id, qn);
-              }
+      const dsoutSeg = defGraphic?.scriptSegments?.get("dsout");
+      const compiledSegments = [];
+      for (const seg of [fortranSeg, dsoutSeg]) {
+        if (seg?.content) {
+          try {
+            compiledSegments.push(compileFortranSegment(seg.content, cmp.parameters));
+          } catch {
+            // Handled during component processing
+          }
+        }
+      }
+      if (compiledSegments.length > 0) {
+        const qn = qualifyId(localName(cmp));
+        const allAssigned = Array.from(new Set(compiledSegments.flatMap((c) => c.assignedPorts)));
+        const allReferenced = Array.from(new Set(compiledSegments.flatMap((c) => c.referencedPorts)));
+        for (const port of cmp.ports) {
+          const isAssigned = allAssigned.some((p) => p.toLowerCase() === port.name.toLowerCase());
+          const isReferenced = allReferenced.some((p) => p.toLowerCase() === port.name.toLowerCase());
+          if (isAssigned || isReferenced || port.kind === "signal") {
+            signalPortIds.add(port.id);
+          }
+          if (isAssigned) {
+            const outSigId = `${qn}_${port.name}`;
+            signalOutPortToBlockId.set(port.id, outSigId);
+            if (allAssigned.length === 1) {
+              signalOutPortToBlockId.set(port.id, qn);
             }
           }
-        } catch {
-          // Handled during component processing
         }
       }
       if (defn.includes("ground") || defn === "gnd" || defn.endsWith(":ground")) {
@@ -850,9 +863,50 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           const pSelf = Math.log((2.0 * hTower) / rEqCap);
           const pMut = Math.log(Math.hypot(gmd, 2.0 * hTower) / gmd);
           computedC0 = ((2.0 * Math.PI * eps0) / (pSelf + 2.0 * pMut)) * 1000.0;
-          computedPoles = [-120.0, -1200.0, -12000.0, -90000.0];
-          computedResidues = [22.0, 180.0, 1400.0, 9500.0];
-          computedD0 = 0.38;
+          const lengthKmLine = isNaN(len) ? 50.0 : len;
+          const rDcConductor = (2.82e-8 / (Math.PI * rCond * rCond * nBundle)) * 1000.0;
+          const lcpResult = LineConstantsSolver.solveTower(
+            {
+              name: qCmpId,
+              earthResistivityOhmMeter: rhoGnd,
+              conductors: [
+                {
+                  id: "A",
+                  xMeters: -dSpace,
+                  yMeters: hTower,
+                  radiusMeters: rCond,
+                  rDcOhmPerKm: rDcConductor,
+                  subConductorCount: nBundle,
+                  bundleSpacingMeters: dBundle,
+                  phase: "A",
+                },
+                {
+                  id: "B",
+                  xMeters: 0,
+                  yMeters: hTower,
+                  radiusMeters: rCond,
+                  rDcOhmPerKm: rDcConductor,
+                  subConductorCount: nBundle,
+                  bundleSpacingMeters: dBundle,
+                  phase: "B",
+                },
+                {
+                  id: "C",
+                  xMeters: dSpace,
+                  yMeters: hTower,
+                  radiusMeters: rCond,
+                  rDcOhmPerKm: rDcConductor,
+                  subConductorCount: nBundle,
+                  bundleSpacingMeters: dBundle,
+                  phase: "C",
+                },
+              ],
+            },
+            { lengthKm: lengthKmLine, numPoles: 4 },
+          );
+          computedPoles = lcpResult.rationalFit.poles;
+          computedResidues = lcpResult.rationalFit.residues;
+          computedD0 = lcpResult.rationalFit.d0;
         }
 
         if (p["poles"] !== undefined && p["residues"] !== undefined) {
@@ -880,7 +934,14 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         const rawModel = String(
           p["model"] ?? p["modelType"] ?? p["model_type"] ?? (hasTowerGeometry ? "fdpm" : "bergeron"),
         ).toLowerCase();
-        const modelType = rawModel === "fdpm" || rawModel === "fd" ? "fdpm" : rawModel === "pi" ? "pi" : "bergeron";
+        const modelType =
+          rawModel === "ulm" || rawModel === "fd_phase"
+            ? "ulm"
+            : rawModel === "fdpm" || rawModel === "fd"
+              ? "fdpm"
+              : rawModel === "pi"
+                ? "pi"
+                : "bergeron";
 
         const line: EmtTransmissionLine = {
           id: qCmpId,
@@ -1151,6 +1212,9 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         const slope1 = parseFloat(String(p["slope1"] ?? "25.0"));
         const slope2 = parseFloat(String(p["slope2"] ?? "50.0"));
         const harm2 = parseFloat(String(p["harmonic_block_2nd"] ?? p["i2_block"] ?? "15.0"));
+        const mtaDeg = parseFloat(String(p["MTA"] ?? p["mta"] ?? p["char_angle"] ?? ""));
+        const ctKneeFluxVs = parseFloat(String(p["ct_knee_flux"] ?? p["CT_knee_Vs"] ?? p["knee_flux"] ?? ""));
+        const ctBurdenOhm = parseFloat(String(p["ct_burden"] ?? p["CT_burden_ohm"] ?? p["burden_ohm"] ?? ""));
         const monBr = p["branch"] ?? p["Branch"];
         const secBr = p["branch2"] ?? p["Branch2"];
         const tripBrk = p["breaker"] ?? p["Breaker"];
@@ -1173,6 +1237,9 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           slope1Percent: isNaN(slope1) ? undefined : slope1,
           slope2Percent: isNaN(slope2) ? undefined : slope2,
           secondHarmonicBlockPercent: isNaN(harm2) ? undefined : harm2,
+          mtaDeg: isNaN(mtaDeg) ? undefined : mtaDeg,
+          ctKneeFluxVs: isNaN(ctKneeFluxVs) ? undefined : ctKneeFluxVs,
+          ctBurdenOhm: isNaN(ctBurdenOhm) ? undefined : ctBurdenOhm,
         });
         buses.get(bus1)?.connectedBranchIds.push(qCmpId);
       } else if (defn.includes("fmu") || defn.includes("inverter") || defn.includes("ibr")) {
@@ -1308,13 +1375,33 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           });
           buses.get(bus1)?.connectedBranchIds.push(id);
         };
-        if (!isNaN(po) && !isNaN(vb) && po > 0 && vb > 0) addLoadBranch("R", (vb * vb) / po, 0);
-        if (!isNaN(qo) && !isNaN(vb) && qo > 0 && vb > 0) addLoadBranch("L", 0, (vb * vb) / qo / (2 * Math.PI * f));
-        assumptions.push(
-          isNaN(po) || isNaN(qo) || isNaN(vb)
-            ? `'${qInstName}' (fixed_load): PO/QO/VBO did not evaluate to numbers; missing elements omitted.`
-            : `'${qInstName}' (fixed_load): constant R||L at nominal PO/QO/VBO/FR; NP, NQ, KPF, KQF and Dtls are ignored (unverified).`,
-        );
+        const np = isNaN(num("NP")) ? 2 : num("NP");
+        const nq = isNaN(num("NQ")) ? 2 : num("NQ");
+        const kpf = isNaN(num("KPF")) ? 0 : num("KPF");
+        const kqf = isNaN(num("KQF")) ? 0 : num("KQF");
+        const hasDynamicDep = np !== 2 || nq !== 2 || kpf !== 0 || kqf !== 0;
+        if (hasDynamicDep && !isNaN(po) && !isNaN(vb) && vb > 0) {
+          voltageDependentLoads.push({
+            id: qCmpId,
+            busId: bus1,
+            p0Mw: num("PO") || 0,
+            q0Mvar: num("QO") || 0,
+            v0KvLL: num("VBO"),
+            np,
+            nq,
+            kpf,
+            kqf,
+            f0Hz: f,
+          });
+        } else {
+          if (!isNaN(po) && !isNaN(vb) && po > 0 && vb > 0) addLoadBranch("R", (vb * vb) / po, 0);
+          if (!isNaN(qo) && !isNaN(vb) && qo > 0 && vb > 0) addLoadBranch("L", 0, (vb * vb) / qo / (2 * Math.PI * f));
+        }
+        if (isNaN(po) || isNaN(qo) || isNaN(vb)) {
+          assumptions.push(
+            `'${qInstName}' (fixed_load): PO/QO/VBO did not evaluate to numbers; missing elements omitted.`,
+          );
+        }
       } else if (
         defn.includes("resistor") ||
         defn.includes("inductor") ||
@@ -1595,7 +1682,13 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         defn.endsWith(":tfaultn") ||
         defn.endsWith(":trans_fcn") ||
         defn.endsWith(":sandhdefn") ||
+        defn.endsWith(":sample_hold") ||
         defn.endsWith(":freq-meas") ||
+        defn.endsWith(":pll") ||
+        defn.endsWith(":fft") ||
+        defn.endsWith(":pwm") ||
+        defn.endsWith(":flip_flop") ||
+        defn.endsWith(":sequencer") ||
         defn.endsWith(":tdelay") ||
         defn.endsWith(":delay") ||
         defn.endsWith(":abs") ||
@@ -1607,6 +1700,14 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         defn.endsWith(":electranix_psse_exciter_models") ||
         defn.endsWith(":electranix_psse_governors") ||
         defn.endsWith(":avr_ieeet1") ||
+        defn.endsWith(":exciter_st1a") ||
+        defn.endsWith(":exciter_ac1a") ||
+        defn.endsWith(":tgov1") ||
+        defn.endsWith(":hygov") ||
+        defn.endsWith(":pss1a") ||
+        defn.endsWith(":wecc_regc") ||
+        defn.endsWith(":wecc_reec") ||
+        defn.endsWith(":wecc_repc") ||
         defn.endsWith(":timerdefn") ||
         defn.endsWith(":random") ||
         defn.endsWith(":peswitch") ||
@@ -1626,90 +1727,151 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
                   ? "abs"
                   : defn.endsWith(":maxmin")
                     ? "maxmin"
-                    : defn.endsWith(":rms3ph") || defn.endsWith(":freq-meas")
+                    : defn.endsWith(":rms3ph")
                       ? "rms3ph"
-                      : defn.endsWith(":compare")
-                        ? "compare"
-                        : defn.endsWith(":trans_filt") || defn.endsWith(":trans_fcn")
-                          ? "trans_filt"
-                          : defn.endsWith(":tdelay") || defn.endsWith(":delay")
-                            ? "tdelay"
-                            : defn.endsWith(":zminusone")
-                              ? "zminusone"
-                              : defn.endsWith(":bin_delay") || defn.endsWith(":sandhdefn")
-                                ? "bin_delay"
-                                : defn.endsWith(":range")
-                                  ? "range"
-                                  : defn.endsWith(":xy_transfer_function") || defn.endsWith(":nl_tfun")
-                                    ? "xy_table"
-                                    : defn.endsWith(":ratelimit")
-                                      ? "ratelimit"
-                                      : defn.endsWith(":logic_mult") || defn.endsWith(":peswitch")
-                                        ? "logic"
-                                        : defn.endsWith(":trig")
-                                          ? "trig"
-                                          : defn.endsWith(":current_scaler") ||
-                                              defn.endsWith(":complex") ||
-                                              defn.endsWith(":simple_ppc") ||
-                                              defn.endsWith(":avr_ieeet1") ||
-                                              defn.endsWith(":vsc") ||
-                                              defn.includes("electranix_") ||
-                                              defn.includes("etran_")
-                                            ? "gain"
-                                            : defn.endsWith(":sum_array")
-                                              ? "sum"
-                                              : defn.endsWith(":time-sig") ||
-                                                  defn.endsWith(":timerdefn") ||
-                                                  defn.endsWith(":random")
-                                                ? "time_sig"
-                                                : defn.endsWith(":upramp")
-                                                  ? "upramp"
-                                                  : defn.endsWith(":select")
-                                                    ? "select"
-                                                    : defn.endsWith(":square")
-                                                      ? "square"
-                                                      : defn.endsWith(":inv")
-                                                        ? "inv"
-                                                        : defn.endsWith(":integral")
-                                                          ? "integral"
-                                                          : defn.endsWith(":fp_int")
-                                                            ? "fp_int"
-                                                            : defn.endsWith(":hardlimit")
-                                                              ? "limit"
-                                                              : defn.endsWith(":unity")
-                                                                ? "gain"
-                                                                : defn.endsWith(":mult")
-                                                                  ? "mult"
-                                                                  : defn.endsWith(":div")
-                                                                    ? "div"
-                                                                    : defn.endsWith(":sumjct")
+                      : defn.endsWith(":pll")
+                        ? "pll"
+                        : defn.endsWith(":freq-meas")
+                          ? "freq_meas"
+                          : defn.endsWith(":fft")
+                            ? "fft"
+                            : defn.endsWith(":pwm")
+                              ? "pwm"
+                              : defn.endsWith(":sample_hold") || defn.endsWith(":sandhdefn")
+                                ? "sample_hold"
+                                : defn.endsWith(":flip_flop")
+                                  ? "flip_flop"
+                                  : defn.endsWith(":sequencer")
+                                    ? "sequencer"
+                                    : defn.endsWith(":avr_ieeet1") ||
+                                        defn.endsWith(":exciter_st1a") ||
+                                        defn.endsWith(":exciter_ac1a") ||
+                                        defn.endsWith(":electranix_psse_exciter_models")
+                                      ? "ieee_exciter"
+                                      : defn.endsWith(":tgov1") ||
+                                          defn.endsWith(":hygov") ||
+                                          defn.endsWith(":electranix_psse_governors")
+                                        ? "ieee_governor"
+                                        : defn.endsWith(":pss1a")
+                                          ? "ieee_pss"
+                                          : defn.endsWith(":wecc_regc") ||
+                                              defn.endsWith(":wecc_reec") ||
+                                              defn.endsWith(":wecc_repc")
+                                            ? "wecc_ibr"
+                                            : defn.endsWith(":compare")
+                                              ? "compare"
+                                              : defn.endsWith(":trans_filt") || defn.endsWith(":trans_fcn")
+                                                ? "trans_filt"
+                                                : defn.endsWith(":tdelay") || defn.endsWith(":delay")
+                                                  ? "tdelay"
+                                                  : defn.endsWith(":zminusone")
+                                                    ? "zminusone"
+                                                    : defn.endsWith(":bin_delay")
+                                                      ? "bin_delay"
+                                                      : defn.endsWith(":range")
+                                                        ? "range"
+                                                        : defn.endsWith(":xy_transfer_function") ||
+                                                            defn.endsWith(":nl_tfun")
+                                                          ? "xy_table"
+                                                          : defn.endsWith(":ratelimit")
+                                                            ? "ratelimit"
+                                                            : defn.endsWith(":logic_mult") || defn.endsWith(":peswitch")
+                                                              ? "logic"
+                                                              : defn.endsWith(":trig")
+                                                                ? "trig"
+                                                                : defn.endsWith(":simple_ppc")
+                                                                  ? "pi"
+                                                                  : defn.endsWith(":current_scaler") ||
+                                                                      defn.endsWith(":complex") ||
+                                                                      defn.endsWith(":vsc") ||
+                                                                      defn.includes("electranix_") ||
+                                                                      defn.includes("etran_")
+                                                                    ? "gain"
+                                                                    : defn.endsWith(":sum_array")
                                                                       ? "sum"
-                                                                      : defn.endsWith(":over_current")
-                                                                        ? "compar"
-                                                                        : defn.endsWith(":emtconst") ||
-                                                                            defn.endsWith(":consti") ||
-                                                                            defn.endsWith(":var") ||
-                                                                            defn.endsWith(":var_pot")
-                                                                          ? "const"
-                                                                          : defn.endsWith(":scale_changer") ||
-                                                                              defn.endsWith(":derivative")
-                                                                            ? "gain"
-                                                                            : defn.includes("pi")
-                                                                              ? "pi"
-                                                                              : defn.includes("gain")
-                                                                                ? "gain"
-                                                                                : defn.includes("sum")
-                                                                                  ? "sum"
-                                                                                  : defn.includes("leadlag")
-                                                                                    ? "leadlag"
-                                                                                    : defn.includes("pole") ||
-                                                                                        defn.includes("lag")
-                                                                                      ? "lag"
-                                                                                      : defn.includes("limit")
-                                                                                        ? "limit"
-                                                                                        : defn.includes("compar")
-                                                                                          ? "compar"
-                                                                                          : "const";
+                                                                      : defn.endsWith(":time-sig") ||
+                                                                          defn.endsWith(":timerdefn") ||
+                                                                          defn.endsWith(":random")
+                                                                        ? "time_sig"
+                                                                        : defn.endsWith(":upramp")
+                                                                          ? "upramp"
+                                                                          : defn.endsWith(":select")
+                                                                            ? "select"
+                                                                            : defn.endsWith(":square")
+                                                                              ? "square"
+                                                                              : defn.endsWith(":inv")
+                                                                                ? "inv"
+                                                                                : defn.endsWith(":integral")
+                                                                                  ? "integral"
+                                                                                  : defn.endsWith(":fp_int")
+                                                                                    ? "fp_int"
+                                                                                    : defn.endsWith(":hardlimit")
+                                                                                      ? "limit"
+                                                                                      : defn.endsWith(":unity")
+                                                                                        ? "gain"
+                                                                                        : defn.endsWith(":mult")
+                                                                                          ? "mult"
+                                                                                          : defn.endsWith(":div")
+                                                                                            ? "div"
+                                                                                            : defn.endsWith(":sumjct")
+                                                                                              ? "sum"
+                                                                                              : defn.endsWith(
+                                                                                                    ":over_current",
+                                                                                                  )
+                                                                                                ? "compar"
+                                                                                                : defn.endsWith(
+                                                                                                      ":emtconst",
+                                                                                                    ) ||
+                                                                                                    defn.endsWith(
+                                                                                                      ":consti",
+                                                                                                    ) ||
+                                                                                                    defn.endsWith(
+                                                                                                      ":var",
+                                                                                                    ) ||
+                                                                                                    defn.endsWith(
+                                                                                                      ":var_pot",
+                                                                                                    )
+                                                                                                  ? "const"
+                                                                                                  : defn.endsWith(
+                                                                                                        ":scale_changer",
+                                                                                                      )
+                                                                                                    ? "gain"
+                                                                                                    : defn.endsWith(
+                                                                                                          ":derivative",
+                                                                                                        )
+                                                                                                      ? "trans_filt"
+                                                                                                      : defn.includes(
+                                                                                                            "pi",
+                                                                                                          )
+                                                                                                        ? "pi"
+                                                                                                        : defn.includes(
+                                                                                                              "gain",
+                                                                                                            )
+                                                                                                          ? "gain"
+                                                                                                          : defn.includes(
+                                                                                                                "sum",
+                                                                                                              )
+                                                                                                            ? "sum"
+                                                                                                            : defn.includes(
+                                                                                                                  "leadlag",
+                                                                                                                )
+                                                                                                              ? "leadlag"
+                                                                                                              : defn.includes(
+                                                                                                                    "pole",
+                                                                                                                  ) ||
+                                                                                                                  defn.includes(
+                                                                                                                    "lag",
+                                                                                                                  )
+                                                                                                                ? "lag"
+                                                                                                                : defn.includes(
+                                                                                                                      "limit",
+                                                                                                                    )
+                                                                                                                  ? "limit"
+                                                                                                                  : defn.includes(
+                                                                                                                        "compar",
+                                                                                                                      )
+                                                                                                                    ? "compar"
+                                                                                                                    : "const";
         const params: Record<string, number> = {};
         for (const [k, v] of Object.entries(p)) {
           const num = typeof v === "number" ? v : parseFloat(String(v));
@@ -1726,6 +1888,24 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
               ? `'${qInstName}' (trans_filt): Order ${params["Order"]} Butterworth low-pass at FBase=${params["FBase"]} Hz, assuming Band=1 is low-pass and Type=1 is Butterworth (unverified); Cnfg, Flow, Fup, Q and PRip are ignored.`
               : `'${qInstName}' (trans_filt): Order=${params["Order"] ?? "?"} Band=${params["Band"] ?? "?"} Type=${params["Type"] ?? "?"} is not supported; the block is a unity pass-through (unverified).`,
           );
+        }
+        if (defn.endsWith(":sqrt")) {
+          params["Y"] = 0.5;
+        } else if (defn.endsWith(":derivative")) {
+          params["B0"] = 0;
+          params["B1"] = params["G"] ?? params["K"] ?? 1;
+          params["A0"] = 1;
+          params["A1"] = params["T"] ?? 0.01;
+        } else if (defn.endsWith(":freq-meas") || defn.endsWith(":pll")) {
+          params["F0"] ??= project.settings.frequencyHz;
+        } else if (defn.endsWith(":wecc_reec")) {
+          params["Mode"] ??= 1;
+        } else if (kind === "trans_filt" && params["Band"] === 1 && params["FBase"] !== undefined) {
+          const tau = 1 / (2 * Math.PI * Math.max(0.1, params["FBase"]));
+          params["B0"] = 1;
+          params["B1"] = 0;
+          params["A0"] = 1;
+          params["A1"] = tau;
         }
         if (kind === "upramp" && (params["X2"] === undefined || params["Y2"] === undefined)) {
           assumptions.push(`'${qInstName}' (upramp): X2/Y2 did not evaluate to numbers; defaulted to 1.`);
@@ -1860,35 +2040,129 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
           vectorBlocks.push({ id: qInstName, kind, inputs: blockInputs, params });
         }
       } else {
-        // Fallback: Check if definition has custom Fortran script segments (<segment name="Fortran"> or "Dsdyn")
+        // Fallback: Check if definition has custom Branch, Fortran/Dsdyn, or Dsout script segments
         const defGraphic = project.definitions?.get(cleanDefn) ?? project.definitions?.get(rawDefn);
+        const branchSeg = defGraphic?.scriptSegments?.get("branch");
+        if (branchSeg?.content) {
+          const parsedBranches = parseBranchSegment(branchSeg.content, cmp.parameters);
+          const resolveNodeBus = (nodeName: string): string => {
+            const lower = nodeName.toLowerCase();
+            if (lower === "0" || lower === "gnd" || lower === "ground") return "0";
+            const pt = cmp.ports.find((ptItem) => ptItem.name.toLowerCase() === lower);
+            const mapped = pt ? portToBusMap.get(pt.id) : undefined;
+            if (mapped) return mapped;
+            const internalId = `${qInstName}_${nodeName}`;
+            if (!buses.has(internalId)) {
+              buses.set(internalId, {
+                id: internalId,
+                name: internalId,
+                baseKv: 230.0,
+                phaseCount: 3,
+                connectedBranchIds: [],
+              });
+            }
+            return internalId;
+          };
+          parsedBranches.forEach((pb, bi) => {
+            const fBus = resolveNodeBus(pb.fromNode);
+            const tBus = resolveNodeBus(pb.toNode);
+            const evalVal = (rawVal: string | number | undefined): number => {
+              if (typeof rawVal === "number") return Number.isFinite(rawVal) ? rawVal : 0;
+              if (typeof rawVal === "string") {
+                const evaluated = evalParamExpr(rawVal, scope);
+                if (typeof evaluated === "number" && Number.isFinite(evaluated)) return evaluated;
+              }
+              return 0;
+            };
+            const brId = pb.name ? `${qInstName}_${pb.name}` : `${qInstName}_br${bi + 1}`;
+            if (pb.kind === "passive") {
+              branches.push({
+                id: brId,
+                kind: "rlc",
+                fromBus: fBus,
+                toBus: tBus,
+                resistanceOhm: evalVal(pb.r),
+                inductanceH: evalVal(pb.l),
+                capacitanceF: evalVal(pb.c),
+              });
+            } else if (pb.kind === "breaker") {
+              const rOff = pb.extra ? Number(pb.extra.split(/\s+/)[0]) : 1e6;
+              branches.push({
+                id: brId,
+                kind: "switch",
+                fromBus: fBus,
+                toBus: tBus,
+                resistanceOhm: 0.001,
+                inductanceH: 0,
+                capacitanceF: 0,
+                status: "closed",
+                rOpenOhm: Number.isFinite(rOff) && rOff > 0 ? rOff : 1e6,
+              });
+            } else if (pb.kind === "ammeter") {
+              branches.push({
+                id: brId,
+                kind: "rlc",
+                fromBus: fBus,
+                toBus: tBus,
+                resistanceOhm: 1e-4,
+                inductanceH: 0,
+                capacitanceF: 0,
+              });
+            }
+          });
+        }
+
         const fortranSeg = defGraphic?.scriptSegments?.get("fortran") ?? defGraphic?.scriptSegments?.get("dsdyn");
-        if (fortranSeg?.content) {
+        const dsoutSeg = defGraphic?.scriptSegments?.get("dsout");
+        if (fortranSeg?.content || dsoutSeg?.content) {
           try {
-            const compiled = getCompiledFortranCached(fortranSeg.content, cmp.parameters);
+            const compiledDyn = fortranSeg?.content
+              ? getCompiledFortranCached(fortranSeg.content, cmp.parameters)
+              : undefined;
+            const compiledOut = dsoutSeg?.content
+              ? getCompiledFortranCached(dsoutSeg.content, cmp.parameters)
+              : undefined;
+            const primary = compiledDyn ?? compiledOut!;
+            const allReferenced = Array.from(
+              new Set([...(compiledDyn?.referencedPorts ?? []), ...(compiledOut?.referencedPorts ?? [])]),
+            );
+            const allAssigned = Array.from(
+              new Set([...(compiledDyn?.assignedPorts ?? []), ...(compiledOut?.assignedPorts ?? [])]),
+            );
+
             const blockInputs: { portName: string; sourceId?: string | undefined }[] = [];
-            for (const refPort of compiled.referencedPorts) {
+            for (const refPort of allReferenced) {
               const pt = cmp.ports.find((p) => p.name.toLowerCase() === refPort.toLowerCase());
               const srcId = pt ? (signalPortSourceMap.get(pt.id) ?? portToBusMap.get(pt.id)) : undefined;
               blockInputs.push({ portName: refPort, sourceId: srcId });
             }
             const blockOutputs: { portName: string; targetId?: string | undefined }[] = [];
-            for (const asgPort of compiled.assignedPorts) {
-              const targetId = compiled.assignedPorts.length === 1 ? qInstName : `${qInstName}_${asgPort}`;
+            for (const asgPort of allAssigned) {
+              const targetId = allAssigned.length === 1 ? qInstName : `${qInstName}_${asgPort}`;
               blockOutputs.push({ portName: asgPort, targetId });
             }
 
             customFortranBlocks.push({
               id: qInstName,
               name: localName(cmp),
-              referencedPorts: compiled.referencedPorts,
-              assignedPorts: compiled.assignedPorts,
+              referencedPorts: allReferenced,
+              assignedPorts: allAssigned,
               inputs: blockInputs,
               outputs: blockOutputs,
-              numRealStates: compiled.numRealStates,
-              numIntStates: compiled.numIntStates,
-              step: compiled.step,
-              scriptSource: fortranSeg.content,
+              numRealStates: Math.max(
+                compiledDyn?.numRealStates ?? 0,
+                compiledOut?.numRealStates ?? 0,
+                primary.numRealStates,
+              ),
+              numIntStates: Math.max(
+                compiledDyn?.numIntStates ?? 0,
+                compiledOut?.numIntStates ?? 0,
+                primary.numIntStates,
+              ),
+              ...(compiledDyn ? { step: compiledDyn.step } : {}),
+              ...(compiledOut ? { dsoutStep: compiledOut.step } : {}),
+              scriptSource: fortranSeg?.content ?? dsoutSeg?.content,
+              ...(dsoutSeg?.content ? { dsoutScriptSource: dsoutSeg.content } : {}),
               scriptLang: "fortran",
               params: cmp.parameters,
             });
@@ -1955,6 +2229,85 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
         }
       }
     }
+    for (const cmp of mod.components) {
+      const defLower = cmp.definitionName.toLowerCase();
+      if (defLower !== "pgb" && defLower !== "master:pgb") continue;
+      const chName = String(cmp.parameters["Name"] ?? cmp.id).trim();
+      const group = cmp.parameters["Group"] !== undefined ? String(cmp.parameters["Group"]).trim() : undefined;
+      const min = cmp.parameters["Min"] !== undefined ? Number(cmp.parameters["Min"]) : undefined;
+      const max = cmp.parameters["Max"] !== undefined ? Number(cmp.parameters["Max"]) : undefined;
+      const scale = cmp.parameters["Scale"] !== undefined ? Number(cmp.parameters["Scale"]) : undefined;
+      let sourceSignal: string | undefined;
+      for (const pt of cmp.ports) {
+        const mapped = signalPortSourceMap.get(pt.id);
+        if (mapped) {
+          sourceSignal = mapped;
+          break;
+        }
+      }
+      if (!sourceSignal && labelSignalSource.has(chName)) {
+        sourceSignal = labelSignalSource.get(chName);
+      }
+      pgbChannels.push({
+        id: cmp.id,
+        name: chName,
+        group,
+        min: Number.isFinite(min) ? min : undefined,
+        max: Number.isFinite(max) ? max : undefined,
+        scale: Number.isFinite(scale) ? scale : undefined,
+        sourceSignal,
+      });
+    }
+    for (const cmp of mod.components) {
+      const defLower = cmp.definitionName.toLowerCase();
+      const isGraph =
+        defLower === "graphframe" ||
+        defLower === "master:graphframe" ||
+        defLower === "overlaygraph" ||
+        defLower === "master:overlaygraph" ||
+        defLower === "polygraph" ||
+        defLower === "master:polygraph";
+      if (!isGraph) continue;
+      const kind: "graphframe" | "overlay" | "poly" = defLower.includes("overlay")
+        ? "overlay"
+        : defLower.includes("poly")
+          ? "poly"
+          : "graphframe";
+      const title = String(cmp.parameters["Title"] ?? cmp.parameters["Name"] ?? cmp.id).trim();
+      const min = cmp.parameters["Min"] !== undefined ? Number(cmp.parameters["Min"]) : undefined;
+      const max = cmp.parameters["Max"] !== undefined ? Number(cmp.parameters["Max"]) : undefined;
+      const rawCurves = cmp.parameters["Curves"] ?? cmp.parameters["Signals"] ?? cmp.parameters["Channels"];
+      const curves =
+        typeof rawCurves === "string"
+          ? rawCurves
+              .split(/[,\s;]+/)
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [];
+      graphFrames.push({
+        id: cmp.id,
+        title,
+        kind,
+        curves,
+        min: Number.isFinite(min) ? min : undefined,
+        max: Number.isFinite(max) ? max : undefined,
+      });
+    }
+    if (mod.graphFrames && mod.graphFrames.length > 0) {
+      const pgbById = new Map(pgbChannels.map((ch) => [ch.id, ch]));
+      for (const gf of mod.graphFrames) {
+        const resolvedCurves = gf.curves.map((c) => {
+          const matchedPgb = pgbById.get(c);
+          if (matchedPgb) return matchedPgb.name;
+          return c;
+        });
+        graphFrames.push({
+          ...gf,
+          id: qualifyId(gf.id),
+          curves: resolvedCurves,
+        });
+      }
+    }
   }
 
   processModule(project.rootModule, "", new Map<string, string>(), new Set<string>(["Main"]));
@@ -2005,6 +2358,9 @@ export function extractEmtNetlist(project: PscxProject): EmtNetlist {
     protectionRelays: protectionRelays.length > 0 ? protectionRelays : undefined,
     controlBlocks: controlBlocks.length > 0 ? controlBlocks : undefined,
     customFortranBlocks: customFortranBlocks.length > 0 ? customFortranBlocks : undefined,
+    pgbChannels: pgbChannels.length > 0 ? pgbChannels : undefined,
+    graphFrames: graphFrames.length > 0 ? graphFrames : undefined,
+    voltageDependentLoads: voltageDependentLoads.length > 0 ? voltageDependentLoads : undefined,
     assumptions: assumptions.length > 0 ? assumptions : undefined,
     nominalFrequencyHz: project.settings.frequencyHz,
   };
@@ -2291,7 +2647,9 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     inputs: fb.inputs,
     outputs: fb.outputs,
     step: fb.step,
+    ...(fb.dsoutStep !== undefined ? { dsoutStep: fb.dsoutStep } : {}),
     ...(fb.scriptSource !== undefined ? { scriptSource: fb.scriptSource } : {}),
+    ...(fb.dsoutScriptSource !== undefined ? { dsoutScriptSource: fb.dsoutScriptSource } : {}),
     ...(fb.scriptLang !== undefined ? { scriptLang: fb.scriptLang } : {}),
     ...(fb.params !== undefined ? { params: fb.params } : {}),
   }));
@@ -2314,5 +2672,10 @@ export function netlistToEmtCircuit(netlist: EmtNetlist) {
     protectionRelays: protectionRelays && protectionRelays.length > 0 ? protectionRelays : undefined,
     csmfBlocks: csmfBlocks && csmfBlocks.length > 0 ? csmfBlocks : undefined,
     customFortranBlocks: customFortranBlocks && customFortranBlocks.length > 0 ? customFortranBlocks : undefined,
+    ...(netlist.pgbChannels && netlist.pgbChannels.length > 0 ? { pgbChannels: netlist.pgbChannels } : {}),
+    ...(netlist.graphFrames && netlist.graphFrames.length > 0 ? { graphFrames: netlist.graphFrames } : {}),
+    ...(netlist.voltageDependentLoads && netlist.voltageDependentLoads.length > 0
+      ? { voltageDependentLoads: netlist.voltageDependentLoads }
+      : {}),
   };
 }

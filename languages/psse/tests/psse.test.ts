@@ -11,7 +11,10 @@ import {
   applyPsseDiagramWriteback,
   calculateShortCircuit,
   createPsseWasmParser,
+  executePyodidePsspyAsync,
   extractPowerFlowNetlist,
+  formatPowerFlowReport,
+  generatePyodidePsspyBridgeCode,
   lintPsse,
   lowerPsseToDae,
   parseDyr,
@@ -19,6 +22,7 @@ import {
   psseLanguage,
   psseToEmtNetlist,
   psseToModelica,
+  reduceNetworkEquivalent,
   simulatePsseTransient,
   solvePowerFlow,
   writeDyr,
@@ -717,4 +721,48 @@ test("PSS/E Small-Signal Stability: Arnoldi eigensolver matches QR on IEEE 14-bu
     );
     assert.ok(Math.abs(q.real - a.real) < 1e-4, `Real part mismatch at mode ${i}: ${q.real} vs ${a.real}`);
   }
+});
+
+test("PSS/E Remediation: Ward injection redistribution, tie-line POUT, @orient writeback, and Python psspy loops", async () => {
+  const parsed = parseRaw(IEEE_14_RAW);
+
+  // 1. Ward equivalencing stamps both boundary shunts and redistributed boundary EQ injections
+  const ward = reduceNetworkEquivalent(parsed, [1, 2, 3]);
+  assert.equal(ward.retainedBusCount, 3);
+  assert.equal(ward.eliminatedBusCount, 2);
+  assert.ok(
+    ward.reducedCase.fixedShunts.some((s) => s.id === "EQ"),
+    "Expected EQ boundary shunts",
+  );
+  assert.ok(
+    ward.reducedCase.loads.some((l) => l.id === "EQ"),
+    "Expected EQ boundary injection loads",
+  );
+  const wardPf = solvePowerFlow(ward.reducedCase);
+  assert.equal(wardPf.converged, true);
+
+  // 2. POUT report emits multi-tier RATE alerts & Area-to-Area tie-line interchange when areas differ
+  const b5 = parsed.buses.get(5);
+  if (b5) b5.area = 2;
+  const pf = solvePowerFlow(parsed);
+  const pout = formatPowerFlowReport(pf, "IEEE 14 TIE", parsed);
+  assert.ok(pout.includes("AREA-TO-AREA TIE-LINE INTERCHANGE MATRIX"), "Expected tie-line matrix in POUT");
+
+  // 3. @orient writeback on bus
+  const oriented = applyPsseDiagramWriteback(IEEE_14_RAW, "bus_1", { orientation: 90 });
+  assert.ok(oriented.includes("@orient(90)"), "Expected @orient(90) persistence");
+
+  // 4. Python psspy variables, for-loops & Pyodide bridge codegen
+  const script = `
+target_bus = 5
+psspy.psseinit(50000)
+psspy.read(0, 'case.raw')
+for b in [4, 5]:
+  psspy.bus_chng_4(b, [1], [1.0])
+psspy.fnsl()
+`;
+  const session = await executePyodidePsspyAsync(script, { "case.raw": IEEE_14_RAW });
+  assert.ok(session.lastPowerFlow?.converged, "Expected converged psspy session from Python script");
+  const bridge = generatePyodidePsspyBridgeCode();
+  assert.ok(bridge.includes('sys.modules["psspy"] = _psspy'), "Expected Pyodide psspy bridge module");
 });

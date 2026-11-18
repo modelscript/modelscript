@@ -27,10 +27,13 @@ import { getLanguageInfo } from "../constants";
 import { CosimPanel, type HistorianSession } from "../CosimPanel";
 import DiagramEditor, { type DiagramEditorHandle } from "../Diagram";
 import PropertiesWidget from "../Properties";
+import { getDiagramPalette } from "../util/lsp-bridge";
 import { AmplOptimizationResults } from "./AmplOptimizationResults";
+import { IconPrimitiveInspector } from "./inspectors/IconPrimitiveInspector";
 import { MorselDigitalThreadPanel } from "./MorselDigitalThreadPanel";
 import type { MobileTab } from "./MorselMobileTabBar";
 import { PolyglotDomainPanel } from "./PolyglotDomainPanel";
+import { PscadComponentWizardModal } from "./PscadComponentWizardModal";
 import { MorselView } from "./types";
 
 const CadViewerPanel = React.lazy(() => import("../cad-viewer").then((m) => ({ default: m.CadViewer })));
@@ -141,15 +144,18 @@ function getStencilsForDialect(dialect: string): StencilItem[] {
       ];
     case "pscad":
       return [
-        {
-          label: "Component",
-          snippet:
-            '        <User id="9001" name="master:resistor" x="180" y="180" w="44" h="28">\n          <paramlist><param name="R" value="10.0"/></paramlist>\n        </User>\n',
-        },
-        {
-          label: "Wire",
-          snippet: '        <Wire id="9002" x="180" y="180"><vertex x="0" y="0"/><vertex x="72" y="0"/></Wire>\n',
-        },
+        { label: "AC Source", className: "master:source_3", snippet: "" },
+        { label: "Resistor", className: "master:resistor", snippet: "" },
+        { label: "Inductor", className: "master:inductor", snippet: "" },
+        { label: "Capacitor", className: "master:capacitor", snippet: "" },
+        { label: "Ground", className: "master:ground", snippet: "" },
+        { label: "Breaker", className: "master:breaker3", snippet: "" },
+        { label: "Fault", className: "master:tpflt", snippet: "" },
+        { label: "Transformer", className: "master:xfmr-3p2w", snippet: "" },
+        { label: "PI Line", className: "master:pi_line", snippet: "" },
+        { label: "Gain", className: "master:gain", snippet: "" },
+        { label: "PI Control", className: "master:pi_ctlr", snippet: "" },
+        { label: "PGB Output", className: "master:pgb", snippet: "" },
       ];
     case "psse":
       return [
@@ -283,6 +289,7 @@ export interface MorselVisualizerPaneProps {
   selectedComponent: string | null;
   setSelectedComponent: (comp: string | null) => void;
   isDiagramLoading: boolean;
+  isLoadingModel?: boolean | undefined;
   setIsDiagramLoading: (loading: boolean) => void;
   handleSelectComponent: (name: string | null, cachedProps?: any[], isLoading?: boolean) => void;
   enqueueDiagramAction: (action: any) => void;
@@ -302,6 +309,8 @@ export interface MorselVisualizerPaneProps {
   setCosimDataSource: (ds: "local" | "mqtt-live" | "historian-replay") => void;
   handleReplaySession: (session: HistorianSession, speed: number) => void;
   localSimulationData: Record<string, number | string>[] | null;
+  pscadComplianceReport?: unknown;
+  pscadExports?: Record<string, unknown> | null | undefined;
   sweepResults: { value: number; y: number[][] }[] | null;
   simulationStatus: any;
   handleVariablesLoaded: (vars: string[]) => void;
@@ -330,6 +339,22 @@ export interface MorselVisualizerPaneProps {
   activeFileName?: string | undefined;
   onSelectProjectFile?: ((fileName: string) => void) | undefined;
   onUpdateProjectFile?: ((fileName: string, content: string) => void) | undefined;
+  psseDiagramOptions?:
+    | {
+        focusBus?: number | undefined;
+        kHops?: number | undefined;
+        layoutMode?: "auto" | "geographic" | undefined;
+      }
+    | undefined;
+  onPsseDiagramOptionsChange?:
+    | React.Dispatch<
+        React.SetStateAction<{
+          focusBus?: number | undefined;
+          kHops?: number | undefined;
+          layoutMode?: "auto" | "geographic" | undefined;
+        }>
+      >
+    | undefined;
 }
 
 const isSplit = (v: MorselView) => v === MorselView.SPLIT_COLUMNS || v === MorselView.SPLIT_ROWS;
@@ -371,6 +396,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   selectedComponent,
   setSelectedComponent,
   isDiagramLoading,
+  isLoadingModel,
   setIsDiagramLoading,
   handleSelectComponent,
   enqueueDiagramAction,
@@ -390,6 +416,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   setCosimDataSource,
   handleReplaySession,
   localSimulationData,
+  pscadComplianceReport,
+  pscadExports,
   sweepResults,
   simulationStatus,
   handleVariablesLoaded,
@@ -417,6 +445,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   activeFileName,
   onSelectProjectFile,
   onUpdateProjectFile,
+  psseDiagramOptions,
+  onPsseDiagramOptionsChange,
 }) => {
   const { hasCapability } = useCapabilities();
   const _isCaeComputeEnabled = useFeatureFlag("cae_cloud_solver");
@@ -438,6 +468,30 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const showAnalysisView = controlledShowAnalysisView ?? internalShowAnalysisView;
   const setShowAnalysisView = controlledSetShowAnalysisView ?? setInternalShowAnalysisView;
   const [showPalette, setShowPalette] = useState(false);
+  const [showComponentWizard, setShowComponentWizard] = useState(false);
+  const [pscadPaletteCategories, setPscadPaletteCategories] = useState<
+    { id: string; label: string; items: { type?: string; label: string; snippet?: string; className?: string }[] }[]
+  >([]);
+  const [activePaletteCategory, setActivePaletteCategory] = useState<string>("");
+  useEffect(() => {
+    if (!showPalette || dialect !== "pscad" || pscadPaletteCategories.length > 0) return;
+    let cancelled = false;
+    getDiagramPalette(documentUri || "inmemory://model.pscx")
+      .then((res) => {
+        if (cancelled || !res?.categories?.length) return;
+        const cats = res.categories.map((c) => ({
+          id: String(c.id || c.name || c.label || "General"),
+          label: String(c.label || c.name || c.id || "General"),
+          items: Array.isArray(c.items) ? c.items : [],
+        }));
+        setPscadPaletteCategories(cats);
+        if (cats[0]) setActivePaletteCategory(cats[0].id);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [showPalette, dialect, documentUri, pscadPaletteCategories.length]);
   const internalDiagramRef = useRef<DiagramEditorHandle>(null);
   const effectiveDiagramRef = diagramEditorRef ?? internalDiagramRef;
   const [currentZoom, setCurrentZoom] = useState(1);
@@ -492,7 +546,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
       effectiveDiagramRef.current.setGridMode(gridMode);
       effectiveDiagramRef.current.setSnapToGrid(isSnapActive);
     }
-  }, [isDiagramLoading, gridMode, isSnapActive]);
+  }, [isDiagramLoading, gridMode, isSnapActive, colorMode]);
 
   const hasCenteredOnLoadRef = useRef(false);
   useEffect(() => {
@@ -664,6 +718,15 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
 
   const handleDuplicateSelected = React.useCallback(() => {
     if (!selectedComponent) return;
+    if (dialect === "pscad") {
+      enqueueDiagramAction({
+        type: "copySelection",
+        ids: [selectedComponent],
+        dx: 40,
+        dy: 40,
+      } as Parameters<typeof enqueueDiagramAction>[0]);
+      return;
+    }
     const node = diagramData?.nodes?.find((n: any) => n.id === selectedComponent);
     if (node) {
       const className =
@@ -677,7 +740,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
         });
       }
     }
-  }, [selectedComponent, diagramData?.nodes, selectedComponentProperties, enqueueDiagramAction]);
+  }, [dialect, selectedComponent, diagramData?.nodes, selectedComponentProperties, enqueueDiagramAction]);
 
   const handleDeleteSelected = React.useCallback(() => {
     if (!selectedComponent) return;
@@ -1142,29 +1205,113 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 >
                   {activeLangInfo.label} Palette:
                 </span>
-                {stencils.map((item) => (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={() => {
-                      onInsertStencilSnippet?.(item.snippet, item.className);
-                    }}
-                    style={{
-                      border:
-                        colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.12)" : "1px solid rgba(0, 0, 0, 0.12)",
-                      borderRadius: 6,
-                      padding: "3px 8px",
-                      fontSize: 11,
-                      fontWeight: 500,
-                      cursor: "pointer",
-                      backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.08))",
-                      color: "var(--ms-text-1, var(--color-fg-default))",
-                    }}
-                    title={`Insert ${item.label} into ${activeLangInfo.label} document`}
-                  >
-                    + {item.label}
-                  </button>
-                ))}
+                {dialect === "pscad" && pscadPaletteCategories.length > 0 ? (
+                  <>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginRight: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowComponentWizard(true)}
+                        style={{
+                          border: "1px solid var(--ms-brand, #0891b2)",
+                          borderRadius: 999,
+                          padding: "2px 8px",
+                          fontSize: 10,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          backgroundColor: "var(--ms-brand-soft, rgba(8, 145, 178, 0.14))",
+                          color: "var(--ms-brand, #0891b2)",
+                        }}
+                        title="Open visual <Graphics>/<form> Component Definition Wizard"
+                      >
+                        + New Defn
+                      </button>
+                      {pscadPaletteCategories.map((cat) => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setActivePaletteCategory(cat.id)}
+                          style={{
+                            border: "1px solid var(--ms-divider, rgba(125,125,125,0.25))",
+                            borderRadius: 999,
+                            padding: "2px 8px",
+                            fontSize: 10,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            backgroundColor:
+                              activePaletteCategory === cat.id
+                                ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.2))"
+                                : "transparent",
+                            color:
+                              activePaletteCategory === cat.id
+                                ? "var(--ms-brand, #0891b2)"
+                                : "var(--ms-text-2, var(--color-fg-muted))",
+                          }}
+                        >
+                          {cat.label}
+                        </button>
+                      ))}
+                    </div>
+                    {(
+                      pscadPaletteCategories.find((c) => c.id === activePaletteCategory)?.items ??
+                      pscadPaletteCategories[0]?.items ??
+                      []
+                    ).map((item) => (
+                      <button
+                        key={item.type || item.label}
+                        type="button"
+                        onClick={() => {
+                          const defName = item.type || item.className || item.label;
+                          const snippet =
+                            item.snippet ||
+                            `    <User cmp="${defName}" name="${item.label}" id="${Date.now()}" x="200" y="200" />\n`;
+                          onInsertStencilSnippet?.(snippet, defName);
+                        }}
+                        style={{
+                          border:
+                            colorMode === "dark"
+                              ? "1px solid rgba(255, 255, 255, 0.12)"
+                              : "1px solid rgba(0, 0, 0, 0.12)",
+                          borderRadius: 6,
+                          padding: "3px 8px",
+                          fontSize: 11,
+                          fontWeight: 500,
+                          cursor: "pointer",
+                          backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.08))",
+                          color: "var(--ms-text-1, var(--color-fg-default))",
+                        }}
+                        title={`Insert ${item.label} (${item.type || "component"})`}
+                      >
+                        + {item.label}
+                      </button>
+                    ))}
+                  </>
+                ) : (
+                  stencils.map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => {
+                        onInsertStencilSnippet?.(item.snippet, item.className);
+                      }}
+                      style={{
+                        border:
+                          colorMode === "dark"
+                            ? "1px solid rgba(255, 255, 255, 0.12)"
+                            : "1px solid rgba(0, 0, 0, 0.12)",
+                        borderRadius: 6,
+                        padding: "3px 8px",
+                        fontSize: 11,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                        backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.08))",
+                        color: "var(--ms-text-1, var(--color-fg-default))",
+                      }}
+                      title={`Insert ${item.label} into ${activeLangInfo.label} document`}
+                    >
+                      + {item.label}
+                    </button>
+                  ))
+                )}
               </div>
             )}
           </div>
@@ -1219,19 +1366,27 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 >
                   Root
                 </Breadcrumbs.Item>
-                {drillDownPath.map((seg, idx) => (
-                  <Breadcrumbs.Item
-                    key={`${seg}-${idx}`}
-                    href={`#${seg}`}
-                    selected={idx === drillDownPath.length - 1}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      onDrillUp?.(idx);
-                    }}
-                  >
-                    {seg}
-                  </Breadcrumbs.Item>
-                ))}
+                {drillDownPath.map((seg, idx) => {
+                  const segLabel =
+                    typeof seg === "string"
+                      ? seg
+                      : (seg as { label?: string; id?: string }).label ||
+                        (seg as { label?: string; id?: string }).id ||
+                        String(idx);
+                  return (
+                    <Breadcrumbs.Item
+                      key={`${segLabel}-${idx}`}
+                      href={`#${segLabel}`}
+                      selected={idx === drillDownPath.length - 1}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        onDrillUp?.(idx);
+                      }}
+                    >
+                      {segLabel}
+                    </Breadcrumbs.Item>
+                  );
+                })}
               </Breadcrumbs>
             </div>
           )}
@@ -1289,29 +1444,113 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 >
                   {activeLangInfo.label || activeLangInfo.name} Palette:
                 </span>
-                {stencils.map((item) => (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={() => {
-                      onInsertStencilSnippet?.(item.snippet, item.className);
-                    }}
-                    style={{
-                      border:
-                        colorMode === "dark" ? "1px solid rgba(255, 255, 255, 0.12)" : "1px solid rgba(0, 0, 0, 0.12)",
-                      borderRadius: 6,
-                      padding: "2px 8px",
-                      fontSize: 11,
-                      fontWeight: 500,
-                      cursor: "pointer",
-                      backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.08))",
-                      color: "var(--ms-text-1, var(--color-fg-default))",
-                    }}
-                    title={`Insert ${item.label} into ${activeLangInfo.label || activeLangInfo.name} document`}
-                  >
-                    + {item.label}
-                  </button>
-                ))}
+                {dialect === "pscad" && pscadPaletteCategories.length > 0 ? (
+                  <>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginRight: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowComponentWizard(true)}
+                        style={{
+                          border: "1px solid var(--ms-brand, #0891b2)",
+                          borderRadius: 999,
+                          padding: "2px 8px",
+                          fontSize: 10,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          backgroundColor: "var(--ms-brand-soft, rgba(8, 145, 178, 0.14))",
+                          color: "var(--ms-brand, #0891b2)",
+                        }}
+                        title="Open visual <Graphics>/<form> Component Definition Wizard"
+                      >
+                        + New Defn
+                      </button>
+                      {pscadPaletteCategories.map((cat) => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setActivePaletteCategory(cat.id)}
+                          style={{
+                            border: "1px solid var(--ms-divider, rgba(125,125,125,0.25))",
+                            borderRadius: 999,
+                            padding: "2px 8px",
+                            fontSize: 10,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            backgroundColor:
+                              activePaletteCategory === cat.id
+                                ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.2))"
+                                : "transparent",
+                            color:
+                              activePaletteCategory === cat.id
+                                ? "var(--ms-brand, #0891b2)"
+                                : "var(--ms-text-2, var(--color-fg-muted))",
+                          }}
+                        >
+                          {cat.label}
+                        </button>
+                      ))}
+                    </div>
+                    {(
+                      pscadPaletteCategories.find((c) => c.id === activePaletteCategory)?.items ??
+                      pscadPaletteCategories[0]?.items ??
+                      []
+                    ).map((item) => (
+                      <button
+                        key={item.type || item.label}
+                        type="button"
+                        onClick={() => {
+                          const defName = item.type || item.className || item.label;
+                          const snippet =
+                            item.snippet ||
+                            `    <User classid="UserCmp" defn="${defName}" name="${item.label}" id="${Date.now()}" x="200" y="200" />\n`;
+                          onInsertStencilSnippet?.(snippet, defName);
+                        }}
+                        style={{
+                          border:
+                            colorMode === "dark"
+                              ? "1px solid rgba(255, 255, 255, 0.12)"
+                              : "1px solid rgba(0, 0, 0, 0.12)",
+                          borderRadius: 6,
+                          padding: "3px 8px",
+                          fontSize: 11,
+                          fontWeight: 500,
+                          cursor: "pointer",
+                          backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.08))",
+                          color: "var(--ms-text-1, var(--color-fg-default))",
+                        }}
+                        title={`Insert ${item.label} (${item.type || "component"})`}
+                      >
+                        + {item.label}
+                      </button>
+                    ))}
+                  </>
+                ) : (
+                  stencils.map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => {
+                        onInsertStencilSnippet?.(item.snippet, item.className);
+                      }}
+                      style={{
+                        border:
+                          colorMode === "dark"
+                            ? "1px solid rgba(255, 255, 255, 0.12)"
+                            : "1px solid rgba(0, 0, 0, 0.12)",
+                        borderRadius: 6,
+                        padding: "3px 8px",
+                        fontSize: 11,
+                        fontWeight: 500,
+                        cursor: "pointer",
+                        backgroundColor: "var(--ms-surface-hover, rgba(125, 125, 125, 0.08))",
+                        color: "var(--ms-text-1, var(--color-fg-default))",
+                      }}
+                      title={`Insert ${item.label} into ${activeLangInfo.label || activeLangInfo.name} document`}
+                    >
+                      + {item.label}
+                    </button>
+                  ))
+                )}
               </div>
             )}
 
@@ -1323,6 +1562,265 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 }
               }}
             >
+              {diagramType === "icon" && activeLangInfo.id === "modelica" && (
+                <div
+                  data-testid="icon-editor-tool-pill"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: "absolute",
+                    top: 14,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    zIndex: 25,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    backgroundColor: "var(--ms-surface-glass, rgba(255, 255, 255, 0.9))",
+                    backdropFilter: "blur(12px)",
+                    WebkitBackdropFilter: "blur(12px)",
+                    border: "1px solid var(--ms-border, rgba(15, 23, 42, 0.14))",
+                    boxShadow: "0 4px 16px rgba(15, 23, 42, 0.12)",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      letterSpacing: "0.04em",
+                      textTransform: "uppercase",
+                      color: "var(--ms-text-2, var(--color-fg-muted))",
+                      padding: "0 6px 0 4px",
+                      userSelect: "none",
+                    }}
+                  >
+                    Icon
+                  </span>
+                  {(
+                    [
+                      {
+                        label: "Rect",
+                        title: "Add Rectangle",
+                        primitive: {
+                          "@type": "Rectangle",
+                          extent: [
+                            [-60, -40],
+                            [60, 40],
+                          ],
+                          lineColor: [8, 145, 178],
+                          fillColor: [224, 242, 254],
+                          fillPattern: "FillPattern.Solid",
+                        },
+                      },
+                      {
+                        label: "Ellipse",
+                        title: "Add Ellipse",
+                        primitive: {
+                          "@type": "Ellipse",
+                          extent: [
+                            [-40, -40],
+                            [40, 40],
+                          ],
+                          lineColor: [8, 145, 178],
+                          fillColor: [255, 255, 255],
+                          fillPattern: "FillPattern.Solid",
+                        },
+                      },
+                      {
+                        label: "Line",
+                        title: "Add Line",
+                        primitive: {
+                          "@type": "Line",
+                          points: [
+                            [-60, 0],
+                            [60, 0],
+                          ],
+                          color: [15, 23, 42],
+                        },
+                      },
+                      {
+                        label: "Polygon",
+                        title: "Add Polygon",
+                        primitive: {
+                          "@type": "Polygon",
+                          points: [
+                            [0, 50],
+                            [-45, -35],
+                            [45, -35],
+                            [0, 50],
+                          ],
+                          lineColor: [8, 145, 178],
+                          fillColor: [224, 242, 254],
+                          fillPattern: "FillPattern.Solid",
+                        },
+                      },
+                      {
+                        label: "Text",
+                        title: "Add Text (%name)",
+                        primitive: {
+                          "@type": "Text",
+                          extent: [
+                            [-70, -18],
+                            [70, 18],
+                          ],
+                          textString: "%name",
+                          textColor: [15, 23, 42],
+                        },
+                      },
+                    ] as const
+                  ).map((tool) => (
+                    <button
+                      key={tool.label}
+                      type="button"
+                      title={tool.title}
+                      onClick={() =>
+                        enqueueDiagramAction({
+                          type: "addIconPrimitive",
+                          primitive: tool.primitive,
+                        })
+                      }
+                      style={{
+                        height: 26,
+                        padding: "0 10px",
+                        borderRadius: 999,
+                        border: "1px solid transparent",
+                        backgroundColor: "transparent",
+                        color: "var(--ms-text-1, var(--color-fg-default))",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = "var(--ms-brand-soft, rgba(8, 145, 178, 0.12))";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                      }}
+                    >
+                      + {tool.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {activeLangInfo.id === "psse" && onPsseDiagramOptionsChange && (
+                <div
+                  data-testid="psse-sld-tool-pill"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: "absolute",
+                    top: 14,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    zIndex: 25,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    backgroundColor: "var(--ms-surface-glass, rgba(255, 255, 255, 0.9))",
+                    backdropFilter: "blur(12px)",
+                    WebkitBackdropFilter: "blur(12px)",
+                    border: "1px solid var(--ms-border, rgba(15, 23, 42, 0.14))",
+                    boxShadow: "0 4px 16px rgba(15, 23, 42, 0.12)",
+                    fontSize: 11,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onPsseDiagramOptionsChange((prev) => ({
+                        ...prev,
+                        layoutMode: prev.layoutMode === "geographic" ? "auto" : "geographic",
+                      }))
+                    }
+                    style={{
+                      height: 24,
+                      padding: "0 8px",
+                      borderRadius: 999,
+                      border: "1px solid var(--ms-border, rgba(15, 23, 42, 0.14))",
+                      backgroundColor:
+                        psseDiagramOptions?.layoutMode === "geographic"
+                          ? "var(--ms-brand-soft, rgba(8, 145, 178, 0.18))"
+                          : "transparent",
+                      color: "var(--ms-text-1, var(--color-fg-default))",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {psseDiagramOptions?.layoutMode === "geographic" ? "Geo Lat/Lon" : "Auto Layout"}
+                  </button>
+                  <label
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      color: "var(--ms-text-2, var(--color-fg-muted))",
+                    }}
+                  >
+                    Focus Bus
+                    <input
+                      type="number"
+                      placeholder="All"
+                      value={psseDiagramOptions?.focusBus ?? ""}
+                      onChange={(e) => {
+                        const raw = e.target.value.trim();
+                        onPsseDiagramOptionsChange((prev) => ({
+                          ...prev,
+                          focusBus: raw === "" ? undefined : Number(raw),
+                        }));
+                      }}
+                      style={{
+                        width: 56,
+                        height: 22,
+                        padding: "0 6px",
+                        borderRadius: 6,
+                        border: "1px solid var(--ms-border, rgba(15, 23, 42, 0.14))",
+                        backgroundColor: "transparent",
+                        color: "var(--ms-text-1, var(--color-fg-default))",
+                        fontFamily: "monospace",
+                        fontSize: 11,
+                      }}
+                    />
+                  </label>
+                  <label
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      color: "var(--ms-text-2, var(--color-fg-muted))",
+                    }}
+                  >
+                    k-Hop
+                    <select
+                      value={psseDiagramOptions?.kHops ?? 2}
+                      onChange={(e) =>
+                        onPsseDiagramOptionsChange((prev) => ({
+                          ...prev,
+                          kHops: Number(e.target.value),
+                        }))
+                      }
+                      style={{
+                        height: 22,
+                        padding: "0 4px",
+                        borderRadius: 6,
+                        border: "1px solid var(--ms-border, rgba(15, 23, 42, 0.14))",
+                        backgroundColor: "transparent",
+                        color: "var(--ms-text-1, var(--color-fg-default))",
+                        fontSize: 11,
+                      }}
+                    >
+                      <option value={1}>1</option>
+                      <option value={2}>2</option>
+                      <option value={3}>3</option>
+                      <option value={4}>4</option>
+                    </select>
+                  </label>
+                </div>
+              )}
               <Suspense fallback={null}>
                 <DiagramEditor
                   ref={effectiveDiagramRef}
@@ -1330,7 +1828,7 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   diagramClassName={selectedTreeClassName}
                   selectedName={selectedComponent}
                   theme={colorMode === "dark" ? "vs-dark" : "light"}
-                  isLoading={isDiagramLoading}
+                  isLoading={isDiagramLoading || Boolean(isLoadingModel)}
                   fitInsets={
                     isFloatingLayout
                       ? {
@@ -1399,6 +1897,14 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                   }}
                   onComponentsDelete={async (names) => {
                     enqueueDiagramAction({ type: "deleteComponents", names });
+                  }}
+                  onInteractiveWrite={async (variableName, value, nodeId) => {
+                    enqueueDiagramAction({
+                      type: "updateParameter",
+                      name: nodeId,
+                      parameter: variableName,
+                      value,
+                    });
                   }}
                   onUndo={handleUndo}
                   onRedo={handleRedo}
@@ -2573,79 +3079,160 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 />
               </div>
               <div style={{ pointerEvents: "auto", height: "100%", display: "flex" }}>
-                <PropertiesWidget
-                  properties={selectedComponentProperties}
-                  isLoading={isPropertiesLoading}
-                  width={propertiesWidth}
-                  floating={isFloatingLayout}
-                  translations={translations}
-                  onClose={() => handleSelectComponent(null)}
-                  onNameChange={async (newName) => {
-                    if (!selectedComponent) return;
-                    const oldName = selectedComponent;
-                    if (expectedComponentNameRef) expectedComponentNameRef.current = newName;
-                    setSelectedComponent(newName);
-                    enqueueDiagramAction({ type: "updateName", oldName, newName });
-                  }}
-                  onDescriptionChange={async (newDescription) => {
-                    if (!selectedComponent) return;
-                    enqueueDiagramAction({
-                      type: "updateDescription",
-                      name: selectedComponent,
-                      description: newDescription,
-                    });
-                  }}
-                  onParameterChange={async (name, value) => {
-                    if (!selectedComponent) return;
-                    let effectiveValue = value;
-                    const declaredType = (selectedComponentProperties as any)?.declaredType;
-                    if (declaredType && Array.isArray(declaredType.elements)) {
-                      for (const el of declaredType.elements) {
-                        if (el && (el as any).name === name) {
-                          const defaultExpr = (el.modification?.expression as any)?.toJSON?.toString();
-                          if (defaultExpr !== undefined && defaultExpr === value) {
-                            effectiveValue = "";
-                          }
-                          break;
-                        }
-                      }
-                    }
-                    enqueueDiagramAction({
-                      type: "updateParameter",
-                      name: selectedComponent,
-                      parameter: name,
-                      value: effectiveValue,
-                    });
-                  }}
-                  onLocateComponent={(name) => {
-                    effectiveDiagramRef.current?.centerCell?.(name);
-                  }}
-                  onGoToSource={(name) => {
-                    onNodeDoubleClick?.(name);
-                  }}
-                  onDuplicateComponent={(name) => {
-                    const node = diagramData?.nodes?.find((n: any) => n.id === name);
-                    if (node) {
-                      const className =
-                        node.type ||
-                        node.className ||
-                        (node.data as any)?.className ||
-                        selectedComponentProperties?.className;
-                      if (className) {
+                {(() => {
+                  const iconNode =
+                    selectedComponent?.startsWith("__icon_gfx_") && Array.isArray(diagramData?.nodes)
+                      ? diagramData.nodes.find((n: { id?: string }) => n?.id === selectedComponent)
+                      : null;
+                  const iconPrimitivesCount = Array.isArray(diagramData?.nodes)
+                    ? diagramData.nodes.filter((n: { id?: string }) => String(n?.id ?? "").startsWith("__icon_gfx_"))
+                        .length
+                    : 0;
+                  if (iconNode?.data?.primitive !== undefined) {
+                    const idx = Number(iconNode.data.primitiveIndex ?? 0);
+                    return (
+                      <div
+                        style={{
+                          width: propertiesWidth,
+                          height: "100%",
+                          overflowY: "auto",
+                          backgroundColor: isFloatingLayout
+                            ? "var(--ms-surface-glass, rgba(255, 255, 255, 0.9))"
+                            : "var(--ms-bg-elv, var(--color-canvas-subtle))",
+                          backdropFilter: isFloatingLayout ? "blur(14px)" : undefined,
+                          borderRadius: isFloatingLayout ? 12 : 0,
+                          border: isFloatingLayout ? "1px solid var(--ms-border, rgba(15, 23, 42, 0.12))" : undefined,
+                          borderLeft: isFloatingLayout
+                            ? undefined
+                            : "1px solid var(--ms-divider, rgba(15, 23, 42, 0.08))",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "10px 14px",
+                            borderBottom: "1px solid var(--ms-divider, rgba(15, 23, 42, 0.08))",
+                            fontSize: 12,
+                            fontWeight: 700,
+                          }}
+                        >
+                          <span>Icon Graphic</span>
+                          <IconButton
+                            icon={XIcon}
+                            size="small"
+                            variant="invisible"
+                            aria-label="Close inspector"
+                            onClick={() => handleSelectComponent(null)}
+                          />
+                        </div>
+                        <IconPrimitiveInspector
+                          primitiveIndex={idx}
+                          totalPrimitives={iconPrimitivesCount}
+                          primitive={iconNode.data.primitive as Record<string, unknown>}
+                          onUpdate={(primitiveIdx, patch) => {
+                            enqueueDiagramAction({
+                              type: "updateIconPrimitive",
+                              index: primitiveIdx,
+                              patch,
+                            });
+                          }}
+                          onDelete={(primitiveIdx) => {
+                            handleSelectComponent(null);
+                            enqueueDiagramAction({
+                              type: "deleteIconPrimitive",
+                              index: primitiveIdx,
+                            });
+                          }}
+                          onReorder={(fromIndex, toIndex) => {
+                            enqueueDiagramAction({
+                              type: "reorderIconPrimitive",
+                              fromIndex,
+                              toIndex,
+                            });
+                          }}
+                        />
+                      </div>
+                    );
+                  }
+                  return (
+                    <PropertiesWidget
+                      properties={selectedComponentProperties}
+                      isLoading={isPropertiesLoading}
+                      width={propertiesWidth}
+                      floating={isFloatingLayout}
+                      translations={translations}
+                      onClose={() => handleSelectComponent(null)}
+                      onNameChange={async (newName) => {
+                        if (!selectedComponent) return;
+                        const oldName = selectedComponent;
+                        if (expectedComponentNameRef) expectedComponentNameRef.current = newName;
+                        setSelectedComponent(newName);
+                        enqueueDiagramAction({ type: "updateName", oldName, newName });
+                      }}
+                      onDescriptionChange={async (newDescription) => {
+                        if (!selectedComponent) return;
                         enqueueDiagramAction({
-                          type: "addComponent",
-                          className,
-                          x: (node.x ?? 100) + 40,
-                          y: (node.y ?? 100) + 40,
+                          type: "updateDescription",
+                          name: selectedComponent,
+                          description: newDescription,
                         });
-                      }
-                    }
-                  }}
-                  onDeleteComponent={(name) => {
-                    enqueueDiagramAction({ type: "deleteComponents", names: [name] });
-                    handleSelectComponent(null);
-                  }}
-                />
+                      }}
+                      onParameterChange={async (name, value) => {
+                        if (!selectedComponent) return;
+                        let effectiveValue = value;
+                        const declaredType = (selectedComponentProperties as any)?.declaredType;
+                        if (declaredType && Array.isArray(declaredType.elements)) {
+                          for (const el of declaredType.elements) {
+                            if (el && (el as any).name === name) {
+                              const defaultExpr = (el.modification?.expression as any)?.toJSON?.toString();
+                              if (defaultExpr !== undefined && defaultExpr === value) {
+                                effectiveValue = "";
+                              }
+                              break;
+                            }
+                          }
+                        }
+                        enqueueDiagramAction({
+                          type: "updateParameter",
+                          name: selectedComponent,
+                          parameter: name,
+                          value: effectiveValue,
+                        });
+                      }}
+                      onLocateComponent={(name) => {
+                        effectiveDiagramRef.current?.centerCell?.(name);
+                      }}
+                      onGoToSource={(name) => {
+                        onNodeDoubleClick?.(name);
+                      }}
+                      onDuplicateComponent={(name) => {
+                        const node = diagramData?.nodes?.find((n: any) => n.id === name);
+                        if (node) {
+                          const className =
+                            node.type ||
+                            node.className ||
+                            (node.data as any)?.className ||
+                            selectedComponentProperties?.className;
+                          if (className) {
+                            enqueueDiagramAction({
+                              type: "addComponent",
+                              className,
+                              x: (node.x ?? 100) + 40,
+                              y: (node.y ?? 100) + 40,
+                            });
+                          }
+                        }
+                      }}
+                      onDeleteComponent={(name) => {
+                        enqueueDiagramAction({ type: "deleteComponents", names: [name] });
+                        handleSelectComponent(null);
+                      }}
+                    />
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -2678,6 +3265,17 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 onSaveBindings={handleSaveCadBindings}
                 vtkBuffer={vtkBuffer ?? undefined}
                 gdtOverlay={gdtOverlay}
+                caeSourceCode={
+                  /\.(inp|bdf|dat|fem|su2|cfg|foam)$/i.test(activeFileName || "") || vtkBuffer ? editorValue : undefined
+                }
+                onRevealLine={onRevealLine}
+                onInsertCaeSnippet={(snippet) => {
+                  const targetEditor = editorRef.current ?? editor;
+                  if (targetEditor) {
+                    const nextCode = `${targetEditor.getValue().trimEnd()}\n${snippet.trimStart()}`;
+                    targetEditor.setValue(nextCode);
+                  }
+                }}
                 fitInsets={
                   isFloatingLayout
                     ? {
@@ -2774,6 +3372,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
             <Suspense fallback={null}>
               <SimulationResults
                 localData={localSimulationData}
+                complianceReport={pscadComplianceReport}
+                pscadExports={pscadExports}
                 sweepResults={sweepResults}
                 simulationVariables={simulationVariables}
                 selectedVariables={selectedSimulationVariables}
@@ -2900,11 +3500,21 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                 isVisible={showAnalysisView && (!hasMultiFileProject || inspectorSubtab === "domain")}
                 documentUri={documentUri}
                 activeClassName={selectedTreeClassName ?? nestedModels[selectedModelIndex]?.name ?? undefined}
+                projectFiles={projectFiles}
+                activeFileName={activeFileName}
+                onUpdateProjectFile={onUpdateProjectFile}
                 onRevealLine={onRevealLine}
                 onCodeChange={(nextCode) => {
                   const targetEditor = editorRef.current ?? editor;
-                  if (targetEditor && targetEditor.getValue() !== nextCode) {
-                    targetEditor.setValue(nextCode);
+                  const model = targetEditor?.getModel?.();
+                  if (targetEditor && model && targetEditor.getValue() !== nextCode) {
+                    targetEditor.pushUndoStop();
+                    targetEditor.executeEdits("pscad-authoring", [
+                      { range: model.getFullModelRange(), text: nextCode, forceMoveMarkers: true },
+                    ]);
+                    targetEditor.pushUndoStop();
+                  } else if (activeFileName && onUpdateProjectFile) {
+                    onUpdateProjectFile(activeFileName, nextCode);
                   }
                 }}
               />
@@ -2912,6 +3522,26 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
           </div>
         </div>
       </div>
+      {showComponentWizard && dialect === "pscad" && (
+        <PscadComponentWizardModal
+          code={editorValue}
+          colorMode={colorMode}
+          onApplyCode={(nextCode) => {
+            const targetEditor = editorRef.current ?? editor;
+            const model = targetEditor?.getModel?.();
+            if (targetEditor && model && targetEditor.getValue() !== nextCode) {
+              targetEditor.pushUndoStop();
+              targetEditor.executeEdits("pscad-wizard", [
+                { range: model.getFullModelRange(), text: nextCode, forceMoveMarkers: true },
+              ]);
+              targetEditor.pushUndoStop();
+            } else if (activeFileName && onUpdateProjectFile) {
+              onUpdateProjectFile(activeFileName, nextCode);
+            }
+          }}
+          onClose={() => setShowComponentWizard(false)}
+        />
+      )}
     </div>
   );
 };

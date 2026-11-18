@@ -2995,9 +2995,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       async ({ path: filePath, dt, tstop, faultBus, faultStart, faultDuration, format }) => {
         try {
           const resolved = resolveWorkspacePath(filePath);
-          const { parsePscx, extractEmtNetlist, netlistToEmtCircuit, emtResultToComtrade, writeComtrade } =
+          const { parsePscx, extractEmtNetlist, EmtSolver, emtResultToComtrade, writeComtrade } =
             await import("@modelscript/pscad");
-          const { EmtSolver } = await import("@modelscript/simulate");
           const fsMod = await import("node:fs");
 
           if (!fsMod.existsSync(resolved)) {
@@ -3010,31 +3009,32 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           const text = fsMod.readFileSync(resolved, "utf-8");
           const project = parsePscx(text);
           const netlist = extractEmtNetlist(project);
-          const baseCircuit = netlistToEmtCircuit(netlist);
 
-          const circuit = {
-            ...baseCircuit,
-            faults: faultBus
-              ? [
-                  ...(baseCircuit.faults ?? []),
+          const tFaultStart = faultStart ?? 0.05;
+          const tFaultEnd = tFaultStart + (faultDuration ?? 0.05);
+          const netlistForSim = faultBus
+            ? {
+                ...netlist,
+                faults: [
+                  ...(netlist.faults ?? []),
                   {
+                    id: "MCP_FAULT",
                     bus: faultBus,
-                    startSec: faultStart ?? 0.05,
-                    durationSec: faultDuration ?? 0.05,
-                    faultResistanceOhm: 0.01,
+                    startSec: tFaultStart,
+                    endSec: tFaultEnd,
+                    rFaultOhm: 0.01,
                     faultType: "SLG" as const,
                   },
-                ]
-              : baseCircuit.faults,
-          };
+                ],
+              }
+            : netlist;
 
-          const solver = new EmtSolver(circuit as unknown as ConstructorParameters<typeof EmtSolver>[0], {
+          const solver = new EmtSolver(netlistForSim, {
             timeStepSec: dt ?? 20e-6,
             durationSec: tstop ?? 0.1,
             nominalFrequencyHz: netlist.nominalFrequencyHz,
-            threePhase: true,
-            steadyStateInit: true,
-            maxNonlinearIterations: 6,
+            enableCda: true,
+            enableSwitchingInterpolation: true,
           });
 
           const result = solver.solve();
@@ -3060,7 +3060,7 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
               namedVoltages.set(busName, series);
             }
             const comtradeResult = { ...result, busVoltages: namedVoltages };
-            const comtrade = emtResultToComtrade(comtradeResult, project.name);
+            const comtrade = emtResultToComtrade(comtradeResult, project.name, "EMT01", netlist.nominalFrequencyHz);
             const { cfg, dat } = writeComtrade(comtrade);
             return {
               content: [
@@ -3167,9 +3167,8 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       async ({ path: filePath, fileName, xmlContent, poiBus, faultDurationMs, vSagPu, tStop, stepUs }) => {
         try {
           const targetPath = filePath ?? fileName;
-          const { parsePscx, extractEmtNetlist, netlistToEmtCircuit, verifyIeee2800Compliance } =
+          const { parsePscx, extractEmtNetlist, EmtSolver, verifyIeee2800Compliance } =
             await import("@modelscript/pscad");
-          const { EmtSolver } = await import("@modelscript/simulate");
           const fsMod = await import("node:fs");
 
           let text = xmlContent;
@@ -3192,7 +3191,6 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
           const project = parsePscx(text);
           const netlist = extractEmtNetlist(project);
-          const baseCircuit = netlistToEmtCircuit(netlist);
 
           // Resolve POI bus by ID or human-readable name
           let targetBus =
@@ -3208,23 +3206,32 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
 
           const fDurationSec = (faultDurationMs ?? 150) / 1000;
           const vNominalKv = netlist.buses.get(targetBus)?.baseKv ?? 230;
-          const sources =
-            baseCircuit.sources && baseCircuit.sources.length > 0
-              ? baseCircuit.sources
-              : [{ bus: targetBus, vPeakKv: vNominalKv, freqHz: netlist.nominalFrequencyHz }];
-
-          const circuit = {
-            ...baseCircuit,
-            sources,
-            faults:
-              baseCircuit.faults && baseCircuit.faults.length > 0
-                ? baseCircuit.faults
+          const netlistForSim = {
+            ...netlist,
+            sources:
+              netlist.sources.length > 0
+                ? netlist.sources
                 : [
                     {
+                      id: "SRC_GRID",
+                      name: "SRC_GRID",
+                      bus: targetBus,
+                      vPeakKv: (vNominalKv * Math.SQRT2) / Math.sqrt(3),
+                      frequencyHz: netlist.nominalFrequencyHz,
+                      phaseRad: 0,
+                      mvaRating: 1000,
+                    },
+                  ],
+            faults:
+              netlist.faults && netlist.faults.length > 0
+                ? netlist.faults
+                : [
+                    {
+                      id: "FLT_IEEE2800",
                       bus: targetBus,
                       startSec: 0.05,
-                      durationSec: fDurationSec,
-                      faultResistanceOhm: 0.05,
+                      endSec: 0.05 + fDurationSec,
+                      rFaultOhm: 0.05,
                       faultType: "SLG" as const,
                     },
                   ],
@@ -3233,12 +3240,12 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
           const dtSec = stepUs ? stepUs * 1e-6 : 20e-6;
           const durationSec = tStop ? Math.min(tStop, 1.0) : 0.25;
 
-          const solver = new EmtSolver(circuit as unknown as ConstructorParameters<typeof EmtSolver>[0], {
+          const solver = new EmtSolver(netlistForSim, {
             timeStepSec: dtSec,
             durationSec,
             nominalFrequencyHz: netlist.nominalFrequencyHz,
-            threePhase: true,
-            steadyStateInit: true,
+            enableCda: true,
+            enableSwitchingInterpolation: true,
           });
 
           const result = solver.solve();

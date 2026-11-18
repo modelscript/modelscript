@@ -339,8 +339,18 @@ export interface DiagramNode {
 
 export interface DiagramEdge {
   id: string;
-  source: { cell: string; port: string; anchor: string; connectionPoint: { name: string } };
-  target: { cell: string; port: string; anchor: string; connectionPoint: { name: string } };
+  source: {
+    cell: string;
+    port: string;
+    anchor: string | { name: string; args?: { dx?: number; dy?: number } };
+    connectionPoint: { name: string };
+  };
+  target: {
+    cell: string;
+    port: string;
+    anchor: string | { name: string; args?: { dx?: number; dy?: number } };
+    connectionPoint: { name: string };
+  };
   vertices?: { x: number; y: number }[] | undefined;
   connector?: string | undefined;
   router?: string | { name: string; args?: Record<string, unknown> | undefined } | undefined;
@@ -481,7 +491,11 @@ export type DiagramEditAction =
   | { type: "updateName"; oldName: string; newName: string }
   | { type: "updateDescription"; name: string; description: string }
   | { type: "updateParameter"; name: string; parameter: string; value: string }
-  | { type: "updateProperty"; name: string; key: string; value: unknown; previousValue?: unknown };
+  | { type: "updateProperty"; name: string; key: string; value: unknown; previousValue?: unknown }
+  | { type: "addIconPrimitive"; primitive: Record<string, unknown> }
+  | { type: "updateIconPrimitive"; index: number; patch: Record<string, unknown> }
+  | { type: "deleteIconPrimitive"; index: number }
+  | { type: "reorderIconPrimitive"; fromIndex: number; toIndex: number };
 
 // ── SVG Export Options ──
 
@@ -545,6 +559,14 @@ export interface DiagramGetDataParams {
   sidecarContent?: string | undefined;
   /** Optional document text passed by client to bypass any didChange indexing race condition */
   documentText?: string | undefined;
+  /** Optional PSS/E SLD viewport / k-hop / geographic layout options */
+  psseOptions?:
+    | {
+        focusBus?: number | undefined;
+        kHops?: number | undefined;
+        layoutMode?: "auto" | "geographic" | undefined;
+      }
+    | undefined;
 }
 
 // applyEdits
@@ -552,6 +574,8 @@ export interface DiagramApplyEditsParams {
   uri: string;
   /** Optional target class name for multi-class documents */
   className?: string | undefined;
+  /** Optional diagram layer type (e.g. "diagram" | "icon") */
+  diagramType?: string | undefined;
   /** Monotonically increasing sequence number from the client */
   seq: number;
   /** Batch of actions to apply atomically */

@@ -2,29 +2,71 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import {
+  calculateShortCircuit,
   compileAssemblyScriptDyrInWorker,
+  executeIdv,
+  executePythonPsspyScript,
+  formatPowerFlowReport,
+  linkUsrDllToDynamicInstance,
   lintPsse,
   loadFmuForPsse,
   parseDyr,
+  parsePsseOut,
   parseRaw,
   parseSeq,
+  PsspySession,
+  screenContingencies,
   simulatePsseTransient,
+  solvePowerFlow,
   solvePowerFlowAsync,
+  solveQvCurve,
   type PsseDiagnostic,
+  type PsseDynamicEvent,
   type PsseDynamicModelIO,
   type PsseLinkedDynamicInstance,
   type PsseTransientResult,
 } from "@modelscript/psse";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { InspectorTabs } from "./InspectorTabs.js";
+import { PsseSpreadsheetView } from "./PsseSpreadsheetView.js";
+import { PsseStudyPanel } from "./PsseStudyPanel.js";
 
 const CsvViewer = React.lazy(() => import("../../../artifacts/CsvViewer.js").then((m) => ({ default: m.CsvViewer })));
+
+export interface PsseStudyArtifactSnapshot {
+  dyrText?: string | undefined;
+  cfctSec?: number | undefined;
+  transientSummary?:
+    | {
+        stable: boolean;
+        maxFreqDeviationHz: number;
+        maxRotorAngleSpreadDeg: number;
+        minBusVoltagePu: number;
+      }
+    | undefined;
+  transientChannels?:
+    | {
+        t: number[];
+        series: Record<string, number[]>;
+      }
+    | undefined;
+}
+
+let latestPsseStudySnapshot: PsseStudyArtifactSnapshot | null = null;
+
+export function getLatestPsseStudySnapshot(): PsseStudyArtifactSnapshot | null {
+  return latestPsseStudySnapshot;
+}
 
 export interface PowerGridInspectorProps {
   code: string;
   lines: string[];
   colorMode: "dark" | "light";
   dialect?: string | undefined;
+  projectFiles?: Record<string, string> | undefined;
+  activeFileName?: string | undefined;
+  onUpdateProjectFile?: ((path: string, content: string) => void) | undefined;
+  onCodeChange?: ((newCode: string) => void) | undefined;
   onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
 }
 
@@ -577,11 +619,19 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
   lines,
   colorMode,
   dialect,
+  projectFiles,
+  activeFileName,
+  onUpdateProjectFile,
+  onCodeChange,
   onRevealLine,
 }) => {
   const isDark = colorMode === "dark";
   const isTouchstone = dialect === "touchstone" || lines.some((l) => /^#\s*\w+\s+[SYZGH]\s+/i.test(l.trim()));
-  const [subView, setSubView] = useState<"ybus" | "thermal" | "eigen" | "table">(isTouchstone ? "table" : "ybus");
+  const [subView, setSubView] = useState<"spreadsheet" | "reports" | "ybus" | "thermal" | "eigen" | "table">(
+    isTouchstone ? "table" : "spreadsheet",
+  );
+  const [activeReport, setActiveReport] = useState<"pout" | "accc" | "qv" | "ascc">("pout");
+  const [qvTargetBus, setQvTargetBus] = useState<string>("");
   const [dyrText, setDyrText] = useState<string | null>(null);
   const [dyrName, setDyrName] = useState<string | null>(null);
   const [seqText, setSeqText] = useState<string | null>(null);
@@ -595,7 +645,15 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
   const [faultStartSec, setFaultStartSec] = useState<number>(0.1);
   const [faultClearSec, setFaultClearSec] = useState<number>(0.2);
   const [tEndSec, setTEndSec] = useState<number>(1.0);
+  const [chnfPrefix, setChnfPrefix] = useState<string>("all");
+  const [transientSolverMode, setTransientSolverMode] = useState<"fast_rk4" | "dae_ida">("fast_rk4");
+  const [showEventBuilder, setShowEventBuilder] = useState(false);
+  const [dynamicEvents, setDynamicEvents] = useState<PsseDynamicEvent[]>([]);
   const [transientResult, setTransientResult] = useState<PsseTransientResult | null>(null);
+  const [cfctSec, setCfctSec] = useState<number | undefined>(undefined);
+  const [baselineTransientResult, setBaselineTransientResult] = useState<PsseTransientResult | null>(null);
+  const [baselineLabel, setBaselineLabel] = useState<string>("Baseline");
+  const [attachedScript, setAttachedScript] = useState<{ name: string; kind: "py" | "idv"; text: string } | null>(null);
   const [studyStatus, setStudyStatus] = useState<string | null>(null);
   const [runningStudy, setRunningStudy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -605,9 +663,93 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
   const textPrimary = isDark ? "#e6edf3" : "#1f2328";
   const textMuted = isDark ? "#8b949e" : "#59636e";
 
+  const workspaceBundle = useMemo(() => {
+    const entries = projectFiles ? Object.entries(projectFiles) : [];
+    const activeLower = (activeFileName ?? "").toLowerCase();
+    const rawEntry = activeLower.endsWith(".raw")
+      ? ([activeFileName!, code] as const)
+      : entries.find(([k]) => k.toLowerCase().endsWith(".raw"));
+    const dyrEntry = activeLower.endsWith(".dyr")
+      ? ([activeFileName!, code] as const)
+      : entries.find(([k]) => k.toLowerCase().endsWith(".dyr"));
+    const seqEntry = activeLower.endsWith(".seq")
+      ? ([activeFileName!, code] as const)
+      : entries.find(([k]) => k.toLowerCase().endsWith(".seq"));
+    const pyEntry = activeLower.endsWith(".py")
+      ? ([activeFileName!, code] as const)
+      : entries.find(([k]) => k.toLowerCase().endsWith(".py"));
+    const idvEntry = activeLower.endsWith(".idv")
+      ? ([activeFileName!, code] as const)
+      : entries.find(([k]) => k.toLowerCase().endsWith(".idv"));
+
+    return {
+      rawPath: rawEntry?.[0] ?? null,
+      rawText: rawEntry ? rawEntry[1] : code,
+      dyrPath: dyrEntry?.[0] ?? null,
+      dyrText: dyrEntry?.[1] ?? null,
+      seqText: seqEntry?.[1] ?? null,
+      script: pyEntry
+        ? { name: pyEntry[0], kind: "py" as const, text: pyEntry[1] }
+        : idvEntry
+          ? { name: idvEntry[0], kind: "idv" as const, text: idvEntry[1] }
+          : null,
+    };
+  }, [projectFiles, activeFileName, code]);
+
+  const effectiveCode = workspaceBundle.rawText;
+  const effectiveLines = useMemo(
+    () => (effectiveCode === code ? lines : effectiveCode.split(/\r?\n/)),
+    [effectiveCode, code, lines],
+  );
+  const effectiveDyrText = dyrText ?? workspaceBundle.dyrText;
+  const effectiveDyrName = dyrName ?? workspaceBundle.dyrPath;
+  const effectiveSeqText = seqText ?? workspaceBundle.seqText;
+  const effectiveScript = attachedScript ?? workspaceBundle.script;
+
+  useEffect(() => {
+    if (!effectiveDyrText && !transientResult && cfctSec === undefined) {
+      latestPsseStudySnapshot = null;
+      return;
+    }
+    let transientChannels: PsseStudyArtifactSnapshot["transientChannels"];
+    if (transientResult && transientResult.t.length > 0) {
+      const stride = Math.max(1, Math.ceil(transientResult.t.length / 200));
+      const t: number[] = [];
+      for (let i = 0; i < transientResult.t.length; i += stride) {
+        t.push(transientResult.t[i]!);
+      }
+      const series: Record<string, number[]> = {};
+      for (const chName of transientResult.states.slice(0, 16)) {
+        const src = transientResult.variables[chName];
+        if (!src) continue;
+        const sampled: number[] = [];
+        for (let i = 0; i < transientResult.t.length; i += stride) {
+          sampled.push(src[i] ?? 0);
+        }
+        series[chName] = sampled;
+      }
+      transientChannels = { t, series };
+    }
+    latestPsseStudySnapshot = {
+      ...(effectiveDyrText ? { dyrText: effectiveDyrText } : {}),
+      ...(cfctSec !== undefined ? { cfctSec } : {}),
+      ...(transientResult
+        ? {
+            transientSummary: {
+              stable: transientResult.summary.stable,
+              maxFreqDeviationHz: transientResult.summary.maxFreqDeviationHz,
+              maxRotorAngleSpreadDeg: transientResult.summary.maxRotorAngleSpreadDeg,
+              minBusVoltagePu: transientResult.summary.minBusVoltagePu,
+            },
+          }
+        : {}),
+      ...(transientChannels ? { transientChannels } : {}),
+    };
+  }, [effectiveDyrText, cfctSec, transientResult]);
+
   const { buses, branches, yBusEntries, eigenmodes, diagnostics } = useMemo(
-    () => analyzePowerGrid(code, lines),
-    [code, lines],
+    () => analyzePowerGrid(effectiveCode, effectiveLines),
+    [effectiveCode, effectiveLines],
   );
 
   const handleAttachFiles = async (fileList: FileList | null) => {
@@ -620,6 +762,39 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
       } else if (lower.endsWith(".seq")) {
         setSeqText(await file.text());
         setSeqName(file.name);
+      } else if (lower.endsWith(".out")) {
+        try {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          const out = parsePsseOut(bytes);
+          const tArr = Array.from(out.time);
+          const vars: Record<string, number[]> = {};
+          const yCols: number[][] = [];
+          for (let ci = 0; ci < out.channelNames.length; ci++) {
+            const name = out.channelNames[ci]!;
+            const arr = Array.from(out.channels[ci] ?? []);
+            vars[name] = arr;
+            yCols.push(arr);
+          }
+          setTransientResult({
+            t: tArr,
+            states: out.channelNames,
+            y: yCols,
+            variables: vars,
+            summary: {
+              convergedPowerFlow: true,
+              stable: true,
+              faultBus: 0,
+              faultStartSec: 0,
+              faultClearSec: 0,
+              maxRotorAngleSpreadDeg: 0,
+              maxFreqDeviationHz: 0,
+              minBusVoltagePu: 1.0,
+            },
+          });
+          setStudyStatus(`Loaded .out (${file.name}): ${tArr.length} steps, ${out.channelNames.length} channels`);
+        } catch (err) {
+          setStudyStatus(`.out load failed (${file.name}): ${err instanceof Error ? err.message : String(err)}`);
+        }
       } else if (lower.endsWith(".fmu")) {
         try {
           const parsed = parseRaw(code);
@@ -640,6 +815,31 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
         } catch (err) {
           setStudyStatus(`FMU load failed (${file.name}): ${err instanceof Error ? err.message : String(err)}`);
         }
+      } else if (lower.endsWith(".dll") || lower.endsWith(".so") || lower.endsWith(".dylib")) {
+        try {
+          const parsed = parseRaw(code);
+          const defaultBus = parsed.generators[0]?.i ?? parsed.buses[0]?.i ?? 1;
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          const dyrCase = dyrText ? parseDyr(dyrText) : null;
+          const usrmdlRec = dyrCase?.records.find((r) => r.model.toUpperCase() === "USRMDL" || r.ibus === defaultBus);
+          const { instance, exports } = linkUsrDllToDynamicInstance(bytes, {
+            busNumber: usrmdlRec?.ibus ?? defaultBus,
+            ...(usrmdlRec?.params ? { con: usrmdlRec.params } : {}),
+          });
+          setFmuEntries((prev) => [
+            ...prev,
+            { name: `${file.name} (${instance.modelName})`, busNumber: instance.busNumber, instance },
+          ]);
+          setStudyStatus(
+            `Loaded USRMDL binary ${file.name} -> ${instance.modelName} at Bus ${instance.busNumber} (${exports.length} exports)`,
+          );
+        } catch (err) {
+          setStudyStatus(`DLL load failed (${file.name}): ${err instanceof Error ? err.message : String(err)}`);
+        }
+      } else if (lower.endsWith(".py") || lower.endsWith(".idv")) {
+        const text = await file.text();
+        setAttachedScript({ name: file.name, kind: lower.endsWith(".py") ? "py" : "idv", text });
+        setStudyStatus(`Attached ${file.name} (${text.split(/\r?\n/).length} lines)`);
       }
     }
   };
@@ -714,8 +914,8 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
   const runPowerFlowStudy = async () => {
     setRunningStudy(true);
     try {
-      const parsed = parseRaw(code);
-      if (dyrText) parsed.dyr = parseDyr(dyrText);
+      const parsed = parseRaw(effectiveCode);
+      if (effectiveDyrText) parsed.dyr = parseDyr(effectiveDyrText);
       const res = await solvePowerFlowAsync(parsed);
       setStudyStatus(
         res.converged
@@ -732,11 +932,11 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
   const runTransientStudy = async () => {
     setRunningStudy(true);
     try {
-      const parsed = parseRaw(code);
-      if (dyrText) parsed.dyr = parseDyr(dyrText);
-      if (seqText) {
+      const parsed = parseRaw(effectiveCode);
+      if (effectiveDyrText) parsed.dyr = parseDyr(effectiveDyrText);
+      if (effectiveSeqText) {
         // Parse sequence data to validate companion .seq syntax before simulation
-        parseSeq(seqText);
+        parseSeq(effectiveSeqText);
       }
       const fmuModels = fmuEntries.map((entry) => ({
         ...entry.instance,
@@ -752,21 +952,111 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
         }));
       const parsedFaultBus = Number(faultBus);
       const sim = simulatePsseTransient(parsed, {
-        tEnd: Number.isFinite(tEndSec) && tEndSec > 0 ? tEndSec : 1.0,
-        dt: 0.01,
+        stopTime: Number.isFinite(tEndSec) && tEndSec > 0 ? tEndSec : 1.0,
+        timeStep: 0.01,
+        solverMode: transientSolverMode,
         ...(Number.isFinite(parsedFaultBus) && faultBus.trim() !== "" ? { faultBus: parsedFaultBus } : {}),
         ...(Number.isFinite(faultStartSec) ? { faultStartSec } : {}),
         ...(Number.isFinite(faultClearSec) ? { faultClearSec } : {}),
+        ...(dynamicEvents.length > 0 ? { events: dynamicEvents } : {}),
         useWasmStdLib: true,
         ...(fmuModels.length > 0 ? { fmuModels } : {}),
         ...(nortonCompanions.length > 0 ? { nortonCompanions } : {}),
       });
       setTransientResult(sim);
       setStudyStatus(
-        `Transient: ${sim.t.length} steps, ${sim.states.length} channels` + (dyrName ? ` (${dyrName})` : ""),
+        `Transient: ${sim.t.length} steps, ${sim.states.length} channels` +
+          (effectiveDyrName ? ` (${effectiveDyrName})` : ""),
       );
     } catch (err) {
       setStudyStatus(`Transient error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setRunningStudy(false);
+    }
+  };
+
+  const runCfctSweep = async () => {
+    setRunningStudy(true);
+    try {
+      const parsed = parseRaw(effectiveCode);
+      if (effectiveDyrText) parsed.dyr = parseDyr(effectiveDyrText);
+      const fmuModels = fmuEntries.map((entry) => ({
+        ...entry.instance,
+        busNumber: entry.busNumber,
+      }));
+      const parsedFaultBus = Number(faultBus);
+      const tStart = Number.isFinite(faultStartSec) ? faultStartSec : 0.1;
+      const stopTime = Math.max(Number.isFinite(tEndSec) && tEndSec > 0 ? tEndSec : 1.5, tStart + 1.2);
+      let lo = 0.02;
+      let hi = 1.0;
+      let lastStableSim: PsseTransientResult | null = null;
+      for (let iter = 0; iter < 10; iter++) {
+        const mid = 0.5 * (lo + hi);
+        const sim = simulatePsseTransient(parsed, {
+          stopTime,
+          timeStep: 0.01,
+          ...(Number.isFinite(parsedFaultBus) && faultBus.trim() !== "" ? { faultBus: parsedFaultBus } : {}),
+          faultStartSec: tStart,
+          faultClearSec: tStart + mid,
+          useWasmStdLib: true,
+          ...(fmuModels.length > 0 ? { fmuModels } : {}),
+        });
+        if (sim.summary.stable) {
+          lo = mid;
+          lastStableSim = sim;
+        } else {
+          hi = mid;
+        }
+      }
+      if (lastStableSim) setTransientResult(lastStableSim);
+      setCfctSec(lo);
+      const barrierCct = lastStableSim?.formalVerification?.clearingBarrier?.minCctSec;
+      setStudyStatus(
+        `CFCT Sweep: ${lo.toFixed(3)} s` +
+          (barrierCct !== undefined ? ` (clearing barrier: ${barrierCct.toFixed(3)} s)` : ""),
+      );
+    } catch (err) {
+      setStudyStatus(`CFCT sweep error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setRunningStudy(false);
+    }
+  };
+
+  const runAttachedScript = async () => {
+    if (!effectiveScript) return;
+    setRunningStudy(true);
+    try {
+      const virtualFiles: Record<string, string> = {
+        ...(projectFiles ?? {}),
+        "case.raw": effectiveCode,
+        ...(workspaceBundle.rawPath ? { [workspaceBundle.rawPath]: effectiveCode } : {}),
+        ...(effectiveDyrText ? { "case.dyr": effectiveDyrText } : {}),
+        ...(workspaceBundle.dyrPath && effectiveDyrText ? { [workspaceBundle.dyrPath]: effectiveDyrText } : {}),
+      };
+      let session: PsspySession;
+      if (effectiveScript.kind === "py") {
+        session = executePythonPsspyScript(effectiveScript.text, virtualFiles);
+      } else {
+        const parsed = parseRaw(effectiveCode);
+        if (effectiveDyrText) parsed.dyr = parseDyr(effectiveDyrText);
+        session = new PsspySession(virtualFiles);
+        executeIdv(effectiveScript.text, session, { virtualFiles, initialCase: parsed });
+      }
+      const trans = session.getLastTransient();
+      if (trans) {
+        setTransientResult(trans);
+      }
+      const pf = session.getLastPowerFlow();
+      setStudyStatus(
+        `Script (${effectiveScript.name}): ` +
+          (trans
+            ? `transient ${trans.t.length} steps, ${trans.states.length} channels`
+            : pf
+              ? `PF ${pf.converged ? "converged" : "diverged"} in ${pf.iterations} iters`
+              : `${session.getMessages().length} log entries`),
+      );
+    } catch (err) {
+      setStudyStatus(`Script error (${effectiveScript.name}): ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setRunningStudy(false);
     }
@@ -793,15 +1083,6 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
     color: textPrimary,
   };
 
-  const tracePalette = ["#58a6ff", "#3fb950", "#d29922", "#f85149"];
-  const plotKeys = useMemo(() => {
-    if (!transientResult) return [];
-    const preferred = transientResult.states.filter(
-      (s) => s.startsWith("vt_") || s.startsWith("delta_") || s.startsWith("omega_"),
-    );
-    return (preferred.length > 0 ? preferred : transientResult.states).slice(0, 4);
-  }, [transientResult]);
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div
@@ -821,7 +1102,7 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".dyr,.seq,.fmu"
+          accept=".dyr,.seq,.fmu,.out,.dll,.so,.dylib,.py,.idv"
           style={{ display: "none" }}
           onChange={(e) => {
             void handleAttachFiles(e.target.files);
@@ -829,7 +1110,7 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
           }}
         />
         <button type="button" style={btnStyle} onClick={() => fileInputRef.current?.click()} disabled={runningStudy}>
-          + Attach .dyr / .seq / .fmu
+          + Attach .dyr / .dll / .fmu / .py
         </button>
         <button
           type="button"
@@ -839,12 +1120,42 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
         >
           + Custom USRMDL (AS)
         </button>
+        <button
+          type="button"
+          style={btnStyle}
+          onClick={() => setShowEventBuilder((prev) => !prev)}
+          disabled={runningStudy}
+        >
+          + Events ({dynamicEvents.length})
+        </button>
         <button type="button" style={btnStyle} onClick={() => void runPowerFlowStudy()} disabled={runningStudy}>
           Solve Power Flow
         </button>
         <button type="button" style={btnStyle} onClick={() => void runTransientStudy()} disabled={runningStudy}>
           Run Transient
         </button>
+        <button type="button" style={btnStyle} onClick={() => void runCfctSweep()} disabled={runningStudy}>
+          CFCT Sweep
+        </button>
+        {transientResult && (
+          <button
+            type="button"
+            style={btnStyle}
+            onClick={() => {
+              setBaselineTransientResult(transientResult);
+              setBaselineLabel(dyrName ? dyrName.replace(/\.[^.]+$/, "") : "Baseline");
+              setStudyStatus("Pinned current transient run as Baseline for A/B comparison");
+            }}
+            disabled={runningStudy}
+          >
+            Pin Baseline
+          </button>
+        )}
+        {effectiveScript && (
+          <button type="button" style={btnStyle} onClick={() => void runAttachedScript()} disabled={runningStudy}>
+            Run {effectiveScript.name}
+          </button>
+        )}
         <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: textMuted }}>
           Fault Bus
           <input
@@ -885,6 +1196,36 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
             onChange={(e) => setTEndSec(Number(e.target.value))}
             style={numInputStyle}
           />
+        </label>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: textMuted }}>
+          CHNF
+          <select
+            value={chnfPrefix}
+            onChange={(e) => setChnfPrefix(e.target.value)}
+            style={{ ...numInputStyle, width: 112 }}
+          >
+            <option value="all">All Channels</option>
+            <option value="Bus_">BUS V/Ang (Bus_)</option>
+            <option value="Gen_">GEN States (Gen_)</option>
+            <option value="vt_">VOLT (vt_)</option>
+            <option value="delta_">ANGL (delta_)</option>
+            <option value="omega_">FREQ (omega_)</option>
+            <option value="pe_">PELEC (pe_)</option>
+            <option value="efd_">EFD (efd_)</option>
+            <option value="Ibr_">IBR States (Ibr_)</option>
+          </select>
+        </label>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: textMuted }}>
+          Solver
+          <select
+            value={transientSolverMode}
+            onChange={(e) => setTransientSolverMode(e.target.value as "fast_rk4" | "dae_ida")}
+            style={{ ...numInputStyle, width: 108 }}
+            title="Select fast_rk4 (nodal RK4) or dae_ida (full 366-model symbolic DAE)"
+          >
+            <option value="fast_rk4">Fast RK4</option>
+            <option value="dae_ida">Full DAE (366)</option>
+          </select>
         </label>
         {dyrName && <span style={{ color: textMuted }}>DYR: {dyrName}</span>}
         {seqName && <span style={{ color: textMuted }}>SEQ: {seqName}</span>}
@@ -1009,84 +1350,133 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
           />
         </div>
       )}
-      {transientResult && transientResult.t.length > 1 && plotKeys.length > 0 && (
+      {showEventBuilder && (
         <div
           style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
             padding: "10px 12px",
             borderRadius: 6,
             border: `1px solid ${borderCol}`,
             backgroundColor: cardBg,
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
             fontSize: 11,
           }}
         >
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-            <span style={{ fontWeight: 600, color: textPrimary }}>
-              Transient Stability ({transientResult.summary.stable ? "Stable" : "Unstable"})
-            </span>
-            <span style={{ color: textMuted }}>
-              Fault Bus {transientResult.summary.faultBus} ({transientResult.summary.faultStartSec.toFixed(2)}s–
-              {transientResult.summary.faultClearSec.toFixed(2)}s)
-            </span>
-            <span style={{ color: textMuted }}>
-              Max Δδ: {transientResult.summary.maxRotorAngleSpreadDeg.toFixed(1)}°
-            </span>
-            <span style={{ color: textMuted }}>
-              Max |Δf|: {transientResult.summary.maxFreqDeviationHz.toFixed(3)} Hz
-            </span>
-            <span style={{ color: textMuted }}>Min V: {transientResult.summary.minBusVoltagePu.toFixed(3)} pu</span>
-          </div>
-          <svg viewBox="0 0 420 110" style={{ width: "100%", height: 110, display: "block", overflow: "visible" }}>
-            <rect x={0} y={0} width={420} height={110} rx={4} fill="none" stroke={borderCol} />
-            {plotKeys.map((key, idx) => {
-              const vals = transientResult.variables[key] ?? [];
-              const tArr = transientResult.t;
-              const tMax = tArr[tArr.length - 1] || 1;
-              let minV = Infinity;
-              let maxV = -Infinity;
-              for (const v of vals) {
-                if (v < minV) minV = v;
-                if (v > maxV) maxV = v;
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <strong style={{ color: textPrimary }}>Dynamic Disturbance Sequence</strong>
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() =>
+                setDynamicEvents((prev) => [
+                  ...prev,
+                  { timeSec: 0.1, type: "bus_fault", busNumber: Number(faultBus) || 1 },
+                ])
               }
-              const span = maxV - minV > 1e-6 ? maxV - minV : 1;
-              const pts = vals
-                .map((v, i) => {
-                  const x = 8 + ((tArr[i] ?? 0) / tMax) * 404;
-                  const y = 98 - ((v - minV) / span) * 86;
-                  return `${x.toFixed(1)},${y.toFixed(1)}`;
-                })
-                .join(" ");
-              return (
-                <polyline
-                  key={key}
-                  fill="none"
-                  stroke={tracePalette[idx % tracePalette.length]}
-                  strokeWidth={1.6}
-                  points={pts}
-                />
-              );
-            })}
-          </svg>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            {plotKeys.map((key, idx) => (
-              <span key={key} style={{ display: "inline-flex", alignItems: "center", gap: 4, color: textMuted }}>
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 2,
-                    backgroundColor: tracePalette[idx % tracePalette.length],
-                    display: "inline-block",
-                  }}
-                />
-                {key}
-              </span>
-            ))}
+            >
+              + Bus Fault
+            </button>
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() => setDynamicEvents((prev) => [...prev, { timeSec: 0.2, type: "clear_fault" }])}
+            >
+              + Clear Fault
+            </button>
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() =>
+                setDynamicEvents((prev) => [
+                  ...prev,
+                  { timeSec: 0.2, type: "trip_branch", busNumber: 1, toBusNumber: 2, ckt: "1" },
+                ])
+              }
+            >
+              + Trip Branch
+            </button>
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() =>
+                setDynamicEvents((prev) => [
+                  ...prev,
+                  { timeSec: 0.25, type: "shed_load", busNumber: 3, loadScale: 0.8 },
+                ])
+              }
+            >
+              + Shed Load
+            </button>
+            <button
+              type="button"
+              style={btnStyle}
+              onClick={() =>
+                setDynamicEvents((prev) => [
+                  ...prev,
+                  { timeSec: 0.3, type: "step_reference", busNumber: 1, vrefStepPu: 0.02, pmechStepPu: 0.05 },
+                ])
+              }
+            >
+              + Step Ref
+            </button>
           </div>
+          {dynamicEvents.length === 0 ? (
+            <div style={{ color: textMuted }}>No custom events staged (using Fault Bus / t_f / t_clr above).</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {dynamicEvents.map((ev, idx) => (
+                <div key={idx} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span style={{ color: textMuted }}>t(s)=</span>
+                  <input
+                    type="number"
+                    step="0.05"
+                    value={ev.timeSec}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setDynamicEvents((prev) => prev.map((x, j) => (j === idx ? { ...x, timeSec: v } : x)));
+                    }}
+                    style={numInputStyle}
+                  />
+                  <strong style={{ color: textPrimary }}>{ev.type}</strong>
+                  {ev.type !== "clear_fault" && (
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 3, color: textMuted }}>
+                      Bus
+                      <input
+                        type="number"
+                        value={ev.busNumber ?? 1}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          setDynamicEvents((prev) => prev.map((x, j) => (j === idx ? { ...x, busNumber: v } : x)));
+                        }}
+                        style={numInputStyle}
+                      />
+                    </label>
+                  )}
+                  <button
+                    type="button"
+                    style={{ ...btnStyle, color: "#f85149" }}
+                    onClick={() => setDynamicEvents((prev) => prev.filter((_, j) => j !== idx))}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
+      <PsseStudyPanel
+        code={effectiveCode}
+        dyrText={effectiveDyrText}
+        transientResult={transientResult}
+        baselineTransientResult={baselineTransientResult}
+        baselineLabel={baselineLabel}
+        channelPrefix={chnfPrefix}
+        onChannelPrefixChange={setChnfPrefix}
+        colorMode={colorMode}
+        onStatusChange={setStudyStatus}
+      />
       {diagnostics && diagnostics.length > 0 && (
         <div
           style={{
@@ -1122,11 +1512,131 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
         onChange={(id) => setSubView(id as typeof subView)}
         tabs={[
           ...(isTouchstone ? [{ id: "table", label: "📊 S-Parameter Grid" }] : []),
+          ...(!isTouchstone ? [{ id: "spreadsheet", label: "📋 Editable RAW / DYR Grid" }] : []),
+          ...(!isTouchstone ? [{ id: "reports", label: "📑 POUT / ACCC / Q-V / ASCC" }] : []),
           { id: "ybus", label: `🕸️ Nodal Admittance Y-Bus (${buses.length}×${buses.length})` },
           { id: "thermal", label: `🔥 Branch Impedance & Loading (${branches.length})` },
           { id: "eigen", label: `📈 Oscillatory Modes (${eigenmodes.length})` },
         ]}
       />
+
+      {subView === "reports" && !isTouchstone && (
+        <div style={{ padding: 14, borderRadius: 8, border: `1px solid ${borderCol}`, backgroundColor: cardBg }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+            {(
+              [
+                { id: "pout", label: "POUT (Power Flow)" },
+                { id: "accc", label: "ACCC (N-1 Contingency)" },
+                { id: "qv", label: "Q-V Margin Curve" },
+                { id: "ascc", label: "ASCC (Short Circuit)" },
+              ] as const
+            ).map((rt) => (
+              <button
+                key={rt.id}
+                type="button"
+                onClick={() => setActiveReport(rt.id)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 5,
+                  border: `1px solid ${activeReport === rt.id ? "var(--ms-brand, #0891b2)" : borderCol}`,
+                  backgroundColor: activeReport === rt.id ? "rgba(8, 145, 178, 0.14)" : "transparent",
+                  color: textPrimary,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {rt.label}
+              </button>
+            ))}
+            {activeReport === "qv" && (
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 11,
+                  color: textMuted,
+                  marginLeft: "auto",
+                }}
+              >
+                Target Bus:
+                <input
+                  type="number"
+                  placeholder={String(buses[0]?.busNum ?? 1)}
+                  value={qvTargetBus}
+                  onChange={(e) => setQvTargetBus(e.target.value)}
+                  style={{ ...numInputStyle, width: 72 }}
+                />
+              </label>
+            )}
+          </div>
+          <pre
+            style={{
+              margin: 0,
+              padding: 10,
+              borderRadius: 6,
+              backgroundColor: isDark ? "#0d1117" : "#f6f8fa",
+              border: `1px solid ${borderCol}`,
+              fontSize: 11,
+              fontFamily: "monospace",
+              maxHeight: 360,
+              overflow: "auto",
+              whiteSpace: "pre",
+            }}
+          >
+            {(() => {
+              try {
+                const c = parseRaw(effectiveCode);
+                if (effectiveDyrText) c.dyr = parseDyr(effectiveDyrText);
+                if (seqText) c.seq = parseSeq(seqText);
+                if (activeReport === "pout") {
+                  const pf = solvePowerFlow(c, { enforceQLimits: true });
+                  return formatPowerFlowReport(pf, c.title1 || "PSS/E BASE CASE", c);
+                }
+                if (activeReport === "accc") {
+                  const accc = screenContingencies(c);
+                  return accc.reportText;
+                }
+                if (activeReport === "qv") {
+                  const busId = Number(qvTargetBus) || (c.buses.keys().next().value ?? 1);
+                  return solveQvCurve(c, busId).reportText;
+                }
+                return calculateShortCircuit(c, { seq: c.seq }).reportText;
+              } catch (err) {
+                return `Report generation error: ${err instanceof Error ? err.message : String(err)}`;
+              }
+            })()}
+          </pre>
+        </div>
+      )}
+
+      {subView === "spreadsheet" && !isTouchstone && (
+        <PsseSpreadsheetView
+          code={effectiveCode}
+          dyrText={effectiveDyrText}
+          colorMode={colorMode}
+          onCodeChange={(nextCode) => {
+            if (workspaceBundle.rawPath && onUpdateProjectFile && workspaceBundle.rawPath !== activeFileName) {
+              onUpdateProjectFile(workspaceBundle.rawPath, nextCode);
+            } else {
+              onCodeChange?.(nextCode);
+            }
+          }}
+          onDyrChange={(nextDyr) => {
+            if (workspaceBundle.dyrPath && onUpdateProjectFile) {
+              if (workspaceBundle.dyrPath === activeFileName) {
+                onCodeChange?.(nextDyr);
+              } else {
+                onUpdateProjectFile(workspaceBundle.dyrPath, nextDyr);
+              }
+            } else {
+              setDyrText(nextDyr);
+            }
+          }}
+          onRevealLine={onRevealLine}
+        />
+      )}
 
       {subView === "table" && isTouchstone && (
         <div style={{ height: 460, borderRadius: 8, overflow: "hidden", border: `1px solid ${borderCol}` }}>

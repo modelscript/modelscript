@@ -16,6 +16,7 @@ import {
   findComposition,
   findTargetElementInClass,
   getClassNameNode,
+  getDeclaredArraySubscripts,
   getEnclosingClass,
   getExpressionVariability,
   getRedeclName,
@@ -86,14 +87,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     message: () => `From here:`,
     query: (db: CodeGraph, node: u32, $: any) => {
       // Emit source-location note at the modifier site when a protected member is modified externally
-      const docRoot = db.ast.getRootNode();
-      if (docRoot != 0 && $.string_literal != 0) {
-        for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
-          if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
-            return;
-          }
-        }
-      }
+      if (isOldFrontendActive(db, $)) return;
 
       let isNestedMod = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
@@ -159,14 +153,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     },
     query: (db: CodeGraph, node: u32, $: any) => {
       // Check component modifications (excluding `extends` modifications) for protected target members
-      const docRoot = db.ast.getRootNode();
-      if (docRoot != 0 && $.string_literal != 0) {
-        for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
-          if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
-            return;
-          }
-        }
-      }
+      if (isOldFrontendActive(db, $)) return;
 
       let isNestedMod = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
@@ -335,16 +322,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         }
       }
       if (outerWhen != 0) {
-        let isOldFrontend: u32 = 0;
-        const docRoot = db.ast.getRootNode();
-        if (docRoot != 0 && $.string_literal != 0) {
-          for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
-            if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
-              isOldFrontend = 1;
-              break;
-            }
-          }
-        }
+        const isOldFrontend: u32 = isOldFrontendActive(db, $) ? 1 : 0;
         const targetWhen = isOldFrontend ? outerWhen : node;
         const whenKw = db.ast.getFirstChild(targetWhen);
         db.diagnostic(whenKw != 0 ? whenKw : targetWhen);
@@ -375,23 +353,26 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       }`;
     },
     query: (db: CodeGraph, node: u32, $: any) => {
-      // Reject subscripted tuple expressions `(a, b)[1]` and tuples outside statement/equation LHS
-      for (const anc of db.ast.getAncestors(node, $.primary)) {
-        for (const sub of db.ast.getDescendants(anc, $.array_subscripts)) {
-          if (sub != 0) {
-            let insideTuple = false;
-            for (const subAnc of db.ast.getAncestors(sub, 0)) {
-              if (subAnc == node) {
-                insideTuple = true;
+      // Reject subscripted tuple expressions `(a, b)[1]` (only check the immediate parent `primary`,
+      // never enclosing calls like `foo((1, 2), arr[1])`) and tuples outside statement/equation LHS.
+      for (const anc of db.ast.getAncestors(node, 0)) {
+        if (db.ast.getType(anc) == $.primary) {
+          let sub = db.ast.getChildByFieldId(anc, "subscripts");
+          if (sub == 0 && $.array_subscripts != 0) {
+            let ch = db.ast.getFirstChild(anc);
+            while (ch != 0) {
+              if (db.ast.getType(ch) == $.array_subscripts) {
+                sub = ch;
                 break;
               }
-              if (subAnc == anc) break;
-            }
-            if (!insideTuple) {
-              db.diagnostic(sub, sub);
-              return;
+              ch = db.ast.getNextSibling(ch);
             }
           }
+          if (sub != 0) {
+            db.diagnostic(sub, sub);
+            return;
+          }
+          break;
         }
       }
       for (const anc of db.ast.getAncestors(node, 0)) {
@@ -439,13 +420,13 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     },
     query: (db: CodeGraph, node: u32, $: any) => {
       // Check enclosing class specialization; only non-initial `algorithm` sections are valid in `function`
+      // (Connectors are handled by M4065/M4066 on the section keyword so they are not double-reported.)
       for (const cls of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(cls) == $.class_definition) {
           let kind = 0;
           if (isClassKind(db, cls, "record")) kind = 1;
           else if (isClassKind(db, cls, "type")) kind = 2;
           else if (isClassKind(db, cls, "package")) kind = 3;
-          else if (isClassKind(db, cls, "connector")) kind = 4;
           else if (isClassKind(db, cls, "function")) kind = 5;
 
           if (kind != 0) {
@@ -808,21 +789,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       }
 
       if (!isInherited) {
-        let isOldFrontend: u32 = 0;
-        const docRoot = db.ast.getRootNode();
-        if (docRoot != 0 && $.string_literal != 0) {
-          for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
-            if (
-              db.ast.textEquals(str, '"-d=-newInst"') ||
-              db.ast.textEquals(str, "-d=-newInst") ||
-              db.ast.textEquals(str, '"-d=nogen -d=-newInst"') ||
-              db.ast.textEquals(str, "-d=nogen -d=-newInst")
-            ) {
-              isOldFrontend = 1;
-              break;
-            }
-          }
-        }
+        const isOldFrontend: u32 = isOldFrontendActive(db, $) ? 1 : 0;
         db.diagnostic(classDef, redeclNameNode, isOldFrontend);
       }
     },
@@ -862,21 +829,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       let redeclNameNode: u32 = 0;
       let targetDiagNode: u32 = node;
 
-      let isOldFrontend: u32 = 0;
-      const docRoot = db.ast.getRootNode();
-      if (docRoot != 0 && $.string_literal != 0) {
-        for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
-          if (
-            db.ast.textEquals(str, '"-d=-newInst"') ||
-            db.ast.textEquals(str, "-d=-newInst") ||
-            db.ast.textEquals(str, '"-d=nogen -d=-newInst"') ||
-            db.ast.textEquals(str, "-d=nogen -d=-newInst")
-          ) {
-            isOldFrontend = 1;
-            break;
-          }
-        }
-      }
+      const isOldFrontend: u32 = isOldFrontendActive(db, $) ? 1 : 0;
 
       let classDef: u32 = 0;
       for (const cd of db.ast.getDescendants(node, $.class_definition)) {
@@ -1018,7 +971,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
    */
   finalOverrideNotification: {
     nodes: ["class_modification", "class_or_inheritance_modification"],
-    severity: "info",
+    severity: "notification",
     code: 2090,
     message: () => `From here:`,
     query: (db: CodeGraph, node: u32, $: any) => {
@@ -1088,6 +1041,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
           if (isDescendantOfInnerClass(db, el, targetClass, $)) continue;
           let declId: u32 = 0;
           for (const decl of db.ast.getDescendants(el, $.declaration)) {
+            if (isDescendantOfInnerClass(db, decl, targetClass, $)) continue;
             for (const id of db.ast.getDescendants(decl, $.identifier)) {
               declId = id;
               break;
@@ -1200,6 +1154,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
           if (isDescendantOfInnerClass(db, el, targetClass, $)) continue;
           let declId: u32 = 0;
           for (const decl of db.ast.getDescendants(el, $.declaration)) {
+            if (isDescendantOfInnerClass(db, decl, targetClass, $)) continue;
             for (const id of db.ast.getDescendants(decl, $.identifier)) {
               declId = id;
               break;
@@ -1549,21 +1504,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     query: (db: CodeGraph, node: u32, $: any) => {
       // Count direct and inherited `algorithm_section` and `external_clause` nodes in a `function`
       if (!isClassKind(db, node, "function")) return;
-      let isOldFrontend: u32 = 0;
-      const docRoot = db.ast.getRootNode();
-      if (docRoot != 0 && $.string_literal != 0) {
-        for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
-          if (
-            db.ast.textEquals(str, '"-d=-newInst"') ||
-            db.ast.textEquals(str, "-d=-newInst") ||
-            db.ast.textEquals(str, '"-d=nogen -d=-newInst"') ||
-            db.ast.textEquals(str, "-d=nogen -d=-newInst")
-          ) {
-            isOldFrontend = 1;
-            break;
-          }
-        }
-      }
+      const isOldFrontend: u32 = isOldFrontendActive(db, $) ? 1 : 0;
       if (isOldFrontend) return;
       let count = 0;
       for (const sec of db.ast.getDescendants(node, $.algorithm_section)) {
@@ -1671,13 +1612,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     query: (db: CodeGraph, node: u32, $: any) => {
       // Ensure top-level non-replaceable primitive `constant` declarations specify a binding or equation
       const docRoot = db.ast.getRootNode();
-      if (docRoot != 0 && $.string_literal != 0) {
-        for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
-          if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
-            return;
-          }
-        }
-      }
+      if (isOldFrontendActive(db, $)) return;
       let encClass: u32 = 0;
       let classCount = 0;
       for (const cls of db.ast.getAncestors(node, $.class_definition)) {
@@ -1890,16 +1825,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
         let kindNum = 0;
         if (isClassKind(db, encClass, "connector")) kindNum = 0;
         else if (isClassKind(db, encClass, "record")) {
-          let isOldFrontend: u32 = 0;
-          const docRoot = db.ast.getRootNode();
-          if (docRoot != 0 && $.string_literal != 0) {
-            for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
-              if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
-                isOldFrontend = 1;
-                break;
-              }
-            }
-          }
+          const isOldFrontend: u32 = isOldFrontendActive(db, $) ? 1 : 0;
           if (isOldFrontend) return;
           kindNum = 1;
         } else if (isClassKind(db, encClass, "type")) kindNum = 2;
@@ -2170,24 +2096,9 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       return `Negative dimension index (${dim}) for component ${name}.`;
     },
     query: (db: CodeGraph, node: u32, $: any) => {
-      // Check declared array subscripts for negative integer dimension expressions
+      // Check declared array subscripts (not subscripts inside binding expressions) for negative integer dimension expressions
       if ($.array_subscripts == 0 || $.subscript == 0) return;
-      let subsNode: u32 = 0;
-      for (const s of db.ast.getDescendants(node, $.array_subscripts)) {
-        subsNode = s;
-        break;
-      }
-      if (subsNode == 0) {
-        for (const anc of db.ast.getAncestors(node, 0)) {
-          if (db.ast.getType(anc) == $.component_clause) {
-            for (const s of db.ast.getDescendants(anc, $.array_subscripts)) {
-              subsNode = s;
-              break;
-            }
-            break;
-          }
-        }
-      }
+      const subsNode = getDeclaredArraySubscripts(db, node, $);
       if (subsNode == 0) return;
 
       for (const sub of db.ast.getDescendants(subsNode, $.subscript)) {
@@ -2261,12 +2172,12 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M4020: Identifier `time` is reserved for the built-in simulation time variable and cannot be redeclared as a component (MLS §3.6.7).
+   * M2008: Identifier `time` is reserved for the built-in simulation time variable and cannot be redeclared as a component (MLS §3.6.7).
    */
   reservedBuiltinTime: {
     nodes: ["component_clause"],
     severity: "error",
-    code: 4020,
+    code: 2008,
     message: () => `Identifier time is reserved for the built-in element with the same name.`,
     query: (db: CodeGraph, node: u32, $: any) => {
       // Disallow declaring any component named `time`

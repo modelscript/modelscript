@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { EmtSolver } from "@modelscript/simulate/solvers";
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { EmtSolver } from "../../../packages/simulate/src/solvers/emt/index.js";
 import { runPscadSimulationPipeline } from "../src/language.js";
 import { clearPscadSources, registerPscadSource } from "../src/model/workspace-registry.js";
 import { extractEmtNetlist, netlistToEmtCircuit } from "../src/netlist/emt-netlist.js";
@@ -56,7 +56,7 @@ describe("PSCAD simulation honesty", () => {
     });
     it(`physical sanity: ${name} stays finite and below 1 MV`, () => {
       const net = extractEmtNetlist(parsePscx(readFileSync(file, "utf8")));
-      const res = new EmtSolver(netlistToEmtCircuit(net), {
+      const res = new EmtSolver(netlistToEmtCircuit(net) as unknown as ConstructorParameters<typeof EmtSolver>[0], {
         timeStepSec: 50e-6,
         durationSec: 0.1,
         threePhase: true,

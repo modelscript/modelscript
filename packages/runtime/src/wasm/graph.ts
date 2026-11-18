@@ -1078,22 +1078,34 @@ export class AstAPI {
       return result;
   }
 
-  /** Parses a floating-point literal from `nodeId`'s UTF-16 input span. */
+  /** Parses a floating-point literal (with optional leading sign and scientific exponent) from `nodeId`'s UTF-16 input span. */
   @inline parseReal(nodeId: u32): f64 {
       if (nodeId == 0) return 0.0;
       let offset = lsp_findNodeOffset(globalAstRoot, nodeId, 0);
       if (offset < 0) return 0.0;
-      let offsetU: u32 = offset as u32;
-      let actualOffset: u32 = offsetU;
+      let actualOffset: u32 = offset as u32;
       let buffer = getInputBuffer();
       let len = getNodeByteLength(nodeId);
-      let endOffset: u32 = offsetU + len;
+      let endOffset: u32 = actualOffset + len;
 
       while (actualOffset < endOffset) {
           let ch = load<u16>(buffer + ((actualOffset as usize) << 1));
-          if ((ch >= 48 && ch <= 57) || ch == 46 /* '.' */) {
-              break;
+          if (ch > 32) break;
+          actualOffset += 1;
+      }
+      let neg = false;
+      if (actualOffset < endOffset) {
+          let ch = load<u16>(buffer + ((actualOffset as usize) << 1));
+          if (ch == 45 /* '-' */) {
+              neg = true;
+              actualOffset += 1;
+          } else if (ch == 43 /* '+' */) {
+              actualOffset += 1;
           }
+      }
+      while (actualOffset < endOffset) {
+          let ch = load<u16>(buffer + ((actualOffset as usize) << 1));
+          if (ch > 32) break;
           actualOffset += 1;
       }
       if (actualOffset >= endOffset) return 0.0;
@@ -1102,10 +1114,12 @@ export class AstAPI {
       let frac: f64 = 0.0;
       let fracDiv: f64 = 1.0;
       let isFrac = false;
+      let hasDigit = false;
 
       while (actualOffset < endOffset) {
           let ch = load<u16>(buffer + ((actualOffset as usize) << 1));
           if (ch >= 48 && ch <= 57) {
+              hasDigit = true;
               if (!isFrac) {
                   whole = whole * 10.0 + f64(ch - 48);
               } else {
@@ -1120,7 +1134,47 @@ export class AstAPI {
               break;
           }
       }
-      return whole + frac;
+      if (!hasDigit) return 0.0;
+
+      let value = whole + frac;
+      if (actualOffset < endOffset) {
+          let eCh = load<u16>(buffer + ((actualOffset as usize) << 1));
+          if (eCh == 101 /* 'e' */ || eCh == 69 /* 'E' */) {
+              actualOffset += 1;
+              let expNeg = false;
+              if (actualOffset < endOffset) {
+                  let sCh = load<u16>(buffer + ((actualOffset as usize) << 1));
+                  if (sCh == 45 /* '-' */) {
+                      expNeg = true;
+                      actualOffset += 1;
+                  } else if (sCh == 43 /* '+' */) {
+                      actualOffset += 1;
+                  }
+              }
+              let exp: i32 = 0;
+              while (actualOffset < endOffset) {
+                  let dCh = load<u16>(buffer + ((actualOffset as usize) << 1));
+                  if (dCh >= 48 && dCh <= 57) {
+                      if (exp < 1000) exp = exp * 10 + (dCh - 48);
+                      actualOffset += 1;
+                  } else {
+                      break;
+                  }
+              }
+              if (expNeg) exp = -exp;
+              if (exp > 308) exp = 308;
+              if (exp < -308) exp = -308;
+              while (exp > 0) {
+                  value *= 10.0;
+                  exp -= 1;
+              }
+              while (exp < 0) {
+                  value /= 10.0;
+                  exp += 1;
+              }
+          }
+      }
+      return neg ? -value : value;
   }
 
   /** Scans the source gap between `leftNode` and `rightNode` to identify the `BinOp` operator code. */

@@ -68,9 +68,12 @@ export function lowerGovernorUnitToDae(
       addReal(dae, vMax),
       pm0Pu,
     );
+    const govModel = (dyrGov?.model ?? "").toUpperCase();
+    const t2Eff = govModel.includes("TGOV2") ? Math.max(0.0, (np["F1"] ?? 0.3) * (np["T5"] ?? t3)) : t2;
+    const t3Eff = govModel.includes("TGOV2") ? Math.max(0.0, np["T5"] ?? t3) : t3;
     const pTurbPu = sub(
       dae,
-      emitLeadLag(ctx, `xrh_gov_${gId}`, valve, addReal(dae, t2), addReal(dae, t3), t3, pm0Pu),
+      emitLeadLag(ctx, `xrh_gov_${gId}`, valve, addReal(dae, t2Eff), addReal(dae, t3Eff), t3Eff, pm0Pu),
       mul(dae, addReal(dae, dt), dwPu),
     );
     dae.addEquation(EqKind.Simple, pmOutExpr, mul(dae, addReal(dae, mbase), pTurbPu));

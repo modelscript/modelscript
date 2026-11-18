@@ -91,7 +91,7 @@ export function sanitizeSvgMarkup(rawSvg: string, options?: SanitizeSvgOptions):
     const sanitized = DOMPurify.sanitize(safeUseSvg, {
       USE_PROFILES: { svg: true, svgFilters: true },
       ALLOW_DATA_ATTR: true,
-      ADD_TAGS: ["use"],
+      ADD_TAGS: ["use", "style"],
       ADD_ATTR: [
         "target",
         "href",

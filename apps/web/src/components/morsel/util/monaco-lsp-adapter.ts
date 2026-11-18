@@ -1307,19 +1307,27 @@ export function setupMonacoLspAdapter(
       }),
     );
   }
+  const lastSemanticTokensCache = new Map<string, Uint32Array>();
   disposables.push(
     monaco.languages.registerDocumentSemanticTokensProvider(languageSelector, {
       onDidChange: semanticTokensEmitter.event,
       getLegend: () => SEMANTIC_LEGEND,
       provideDocumentSemanticTokens: async (model) => {
+        const uri = model.uri.toString();
         try {
           const result: any = await connection.sendRequest("textDocument/semanticTokens/full", {
-            textDocument: { uri: model.uri.toString() },
+            textDocument: { uri },
           });
-          if (!result?.data) return null;
-          return { data: new Uint32Array(result.data) };
+          if (!result?.data) {
+            const cached = lastSemanticTokensCache.get(uri);
+            return cached ? { data: cached } : null;
+          }
+          const data = new Uint32Array(result.data);
+          lastSemanticTokensCache.set(uri, data);
+          return { data };
         } catch {
-          return null;
+          const cached = lastSemanticTokensCache.get(uri);
+          return cached ? { data: cached } : null;
         }
       },
       releaseDocumentSemanticTokens: () => {},

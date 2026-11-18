@@ -161,6 +161,7 @@ export interface SimulateParams {
   parameterOverrides?: Record<string, number> | undefined;
   sweepConfig?: { parameterName: string; start: number; end: number; steps: number } | undefined;
   flattenerBackend?: "hybrid" | "wasm" | "ts" | "diff" | undefined;
+  initialSnapshot?: string | Record<string, unknown> | undefined;
 }
 
 export interface SimulateResult {
@@ -189,6 +190,28 @@ export interface SimulateResult {
     | undefined;
   error?: string | undefined;
   sweepResults?: { value: number; y: number[][] }[] | undefined;
+  complianceReport?: unknown | undefined;
+  simulationReport?: unknown | undefined;
+  pscadExports?:
+    | {
+        projectName?: string | undefined;
+        psoutBase64?: string | undefined;
+        comtrade?: { cfg: string; dat: string } | undefined;
+        pscadOut?: { inf: string; files: { name: string; content: string }[] } | undefined;
+        snapshot?: string | undefined;
+        graphFrames?:
+          | Array<{
+              id: string;
+              title: string;
+              kind: "graphframe" | "overlay" | "poly" | "xy";
+              curves: string[];
+              min?: number | undefined;
+              max?: number | undefined;
+            }>
+          | undefined;
+        nominalFreqHz?: number | undefined;
+      }
+    | undefined;
 }
 
 export interface TreeNodeInfo {
@@ -229,6 +252,7 @@ export async function getDiagramData(
   diagramType?: string,
   sidecarContent?: string,
   documentText?: string,
+  psseOptions?: DiagramGetDataParams["psseOptions"],
 ): Promise<DiagramData | null> {
   return (await lsp()).sendRequest(DiagramMethods.getData, {
     uri,
@@ -236,6 +260,7 @@ export async function getDiagramData(
     diagramType,
     sidecarContent,
     documentText,
+    ...(psseOptions ? { psseOptions } : {}),
   });
 }
 
@@ -245,6 +270,28 @@ export async function getComponentProperties(
   componentName?: string,
 ): Promise<ComponentPropertyData | null> {
   return (await lsp()).sendRequest(DiagramMethods.getComponentProperties, { uri, className, componentName });
+}
+
+export async function drillDownDiagram(
+  uri: string,
+  componentName: string,
+  className?: string,
+): Promise<{ targetClassName?: string; breadcrumbs?: string[] } | null> {
+  return (await lsp()).sendRequest(DiagramMethods.drillDown, { uri, componentName, className });
+}
+
+export async function getDiagramPalette(
+  uri: string,
+  className?: string,
+): Promise<{ categories?: Array<{ id?: string; name?: string; label?: string; items?: unknown[] }> } | null> {
+  return (await lsp()).sendRequest(DiagramMethods.getPalette, { uri, className });
+}
+
+export async function onSimulationProgress(
+  handler: (payload: { uri: string; timeSec: number; stepIndex: number; voltages: Record<string, number> }) => void,
+): Promise<{ dispose: () => void }> {
+  const conn = await lsp();
+  return conn.onNotification("modelscript/simulationProgress", handler);
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -558,6 +605,9 @@ export async function getMountedLibraries(): Promise<{
   mounted: MountedLibraryEntry[];
   loading: Array<{ name: string; version: string; status?: string; message?: string }>;
 }> {
+  if (!getLsp()) {
+    return { mounted: [], loading: [] };
+  }
   try {
     return await (await lsp()).sendRequest("modelscript/getMountedLibraries", {});
   } catch {
@@ -631,6 +681,18 @@ export async function uninstallDependency(name: string): Promise<MountedLibraryE
       return [];
     }
     throw err;
+  }
+}
+
+/** Unloads all currently mounted libraries if the LSP worker is already running. */
+export async function unloadAllMountedLibraries(): Promise<void> {
+  if (!getLsp()) return;
+  try {
+    const { mounted } = await getMountedLibraries();
+    if (!mounted || mounted.length === 0) return;
+    await Promise.all(mounted.map((lib) => uninstallDependency(lib.name).catch(() => undefined)));
+  } catch {
+    // ignore errors during workspace reset
   }
 }
 

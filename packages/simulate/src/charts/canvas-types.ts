@@ -20,6 +20,18 @@ export interface OverlayConfig {
   normalize?: boolean | undefined;
   logScale?: boolean | undefined;
   invertedIndex?: boolean | undefined;
+  /** Optional series names plotted against a dedicated right-hand Y-axis (Dual-Y). */
+  rightAxisSeries?: string[] | undefined;
+  /** Optional explicit left Y-axis [min, max] bounds. */
+  yRange?: [number, number] | undefined;
+  /** Optional explicit right Y-axis [min, max] bounds. */
+  rightYRange?: [number, number] | undefined;
+  /** Optional explicit per-series stroke colors keyed by series name. */
+  seriesColors?: Record<string, string> | undefined;
+  /** Optional left Y-axis label. */
+  yTitle?: string | undefined;
+  /** Optional right Y-axis label. */
+  rightYTitle?: string | undefined;
 }
 
 export interface CrossplotConfig {
@@ -43,6 +55,8 @@ export interface CursorState {
 export interface ViewportRange {
   minIndex?: number | undefined;
   maxIndex?: number | undefined;
+  minValue?: number | undefined;
+  maxValue?: number | undefined;
 }
 
 export interface PlotRect {

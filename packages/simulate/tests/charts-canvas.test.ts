@@ -149,4 +149,81 @@ describe("Unified Canvas2D Plotting Engine", () => {
     const third = ctrl.render(ctx, 800, 400);
     assert.equal(third?.indexBounds.max, 1003);
   });
+
+  it("supports Dual-Y overlay rendering, zoomAtFraction, panByFraction, and 10k-sample spike preservation", () => {
+    const n = 10_000;
+    const indexValues = Array.from({ length: n }, (_, i) => i * 0.0001);
+    const vVals = indexValues.map((t, i) => (i === 2500 ? 500 : 100 * Math.sin(2 * Math.PI * 60 * t)));
+    const iVals = indexValues.map((t) => 2.5 * Math.cos(2 * Math.PI * 60 * t));
+
+    const ctrl = new CanvasPlotController({
+      mode: "overlay",
+      isDark: true,
+      overlay: {
+        rightAxisSeries: ["I_LINE"],
+        yTitle: "Voltage (kV)",
+        rightYTitle: "Current (kA)",
+        seriesColors: { V_BUS: "#38bdf8", I_LINE: "#f59e0b" },
+      },
+    });
+    ctrl.setDataset({
+      sourceFormat: "simulation",
+      indexAxis: { key: "time", label: "Time", unit: "s" },
+      indexValues,
+      series: [
+        { name: "V_BUS", unit: "kV", values: vVals },
+        { name: "I_LINE", unit: "kA", values: iVals },
+      ],
+    });
+
+    const texts: string[] = [];
+    const strokes: { y: number }[] = [];
+    const ctx = {
+      fillStyle: "",
+      strokeStyle: "",
+      lineWidth: 1,
+      font: "",
+      textAlign: "left" as CanvasTextAlign,
+      textBaseline: "alphabetic" as CanvasTextBaseline,
+      save() {},
+      restore() {},
+      scale() {},
+      clearRect() {},
+      fillRect() {},
+      strokeRect() {},
+      beginPath() {},
+      rect() {},
+      clip() {},
+      moveTo(_x: number, y: number) {
+        strokes.push({ y });
+      },
+      lineTo(_x: number, y: number) {
+        strokes.push({ y });
+      },
+      arc() {},
+      fill() {},
+      stroke() {},
+      setLineDash() {},
+      fillText(t: string) {
+        texts.push(t);
+      },
+    };
+
+    const r1 = ctrl.render(ctx, 800, 400);
+    assert.ok(r1 !== null);
+    assert.ok(r1!.plotRect.width < 700, "Dual-Y must reserve right-hand margin for second Y-axis");
+    assert.ok(texts.includes("Voltage (kV)") && texts.includes("Current (kA)"));
+    assert.ok(
+      strokes.some((p) => p.y <= r1!.plotRect.y + 2),
+      "Min-max decimation must preserve 10k-sample impulse spike at yMax",
+    );
+
+    assert.equal(ctrl.zoomAtFraction(0.5, 0.5), true);
+    const zoomed = ctrl.getState().viewport;
+    assert.ok(zoomed.maxIndex! - zoomed.minIndex! < 0.6);
+
+    const beforeMin = zoomed.minIndex!;
+    assert.equal(ctrl.panByFraction(0.1), true);
+    assert.ok(ctrl.getState().viewport.minIndex! > beforeMin);
+  });
 });

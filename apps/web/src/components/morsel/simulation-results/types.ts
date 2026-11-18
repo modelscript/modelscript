@@ -9,6 +9,27 @@ export interface SimulationResultsProps {
   selectedVariables?: string[] | undefined;
   onVariablesLoaded?: ((variables: string[]) => void) | undefined;
   colorMode?: "light" | "dark" | undefined;
+  complianceReport?: unknown | undefined;
+  pscadExports?:
+    | {
+        projectName?: string | undefined;
+        psoutBase64?: string | undefined;
+        comtrade?: { cfg: string; dat: string } | undefined;
+        pscadOut?: { inf: string; files: { name: string; content: string }[] } | undefined;
+        snapshot?: string | undefined;
+        graphFrames?:
+          | Array<{
+              id: string;
+              title: string;
+              kind: "graphframe" | "overlay" | "poly" | "xy";
+              curves: string[];
+              min?: number | undefined;
+              max?: number | undefined;
+            }>
+          | undefined;
+        nominalFreqHz?: number | undefined;
+      }
+    | undefined;
 }
 
 export interface CustomInspectionTooltipProps {

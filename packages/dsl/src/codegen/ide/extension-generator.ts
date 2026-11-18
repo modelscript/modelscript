@@ -1489,6 +1489,13 @@ export function generatePackageJson(
   const contributes: Record<string, unknown> = {
     languages: contributesLanguages,
     grammars: contributesGrammars,
+    iconThemes: [
+      {
+        id: "modelscript-file-icons",
+        label: "ModelScript File Icons",
+        path: "./file-icons/theme.json",
+      },
+    ],
     customEditors,
     commands,
     submenus,
@@ -2200,6 +2207,61 @@ export function generatePackageJson(
   };
 
   return manifest;
+}
+
+/**
+ * Generates a VS Code File Icon Theme JSON (`file-icons/theme.json`) mapping each
+ * language ID to `./<lang>.svg` (or `./<lang>.png` fallback) when present in
+ * `availableIcons`, defaulting to `default.svg` (or `default.png`).
+ */
+export function generateFileIconTheme(
+  languagesInput: LanguageInputLike[] | LanguageInputLike,
+  availableIcons: ReadonlyMap<string, string> | ReadonlySet<string>,
+): Record<string, unknown> {
+  const rawList = Array.isArray(languagesInput) ? languagesInput : [languagesInput];
+  const languages = normalizeLanguages(rawList);
+  const iconMap: ReadonlyMap<string, string> =
+    "get" in availableIcons
+      ? availableIcons
+      : new Map(
+          Array.from(availableIcons, (entry) => {
+            const lower = entry.toLowerCase();
+            if (lower.endsWith(".svg") || lower.endsWith(".png")) {
+              return [lower.slice(0, -4), entry] as const;
+            }
+            return [lower, `${lower}.svg`] as const;
+          }),
+        );
+
+  const iconDefinitions: Record<string, { iconPath: string }> = {};
+  const defaultFile = iconMap.get("default");
+  if (defaultFile) {
+    iconDefinitions["_default"] = { iconPath: `./${defaultFile}` };
+  }
+  const languageIds: Record<string, string> = {};
+
+  for (const lang of languages) {
+    const id = lang.id.toLowerCase();
+    const iconFile = iconMap.get(id);
+    if (iconFile) {
+      iconDefinitions[id] = { iconPath: `./${iconFile}` };
+      languageIds[lang.id] = id;
+    }
+    if (id === "sysml2") {
+      const sysmlKey = iconMap.has("sysml") ? "sysml" : iconMap.has("sysml2") ? "sysml2" : undefined;
+      const sysmlFile = sysmlKey ? iconMap.get(sysmlKey) : undefined;
+      if (sysmlKey && sysmlFile) {
+        iconDefinitions[sysmlKey] = { iconPath: `./${sysmlFile}` };
+        languageIds["sysml"] = sysmlKey;
+      }
+    }
+  }
+
+  return {
+    ...(iconDefinitions["_default"] ? { file: "_default" } : {}),
+    iconDefinitions,
+    languageIds,
+  };
 }
 
 /**
@@ -2921,6 +2983,26 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
         fs.cpSync(langAssetDir, destLangAssets, { recursive: true });
       }
     }
+  }
+
+  // Package shared file-icons and generate VS Code icon theme JSON using the same language names as Morsel
+  const fileIconsSrcDir = path.join(repoRoot, "apps/web/public/file-icons");
+  if (fs.existsSync(fileIconsSrcDir)) {
+    const destFileIconsDir = path.join(outDir, "file-icons");
+    fs.mkdirSync(destFileIconsDir, { recursive: true });
+    const availableIcons = new Map<string, string>();
+    for (const entry of fs.readdirSync(fileIconsSrcDir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      const lower = entry.name.toLowerCase();
+      if (!lower.endsWith(".svg") && !lower.endsWith(".png")) continue;
+      fs.copyFileSync(path.join(fileIconsSrcDir, entry.name), path.join(destFileIconsDir, entry.name));
+      const base = lower.slice(0, -4);
+      if (lower.endsWith(".svg") || !availableIcons.has(base)) {
+        availableIcons.set(base, entry.name);
+      }
+    }
+    const iconTheme = generateFileIconTheme(languages, availableIcons);
+    fs.writeFileSync(path.join(destFileIconsDir, "theme.json"), JSON.stringify(iconTheme, null, 2), "utf-8");
   }
 
   // 6. Bundle LSP browser server into standalone IIFE (or copy & minify from lsp dist)

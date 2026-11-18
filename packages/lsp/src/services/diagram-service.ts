@@ -370,7 +370,7 @@ export class DiagramService {
     try {
       const tBuild0 = performance.now();
       const ops = getModelicaDiagramOps(this);
-      const result = ops.buildDiagramData ? await ops.buildDiagramData(classInstance) : null;
+      const result = ops.buildDiagramData ? await ops.buildDiagramData(classInstance, params.diagramType) : null;
       const tBuild = performance.now() - tBuild0;
       if (result) {
         (result as any).isLoading = !dependenciesReady;

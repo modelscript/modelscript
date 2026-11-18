@@ -271,23 +271,7 @@ export function registerMiscEndpoints(context: LspContext) {
       }
       context.connection.console.info(`[lsp] Successfully loaded ${params.name}@${params.version}`);
 
-      context.connection.sendNotification("modelscript/status", {
-        state: "loading",
-        message: `Indexing ${params.name}...`,
-      });
-      for (const langId of ["modelica", "sysml2"] as const) {
-        const idx = context.workspaceManager.getWorkspaceIndex(langId);
-        await idx?.indexRemainingInBackground?.(100, (indexed: number, total: number) => {
-          if (indexed % 100 === 0) {
-            context.connection.sendNotification("modelscript/status", {
-              state: "loading",
-              message: `Indexing ${params.name} (${indexed}/${total})...`,
-            });
-          }
-        });
-      }
-
-      // Sync QueryEngines + re-validate all open documents
+      // Sync QueryEngines + re-validate all open documents immediately
       syncAndRevalidateAll();
       // Notify client that the project tree changed (refreshes Libraries panel)
       context.connection.sendNotification("modelscript/projectTreeChanged");
@@ -295,6 +279,15 @@ export function registerMiscEndpoints(context: LspContext) {
         state: "ready",
         message: `Loaded ${params.name}@${params.version}`,
       });
+
+      void (async () => {
+        for (const langId of ["modelica", "sysml2"] as const) {
+          const idx = context.workspaceManager.getWorkspaceIndex(langId);
+          await idx?.indexRemainingInBackground?.(100);
+        }
+        syncAndRevalidateAll();
+        context.connection.sendNotification("modelscript/projectTreeChanged");
+      })();
       return {
         ok: true,
         name: params.name,

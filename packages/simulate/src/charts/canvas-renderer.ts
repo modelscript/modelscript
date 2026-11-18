@@ -173,14 +173,60 @@ function drawCenteredMessage(ctx: Canvas2DContextLike, rect: PlotRect, theme: Ch
   ctx.fillText(msg, rect.x + rect.width * 0.5, rect.y + rect.height * 0.5);
 }
 
+function bucketMinMaxPoints(pts: { x: number; y: number }[], maxBuckets: number): { x: number; y: number }[] {
+  const n = pts.length;
+  if (n <= maxBuckets * 2 || maxBuckets < 16) return pts;
+  const xMin = pts[0]!.x;
+  const xMax = pts[n - 1]!.x;
+  if (!(xMax > xMin)) return lttbDecimate(pts, 1500);
+  const out: { x: number; y: number }[] = [pts[0]!];
+  const invSpan = maxBuckets / (xMax - xMin);
+  let curBucket = -1;
+  let bMinPt: { x: number; y: number } | null = null;
+  let bMaxPt: { x: number; y: number } | null = null;
+  for (let i = 0; i < n; i++) {
+    const p = pts[i]!;
+    const b = Math.min(maxBuckets - 1, Math.max(0, Math.floor((p.x - xMin) * invSpan)));
+    if (b !== curBucket) {
+      if (bMinPt && bMaxPt) {
+        if (bMinPt.x <= bMaxPt.x) {
+          out.push(bMinPt);
+          if (bMaxPt !== bMinPt) out.push(bMaxPt);
+        } else {
+          out.push(bMaxPt);
+          out.push(bMinPt);
+        }
+      }
+      curBucket = b;
+      bMinPt = p;
+      bMaxPt = p;
+    } else {
+      if (p.y < bMinPt!.y) bMinPt = p;
+      if (p.y > bMaxPt!.y) bMaxPt = p;
+    }
+  }
+  if (bMinPt && bMaxPt) {
+    if (bMinPt.x <= bMaxPt.x) {
+      out.push(bMinPt);
+      if (bMaxPt !== bMinPt) out.push(bMaxPt);
+    } else {
+      out.push(bMaxPt);
+      out.push(bMinPt);
+    }
+  }
+  if (out[out.length - 1] !== pts[n - 1]) out.push(pts[n - 1]!);
+  return out;
+}
+
 function drawSeriesPolyline(
   ctx: Canvas2DContextLike,
   pts: { x: number; y: number }[],
   color: string,
   lineWidth = 1.8,
+  plotWidthPx = 800,
 ): void {
   if (pts.length === 0) return;
-  const decimated = pts.length > 2000 ? lttbDecimate(pts, 1500) : pts;
+  const decimated = pts.length > 3500 ? bucketMinMaxPoints(pts, Math.max(400, Math.ceil(plotWidthPx * 1.5))) : pts;
   ctx.strokeStyle = color;
   ctx.lineWidth = lineWidth;
   ctx.beginPath();
@@ -199,17 +245,23 @@ function renderOverlayChart(
   theme: ChartTheme,
 ): CanvasRenderResult {
   const cfg: OverlayConfig = options.overlay ?? {};
-  const rect: PlotRect = {
-    x: 58,
-    y: 26,
-    width: Math.max(40, options.width - 78),
-    height: Math.max(40, options.height - 62),
-  };
+  const visibleSet = cfg.visibleSeries ? new Set(cfg.visibleSeries) : null;
+  const rightSet = new Set(cfg.rightAxisSeries ?? []);
 
   const [xMin, xMax] = getIndexBounds(dataset, options.viewport);
   const sliced = sliceDatasetByRange(dataset, xMin, xMax);
-  const visibleSet = cfg.visibleSeries ? new Set(cfg.visibleSeries) : null;
   const activeSeries = sliced.series.filter((s) => !visibleSet || visibleSet.has(s.name));
+  const leftSeries = activeSeries.filter((s) => !rightSet.has(s.name));
+  const rightSeries = activeSeries.filter((s) => rightSet.has(s.name));
+  const hasRightAxis = rightSeries.length > 0 && leftSeries.length > 0;
+
+  const rect: PlotRect = {
+    x: 58,
+    y: 26,
+    width: Math.max(40, options.width - (hasRightAxis ? 116 : 78)),
+    height: Math.max(40, options.height - 62),
+  };
+
   const stats = computeVariableStats(sliced, {
     seriesNames: activeSeries.map((s) => s.name),
   });
@@ -225,37 +277,52 @@ function renderOverlayChart(
   const nullVal = dataset.indexAxis.nullValue;
   const invertedX = cfg.invertedIndex ?? Boolean(dataset.indexAxis.inverted);
 
-  // Compute global Y bounds across active series
   const boundsByName = new Map<string, { min: number; span: number }>();
   for (const st of stats) {
     boundsByName.set(st.name, { min: st.min, span: Math.max(1e-12, st.max - st.min) });
   }
 
-  let yMin = normalize ? (logScale ? 1e-4 : 0) : Infinity;
-  let yMax = normalize ? 1 : -Infinity;
-
-  if (!normalize) {
-    for (const s of activeSeries) {
+  const computeGroupBounds = (group: SeriesDescriptor[], explicitRange?: [number, number]): [number, number] => {
+    if (normalize) return [logScale ? 1e-4 : 0, 1];
+    if (
+      explicitRange &&
+      Number.isFinite(explicitRange[0]) &&
+      Number.isFinite(explicitRange[1]) &&
+      explicitRange[1] > explicitRange[0]
+    ) {
+      return explicitRange;
+    }
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const s of group) {
       for (let i = 0; i < s.values.length; i++) {
         const v = transformSeriesValue(s.values[i], { logScale, nullValue: nullVal });
         if (v === null) continue;
-        if (v < yMin) yMin = v;
-        if (v > yMax) yMax = v;
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
       }
     }
-    if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) {
-      yMin = logScale ? 0.1 : 0;
-      yMax = logScale ? 10 : 1;
-    } else if (Math.abs(yMax - yMin) <= 1e-12) {
-      const pad = Math.abs(yMin) > 1e-6 ? Math.abs(yMin) * 0.1 : 1;
-      yMin = logScale ? Math.max(1e-6, yMin * 0.5) : yMin - pad;
-      yMax = logScale ? yMax * 2 : yMax + pad;
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
+      return logScale ? [0.1, 10] : [0, 1];
     }
+    if (Math.abs(hi - lo) <= 1e-12) {
+      const pad = Math.abs(lo) > 1e-6 ? Math.abs(lo) * 0.1 : 1;
+      return [logScale ? Math.max(1e-6, lo * 0.5) : lo - pad, logScale ? hi * 2 : hi + pad];
+    }
+    return [lo, hi];
+  };
+
+  let [yMin, yMax] = computeGroupBounds(hasRightAxis ? leftSeries : activeSeries, cfg.yRange);
+  if (!normalize && options.viewport?.minValue !== undefined && options.viewport?.maxValue !== undefined) {
+    yMin = options.viewport.minValue;
+    yMax = options.viewport.maxValue;
   }
+  const [ryMin, ryMax] = hasRightAxis ? computeGroupBounds(rightSeries, cfg.rightYRange) : [0, 1];
 
   // Grid & axes
   const xTicks = niceTicks(xMin, xMax, 6);
   const yTicks = niceTicks(yMin, yMax, 5);
+  const ryTicks = hasRightAxis ? niceTicks(ryMin, ryMax, 5) : [];
 
   ctx.font = FONT_MONO;
   ctx.lineWidth = 1;
@@ -297,6 +364,32 @@ function renderOverlayChart(
     ctx.fillText(formatTick(yt), rect.x - 6, py);
   }
 
+  if (hasRightAxis) {
+    ctx.fillStyle = theme.palette[leftSeries.length % theme.palette.length] ?? theme.textMuted;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    for (const ryt of ryTicks) {
+      const py = mapToRange(ryt, ryMin, ryMax, rect.y + rect.height, rect.y, scale);
+      if (py === null) continue;
+      ctx.fillText(formatTick(ryt), rect.x + rect.width + 6, py);
+    }
+    if (cfg.rightYTitle) {
+      ctx.font = FONT_SANS;
+      ctx.textAlign = "right";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(cfg.rightYTitle, rect.x + rect.width + 52, rect.y - 4);
+      ctx.font = FONT_MONO;
+    }
+  }
+  if (cfg.yTitle) {
+    ctx.fillStyle = theme.textMuted;
+    ctx.font = FONT_SANS;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(cfg.yTitle, rect.x, rect.y - 4);
+    ctx.font = FONT_MONO;
+  }
+
   // Axis frame & label
   ctx.strokeStyle = theme.axis;
   ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
@@ -321,8 +414,11 @@ function renderOverlayChart(
   }
 
   activeSeries.forEach((s, idx) => {
-    const color = theme.palette[idx % theme.palette.length]!;
+    const color = cfg.seriesColors?.[s.name] ?? theme.palette[idx % theme.palette.length]!;
     const normBounds = normalize ? boundsByName.get(s.name) : undefined;
+    const useRight = hasRightAxis && rightSet.has(s.name);
+    const sYMin = useRight ? ryMin : yMin;
+    const sYMax = useRight ? ryMax : yMax;
     let segment: { x: number; y: number }[] = [];
 
     for (let i = 0; i < sliced.indexValues.length; i++) {
@@ -340,18 +436,18 @@ function renderOverlayChart(
         invertedX ? rect.x : rect.x + rect.width,
         "linear",
       );
-      const py = val !== null ? mapToRange(val, yMin, yMax, rect.y + rect.height, rect.y, scale) : null;
+      const py = val !== null ? mapToRange(val, sYMin, sYMax, rect.y + rect.height, rect.y, scale) : null;
 
       if (px === null || py === null) {
         if (segment.length > 0) {
-          drawSeriesPolyline(ctx, segment, color);
+          drawSeriesPolyline(ctx, segment, color, 1.8, rect.width);
           segment = [];
         }
         continue;
       }
       segment.push({ x: px, y: py });
     }
-    if (segment.length > 0) drawSeriesPolyline(ctx, segment, color);
+    if (segment.length > 0) drawSeriesPolyline(ctx, segment, color, 1.8, rect.width);
   });
 
   // Dual vertical cursors

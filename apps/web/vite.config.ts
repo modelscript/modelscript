@@ -61,6 +61,22 @@ const LANGUAGE_EXTENSIONS_MAP: Record<string, string[]> = {
   "verilog-a": [".va", ".vams"],
 };
 
+function discoverAvailableFileIcons(): Record<string, string> {
+  const iconsDir = path.resolve(import.meta.dirname, "public/file-icons");
+  if (!fs.existsSync(iconsDir)) return {};
+  const map: Record<string, string> = {};
+  for (const f of fs.readdirSync(iconsDir).sort()) {
+    const lower = f.toLowerCase();
+    if (lower.endsWith(".svg")) {
+      map[lower.slice(0, -4)] = f;
+    } else if (lower.endsWith(".png")) {
+      const name = lower.slice(0, -4);
+      if (!(name in map)) map[name] = f;
+    }
+  }
+  return map;
+}
+
 function discoverLanguageWasmTargets(): {
   targets: StaticCopyTarget[];
   manifest: { id: string; extensions: string[]; wasm: string }[];
@@ -508,8 +524,11 @@ export default defineConfig({
       }),
     ),
   ],
+  worker: {
+    format: "es",
+  },
   build: {
-    target: ["es2020", "safari15"],
+    target: ["es2022", "safari15"],
     minify: "esbuild",
     rollupOptions: {
       output: {
@@ -563,6 +582,7 @@ export default defineConfig({
     "process.env": {},
     "process.browser": true,
     "process.versions": {},
+    __AVAILABLE_FILE_ICONS__: JSON.stringify(discoverAvailableFileIcons()),
   },
   resolve: {
     alias: [

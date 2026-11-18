@@ -218,7 +218,32 @@ export function createPsseDiagramBackend(backends: DiagramDispatchDeps): Diagram
         const graph = buildPsseDiagram(
           parsed as Parameters<typeof buildPsseDiagram>[0],
           pf as Parameters<typeof buildPsseDiagram>[1],
+          params.psseOptions,
         );
+        const edgeVerticesMap = new Map<string, Array<{ x: number; y: number }>>();
+        for (const rawLine of text.split(/\r?\n/)) {
+          const m = /^@!\s*@edge\s+(\S+)\s+vertices=([^\s]+)/i.exec(rawLine.trim());
+          if (m) {
+            const pts = m[2]!
+              .split(";")
+              .map((pair) => {
+                const [xs, ys] = pair.split(",");
+                return { x: Number(xs), y: Number(ys) };
+              })
+              .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+            if (pts.length > 0) edgeVerticesMap.set(m[1]!, pts);
+          }
+        }
+        if (edgeVerticesMap.size > 0) {
+          for (const cell of graph.cells) {
+            if (cell.shape === "edge") {
+              const pts = edgeVerticesMap.get(cell.id);
+              if (pts) {
+                (cell as unknown as { vertices?: Array<{ x: number; y: number }> }).vertices = pts;
+              }
+            }
+          }
+        }
         return {
           nodes: graph.cells.filter((c) => c.shape !== "edge") as unknown as DiagramData["nodes"],
           edges: graph.cells.filter((c) => c.shape === "edge") as unknown as DiagramData["edges"],
@@ -293,6 +318,16 @@ export function createPsseDiagramBackend(backends: DiagramDispatchDeps): Diagram
                 fields: [
                   numField("vm", "Voltage Magnitude", values.vm, "pu"),
                   numField("va", "Voltage Angle", values.va, "deg"),
+                  {
+                    key: "orientation",
+                    label: "Busbar Orientation",
+                    kind: "choice",
+                    defaultValue: 0,
+                    choices: [
+                      { label: "Horizontal (0°)", value: 0 },
+                      { label: "Vertical (90°)", value: 90 },
+                    ],
+                  },
                 ],
               },
             ],
@@ -564,7 +599,26 @@ export function createPsseDiagramBackend(backends: DiagramDispatchDeps): Diagram
       };
 
       for (const act of params.actions) {
-        if (act.type === "updateProperty") {
+        if (act.type === "updateProperty" && act.key === "vertices" && Array.isArray(act.value)) {
+          flushBatchedChanges();
+          const ptsStr = (act.value as Array<{ x: number; y: number }>)
+            .filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))
+            .map((p) => `${Math.round(p.x)},${Math.round(p.y)}`)
+            .join(";");
+          const edgeRegex = new RegExp(
+            `^@!\\s*@edge\\s+${act.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+vertices=[^\\r\\n]*$`,
+            "m",
+          );
+          if (ptsStr.length > 0) {
+            const line = `@! @edge ${act.name} vertices=${ptsStr}`;
+            if (edgeRegex.test(workingText)) {
+              workingText = workingText.replace(edgeRegex, line);
+            } else {
+              const sep = workingText.endsWith("\n") || workingText.length === 0 ? "" : "\n";
+              workingText = `${workingText}${sep}${line}\n`;
+            }
+          }
+        } else if (act.type === "updateProperty") {
           const bag = batchedChanges.get(act.name) ?? {};
           bag[act.key] = act.value;
           batchedChanges.set(act.name, bag);
@@ -601,6 +655,31 @@ export function createPsseDiagramBackend(backends: DiagramDispatchDeps): Diagram
           flushBatchedChanges();
           workingText = disconnectPsseDiagramBuses(workingText, act.oldSource, act.oldTarget);
           workingText = connectPsseDiagramBuses(workingText, act.newSource, act.newTarget);
+        } else if (act.type === "moveEdge") {
+          flushBatchedChanges();
+          for (const edge of act.edges) {
+            const srcBus = edge.source.split(".")[0] ?? edge.source;
+            const tgtBus = edge.target.split(".")[0] ?? edge.target;
+            const pts = edge.points.length > 2 ? edge.points.slice(1, -1) : edge.points;
+            const ptsStr = pts
+              .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+              .map((p) => `${Math.round(p.x)},${Math.round(p.y)}`)
+              .join(";");
+            const edgeKey = `${srcBus}__${tgtBus}`;
+            const edgeRegex = new RegExp(
+              `^@!\\s*@edge\\s+${edgeKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+vertices=[^\\r\\n]*$`,
+              "m",
+            );
+            if (ptsStr.length > 0) {
+              const line = `@! @edge ${edgeKey} vertices=${ptsStr}`;
+              if (edgeRegex.test(workingText)) {
+                workingText = workingText.replace(edgeRegex, line);
+              } else {
+                const sep = workingText.endsWith("\n") || workingText.length === 0 ? "" : "\n";
+                workingText = `${workingText}${sep}${line}\n`;
+              }
+            }
+          }
         } else if (act.type === "move") {
           for (const item of act.items) {
             const name = item.name;

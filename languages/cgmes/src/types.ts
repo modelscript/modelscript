@@ -120,7 +120,51 @@ export interface CgmesACLineSegmentPhase extends IdentifiedObject {
   phase: "A" | "B" | "C" | "N" | string;
 }
 
-/** Complete in-memory representation of parsed CGMES profiles. */
+/** IEC 61968-13 CDPSM Feeder container. */
+export interface CimFeeder extends IdentifiedObject {
+  normalEnergizingSubstationId?: string | undefined;
+}
+
+/** IEC 61968 / 61970 EnergySource (substation swing / source equivalent). */
+export interface CimEnergySource extends IdentifiedObject {
+  nominalVoltageKv: number;
+  voltageMagnitudeKv?: number | undefined;
+  voltageAngleDeg?: number | undefined;
+  r?: number | undefined;
+  x?: number | undefined;
+}
+
+/** IEC 61970 / 61968 Switching device (Breaker, LoadBreakSwitch, Fuse, Recloser, Disconnector). */
+export interface CimSwitch extends IdentifiedObject {
+  switchType: "Breaker" | "LoadBreakSwitch" | "Fuse" | "Recloser" | "Disconnector";
+  normalOpen: boolean;
+  open: boolean;
+  ratedCurrentA?: number | undefined;
+}
+
+/** IEC 61968 PerLengthSequenceImpedance catalog entry. */
+export interface CimPerLengthImpedance extends IdentifiedObject {
+  r: number;
+  x: number;
+  bch: number;
+  gch: number;
+  r0?: number | undefined;
+  x0?: number | undefined;
+}
+
+/** IEC 61970 North American EMS ControlArea. */
+export interface CimControlArea extends IdentifiedObject {
+  type?: string | undefined;
+  netInterchangeMw?: number | undefined;
+}
+
+/** IEC 61970 GeographicalRegion / SubGeographicalRegion. */
+export interface CimGeographicalRegion extends IdentifiedObject {
+  isSubRegion: boolean;
+  regionId?: string | undefined;
+}
+
+/** Complete in-memory representation of parsed CGMES / CIM profiles. */
 export interface CgmesModel {
   substations: Map<string, CgmesSubstation>;
   voltageLevels: Map<string, CgmesVoltageLevel>;
@@ -139,4 +183,10 @@ export interface CgmesModel {
   baseVoltages: Map<string, number>;
   dynamicModels?: Map<string, CgmesDynamicModel> | undefined;
   linePhases?: Map<string, CgmesACLineSegmentPhase> | undefined;
+  feeders?: Map<string, CimFeeder> | undefined;
+  energySources?: Map<string, CimEnergySource> | undefined;
+  switches?: Map<string, CimSwitch> | undefined;
+  perLengthImpedances?: Map<string, CimPerLengthImpedance> | undefined;
+  controlAreas?: Map<string, CimControlArea> | undefined;
+  regions?: Map<string, CimGeographicalRegion> | undefined;
 }

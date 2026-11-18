@@ -35,8 +35,10 @@ export interface TemplateGalleryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectTemplate: (template: HeroExample) => void;
+  onSelectPendingTemplate?: ((title: string, loadTemplate: () => Promise<HeroExample | null>) => void) | undefined;
   currentTemplateId?: string | undefined;
   currentLang?: string | undefined;
+  requireChoice?: boolean | undefined;
 }
 
 const MODEL_PAGE_SIZE = 48;
@@ -84,8 +86,10 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
   isOpen,
   onClose,
   onSelectTemplate,
+  onSelectPendingTemplate,
   currentTemplateId,
   currentLang = "modelica",
+  requireChoice = false,
 }) => {
   const { colorMode: themeMode, resolvedColorMode } = useTheme();
   const isDark = (resolvedColorMode || themeMode) !== "day";
@@ -142,13 +146,13 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
 
   // Escape key to close
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || requireChoice) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, requireChoice]);
 
   // Stream openable models + diagram.svg thumbnails from the Ansatz package registry
   useEffect(() => {
@@ -391,12 +395,18 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
 
   const ensurePackageMounted = useCallback(
     async (pkgName: string, pkgVersion: string) => {
-      if (!pkgName || mountedMap.has(pkgName.toLowerCase())) return;
+      if (!pkgName) return;
+      const live = await getMountedLibraries().catch(() => ({ mounted: [] as MountedLibraryEntry[] }));
+      const liveMap = new Map<string, MountedLibraryEntry>();
+      for (const lib of live.mounted) {
+        liveMap.set(lib.name.toLowerCase(), lib);
+      }
+      if (liveMap.has(pkgName.toLowerCase())) return;
       const deps = registryDeps[pkgName];
       if (deps) {
         for (const [depName, reqRange] of Object.entries(deps)) {
           if (depName === "Complex" || depName === "ModelicaServices") continue;
-          const existing = mountedMap.get(depName.toLowerCase());
+          const existing = liveMap.get(depName.toLowerCase());
           const minVer = reqRange.replace(/^[^\d]*/, "");
           if (!existing || (minVer && compareSemverSimple(existing.version, minVer) < 0)) {
             await installDependency(depName, minVer || "4.1.0").catch(() => undefined);
@@ -408,32 +418,32 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
         setMountedLibs(next);
       }
     },
-    [mountedMap, registryDeps],
+    [registryDeps],
   );
 
   const handleOpenRegistryModel = useCallback(
     async (item: StreamedRegistryModelItem) => {
-      setBusyId(item.id);
-      setErrorMsg(null);
-      try {
-        await ensurePackageMounted(item.packageName, item.packageVersion);
-        let resolvedCode: string | null = null;
-        try {
-          const { content } = await getClassSource(item.fqn);
-          if (content && content.trim().length > 0) {
-            resolvedCode = content;
+      const loadModel = async (): Promise<HeroExample | null> => {
+        let resolvedCode = await fetchRegistryClassSource(item.packageName, item.packageVersion, item.fqn);
+        if (resolvedCode && resolvedCode.trim().length > 0) {
+          if (item.packageName) {
+            void ensurePackageMounted(item.packageName, item.packageVersion);
           }
-        } catch {
-          // fall through to direct Ansatz registry class source endpoint
+        } else {
+          await ensurePackageMounted(item.packageName, item.packageVersion);
+          try {
+            const { content } = await getClassSource(item.fqn);
+            if (content && content.trim().length > 0) {
+              resolvedCode = content;
+            }
+          } catch {
+            // ignore
+          }
         }
         if (!resolvedCode) {
-          resolvedCode = await fetchRegistryClassSource(item.packageName, item.packageVersion, item.fqn);
+          return null;
         }
-        if (!resolvedCode) {
-          setErrorMsg(`Source unavailable for '${item.fqn}'.`);
-          return;
-        }
-        onSelectTemplate({
+        return {
           id: item.id,
           title: item.title,
           lang: item.dialect || "modelica",
@@ -441,7 +451,24 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
           domain: item.category,
           description: item.summary,
           code: resolvedCode,
-        });
+        };
+      };
+
+      if (onSelectPendingTemplate) {
+        onClose();
+        onSelectPendingTemplate(item.title, loadModel);
+        return;
+      }
+
+      setBusyId(item.id);
+      setErrorMsg(null);
+      try {
+        const loaded = await loadModel();
+        if (!loaded) {
+          setErrorMsg(`Source unavailable for '${item.fqn}'.`);
+          return;
+        }
+        onSelectTemplate(loaded);
         onClose();
       } catch (err) {
         setErrorMsg(`Could not open '${item.title}': ${err instanceof Error ? err.message : String(err)}`);
@@ -449,7 +476,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
         setBusyId(null);
       }
     },
-    [ensurePackageMounted, onSelectTemplate, onClose],
+    [ensurePackageMounted, onSelectTemplate, onSelectPendingTemplate, onClose],
   );
 
   if (!isOpen || typeof document === "undefined") return null;
@@ -568,15 +595,15 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Add Model & Starter Templates"
+      aria-label="New Model & Starter Templates"
       data-testid="template-gallery-modal"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && !requireChoice) onClose();
       }}
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 10000,
+        zIndex: 9990,
         backgroundColor: isDark ? "rgba(0, 0, 0, 0.68)" : "rgba(15, 23, 42, 0.48)",
         backdropFilter: "blur(8px)",
         WebkitBackdropFilter: "blur(8px)",
@@ -633,7 +660,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
               <PackageIcon size={16} />
             </div>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 650, lineHeight: 1.2 }}>Add Model</div>
+              <div style={{ fontSize: 15, fontWeight: 650, lineHeight: 1.2 }}>New Model</div>
               <div style={{ fontSize: 11.5, color: palette.muted }}>
                 Choose a language, add a blank model, or pick a starter template ({totalCount.toLocaleString()} in{" "}
                 {selectedLangOption.label})
@@ -641,13 +668,15 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
             </div>
           </div>
 
-          <IconButton
-            icon={XIcon}
-            aria-label="Close Add Model gallery"
-            variant="invisible"
-            size="small"
-            onClick={onClose}
-          />
+          {!requireChoice && (
+            <IconButton
+              icon={XIcon}
+              aria-label="Close New Model gallery"
+              variant="invisible"
+              size="small"
+              onClick={onClose}
+            />
+          )}
         </div>
 
         {/* ── Two-Pane Body: Language Rail (Left) + Blank Tile & Templates (Right) ── */}

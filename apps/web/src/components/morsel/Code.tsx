@@ -418,18 +418,27 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     [],
   );
 
+  const sendDebouncedDidChange = useMemo(
+    () =>
+      debounce((uri: string, value: string) => {
+        void didChange(uri, value);
+      }, 120),
+    [],
+  );
+
   useEffect(() => {
     return () => {
       notifyParsed.cancel();
+      sendDebouncedDidChange.cancel();
     };
-  }, [notifyParsed]);
+  }, [notifyParsed, sendDebouncedDidChange]);
 
   const handleDidChangeContent = (value: string | undefined) => {
     if (value === undefined) return;
     lastValueRef.current = value;
     props.onChange?.(value);
     if (lintOnTypeRef.current) {
-      void didChange(uriRef.current, value);
+      sendDebouncedDidChange(uriRef.current, value);
       notifyParsed();
     }
   };
@@ -438,6 +447,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   React.useImperativeHandle(ref, () => ({
     sync: async () => {
       notifyParsed.cancel();
+      sendDebouncedDidChange.cancel();
       const value = editorRef.current?.getValue();
       if (value !== undefined) {
         await didChange(uriRef.current, value);

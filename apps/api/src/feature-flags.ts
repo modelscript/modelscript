@@ -458,6 +458,16 @@ export const FEATURE_FLAGS: Record<string, FeatureFlagDefinition> = {
     maturity: "beta",
     allowedRoles: ["admin", "beta_tester"],
   },
+  morsel_ai: {
+    key: "morsel_ai",
+    name: "Morsel AI Assistant",
+    description:
+      "Enable hybrid AI copilot in Morsel (local WebGPU/Prompt API, local Ollama/vLLM, Ansatz cloud models, and 3rd-party BYOK providers with MCP tool calling).",
+    defaultValue: false,
+    category: "developer",
+    maturity: "beta",
+    allowedRoles: ["admin", "beta_tester"],
+  },
   feeds_page: {
     key: "feeds_page",
     name: "External RSS Feeds Page",

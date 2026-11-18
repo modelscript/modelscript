@@ -1205,21 +1205,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
                     }
                   }
                   if (!hasTime) {
-                    const docRoot = db.ast.getRootNode();
-                    if (docRoot != 0 && $.string_literal != 0) {
-                      for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
-                        if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
-                          return;
-                        }
-                      }
-                    }
-                    let classCount: u32 = 0;
-                    if (docRoot != 0) {
-                      for (const _cd of db.ast.getDescendants(docRoot, $.class_definition)) {
-                        classCount++;
-                        if (classCount > 1) return;
-                      }
-                    }
+                    if (isOldFrontendActive(db, $)) return;
                     const nameNode = db.ast.getChildByFieldId(node, "name");
                     if (nameNode != 0) {
                       db.diagnostic(binding, nameNode);
@@ -1268,22 +1254,35 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       const t = db.ast.getType(node);
       if (t == $.component_clause) {
         for (const compDecl of db.ast.getDescendants(node, $.component_declaration)) {
-          let nameId = db.ast.getChildByFieldId(compDecl, "name");
-          if (nameId == 0) {
-            const decl = db.ast.getChildByFieldId(compDecl, "declaration");
-            if (decl != 0) nameId = db.ast.getChildByFieldId(decl, "name");
-          }
-          for (const mod of db.ast.getDescendants(compDecl, $.modification)) {
-            db.diagnostic(mod, mod, nameId != 0 ? nameId : compDecl);
-            return;
+          const decl = db.ast.getChildByFieldId(compDecl, "declaration");
+          let nameId = decl != 0 ? db.ast.getChildByFieldId(decl, "name") : db.ast.getChildByFieldId(compDecl, "name");
+          if (decl != 0) {
+            const mod = db.ast.getChildByFieldId(decl, "modification");
+            if (mod != 0) {
+              db.diagnostic(mod, mod, nameId != 0 ? nameId : compDecl);
+              return;
+            }
           }
         }
       } else if ($.short_class_definition != 0 && t == $.short_class_definition) {
         for (const scs of db.ast.getDescendants(node, $.short_class_specifier)) {
           const nameId = db.ast.getChildByFieldId(scs, "name");
           for (const mod of db.ast.getDescendants(scs, $.class_modification)) {
-            db.diagnostic(mod, mod, nameId != 0 ? nameId : scs);
-            return;
+            let inDescOrAnnot = false;
+            for (const anc of db.ast.getAncestors(mod, 0, scs)) {
+              const at = db.ast.getType(anc);
+              if (
+                ($.description != 0 && at == $.description) ||
+                ($.annotation_clause != 0 && at == $.annotation_clause)
+              ) {
+                inDescOrAnnot = true;
+                break;
+              }
+            }
+            if (!inDescOrAnnot) {
+              db.diagnostic(mod, mod, nameId != 0 ? nameId : scs);
+              return;
+            }
           }
         }
       }
@@ -1360,21 +1359,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
                     }
                   }
                   if (!hasTime) {
-                    const docRoot = db.ast.getRootNode();
-                    if (docRoot != 0 && $.string_literal != 0) {
-                      for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
-                        if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
-                          return;
-                        }
-                      }
-                    }
-                    let classCount: u32 = 0;
-                    if (docRoot != 0) {
-                      for (const _cd of db.ast.getDescendants(docRoot, $.class_definition)) {
-                        classCount++;
-                        if (classCount > 1) return;
-                      }
-                    }
+                    if (isOldFrontendActive(db, $)) return;
                     const nameNode = db.ast.getChildByFieldId(node, "name");
                     if (nameNode != 0) {
                       if (varb == VARIABILITY_PARAMETER) {
@@ -2159,7 +2144,8 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     nodes: ["simple_equation"],
     severity: "error",
     code: 5045,
-    message: (target) => `Direct assignment to continuous state '${target.text}' inside when-clause is illegal; use reinit().`,
+    message: (target) =>
+      `Direct assignment to continuous state '${target.text}' inside when-clause is illegal; use reinit().`,
     query: (db: CodeGraph, node: u32, $: any) => {
       const stateId = getContinuousStateInWhenNode(db, node, $);
       if (stateId != 0) {

@@ -471,7 +471,7 @@ end BadUnitsAndPendulum;
         colorMode: "dark",
       }),
     );
-    assert.ok(html.includes("+ Attach .dyr / .seq / .fmu"), "Missing attach button");
+    assert.ok(html.includes("+ Attach .dyr / .dll / .fmu / .py"), "Missing attach button");
     assert.ok(html.includes("+ Custom USRMDL (AS)"), "Missing Custom USRMDL button");
     assert.ok(html.includes("Solve Power Flow"), "Missing Solve Power Flow button");
     assert.ok(html.includes("Run Transient"), "Missing Run Transient button");

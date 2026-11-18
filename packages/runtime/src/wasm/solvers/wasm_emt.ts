@@ -1657,7 +1657,14 @@ export class WasmEmtSolver {
       let gC = load<f64>(this.branchGCPtr + (((b as usize)) << 3));
       let cur = load<f64>(this.branchCurrentPtr + (((b as usize)) << 3));
       if (gL > 0.0) store<f64>(this.branchIHistLPtr + (((b as usize)) << 3), cur);
-      if (gC > 0.0) store<f64>(this.branchIHistCPtr + (((b as usize)) << 3), 0.0);
+      if (gC > 0.0) {
+        let na = load<i32>(this.branchFromPtr + (((b as usize)) << 2));
+        let nb = load<i32>(this.branchToPtr + (((b as usize)) << 2));
+        let va = na >= 0 ? load<f64>(this.vVecPtr + (((na as usize)) << 3)) : 0.0;
+        let vb = nb >= 0 ? load<f64>(this.vVecPtr + (((nb as usize)) << 3)) : 0.0;
+        // Reset capacitive history at continuous switching voltage so I_C = gC * (v - v_prev) = 0 at constant V
+        store<f64>(this.branchIHistCPtr + (((b as usize)) << 3), -gC * (va - vb));
+      }
     }
     for (let w: u32 = 0; w < this.nWindings; w++) {
       let curP = load<f64>(this.xfmrCurrentPPtr + (((w as usize)) << 3));
@@ -2328,7 +2335,7 @@ export class WasmEmtSolver {
       if (gC > 0.0) {
         let iC = gC * vBranch + iHistC;
         if (breakerZeroCrossed && this.enableCda) {
-          store<f64>(this.branchIHistCPtr + (((b as usize)) << 3), 0.0);
+          store<f64>(this.branchIHistCPtr + (((b as usize)) << 3), -gC * vBranch);
         } else {
           store<f64>(this.branchIHistCPtr + (((b as usize)) << 3), -iC - gC * vBranch);
         }

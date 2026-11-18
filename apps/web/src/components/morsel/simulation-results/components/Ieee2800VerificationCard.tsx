@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { type Ieee2800CheckResult, type Ieee2800ComplianceReport } from "@modelscript/pscad";
+import { type Ieee2800ComplianceReport } from "@modelscript/pscad";
 import {
   AlertIcon,
   CheckCircleFillIcon,
@@ -232,94 +232,10 @@ export const Ieee2800VerificationCard: React.FC<Ieee2800VerificationCardProps> =
   const isDark = colorMode === "dark";
   const [expandedClauses, setExpandedClauses] = useState<Set<string>>(new Set());
 
-  // Default synthetic compliance checks if report is omitted
-  const activeReport = useMemo<Ieee2800ComplianceReport>(() => {
+  const activeReport = useMemo<Ieee2800ComplianceReport | null>(() => {
     if (report) return report;
-
-    // Synthesize evaluation from simulation data if available
-    let measuredLVRT = "0.08 pu (No cessation)";
-    let measuredFastStep = "34.2 ms";
-    let measuredOvervoltage = "1.14 pu";
-    let measuredK2 = "1.82";
-    let measuredRecovery = "0.42 s (94.2% P_pre)";
-    let measuredPhaseJump = "25.0 deg ride-through";
-    let isOverallPass = true;
-
-    if (data && data.length > 0) {
-      const vVals = data.map((d) => Number(d["vPoi"] ?? d["v1"] ?? d["v_a"] ?? 1.0)).filter((v) => !isNaN(v));
-      if (vVals.length > 0) {
-        const minV = Math.min(...vVals);
-        const maxV = Math.max(...vVals);
-        measuredLVRT = `${minV.toFixed(2)} pu`;
-        measuredOvervoltage = `${maxV.toFixed(2)} pu`;
-        if (maxV > 1.25) isOverallPass = false;
-      }
-    }
-
-    const defaultChecks: Ieee2800CheckResult[] = [
-      {
-        clause: "5.3.2",
-        title: "Voltage Ride-Through (LVRT / HVRT) & No Momentary Cessation",
-        status: "PASS",
-        measuredValue: measuredLVRT,
-        requiredLimit: "V >= 0.0 pu (160ms) / V <= 1.20 pu (continuous)",
-        details:
-          "Point of Interconnection (POI) voltage remained within the mandatory ride-through envelope without triggering momentary cessation or inverter tripping.",
-      },
-      {
-        clause: "5.4.1",
-        title: "Fast Dynamic Reactive Current Step Response",
-        status: "PASS",
-        measuredValue: measuredFastStep,
-        requiredLimit: "T_90% <= 50.0 ms",
-        details:
-          "Incremental reactive current injection reached 90% of final reference within 34.2 ms following fault inception.",
-      },
-      {
-        clause: "5.4.2",
-        title: "Post-Fault Transient Overvoltage Limit",
-        status: "PASS",
-        measuredValue: measuredOvervoltage,
-        requiredLimit: "V_peak <= 1.20 pu",
-        details: "Transient overvoltage during fault clearing was contained below the 1.20 pu threshold.",
-      },
-      {
-        clause: "7.2.2.3.4",
-        title: "Incremental Negative-Sequence Reactive Current Droop (k2)",
-        status: "PASS",
-        measuredValue: `k2 = ${measuredK2}`,
-        requiredLimit: "k2 >= 1.50",
-        details:
-          "Negative-sequence reactive current injection droop gain suppresses unbalanced voltage during single-phase-to-ground faults.",
-      },
-      {
-        clause: "7.2.2.3.5",
-        title: "Post-Fault Active Power Recovery",
-        status: "PASS",
-        measuredValue: measuredRecovery,
-        requiredLimit: "P >= 90% P_pre within 1.0 s",
-        details: "Active power recovered smoothly back to pre-disturbance operating levels in 420 ms.",
-      },
-      {
-        clause: "7.2.2.8",
-        title: "Positive-Sequence Phase-Angle Jump Ride-Through",
-        status: "PASS",
-        measuredValue: measuredPhaseJump,
-        requiredLimit: "Ride-through up to 25 deg jump",
-        details: "Inverter Phase-Locked Loop (PLL) maintained synchronism through instantaneous 25 degree phase jump.",
-      },
-    ];
-
-    return {
-      projectName: "Inverter-Based Resource Interconnection Study",
-      overallStatus: isOverallPass ? "PASS" : "FAIL",
-      evaluatedAt: new Date().toISOString(),
-      checks: defaultChecks,
-      summary: isOverallPass
-        ? "All evaluated IEEE 2800-2022 & NERC PRC-029-1 interconnection clauses PASSED."
-        : "One or more IEEE 2800-2022 clauses failed mandatory ride-through thresholds.",
-    };
-  }, [report, data]);
+    return null;
+  }, [report]);
 
   const toggleClause = (clause: string) => {
     setExpandedClauses((prev) => {
@@ -358,6 +274,33 @@ export const Ieee2800VerificationCard: React.FC<Ieee2800VerificationCardProps> =
     });
   }, [data]);
 
+  if (!activeReport) {
+    return (
+      <CardContainer $isDark={isDark} data-testid="ieee2800-verification-card">
+        <HeaderRow>
+          <TitleGroup>
+            <ShieldCheckIcon size={20} fill={isDark ? "#8b949e" : "#57606a"} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? "#ffffff" : "#24292f" }}>
+                IEEE 2800-2022 & NERC PRC-029-1 Grid Code Verification
+              </div>
+              <div style={{ fontSize: 11, color: isDark ? "#8b949e" : "#57606a" }}>
+                No backend IEEE 2800 compliance evaluation report was generated for this simulation run.
+              </div>
+            </div>
+          </TitleGroup>
+          {onClose && (
+            <ActionButtons>
+              <ActionBtn type="button" onClick={onClose} title="Dismiss Verification Card">
+                <XIcon size={14} />
+              </ActionBtn>
+            </ActionButtons>
+          )}
+        </HeaderRow>
+      </CardContainer>
+    );
+  }
+
   const handleExport = () => {
     if (onExportJson) {
       onExportJson();
@@ -369,6 +312,25 @@ export const Ieee2800VerificationCard: React.FC<Ieee2800VerificationCardProps> =
     const a = document.createElement("a");
     a.href = url;
     a.download = `IEEE_2800_Compliance_${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportHtml = () => {
+    const rowsHtml = activeReport.checks
+      .map(
+        (c) =>
+          `<tr><td><code>${c.clause}</code></td><td>${c.title}</td><td><strong>${c.status}</strong></td><td>${c.measuredValue}</td><td>${(c as { requiredLimit?: string; requiredThreshold?: string }).requiredLimit ?? (c as { requiredThreshold?: string }).requiredThreshold ?? ""}</td><td>${c.details}</td></tr>`,
+      )
+      .join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>IEEE 2800 Compliance - ${activeReport.projectName}</title><style>body{font-family:system-ui,sans-serif;background:#0d1117;color:#c9d1d9;padding:24px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #30363d;padding:8px;text-align:left;font-size:13px}th{background:#161b22}</style></head><body><h1>IEEE 2800-2022 & NERC PRC-029-1 Compliance Report</h1><p>Project: <strong>${activeReport.projectName}</strong> | Status: <strong>${activeReport.overallStatus}</strong> | Evaluated: ${activeReport.evaluatedAt}</p><p>${activeReport.summary}</p><table><thead><tr><th>Clause</th><th>Requirement</th><th>Status</th><th>Measured</th><th>Threshold</th><th>Details</th></tr></thead><tbody>${rowsHtml}</tbody></table></body></html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `IEEE_2800_Compliance_${Date.now()}.html`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -396,7 +358,10 @@ export const Ieee2800VerificationCard: React.FC<Ieee2800VerificationCardProps> =
 
         <ActionButtons>
           <ActionBtn type="button" onClick={handleExport} title="Download JSON Compliance Report">
-            <DownloadIcon size={14} /> Export Report
+            <DownloadIcon size={14} /> Export JSON
+          </ActionBtn>
+          <ActionBtn type="button" onClick={handleExportHtml} title="Download Standalone HTML Compliance Report">
+            <DownloadIcon size={14} /> Export HTML
           </ActionBtn>
           {onClose && (
             <ActionBtn type="button" onClick={onClose} title="Dismiss Verification Card">

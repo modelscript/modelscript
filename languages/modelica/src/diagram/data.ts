@@ -444,7 +444,11 @@ interface StaticPortTemplate {
 
 const staticPortTemplatesCache = new WeakMap<ModelicaClassInstance, StaticPortTemplate[]>();
 
-export async function buildDiagramData(classInstance: ModelicaClassInstance): Promise<DiagramData> {
+export async function buildDiagramData(
+  classInstance: ModelicaClassInstance,
+  diagramType?: string,
+): Promise<DiagramData> {
+  const isIconMode = diagramType?.toLowerCase() === "icon";
   const nodes: DiagramNode[] = [];
   const edges: DiagramEdge[] = [];
 
@@ -484,7 +488,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
   }
 
   // Pre-gather all connect equations (including inherited ones)
-  const connectEquations = classInstance ? collectAllConnectEquations(classInstance) : [];
+  const connectEquations = !isIconMode && classInstance ? collectAllConnectEquations(classInstance) : [];
   const classObj = classInstance as
     | { context?: unknown; entry?: { resourceId?: string }; db?: { cstNode?: unknown } }
     | null
@@ -505,7 +509,19 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     }
 
     const placement = typeof component?.annotation === "function" ? component.annotation("Placement") : null;
-    if (
+    if (isIconMode) {
+      const compCi = component.classInstance;
+      const compKind = compCi?.classKind ?? compCi?.entry?.metadata?.classKind;
+      const compPrefix = compCi?.entry?.metadata?.classPrefixes;
+      const isConnector =
+        compKind === ModelicaClassKind.CONNECTOR ||
+        compKind === ModelicaClassKind.EXPANDABLE_CONNECTOR ||
+        Boolean(compPrefix?.includes("connector"));
+      const isProtected = component.visibility === "protected" || component.declaration?.visibility === "protected";
+      if (!isConnector || isProtected) {
+        continue;
+      }
+    } else if (
       isRealClass &&
       (!placement || placement.visible === false || (!placement.transformation && placement.iconTransformation))
     ) {
@@ -518,7 +534,9 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     const componentClassInstance = component.classInstance;
     const isUnresolved = !componentClassInstance;
 
-    let componentTransform = computeIconPlacement(component, placement);
+    let componentTransform = isIconMode
+      ? computePortPlacement(component, placement)
+      : computeIconPlacement(component, placement);
     if (!componentTransform && placement && !placement.iconTransformation) {
       const icon =
         typeof componentClassInstance?.annotation === "function"
@@ -659,7 +677,14 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
         ],
       };
     } else {
-      componentMarkup = renderIconX6(componentClassInstance, component, false, undefined, needsMarkupMutation);
+      componentMarkup = renderIconX6(
+        componentClassInstance,
+        component,
+        false,
+        undefined,
+        needsMarkupMutation,
+        Math.min(absScaleX, absScaleY),
+      );
     }
 
     if (flipX || flipY) {
@@ -860,8 +885,10 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
 
         const portWidth = connectorTransform.width * absScaleX;
         const portHeight = connectorTransform.height * absScaleY;
-        const desiredCenterX = absWidth / 2 + connCenterX * componentTransform.scaleX;
-        const desiredCenterY = absHeight / 2 + connCenterY * componentTransform.scaleY;
+        const desiredCenterX =
+          absWidth / 2 + (connCenterX - (componentTransform.csMidX ?? 0)) * componentTransform.scaleX;
+        const desiredCenterY =
+          absHeight / 2 + (connCenterY - (componentTransform.csMidY ?? 0)) * componentTransform.scaleY;
 
         ports.push({
           id: connector.name ?? "",
@@ -961,6 +988,52 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     });
   }
 
+  // Precompute world port centers so vector-port subscripts (e.g. set1.u[1], u[2]) can preserve exact Line.points offsets
+  const portWorldMap = new Map<string, { x: number; y: number }>();
+  for (const node of nodes) {
+    const nx = node.x ?? 0;
+    const ny = node.y ?? 0;
+    const nw = node.width ?? 0;
+    const nh = node.height ?? 0;
+    const angleDeg = node.angle ?? 0;
+    const portItems = Array.isArray(node.ports) ? node.ports : (node.ports as any)?.items;
+    if (!portItems) continue;
+    for (const p of portItems) {
+      if (!p.id || !p.args || typeof p.args.x !== "number" || typeof p.args.y !== "number") continue;
+      let wx = nx + p.args.x;
+      let wy = ny + p.args.y;
+      if (angleDeg) {
+        const cx = nw / 2;
+        const cy = nh / 2;
+        const rad = (angleDeg * Math.PI) / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const dx = p.args.x - cx;
+        const dy = p.args.y - cy;
+        wx = nx + cx + dx * cos - dy * sin;
+        wy = ny + cy + dx * sin + dy * cos;
+      }
+      portWorldMap.set(`${node.id}.${p.id}`, { x: wx, y: wy });
+    }
+  }
+
+  const resolvePortAnchor = (
+    cellId: string,
+    portRef: string,
+    explicitPt: { x: number; y: number } | undefined,
+  ): string | { name: string; args?: { dx?: number; dy?: number } } => {
+    if (!explicitPt || !cellId || !portRef) return "center";
+    const basePort = portRef.replace(/\[.*\]$/, "");
+    const portPos = portWorldMap.get(`${cellId}.${portRef}`) ?? portWorldMap.get(`${cellId}.${basePort}`);
+    if (!portPos) return "center";
+    const dx = Math.round((explicitPt.x - portPos.x) * 100) / 100;
+    const dy = Math.round((explicitPt.y - portPos.y) * 100) / 100;
+    if ((Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+      return { name: "center", args: { dx, dy } };
+    }
+    return "center";
+  };
+
   // Build edges from connect equations
   const nodeIds = new Set(nodes.map((n) => n.id));
   const allCompNames = new Set(components.map((c) => c.name));
@@ -1018,19 +1091,24 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
         ? line.points.map((p: IPoint) => convertPoint(p)).map((p: [number, number]) => ({ x: p[0], y: p[1] }))
         : null;
 
+    const srcCell = c1.length > 1 ? baseC1 : "";
+    const srcPort = c1.length > 1 ? (c1[1] ?? "") : c1[0];
+    const tgtCell = c2.length > 1 ? baseC2 : "";
+    const tgtPort = c2.length > 1 ? (c2[1] ?? "") : c2[0];
+
     edges.push({
       id: `${c1.join(".")}-${c2.join(".")}`,
       zIndex: 1,
       source: {
-        cell: c1.length > 1 ? baseC1 : "",
-        port: c1.length > 1 ? (c1[1] ?? "") : c1[0],
-        anchor: "center",
+        cell: srcCell,
+        port: srcPort,
+        anchor: resolvePortAnchor(srcCell, srcPort, explicitLinePoints?.[0]),
         connectionPoint: { name: "anchor" },
       },
       target: {
-        cell: c2.length > 1 ? baseC2 : "",
-        port: c2.length > 1 ? (c2[1] ?? "") : c2[0],
-        anchor: "center",
+        cell: tgtCell,
+        port: tgtPort,
+        anchor: resolvePortAnchor(tgtCell, tgtPort, explicitLinePoints?.[explicitLinePoints.length - 1]),
         connectionPoint: { name: "anchor" },
       },
       vertices: line?.points
@@ -1054,20 +1132,136 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     });
   }
 
-  // Coordinate system
-  const diagram: IDiagram | null =
-    typeof classInstance?.annotation === "function" ? classInstance.annotation("Diagram") : null;
-  const ext0 = diagram?.coordinateSystem?.extent?.[0] ?? [-100, -100];
-  const ext1 = diagram?.coordinateSystem?.extent?.[1] ?? [100, 100];
-  const bgWidth = computeWidth(diagram?.coordinateSystem?.extent);
-  const bgHeight = computeHeight(diagram?.coordinateSystem?.extent);
+  // Coordinate system & background graphics (Icon layer vs Diagram layer)
+  const layerAnnotation: IDiagram | IIcon | null =
+    typeof classInstance?.annotation === "function"
+      ? (classInstance.annotation(isIconMode ? "Icon" : "Diagram") as IDiagram | IIcon | null)
+      : null;
+  const ext0 = layerAnnotation?.coordinateSystem?.extent?.[0] ?? [-100, -100];
+  const ext1 = layerAnnotation?.coordinateSystem?.extent?.[1] ?? [100, 100];
+  const bgWidth = computeWidth(layerAnnotation?.coordinateSystem?.extent);
+  const bgHeight = computeHeight(layerAnnotation?.coordinateSystem?.extent);
   const csX = Math.min(ext0[0], ext1[0]);
   const csY = -Math.max(ext0[1], ext1[1]);
 
-  // Diagram background graphics
+  // Background graphics & interactive Icon primitives
   let diagramBackground: X6Markup | null = null;
-  if (diagram) {
-    diagramBackground = renderDiagramX6(classInstance, diagram);
+  if (isIconMode) {
+    // 1. Render inherited (extends) Icon graphics as non-editable background layer
+    const inheritedDefs: X6Markup[] = [];
+    const inheritedItems: X6Markup[] = [];
+    const collectInheritedIcons = (ci: ModelicaClassInstance) => {
+      for (const ext of ci?.extendsClassInstances ?? []) {
+        const base = ext?.["classInstance"];
+        if (base) {
+          collectInheritedIcons(base);
+          const baseIcon = typeof base.annotation === "function" ? (base.annotation("Icon") as IIcon | null) : null;
+          if (baseIcon?.graphics) {
+            for (const g of baseIcon.graphics) {
+              inheritedItems.push(renderGraphicItemX6(g, inheritedDefs, base));
+            }
+          }
+        }
+      }
+    };
+    collectInheritedIcons(classInstance);
+    if (inheritedItems.length > 0 || inheritedDefs.length > 0) {
+      const children: X6Markup[] = [];
+      if (inheritedDefs.length > 0) children.push({ tagName: "defs", children: inheritedDefs });
+      children.push({ tagName: "g", children: inheritedItems });
+      diagramBackground = {
+        tagName: "svg",
+        attrs: {
+          width: "100%",
+          height: "100%",
+          viewBox: `${csX} ${csY} ${bgWidth} ${bgHeight}`,
+          preserveAspectRatio: "none",
+          overflow: "visible",
+        },
+        children,
+      };
+    }
+
+    // 2. Emit own Icon.graphics primitives as selectable/editable DiagramNodes
+    const ownGraphics = (layerAnnotation as IIcon | null)?.graphics ?? [];
+    const iconPrimitiveNodes: DiagramNode[] = [];
+    for (let gi = 0; gi < ownGraphics.length; gi++) {
+      const g = ownGraphics[gi]!;
+      let minX = -20;
+      let maxX = 20;
+      let minY = -20;
+      let maxY = 20;
+      const gExtent = (g as any).extent as [[number, number], [number, number]] | undefined;
+      const gPoints = (g as any).points as Array<[number, number]> | undefined;
+      if (Array.isArray(gExtent) && gExtent.length >= 2) {
+        minX = Math.min(gExtent[0][0], gExtent[1][0]);
+        maxX = Math.max(gExtent[0][0], gExtent[1][0]);
+        minY = Math.min(gExtent[0][1], gExtent[1][1]);
+        maxY = Math.max(gExtent[0][1], gExtent[1][1]);
+      } else if (Array.isArray(gPoints) && gPoints.length > 0) {
+        minX = Math.min(...gPoints.map((p) => p[0]));
+        maxX = Math.max(...gPoints.map((p) => p[0]));
+        minY = Math.min(...gPoints.map((p) => p[1]));
+        maxY = Math.max(...gPoints.map((p) => p[1]));
+      }
+      const origX = Array.isArray((g as any).origin) ? Number((g as any).origin[0]) || 0 : 0;
+      const origY = Array.isArray((g as any).origin) ? Number((g as any).origin[1]) || 0 : 0;
+      const nodeW = Math.max(4, maxX - minX);
+      const nodeH = Math.max(4, maxY - minY);
+      const nodeX = minX + origX;
+      const nodeY = -(maxY + origY);
+      const vbX = minX;
+      const vbY = -maxY;
+
+      const itemDefs: X6Markup[] = [];
+      const itemShape = renderGraphicItemX6(g, itemDefs, classInstance);
+      const svgChildren: X6Markup[] = [];
+      if (itemDefs.length > 0) svgChildren.push({ tagName: "defs", children: itemDefs });
+      svgChildren.push(itemShape);
+
+      iconPrimitiveNodes.push({
+        id: `__icon_gfx_${gi}`,
+        x: nodeX,
+        y: nodeY,
+        width: nodeW,
+        height: nodeH,
+        angle: typeof (g as any).rotation === "number" ? -(g as any).rotation : 0,
+        opacity: 1,
+        zIndex: gi + 1,
+        markup: {
+          tagName: "svg",
+          attrs: {
+            width: nodeW,
+            height: nodeH,
+            viewBox: `${vbX} ${vbY} ${nodeW} ${nodeH}`,
+            preserveAspectRatio: "none",
+            overflow: "visible",
+          },
+          children: svgChildren,
+        },
+        ports: { items: [], groups: {} },
+        properties: {
+          name: `${g["@type"]} #${gi + 1}`,
+          className: g["@type"],
+          classKind: "iconGraphic",
+          description: "",
+          parameters: [],
+        },
+        data: {
+          isIconPrimitive: true,
+          primitiveIndex: gi,
+          primitiveType: g["@type"],
+          primitive: g,
+          diagramType: "icon",
+        },
+      });
+    }
+    if (iconPrimitiveNodes.length > 0) {
+      // Place graphic primitives behind connector port nodes
+      nodes.unshift(...iconPrimitiveNodes);
+    }
+  } else if (layerAnnotation) {
+    diagramBackground = renderDiagramX6(classInstance, layerAnnotation as IDiagram);
   }
 
   // Pre-compute solder dots for edges with known vertices/connections
@@ -1231,7 +1425,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
       componentBoxes,
     });
     for (const dot of precomputedDots) {
-      nodes.push(solderDotToDiagramNode(dot, 3));
+      nodes.push(solderDotToDiagramNode(dot, 1.8));
     }
   }
 
@@ -1244,9 +1438,9 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
       width: bgWidth,
       height: bgHeight,
       extent: [ext0, ext1],
-      grid: diagram?.coordinateSystem?.grid ?? [2, 2],
-      preserveAspectRatio: diagram?.coordinateSystem?.preserveAspectRatio ?? true,
-      initialScale: diagram?.coordinateSystem?.initialScale ?? 0.1,
+      grid: layerAnnotation?.coordinateSystem?.grid ?? [2, 2],
+      preserveAspectRatio: layerAnnotation?.coordinateSystem?.preserveAspectRatio ?? true,
+      initialScale: layerAnnotation?.coordinateSystem?.initialScale ?? 0.1,
       boundsStyle: {
         visible: true,
         stroke: "#999",
@@ -1262,6 +1456,7 @@ export async function buildDiagramData(classInstance: ModelicaClassInstance): Pr
     diagramBackground,
     metadata: {
       language: "modelica",
+      diagramType: isIconMode ? "icon" : "diagram",
       defaultConnector: "normal",
     },
   };
@@ -1510,6 +1705,7 @@ export function renderIconX6(
   ports?: boolean,
   defs?: X6Markup[],
   clone = true,
+  iconScale?: number,
 ): X6Markup {
   const isRoot = !defs;
   const localDefs = defs ?? [];
@@ -1566,7 +1762,7 @@ export function renderIconX6(
     if (extendsClassInstance["classInstance"] && svg.children) {
       const baseCls = extendsClassInstance["classInstance"];
       const baseComp = isTopLevel && isClassIconStatic(baseCls) ? undefined : effectiveComponent;
-      svg.children.push(renderIconX6(baseCls, baseComp, ports, localDefs, false));
+      svg.children.push(renderIconX6(baseCls, baseComp, ports, localDefs, false, iconScale));
       renderedBaseIcon = true;
     } else if (
       extendsClassInstance.name &&
@@ -1613,7 +1809,7 @@ export function renderIconX6(
   const group: X6Markup = { tagName: "g", children: [] };
   if (group.children && icon?.graphics) {
     for (const graphicItem of icon.graphics ?? []) {
-      group.children.push(renderGraphicItemX6(graphicItem, localDefs, classInstance, componentInstance));
+      group.children.push(renderGraphicItemX6(graphicItem, localDefs, classInstance, componentInstance, iconScale));
     }
   }
 
@@ -1710,6 +1906,7 @@ function renderGraphicItemX6(
   defs: X6Markup[],
   classInstance?: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
+  iconScale?: number,
 ): X6Markup {
   let shape: X6Markup;
   switch (graphicItem["@type"]) {
@@ -1729,7 +1926,7 @@ function renderGraphicItemX6(
       shape = renderRectangleX6(graphicItem as IRectangle, defs);
       break;
     case "Text":
-      shape = renderTextX6(graphicItem as IText, classInstance, componentInstance);
+      shape = renderTextX6(graphicItem as IText, classInstance, componentInstance, iconScale);
       break;
     default:
       return { tagName: "g", children: [] };
@@ -2240,6 +2437,42 @@ export function parseIfThenElse(expr: string): { cond: string; thenVal: string; 
   return null;
 }
 
+function resolveElementUnit(element: unknown): string | undefined {
+  if (!element || typeof element !== "object") return undefined;
+  const el = element as {
+    modification?: { getModificationArgument?: (n: string) => { expression?: unknown } };
+    classInstance?: {
+      name?: string;
+      modification?: { getModificationArgument?: (n: string) => { expression?: unknown } };
+    };
+    declaration?: { metadata?: { unit?: unknown; typeSpecifier?: string } };
+    unit?: unknown;
+  };
+  const unitExpr =
+    el.modification?.getModificationArgument?.("unit")?.expression ??
+    el.classInstance?.modification?.getModificationArgument?.("unit")?.expression;
+  const rawUnitVal = formatPropertyValue(unitExpr);
+  const rawUnit = rawUnitVal !== undefined ? stripOuterDoubleQuotes(rawUnitVal) : undefined;
+  if (rawUnit) return formatUnit(rawUnit);
+
+  const metaUnit = el.declaration?.metadata?.unit ?? el.unit;
+  if (typeof metaUnit === "string" && metaUnit.length > 0) return formatUnit(metaUnit);
+
+  const typeSpec = el.declaration?.metadata?.typeSpecifier ?? el.classInstance?.name ?? "";
+  if (typeSpec.includes("LinearTemperatureCoefficient")) return "1/K";
+  if (typeSpec.includes("Resistance")) return "Ω";
+  if (typeSpec.includes("Inductance")) return "H";
+  if (typeSpec.includes("Capacitance")) return "F";
+  if (typeSpec.includes("Voltage") || typeSpec.includes("Potential")) return "V";
+  if (typeSpec.includes("Current")) return "A";
+  if (typeSpec.includes("TemperatureSlope")) return "K/s";
+  if (typeSpec.includes("Temperature")) return "K";
+  if (typeSpec.includes("Time")) return "s";
+  if (typeSpec.includes("Frequency")) return "Hz";
+  if (typeSpec.includes("Power")) return "W";
+  return undefined;
+}
+
 export function evaluateMacroExpression(
   expr: string,
   classInstance?: ModelicaClassInstance,
@@ -2347,19 +2580,8 @@ export function evaluateMacroExpression(
 
   const finalVal = compVal ?? elemVal;
 
-  let unitString = "";
-  if (
-    namedElement &&
-    !("entry" in namedElement) &&
-    !("declaration" in namedElement) &&
-    "classInstance" in namedElement
-  ) {
-    const mod = (namedElement as ModelicaComponentInstance).classInstance?.["modification"] as any;
-    const unitExpr = mod?.getModificationArgument?.("unit")?.expression;
-    const rawUnitVal = formatPropertyValue(unitExpr);
-    const rawUnit = rawUnitVal !== undefined ? stripOuterDoubleQuotes(rawUnitVal) : undefined;
-    if (rawUnit) unitString = " " + formatUnit(rawUnit);
-  }
+  const resolvedUnit = resolveElementUnit(namedElement);
+  const unitString = resolvedUnit ? " " + resolvedUnit : "";
 
   if (finalVal !== undefined && finalVal !== "") {
     return finalVal + unitString;
@@ -2384,6 +2606,7 @@ function renderTextX6(
   graphicItem: IText,
   classInstance?: ModelicaClassInstance,
   componentInstance?: ModelicaComponentInstance,
+  iconScale?: number,
 ): X6Markup {
   const [x1, y1] = convertPoint(graphicItem?.extent?.[0], [0, 0]);
   const [x2, y2] = convertPoint(graphicItem?.extent?.[1], [0, 0]);
@@ -2415,17 +2638,31 @@ function renderTextX6(
   }
 
   // fontSize=0 means "auto-size to fit extent" in Modelica.
-  // Since we can't use DOM-based getComputedTextLength() in the web worker,
-  // approximate: fit text within the extent based on character count.
+  // For external component labels (%name, %period, etc.), OMEdit keeps a readable
+  // minimum font size and truncates overflow with "..." rather than shrinking to illegible sizes.
   let fontSize = graphicItem.fontSize ?? 0;
+  const isExternalLabel = rawText.includes("%") && (rawText === "%name" || Math.max(Math.abs(y1), Math.abs(y2)) > 100);
   if (fontSize === 0) {
-    const charCount = Math.max(textContent.length, 1);
-    // Approximate: each character is ~0.6x the font size in width
-    // So: charCount * 0.6 * fontSize <= width => fontSize <= width / (charCount * 0.6)
-    const maxByWidth = width / (charCount * 0.6);
-    const maxByHeight = height;
-    fontSize = Math.min(maxByWidth, maxByHeight) * 0.9; // 90% to leave some margin
-    fontSize = Math.max(fontSize, 4); // minimum legible size
+    if (isExternalLabel) {
+      const scale = iconScale && iconScale > 0 ? iconScale : 0.1;
+      const minIconFontSize = 2.85 / scale;
+      fontSize = Math.max(height * 0.72, minIconFontSize);
+      const charWidth = fontSize * 0.54;
+      if (width > 0 && textContent.length * charWidth > width) {
+        const maxChars = Math.max(1, Math.floor(width / charWidth) - 2);
+        if (maxChars < textContent.length) {
+          textContent = textContent.slice(0, maxChars) + "...";
+        }
+      }
+    } else {
+      const charCount = Math.max(textContent.length, 1);
+      // Approximate: each character is ~0.6x the font size in width
+      // So: charCount * 0.6 * fontSize <= width => fontSize <= width / (charCount * 0.6)
+      const maxByWidth = width / (charCount * 0.6);
+      const maxByHeight = height;
+      fontSize = Math.min(maxByWidth, maxByHeight) * 0.78; // leave clean margin like OMEdit
+      fontSize = Math.max(fontSize, 4); // minimum legible size
+    }
   }
   const fontName = graphicItem.fontName ?? "sans-serif";
   const textColor = convertColor(graphicItem.lineColor ?? (graphicItem as any).textColor, "rgb(0,0,0)");
@@ -2576,7 +2813,13 @@ function applyLineStyleX6(shape: X6Markup, graphicItem: IFilledShape | ILine): v
   }
 
   const strokeColor = convertColor(color, "rgb(0,0,0)");
-  const strokeWidth = (thickness ?? 0.25) * 2;
+  const rawThickness = thickness ?? 0.25;
+  const strokeWidth =
+    rawThickness <= 0.25
+      ? graphicItem["@type"] === "Line"
+        ? 1.0
+        : 0.85
+      : Math.min(3.5, Math.round((0.85 + (rawThickness - 0.25) * 0.35) * 100) / 100);
   const rawLinePattern = pattern;
   let linePattern = "solid";
   if (typeof rawLinePattern === "string") {
@@ -3578,29 +3821,7 @@ export function buildComponentProperties(
       }
 
       // Unit
-      let unit: string | undefined = undefined;
-      const unitExpr = (element.classInstance?.modification as any)?.getModificationArgument?.("unit")?.expression;
-      const rawUnitVal = formatPropertyValue(unitExpr);
-      const rawUnit = rawUnitVal !== undefined ? stripOuterDoubleQuotes(rawUnitVal) : undefined;
-      const metaUnit = element.declaration?.metadata?.unit ?? (element as { unit?: unknown }).unit;
-      if (rawUnit) {
-        unit = formatUnit(rawUnit);
-      } else if (typeof metaUnit === "string" && metaUnit.length > 0) {
-        unit = formatUnit(metaUnit);
-      } else {
-        const typeSpec = element.declaration?.metadata?.typeSpecifier ?? element.classInstance?.name ?? "";
-        if (typeSpec.includes("LinearTemperatureCoefficient")) unit = "1/K";
-        else if (typeSpec.includes("Resistance")) unit = "Ω";
-        else if (typeSpec.includes("Inductance")) unit = "H";
-        else if (typeSpec.includes("Capacitance")) unit = "F";
-        else if (typeSpec.includes("Voltage") || typeSpec.includes("Potential")) unit = "V";
-        else if (typeSpec.includes("Current")) unit = "A";
-        else if (typeSpec.includes("TemperatureSlope")) unit = "K/s";
-        else if (typeSpec.includes("Temperature")) unit = "K";
-        else if (typeSpec.includes("Time")) unit = "s";
-        else if (typeSpec.includes("Frequency")) unit = "Hz";
-        else if (typeSpec.includes("Power")) unit = "W";
-      }
+      const unit = resolveElementUnit(element);
 
       // Description
       let elemDescription = element.description;

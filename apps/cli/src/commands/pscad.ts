@@ -17,10 +17,10 @@ import { diffPscadProjects, renderPscadSvg } from "@modelscript/diagram/pscad-di
 import {
   buildFmuFromLibraryPackage,
   emtResultToComtrade,
+  EmtSolver,
   extractEmtNetlist,
   extractPscadLibraryPackage,
   lintPscx,
-  netlistToEmtCircuit,
   parsePscx,
   pscadToModelica,
   pscadToSsd,
@@ -34,7 +34,6 @@ import {
   writePscadOut,
   writePscadPsout,
 } from "@modelscript/pscad";
-import { EmtSolver, type EmtCircuitDefinition } from "@modelscript/simulate";
 import fs from "node:fs";
 import path from "node:path";
 import type { CommandModule } from "yargs";
@@ -384,20 +383,18 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
         const durationSec = (args["tstop"] as number) ?? project.settings.durationSec;
 
         const netlist = extractEmtNetlist(project);
-        const circuit = netlistToEmtCircuit(netlist) as unknown as EmtCircuitDefinition;
 
-        const solver = new EmtSolver(circuit, {
+        const solver = new EmtSolver(netlist, {
           timeStepSec: stepSec,
           durationSec,
           nominalFrequencyHz: netlist.nominalFrequencyHz,
-          threePhase: true,
-          steadyStateInit: true,
-          maxNonlinearIterations: 6,
+          enableCda: true,
+          enableSwitchingInterpolation: true,
         });
 
         const result = solver.solve();
         console.log(
-          `✓ Simulation completed in ${result.metrics.wallClockTimeMs} ms (${result.metrics.totalSteps} steps, ${result.metrics.factorizationCount} factorizations).`,
+          `✓ Simulation completed in ${result.metrics.executionTimeMs.toFixed(1)} ms (${result.metrics.totalSteps} steps, ${result.metrics.luFactorizations} factorizations).`,
         );
         console.log(`  Buses solved: ${result.busVoltages.size}`);
         console.log(`  Branches solved: ${result.branchCurrents.size}`);
@@ -420,7 +417,7 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
             const psoutBytes = writePscadPsout(result, { projectName: project.name });
             put(`${base}.psout`, psoutBytes);
           } else {
-            const rec = emtResultToComtrade(result, project.name);
+            const rec = emtResultToComtrade(result, project.name, "EMT01", netlist.nominalFrequencyHz);
             if (fmt === "comtrade") {
               const c = writeComtrade(rec);
               put(`${base}.cfg`, c.cfg);
@@ -456,41 +453,43 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
         const durationSec = typeof args["tstop"] === "number" && args["tstop"] > 0 ? args["tstop"] : 0.25;
         const vNomKv = netlist.buses.get(targetPoiBus)?.baseKv ?? 230;
 
-        const baseCircuit = netlistToEmtCircuit(netlist);
-        const sources =
-          baseCircuit.sources && baseCircuit.sources.length > 0
-            ? baseCircuit.sources
-            : [
-                {
-                  bus: targetPoiBus,
-                  vPeakKv: vNomKv,
-                  freqHz: netlist.nominalFrequencyHz,
-                },
-              ];
-
-        const circuit: EmtCircuitDefinition = {
-          ...(baseCircuit as unknown as EmtCircuitDefinition),
-          sources,
-          faults:
-            baseCircuit.faults && baseCircuit.faults.length > 0
-              ? (baseCircuit.faults as NonNullable<EmtCircuitDefinition["faults"]>)
+        const netlistForSim = {
+          ...netlist,
+          sources:
+            netlist.sources.length > 0
+              ? netlist.sources
               : [
                   {
+                    id: "SRC_GRID",
+                    name: "SRC_GRID",
+                    bus: targetPoiBus,
+                    vPeakKv: (vNomKv * Math.SQRT2) / Math.sqrt(3),
+                    frequencyHz: netlist.nominalFrequencyHz,
+                    phaseRad: 0,
+                    mvaRating: 1000,
+                  },
+                ],
+          faults:
+            netlist.faults && netlist.faults.length > 0
+              ? netlist.faults
+              : [
+                  {
+                    id: "FLT_IEEE2800",
                     bus: targetPoiBus,
                     startSec: 0.05,
-                    durationSec: 0.15,
-                    faultResistanceOhm: 0.05,
-                    faultType: "SLG",
+                    endSec: 0.2,
+                    rFaultOhm: 0.05,
+                    faultType: "SLG" as const,
                   },
                 ],
         };
 
-        const solver = new EmtSolver(circuit, {
+        const solver = new EmtSolver(netlistForSim, {
           timeStepSec: stepSec,
           durationSec,
           nominalFrequencyHz: netlist.nominalFrequencyHz,
-          threePhase: true,
-          steadyStateInit: true,
+          enableCda: true,
+          enableSwitchingInterpolation: true,
         });
 
         const result = solver.solve();

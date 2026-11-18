@@ -70,6 +70,7 @@ describe("package.json#modelscript Pre-Indexed Libraries, FMU & Clean-Room Minin
 
   it("registers built-in PSCAD master library into globalLibraryRegistry", () => {
     const pkg = ensureBuiltInPscadLibraryRegistered();
+    assert.ok(pkg);
     assert.equal(pkg.packageName, "@modelscript/pscad-master-lib");
     const spec = getPscadDiagramSpecFromLibraries("master:resistor");
     assert.ok(spec);
@@ -317,7 +318,7 @@ describe("package.json#modelscript Pre-Indexed Libraries, FMU & Clean-Room Minin
 
     const stripped = extractPscadLibraryPackage(pslx);
     assert.equal(stripped.symbols[0]?.namePath, "PropLib:MyBlock");
-    assert.equal(stripped.symbols[0]?.metadata?.description, undefined);
+    assert.equal(stripped.symbols[0]?.metadata?.["description"], undefined);
     assert.equal(stripped.files.has("src/legacy/MyBlock.fortran.txt"), false);
     assert.ok(stripped.files.get("src/MyBlock.ts")?.includes("MyBlock_stampCompanion"));
     assert.ok(stripped.files.get("fmus/MyBlock/modelDescription.xml")?.includes("org.fmi-standard.fmi-ls-emt"));
@@ -327,7 +328,7 @@ describe("package.json#modelscript Pre-Indexed Libraries, FMU & Clean-Room Minin
       includeScripts: true,
       implLang: "c",
     });
-    assert.ok(withIp.symbols[0]?.metadata?.description);
+    assert.ok(withIp.symbols[0]?.metadata?.["description"]);
     assert.ok(withIp.files.has("src/legacy/MyBlock.fortran.txt"));
     assert.ok(withIp.files.has("src/MyBlock.c"));
 

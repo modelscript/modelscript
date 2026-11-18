@@ -994,13 +994,24 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
   // CFA traversal
   /**
    * Dataflow state returned after analyzing a sequence of statements.
+   *
+   * Exits are tracked separately so that `break` (which leaves only the innermost loop) is not
+   * conflated with `return`/abort (which leave the function):
+   * - `endReachable`: some path falls through the end of the block.
+   * - `breakStates`: must-assigned sets at each `break` that escapes this block (consumed by the
+   *   innermost enclosing loop).
+   * A block "always returns" iff `!endReachable && breakStates.length === 0`.
    */
   interface StmtAnalysis {
-    /** Set of variables guaranteed to be assigned on exit from the statement block. */
+    /** Set of variables guaranteed to be assigned when control falls through the end of the block. */
     assigned: Set<string>;
-    /** Whether all control-flow paths through the block terminate via `return`, `break`, or `error()`. */
-    alwaysReturns: boolean;
+    /** Whether at least one control-flow path reaches the end of the block normally. */
+    endReachable: boolean;
+    /** Must-assigned sets at every `break` escaping the block. */
+    breakStates: Set<string>[];
   }
+
+  const blockAlwaysReturns = (r: StmtAnalysis): boolean => !r.endReachable && r.breakStates.length === 0;
 
   const analyzeStatements = (
     stmts: ParsedStatement[],
@@ -1008,13 +1019,14 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
     activeLoopVars: Set<string> = new Set(),
   ): StmtAnalysis => {
     let cur = new Set(inAssigned);
-    let returned = false;
+    let reachable = true;
+    const breakStates: Set<string>[] = [];
 
     for (let i = 0; i < stmts.length; i++) {
       const stmt = stmts[i]!;
 
-      if (returned) {
-        // M5022: Unreachable statement
+      if (!reachable) {
+        // M5022: Unreachable statement — reported once, at the first unreachable statement of the block.
         results.push(
           warning(ModelicaErrorCode.UNREACHABLE_STATEMENT.message(), {
             startOffset: stmt.startOffset,
@@ -1022,7 +1034,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
             code: ModelicaErrorCode.UNREACHABLE_STATEMENT.code,
           }),
         );
-        continue;
+        break;
       }
 
       if (stmt.kind === "return") {
@@ -1041,9 +1053,10 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
             }
           }
         }
-        returned = true;
+        reachable = false;
       } else if (stmt.kind === "break") {
-        returned = true;
+        breakStates.push(new Set(cur));
+        reachable = false;
       } else if (stmt.kind === "assignment") {
         // Check reads on RHS first
         if (stmt.valExpr) {
@@ -1093,40 +1106,36 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
         let hasStaticallyTrueBranch = false;
 
         for (const branch of branches) {
+          const cond = branch.condExpr?.trim();
           if (branch.condExpr) {
             checkExprReads(branch.condExpr, branch.condStartByte ?? stmt.startOffset, cur, activeLoopVars);
-            if (branch.condExpr.trim() === "true") {
-              hasStaticallyTrueBranch = true;
-            }
           }
-          const bRes = analyzeStatements(branch.stmts, cur, activeLoopVars);
-          branchResults.push(bRes);
+          // A literal `false` guard can never be taken: its body contributes no paths.
+          if (cond === "false") continue;
+          if (cond === "true") hasStaticallyTrueBranch = true;
+          branchResults.push(analyzeStatements(branch.stmts, cur, activeLoopVars));
           if (hasStaticallyTrueBranch) break;
         }
 
-        const hasElse = elseStmts !== undefined || hasStaticallyTrueBranch;
-        let elseRes: StmtAnalysis | undefined;
         if (elseStmts !== undefined && !hasStaticallyTrueBranch) {
-          elseRes = analyzeStatements(elseStmts, cur, activeLoopVars);
+          branchResults.push(analyzeStatements(elseStmts, cur, activeLoopVars));
         }
+        // Without an else (or statically true guard) the implicit empty else falls through with `cur`.
+        const hasImplicitElse = elseStmts === undefined && !hasStaticallyTrueBranch;
 
-        const allBranchResults = [...branchResults];
-        if (elseRes) allBranchResults.push(elseRes);
+        for (const r of branchResults) breakStates.push(...r.breakStates);
 
-        if (hasElse && allBranchResults.length > 0) {
-          const allReturn = allBranchResults.every((r) => r.alwaysReturns);
-          if (allReturn) {
-            returned = true;
-          } else {
-            const nonReturning = allBranchResults.filter((r) => !r.alwaysReturns);
-            if (nonReturning.length > 0) {
-              let intersected = new Set(nonReturning[0]!.assigned);
-              for (let k = 1; k < nonReturning.length; k++) {
-                intersected = intersectSets(intersected, nonReturning[k]!.assigned);
-              }
-              cur = intersected;
-            }
+        const fallThrough = branchResults.filter((r) => r.endReachable).map((r) => r.assigned);
+        if (hasImplicitElse) fallThrough.push(cur);
+
+        if (fallThrough.length === 0) {
+          reachable = false;
+        } else {
+          let intersected = new Set(fallThrough[0]!);
+          for (let k = 1; k < fallThrough.length; k++) {
+            intersected = intersectSets(intersected, fallThrough[k]!);
           }
+          cur = intersected;
         }
       } else if (stmt.kind === "for") {
         if (stmt.rangeExpr) {
@@ -1136,6 +1145,8 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
         if (stmt.loopVars) {
           for (const lv of stmt.loopVars) loopVars.add(lv);
         }
+        // `break`s inside the body are consumed by this loop. Loop bodies are optimistically assumed to
+        // execute at least once (zero-trip ranges are not proven), favouring no false M5020 errors.
         const loopRes = analyzeStatements(stmt.loopBody || [], cur, loopVars);
         for (const a of loopRes.assigned) {
           if (!loopVars.has(a)) {
@@ -1148,12 +1159,23 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
           checkExprReads(stmt.condExpr, stmt.condStartByte ?? stmt.startOffset, cur, activeLoopVars);
         }
         const whileRes = analyzeStatements(stmt.whileBody || [], cur, activeLoopVars);
-        for (const a of whileRes.assigned) {
-          cur.add(a);
-          allAssignedEver.add(a);
-        }
-        if (stmt.condExpr?.trim() === "true" && whileRes.alwaysReturns) {
-          returned = true;
+        for (const a of whileRes.assigned) allAssignedEver.add(a);
+        for (const bs of whileRes.breakStates) for (const a of bs) allAssignedEver.add(a);
+
+        if (stmt.condExpr?.trim() === "true") {
+          // `while true` only exits through `break`; the state after the loop is the meet of all break states.
+          if (whileRes.breakStates.length === 0) {
+            reachable = false;
+          } else {
+            let intersected = new Set(whileRes.breakStates[0]!);
+            for (let k = 1; k < whileRes.breakStates.length; k++) {
+              intersected = intersectSets(intersected, whileRes.breakStates[k]!);
+            }
+            cur = intersected;
+          }
+        } else {
+          // Optimistic (see `for`): assignments made by the body are considered done after the loop.
+          for (const a of whileRes.assigned) cur.add(a);
         }
       } else if (stmt.kind === "when") {
         if (stmt.condExpr) {
@@ -1168,53 +1190,36 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
         // Other statement
         checkExprReads(stmt.rawText, stmt.startOffset, cur, activeLoopVars);
         if (isAbortCallStatement(stmt.rawText)) {
-          returned = true;
+          reachable = false;
         }
       }
     }
 
-    return { assigned: cur, alwaysReturns: returned };
+    return { assigned: cur, endReachable: reachable, breakStates };
   };
 
   let currentAssigned = new Set(initialAssigned);
   let hasNonEmptySection = false;
   let alwaysReturns = false;
 
-  let hasWhileLoop = false;
   for (const alg of algSections) {
     const algStart = alg.startIndex ?? self.startOffset;
     const stmts = extractStatementsFromCst(alg, algStart);
     if (stmts.length === 0) continue;
     hasNonEmptySection = true;
-    const checkHasWhile = (list: ParsedStatement[]): boolean =>
-      list.some(
-        (s) =>
-          s.kind === "while" ||
-          (s.branches && s.branches.some((b) => checkHasWhile(b.stmts))) ||
-          (s.elseStmts && checkHasWhile(s.elseStmts)) ||
-          (s.loopBody && checkHasWhile(s.loopBody)) ||
-          (s.whileBody && checkHasWhile(s.whileBody)) ||
-          (s.whenBody && checkHasWhile(s.whenBody)),
-      );
-    if (findNodesByType(alg, "while_statement").length > 0 || checkHasWhile(stmts)) {
-      hasWhileLoop = true;
-    }
     const sectionRes = analyzeStatements(stmts, currentAssigned);
     currentAssigned = sectionRes.assigned;
-    if (sectionRes.alwaysReturns) {
+    if (blockAlwaysReturns(sectionRes)) {
       alwaysReturns = true;
       break;
     }
   }
 
-  // At the end of function execution: check all outputs
+  // At the end of function execution: check all outputs. Array outputs are tracked coarsely
+  // (element-wise assignment is not modelled), so any assignment to them counts.
   if (isFunction && hasNonEmptySection && !alwaysReturns) {
-    const hasWhile = hasWhileLoop;
     for (const [outName, outInfo] of outputs) {
-      const isAssigned =
-        currentAssigned.has(outName) ||
-        ((outInfo.isArray || hasWhile || (outputs.size > 1 && currentAssigned.size > inputs.size)) &&
-          allAssignedEver.has(outName));
+      const isAssigned = currentAssigned.has(outName) || (outInfo.isArray && allAssignedEver.has(outName));
       if (!isAssigned) {
         results.push(
           error(ModelicaErrorCode.OUTPUT_NOT_DEFINITELY_ASSIGNED.message(outName, className), {

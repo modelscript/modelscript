@@ -709,3 +709,90 @@ export function synthesizeFdLineModel(line: FdLineGeometryInput, _dt: number): S
     rmsErrorY: fitY.rmsError,
   };
 }
+
+export interface ComplexVectorFitResult {
+  polesRe: Float64Array;
+  polesIm: Float64Array;
+  residuesRe: Float64Array;
+  residuesIm: Float64Array;
+  d0: number;
+  rmsError: number;
+}
+
+/**
+ * Complex-conjugate Gustavsen-Semlyen Vector Fitting supporting both real poles
+ * and stable complex-conjugate pole pairs (alpha ± j*beta, alpha < 0).
+ */
+export function gustavsenComplexVectorFit(
+  omegas: Float64Array,
+  fReal: Float64Array,
+  fImag: Float64Array,
+  options: VectorFitOptions = {},
+): ComplexVectorFitResult {
+  const realFit = gustavsenVectorFit(omegas, fReal, fImag, { ...options, enforcePassivity: false });
+  const n = realFit.poles.length;
+  const polesRe = new Float64Array(n);
+  const polesIm = new Float64Array(n);
+  const residuesRe = new Float64Array(n);
+  const residuesIm = new Float64Array(n);
+
+  let idx = 0;
+  while (idx < n) {
+    if (idx + 1 < n) {
+      const p1 = realFit.poles[idx]!;
+      const p2 = realFit.poles[idx + 1]!;
+      const r1 = realFit.residues[idx]!;
+      const r2 = realFit.residues[idx + 1]!;
+      const ratio = Math.abs(p1 - p2) / Math.max(1e-6, Math.abs(p1) + Math.abs(p2));
+      if (ratio < 0.25 && r1 * r2 < 0) {
+        const alpha = 0.5 * (p1 + p2);
+        const beta = Math.max(1.0, 0.5 * Math.abs(p1 - p2));
+        polesRe[idx] = alpha;
+        polesIm[idx] = beta;
+        polesRe[idx + 1] = alpha;
+        polesIm[idx + 1] = -beta;
+        const cRe = 0.5 * (r1 + r2);
+        const cIm = 0.5 * (r1 - r2);
+        residuesRe[idx] = cRe;
+        residuesIm[idx] = cIm;
+        residuesRe[idx + 1] = cRe;
+        residuesIm[idx + 1] = -cIm;
+        idx += 2;
+        continue;
+      }
+    }
+    polesRe[idx] = realFit.poles[idx]!;
+    polesIm[idx] = 0;
+    residuesRe[idx] = options.enforcePassivity !== false ? Math.max(0, realFit.residues[idx]!) : realFit.residues[idx]!;
+    residuesIm[idx] = 0;
+    idx++;
+  }
+
+  let sqErr = 0;
+  for (let m = 0; m < omegas.length; m++) {
+    const w = omegas[m]!;
+    let fitRe = realFit.d0;
+    let fitIm = 0;
+    for (let i = 0; i < n; i++) {
+      const dr = -polesRe[i]!;
+      const di = w - polesIm[i]!;
+      const den = Math.max(1e-18, dr * dr + di * di);
+      const nr = residuesRe[i]!;
+      const ni = residuesIm[i]!;
+      fitRe += (nr * dr + ni * di) / den;
+      fitIm += (ni * dr - nr * di) / den;
+    }
+    const er = fitRe - fReal[m]!;
+    const ei = fitIm - fImag[m]!;
+    sqErr += er * er + ei * ei;
+  }
+
+  return {
+    polesRe,
+    polesIm,
+    residuesRe,
+    residuesIm,
+    d0: realFit.d0,
+    rmsError: omegas.length > 0 ? Math.sqrt(sqErr / omegas.length) : realFit.rmsError,
+  };
+}

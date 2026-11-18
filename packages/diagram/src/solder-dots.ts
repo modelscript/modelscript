@@ -260,12 +260,13 @@ function computeSolderDotsSingleNet(validEdges: EdgePath[], opts: ComputeSolderD
   const seenIds = new Set<string>();
 
   for (const C of clusters) {
-    // Exclude clusters located on component connection ports/pins
+    // Exclude clusters located directly on component connection ports/pins
     if (portPoints && portPoints.length > 0) {
+      const portExclusionSq = Math.min(tolSq * 0.25, 2.25);
       let isAtPort = false;
       for (const pp of portPoints) {
         const d2 = (C.x - pp.x) * (C.x - pp.x) + (C.y - pp.y) * (C.y - pp.y);
-        if (d2 <= tolSq * 1.5) {
+        if (d2 <= portExclusionSq) {
           isAtPort = true;
           break;
         }
@@ -277,12 +278,7 @@ function computeSolderDotsSingleNet(validEdges: EdgePath[], opts: ComputeSolderD
     if (opts.componentBoxes && opts.componentBoxes.length > 0) {
       let insideBox = false;
       for (const box of opts.componentBoxes) {
-        if (
-          C.x > box.x + 1 &&
-          C.x < box.x + box.width - 1 &&
-          C.y > box.y + 1 &&
-          C.y < box.y + box.height - 1
-        ) {
+        if (C.x > box.x + 1 && C.x < box.x + box.width - 1 && C.y > box.y + 1 && C.y < box.y + box.height - 1) {
           insideBox = true;
           break;
         }
@@ -389,7 +385,7 @@ function computeSolderDotsSingleNet(validEdges: EdgePath[], opts: ComputeSolderD
 /**
  * Converts a SolderDot into an AntV X6 node suitable for serialization.
  */
-export function solderDotToDiagramNode(dot: SolderDot, size = 3) {
+export function solderDotToDiagramNode(dot: SolderDot, size = 1.8) {
   const r = size / 2;
   return {
     id: dot.id,
@@ -540,12 +536,7 @@ export function computeWireCrossings(
       if (componentBoxes.length > 0) {
         let insideBox = false;
         for (const box of componentBoxes) {
-          if (
-            cx > box.x + 1 &&
-            cx < box.x + box.width - 1 &&
-            cy > box.y + 1 &&
-            cy < box.y + box.height - 1
-          ) {
+          if (cx > box.x + 1 && cx < box.x + box.width - 1 && cy > box.y + 1 && cy < box.y + box.height - 1) {
             insideBox = true;
             break;
           }

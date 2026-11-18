@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { CsmfControlGraph, type CsmfBlockConfig } from "@modelscript/simulate/solvers";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { CsmfControlGraph, type CsmfBlockConfig } from "../../../packages/simulate/src/solvers/emt/index.js";
 import { analyzeControlIntervals } from "../src/analysis/control-intervals.js";
 import type { EmtControlBlock } from "../src/types.js";
 

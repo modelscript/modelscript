@@ -13,19 +13,29 @@ import { ContactShadows, GizmoHelper, GizmoViewport, Grid, Html, OrbitControls, 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { generateLocalTetMeshAsync, runLocalCfdStudyAsync, runLocalFeaStudyAsync } from "../util/cae-local-runner";
 import type { AnimationController } from "./animation-controller";
 import { AnimationTimeline } from "./AnimationTimeline";
 import { CadBindingPickerModal } from "./CadBindingPickerModal";
 import {
+  buildCaeSimulationModel,
+  CaePostProcessDrawer,
+  CaeSimulationTree,
+  ScalarColorbarLegend,
+  type CaeSimulationRunEntry,
+} from "./CaeSimulationTree";
+import {
+  CadEdgeOverlay,
   ensureGeometryBrushedUvs,
   Gdt3dOverlay,
   HeroStudioEnvironment,
   resolveHeroAlloyConfig,
   SplitSectionGeometryPasses,
   StencilSectionCapQuad,
+  StudioSsaoPass,
 } from "./HeroCadMaterials";
 import { InstancedCadAssembly } from "./InstancedCadAssembly";
-import { VtkRenderer } from "./VtkRenderer";
+import { sampleVtkCutLine, VtkRenderer } from "./VtkRenderer";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +58,7 @@ export interface ProceduralMeshData {
   indices: number[];
   normals: number[];
   color?: [number, number, number, number] | undefined;
+  material?: string | undefined;
 }
 
 export interface CadComponent {
@@ -104,6 +115,12 @@ interface CadViewerProps {
   gdtOverlay?: GdtOverlayPayload | null | undefined;
   /** Insets (top/right/bottom/left in px) for floating panels/sidebars so the 3D model centers in the visible area */
   fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
+  /** Optional CAE deck / CFD config source for SimScale-style simulation tree */
+  caeSourceCode?: string | undefined;
+  /** Reveal a line in the code editor when a CAE tree item is clicked */
+  onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
+  /** Insert a CAE keyword snippet into the live code editor */
+  onInsertCaeSnippet?: ((snippet: string) => void) | undefined;
 }
 
 function computeSceneBounds(components: CadComponent[]): {
@@ -214,6 +231,7 @@ function ProceduralMeshObject({
   solidPlane = null,
   wirePlane = null,
   sectionSplit = false,
+  showEdges = true,
 }: {
   mesh: ProceduralMeshData;
   name?: string | undefined;
@@ -221,6 +239,7 @@ function ProceduralMeshObject({
   solidPlane?: THREE.Plane | null | undefined;
   wirePlane?: THREE.Plane | null | undefined;
   sectionSplit?: boolean | undefined;
+  showEdges?: boolean | undefined;
 }) {
   const { gl } = useThree();
   const geometry = useMemo(() => {
@@ -246,22 +265,37 @@ function ProceduralMeshObject({
   }, [geometry]);
 
   const rgba = mesh.color ?? [0.27, 0.51, 0.71, 1.0];
-  const alloyProps = useMemo(() => resolveHeroAlloyConfig(gl, name, rgba, dark), [gl, name, rgba, dark]);
+  const alloyProps = useMemo(
+    () => resolveHeroAlloyConfig(gl, name, rgba, dark, mesh.material),
+    [gl, name, rgba, dark, mesh.material],
+  );
   const clipPlanes = useMemo(() => (solidPlane ? [solidPlane] : []), [solidPlane]);
+  const isTranslucent = rgba[3] < 1.0;
 
   return (
     <group>
       <mesh geometry={geometry} castShadow receiveShadow>
         <meshPhysicalMaterial
           {...alloyProps}
-          transparent={rgba[3] < 1.0}
+          transparent={isTranslucent}
           opacity={rgba[3]}
-          clearcoat={0.14}
+          depthWrite={!isTranslucent}
+          polygonOffset={showEdges}
+          polygonOffsetFactor={1}
+          polygonOffsetUnits={1}
           side={THREE.DoubleSide}
           clippingPlanes={clipPlanes}
           clipShadows={true}
         />
       </mesh>
+      {showEdges && !sectionSplit && (
+        <CadEdgeOverlay
+          geometry={geometry}
+          dark={dark}
+          opacity={isTranslucent ? 0.45 : 0.8}
+          clippingPlanes={clipPlanes}
+        />
+      )}
       {sectionSplit && solidPlane && wirePlane && (
         <SplitSectionGeometryPasses
           geometry={geometry}
@@ -277,12 +311,23 @@ function ProceduralMeshObject({
 }
 
 /** GLTF-loaded 3D mesh object. */
-function GltfMeshObject({ url, solidPlane = null }: { url: string; solidPlane?: THREE.Plane | null | undefined }) {
+function GltfMeshObject({
+  url,
+  solidPlane = null,
+  showEdges = true,
+  dark = false,
+}: {
+  url: string;
+  solidPlane?: THREE.Plane | null | undefined;
+  showEdges?: boolean | undefined;
+  dark?: boolean | undefined;
+}) {
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => scene.clone(true), [scene]);
 
   useEffect(() => {
     const planes = solidPlane ? [solidPlane] : [];
+    const createdEdges: THREE.LineSegments[] = [];
     cloned.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
@@ -291,12 +336,37 @@ function GltfMeshObject({ url, solidPlane = null }: { url: string; solidPlane?: 
           if (m) {
             m.clippingPlanes = planes;
             m.clipShadows = true;
+            m.polygonOffset = showEdges;
+            m.polygonOffsetFactor = 1;
+            m.polygonOffsetUnits = 1;
             m.needsUpdate = true;
           }
         }
+        if (showEdges && mesh.geometry) {
+          const edgeGeo = new THREE.EdgesGeometry(mesh.geometry, 20);
+          const edgeMat = new THREE.LineBasicMaterial({
+            color: dark ? "#0f172a" : "#111827",
+            transparent: true,
+            opacity: 0.78,
+            clippingPlanes: planes,
+          });
+          const lines = new THREE.LineSegments(edgeGeo, edgeMat);
+          lines.userData.__cadEdgeOverlay = true;
+          lines.renderOrder = 1;
+          mesh.add(lines);
+          createdEdges.push(lines);
+        }
       }
     });
-  }, [cloned, solidPlane]);
+
+    return () => {
+      for (const lines of createdEdges) {
+        lines.parent?.remove(lines);
+        lines.geometry.dispose();
+        (lines.material as THREE.Material).dispose();
+      }
+    };
+  }, [cloned, solidPlane, showEdges, dark]);
 
   return <primitive object={cloned} />;
 }
@@ -312,6 +382,8 @@ function CadModel({
   solidPlane = null,
   wirePlane = null,
   sectionSplit = false,
+  showEdges = true,
+  onPickFace,
 }: {
   component: CadComponent;
   assetBaseUrl: string;
@@ -322,6 +394,8 @@ function CadModel({
   solidPlane?: THREE.Plane | null | undefined;
   wirePlane?: THREE.Plane | null | undefined;
   sectionSplit?: boolean | undefined;
+  showEdges?: boolean | undefined;
+  onPickFace?: ((label: string) => void) | undefined;
 }) {
   const url = useMemo(() => resolveModelicaUri(component.cad.uri, assetBaseUrl), [component.cad.uri, assetBaseUrl]);
   const groupRef = useRef<THREE.Group>(null);
@@ -456,6 +530,35 @@ function CadModel({
         onClick={(e) => {
           e.stopPropagation();
           onSelect?.(component.name);
+          if (onPickFace && e.face?.normal) {
+            const meshObj = e.object as THREE.Mesh | undefined;
+            const faceIds = meshObj?.geometry?.userData?.faceIds as ArrayLike<number> | undefined;
+            const brepFaceId =
+              faceIds && typeof e.faceIndex === "number" && e.faceIndex >= 0 && e.faceIndex < faceIds.length
+                ? faceIds[e.faceIndex]
+                : undefined;
+            if (brepFaceId !== undefined) {
+              onPickFace(`${component.name}_Face${brepFaceId}`);
+              return;
+            }
+            const n = e.face.normal;
+            const ax = Math.abs(n.x);
+            const ay = Math.abs(n.y);
+            const az = Math.abs(n.z);
+            const dir =
+              ax >= ay && ax >= az
+                ? n.x >= 0
+                  ? "PosX"
+                  : "NegX"
+                : ay >= ax && ay >= az
+                  ? n.y >= 0
+                    ? "PosY"
+                    : "NegY"
+                  : n.z >= 0
+                    ? "PosZ"
+                    : "NegZ";
+            onPickFace(`${component.name}_${dir}`);
+          }
         }}
         onPointerOver={(e) => {
           e.stopPropagation();
@@ -471,9 +574,10 @@ function CadModel({
             solidPlane={solidPlane}
             wirePlane={wirePlane}
             sectionSplit={sectionSplit}
+            showEdges={showEdges}
           />
         ) : !component.cad.uri.startsWith("procedural://") ? (
-          <GltfMeshObject url={url} solidPlane={solidPlane} />
+          <GltfMeshObject url={url} solidPlane={solidPlane} showEdges={showEdges} dark={dark} />
         ) : null}
 
         {showInspector && (
@@ -551,6 +655,10 @@ function SceneContents({
   clipSpan,
   gdtOverlay,
   showGdt,
+  showEdges = true,
+  enableSsao = false,
+  activeCaeField,
+  onPickFace,
   sceneBounds,
   fitInsets,
 }: {
@@ -569,6 +677,10 @@ function SceneContents({
   clipSpan: number;
   gdtOverlay?: GdtOverlayPayload | null | undefined;
   showGdt?: boolean | undefined;
+  showEdges?: boolean | undefined;
+  enableSsao?: boolean | undefined;
+  activeCaeField?: string | undefined;
+  onPickFace?: ((label: string) => void) | undefined;
   sceneBounds: { center: [number, number, number]; radius: number; minY: number };
   fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
 }) {
@@ -684,24 +796,38 @@ function SceneContents({
     onSelect?.(null);
   }, [onSelect]);
 
+  const gridUnit = Math.pow(10, Math.floor(Math.log10(Math.max(0.1, sceneBounds.radius / 3))));
+  const gridSpan = Math.max(20, sceneBounds.radius * 8);
+  const gridFade = Math.max(30, sceneBounds.radius * 6);
+  const shadowScale = Math.max(20, sceneBounds.radius * 3.5);
+  const shadowFar = Math.max(4, sceneBounds.radius * 2);
+  const groundY = sceneBounds.minY - Math.max(0.002, sceneBounds.radius * 0.001);
+
   return (
     <>
       <HeroStudioEnvironment dark={Boolean(dark)} />
 
       {/* Ground */}
       <Grid
-        position={[0, sceneBounds.minY - 0.002, 0]}
-        args={[20, 20]}
-        cellSize={0.5}
+        position={[sceneBounds.center[0], groundY, sceneBounds.center[2]]}
+        args={[gridSpan, gridSpan]}
+        cellSize={gridUnit}
         cellThickness={0.5}
         cellColor={dark ? "#333" : "#ccc"}
-        sectionSize={2}
+        sectionSize={gridUnit * 5}
         sectionThickness={1}
         sectionColor={dark ? "#555" : "#999"}
-        fadeDistance={30}
+        fadeDistance={gridFade}
         infiniteGrid
       />
-      <ContactShadows position={[0, sceneBounds.minY - 0.01, 0]} opacity={0.4} scale={20} blur={2} far={4} />
+      <ContactShadows
+        position={[sceneBounds.center[0], groundY - Math.max(0.01, sceneBounds.radius * 0.002), sceneBounds.center[2]]}
+        frames={1}
+        opacity={0.4}
+        scale={shadowScale}
+        blur={2}
+        far={shadowFar}
+      />
 
       {/* Models: GPU Instanced rendering for clusters, fallback to CadModel for singletons */}
       <group onPointerMissed={handlePointerMissed}>
@@ -723,6 +849,8 @@ function SceneContents({
               solidPlane={solidPlane}
               wirePlane={wirePlane}
               sectionSplit={Boolean(sectionSplit)}
+              showEdges={showEdges}
+              onPickFace={onPickFace}
             />
           )}
         />
@@ -741,8 +869,20 @@ function SceneContents({
         <Gdt3dOverlay payload={gdtOverlay} lift={Math.max(0.45, sceneBounds.radius * 0.35)} dark={Boolean(dark)} />
       )}
 
-      {/* CFD Isosurface rendering */}
-      {vtkBuffer && <VtkRenderer vtkBuffer={vtkBuffer} opacity={0.8} />}
+      {/* CFD & FEA Contour / Vector rendering */}
+      {vtkBuffer && (
+        <VtkRenderer
+          vtkBuffer={vtkBuffer}
+          opacity={0.85}
+          activeField={activeCaeField}
+          showVectors={Boolean(activeCaeField?.toLowerCase().includes("velocity"))}
+          showStreamlines={Boolean(activeCaeField?.toLowerCase().includes("velocity"))}
+          deformationScale={activeCaeField === "Displacement" ? 12 : 0}
+        />
+      )}
+
+      {/* Cavity Ambient Occlusion (SSAO) */}
+      <StudioSsaoPass enabled={Boolean(enableSsao)} />
 
       {/* Controls */}
       <OrbitControls
@@ -822,6 +962,9 @@ export default function CadViewer({
   verificationOverlay = null,
   gdtOverlay = null,
   fitInsets,
+  caeSourceCode,
+  onRevealLine,
+  onInsertCaeSnippet,
 }: CadViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [isBindingPickerOpen, setIsBindingPickerOpen] = useState(false);
@@ -830,7 +973,45 @@ export default function CadViewer({
   const [sectionSplit, setSectionSplit] = useState<boolean>(true);
   const [autoSweep, setAutoSweep] = useState<boolean>(false);
   const [showGdt, setShowGdt] = useState<boolean>(true);
+  const [showEdges, setShowEdges] = useState<boolean>(true);
+  const [enableSsao, setEnableSsao] = useState<boolean>(false);
+  const [showInstances, setShowInstances] = useState<boolean>(false);
+  const [showSimTree, setShowSimTree] = useState<boolean>(Boolean(caeSourceCode || vtkBuffer));
+  const [selectedTreeId, setSelectedTreeId] = useState<string | null>(null);
+  const [caePostView, setCaePostView] = useState<{ mode: "convergence" | "log"; runId: string } | null>(null);
+  const [activeCaeField, setActiveCaeField] = useState<string | undefined>(undefined);
+  const [caeRuns, setCaeRuns] = useState<CaeSimulationRunEntry[]>([
+    {
+      id: "run-1",
+      name: "Run 1",
+      status: "finished",
+    },
+  ]);
+  const [liveVtkBuffer, setLiveVtkBuffer] = useState<Uint8Array | null>(null);
+  const [caeJobStatus, setCaeJobStatus] = useState<{
+    state: "idle" | "meshing" | "solving" | "finished" | "error";
+    label: string;
+    progress?: number;
+  }>({ state: "idle", label: "Ready" });
+  const [caeFieldBounds, setCaeFieldBounds] = useState<{ min: number; max: number }>({ min: 0, max: 180 });
+  const [pickedFaceSet, setPickedFaceSet] = useState<string | null>(null);
+  const [partOverrides, setPartOverrides] = useState<
+    Record<string, { visible?: boolean; ghost?: boolean; color?: string; material?: string }>
+  >({});
   const [explosionFactor, setExplosionFactor] = useState<number>(0);
+
+  const effectiveVtkBuffer = vtkBuffer ?? liveVtkBuffer;
+  const hasCaeContext = Boolean(caeSourceCode || effectiveVtkBuffer);
+  const caeModel = useMemo(
+    () =>
+      hasCaeContext
+        ? buildCaeSimulationModel(
+            caeSourceCode ?? "",
+            components.map((c) => ({ name: c.name, watertight: true })),
+          )
+        : null,
+    [hasCaeContext, caeSourceCode, components],
+  );
 
   const breachMarkers = useMemo(() => {
     if (!verificationOverlay) return undefined;
@@ -848,30 +1029,56 @@ export default function CadViewer({
   }, [verificationOverlay]);
 
   const effectiveComponents = useMemo(() => {
-    if (explosionFactor <= 0 || components.length <= 1) return components;
+    const visibleComponents = components.filter((c) => partOverrides[c.name]?.visible !== false);
+
+    const applyAppearance = (c: CadComponent): CadComponent => {
+      const ov = partOverrides[c.name];
+      if (!ov || !c.proceduralMesh) return c;
+      const baseRgba = c.proceduralMesh.color ?? [0.55, 0.6, 0.68, 1.0];
+      let nextRgba: [number, number, number, number] = [...baseRgba];
+      if (ov.color) {
+        const col = new THREE.Color(ov.color);
+        nextRgba = [col.r, col.g, col.b, nextRgba[3]];
+      }
+      if (ov.ghost) {
+        nextRgba = [nextRgba[0], nextRgba[1], nextRgba[2], 0.28];
+      }
+      return {
+        ...c,
+        proceduralMesh: {
+          ...c.proceduralMesh,
+          color: nextRgba,
+          material: ov.material || c.proceduralMesh.material,
+        },
+      };
+    };
+
+    if (explosionFactor <= 0 || visibleComponents.length <= 1) {
+      return visibleComponents.map(applyAppearance);
+    }
     let cx = 0;
     let cy = 0;
     let cz = 0;
-    for (const c of components) {
+    for (const c of visibleComponents) {
       const p = c.cad?.position ?? [0, 0, 0];
       cx += p[0];
       cy += p[1];
       cz += p[2];
     }
-    cx /= components.length;
-    cy /= components.length;
-    cz /= components.length;
-    return components.map((c, idx) => {
+    cx /= visibleComponents.length;
+    cy /= visibleComponents.length;
+    cz /= visibleComponents.length;
+    return visibleComponents.map((c, idx) => {
       const p = c.cad?.position ?? [0, 0, 0];
       let dx = p[0] - cx;
       let dy = p[1] - cy;
       let dz = p[2] - cz;
       if (Math.hypot(dx, dy, dz) < 1e-4) {
-        const angle = (idx / components.length) * Math.PI * 2;
+        const angle = (idx / visibleComponents.length) * Math.PI * 2;
         dx = Math.cos(angle);
         dz = Math.sin(angle);
       }
-      return {
+      return applyAppearance({
         ...c,
         cad: {
           ...c.cad,
@@ -881,9 +1088,9 @@ export default function CadViewer({
             number,
           ],
         },
-      };
+      });
     });
-  }, [components, explosionFactor]);
+  }, [components, explosionFactor, partOverrides]);
 
   const sceneBounds = useMemo(() => computeSceneBounds(effectiveComponents), [effectiveComponents]);
   const clipSpan = Math.max(1.5, sceneBounds.radius * 1.15);
@@ -1091,6 +1298,79 @@ export default function CadViewer({
             GD&amp;T
           </button>
         )}
+        <span style={{ opacity: 0.4 }}>|</span>
+        <button
+          type="button"
+          onClick={() => setShowEdges((s) => !s)}
+          title="Toggle Onshape-style shaded crease edges"
+          style={{
+            background: showEdges ? "rgba(6, 182, 212, 0.22)" : "transparent",
+            color: showEdges ? "#06b6d4" : "inherit",
+            border: showEdges ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
+            borderRadius: 12,
+            padding: "2px 7px",
+            fontSize: 10,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          EDGES
+        </button>
+        <button
+          type="button"
+          onClick={() => setEnableSsao((s) => !s)}
+          title="Toggle cavity Ambient Occlusion (SSAO)"
+          style={{
+            background: enableSsao ? "rgba(6, 182, 212, 0.22)" : "transparent",
+            color: enableSsao ? "#06b6d4" : "inherit",
+            border: enableSsao ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
+            borderRadius: 12,
+            padding: "2px 7px",
+            fontSize: 10,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          AO
+        </button>
+        {hasCaeContext && (
+          <button
+            type="button"
+            onClick={() => setShowSimTree((s) => !s)}
+            title="Toggle SimScale-style Simulation Tree"
+            style={{
+              background: showSimTree ? "rgba(6, 182, 212, 0.22)" : "transparent",
+              color: showSimTree ? "#06b6d4" : "inherit",
+              border: showSimTree ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
+              borderRadius: 12,
+              padding: "2px 7px",
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            SIM TREE
+          </button>
+        )}
+        {components.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowInstances((s) => !s)}
+            title="Toggle Assembly Instances & Appearances"
+            style={{
+              background: showInstances ? "rgba(6, 182, 212, 0.22)" : "transparent",
+              color: showInstances ? "#06b6d4" : "inherit",
+              border: showInstances ? "1px solid rgba(6, 182, 212, 0.45)" : "1px solid transparent",
+              borderRadius: 12,
+              padding: "2px 7px",
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            PARTS ({components.length})
+          </button>
+        )}
         {components.length > 1 && (
           <>
             <span style={{ opacity: 0.4 }}>|</span>
@@ -1186,8 +1466,334 @@ export default function CadViewer({
         </div>
       )}
 
+      {/* Collapsible Assembly Instances & Appearances Panel */}
+      {showInstances && components.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            top: (fitInsets ? fitInsets.top : 14) + (selectedComponent ? 64 : 0),
+            left: fitInsets ? fitInsets.left : 14,
+            zIndex: 10,
+            width: 268,
+            maxHeight: "min(62vh, 460px)",
+            overflowY: "auto",
+            padding: "10px 12px",
+            background: dark ? "rgba(15, 23, 42, 0.88)" : "rgba(255, 255, 255, 0.94)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            borderRadius: 12,
+            border: `1px solid ${dark ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.12)"}`,
+            boxShadow: "0 10px 28px rgba(0, 0, 0, 0.28)",
+            color: dark ? "#e2e8f0" : "#1f2328",
+            fontSize: 12,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <strong style={{ fontSize: 12 }}>Instances ({components.length})</strong>
+            <button
+              type="button"
+              onClick={() => setPartOverrides({})}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#06b6d4",
+                fontSize: 11,
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              Reset
+            </button>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {components.map((comp) => {
+              const ov = partOverrides[comp.name] ?? {};
+              const isHidden = ov.visible === false;
+              const isGhost = Boolean(ov.ghost);
+              const isSel = selectedName === comp.name;
+              const rgba = comp.proceduralMesh?.color;
+              const defaultHex =
+                rgba && rgba.length >= 3 ? `#${new THREE.Color(rgba[0], rgba[1], rgba[2]).getHexString()}` : "#4782b5";
+              return (
+                <div
+                  key={comp.name}
+                  style={{
+                    padding: "6px 8px",
+                    borderRadius: 8,
+                    background: isSel
+                      ? dark
+                        ? "rgba(6, 182, 212, 0.16)"
+                        : "rgba(6, 182, 212, 0.12)"
+                      : dark
+                        ? "rgba(255, 255, 255, 0.04)"
+                        : "rgba(0, 0, 0, 0.03)",
+                    border: `1px solid ${isSel ? "rgba(6, 182, 212, 0.5)" : "transparent"}`,
+                    opacity: isHidden ? 0.48 : 1,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => onSelect?.(comp.name)}
+                      style={{
+                        flex: 1,
+                        textAlign: "left",
+                        background: "transparent",
+                        border: "none",
+                        color: "inherit",
+                        fontWeight: isSel ? 700 : 500,
+                        fontSize: 11,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                      title={comp.name}
+                    >
+                      {comp.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPartOverrides((prev) => ({
+                          ...prev,
+                          [comp.name]: { ...prev[comp.name], visible: isHidden },
+                        }))
+                      }
+                      title={isHidden ? "Show part" : "Hide part"}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: isHidden ? "#94a3b8" : "inherit",
+                        cursor: "pointer",
+                        fontSize: 12,
+                        padding: "0 2px",
+                      }}
+                    >
+                      {isHidden ? "🚫" : "👁"}
+                    </button>
+                    {comp.proceduralMesh && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPartOverrides((prev) => ({
+                              ...prev,
+                              [comp.name]: { ...prev[comp.name], ghost: !isGhost },
+                            }))
+                          }
+                          title="Toggle translucent housing (ghost)"
+                          style={{
+                            background: isGhost ? "rgba(6, 182, 212, 0.2)" : "transparent",
+                            border: "none",
+                            borderRadius: 4,
+                            color: isGhost ? "#06b6d4" : "inherit",
+                            cursor: "pointer",
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: "1px 4px",
+                          }}
+                        >
+                          α
+                        </button>
+                        <input
+                          type="color"
+                          value={ov.color ?? defaultHex}
+                          onChange={(e) =>
+                            setPartOverrides((prev) => ({
+                              ...prev,
+                              [comp.name]: { ...prev[comp.name], color: e.target.value },
+                            }))
+                          }
+                          aria-label={`Color for ${comp.name}`}
+                          style={{
+                            width: 18,
+                            height: 18,
+                            border: "none",
+                            padding: 0,
+                            background: "transparent",
+                            cursor: "pointer",
+                          }}
+                        />
+                      </>
+                    )}
+                  </div>
+                  {comp.proceduralMesh && (
+                    <select
+                      value={ov.material ?? ""}
+                      onChange={(e) =>
+                        setPartOverrides((prev) => ({
+                          ...prev,
+                          [comp.name]: { ...prev[comp.name], material: e.target.value || undefined },
+                        }))
+                      }
+                      aria-label={`Material for ${comp.name}`}
+                      style={{
+                        marginTop: 4,
+                        width: "100%",
+                        fontSize: 10,
+                        padding: "2px 4px",
+                        borderRadius: 4,
+                        background: dark ? "#0f172a" : "#ffffff",
+                        color: "inherit",
+                        border: `1px solid ${dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.14)"}`,
+                      }}
+                    >
+                      <option value="">Auto Material</option>
+                      <option value="ABS Plastic">Molded ABS Plastic</option>
+                      <option value="Matte Polymer">Matte Polymer</option>
+                      <option value="Rubber">Elastomer Rubber</option>
+                      <option value="Gloss Paint">Gloss Paint</option>
+                      <option value="Clear Polycarbonate">Clear Polycarbonate</option>
+                      <option value="Anodized Aluminum">Anodized Aluminum</option>
+                      <option value="Cast Aluminum">Cast Aluminum</option>
+                      <option value="Stainless Steel">Stainless Steel</option>
+                    </select>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* SimScale-style CAE Simulation Tree */}
+      {hasCaeContext && showSimTree && caeModel && (
+        <div
+          style={{
+            position: "absolute",
+            top: (fitInsets ? fitInsets.top : 14) + (selectedComponent ? 64 : 0),
+            left: fitInsets ? fitInsets.left : 14,
+            bottom: fitInsets ? fitInsets.bottom : 14,
+            zIndex: 11,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+            pointerEvents: "none",
+          }}
+        >
+          <CaeSimulationTree
+            model={caeModel}
+            runs={caeRuns}
+            dark={dark}
+            selectedItemId={selectedTreeId}
+            activeField={activeCaeField}
+            jobStatus={caeJobStatus}
+            pickedTargetSet={pickedFaceSet ?? selectedName ?? undefined}
+            onGenerateMesh={(fineness) => {
+              const span = Math.max(0.5, sceneBounds.radius);
+              const firstSurf = effectiveComponents.find(
+                (c) => c.proceduralMesh && c.proceduralMesh.vertices.length >= 12,
+              )?.proceduralMesh;
+              const surfaceMesh = firstSurf ? { vertices: firstSurf.vertices, indices: firstSurf.indices } : undefined;
+              setCaeJobStatus({
+                state: "meshing",
+                label: caeModel.dialect === "cfd" ? "Meshing fluid enclosure..." : "Generating Tet4 mesh...",
+                progress: 0.35,
+              });
+              void generateLocalTetMeshAsync(
+                fineness,
+                [span, span * 0.6, span * 0.6],
+                surfaceMesh,
+                caeModel.dialect === "cfd" ? 1.5 : undefined,
+              ).then((meshRes) => {
+                setLiveVtkBuffer(meshRes.vtkBuffer);
+                setCaeFieldBounds({ min: 0, max: meshRes.maxAspectRatio });
+                setActiveCaeField("Element Quality");
+                setCaeJobStatus({
+                  state: "finished",
+                  label: `Meshed (${meshRes.elementCount} tets)`,
+                  progress: 1,
+                });
+              });
+            }}
+            onSelectItem={(item) => {
+              setSelectedTreeId(item.id);
+              if (item.line) onRevealLine?.(item.line, item.targetSet);
+            }}
+            onInsertSnippet={onInsertCaeSnippet ? (_section, snippet) => onInsertCaeSnippet(snippet) : undefined}
+            onTriggerRun={() => {
+              const nextNum = caeRuns.length + 1;
+              const runId = `run-${nextNum}`;
+              const runName = `Run ${nextNum}`;
+              void (async () => {
+                try {
+                  if (caeModel.dialect === "cfd") {
+                    const res = await runLocalCfdStudyAsync(caeSourceCode ?? "", runId, runName, (ev) =>
+                      setCaeJobStatus(ev),
+                    );
+                    setLiveVtkBuffer(res.vtkBuffer);
+                    setCaeFieldBounds({ min: res.minVelocity, max: res.maxVelocity });
+                    setActiveCaeField("Velocity Magnitude");
+                    setCaeRuns((prev) => [...prev, res.runEntry]);
+                  } else {
+                    const res = await runLocalFeaStudyAsync(caeSourceCode ?? "", runId, runName, (ev) =>
+                      setCaeJobStatus(ev),
+                    );
+                    setLiveVtkBuffer(res.vtkBuffer);
+                    setCaeFieldBounds({ min: res.minStressMpa, max: res.maxStressMpa });
+                    setActiveCaeField("Von Mises Stress");
+                    setCaeRuns((prev) => [...prev, res.runEntry]);
+                  }
+                  setCaePostView({ mode: "convergence", runId });
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  setCaeJobStatus({ state: "error", label: "Error" });
+                  setCaeRuns((prev) => [
+                    ...prev,
+                    { id: runId, name: runName, status: "failed", logLines: [`[error] ${msg}`] },
+                  ]);
+                  setCaePostView({ mode: "log", runId });
+                }
+              })();
+            }}
+            onSelectField={(field) => setActiveCaeField(field)}
+            onOpenPostView={(view, runId) => {
+              if (view === "fields") {
+                setActiveCaeField(caeModel.dialect === "cfd" ? "Velocity Magnitude" : "Von Mises Stress");
+              } else {
+                setCaePostView((prev) =>
+                  prev && prev.mode === view && prev.runId === runId ? null : { mode: view, runId },
+                );
+              }
+            }}
+          />
+          {caePostView && (
+            <CaePostProcessDrawer
+              mode={caePostView.mode}
+              run={caeRuns.find((r) => r.id === caePostView.runId) ?? caeRuns[0]!}
+              allRuns={caeRuns}
+              cutLineSamples={sampleVtkCutLine(effectiveVtkBuffer, activeCaeField)}
+              dark={dark}
+              onClose={() => setCaePostView(null)}
+            />
+          )}
+        </div>
+      )}
+
+      {hasCaeContext && activeCaeField && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: (fitInsets ? fitInsets.bottom : 14) + 12,
+            right: (fitInsets ? fitInsets.right : 14) + 110,
+            zIndex: 10,
+          }}
+        >
+          <ScalarColorbarLegend
+            title={activeCaeField}
+            unit={activeCaeField.includes("Stress") ? "MPa" : activeCaeField.includes("Velocity") ? "m/s" : undefined}
+            minLabel={caeFieldBounds.min.toFixed(2)}
+            maxLabel={caeFieldBounds.max.toFixed(2)}
+            dark={dark}
+          />
+        </div>
+      )}
+
       <Canvas
         shadows
+        dpr={[1, 1.5]}
         camera={{ position: [3, 2.5, 3], fov: 50 }}
         gl={{ antialias: true, stencil: true, toneMapping: THREE.ACESFilmicToneMapping, localClippingEnabled: true }}
         style={{ background: dark ? "#1a1a2e" : "#f0f4f8" }}
@@ -1200,7 +1806,7 @@ export default function CadViewer({
           onSelect={onSelect}
           dark={dark}
           animationController={animationController}
-          vtkBuffer={vtkBuffer}
+          vtkBuffer={effectiveVtkBuffer}
           touchScrollPassThrough={touchScrollPassThrough}
           solidPlane={solidPlane}
           wirePlane={wirePlane}
@@ -1209,6 +1815,10 @@ export default function CadViewer({
           clipSpan={clipSpan}
           gdtOverlay={gdtOverlay}
           showGdt={showGdt}
+          showEdges={showEdges}
+          enableSsao={enableSsao}
+          activeCaeField={activeCaeField}
+          onPickFace={hasCaeContext ? (label) => setPickedFaceSet(label) : undefined}
           sceneBounds={sceneBounds}
           fitInsets={fitInsets}
         />

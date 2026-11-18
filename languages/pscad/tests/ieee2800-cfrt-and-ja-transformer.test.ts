@@ -294,7 +294,7 @@ test("PSCAD Netlist extraction with Jiles-Atherton saturable transformer and EMT
   assert.ok(xf.jaParams, "J-A parameters must be parsed");
   assert.strictEqual(xf.jaParams?.ms, 1.6e6);
   assert.strictEqual(xf.jaParams?.a, 1100.0);
-  assert.strictEqual(xf.jaParams?.remanentFluxWb, undefined);
+  assert.strictEqual((xf.jaParams as Record<string, unknown>)["remanentFluxWb"], undefined);
   assert.strictEqual(xf.remanentFluxWb, 120.0);
   assert.strictEqual(xf.jaParams?.coreAreaM2, 0.6);
   assert.strictEqual(xf.jaParams?.magneticLengthM, 3.5);
@@ -537,4 +537,3 @@ test("PSCAD GridFormingInverter <Component>/<Parameter> snippet parses and verif
   assert.strictEqual(comp.parameters["Kp_v"], 2.5);
   assert.strictEqual(comp.parameters["Ki_v"], 40);
 });
-

@@ -415,9 +415,9 @@ endmodule
   {
     id: "psse",
     name: "PSS/E",
-    tier: "pre-alpha",
+    tier: "alpha",
     ext: "raw",
-    extensions: [".raw", ".dyr", ".seq"],
+    extensions: [".raw", ".dyr", ".seq", ".sav", ".sld", ".drw"],
     family: "spice",
     defaultCode: `0, 100.0, 33, 0, 1, 60.0 / PSS/E 3-Bus Sample
 1, 'BUS_1   ', 230.0, 3, 1, 1, 1, 1.02, 0.0

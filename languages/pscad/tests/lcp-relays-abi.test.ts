@@ -8,15 +8,15 @@
  * - MHI PSCAD Python Automation Compatibility Layer (`MhiPscadApplication`)
  */
 
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
 import {
   computeBundleEquivalentRadii,
   computeMulticonductorLineConstants,
   DigitalProtectionRelay,
   evaluateInverseTimeCurveSec,
   synthesizeFdLineFromMulticonductorTower,
-} from "../../../packages/simulate/src/solvers/emt/index.js";
+} from "@modelscript/simulate/solvers";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import {
   EmtdcHostBridge,
   EmtSolver,
@@ -486,8 +486,8 @@ describe("EMTDC Fortran/C Binary ABI Host Bridge & MHI PSCAD Automation", () => 
 
     // Verify pscadLanguage domain actions
     const relayAction = pscadLanguage.actions?.find((a) => a.id === "analyze_relay_coordination");
-    assert.ok(relayAction !== undefined);
-    const coordRes = (await relayAction.execute({ documentText: xml }, {})) as {
+    assert.ok(relayAction?.execute !== undefined);
+    const coordRes = (await relayAction.execute({ languageId: "pscad", documentText: xml }, {})) as {
       relays: Array<{ id: string; mhoZones: { zone1: unknown[] }; tccCurve: unknown[] }>;
     };
     assert.equal(coordRes.relays.length, 1);

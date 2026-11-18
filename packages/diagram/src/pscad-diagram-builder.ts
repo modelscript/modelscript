@@ -24,7 +24,58 @@ import {
   transmissionLineGlyph,
   wirelessNetLabelGlyph,
 } from "./glyphs.js";
+import type { InteractiveBinding } from "./interactive.js";
 import { parseMiniXml, type MiniXmlElement } from "./xml-utils.js";
+
+function buildPscadInteractiveBindings(cleanDefn: string, cmp: PscadComponentLike): InteractiveBinding[] | undefined {
+  const ld = cleanDefn.toLowerCase();
+  if (ld.includes("slider") || ld.includes("dial")) {
+    return [
+      {
+        action: "slider",
+        variableName: "Value",
+        label: cmp.instanceName || "Slider",
+        min: Number(cmp.parameters["Min"] ?? 0),
+        max: Number(cmp.parameters["Max"] ?? 100),
+        ...(cmp.parameters["Units"] !== undefined ? { unit: String(cmp.parameters["Units"]) } : {}),
+      },
+    ];
+  }
+  if (ld.includes("pushbutton")) {
+    return [
+      {
+        action: "momentary",
+        variableName: "State",
+        label: cmp.instanceName || "Push Button",
+        onValue: 1,
+        offValue: 0,
+      },
+    ];
+  }
+  if (ld.includes("two_state") || ld === "switch") {
+    return [
+      {
+        action: "toggle",
+        variableName: "State",
+        label: cmp.instanceName || "Switch",
+        onValue: 1,
+        offValue: 0,
+      },
+    ];
+  }
+  if (ld.includes("breaker3") || ld.includes("breaker1")) {
+    return [
+      {
+        action: "toggle",
+        variableName: "Status",
+        label: `${cmp.instanceName || "Breaker"} Status`,
+        onValue: "closed",
+        offValue: "open",
+      },
+    ];
+  }
+  return undefined;
+}
 
 export interface PscadComponentLike {
   id: string;
@@ -172,6 +223,7 @@ export interface X6CellData {
   target?: { cell?: string; port?: string; x?: number; y?: number } | undefined;
   vertices?: { x: number; y: number }[] | undefined;
   data?: Record<string, unknown> | undefined;
+  interactive?: InteractiveBinding[] | undefined;
   zIndex?: number | undefined;
   opacity?: number | undefined;
   diffStatus?: "added" | "removed" | "modified" | "unchanged" | undefined;
@@ -1547,7 +1599,7 @@ export function buildPscadDiagram(
     // so that cmp.position is the exact geometric center of the apparatus.
     let topLeftX = Math.round(cmp.position.x - width / 2);
     let topLeftY = isAnnotation ? cmp.position.y : Math.round(cmp.position.y - height / 2);
-    if (cleanDefn === "newpi") {
+    if (isLibraryMode && cleanDefn === "newpi") {
       topLeftY = Math.round(936 - height / 2);
     }
 
@@ -1777,6 +1829,7 @@ export function buildPscadDiagram(
       },
       ports: portItems.length > 0 ? { groups: portGroups, items: portItems } : undefined,
       properties: nodeProperties,
+      interactive: buildPscadInteractiveBindings(cleanDefn, cmp),
       data: {
         kind: isPageNav ? "module-link" : isAnnotation ? "annotation" : "component",
         targetModule: isPageNav ? cleanDefn : undefined,
@@ -1787,6 +1840,7 @@ export function buildPscadDiagram(
         ratingSubtitle: ratingSubtitle || undefined,
         centerPosition: { x: cmp.position.x, y: cmp.position.y },
         properties: nodeProperties,
+        interactive: buildPscadInteractiveBindings(cleanDefn, cmp),
       },
     });
   }
@@ -1879,13 +1933,27 @@ export function buildPscadDiagram(
       const srcAnchor = findNearestPortAnchor(firstPt, wire.startPortId);
       const tgtAnchor = findNearestPortAnchor(lastPt, wire.endPortId);
 
+      const portIdsLower = (wire.connectedPortIds ?? []).map((pid) => pid.toLowerCase());
       const isSignalWire =
         (wire.connectedPortIds ?? []).some((pid) => signalPortIdSet.has(pid)) ||
-        (wire.connectedPortIds ?? []).some(
-          (pid) => pid.toLowerCase().includes("sig") || pid.toLowerCase().includes("signl"),
-        );
+        portIdsLower.some((pid) => pid.includes("sig") || pid.includes("signl"));
+      const isLogicalWire = portIdsLower.some(
+        (pid) => pid.includes("logic") || pid.includes("bool") || pid.includes("trip") || pid.includes("brk"),
+      );
+      const isIntWire = portIdsLower.some((pid) => pid.includes("int") || pid.includes("idx") || pid.includes("step"));
+      const isRealWire = portIdsLower.some((pid) => pid.includes("real") || pid.includes("flt"));
       const isCard3BusWire = wire.id === "2041187102";
-      const wireStroke = isCard3BusWire ? "#64748b" : isSignalWire ? "#7c3aed" : "#0284c7";
+      const wireStroke = isCard3BusWire
+        ? "#64748b"
+        : isLogicalWire
+          ? "#8b5cf6"
+          : isIntWire
+            ? "#f59e0b"
+            : isRealWire
+              ? "#16a34a"
+              : isSignalWire
+                ? "#7c3aed"
+                : "#0284c7";
       const wireSda = isCard3BusWire || isLibraryMode ? undefined : isSignalWire ? "4,2" : undefined;
       const wireMarker =
         isCard3BusWire || isLibraryMode ? null : isSignalWire ? { name: "block", width: 6, height: 5 } : null;

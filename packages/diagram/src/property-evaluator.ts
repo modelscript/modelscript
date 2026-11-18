@@ -118,9 +118,10 @@ class Tokenizer {
       return { type: "GT", value: ">", pos: start };
     }
 
-    // Numbers
-    if (/[0-9]/.test(ch)) {
-      let numStr = "";
+    // Numbers (including unary negative numeric literals)
+    if (/[0-9]/.test(ch) || (ch === "-" && /[0-9.]/.test(this.input[this.pos + 1] ?? ""))) {
+      let numStr = ch;
+      this.pos++;
       while (this.pos < this.input.length && /[0-9.]/.test(this.input[this.pos]!)) {
         numStr += this.input[this.pos];
         this.pos++;
@@ -295,13 +296,23 @@ class ExpressionParser {
   }
 
   private resolveIdentifier(ident: string): unknown {
-    if (ident in this.values) {
-      return this.values[ident];
+    const clean = ident.startsWith("$") ? ident.slice(1) : ident;
+    if (clean in this.values) {
+      return this.values[clean];
     }
-    // Check without prefix/suffix
-    const short = ident.split(".").pop();
+    const lower = clean.toLowerCase();
+    for (const [k, v] of Object.entries(this.values)) {
+      if (k.toLowerCase() === lower) return v;
+    }
+    const short = clean.split(".").pop();
     if (short && short in this.values) {
       return this.values[short];
+    }
+    if (short) {
+      const shortLower = short.toLowerCase();
+      for (const [k, v] of Object.entries(this.values)) {
+        if (k.toLowerCase() === shortLower) return v;
+      }
     }
     return undefined;
   }

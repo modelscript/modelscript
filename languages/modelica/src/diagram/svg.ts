@@ -408,7 +408,7 @@ function computeStrokeWidthValue(graphicItem: IFilledShape | ILine): number {
     if (lineThickness <= 0.25) {
       return isLine ? 1.0 : 0.85;
     }
-    return Math.round(lineThickness * 3.5 * 10) / 10;
+    return Math.min(3.5, Math.round((0.85 + (lineThickness - 0.25) * 0.35) * 100) / 100);
   }
   return isLine ? 1.25 : 0.85;
 }

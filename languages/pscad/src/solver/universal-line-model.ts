@@ -29,6 +29,8 @@
  *     by vector fitting." IEEE Transactions on Power Delivery, 14(3), 1052–1061.
  */
 
+import { gustavsenComplexVectorFit } from "./vector-fitting.js";
+
 export interface UlmPoleGroup {
   /** Optional identifier for the modal group (e.g. "mode1_aerial", "mode0_ground"). */
   name?: string;
@@ -225,9 +227,36 @@ export function createUniversalLineModel(input: UlmSynthesisInput): UniversalLin
   gInf[7] = gMutNom * (1.0 + asym * 0.5);
   gInf[8] = gSelfNom * (1.0 + asym * 0.5);
 
-  // Rational pole-residue fit for Y_c(s): 4 real negative poles capturing skin-effect and earth return
+  // Rational pole-residue fit for Y_c(s) via complex vector fitting across 10 Hz..500 kHz
   const nY = 4;
-  const yPoles = new Float64Array([-50.0, -1500.0, -45000.0, -850000.0]);
+  const vfFreqs = [10, 50, 200, 1000, 5000, 20000, 100000, 500000];
+  const vfOmegas = Float64Array.from(vfFreqs, (f) => 2 * Math.PI * f);
+  const vfYRe = new Float64Array(vfFreqs.length);
+  const vfYIm = new Float64Array(vfFreqs.length);
+  for (let i = 0; i < vfOmegas.length; i++) {
+    const w = vfOmegas[i]!;
+    const zRe = Math.max(1e-6, input.rPerKm * Math.sqrt(1 + 0.05 * Math.sqrt(vfFreqs[i]! / 60)));
+    const zIm = w * Math.max(1e-9, input.lPerKm);
+    const zMag = Math.hypot(zRe, zIm);
+    const zAng = Math.atan2(zIm, zRe);
+    const ycMag = Math.sqrt((w * Math.max(1e-12, input.cPerKm)) / Math.max(1e-12, zMag));
+    const ycAng = 0.5 * (0.5 * Math.PI - zAng);
+    vfYRe[i] = ycMag * Math.cos(ycAng);
+    vfYIm[i] = ycMag * Math.sin(ycAng);
+  }
+  const vfY = gustavsenComplexVectorFit(vfOmegas, vfYRe, vfYIm, {
+    order: nY,
+    iterations: 3,
+    fitDirectTerm: false,
+    fixedD0: yc1,
+    enforcePassivity: true,
+  });
+  const yPoles = new Float64Array(nY);
+  const defaultYPoles = [-50.0, -1500.0, -45000.0, -850000.0];
+  for (let m = 0; m < nY; m++) {
+    const pRe = vfY.polesRe[m];
+    yPoles[m] = pRe !== undefined && Number.isFinite(pRe) && pRe < -1.0 ? pRe : defaultYPoles[m]!;
+  }
   const yExpDecays = new Float64Array(nY);
   const yConvGains = new Float64Array(nY);
   const yResidues: Float64Array[] = [];
@@ -238,7 +267,7 @@ export function createUniversalLineModel(input: UlmSynthesisInput): UniversalLin
     const p = yPoles[m]!;
     const expDecay = Math.exp(p * dtSec);
     yExpDecays[m] = expDecay;
-    const beta = dtSec * 0.5 * (1.0 + expDecay);
+    const beta = (1.0 - expDecay) / Math.max(1e-9, -p);
     yConvGains[m] = beta;
 
     // Fractional skin-effect residue matrix
@@ -255,16 +284,16 @@ export function createUniversalLineModel(input: UlmSynthesisInput): UniversalLin
     resM[8] = weight * (1.0 + asym);
     yResidues.push(resM);
 
-    // Accumulate into instantaneous companion matrix G_eq = G_inf + sum(beta_m * R_m)
+    // Accumulate into instantaneous companion matrix G_eq = G_inf + sum(0.5 * beta_m * R_m)
     for (let i = 0; i < 9; i++) {
-      gEq[i] = gEq[i]! + beta * resM[i]!;
+      gEq[i] = gEq[i]! + 0.5 * beta * resM[i]!;
     }
   }
 
   // Synthesize 2 Modal Delay Groups for H(s):
-  // Group 0: Aerial Modes (fast, low attenuation)
+  // Group 0: Aerial Modes (flat through power frequencies 50/60 Hz, skin attenuation at kHz..MHz)
   const nH1 = 3;
-  const hPoles1 = new Float64Array([-30.0, -1800.0, -42000.0]);
+  const hPoles1 = new Float64Array([-5000.0, -25000.0, -120000.0]);
   const hExp1 = new Float64Array(nH1);
   const hGain1 = new Float64Array(nH1);
   const hRes1: Float64Array[] = [];
@@ -278,7 +307,7 @@ export function createUniversalLineModel(input: UlmSynthesisInput): UniversalLin
     const p = hPoles1[m]!;
     const expDec = Math.exp(p * dtSec);
     hExp1[m] = expDec;
-    hGain1[m] = dtSec * 0.5 * (1.0 + expDec);
+    hGain1[m] = (1.0 - expDec) / Math.max(1e-9, -p);
 
     const w = hWeights[m]! * aerialAtten * -p;
     const mat = new Float64Array(9);
@@ -306,9 +335,9 @@ export function createUniversalLineModel(input: UlmSynthesisInput): UniversalLin
     convGains: hGain1,
   };
 
-  // Group 1: Ground Mode (slower, highly damped at high frequencies)
+  // Group 1: Ground Mode (slower, stronger dispersion above power frequencies)
   const nH0 = 3;
-  const hPoles0 = new Float64Array([-120.0, -3200.0, -65000.0]);
+  const hPoles0 = new Float64Array([-2500.0, -15000.0, -85000.0]);
   const hExp0 = new Float64Array(nH0);
   const hGain0 = new Float64Array(nH0);
   const hRes0: Float64Array[] = [];
@@ -321,7 +350,7 @@ export function createUniversalLineModel(input: UlmSynthesisInput): UniversalLin
     const p = hPoles0[m]!;
     const expDec = Math.exp(p * dtSec);
     hExp0[m] = expDec;
-    hGain0[m] = dtSec * 0.5 * (1.0 + expDec);
+    hGain0[m] = (1.0 - expDec) / Math.max(1e-9, -p);
 
     const w = hWeights[m]! * groundAtten * -p * (1.0 / 3.0);
     const mat = new Float64Array(9);
@@ -617,4 +646,220 @@ export function stepUlmLine(
     iHistMkB: model.iHistM[1]!,
     iHistMkC: model.iHistM[2]!,
   };
+}
+
+export interface NConductorUlmData {
+  id: string;
+  nCond: number;
+  dtSec: number;
+  gEq: Float64Array; // N x N
+  yPoles: Float64Array;
+  yResidues: Float64Array[]; // N x N per pole
+  hGroups: Array<{
+    delaySteps: number;
+    delayFrac: number;
+    poles: Float64Array;
+    residues: Float64Array[]; // N x N per pole
+    d0: Float64Array; // N x N
+    ringK: Float64Array[]; // N ring buffers of length bufLen
+    ringM: Float64Array[];
+    statesHk: Float64Array[]; // N per pole
+    statesHm: Float64Array[];
+  }>;
+  statesYk: Float64Array[]; // N per Y pole
+  statesYm: Float64Array[];
+  iHistK: Float64Array;
+  iHistM: Float64Array;
+  bufLen: number;
+  ptr: number;
+}
+
+/**
+ * Creates an arbitrary N-conductor phase-domain Universal Line Model (ULM)
+ * supporting double-circuit towers (N=6) or multi-conductor cables (core + sheath + armor).
+ */
+export function createNConductorUlm(params: {
+  id: string;
+  nCond: number;
+  dtSec: number;
+  gEq: Float64Array;
+  yPoles?: Float64Array | undefined;
+  yResidues?: Float64Array[] | undefined;
+  modes: Array<{
+    tauSec: number;
+    poles?: Float64Array | undefined;
+    residues?: Float64Array[] | undefined;
+    d0: Float64Array;
+  }>;
+}): NConductorUlmData {
+  const n = Math.max(1, params.nCond);
+  const dt = Math.max(1e-9, params.dtSec);
+  const maxDelay = Math.max(2, ...params.modes.map((m) => Math.ceil(m.tauSec / dt) + 4));
+  const bufLen = maxDelay + 4;
+  const yPoles = params.yPoles ?? new Float64Array([-200, -2000]);
+  const yResidues =
+    params.yResidues ??
+    Array.from(yPoles, () => {
+      const mat = new Float64Array(n * n);
+      for (let i = 0; i < n; i++) mat[i * n + i] = params.gEq[i * n + i]! * 0.05;
+      return mat;
+    });
+
+  const hGroups = params.modes.map((m) => {
+    const exactSteps = m.tauSec / dt;
+    const delaySteps = Math.max(1, Math.floor(exactSteps));
+    const delayFrac = Math.max(0, Math.min(1, exactSteps - delaySteps));
+    const poles = m.poles ?? new Float64Array([-500, -5000]);
+    const residues =
+      m.residues ??
+      Array.from(poles, () => {
+        const mat = new Float64Array(n * n);
+        for (let i = 0; i < n; i++) mat[i * n + i] = 0.02;
+        return mat;
+      });
+    return {
+      delaySteps,
+      delayFrac,
+      poles,
+      residues,
+      d0: m.d0,
+      ringK: Array.from({ length: n }, () => new Float64Array(bufLen)),
+      ringM: Array.from({ length: n }, () => new Float64Array(bufLen)),
+      statesHk: Array.from(poles, () => new Float64Array(n)),
+      statesHm: Array.from(poles, () => new Float64Array(n)),
+    };
+  });
+
+  const gEq = new Float64Array(params.gEq);
+  for (let p = 0; p < yPoles.length; p++) {
+    const pVal = yPoles[p]!;
+    const alpha = Math.exp(pVal * dt);
+    const beta = (1 - alpha) / Math.max(1e-9, -pVal);
+    const mat = yResidues[p]!;
+    for (let k = 0; k < n * n; k++) {
+      gEq[k] = gEq[k]! + 0.5 * beta * mat[k]!;
+    }
+  }
+
+  return {
+    id: params.id,
+    nCond: n,
+    dtSec: dt,
+    gEq,
+    yPoles,
+    yResidues,
+    hGroups,
+    statesYk: Array.from(yPoles, () => new Float64Array(n)),
+    statesYm: Array.from(yPoles, () => new Float64Array(n)),
+    iHistK: new Float64Array(n),
+    iHistM: new Float64Array(n),
+    bufLen,
+    ptr: 0,
+  };
+}
+
+/**
+ * Advances an arbitrary N-conductor phase-domain ULM by one time step.
+ */
+export function stepNConductorUlm(
+  model: NConductorUlmData,
+  vk: Float64Array,
+  vm: Float64Array,
+  advanceStates: boolean = true,
+): { iHistK: Float64Array; iHistM: Float64Array } {
+  const { nCond: n, dtSec: dt, gEq, bufLen, ptr } = model;
+  if (!advanceStates) {
+    return { iHistK: model.iHistK, iHistM: model.iHistM };
+  }
+  const nextK = new Float64Array(n);
+  const nextM = new Float64Array(n);
+
+  // Forward waves B_k = 2*G_eq*V_k - iHistK
+  const bk = new Float64Array(n);
+  const bm = new Float64Array(n);
+  for (let r = 0; r < n; r++) {
+    let gvK = 0;
+    let gvM = 0;
+    for (let c = 0; c < n; c++) {
+      const g = gEq[r * n + c]!;
+      gvK += g * vk[c]!;
+      gvM += g * vm[c]!;
+    }
+    bk[r] = 2 * gvK + model.iHistK[r]!;
+    bm[r] = 2 * gvM + model.iHistM[r]!;
+  }
+
+  // Local Y_c(s) recursive convolution
+  for (let p = 0; p < model.yPoles.length; p++) {
+    const alpha = Math.exp(model.yPoles[p]! * dt);
+    const beta = (1 - alpha) / Math.max(1e-9, -model.yPoles[p]!);
+    const res = model.yResidues[p]!;
+    const sk = model.statesYk[p]!;
+    const sm = model.statesYm[p]!;
+    for (let i = 0; i < n; i++) {
+      sk[i] = alpha * sk[i]! + beta * vk[i]!;
+      sm[i] = alpha * sm[i]! + beta * vm[i]!;
+    }
+    for (let r = 0; r < n; r++) {
+      let ak = 0;
+      let am = 0;
+      for (let c = 0; c < n; c++) {
+        const rc = res[r * n + c]!;
+        ak += rc * sk[c]!;
+        am += rc * sm[c]!;
+      }
+      nextK[r] = nextK[r]! + ak;
+      nextM[r] = nextM[r]! + am;
+    }
+  }
+
+  // Modal H(s) delayed recursive convolution
+  for (const grp of model.hGroups) {
+    const bMDel = new Float64Array(n);
+    const bKDel = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      bMDel[i] = readRingBufferDelayed(grp.ringM[i]!, ptr, bufLen, grp.delaySteps, grp.delayFrac);
+      bKDel[i] = readRingBufferDelayed(grp.ringK[i]!, ptr, bufLen, grp.delaySteps, grp.delayFrac);
+      grp.ringK[i]![ptr] = bk[i]!;
+      grp.ringM[i]![ptr] = bm[i]!;
+    }
+    for (let r = 0; r < n; r++) {
+      let dK = 0;
+      let dM = 0;
+      for (let c = 0; c < n; c++) {
+        const d = grp.d0[r * n + c]!;
+        dK += d * bMDel[c]!;
+        dM += d * bKDel[c]!;
+      }
+      nextK[r] = nextK[r]! - dK;
+      nextM[r] = nextM[r]! - dM;
+    }
+    for (let p = 0; p < grp.poles.length; p++) {
+      const alpha = Math.exp(grp.poles[p]! * dt);
+      const beta = (1 - alpha) / Math.max(1e-9, -grp.poles[p]!);
+      const res = grp.residues[p]!;
+      const shk = grp.statesHk[p]!;
+      const shm = grp.statesHm[p]!;
+      for (let i = 0; i < n; i++) {
+        shk[i] = alpha * shk[i]! + beta * bMDel[i]!;
+        shm[i] = alpha * shm[i]! + beta * bKDel[i]!;
+      }
+      for (let r = 0; r < n; r++) {
+        let hk = 0;
+        let hm = 0;
+        for (let c = 0; c < n; c++) {
+          const rc = res[r * n + c]!;
+          hk += rc * shk[c]!;
+          hm += rc * shm[c]!;
+        }
+        nextK[r] = nextK[r]! - hk;
+        nextM[r] = nextM[r]! - hm;
+      }
+    }
+  }
+
+  model.iHistK.set(nextK);
+  model.iHistM.set(nextM);
+  model.ptr = (ptr + 1) % bufLen;
+  return { iHistK: model.iHistK, iHistM: model.iHistM };
 }

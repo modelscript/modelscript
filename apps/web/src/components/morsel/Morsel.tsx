@@ -24,6 +24,7 @@ import {
   didChange,
   didClose,
   didOpen,
+  drillDownDiagram,
   extractPrimaryModelicaClassName,
   getComponentProperties,
   getDiagramData,
@@ -31,10 +32,12 @@ import {
 } from "./util/lsp-bridge";
 import { startLsp } from "./util/lsp-worker";
 
+import { useFeatureFlag } from "../../FeatureFlagContext";
 import { useToast } from "../ToastContext";
 import { useMorselEngine } from "./hooks";
 import {
   COLLAPSED_DIAGNOSTICS_HEIGHT,
+  MorselAiPanel,
   MorselDiagnosticsPanel,
   MorselFloatingDock,
   MorselLeftSidebar,
@@ -46,6 +49,7 @@ import {
   type MobileTab,
 } from "./panels";
 import ParameterSliderRibbon from "./ParameterSliderRibbon";
+import { formatMonacoMarkers, type MorselToolHost } from "./util/morsel-tool-bridge";
 
 const CodeEditor = React.lazy(() => import("./Code"));
 
@@ -99,6 +103,8 @@ export interface MorselEditorProps {
   onUpdateProjectFile?: ((fileName: string, content: string) => void) | undefined;
   onSelectProjectFile?: ((fileName: string) => void) | undefined;
   onAddProjectFile?: ((fileName: string) => void) | undefined;
+  onOpenNewModelModal?: (() => void) | undefined;
+  isLoadingModel?: boolean | undefined;
   onRemoveProjectFile?: ((fileName: string) => void) | undefined;
   onRenameProjectFile?: ((oldName: string, newName: string) => void) | undefined;
   onMoveProjectFile?: ((fileName: string, targetDir: string) => void) | undefined;
@@ -233,6 +239,9 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [isFlattenDialogOpen, setFlattenDialogOpen] = useState(false);
   const [flattenedCode, setFlattenedCode] = useState("");
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
+  const [isAiOpen, setIsAiOpen] = useState(false);
+  const [aiInitialPrompt, setAiInitialPrompt] = useState<string | undefined>(undefined);
+  const hasMorselAi = useFeatureFlag("morsel_ai");
   const codeEditorRef = useRef<CodeEditorHandle>(null);
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
   const baseContent = props.initialCode ?? decodedContent ?? initialLangInfo.defaultCode;
@@ -315,6 +324,11 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [selectedModelIndex, setSelectedModelIndex] = useState(0);
   const [documentModels, setDocumentModels] = useState<{ name: string; kind: string }[]>([]);
   const [drillDownPath, setDrillDownPath] = useState<string[]>([]);
+  const [psseDiagramOptions, setPsseDiagramOptions] = useState<{
+    focusBus?: number | undefined;
+    kHops?: number | undefined;
+    layoutMode?: "auto" | "geographic" | undefined;
+  }>({});
   const isSpatialEditPending = useRef(false);
   const lastDiagramEditTimeRef = useRef(0);
   const diagramDataRef = useRef<any>(null);
@@ -612,6 +626,8 @@ export default function MorselEditor(props: MorselEditorProps) {
     simulationStatus,
     setSimulationStatus,
     localSimulationData,
+    pscadComplianceReport,
+    pscadExports,
     setLocalSimulationData,
     cadComponents,
     gdtOverlay,
@@ -935,6 +951,19 @@ export default function MorselEditor(props: MorselEditorProps) {
           return [...base, matchedModel.name];
         });
         setSelectedTreeClassName(matchedModel.name);
+      } else if (dialect === "pscad" && documentUri) {
+        void drillDownDiagram(documentUri, nodeId || shortName, selectedTreeClassName || undefined).then((res) => {
+          if (res?.targetClassName) {
+            setDrillDownPath((prev) => {
+              if (res.breadcrumbs && res.breadcrumbs.length > 0) return res.breadcrumbs;
+              const rootName = selectedTreeClassName || "Main";
+              const base = prev.length === 0 ? [rootName] : prev;
+              if (base[base.length - 1] === res.targetClassName) return base;
+              return [...base, res.targetClassName!];
+            });
+            setSelectedTreeClassName(res.targetClassName);
+          }
+        });
       } else {
         setDrillDownPath((prev) => {
           const rootName = selectedTreeClassName || documentModels[0]?.name || dialect;
@@ -944,7 +973,7 @@ export default function MorselEditor(props: MorselEditorProps) {
         });
       }
     },
-    [diagramData, documentModels, selectedTreeClassName, dialect, handleRevealLine],
+    [diagramData, documentModels, selectedTreeClassName, dialect, documentUri, handleRevealLine],
   );
 
   const handleDrillRoot = useCallback(() => {
@@ -952,10 +981,12 @@ export default function MorselEditor(props: MorselEditorProps) {
       const rootModel = documentModels.find((m) => m.name === drillDownPath[0]);
       if (rootModel) {
         setSelectedTreeClassName(rootModel.name);
+      } else if (dialect === "pscad") {
+        setSelectedTreeClassName(null);
       }
     }
     setDrillDownPath([]);
-  }, [drillDownPath, documentModels]);
+  }, [drillDownPath, documentModels, dialect]);
 
   const handleDrillUp = useCallback(
     (index: number) => {
@@ -964,15 +995,21 @@ export default function MorselEditor(props: MorselEditorProps) {
       const matched = documentModels.find((m) => m.name === targetName);
       if (matched) {
         setSelectedTreeClassName(matched.name);
+      } else if (dialect === "pscad") {
+        setSelectedTreeClassName(index === 0 ? null : targetName);
       }
       setDrillDownPath((prev) => prev.slice(0, index + 1));
     },
-    [drillDownPath, documentModels],
+    [drillDownPath, documentModels, dialect],
   );
 
   const handleInsertStencilSnippet = useCallback(
     (snippet: string, className?: string) => {
-      if ((dialect === "modelica" || dialect === "modelscript") && className && editorRef.current) {
+      if (
+        (dialect === "modelica" || dialect === "modelscript" || dialect === "pscad") &&
+        className &&
+        editorRef.current
+      ) {
         enqueueDiagramAction({ type: "addComponent", className, x: 0, y: 0 });
         return;
       }
@@ -1067,6 +1104,13 @@ export default function MorselEditor(props: MorselEditorProps) {
   useEffect(() => {
     const init = async () => {
       if (isInitialized.current) return;
+      const isEmptyWorkspace =
+        props.projectFiles !== undefined && Object.keys(props.projectFiles).length === 0 && !content.trim();
+      if (isEmptyWorkspace) {
+        setLoadingProgress(100);
+        setLoadingMessage("Ready");
+        return;
+      }
       isInitialized.current = true;
 
       setLoadingProgress(10);
@@ -1599,7 +1643,14 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
 
     const currentCode = editorRef.current?.getValue() ?? lastLoadedContentRef.current ?? content;
-    getDiagramData(documentUri, selectedTreeClassName || undefined, diagramType, sidecarContent, currentCode)
+    getDiagramData(
+      documentUri,
+      selectedTreeClassName || undefined,
+      diagramType,
+      sidecarContent,
+      currentCode,
+      dialect === "psse" ? psseDiagramOptions : undefined,
+    )
       .then((data) => {
         if (cancelled) return;
         setDiagramData(data);
@@ -1624,7 +1675,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     return () => {
       cancelled = true;
     };
-  }, [documentUri, dialect, selectedTreeClassName, diagramType, sidecarContent, contextVersion]);
+  }, [documentUri, dialect, selectedTreeClassName, diagramType, sidecarContent, contextVersion, psseDiagramOptions]);
 
   const handleFlatten = async () => {
     try {
@@ -1813,10 +1864,14 @@ export default function MorselEditor(props: MorselEditorProps) {
             onOpenCloud={() => setIsCloudModalOpen(true)}
             isSimulating={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
             floating={isFloatingWorkspace}
-            projectFiles={props.projectFiles}
-            activeFileName={props.activeFileName}
+            projectFiles={
+              props.projectFiles ?? { [`model.${getLanguageInfo(dialect || "modelica").ext || "mo"}`]: code }
+            }
+            activeFileName={props.activeFileName ?? `model.${getLanguageInfo(dialect || "modelica").ext || "mo"}`}
             onSelectProjectFile={props.onSelectProjectFile}
             onAddProjectFile={props.onAddProjectFile}
+            onOpenNewModelModal={props.onOpenNewModelModal}
+            isLoadingModel={props.isLoadingModel}
             onRemoveProjectFile={props.onRemoveProjectFile}
             onRenameProjectFile={props.onRenameProjectFile}
             onMoveProjectFile={props.onMoveProjectFile}
@@ -1876,6 +1931,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             >
               {/* Visualizer Pane (Diagram / 3D / Simulation / Inspector on the left in split view) */}
               <MorselVisualizerPane
+                isLoadingModel={props.isLoadingModel}
                 view={view}
                 isNarrow={isNarrow}
                 mobileTab={mobileTab}
@@ -1907,6 +1963,8 @@ export default function MorselEditor(props: MorselEditorProps) {
                 animationControllerRef={animationControllerRef}
                 diagramEditorRef={diagramEditorRef}
                 diagramData={diagramData}
+                psseDiagramOptions={psseDiagramOptions}
+                onPsseDiagramOptionsChange={setPsseDiagramOptions}
                 selectedTreeClassName={selectedTreeClassName}
                 selectedComponent={selectedComponent}
                 setSelectedComponent={setSelectedComponent}
@@ -1930,6 +1988,8 @@ export default function MorselEditor(props: MorselEditorProps) {
                 setCosimDataSource={setCosimDataSource}
                 handleReplaySession={handleReplaySession}
                 localSimulationData={localSimulationData}
+                pscadComplianceReport={pscadComplianceReport}
+                pscadExports={pscadExports}
                 sweepResults={sweepResults}
                 simulationStatus={simulationStatus}
                 amplSolveResult={amplSolveResult}
@@ -2261,6 +2321,16 @@ export default function MorselEditor(props: MorselEditorProps) {
                     handleSelectDiagnostic(marker);
                   }
                 }}
+                onFixWithAi={
+                  hasMorselAi
+                    ? (marker, fileName) => {
+                        setAiInitialPrompt(
+                          `Please fix this diagnostic in ${fileName || props.activeFileName || "the active file"} at line ${marker.startLineNumber}: ${marker.message}`,
+                        );
+                        setIsAiOpen(true);
+                      }
+                    : undefined
+                }
               />
             )}
           </div>
@@ -2295,6 +2365,60 @@ export default function MorselEditor(props: MorselEditorProps) {
             setContextVersion={setContextVersion}
             isDark={isDark}
             toggleTheme={toggleTheme}
+            isAiOpen={isAiOpen}
+            onToggleAi={() => setIsAiOpen((v) => !v)}
+          />
+        )}
+
+        {hasMorselAi && !props.embed && (
+          <MorselAiPanel
+            isOpen={isAiOpen}
+            onClose={() => setIsAiOpen(false)}
+            colorMode={colorMode}
+            fileName={props.activeFileName || `model.${getLanguageExtension(dialect)}`}
+            dialect={dialect}
+            diagnostics={formatMonacoMarkers(editorDiagnostics)}
+            initialPrompt={aiInitialPrompt}
+            onConsumeInitialPrompt={() => setAiInitialPrompt(undefined)}
+            toolHost={
+              {
+                getFileName: () => props.activeFileName || `model.${getLanguageExtension(dialect)}`,
+                getDialect: () => dialect,
+                getCode: () => editor?.getValue() ?? content,
+                getDiagnostics: () => formatMonacoMarkers(editorDiagnostics),
+                getSelectedComponent: () => selectedTreeClassName || undefined,
+                applyCodeEdit: (nextCode, description) => {
+                  const model = editor?.getModel();
+                  if (!editor || !model) {
+                    setLoadedCodeOverride(nextCode);
+                    props.onCodeChange?.(nextCode);
+                    return true;
+                  }
+                  editor.executeEdits(description || "morsel-ai", [
+                    { range: model.getFullModelRange(), text: nextCode, forceMoveMarkers: true },
+                  ]);
+                  return true;
+                },
+                runFlatten: async () => {
+                  await handleFlatten();
+                  return { ok: true, output: flattenedCode || "Flatten triggered in Morsel." };
+                },
+                runSimulate: async () => {
+                  await handleSimulate();
+                  return {
+                    ok: simulationStatus?.status !== "failed",
+                    output: simulationStatus?.error
+                      ? `Simulation failed: ${simulationStatus.error}`
+                      : `Simulation status: ${simulationStatus?.status ?? "completed"}`,
+                  };
+                },
+                switchView: (nextView) => setView(nextView as View),
+                getDiagramSummary: async () => {
+                  const diagram = await getDiagramData(documentUri, selectedTreeClassName || undefined);
+                  return JSON.stringify(diagram ?? {});
+                },
+              } satisfies MorselToolHost
+            }
           />
         )}
 

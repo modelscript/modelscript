@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createModelScriptMcpServer, type ServerContext } from "@modelscript/mcp";
 import crypto from "crypto";
 import type { Request, Response, Router } from "express";
@@ -80,26 +81,8 @@ export function mcpRouter(database: LibraryDatabase): Router {
     return resolveRequestUserId(req, database);
   }
 
-  // GET /api/v1/mcp/sse — SSE handshake for MCP clients (Cursor, Claude Desktop, autonomous agents)
-  router.get("/mcp/sse", async (req: Request, res: Response) => {
-    const userId = resolveAuth(req);
-    if (!userId) {
-      res.status(401).json({
-        error: "Unauthorized",
-        message:
-          "Valid authentication token required to connect to hosted MCP gateway. Pass Authorization header or '?token=<token>'.",
-      });
-      return;
-    }
-
-    if (sessions.size >= MAX_MCP_SESSIONS) {
-      res.status(429).json({
-        error: "Too many active MCP sessions. Please close unused connections and try again.",
-      });
-      return;
-    }
-
-    const ctx: ServerContext = {
+  function buildServerContext(userId: number): ServerContext {
+    return {
       current: null,
       userId,
       checkQuota: async ({ profile = "standard" }) => {
@@ -118,12 +101,8 @@ export function mcpRouter(database: LibraryDatabase): Router {
         }
       },
       socialBridge: {
-        getPost: async (postId: number) => {
-          return database.getPost(postId, userId);
-        },
-        getReplies: async (postId: number) => {
-          return database.getReplies(postId, userId);
-        },
+        getPost: async (postId: number) => database.getPost(postId, userId),
+        getReplies: async (postId: number) => database.getReplies(postId, userId),
         createPost: async (params) => {
           const requestedAuthorId = params.authorId !== undefined ? Number(params.authorId) : userId;
           if (requestedAuthorId !== userId) {
@@ -144,7 +123,49 @@ export function mcpRouter(database: LibraryDatabase): Router {
         },
       },
     };
+  }
 
+  // POST /api/v1/mcp — Streamable HTTP MCP endpoint (stateless JSON-RPC / SSE)
+  router.post("/mcp", async (req: Request, res: Response) => {
+    const userId = resolveAuth(req);
+    if (!userId) {
+      res.status(401).json({
+        error: "Unauthorized",
+        message: "Valid authentication token required for Streamable HTTP MCP gateway.",
+      });
+      return;
+    }
+
+    const transport = new StreamableHTTPServerTransport({});
+    const mcpServer = createModelScriptMcpServer(buildServerContext(userId));
+    res.on("close", () => {
+      void transport.close();
+      void mcpServer.close();
+    });
+    await mcpServer.connect(transport as unknown as Parameters<typeof mcpServer.connect>[0]);
+    await transport.handleRequest(req, res, req.body);
+  });
+
+  // GET /api/v1/mcp/sse — SSE handshake for MCP clients (Cursor, Claude Desktop, autonomous agents)
+  router.get("/mcp/sse", async (req: Request, res: Response) => {
+    const userId = resolveAuth(req);
+    if (!userId) {
+      res.status(401).json({
+        error: "Unauthorized",
+        message:
+          "Valid authentication token required to connect to hosted MCP gateway. Pass Authorization header or '?token=<token>'.",
+      });
+      return;
+    }
+
+    if (sessions.size >= MAX_MCP_SESSIONS) {
+      res.status(429).json({
+        error: "Too many active MCP sessions. Please close unused connections and try again.",
+      });
+      return;
+    }
+
+    const ctx = buildServerContext(userId);
     const transport = new SSEServerTransport("/api/v1/mcp/messages", res);
     const mcpServer = createModelScriptMcpServer(ctx);
 

@@ -196,6 +196,8 @@ export class ArenaSimulator {
   public parameters = new Map<string, number>();
   /** Optional interactive debugger hook invoked during equation evaluation and step transitions. */
   public debuggerHook?: SimulationDebugger | undefined;
+  /** When true, skips Pantelides index reduction for pre-causalized Index-1 DAEs. */
+  public skipPantelides = false;
 
   /** Recorded safety barrier violations during simulation. */
   public safetyViolations: {
@@ -440,13 +442,17 @@ export class ArenaSimulator {
     this.identifyDerivatives();
 
     // Arena-Native Pantelides Index Reduction
-    const pantelidesRes = pantelidesIndexReductionArena(
-      this.arena,
-      this.stateVars,
-      this.derivativeVars,
-      this.parameterVars,
-    );
-    this.dummyDerivatives = pantelidesRes.dummyDerivatives;
+    if (this.skipPantelides) {
+      this.dummyDerivatives = new Set<number>();
+    } else {
+      const pantelidesRes = pantelidesIndexReductionArena(
+        this.arena,
+        this.stateVars,
+        this.derivativeVars,
+        this.parameterVars,
+      );
+      this.dummyDerivatives = pantelidesRes.dummyDerivatives;
+    }
 
     // Arena-Native BLT / Bipartite Matching
     const bltRes = performBltTransformationArena(this.arena, this.stateVars, this.dummyDerivatives, this.parameterVars);
@@ -8328,6 +8334,8 @@ export interface ArenaSimulateOptions {
   vectorCausalize?: boolean | undefined;
   /** When true, lowers discontinuous expressions (abs, sign, min, max, if-else) to μ-Modelica discrete variables and When zero-crossings. */
   microModelica?: boolean | undefined;
+  /** When true, skips Pantelides index reduction for systems known to be Index-1. */
+  skipPantelides?: boolean | undefined;
 }
 
 /**
@@ -8354,6 +8362,9 @@ export function simulateArena(arena: DAEBuilder, options?: ArenaSimulateOptions)
   }
   // ── Step 1: Prepare the simulator ──
   const sim = new ArenaSimulator(arena);
+  if (options?.skipPantelides) {
+    sim.skipPantelides = true;
+  }
   if (options?.fmuRegistry) {
     sim.fmuRegistry = options.fmuRegistry;
   }

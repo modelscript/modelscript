@@ -7,6 +7,7 @@ import {
   add,
   addReal,
   div,
+  emitExponentialSatCurve,
   emitFirstOrderLag,
   emitSaturationCurve,
   mul,
@@ -208,6 +209,7 @@ export function lowerGeneratorUnitToDae(
   } else {
     // Full 5th-order (GENSAL/GENSAE) or 6th-order (GENROU/GENROE/GENTPJ) subtransient synchronous machine
     const isSalient = archetype === "sync_subtrans_salient_5o";
+    const isExpSat = dyrGen.model === "GENROE" || dyrGen.model === "GENSAE";
     const td0p = Math.max(0.05, np["Td0p"] ?? 6.5);
     const td0pp = Math.max(0.005, np["Td0pp"] ?? 0.035);
     const tq0p = Math.max(0.02, np["Tq0p"] ?? 1.0);
@@ -263,7 +265,9 @@ export function lowerGeneratorUnitToDae(
       const iMag = dae.addCallExpr("sqrt", [add(dae, mul(dae, idExpr, idExpr), mul(dae, iqExpr, iqExpr))]);
       eSatArg = add(dae, eSatArg, mul(dae, addReal(dae, kis), iMag));
     }
-    const satExpr = emitSaturationCurve(ctx, eSatArg, 1.0, genInit.s10, 1.2, genInit.s12);
+    const satExpr = isExpSat
+      ? emitExponentialSatCurve(ctx, eSatArg, 1.0, genInit.s10, 1.2, genInit.s12)
+      : emitSaturationCurve(ctx, eSatArg, 1.0, genInit.s10, 1.2, genInit.s12);
     const satD = mul(dae, satExpr, eqpExpr);
 
     // d-axis transient flux ODE: Td0' * der(Eq') = Efd - Eq' - (Xd - X'd)*[Id - ((X'd - X''d)/(X'd - Xl)^2)*(psikd - Eq' + (X'd - Xl)*Id)] - S_d

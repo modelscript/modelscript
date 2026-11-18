@@ -12,5 +12,17 @@ export { AnimationTimeline } from "./AnimationTimeline";
 export { CadBindingPickerModal } from "./CadBindingPickerModal";
 export { default as CadViewer } from "./CadViewer";
 export type { CadAnnotation, CadComponent, CadPortAnnotation, ProceduralMeshData } from "./CadViewer";
+export {
+  CaePostProcessDrawer,
+  CaeSimulationTree,
+  ScalarColorbarLegend,
+  buildCaeSimulationModel,
+  type CaeGeometryEntry,
+  type CaeNodeStatus,
+  type CaeSimulationModel,
+  type CaeSimulationRunEntry,
+  type CaeSimulationTreeProps,
+  type CaeTreeItemRef,
+} from "./CaeSimulationTree";
 export { InstancedCadAssembly, type InstancedCadAssemblyProps } from "./InstancedCadAssembly";
 export { extractCadComponents, parseCadAnnotationString, parseSourceCadVariables } from "./parse-cad-annotations";

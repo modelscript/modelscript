@@ -78,7 +78,7 @@ describe("PSCAD embedded Fortran/C LSP delegation & fidelity gating", () => {
       </definitions>
     </project>`;
 
-    const rejected: any = await simAction.execute({ documentText: unsupportedXml }, {});
+    const rejected: any = await simAction.execute({ languageId: "pscad", documentText: unsupportedXml }, {});
     assert.equal(rejected.simulationResult, undefined);
     assert.equal(rejected.simulationReport.status, "rejected");
     assert.ok(rejected.diagnostics.some((d: any) => d.code === "P6100"));

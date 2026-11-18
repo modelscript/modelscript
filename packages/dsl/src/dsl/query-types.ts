@@ -107,7 +107,7 @@ export interface CompilerLint<
         arg2: DiagnosticContext<FieldName>,
       ) => string);
   /** Diagnostic severity level emitted when this lint rule triggers. */
-  severity: "error" | "warning" | "info";
+  severity: "error" | "warning" | "info" | "notification";
   /** Optional quick-fix or refactoring code actions offered for diagnostics produced by this rule. */
   fixes?: CompilerLintFix<RuleName, FieldName, ModelAttrs>[] | undefined;
 }

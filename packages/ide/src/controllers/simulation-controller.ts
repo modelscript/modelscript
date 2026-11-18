@@ -748,9 +748,12 @@ export function registerSimulationCommands(
             },
           }),
       );
-      const report = res?.complianceReport;
+      const report = res?.complianceReport as
+        | { overallStatus?: string; overallPass?: boolean; projectName?: string; summary?: string }
+        | undefined;
       if (report) {
-        const status = report.overallPass ? "PASS" : "FAIL";
+        const isPass = report.overallStatus ? report.overallStatus === "PASS" : Boolean(report.overallPass);
+        const status = isPass ? "PASS" : "FAIL";
         vscode.window.showInformationMessage(
           `IEEE 2800-2022 Verification (${report.projectName ?? "PSCAD"}): ${status} — ${report.summary ?? ""}`,
         );

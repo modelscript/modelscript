@@ -64,9 +64,9 @@ export function readDefinitionForm(def: ModelDefinition): DefinitionForm | undef
         min: bound(attr(p, "min")),
         max: bound(attr(p, "max")),
         defaultValue: cdataOrText(childrenNamed(p, "value")[0]),
-        cond: cdataOrText(childrenNamed(p, "cond")[0]),
-        vis: cdataOrText(childrenNamed(p, "vis")[0]),
-        help: cdataOrText(childrenNamed(p, "help")[0]),
+        cond: cdataOrText(childrenNamed(p, "cond")[0]) || (attr(p, "cond") ?? ""),
+        vis: cdataOrText(childrenNamed(p, "vis")[0]) || (attr(p, "vis") ?? ""),
+        help: cdataOrText(childrenNamed(p, "help")[0]) || (attr(p, "help") ?? ""),
       });
     }
     categories.push({

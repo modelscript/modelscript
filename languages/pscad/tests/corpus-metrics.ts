@@ -8,7 +8,7 @@
  * lint noise. The numbers are ratcheted by `corpus.test.ts` so they only improve.
  */
 
-import { buildPscadDiagram } from "../../../packages/diagram/src/pscad-diagram-builder.js";
+import { buildPscadDiagram } from "@modelscript/diagram/pscad-diagram-builder";
 import { getMasterComponentSchema } from "../src/catalog/master-library-schemas.js";
 import { lintPscx } from "../src/lints/index.js";
 import { extractEmtNetlist } from "../src/netlist/emt-netlist.js";

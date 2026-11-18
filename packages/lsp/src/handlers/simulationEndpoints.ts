@@ -231,6 +231,7 @@ export function registerSimulationEndpoints(context: LspContext) {
       physicsType?: string | undefined;
       domain?: string | undefined;
       cadUri?: string | undefined;
+      initialSnapshot?: string | undefined;
     }): Promise<{
       t: number[];
       y: number[][];
@@ -260,6 +261,19 @@ export function registerSimulationEndpoints(context: LspContext) {
       error?: string | undefined;
       sweepResults?: { value: number; y: number[][] }[] | undefined;
       telemetry?: { executionTimeMs: number; stepCount: number } | undefined;
+      complianceReport?: unknown | undefined;
+      simulationReport?: unknown | undefined;
+      pscadExports?:
+        | {
+            projectName?: string | undefined;
+            psoutBase64?: string | undefined;
+            comtrade?: { cfg: string; dat: string } | undefined;
+            pscadOut?: unknown | undefined;
+            snapshot?: string | undefined;
+            graphFrames?: unknown | undefined;
+            nominalFreqHz?: number | undefined;
+          }
+        | undefined;
     }> => {
       context.connection.console.info(
         `[simulate] Requested simulation for URI: ${params.uri} class: ${params.className}`,
@@ -393,7 +407,29 @@ export function registerSimulationEndpoints(context: LspContext) {
             return { t: [], y: [], states: [], error: `Could not read PSCAD source for ${params.uri}` };
           }
           const t0 = Date.now();
-          const { registerPscadSource, runPscadSimulationPipeline } = await import("@modelscript/pscad");
+          const {
+            applySplices,
+            planPscadEdits,
+            registerPscadSource,
+            runPscadSimulationPipeline,
+            serializePscadSnapshot,
+          } = await import("@modelscript/pscad");
+          let effectiveText = text;
+          if (params.parameterOverrides && Object.keys(params.parameterOverrides).length > 0) {
+            const ops: Array<{ type: "setParameter"; id: string; name: string; value: string }> = [];
+            for (const [k, v] of Object.entries(params.parameterOverrides)) {
+              const dotIdx = k.lastIndexOf(".");
+              if (dotIdx > 0) {
+                ops.push({ type: "setParameter", id: k.slice(0, dotIdx), name: k.slice(dotIdx + 1), value: String(v) });
+              }
+            }
+            if (ops.length > 0) {
+              const plan = planPscadEdits(effectiveText, ops);
+              if (plan.splices.length > 0) {
+                effectiveText = applySplices(effectiveText, plan.splices);
+              }
+            }
+          }
           if (typeof context.documents?.all === "function") {
             for (const openDoc of context.documents.all()) {
               if (/\.(pscx|pslx|pswx|psmx)($|\?|#)/i.test(openDoc.uri)) {
@@ -401,15 +437,39 @@ export function registerSimulationEndpoints(context: LspContext) {
               }
             }
           }
-          registerPscadSource(params.uri, text);
+          registerPscadSource(params.uri, effectiveText);
+          const estDt = typeof params.interval === "number" && params.interval > 0 ? params.interval : 50e-6;
+          const estDur = typeof params.stopTime === "number" && params.stopTime > 0 ? params.stopTime : 0.2;
+          const streamStride = Math.max(1, Math.floor(estDur / estDt / 40));
           const result = runPscadSimulationPipeline({
-            documentText: text,
+            documentText: effectiveText,
             runSimulation: true,
             durationSec: typeof params.stopTime === "number" && params.stopTime > 0 ? params.stopTime : undefined,
             timeStepSec: typeof params.interval === "number" && params.interval > 0 ? params.interval : undefined,
-            exportComtrade: false,
-            exportOut: false,
-            exportPsout: false,
+            exportComtrade: true,
+            exportOut: true,
+            exportPsout: true,
+            verifyIeee2800: true,
+            initialSnapshot: params.initialSnapshot,
+            exportSnapshot: true,
+            onStep:
+              typeof context.connection?.sendNotification === "function"
+                ? (timeSec, stepIndex, busVolts) => {
+                    if (stepIndex % streamStride !== 0) return;
+                    const voltages: Record<string, number> = {};
+                    for (const [bus, v] of busVolts.entries()) {
+                      voltages[`V_${bus}_a`] = v.a;
+                      voltages[`V_${bus}_b`] = v.b;
+                      voltages[`V_${bus}_c`] = v.c;
+                    }
+                    void context.connection.sendNotification("modelscript/simulationProgress", {
+                      uri: params.uri,
+                      timeSec,
+                      stepIndex,
+                      voltages,
+                    });
+                  }
+                : undefined,
           });
           const sim = result.simulationResult;
           if (!sim) {
@@ -418,6 +478,7 @@ export function registerSimulationEndpoints(context: LspContext) {
               t: [],
               y: [],
               states: [],
+              simulationReport: result.simulationReport,
               error: firstErr?.message ?? "No simulation result returned from PSCAD EMT solver.",
             };
           }
@@ -426,10 +487,20 @@ export function registerSimulationEndpoints(context: LspContext) {
           for (const [bus, vals] of sim.busVoltages.entries()) {
             states.push(`V_${bus}`);
             series.push(vals);
+            const phase = sim.busPhaseVoltages?.get(bus);
+            if (phase) {
+              states.push(`V_${bus}_a`, `V_${bus}_b`, `V_${bus}_c`);
+              series.push(phase.a, phase.b, phase.c);
+            }
           }
           for (const [br, vals] of sim.branchCurrents.entries()) {
             states.push(`I_${br}`);
             series.push(vals);
+            const phase = sim.branchPhaseCurrents?.get(br);
+            if (phase) {
+              states.push(`I_${br}_a`, `I_${br}_b`, `I_${br}_c`);
+              series.push(phase.a, phase.b, phase.c);
+            }
           }
           if (sim.controlSignals) {
             for (const [sig, vals] of sim.controlSignals.entries()) {
@@ -437,15 +508,48 @@ export function registerSimulationEndpoints(context: LspContext) {
               series.push(vals);
             }
           }
-          const tArr = Array.from(sim.time);
-          const yArr: number[][] = new Array(tArr.length);
+          if (result.netlist.pgbChannels) {
+            for (const pgb of result.netlist.pgbChannels) {
+              if (!pgb.sourceSignal) continue;
+              const raw =
+                sim.controlSignals?.get(pgb.sourceSignal) ??
+                sim.busVoltages.get(pgb.sourceSignal) ??
+                sim.branchCurrents.get(pgb.sourceSignal);
+              if (!raw) continue;
+              const scale = pgb.scale !== undefined && pgb.scale !== 0 ? pgb.scale : 1;
+              const scaled = scale === 1 ? raw : Float64Array.from(raw, (v) => v * scale);
+              if (!states.includes(pgb.name)) {
+                states.push(pgb.name);
+                series.push(scaled);
+              }
+            }
+          }
+          const timeStepUs = result.settings.timeStepUs || 50;
+          const plotStepUs = result.settings.plotStepUs || timeStepUs;
+          const plotStride = plotStepUs > timeStepUs ? Math.max(1, Math.round(plotStepUs / timeStepUs)) : 1;
+          const nSamples = sim.time.length;
+          const tArr: number[] = [];
+          const yArr: number[][] = [];
           const nStates = series.length;
-          for (let ti = 0; ti < tArr.length; ti++) {
+          for (let ti = 0; ti < nSamples; ti += plotStride) {
+            tArr.push(sim.time[ti]!);
             const row = new Array<number>(nStates);
             for (let si = 0; si < nStates; si++) {
               row[si] = series[si]?.[ti] ?? 0;
             }
-            yArr[ti] = row;
+            yArr.push(row);
+          }
+          let psoutBase64: string | undefined;
+          if (result.pscadPsout && result.pscadPsout.length > 0) {
+            if (typeof Buffer !== "undefined") {
+              psoutBase64 = Buffer.from(result.pscadPsout).toString("base64");
+            } else if (typeof btoa === "function") {
+              let bin = "";
+              for (let i = 0; i < result.pscadPsout.length; i += 8192) {
+                bin += String.fromCharCode(...result.pscadPsout.subarray(i, i + 8192));
+              }
+              psoutBase64 = btoa(bin);
+            }
           }
           const durationSec = tArr.length > 0 ? tArr[tArr.length - 1]! : (params.stopTime ?? 0.2);
           const dt = tArr.length > 1 ? tArr[1]! - tArr[0]! : (params.interval ?? 50e-6);
@@ -455,6 +559,17 @@ export function registerSimulationEndpoints(context: LspContext) {
             states,
             experiment: { startTime: 0, stopTime: durationSec, interval: dt, tolerance: 1e-4 },
             telemetry: { executionTimeMs: Date.now() - t0, stepCount: tArr.length },
+            complianceReport: result.complianceReport,
+            simulationReport: result.simulationReport,
+            pscadExports: {
+              projectName: result.project,
+              psoutBase64,
+              comtrade: result.comtrade,
+              pscadOut: result.pscadOut,
+              snapshot: result.snapshot ? serializePscadSnapshot(result.snapshot) : undefined,
+              graphFrames: result.netlist.graphFrames,
+              nominalFreqHz: result.netlist.nominalFrequencyHz,
+            },
           };
         }
 

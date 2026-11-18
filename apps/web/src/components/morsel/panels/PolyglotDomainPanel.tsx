@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 /* eslint-disable react-refresh/only-export-components */
 
+import { extractEmtNetlist, parsePscx } from "@modelscript/pscad";
 import { parseUrdf } from "@modelscript/urdf";
 import React, { useEffect, useMemo, useState } from "react";
 import { BltVisualizer } from "./BltVisualizer.js";
+import { PscadLineConstantsPanel } from "./PscadLineConstantsPanel.js";
+import { PscadScriptSegmentsPanel } from "./PscadScriptSegmentsPanel.js";
+import { PscadSweepPanel } from "./PscadSweepPanel.js";
 import { analyzeModelBlt } from "./blt-analysis.js";
 import { InspectorTabs } from "./inspectors/InspectorTabs.js";
 import {
@@ -30,6 +34,9 @@ export interface PolyglotDomainPanelProps {
   documentUri?: string | undefined;
   activeClassName?: string | undefined;
   documentSymbols?: any[] | undefined;
+  projectFiles?: Record<string, string> | undefined;
+  activeFileName?: string | undefined;
+  onUpdateProjectFile?: ((path: string, content: string) => void) | undefined;
   onRevealLine?: ((line: number, identifier?: string) => void) | undefined;
   onCodeChange?: ((newCode: string) => void) | undefined;
 }
@@ -600,7 +607,7 @@ function analyzeMultibody(dialect: string, code: string, lines: string[]): Domai
 
 // ── 3. Power Systems & Circuits Parser (PSS/E, OpenDSS, PSCAD, SPICE, Verilog-A) ──
 
-function analyzePowerAndCircuits(dialect: string, _code: string, lines: string[]): DomainAnalysisResult {
+function analyzePowerAndCircuits(dialect: string, code: string, lines: string[]): DomainAnalysisResult {
   const busRows: Record<string, any>[] = [];
   const branchRows: Record<string, any>[] = [];
   const genLoadRows: Record<string, any>[] = [];
@@ -830,12 +837,12 @@ function analyzePowerAndCircuits(dialect: string, _code: string, lines: string[]
 
     let objMatch: RegExpExecArray | null;
     const objRegex = /<DataObject\b([^>]*?)(?:\/>|>([\s\S]*?)<\/DataObject>)/gi;
-    while ((objMatch = objRegex.exec(_code)) !== null) {
+    while ((objMatch = objRegex.exec(code)) !== null) {
       const attrs = objMatch[1] ?? "";
       const body = objMatch[2] ?? "";
       const cls = /\bclass=["']([^"']+)["']/i.exec(attrs)?.[1] ?? "DataObject";
       const locName = /\bloc_name=["']([^"']+)["']/i.exec(attrs)?.[1] ?? cls;
-      const line = _code.slice(0, objMatch.index).split("\n").length;
+      const line = code.slice(0, objMatch.index).split("\n").length;
 
       if (cls === "ElmTerm") {
         const uknom = readTag(body, "uknom");
@@ -916,16 +923,101 @@ function analyzePowerAndCircuits(dialect: string, _code: string, lines: string[]
           line: i + 1,
         });
       }
-      const pscadComp = /<component\b[^>]*name=["']([^"']+)["'][^>]*>/i.exec(trimmed);
-      if (pscadComp) {
-        branchRows.push({
-          id: pscadComp[1]!,
-          category: "PSCAD Block",
-          nodes: "Schematic Canvas",
-          params: trimmed.slice(0, 64),
-          line: i + 1,
+      if (dialect === "pscad") {
+        // Handled cleanly via parsePscx + extractEmtNetlist below
+      } else {
+        const pscadComp = /<component\b[^>]*name=["']([^"']+)["'][^>]*>/i.exec(trimmed);
+        if (pscadComp) {
+          branchRows.push({
+            id: pscadComp[1]!,
+            category: "PSCAD Block",
+            nodes: "Schematic Canvas",
+            params: trimmed.slice(0, 64),
+            line: i + 1,
+          });
+        }
+      }
+    }
+  }
+
+  if (dialect === "pscad") {
+    try {
+      const proj = parsePscx(code);
+      const net = extractEmtNetlist(proj);
+      for (const [id, b] of net.buses.entries()) {
+        busRows.push({
+          id,
+          name: b.name || id,
+          baseKvOrType: `${b.baseKv ?? 230} kV`,
+          voltageOrAngle: `${b.connectedBranchIds.length} branches`,
+          line: 1,
         });
       }
+      for (const br of net.branches) {
+        branchRows.push({
+          id: br.id,
+          category: br.kind || "Branch",
+          nodes: `${br.fromBus} ↔ ${br.toBus}`,
+          params: br.resistanceOhm !== undefined ? `R=${br.resistanceOhm} Ω` : "Switch/RLC",
+          line: 1,
+        });
+      }
+      for (const xf of net.transformers) {
+        branchRows.push({
+          id: xf.id,
+          category: "Transformer",
+          nodes: `${xf.fromBus} ↔ ${xf.toBus}`,
+          params: `${xf.primaryKv}/${xf.secondaryKv} kV · ${xf.mvaRating} MVA`,
+          line: 1,
+        });
+      }
+      for (const ln of net.transmissionLines) {
+        branchRows.push({
+          id: ln.id,
+          category: "Transmission Line",
+          nodes: `${ln.fromBus} ↔ ${ln.toBus}`,
+          params: `${ln.lengthKm} km (${ln.modelType})`,
+          line: 1,
+        });
+      }
+      for (const src of net.sources) {
+        genLoadRows.push({
+          id: src.id,
+          kind: "AC/DC Source",
+          bus: src.bus,
+          rating: `${src.voltageKv} kV · ${src.frequencyHz} Hz`,
+          line: 1,
+        });
+      }
+      for (const sm of net.synchronousMachines ?? []) {
+        genLoadRows.push({
+          id: sm.id,
+          kind: "Sync Machine",
+          bus: sm.bus,
+          rating: `${sm.ratedMva} MVA · ${sm.ratedKvLL} kV`,
+          line: 1,
+        });
+      }
+      for (const fmu of net.fmuInstances ?? []) {
+        genLoadRows.push({
+          id: fmu.id,
+          kind: "IBR / FMU",
+          bus: fmu.busConnection,
+          rating: `${fmu.ratedMva} MVA · ${fmu.ratedKv} kV`,
+          line: 1,
+        });
+      }
+      for (const vdl of net.voltageDependentLoads ?? []) {
+        genLoadRows.push({
+          id: vdl.id,
+          kind: "Dynamic Load",
+          bus: vdl.busId,
+          rating: `${vdl.p0Mw} MW / ${vdl.q0Mvar} Mvar`,
+          line: 1,
+        });
+      }
+    } catch {
+      // Fallback if XML is mid-edit
     }
   }
 
@@ -2489,6 +2581,9 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
   documentUri,
   activeClassName,
   documentSymbols,
+  projectFiles,
+  activeFileName,
+  onUpdateProjectFile,
   onRevealLine,
   onCodeChange,
 }) => {
@@ -2940,7 +3035,26 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
           onRevealLine={onRevealLine}
         />
       ) : effectiveSubTab === "power_grid" ? (
-        <PowerGridInspector code={code} lines={lines} colorMode={colorMode} dialect={d} onRevealLine={onRevealLine} />
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {d === "pscad" && (
+            <>
+              <PscadScriptSegmentsPanel code={code} colorMode={colorMode} onCodeChange={onCodeChange} />
+              <PscadLineConstantsPanel code={code} onCodeChange={onCodeChange} colorMode={colorMode} />
+              <PscadSweepPanel code={code} colorMode={colorMode} />
+            </>
+          )}
+          <PowerGridInspector
+            code={code}
+            lines={lines}
+            colorMode={colorMode}
+            dialect={d}
+            projectFiles={projectFiles}
+            activeFileName={activeFileName}
+            onUpdateProjectFile={onUpdateProjectFile}
+            onCodeChange={onCodeChange}
+            onRevealLine={onRevealLine}
+          />
+        </div>
       ) : effectiveSubTab === "multibody" ? (
         <MultibodyInspector code={code} lines={lines} colorMode={colorMode} onRevealLine={onRevealLine} />
       ) : effectiveSubTab === "thermo_fluid" ? (

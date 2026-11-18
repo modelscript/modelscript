@@ -15,7 +15,15 @@ export type AlloyPresetKey =
   | "titanium-fan"
   | "compressor-blade"
   | "nickel-superalloy"
-  | "default-machined";
+  | "default-machined"
+  | "molded-abs-plastic"
+  | "matte-polymer"
+  | "elastomer-rubber"
+  | "gloss-paint"
+  | "clear-polycarbonate"
+  | "anodized-aluminum"
+  | "cast-aluminum"
+  | "stainless-steel";
 
 export interface AlloyMaterialSpec {
   readonly colorDark: number;
@@ -25,6 +33,10 @@ export interface AlloyMaterialSpec {
   readonly anisotropy: number;
   readonly anisotropyRotation: number;
   readonly normalScale: readonly [number, number];
+  readonly clearcoat?: number | undefined;
+  readonly clearcoatRoughness?: number | undefined;
+  readonly useBrushedMaps?: boolean | undefined;
+  readonly opacity?: number | undefined;
   readonly iridescence?: number | undefined;
   readonly iridescenceIOR?: number | undefined;
   readonly iridescenceThicknessRange?: readonly [number, number] | undefined;
@@ -146,13 +158,132 @@ export const ALLOY_MATERIAL_PRESETS: Record<AlloyPresetKey, AlloyMaterialSpec> =
     anisotropyRotation: Math.PI / 2,
     normalScale: [0.022, 0.009],
   },
+  "molded-abs-plastic": {
+    colorDark: 0x2b6cb0,
+    colorLight: 0x2b6cb0,
+    metalness: 0.0,
+    roughness: 0.36,
+    anisotropy: 0.0,
+    anisotropyRotation: 0,
+    normalScale: [0, 0],
+    clearcoat: 0.14,
+    clearcoatRoughness: 0.28,
+    useBrushedMaps: false,
+  },
+  "matte-polymer": {
+    colorDark: 0x2d3748,
+    colorLight: 0x2d3748,
+    metalness: 0.0,
+    roughness: 0.72,
+    anisotropy: 0.0,
+    anisotropyRotation: 0,
+    normalScale: [0, 0],
+    clearcoat: 0.0,
+    clearcoatRoughness: 0.0,
+    useBrushedMaps: false,
+  },
+  "elastomer-rubber": {
+    colorDark: 0x1a1d21,
+    colorLight: 0x22262b,
+    metalness: 0.0,
+    roughness: 0.88,
+    anisotropy: 0.0,
+    anisotropyRotation: 0,
+    normalScale: [0, 0],
+    clearcoat: 0.0,
+    clearcoatRoughness: 0.0,
+    useBrushedMaps: false,
+  },
+  "gloss-paint": {
+    colorDark: 0xdc2626,
+    colorLight: 0xdc2626,
+    metalness: 0.08,
+    roughness: 0.16,
+    anisotropy: 0.0,
+    anisotropyRotation: 0,
+    normalScale: [0, 0],
+    clearcoat: 0.85,
+    clearcoatRoughness: 0.08,
+    useBrushedMaps: false,
+  },
+  "clear-polycarbonate": {
+    colorDark: 0xdbeafe,
+    colorLight: 0xeff6ff,
+    metalness: 0.0,
+    roughness: 0.08,
+    anisotropy: 0.0,
+    anisotropyRotation: 0,
+    normalScale: [0, 0],
+    clearcoat: 0.9,
+    clearcoatRoughness: 0.05,
+    useBrushedMaps: false,
+    opacity: 0.34,
+  },
+  "anodized-aluminum": {
+    colorDark: 0x64748b,
+    colorLight: 0x64748b,
+    metalness: 0.86,
+    roughness: 0.26,
+    anisotropy: 0.18,
+    anisotropyRotation: Math.PI / 2,
+    normalScale: [0.015, 0.006],
+    useBrushedMaps: true,
+  },
+  "cast-aluminum": {
+    colorDark: 0x94a3b8,
+    colorLight: 0x94a3b8,
+    metalness: 0.82,
+    roughness: 0.44,
+    anisotropy: 0.0,
+    anisotropyRotation: 0,
+    normalScale: [0, 0],
+    useBrushedMaps: false,
+  },
+  "stainless-steel": {
+    colorDark: 0xb8c0cc,
+    colorLight: 0xc2cad6,
+    metalness: 0.94,
+    roughness: 0.18,
+    anisotropy: 0.26,
+    anisotropyRotation: Math.PI / 2,
+    normalScale: [0.02, 0.008],
+    useBrushedMaps: true,
+  },
 };
 
+function classifyExplicitMaterialHint(materialHint?: string | null): AlloyPresetKey | null {
+  const hint = (materialHint ?? "").toLowerCase().trim();
+  if (!hint) return null;
+  if (/(rubber|elastomer|silicone|tpu|epdm|neoprene|viton)/.test(hint)) return "elastomer-rubber";
+  if (/(polycarbonate|acrylic|pmma|glass|transparent|clear|lexan)/.test(hint)) return "clear-polycarbonate";
+  if (/(matte|nylon|pa12|polyamide|carbon|composite|peek|delrin|pom)/.test(hint)) return "matte-polymer";
+  if (/(paint|enamel|lacquer|gloss|coat)/.test(hint)) return "gloss-paint";
+  if (/(plastic|abs|petg|pla|polypropylene|pp|hdpe|pvc|polymer)/.test(hint)) return "molded-abs-plastic";
+  if (/(anodiz)/.test(hint)) return "anodized-aluminum";
+  if (/(cast)/.test(hint)) return "cast-aluminum";
+  if (/(steel|inox|304|316|chrome)/.test(hint)) return "stainless-steel";
+  if (/(titanium|ti-6al|ti64)/.test(hint)) return "titanium-fan";
+  if (/(inconel|superalloy|nickel)/.test(hint)) return "nickel-superalloy";
+  if (/(alum|al6061|6061|7075)/.test(hint)) return "default-machined";
+  return null;
+}
+
 /**
- * Classifies a CAD part name (and optional RGBA hint) into a calibrated aerospace
- * alloy PBR preset so generic STEP/SCAD/Modelica viewers match the hero material palette.
+ * Classifies a CAD part name, optional RGBA hint, and optional explicit material
+ * identifier into a calibrated PBR preset (metals, plastics, rubbers, paints, glass).
  */
-export function classifyAlloyPreset(partName?: string | null, colorRgba?: readonly number[]): AlloyPresetKey {
+export function classifyAlloyPreset(
+  partName?: string | null,
+  colorRgba?: readonly number[],
+  materialHint?: string | null,
+): AlloyPresetKey {
+  const explicit = classifyExplicitMaterialHint(materialHint);
+  if (explicit) return explicit;
+
+  if (colorRgba && colorRgba.length >= 4 && (colorRgba[3] ?? 1.0) < 0.99) {
+    return "clear-polycarbonate";
+  }
+
   const name = (partName ?? "").toLowerCase();
   if (/(combust|liner|burner|flame|hot)/.test(name)) return "combustor-liner";
   if (/(turbine|hpt|lpt|nozzle|inconel|superalloy)/.test(name)) return "nickel-superalloy";
@@ -163,12 +294,17 @@ export function classifyAlloyPreset(partName?: string | null, colorRgba?: readon
   if (/(drum|shaft|spool|bearing|axis)/.test(name)) return "rotor-drum";
   if (/(nacelle|casing|shroud|housing|flange)/.test(name)) return "al-li-nacelle";
 
+  if (/(rubber|gasket|seal|grip|o-ring|oring|boot)/.test(name)) return "elastomer-rubber";
+  if (/(glass|acrylic|polycarb|window|lens|visor)/.test(name)) return "clear-polycarbonate";
+  if (/(plastic|abs|nylon|polymer|handle|trigger|cover|cap)/.test(name)) return "molded-abs-plastic";
+
   if (colorRgba && colorRgba.length >= 3) {
     const r = colorRgba[0] ?? 0.5;
     const g = colorRgba[1] ?? 0.5;
     const b = colorRgba[2] ?? 0.5;
-    if (r > g + 0.12 && r > b + 0.16) return "combustor-liner";
-    if (r > b + 0.06 && g >= b) return "nickel-superalloy";
+    const maxC = Math.max(r, g, b);
+    const minC = Math.min(r, g, b);
+    if (maxC - minC > 0.14) return "molded-abs-plastic";
   }
   return "default-machined";
 }

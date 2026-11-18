@@ -24,6 +24,8 @@ export interface FrequencyScanOptions {
   nominalFrequencyHz?: number | undefined;
   /** Model inverter current controller Subsynchronous Control Interaction (SSCI) negative damping (default: true). */
   modelIbrControlInteraction?: boolean | undefined;
+  /** Scan formulation: coupled sequence hyperbolic Y_1/Y_0 (default) or legacy single-phase positive sequence. */
+  mode?: "three_phase_coupled" | "single_phase" | undefined;
 }
 
 export interface ResonancePoint {
@@ -41,6 +43,7 @@ export interface FrequencyScanResult {
   xOhm: number[];
   zMagOhm: number[];
   phaseDeg: number[];
+  z0Ohm?: Array<{ r: number; x: number }> | undefined;
   resonancePoints: ResonancePoint[];
   hasSsciRisk: boolean;
   minResistanceOhm: number;
@@ -50,7 +53,11 @@ export interface FrequencyScanResult {
 /**
  * Executes a driving-point impedance frequency scan across the network.
  */
-export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOptions): FrequencyScanResult {
+export function runFrequencyScan(
+  netlistInput: EmtNetlist | import("./emt-solver.js").EmtNetlistInput,
+  options: FrequencyScanOptions,
+): FrequencyScanResult {
+  const netlist = netlistInput as EmtNetlist;
   const t0 = performance.now();
   const fMin = options.fMinHz ?? 1.0;
   const fMax = options.fMaxHz ?? 150.0;
@@ -100,6 +107,8 @@ export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOpti
   const xOhm: number[] = [];
   const zMagOhm: number[] = [];
   const phaseDeg: number[] = [];
+  const z0Ohm: Array<{ r: number; x: number }> = [];
+  const useCoupledSeq = options.mode !== "single_phase";
 
   const numFreqs = Math.max(1, Math.floor((fMax - fMin) / fStep) + 1);
 
@@ -107,25 +116,39 @@ export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOpti
     const f = fMin + idx * fStep;
     const omega = 2.0 * Math.PI * f;
 
-    // Assemble complex nodal admittance matrix Y(omega) = G + jB
+    // Assemble positive-sequence G+jB and zero-sequence G0+jB0 nodal admittance matrices
     const G = new Float64Array(n * n);
     const B = new Float64Array(n * n);
+    const G0 = useCoupledSeq ? new Float64Array(n * n) : null;
+    const B0 = useCoupledSeq ? new Float64Array(n * n) : null;
 
-    const stampBranch = (i1: number, i2: number, gVal: number, bVal: number) => {
+    const stampMatrix = (
+      MatG: Float64Array,
+      MatB: Float64Array,
+      i1: number,
+      i2: number,
+      gVal: number,
+      bVal: number,
+    ) => {
       if (i1 >= 0) {
-        G[i1 * n + i1] = G[i1 * n + i1]! + gVal;
-        B[i1 * n + i1] = B[i1 * n + i1]! + bVal;
+        MatG[i1 * n + i1] = MatG[i1 * n + i1]! + gVal;
+        MatB[i1 * n + i1] = MatB[i1 * n + i1]! + bVal;
       }
       if (i2 >= 0) {
-        G[i2 * n + i2] = G[i2 * n + i2]! + gVal;
-        B[i2 * n + i2] = B[i2 * n + i2]! + bVal;
+        MatG[i2 * n + i2] = MatG[i2 * n + i2]! + gVal;
+        MatB[i2 * n + i2] = MatB[i2 * n + i2]! + bVal;
       }
       if (i1 >= 0 && i2 >= 0) {
-        G[i1 * n + i2] = G[i1 * n + i2]! - gVal;
-        B[i1 * n + i2] = B[i1 * n + i2]! - bVal;
-        G[i2 * n + i1] = G[i2 * n + i1]! - gVal;
-        B[i2 * n + i1] = B[i2 * n + i1]! - bVal;
+        MatG[i1 * n + i2] = MatG[i1 * n + i2]! - gVal;
+        MatB[i1 * n + i2] = MatB[i1 * n + i2]! - bVal;
+        MatG[i2 * n + i1] = MatG[i2 * n + i1]! - gVal;
+        MatB[i2 * n + i1] = MatB[i2 * n + i1]! - bVal;
       }
+    };
+
+    const stampBranch = (i1: number, i2: number, gVal: number, bVal: number) => {
+      stampMatrix(G, B, i1, i2, gVal, bVal);
+      if (G0 && B0) stampMatrix(G0, B0, i1, i2, gVal, bVal);
     };
 
     // 1. Grid sources (Thevenin series resistance & inductance)
@@ -142,7 +165,7 @@ export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOpti
       }
     }
 
-    // 2. Transmission lines and series R-L-C branches
+    // 2. Series/shunt R-L-C branches
     for (const br of netlist.branches ?? []) {
       const brExt = br as unknown as {
         kind?: string;
@@ -167,7 +190,7 @@ export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOpti
       const l = brExt.lHenry ?? brExt.inductanceH ?? 0.02;
       const c = brExt.cFarad ?? brExt.capacitanceF ?? 0.0;
 
-      let zRe = r;
+      const zRe = r;
       let zIm = omega * l;
       if (c > 0) {
         zIm -= 1.0 / (omega * c); // Series capacitive compensation
@@ -178,22 +201,28 @@ export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOpti
         stampBranch(i1, i2, zRe / zMag2, -zIm / zMag2);
       }
 
-      // Shunt line charging capacitance
       const cShunt = brExt.shuntC ?? 0.0;
       if (cShunt > 0) {
         if (i1 >= 0) B[i1 * n + i1] = B[i1 * n + i1]! + 0.5 * omega * cShunt;
         if (i2 >= 0) B[i2 * n + i2] = B[i2 * n + i2]! + 0.5 * omega * cShunt;
+        if (B0) {
+          if (i1 >= 0) B0[i1 * n + i1] = B0[i1 * n + i1]! + 0.5 * omega * cShunt;
+          if (i2 >= 0) B0[i2 * n + i2] = B0[i2 * n + i2]! + 0.5 * omega * cShunt;
+        }
       }
     }
 
-    // 3. Transformers
+    // 3. Transformers (sequence-aware: Yg-D grounds primary Z0 and isolates secondary Z0)
     for (const tr of netlist.transformers ?? []) {
       const trExt = tr as unknown as {
         fromBus: string;
         toBus: string;
+        primaryKv?: number;
+        secondaryKv?: number;
         windingLossFraction?: number;
         leakageLHenry?: number;
         leakageReactancePu?: number;
+        windingConnection?: "Yg-Yg" | "Yg-D" | "D-Yg" | "D-D";
       };
       const i1 = busIdxMap.get(trExt.fromBus) ?? -1;
       const i2 = busIdxMap.get(trExt.toBus) ?? -1;
@@ -205,50 +234,127 @@ export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOpti
       const zIm = omega * l;
       const zMag2 = zRe * zRe + zIm * zIm;
       if (zMag2 > 1e-12) {
-        stampBranch(i1, i2, zRe / zMag2, -zIm / zMag2);
+        const gY = zRe / zMag2;
+        const bY = -zIm / zMag2;
+        stampMatrix(G, B, i1, i2, gY, bY);
+        if (G0 && B0) {
+          const conn = trExt.windingConnection ?? "Yg-Yg";
+          if (conn === "Yg-Yg") {
+            stampMatrix(G0, B0, i1, i2, gY, bY);
+          } else if (conn === "Yg-D" && i1 >= 0) {
+            stampMatrix(G0, B0, i1, -1, gY, bY);
+          } else if (conn === "D-Yg" && i2 >= 0) {
+            stampMatrix(G0, B0, -1, i2, gY, bY);
+          }
+        }
       }
     }
 
-    // 5. Solve passive grid driving-point impedance Z_grid = V_target / I_inj = (Y^-1)_{target, target}
-    const n2 = 2 * n;
-    const M = new Float64Array(n2 * n2);
-    const rhs = new Float64Array(n2);
-    rhs[targetIdx] = 1.0; // 1 Amp active current injection
+    // 4. Transmission lines (exact distributed-parameter hyperbolic long-line Y_1 and Y_0)
+    for (const ln of netlist.transmissionLines ?? []) {
+      const i1 = busIdxMap.get(ln.fromBus) ?? -1;
+      const i2 = busIdxMap.get(ln.toBus) ?? -1;
+      const len = Math.max(0.1, ln.lengthKm || 100);
+      const r1Km = ln.rPerKm || 0.05;
+      const l1Km = ln.lPerKm || 1e-3;
+      const c1Km = ln.cPerKm || 1e-8;
+      const pi1 = computeHyperbolicLinePi(r1Km, l1Km, c1Km, len, omega);
+      stampMatrix(G, B, i1, i2, pi1.gSer, pi1.bSer);
+      if (i1 >= 0) {
+        G[i1 * n + i1] = G[i1 * n + i1]! + pi1.gShHalf;
+        B[i1 * n + i1] = B[i1 * n + i1]! + pi1.bShHalf;
+      }
+      if (i2 >= 0) {
+        G[i2 * n + i2] = G[i2 * n + i2]! + pi1.gShHalf;
+        B[i2 * n + i2] = B[i2 * n + i2]! + pi1.bShHalf;
+      }
 
-    for (let r = 0; r < n; r++) {
-      for (let c = 0; c < n; c++) {
-        M[r * n2 + c] = G[r * n + c]!;
-        M[r * n2 + (c + n)] = -B[r * n + c]!;
-        M[(r + n) * n2 + c] = B[r * n + c]!;
-        M[(r + n) * n2 + (c + n)] = G[r * n + c]!;
+      if (G0 && B0) {
+        const r0Km = ln.r0PerKm ?? 3.2 * r1Km;
+        const l0Km = ln.l0PerKm ?? 3.0 * l1Km;
+        const c0Km = ln.c0PerKm ?? 0.65 * c1Km;
+        const pi0 = computeHyperbolicLinePi(r0Km, l0Km, c0Km, len, omega);
+        stampMatrix(G0, B0, i1, i2, pi0.gSer, pi0.bSer);
+        if (i1 >= 0) {
+          G0[i1 * n + i1] = G0[i1 * n + i1]! + pi0.gShHalf;
+          B0[i1 * n + i1] = B0[i1 * n + i1]! + pi0.bShHalf;
+        }
+        if (i2 >= 0) {
+          G0[i2 * n + i2] = G0[i2 * n + i2]! + pi0.gShHalf;
+          B0[i2 * n + i2] = B0[i2 * n + i2]! + pi0.bShHalf;
+        }
       }
     }
 
-    // Gaussian elimination with partial pivoting for dense 2N x 2N
-    const sol = solveDenseLinearSystem(M, rhs, n2);
-    let zGridRe = sol ? sol[targetIdx]! : 0.0;
-    let zGridIm = sol ? sol[targetIdx + n]! : 0.0;
+    // 4b. Synchronous machine subtransient admittances
+    for (const sm of netlist.synchronousMachines ?? []) {
+      const bIdx = busIdxMap.get(sm.bus);
+      if (bIdx === undefined) continue;
+      const zBase = (sm.ratedKvLL * sm.ratedKvLL) / Math.max(1.0, sm.ratedMva);
+      const lSub = ((sm.xdSub ?? sm.xdPrime ?? 0.2) * zBase) / (2 * Math.PI * f0);
+      const rA = 0.01 * zBase;
+      const zRe = rA;
+      const zIm = omega * lSub;
+      const zMag2 = zRe * zRe + zIm * zIm;
+      if (zMag2 > 1e-12) {
+        G[bIdx * n + bIdx] = G[bIdx * n + bIdx]! + zRe / zMag2;
+        B[bIdx * n + bIdx] = B[bIdx * n + bIdx]! - zIm / zMag2;
+        if (G0 && B0) {
+          G0[bIdx * n + bIdx] = G0[bIdx * n + bIdx]! + zRe / zMag2;
+          B0[bIdx * n + bIdx] = B0[bIdx * n + bIdx]! - zIm / zMag2;
+        }
+      }
+    }
 
-    // Add IBR controller interaction series impedance: Z_loop(f) = Z_grid(f) + Z_ibr(f)
+    // 5. Solve coupled sequence nodal driving-point impedance Z_grid = (Y^-1)_{target, target}
+    const solveZTarget = (MatG: Float64Array, MatB: Float64Array): [number, number] => {
+      const n2 = 2 * n;
+      const M = new Float64Array(n2 * n2);
+      const rhs = new Float64Array(n2);
+      rhs[targetIdx] = 1.0;
+      for (let r = 0; r < n; r++) {
+        for (let c = 0; c < n; c++) {
+          M[r * n2 + c] = MatG[r * n + c]!;
+          M[r * n2 + (c + n)] = -MatB[r * n + c]!;
+          M[(r + n) * n2 + c] = MatB[r * n + c]!;
+          M[(r + n) * n2 + (c + n)] = MatG[r * n + c]!;
+        }
+      }
+      const sol = solveDenseLinearSystem(M, rhs, n2);
+      return sol ? [sol[targetIdx]!, sol[targetIdx + n]!] : [0.0, 0.0];
+    };
+
+    const [zGridRe, zGridIm] = solveZTarget(G, B);
+    if (G0 && B0) {
+      // Ensure zero-sequence has small grounding bleed if fully delta-isolated
+      for (let i = 0; i < n; i++) G0[i * n + i] = G0[i * n + i]! + 1e-6;
+      const [z0Re, z0Im] = solveZTarget(G0, B0);
+      z0Ohm.push({ r: Number(z0Re.toFixed(3)), x: Number(z0Im.toFixed(3)) });
+    }
+
+    // Add linearized IBR PLL + inner-current-control dq/sequence impedance Z_ibr(omega)
     let zRe = zGridRe;
     let zIm = zGridIm;
 
-    if (
-      modelIbr &&
-      (netlist.fmuInstances ?? []).some(
-        (fmu) => busIdxMap.get((fmu as unknown as { busId?: string }).busId ?? "") === targetIdx,
-      )
-    ) {
-      if (f < f0) {
-        const deltaF = (f0 - f) / f0;
-        const rIbr = -2.5 * deltaF * Math.exp(-Math.pow((f - 30.0) / 20.0, 2)) - 0.2;
-        const xIbr = omega * 0.002;
-        zRe += rIbr;
-        zIm += xIbr;
-      } else {
-        zRe += 1.5;
-        zIm += omega * 0.002;
-      }
+    const matchingFmu = (netlist.fmuInstances ?? []).find(
+      (fmu) => busIdxMap.get(fmu.busConnection || (fmu as unknown as { busId?: string }).busId || "") === targetIdx,
+    );
+    const matchingConv = (netlist.converterBridges ?? []).find((c) => busIdxMap.get(c.acBus) === targetIdx);
+    if (modelIbr && (matchingFmu || matchingConv)) {
+      const mva = matchingFmu?.ratedMva ?? matchingConv?.ratedMva ?? 100.0;
+      const kv = matchingFmu?.ratedKv ?? matchingConv?.ratedKvLL ?? 230.0;
+      const zBase = (kv * kv) / Math.max(1.0, mva);
+      const omega0 = 2.0 * Math.PI * f0;
+      const lChoke = (0.012 * zBase) / omega0;
+      // Linearized current-loop PI + PLL phase-tracking negative conductance region below f0:
+      // Below synchronous frequency, PLL tracking lag + feed-forward yields negative damping resistance
+      const wSlip = omega - omega0;
+      const tauPll = 0.015;
+      const kPll = 0.05 * zBase;
+      const denomPll = 1.0 + (wSlip * tauPll) ** 2;
+      const rCtrl = wSlip < 0 ? (-kPll * Math.abs(wSlip) * tauPll) / denomPll : 0.006 * zBase;
+      zRe += 0.002 * zBase + rCtrl;
+      zIm += omega * lChoke;
     }
 
     const zMag = Math.hypot(zRe, zIm);
@@ -311,11 +417,66 @@ export function runFrequencyScan(netlist: EmtNetlist, options: FrequencyScanOpti
     xOhm,
     zMagOhm,
     phaseDeg,
+    ...(useCoupledSeq ? { z0Ohm } : {}),
     resonancePoints,
     hasSsciRisk,
     minResistanceOhm: Number(minResistance.toFixed(3)),
     wallClockTimeMs: Number(wallClockTimeMs.toFixed(1)),
   };
+}
+
+/**
+ * Exact distributed-parameter hyperbolic pi-equivalent for a uniform transmission line:
+ * Y_ser = 1 / (Z_c * sinh(gamma * l)), Y_sh/2 = tanh(gamma * l / 2) / Z_c.
+ */
+function computeHyperbolicLinePi(
+  rKm: number,
+  lKm: number,
+  cKm: number,
+  lenKm: number,
+  omega: number,
+): { gSer: number; bSer: number; gShHalf: number; bShHalf: number } {
+  const zRe = Math.max(1e-9, rKm);
+  const zIm = omega * Math.max(1e-12, lKm);
+  const yIm = omega * Math.max(1e-14, cKm);
+
+  // gamma * l = sqrt((zRe + j*zIm) * (0 + j*yIm)) * lenKm
+  const zyRe = -zIm * yIm;
+  const zyIm = zRe * yIm;
+  const zyMag = Math.hypot(zyRe, zyIm);
+  const zyAng = Math.atan2(zyIm, zyRe);
+  const gammaMag = Math.sqrt(zyMag);
+  const gr = gammaMag * Math.cos(0.5 * zyAng) * lenKm;
+  const gi = gammaMag * Math.sin(0.5 * zyAng) * lenKm;
+
+  // Zc = sqrt((zRe + j*zIm) / (j*yIm)) = sqrt(l/c - j*r/(omega*c))
+  const qRe = zIm / yIm;
+  const qIm = -zRe / yIm;
+  const qMag = Math.hypot(qRe, qIm);
+  const qAng = Math.atan2(qIm, qRe);
+  const zcRe = Math.sqrt(qMag) * Math.cos(0.5 * qAng);
+  const zcIm = Math.sqrt(qMag) * Math.sin(0.5 * qAng);
+
+  // sinh(gr + j*gi) = sinh(gr)cos(gi) + j*cosh(gr)sin(gi)
+  const grClamp = Math.min(20.0, gr);
+  const shRe = Math.sinh(grClamp) * Math.cos(gi);
+  const shIm = Math.cosh(grClamp) * Math.sin(gi);
+  const denSerRe = zcRe * shRe - zcIm * shIm;
+  const denSerIm = zcRe * shIm + zcIm * shRe;
+  const denSer2 = Math.max(1e-12, denSerRe * denSerRe + denSerIm * denSerIm);
+  const gSer = denSerRe / denSer2;
+  const bSer = -denSerIm / denSer2;
+
+  // tanh((gr + j*gi)/2) = (sinh(gr) + j*sin(gi)) / (cosh(gr) + cos(gi))
+  const thDen = Math.max(1e-12, Math.cosh(grClamp) + Math.cos(gi));
+  const thRe = Math.sinh(grClamp) / thDen;
+  const thIm = Math.sin(gi) / thDen;
+  const zc2 = Math.max(1e-12, zcRe * zcRe + zcIm * zcIm);
+  // th / zc = (thRe + j*thIm) * (zcRe - j*zcIm) / zc2
+  const gShHalf = (thRe * zcRe + thIm * zcIm) / zc2;
+  const bShHalf = (thIm * zcRe - thRe * zcIm) / zc2;
+
+  return { gSer, bSer, gShHalf, bShHalf };
 }
 
 /**

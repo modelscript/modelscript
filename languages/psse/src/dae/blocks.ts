@@ -396,3 +396,25 @@ export function emitSaturationCurve(
   const eSafe = emitMax(ctx, addReal(dae, 0.1), eExpr);
   return div(dae, mul(dae, bExpr, mul(dae, excess, excess)), eSafe);
 }
+
+/**
+ * Emits symbolic exponential magnetic saturation `S_E(E) = A * exp(B * E)`
+ * calibrated from `(E1, SE1)` and `(E2, SE2)` for `GENROE` / `GENSAE`.
+ */
+export function emitExponentialSatCurve(
+  ctx: DaeBlockContext,
+  eExpr: number,
+  e1: number,
+  se1: number,
+  e2: number,
+  se2: number,
+): number {
+  const { dae } = ctx;
+  if (se1 <= 1e-9 || se2 <= 1e-9 || e2 <= e1 + 1e-6 || se2 <= se1) {
+    return emitSaturationCurve(ctx, eExpr, e1, se1, e2, se2);
+  }
+  const bExp = Math.log(se2 / se1) / (e2 - e1);
+  const aExp = se1 / Math.exp(bExp * e1);
+  const arg = emitClamp(ctx, mul(dae, addReal(dae, bExp), eExpr), addReal(dae, -20.0), addReal(dae, 20.0));
+  return mul(dae, addReal(dae, aExp), dae.addCallExpr("exp", [arg]));
+}

@@ -140,7 +140,7 @@ end Inconsistent;
       expect(unitDiags[0].code).toBe(3010);
     });
 
-    it("should report warning 3010 for dimensionally inconsistent component binding", () => {
+    it("should report warning 3022 for dimensionally inconsistent component binding", () => {
       const code = `model BindingMismatch
   Real x(unit="m");
   Real v(unit="m/s") = x * x;
@@ -150,9 +150,10 @@ end BindingMismatch;
 `;
       const astNode = facade.parse(code);
       const diags = facade.getDiagnostics(astNode);
-      const unitDiags = diags.filter((d: any) => d.code === 3010);
+      const unitDiags = diags.filter((d: any) => d.code === 3022);
       expect(unitDiags.length).toBeGreaterThan(0);
-      expect(unitDiags[0].code).toBe(3010);
+      expect(unitDiags[0].code).toBe(3022);
+      expect(unitDiags[0].message).toContain("Unit mismatch in component binding");
     });
   });
 });

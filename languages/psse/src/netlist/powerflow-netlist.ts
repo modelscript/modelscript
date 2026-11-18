@@ -21,6 +21,8 @@ export interface PowerFlowNetlist {
   busNumbers: number[]; // 0-based matrix index -> Bus number
   pNetMw: Float64Array; // Net active power injection per bus (P_gen - P_load)
   qNetMvar: Float64Array; // Net reactive power injection per bus (Q_gen - Q_load)
+  ipNetMw?: Float64Array; // Constant-current active load coefficient per bus (MW at 1.0 pu)
+  iqNetMvar?: Float64Array; // Constant-current reactive load coefficient per bus (MVAr at 1.0 pu)
   vNominalKv: Float64Array; // Nominal base kV per bus
   vMagPu: Float64Array; // Initial/specified voltage magnitude (p.u.)
   vAngRad: Float64Array; // Initial/specified voltage angle (radians)
@@ -58,6 +60,8 @@ export function extractPowerFlowNetlist(c: PsseCase): PowerFlowNetlist {
   const n = busNumbers.length;
   const pNetMw = new Float64Array(n);
   const qNetMvar = new Float64Array(n);
+  const ipNetMw = new Float64Array(n);
+  const iqNetMvar = new Float64Array(n);
   const vNominalKv = new Float64Array(n);
   const vMagPu = new Float64Array(n);
   const vAngRad = new Float64Array(n);
@@ -93,15 +97,25 @@ export function extractPowerFlowNetlist(c: PsseCase): PowerFlowNetlist {
     }
   }
 
-  // Subtract Loads
+  // Subtract Loads (ZIP: constant-MVA pl/ql + constant-current ip/iq + constant-admittance yp/yq)
+  const sbaseMva = c.header.sbase > 0 ? c.header.sbase : 100.0;
+  const zipShunts: Array<{ bIdx: number; gPu: number; bPu: number }> = [];
   for (const l of c.loads) {
     if (l.status !== 1) continue;
     const bIdx = busIndices.get(l.i);
     if (bIdx !== undefined && bIdx < n) {
-      pNetMw[bIdx] = (pNetMw[bIdx] ?? 0) - l.pl;
-      qNetMvar[bIdx] = (qNetMvar[bIdx] ?? 0) - l.ql;
-      totalLoadMw += l.pl;
-      totalLoadMvar += l.ql;
+      const v0 = vMagPu[bIdx] ?? 1.0;
+      const pConstAndCurr = l.pl + l.ip * v0;
+      const qConstAndCurr = l.ql + l.iq * v0;
+      pNetMw[bIdx] = (pNetMw[bIdx] ?? 0) - pConstAndCurr;
+      qNetMvar[bIdx] = (qNetMvar[bIdx] ?? 0) - qConstAndCurr;
+      ipNetMw[bIdx] = (ipNetMw[bIdx] ?? 0) + l.ip;
+      iqNetMvar[bIdx] = (iqNetMvar[bIdx] ?? 0) + l.iq;
+      totalLoadMw += pConstAndCurr + l.yp * v0 * v0;
+      totalLoadMvar += qConstAndCurr + l.yq * v0 * v0;
+      if (l.yp !== 0 || l.yq !== 0) {
+        zipShunts.push({ bIdx, gPu: l.yp / sbaseMva, bPu: -l.yq / sbaseMva });
+      }
     }
   }
 
@@ -119,6 +133,10 @@ export function extractPowerFlowNetlist(c: PsseCase): PowerFlowNetlist {
     const rowB = bMap.get(row)!;
     rowG.set(col, (rowG.get(col) ?? 0.0) + gVal);
     rowB.set(col, (rowB.get(col) ?? 0.0) + bVal);
+  }
+
+  for (const zs of zipShunts) {
+    addY(zs.bIdx, zs.bIdx, zs.gPu, zs.bPu);
   }
 
   // 1. Add Transmission Branches (pi-model)
@@ -267,6 +285,8 @@ export function extractPowerFlowNetlist(c: PsseCase): PowerFlowNetlist {
     busNumbers,
     pNetMw,
     qNetMvar,
+    ipNetMw,
+    iqNetMvar,
     vNominalKv,
     vMagPu,
     vAngRad,

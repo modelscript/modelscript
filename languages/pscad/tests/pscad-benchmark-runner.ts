@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { BenchmarkCaseResult, LanguageBenchmarkAdapter } from "@modelscript/runtime/benchmark";
-import { EmtSolver, type EmtNetlist } from "../src/index.js";
+import { EmtSolver, type EmtNetlistInput } from "../src/index.js";
 
 export const pscadBenchmarkAdapter: LanguageBenchmarkAdapter = {
   slug: "pscad",
@@ -9,7 +9,7 @@ export const pscadBenchmarkAdapter: LanguageBenchmarkAdapter = {
   defaultTolerance: 1e-3,
   metricKind: "max-relative-error",
   async runCases(): Promise<BenchmarkCaseResult[]> {
-    const netlist: EmtNetlist = {
+    const netlist: EmtNetlistInput = {
       name: "SimpleAcGrid",
       nominalFrequencyHz: 60.0,
       buses: new Map([

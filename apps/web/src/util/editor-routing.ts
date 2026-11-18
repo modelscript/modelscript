@@ -64,6 +64,7 @@ export const EXTENSION_TO_DIALECT: Record<string, string> = {
   ".seq": "psse",
   ".sav": "psse",
   ".out": "psse",
+  ".idv": "psse",
   ".tsimf": "gensys",
   ".gpf": "gensys",
   ".calc": "gensys",

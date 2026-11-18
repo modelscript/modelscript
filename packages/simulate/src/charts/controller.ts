@@ -90,6 +90,77 @@ export class CanvasPlotController {
     this.state.cursorMode = enabled;
   }
 
+  setCursors(cursors: CursorState): void {
+    this.state.cursors = { ...cursors };
+  }
+
+  zoomAtFraction(factor: number, centerFracX = 0.5): boolean {
+    if (!this.dataset || this.dataset.indexValues.length < 2) return false;
+    const clampedFactor = Math.max(0.05, Math.min(20, factor));
+    let fullMin = Infinity;
+    let fullMax = -Infinity;
+    for (let i = 0; i < this.dataset.indexValues.length; i++) {
+      const v = this.dataset.indexValues[i]!;
+      if (Number.isFinite(v)) {
+        if (v < fullMin) fullMin = v;
+        if (v > fullMax) fullMax = v;
+      }
+    }
+    if (!Number.isFinite(fullMin) || !Number.isFinite(fullMax) || fullMax <= fullMin) return false;
+
+    const curMin = this.state.viewport.minIndex ?? fullMin;
+    const curMax = this.state.viewport.maxIndex ?? fullMax;
+    const curSpan = Math.max(1e-12, curMax - curMin);
+    const fullSpan = fullMax - fullMin;
+    const f = Math.max(0, Math.min(1, centerFracX));
+    const anchor = curMin + f * curSpan;
+    const newSpan = Math.min(fullSpan, Math.max(fullSpan * 1e-6, curSpan * clampedFactor));
+
+    if (newSpan >= fullSpan * 0.999) {
+      this.state.viewport = { ...this.state.viewport, minIndex: undefined, maxIndex: undefined };
+      return true;
+    }
+    let nextMin = anchor - f * newSpan;
+    let nextMax = anchor + (1 - f) * newSpan;
+    if (nextMin < fullMin) {
+      nextMax += fullMin - nextMin;
+      nextMin = fullMin;
+    }
+    if (nextMax > fullMax) {
+      nextMin -= nextMax - fullMax;
+      nextMax = fullMax;
+    }
+    this.state.viewport = {
+      ...this.state.viewport,
+      minIndex: Math.max(fullMin, nextMin),
+      maxIndex: Math.min(fullMax, nextMax),
+    };
+    return true;
+  }
+
+  panByFraction(dxFrac: number): boolean {
+    if (!this.dataset || this.dataset.indexValues.length < 2) return false;
+    let fullMin = Infinity;
+    let fullMax = -Infinity;
+    for (let i = 0; i < this.dataset.indexValues.length; i++) {
+      const v = this.dataset.indexValues[i]!;
+      if (Number.isFinite(v)) {
+        if (v < fullMin) fullMin = v;
+        if (v > fullMax) fullMax = v;
+      }
+    }
+    if (!Number.isFinite(fullMin) || !Number.isFinite(fullMax) || fullMax <= fullMin) return false;
+    const curMin = this.state.viewport.minIndex ?? fullMin;
+    const curMax = this.state.viewport.maxIndex ?? fullMax;
+    const curSpan = curMax - curMin;
+    if (curSpan >= (fullMax - fullMin) * 0.999) return false;
+    let shift = dxFrac * curSpan;
+    if (curMin + shift < fullMin) shift = fullMin - curMin;
+    if (curMax + shift > fullMax) shift = fullMax - curMax;
+    this.state.viewport = { ...this.state.viewport, minIndex: curMin + shift, maxIndex: curMax + shift };
+    return true;
+  }
+
   placeCursorAtPixel(px: number, py: number): number | null {
     if (!this.lastResult || !this.dataset) return null;
     const { plotRect, indexBounds, mode } = this.lastResult;

@@ -66,7 +66,7 @@ export function readPscadPsout(rawInput: Uint8Array | ArrayBuffer): PscadPsoutDo
   // Parse string tags and property bags from metadata pages
   const propertyMap = new Map<number, Map<string, string>>();
   const nameMap = new Map<number, string>();
-  scanMetadataPages(bytes, pageSize, Math.min(pageCount, 60), propertyMap, nameMap);
+  scanMetadataPages(bytes, pageSize, Math.min(pageCount, 2000), propertyMap, nameMap);
 
   // Read call hierarchy from WASM kernel
   const callCount = bridge.exports.psout_get_call_count();
@@ -234,56 +234,79 @@ export function readPscadPsout(rawInput: Uint8Array | ArrayBuffer): PscadPsoutDo
     trace.time = defaultTime;
   }
 
-  // Build Run object
-  const run0: PscadPsoutRun = {
-    index: 0,
-    description: "Main Simulation Run",
-    traces,
+  const runNodes = (rootCall?.children ?? []).filter((c) => /^run\s*#?\d+/i.test(c.name));
+  const buildRun = (idx: number, desc: string, runTraces: Map<number, PscadPsoutTrace>): PscadPsoutRun => ({
+    index: idx,
+    description: desc,
+    traces: runTraces,
     getTrace(pathOrId: string | number): PscadPsoutTrace | undefined {
       if (typeof pathOrId === "number") {
-        return traces.get(pathOrId);
+        return runTraces.get(pathOrId);
       }
       const call = callPaths.get(pathOrId);
       if (call) {
-        const direct = traces.get(call.id);
+        const direct = runTraces.get(call.id);
         if (direct) return direct;
         for (const child of call.children ?? []) {
-          const t = traces.get(child.id);
+          const t = runTraces.get(child.id);
           if (t) return t;
         }
       }
-      for (const t of traces.values()) {
+      for (const t of runTraces.values()) {
         if (t.name === pathOrId || t.description === pathOrId) return t;
       }
       return undefined;
     },
     listTracePaths(): string[] {
       const paths: string[] = [];
-      for (const t of traces.values()) {
+      for (const t of runTraces.values()) {
         const p = pathForCall.get(t.call.id);
         if (p) paths.push(p);
       }
       return paths;
     },
+  });
+
+  const collectDescendantIds = (call: PscadPsoutCall, out: Set<number>) => {
+    out.add(call.id);
+    for (const ch of call.children ?? []) collectDescendantIds(ch, out);
   };
+
+  const runs: PscadPsoutRun[] =
+    runNodes.length > 1
+      ? runNodes.map((rn, idx) => {
+          const ids = new Set<number>();
+          collectDescendantIds(rn, ids);
+          const subset = new Map<number, PscadPsoutTrace>();
+          for (const [tid, tr] of traces.entries()) {
+            if (ids.has(tid)) subset.set(tid, tr);
+          }
+          return buildRun(idx, rn.name, subset.size > 0 ? subset : traces);
+        })
+      : [buildRun(0, "Main Simulation Run", traces)];
 
   return {
     header,
-    numRuns: 1,
+    numRuns: runs.length,
     rootCall,
-    run(_index?: number): PscadPsoutRun {
-      return run0;
+    run(index = 0): PscadPsoutRun {
+      return runs[index] ?? runs[0]!;
     },
     getCall(path: string): PscadPsoutCall | undefined {
       return callPaths.get(path);
     },
-    toSimulationResult(_runIndex?: number): SimulationResultLike {
+    toSimulationResult(runIndex: number = 0): SimulationResultLike {
       const busVoltages = new Map<string, Float64Array>();
       const branchCurrents = new Map<string, Float64Array>();
       const controlSignals = new Map<string, Float64Array>();
+      const selectedTraces = runs.length > 0 ? runs[Math.max(0, Math.min(runs.length - 1, runIndex))]!.traces : traces;
+      const selectedTime =
+        Array.from(selectedTraces.values()).find(
+          (t) => (t.id === 3 || /^(domain|time)$/i.test(t.name)) && t.time?.length,
+        )?.time ?? defaultTime!;
 
-      for (const trace of traces.values()) {
-        if (trace === timeTrace || trace.id === 3) continue;
+      for (const trace of selectedTraces.values()) {
+        if (trace === timeTrace || trace.id === 3 || /^(domain|time)$/i.test(trace.name)) continue;
 
         const cleanName = trace.name.replace(/^V_/, "").replace(/^I_/, "");
         const grp = trace.group.toLowerCase();
@@ -304,7 +327,7 @@ export function readPscadPsout(rawInput: Uint8Array | ArrayBuffer): PscadPsoutDo
       }
 
       return {
-        time: defaultTime!,
+        time: selectedTime,
         busVoltages,
         branchCurrents,
         controlSignals,

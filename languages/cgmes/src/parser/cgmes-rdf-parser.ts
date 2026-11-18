@@ -362,7 +362,6 @@ export function parseCgmesRdf(xmlSource: string, targetModel?: CgmesModel): Cgme
       }
 
       case "ACLineSegmentPhase": {
-        const name = getPropertyText(el, "name") ?? mRID;
         const segId = getResourceRef(el, "ACLineSegment") ?? "";
         const phase = getPropertyText(el, "phase") ?? "A";
         model.linePhases ??= new Map();
@@ -371,6 +370,105 @@ export function parseCgmesRdf(xmlSource: string, targetModel?: CgmesModel): Cgme
           name,
           acLineSegmentId: segId,
           phase,
+        });
+        break;
+      }
+
+      case "Feeder": {
+        const subId = getResourceRef(el, "NormalEnergizingSubstation") ?? getResourceRef(el, "Substation");
+        model.feeders ??= new Map();
+        model.feeders.set(mRID, {
+          mRID,
+          name,
+          description,
+          normalEnergizingSubstationId: subId,
+        });
+        break;
+      }
+
+      case "EnergySource": {
+        const bvRef = getResourceRef(el, "BaseVoltage");
+        const nominalVoltageKv =
+          bvRef && model.baseVoltages.has(bvRef)
+            ? (model.baseVoltages.get(bvRef) ?? 12.47)
+            : getPropertyFloat(el, "nominalVoltage", 12.47);
+        const voltageMagnitudeKv = getPropertyFloat(el, "voltageMagnitude", nominalVoltageKv);
+        const voltageAngleDeg = getPropertyFloat(el, "voltageAngle", 0.0);
+        const r = getPropertyFloat(el, "r", 0.0);
+        const x = getPropertyFloat(el, "x", 0.0);
+        model.energySources ??= new Map();
+        model.energySources.set(mRID, {
+          mRID,
+          name,
+          description,
+          nominalVoltageKv,
+          voltageMagnitudeKv,
+          voltageAngleDeg,
+          r,
+          x,
+        });
+        break;
+      }
+
+      case "Breaker":
+      case "LoadBreakSwitch":
+      case "Fuse":
+      case "Recloser":
+      case "Disconnector": {
+        const normalOpen = (getPropertyText(el, "normalOpen") ?? "false").toLowerCase() === "true";
+        const openRaw = getPropertyText(el, "open");
+        const open = openRaw !== undefined ? openRaw.toLowerCase() === "true" : normalOpen;
+        const ratedCurrentA = getPropertyFloat(el, "ratedCurrent", 600);
+        model.switches ??= new Map();
+        model.switches.set(mRID, {
+          mRID,
+          name,
+          description,
+          switchType: type,
+          normalOpen,
+          open,
+          ratedCurrentA,
+        });
+        break;
+      }
+
+      case "PerLengthSequenceImpedance": {
+        model.perLengthImpedances ??= new Map();
+        model.perLengthImpedances.set(mRID, {
+          mRID,
+          name,
+          description,
+          r: getPropertyFloat(el, "r", 0.1),
+          x: getPropertyFloat(el, "x", 0.4),
+          bch: getPropertyFloat(el, "bch", 0.0),
+          gch: getPropertyFloat(el, "gch", 0.0),
+          r0: getPropertyFloat(el, "r0", 0.3),
+          x0: getPropertyFloat(el, "x0", 1.2),
+        });
+        break;
+      }
+
+      case "ControlArea": {
+        model.controlAreas ??= new Map();
+        model.controlAreas.set(mRID, {
+          mRID,
+          name,
+          description,
+          type: getPropertyText(el, "type"),
+          netInterchangeMw: getPropertyFloat(el, "netInterchange", 0.0),
+        });
+        break;
+      }
+
+      case "GeographicalRegion":
+      case "SubGeographicalRegion": {
+        model.regions ??= new Map();
+        model.regions.set(mRID, {
+          mRID,
+          name,
+          description,
+          isSubRegion: type === "SubGeographicalRegion",
+          regionId: getResourceRef(el, "Region"),
         });
         break;
       }

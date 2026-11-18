@@ -7,6 +7,7 @@ import { createMorselShortLink } from "../../../api";
 import AddLibraryModal from "../AddLibraryModal";
 import { CloudDispatchModal } from "../CloudDispatchModal";
 import { getLanguageExtension } from "../constants";
+import { MorselLoadingScreen } from "../MorselLoadingScreen";
 import OpenModelModal from "../OpenModelModal";
 import { didOpen, installDependency, loadLibraryFromBuffer, uninstallDependency } from "../util/lsp-bridge";
 import { compressMorselPayload } from "../util/permalink";
@@ -268,52 +269,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
       />
 
       {loadingProgress < 100 && (
-        <div
-          id="morsel-app-loader"
-          style={{
-            position: "fixed",
-            inset: 0,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor:
-              colorMode === "dark" ? "var(--overlay-bgColor, var(--ms-surface-glass))" : "rgba(255, 255, 255, 0.98)",
-            zIndex: 9999,
-            gap: 16,
-            backdropFilter: "blur(12px)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
-            <img
-              src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
-              alt="Morsel"
-              height={36}
-              style={{ height: "36px", width: "auto", display: "block" }}
-              data-testid="morsel-brand-icon"
-            />
-          </div>
-          <div
-            style={{
-              width: 300,
-              height: 6,
-              borderRadius: 3,
-              backgroundColor: "var(--borderColor-muted, var(--ms-divider))",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                width: `${loadingProgress}%`,
-                height: "100%",
-                borderRadius: 3,
-                backgroundColor: "var(--ms-brand)",
-                transition: "width 0.3s ease",
-              }}
-            />
-          </div>
-          <span style={{ fontSize: 13, color: "var(--fgColor-muted, var(--ms-text-2))" }}>{loadingMessage}</span>
-        </div>
+        <MorselLoadingScreen colorMode={colorMode} loadingProgress={loadingProgress} loadingMessage={loadingMessage} />
       )}
 
       {isAddLibraryOpen && (

@@ -2214,6 +2214,10 @@ export function applyPsseDiagramWriteback(
       if (bus.span && bus.span.startOffset !== undefined && bus.span.endOffset !== undefined) {
         targetSpan = bus.span;
         formattedLine = `${bus.i}, '${bus.name.padEnd(12)}', ${bus.baseKv.toFixed(3)}, ${bus.ide}, ${bus.area}, ${bus.zone}, ${bus.owner}, ${bus.vm.toFixed(4)}, ${bus.va.toFixed(4)}${bus.nvhi !== undefined ? `, ${bus.nvhi.toFixed(4)}, ${bus.nvlo?.toFixed(4)}, ${bus.evhi?.toFixed(4)}, ${bus.evlo?.toFixed(4)}` : ""}`;
+        if ("orientation" in changes) {
+          const orient = Math.round(num(changes["orientation"], 0)) === 90 ? 90 : 0;
+          formattedLine += ` / @orient(${orient})`;
+        }
       }
     }
   } else if (cellId.startsWith("gen_")) {

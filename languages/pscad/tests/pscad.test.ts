@@ -4,8 +4,8 @@
  * Test runner for @modelscript/pscad language, parser, and linter.
  */
 
-import { buildPscadDiagram } from "../../../packages/diagram/src/pscad-diagram-builder.js";
-import { EmtSolver } from "../../../packages/simulate/src/solvers/emt/index.js";
+import { buildPscadDiagram } from "@modelscript/diagram/pscad-diagram-builder";
+import { EmtSolver } from "@modelscript/simulate/solvers";
 import {
   buildComponentXmlSnippet,
   getAllMasterComponentSchemas,
@@ -144,7 +144,7 @@ async function main() {
   if (netlist.transmissionLines.length !== 1) throw new Error("Expected 1 transmission line");
   if (netlist.fmuInstances.length !== 1) throw new Error("Expected 1 FMU instance");
 
-  const t1 = netlist.transformers[0];
+  const t1 = netlist.transformers[0]!;
   console.log(`   T1: ${t1.primaryKv} kV -> ${t1.secondaryKv} kV, ${t1.mvaRating} MVA`);
   if (t1.mvaRating !== 250.0 || t1.primaryKv !== 16.5 || t1.secondaryKv !== 230.0) {
     throw new Error("Transformer T1 parameters mismatch");
@@ -169,8 +169,8 @@ async function main() {
   // 4. Verify Language Definition
   console.log("4. Verifying Language Actions...");
   if (pscadLanguage.name !== "pscad") throw new Error("Expected language name to be pscad");
-  if (!pscadLanguage.fileExtensions.includes(".pscx")) throw new Error("Expected .pscx extension");
-  if (!pscadLanguage.fileExtensions.includes(".pslx")) throw new Error("Expected .pslx extension");
+  if (!pscadLanguage.fileExtensions?.includes(".pscx")) throw new Error("Expected .pscx extension");
+  if (!pscadLanguage.fileExtensions?.includes(".pslx")) throw new Error("Expected .pslx extension");
   console.log(`   Registered actions: ${pscadLanguage.actions?.map((a) => a.id).join(", ")}`);
 
   // 5. Verify Modelica Projection
@@ -843,7 +843,7 @@ async function main() {
       const solver = new EmtSolver(circuit as any, {
         timeStepSec: opts.timeStepSec,
         durationSec: opts.durationSec,
-        threePhase: opts.threePhase,
+        threePhase: opts.threePhase ?? true,
         steadyStateInit: true,
         maxNonlinearIterations: 6,
       });
@@ -896,12 +896,12 @@ async function main() {
     throw new Error("Expected CSMF and PGB meter vector glyphs on synthesized PI_Reg and PGB_Vq nodes");
   }
 
-  const sigEdge = authoredDiag.cells.find((c) => c.shape === "edge" && c.data?.wireKind === "signal");
-  const pwrEdge = authoredDiag.cells.find((c) => c.shape === "edge" && c.data?.wireKind === "electrical");
-  if (!sigEdge || sigEdge.attrs?.line?.stroke !== "#7c3aed" || !sigEdge.attrs?.line?.strokeDasharray) {
+  const sigEdge = authoredDiag.cells.find((c) => c.shape === "edge" && c.data?.["wireKind"] === "signal");
+  const pwrEdge = authoredDiag.cells.find((c) => c.shape === "edge" && c.data?.["wireKind"] === "electrical");
+  if (!sigEdge || sigEdge.attrs?.["line"]?.stroke !== "#7c3aed" || !sigEdge.attrs?.["line"]?.strokeDasharray) {
     throw new Error("Expected CSMF signal wire to render with #7c3aed dashed stroke and directional arrowhead");
   }
-  if (!pwrEdge || pwrEdge.attrs?.line?.stroke !== "#0284c7") {
+  if (!pwrEdge || pwrEdge.attrs?.["line"]?.stroke !== "#0284c7") {
     throw new Error("Expected 3-phase power wire to render with #0284c7 solid stroke");
   }
 
@@ -1081,10 +1081,12 @@ async function main() {
   if (g1Cell.angle !== 90) {
     throw new Error(`Expected G1 angle=90 from orient="1", got ${g1Cell.angle}`);
   }
-  if (!g1Cell.attrs?.label?.text || !String(g1Cell.attrs.label.text).includes("GenMain")) {
-    throw new Error(`Expected G1 attrs.label.text to include 'GenMain', got ${JSON.stringify(g1Cell.attrs?.label)}`);
+  if (!g1Cell.attrs?.["label"]?.text || !String(g1Cell.attrs["label"].text).includes("GenMain")) {
+    throw new Error(
+      `Expected G1 attrs.label.text to include 'GenMain', got ${JSON.stringify(g1Cell.attrs?.["label"])}`,
+    );
   }
-  if (!g1Cell.properties?.sourceRange) {
+  if (!g1Cell.properties?.["sourceRange"]) {
     throw new Error("Expected G1 properties to include sourceRange");
   }
 
@@ -1107,7 +1109,7 @@ async function main() {
 
   // 4. Verify wireless netlist resolution in extractEmtNetlist
   const p11Netlist = extractEmtNetlist(p11Proj);
-  if (p11Netlist.controlBlocks.length < 1) {
+  if ((p11Netlist.controlBlocks?.length ?? 0) < 1) {
     throw new Error("Expected PI1 control block in netlist");
   }
 

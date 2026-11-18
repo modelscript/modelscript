@@ -76,7 +76,11 @@ function gaussianRandom(mean = 0.0, stdDev = 1.0): number {
 /**
  * Executes a statistical Point-on-Wave breaker closing sweep and computes SSOV metrics.
  */
-export function runPointOnWaveSweep(netlist: EmtNetlist, options: PointOnWaveOptions = {}): PointOnWaveSweepResult {
+export function runPointOnWaveSweep(
+  netlistInput: EmtNetlist | import("./emt-solver.js").EmtNetlistInput,
+  options: PointOnWaveOptions = {},
+): PointOnWaveSweepResult {
+  const netlist = netlistInput as EmtNetlist;
   const t0 = performance.now();
   const numRuns = options.numRuns ?? 50;
   const f0 = options.nominalFrequencyHz ?? netlist.nominalFrequencyHz ?? 60.0;
@@ -93,10 +97,11 @@ export function runPointOnWaveSweep(netlist: EmtNetlist, options: PointOnWaveOpt
 
   // Derive base peak kV from first source or default
   const firstSource = netlist.sources?.[0];
+  const srcCompat = firstSource as unknown as { voltageKvLL?: number; voltageKv?: number } | undefined;
   const baseKvLL =
     (firstSource?.vPeakKv
       ? (firstSource.vPeakKv * Math.sqrt(3.0)) / Math.SQRT2
-      : (firstSource as unknown as { voltageKvLL?: number } | undefined)?.voltageKvLL) ?? 230.0;
+      : (srcCompat?.voltageKvLL ?? srcCompat?.voltageKv)) ?? 230.0;
   const basePeakKv = options.basePeakKv ?? (baseKvLL * Math.SQRT2) / Math.sqrt(3.0);
 
   const runs: PointOnWaveRunRecord[] = [];
@@ -283,7 +288,11 @@ function seededUniform(state: { s: number }): number {
  * across the netlist, varying component/branch/source/fault parameters and aggregating peak
  * overvoltage & overcurrent envelope statistics.
  */
-export function runMultipleRunSweep(netlist: EmtNetlist, options: MultipleRunOptions = {}): MultipleRunSweepResult {
+export function runMultipleRunSweep(
+  netlistInput: EmtNetlist | import("./emt-solver.js").EmtNetlistInput,
+  options: MultipleRunOptions = {},
+): MultipleRunSweepResult {
+  const netlist = netlistInput as EmtNetlist;
   const t0 = performance.now();
   const numRuns = Math.max(1, Math.min(500, Math.trunc(options.numRuns ?? 20)));
   const durationSec = options.durationSec ?? 0.05;

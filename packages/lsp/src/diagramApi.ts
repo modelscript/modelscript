@@ -49,6 +49,7 @@ import type {
   PropertyGroupConfig,
   PropertyTabConfig,
 } from "./diagramProtocol.js";
+import { applyIconEditActions, type IconEditAction, type IconPrimitiveSpec } from "./icon-annotation-edits.js";
 import { globalLanguageRegistry } from "./registry/LanguageRegistry.js";
 import type { CstNodeLike, CstParserLike } from "./utils/ast-utils.js";
 
@@ -150,7 +151,7 @@ export class ModelicaDiagramBackend implements DiagramBackend {
 
     try {
       const ops = getModelicaDiagramOps();
-      return ops.buildDiagramData ? await ops.buildDiagramData(classInstance) : null;
+      return ops.buildDiagramData ? await ops.buildDiagramData(classInstance, params.diagramType) : null;
     } catch (e: unknown) {
       console.error(`[diagram] Error building diagram data: ${e}`);
       return null;
@@ -301,9 +302,109 @@ export class ModelicaDiagramBackend implements DiagramBackend {
       return { seq: params.seq, edits: [], renderHint: "none" };
     }
 
+    const iconActions: IconEditAction[] = [];
+    const remainingActions: DiagramApplyEditsParams["actions"] = [];
+    for (const act of params.actions) {
+      if (act.type === "addIconPrimitive") {
+        iconActions.push({ type: "addIconPrimitive", primitive: act.primitive as unknown as IconPrimitiveSpec });
+      } else if (act.type === "updateIconPrimitive") {
+        iconActions.push({
+          type: "updateIconPrimitive",
+          index: act.index,
+          patch: act.patch as Partial<IconPrimitiveSpec>,
+        });
+      } else if (act.type === "deleteIconPrimitive") {
+        iconActions.push({ type: "deleteIconPrimitive", index: act.index });
+      } else if (act.type === "reorderIconPrimitive") {
+        iconActions.push({ type: "reorderIconPrimitive", fromIndex: act.fromIndex, toIndex: act.toIndex });
+      } else if (act.type === "move") {
+        const normalItems = [];
+        for (const item of act.items) {
+          const m = /^__icon_gfx_(\d+)$/.exec(item.name);
+          if (m) {
+            const idx = Number(m[1]);
+            const x1 = item.x;
+            const y2 = -item.y;
+            const x2 = item.x + item.width;
+            const y1 = -(item.y + item.height);
+            iconActions.push({
+              type: "updateIconPrimitive",
+              index: idx,
+              patch: {
+                extent: [
+                  [x1, y1],
+                  [x2, y2],
+                ],
+                ...(typeof item.rotation === "number" ? { rotation: -item.rotation } : {}),
+              },
+            });
+          } else {
+            normalItems.push(item);
+          }
+        }
+        if (normalItems.length > 0) remainingActions.push({ ...act, items: normalItems });
+      } else if (act.type === "resize") {
+        const m = /^__icon_gfx_(\d+)$/.exec(act.item.name);
+        if (m) {
+          const idx = Number(m[1]);
+          iconActions.push({
+            type: "updateIconPrimitive",
+            index: idx,
+            patch: {
+              extent: [
+                [act.item.x, -(act.item.y + act.item.height)],
+                [act.item.x + act.item.width, -act.item.y],
+              ],
+              ...(typeof act.item.rotation === "number" ? { rotation: -act.item.rotation } : {}),
+            },
+          });
+        } else {
+          remainingActions.push(act);
+        }
+      } else if (act.type === "deleteComponents") {
+        const gfxIndices: number[] = [];
+        const normalNames: string[] = [];
+        for (const n of act.names) {
+          const m = /^__icon_gfx_(\d+)$/.exec(n);
+          if (m) gfxIndices.push(Number(m[1]));
+          else normalNames.push(n);
+        }
+        gfxIndices.sort((a, b) => b - a);
+        for (const idx of gfxIndices) {
+          iconActions.push({ type: "deleteIconPrimitive", index: idx });
+        }
+        if (normalNames.length > 0) remainingActions.push({ ...act, names: normalNames });
+      } else {
+        remainingActions.push(act);
+      }
+    }
+
+    if (iconActions.length > 0 && remainingActions.length === 0) {
+      const nextText = applyIconEditActions(docText, targetInstance.name, iconActions);
+      if (nextText !== docText) {
+        const lines = docText.split("\n");
+        return {
+          seq: params.seq,
+          edits: [
+            {
+              range: {
+                start: { line: 0, character: 0 },
+                end: { line: lines.length - 1, character: lines[lines.length - 1]?.length ?? 0 },
+              },
+              newText: nextText,
+            },
+          ],
+          renderHint: "immediate",
+        };
+      }
+      return { seq: params.seq, edits: [], renderHint: "none" };
+    }
+
+    const effectiveParams =
+      remainingActions.length !== params.actions.length ? { ...params, actions: remainingActions } : params;
     const needsUnifiedIndex = params.actions.some((a) => a.type === "addComponent");
     const unifiedIndex = needsUnifiedIndex ? (this.deps.getUnifiedIndex?.() ?? null) : null;
-    let result = processDiagramEditBatch(params, targetInstance, docText, unifiedIndex);
+    let result = processDiagramEditBatch(effectiveParams, targetInstance, docText, unifiedIndex);
 
     // If no edits could be produced (e.g. stale AST where component ranges no longer match),
     // flush validation once to synchronize AST and retry.
@@ -2617,6 +2718,72 @@ const DOMAIN_BUILDERS: Record<string, (text: string, params: DiagramGetDataParam
     const { parseOpenDss } = await import("@modelscript/opendss");
     const { buildOpenDssDiagram } = await import("@modelscript/diagram/opendss-diagram-builder");
     return buildOpenDssDiagram(parseOpenDss(text) as any);
+  },
+  gridlabd: async (text) => {
+    const { parseGridlabd, projectGridlabdToOpenDss } = await import("@modelscript/gridlabd");
+    const { parseOpenDss } = await import("@modelscript/opendss");
+    const { buildOpenDssDiagram } = await import("@modelscript/diagram/opendss-diagram-builder");
+    const dss = projectGridlabdToOpenDss(parseGridlabd(text));
+    return buildOpenDssDiagram(parseOpenDss(dss) as Parameters<typeof buildOpenDssDiagram>[0]);
+  },
+  cyme: async (text) => {
+    const { parseCyme, projectCymeToOpenDss } = await import("@modelscript/cyme");
+    const { parseOpenDss } = await import("@modelscript/opendss");
+    const { buildOpenDssDiagram } = await import("@modelscript/diagram/opendss-diagram-builder");
+    const dss = projectCymeToOpenDss(parseCyme(text));
+    return buildOpenDssDiagram(parseOpenDss(dss) as Parameters<typeof buildOpenDssDiagram>[0]);
+  },
+  powerworld: async (text, params) => {
+    const { parsePowerWorldAux, parseIeeeCdf, projectPowerWorldToPsseRaw } = await import("@modelscript/powerworld");
+    const { parseRaw, solvePowerFlow } = await import("@modelscript/psse");
+    const { buildPsseDiagram } = await import("@modelscript/diagram/psse-diagram-builder");
+    const isCdf = params.uri.toLowerCase().endsWith(".cdf") || text.toUpperCase().includes("BUS DATA FOLLOWS");
+    const model = isCdf ? parseIeeeCdf(text) : parsePowerWorldAux(text);
+    const parsed = parseRaw(projectPowerWorldToPsseRaw(model));
+    const pf = parsed.buses.size > 0 ? solvePowerFlow(parsed) : undefined;
+    return buildPsseDiagram(
+      parsed as Parameters<typeof buildPsseDiagram>[0],
+      pf as Parameters<typeof buildPsseDiagram>[1],
+    );
+  },
+  pypsa: async (text) => {
+    const { parsePypsa } = await import("@modelscript/pypsa");
+    const { buildPsseDiagram } = await import("@modelscript/diagram/psse-diagram-builder");
+    const net = parsePypsa(text);
+    const busIdMap = new Map<string, number>();
+    const buses = new Map<number, { i: number; name: string; baseKv: number; ide: number; vm: number; va: number }>();
+    net.buses.forEach((b, idx) => {
+      const id = idx + 1;
+      busIdMap.set(b.name, id);
+      buses.set(id, { i: id, name: b.name, baseKv: b.v_nom, ide: idx === 0 ? 3 : 1, vm: 1.0, va: 0.0 });
+    });
+    const branches = net.lines.map((l, idx) => ({
+      i: busIdMap.get(l.bus0) ?? 1,
+      j: busIdMap.get(l.bus1) ?? 1,
+      ckt: String(idx + 1),
+      r: l.r,
+      x: l.x,
+      b: l.b,
+      ratea: l.s_nom,
+      st: 1,
+    }));
+    const generators = net.generators.map((g, idx) => ({
+      i: busIdMap.get(g.bus) ?? 1,
+      id: String(idx + 1),
+      pg: g.p_nom,
+      qg: 0,
+      stat: 1,
+    }));
+    const loads = net.loads.map((ld, idx) => ({
+      i: busIdMap.get(ld.bus) ?? 1,
+      id: String(idx + 1),
+      pl: ld.p_set,
+      ql: ld.q_set,
+      status: 1,
+    }));
+    return buildPsseDiagram({ title1: net.name, buses, branches, generators, loads } as Parameters<
+      typeof buildPsseDiagram
+    >[0]);
   },
   openscenario: async (text) => {
     const { parseOpenScenario } = await import("@modelscript/openscenario");

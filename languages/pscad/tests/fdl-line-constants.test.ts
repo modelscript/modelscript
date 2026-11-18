@@ -6,7 +6,7 @@ import {
   EmtSolver,
   LineConstantsSolver,
   type CableGeometry,
-  type EmtNetlist,
+  type EmtNetlistInput,
   type TowerGeometry,
 } from "../src/index.js";
 
@@ -213,12 +213,11 @@ test("EmtSolver Integration: Simulates Phase-Domain Frequency-Dependent Line (FD
   });
 
   // Build an EMT netlist with an FDPM transmission line
-  const netlist: EmtNetlist = {
+  const netlist: EmtNetlistInput = {
     buses: [
       { id: "SENDING", nominalKv: 500.0 },
       { id: "RECEIVING", nominalKv: 500.0 },
     ],
-    branches: [],
     sources: [
       {
         id: "SRC1",
@@ -246,13 +245,14 @@ test("EmtSolver Integration: Simulates Phase-Domain Frequency-Dependent Line (FD
         d0: lcp.rationalFit.d0,
       },
     ],
-    loads: [
+    branches: [
       {
         id: "LOAD1",
-        bus: "RECEIVING",
-        pMw: 300.0,
-        qMvar: 50.0,
-        nominalKv: 500.0,
+        fromBus: "RECEIVING",
+        toBus: "0",
+        rOhm: (500.0 * 500.0) / 300.0,
+        lHenry: 0,
+        cFarad: 0,
       },
     ],
   };

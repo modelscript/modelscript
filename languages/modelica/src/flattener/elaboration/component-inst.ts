@@ -23,7 +23,6 @@ import { AnnotationEvaluator } from "../../diagram/annotation-evaluator.js";
 import { ModelicaErrorCode } from "../../errors.js";
 import { isPredefinedType } from "../../predefined-types.js";
 import {
-  cyclicDimensionDiagnostics,
   getShortClassSpecifierNode,
   isInnerQuery,
   isOuterQuery,
@@ -2606,7 +2605,10 @@ export function instantiateElements(
           flattener.innerOuterComponents.add(fullCompName);
         }
 
-        const cyclicDiags = cyclicDimensionDiagnostics.get(elemId);
+        const cyclicDiags = flattener.db.query<Array<{ dimIndex: number; exprText: string }> | null>(
+          "cyclicDimensionInfo",
+          elemId,
+        );
         if (cyclicDiags && cyclicDiags.length > 0) {
           const d = cyclicDiags[0]!;
           let clauseNode: any = elemCst;

@@ -231,10 +231,10 @@ test("Topological Solder Dot Junction Engine", async (t) => {
     const node = solderDotToDiagramNode(dot);
     assert.strictEqual(node.id, "solder_dot_1_2");
     assert.strictEqual(node.shape, "circle");
-    assert.strictEqual(node.width, 3);
-    assert.strictEqual(node.height, 3);
-    assert.strictEqual(node.x, 98.5);
-    assert.strictEqual(node.y, 198.5);
+    assert.strictEqual(node.width, 1.8);
+    assert.strictEqual(node.height, 1.8);
+    assert.strictEqual(node.x, 99.1);
+    assert.strictEqual(node.y, 199.1);
     assert.strictEqual((node.attrs as any)?.body?.fill, "#ff0000");
     assert.strictEqual((node.attrs as any)?.body?.pointerEvents, "none");
   });

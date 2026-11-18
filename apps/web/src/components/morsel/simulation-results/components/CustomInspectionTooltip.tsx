@@ -24,15 +24,16 @@ export function CustomInspectionTooltip({
 
   for (const item of payload) {
     const rawName = String(item.name || item.dataKey || "");
-    const isBaseline = rawName.endsWith(" [Baseline]");
-    const baseName = isBaseline ? rawName.replace(" [Baseline]", "") : rawName;
+    const pinMatch = /\s+\[(Baseline|Run #\d+)\]$/.exec(rawName);
+    const isBaseline = Boolean(pinMatch);
+    const baseName = pinMatch ? rawName.slice(0, pinMatch.index) : rawName;
 
     if (!grouped.has(baseName)) {
       grouped.set(baseName, { color: item.color || item.stroke || "#58a6ff" });
     }
     const entry = grouped.get(baseName)!;
     if (isBaseline) {
-      entry.baseline = item.value;
+      if (entry.baseline === undefined) entry.baseline = item.value;
     } else {
       entry.current = item.value;
       if (item.color || item.stroke) entry.color = item.color || item.stroke;

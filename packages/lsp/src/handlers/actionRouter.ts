@@ -301,7 +301,32 @@ export function registerActionRouter(context: LspContext): void {
       }
 
       try {
-        return await executeFn(executionContext, params.inputs || {});
+        const rawRes = await executeFn(executionContext, params.inputs || {});
+        const toJsonSafe = (v: unknown): unknown => {
+          if (v === null || v === undefined || typeof v !== "object") return v;
+          if (v instanceof Map) {
+            const obj: Record<string, unknown> = {};
+            for (const [k, val] of v.entries()) obj[String(k)] = toJsonSafe(val);
+            return obj;
+          }
+          if (ArrayBuffer.isView(v)) {
+            return Array.from(v as unknown as ArrayLike<number>);
+          }
+          if (Array.isArray(v)) return v.map(toJsonSafe);
+          const rec = v as Record<string, unknown>;
+          const out: Record<string, unknown> = {};
+          for (const [k, val] of Object.entries(rec)) {
+            out[k] =
+              val instanceof Map ||
+              ArrayBuffer.isView(val) ||
+              Array.isArray(val) ||
+              (val && typeof val === "object" && val.constructor === Object)
+                ? toJsonSafe(val)
+                : val;
+          }
+          return out;
+        };
+        return toJsonSafe(rawRes);
       } catch (err: any) {
         context.connection.console.error(
           `[lsp] Error executing action '${params.actionId}' for '${params.uri ?? plugin.id}': ${err?.message ?? err}`,

@@ -23,6 +23,7 @@ import {
   PeLoader,
   X86Cpu,
 } from "@modelscript/exchange";
+import type { PsseDynamicModelIO, PsseLinkedDynamicInstance } from "../catalog/wasm-dyr-loader.js";
 
 export interface PsseUsrDllStepContext {
   /** 1-based machine or device index (`MC`, default 1). */
@@ -326,4 +327,118 @@ export class PsseWasmMachinaDllRunner {
       dstate: updatedDstate,
     };
   }
+
+  /**
+   * Adapts this Wasm-Machina user-written DLL runner into a `PsseLinkedDynamicInstance`
+   * compatible with `simulatePsseTransient(..., { fmuModels })`.
+   */
+  public toDynamicInstance(
+    options: {
+      symbolName?: string | undefined;
+      busNumber?: number | undefined;
+      con?: readonly number[] | undefined;
+      nStates?: number | undefined;
+      mc?: number | undefined;
+      islot?: number | undefined;
+    } = {},
+  ): PsseLinkedDynamicInstance {
+    const exports = this.getExportedSymbols();
+    const resolvedSymbol =
+      options.symbolName ??
+      exports.find((s) => !s.startsWith("__") && !s.startsWith("DllMain") && !s.startsWith("_init")) ??
+      exports[0];
+    if (!resolvedSymbol) {
+      throw new Error("No exported USRMDL subroutine found in binary.");
+    }
+    const busNumber = options.busNumber ?? 1;
+    const con = options.con ?? [];
+    const nStates = Math.max(1, options.nStates ?? 8);
+    let state: Float64Array<ArrayBufferLike> = new Float64Array(nStates);
+    let dstate: Float64Array<ArrayBufferLike> = new Float64Array(nStates);
+    let lastTime = 0;
+
+    return {
+      busNumber,
+      modelName: resolvedSymbol,
+      init: (io: PsseDynamicModelIO) => {
+        state = new Float64Array(nStates) as Float64Array<ArrayBufferLike>;
+        dstate = new Float64Array(nStates) as Float64Array<ArrayBufferLike>;
+        lastTime = 0;
+        const res = this.stepModel(resolvedSymbol, 1, {
+          mc: options.mc,
+          islot: options.islot,
+          time: 0,
+          delt: 0.01,
+          con,
+          state,
+          dstate,
+          eterm: io.eterm,
+          speed: io.speedDev,
+          efd: io.efd,
+          pmech: io.pmech,
+        });
+        state = res.state;
+        dstate = res.dstate;
+      },
+      doStep: (tSec: number, dtSec: number, io: PsseDynamicModelIO) => {
+        const dt = dtSec > 0 ? dtSec : Math.max(1e-4, tSec - lastTime);
+        lastTime = tSec;
+        const derivRes = this.stepModel(resolvedSymbol, 2, {
+          mc: options.mc,
+          islot: options.islot,
+          time: tSec,
+          delt: dt,
+          con,
+          state,
+          dstate,
+          eterm: io.eterm,
+          speed: io.speedDev,
+          efd: io.efd,
+          pmech: io.pmech,
+        });
+        state = derivRes.state;
+        dstate = derivRes.dstate;
+        for (let i = 0; i < state.length; i++) {
+          state[i] = (state[i] ?? 0) + dt * (dstate[i] ?? 0);
+        }
+        const outRes = this.stepModel(resolvedSymbol, 3, {
+          mc: options.mc,
+          islot: options.islot,
+          time: tSec,
+          delt: dt,
+          con,
+          state,
+          dstate,
+          eterm: io.eterm,
+          speed: io.speedDev,
+          efd: io.efd,
+          pmech: io.pmech,
+        });
+        return { efd: outRes.efd, pmech: outRes.pmech };
+      },
+    };
+  }
+}
+
+/**
+ * Loads a compiled `dsusr.dll` / `libdsusr.so` / Mach-O binary into Wasm-Machina and
+ * returns a `PsseLinkedDynamicInstance` ready for `simulatePsseTransient`.
+ */
+export function linkUsrDllToDynamicInstance(
+  binaryBuffer: Uint8Array,
+  options: {
+    symbolName?: string | undefined;
+    busNumber?: number | undefined;
+    con?: readonly number[] | undefined;
+    nStates?: number | undefined;
+    mc?: number | undefined;
+    islot?: number | undefined;
+    preferredBase?: bigint | undefined;
+  } = {},
+): { runner: PsseWasmMachinaDllRunner; instance: PsseLinkedDynamicInstance; exports: string[] } {
+  const runner = new PsseWasmMachinaDllRunner(binaryBuffer, {
+    ...(options.preferredBase !== undefined ? { preferredBase: options.preferredBase } : {}),
+  });
+  const instance = runner.toDynamicInstance(options);
+  return { runner, instance, exports: runner.getExportedSymbols() };
 }

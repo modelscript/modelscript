@@ -8,6 +8,13 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
+import {
+  buildCaeSimulationModel,
+  CaePostProcessDrawer,
+  CaeSimulationTree,
+  ScalarColorbarLegend,
+  type CaeSimulationRunEntry,
+} from "../morsel/cad-viewer";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { createDefaultCadStudyParameters, solveCadStudySync } from "./cad-study-solver";
@@ -160,6 +167,19 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
   const [loading, setLoading] = useState(false);
   const [rawText, setRawText] = useState(viewConfig.code || "");
   const [viewMode, setViewMode] = useState<"3d" | "diagram" | "code">("3d");
+  const [showSimTree, setShowSimTree] = useState<boolean>(Boolean(isFullScreen));
+  const [selectedTreeId, setSelectedTreeId] = useState<string | null>(null);
+  const [postView, setPostView] = useState<{ mode: "convergence" | "log"; runId: string } | null>(null);
+  const [activeField, setActiveField] = useState<string>("Velocity Magnitude");
+  const [caeRuns, setCaeRuns] = useState<CaeSimulationRunEntry[]>([
+    {
+      id: "run-1",
+      name: "Run 1",
+      status: "finished",
+      fields: ["Velocity Magnitude", "Pressure", "Temperature"],
+    },
+  ]);
+  const caeModel = useMemo(() => buildCaeSimulationModel(rawText), [rawText]);
   const title = viewConfig.title || viewConfig.configName || "SU2 Aerodynamic Config (.cfg)";
 
   useEffect(() => {
@@ -329,6 +349,25 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
             >
               <CodeIcon size={12} /> Config
             </button>
+            {effectiveViewMode === "3d" && (
+              <button
+                type="button"
+                onClick={() => setShowSimTree((s) => !s)}
+                style={{
+                  background: showSimTree ? "rgba(6, 182, 212, 0.18)" : "transparent",
+                  color: showSimTree ? "#06b6d4" : "var(--color-fg-muted)",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+                title="Toggle SimScale-style Simulation Tree"
+              >
+                Sim Tree
+              </button>
+            )}
           </Box>
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button
@@ -357,6 +396,77 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
         {effectiveViewMode === "3d" && active3dConfig ? (
           <Box flex={1} width="100%" height="100%" position="relative" overflow="hidden">
             <SimulationResultViewer artifactId={artifactId} viewConfig={active3dConfig} isFullScreen={isFullScreen} />
+            {showSimTree && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 12,
+                  left: 12,
+                  bottom: 12,
+                  zIndex: 12,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  pointerEvents: "none",
+                }}
+              >
+                <CaeSimulationTree
+                  model={caeModel}
+                  runs={caeRuns}
+                  dark={isDark}
+                  selectedItemId={selectedTreeId}
+                  activeField={activeField}
+                  jobStatus={{ state: "finished", label: "Finished" }}
+                  onSelectItem={(item) => {
+                    setSelectedTreeId(item.id);
+                    if (item.line) setViewMode("code");
+                  }}
+                  onInsertSnippet={(_section, snippet) => {
+                    setRawText((prev) => `${prev.trimEnd()}\n${snippet.trimStart()}`);
+                  }}
+                  onTriggerRun={() => {
+                    const nextNum = caeRuns.length + 1;
+                    const newRun: CaeSimulationRunEntry = {
+                      id: `run-${nextNum}`,
+                      name: `Run ${nextNum}`,
+                      status: "finished",
+                      fields: ["Velocity Magnitude", "Pressure", "Temperature"],
+                    };
+                    setCaeRuns((prev) => [...prev, newRun]);
+                    setPostView({ mode: "convergence", runId: newRun.id });
+                  }}
+                  onSelectField={(field) => setActiveField(field)}
+                  onOpenPostView={(view, runId) => {
+                    if (view === "fields") {
+                      setActiveField("Velocity Magnitude");
+                    } else {
+                      setPostView((prev) =>
+                        prev && prev.mode === view && prev.runId === runId ? null : { mode: view, runId },
+                      );
+                    }
+                  }}
+                />
+                {postView && (
+                  <CaePostProcessDrawer
+                    mode={postView.mode}
+                    run={caeRuns.find((r) => r.id === postView.runId) ?? caeRuns[0]!}
+                    dark={isDark}
+                    onClose={() => setPostView(null)}
+                  />
+                )}
+              </div>
+            )}
+            <div style={{ position: "absolute", bottom: 14, right: 14, zIndex: 11 }}>
+              <ScalarColorbarLegend
+                title={activeField}
+                unit={activeField.includes("Velocity") ? "m/s" : activeField.includes("Pressure") ? "Pa" : "K"}
+                minLabel="0.0"
+                maxLabel={
+                  activeField.includes("Velocity") ? "265.0" : activeField.includes("Pressure") ? "101325" : "315.0"
+                }
+                dark={isDark}
+              />
+            </div>
           </Box>
         ) : loading ? (
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">

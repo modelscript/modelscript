@@ -197,9 +197,10 @@ IF (UPDATE_AG) CALL PSCAD_AGR2(ICALL_NO,$#Component,$Out,"Out")
       stori: new Int32Array(1),
     };
 
+    const dt = ctx.dt ?? 20e-6;
     const t0 = performance.now();
     for (let i = 0; i < 100_000; i++) {
-      ctx.time = i * ctx.dt;
+      ctx.time = i * dt;
       ctx.firstStep = i === 0;
       compiled.step(ctx);
     }

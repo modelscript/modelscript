@@ -25,12 +25,14 @@ import {
   type SparseCCSMatrix,
   type SparseLU,
 } from "@modelscript/runtime";
+import { simulateArena } from "@modelscript/simulate";
 import {
   verifyCriticalClearingBarrier,
   verifyPsseTrajectoryStl,
   type PsseStlVerifyOptions,
 } from "../analysis/formal-grid-checks.js";
 import { instantiateWasmDyrModelsForCase, type PsseLinkedDynamicInstance } from "../catalog/wasm-dyr-loader.js";
+import { lowerPsseToDae } from "../dae/psse-to-dae.js";
 import { reduceNodeBreakerToBuses } from "../netlist/node-breaker.js";
 import {
   extractPowerFlowNetlist,
@@ -68,6 +70,10 @@ export interface PowerFlowOptions {
   distributedSlack?: boolean | undefined;
   /** Automatically partition multi-island or disconnected grids via island-solver (default: false). */
   autoIslandPartition?: boolean | undefined;
+  /** Enforce scheduled area MW interchange via area swing generators (default: false). */
+  areaInterchange?: boolean | undefined;
+  /** Enforce generator remote-bus voltage regulation via `ireg` (default: true). */
+  remoteVoltageControl?: boolean | undefined;
 }
 
 export interface BusPowerFlowResult {
@@ -226,14 +232,21 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
   const doTaps =
     (options.adjustTaps ?? true) &&
     psseCase.transformers.some(
-      (t) => t.stat !== 0 && t.k === 0 && Math.abs(t.cod1) === 1 && t.vma1 > t.vmi1 && t.rma1 > t.rmi1,
+      (t) => t.stat !== 0 && (Math.abs(t.cod1) === 1 || Math.abs(t.cod1) === 3) && t.vma1 > t.vmi1 && t.rma1 > t.rmi1,
     );
   const doShunts =
     (options.adjustSwitchedShunts ?? true) &&
     psseCase.switchedShunts.some((s) => s.stat === 1 && s.modsw !== 0 && s.vswhi > s.vswlo);
   const doDistSlack = options.distributedSlack === true;
+  const doAreaInterchange = options.areaInterchange === true && psseCase.areas.length > 0;
+  const doRemoteV =
+    (options.remoteVoltageControl ?? true) &&
+    psseCase.generators.some((g) => g.stat === 1 && g.ireg > 0 && g.ireg !== g.i && psseCase.buses.has(g.ireg));
+  const doHvdc =
+    psseCase.twoTerminalDc.some((d) => d.mdc !== 0 && (d.ipr ?? 0) > 0 && (d.ipi ?? 0) > 0) ||
+    psseCase.vscDc.some((v) => v.mdc !== 0 && (v.ibus1 ?? 0) > 0 && (v.ibus2 ?? 0) > 0);
 
-  if (!doTaps && !doShunts && !doDistSlack) {
+  if (!doTaps && !doShunts && !doDistSlack && !doAreaInterchange && !doRemoteV && !doHvdc) {
     const netlist = extractPowerFlowNetlist(psseCase);
     const sol = solvePowerFlowFromNetlist(netlist, options, { kind: "case", psseCase });
     if (!sol.converged && options.algorithm === undefined) {
@@ -290,11 +303,115 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
 
     let anyOuterChange = false;
 
+    if (doHvdc) {
+      // Stamp coupled AC/DC converter P/Q equivalents as temporary loads on rectifier/inverter buses
+      workCase.loads = workCase.loads.filter((l) => l.id !== "DC");
+      for (const dc of workCase.twoTerminalDc) {
+        if (dc.mdc === 0 || !dc.ipr || !dc.ipi) continue;
+        const vdc = Math.max(1.0, Math.abs(dc.vschd));
+        const pRectMw = dc.mdc === 1 ? dc.setvl : (dc.setvl * vdc) / 1000.0;
+        const iDcKa = pRectMw / vdc;
+        const pLossMw = iDcKa * iDcKa * Math.max(0, dc.rdc);
+        const pInvMw = Math.max(0, pRectMw - pLossMw);
+        workCase.loads.push({
+          i: dc.ipr,
+          id: "DC",
+          status: 1,
+          area: 1,
+          zone: 1,
+          pl: pRectMw,
+          ql: Math.abs(pRectMw) * 0.4,
+          ip: 0,
+          iq: 0,
+          yp: 0,
+          yq: 0,
+          owner: 1,
+          scale: 0,
+          intrct: 0,
+        });
+        workCase.loads.push({
+          i: dc.ipi,
+          id: "DC",
+          status: 1,
+          area: 1,
+          zone: 1,
+          pl: -pInvMw,
+          ql: Math.abs(pInvMw) * 0.4,
+          ip: 0,
+          iq: 0,
+          yp: 0,
+          yq: 0,
+          owner: 1,
+          scale: 0,
+          intrct: 0,
+        });
+      }
+      for (const vsc of workCase.vscDc) {
+        if (vsc.mdc === 0 || !vsc.ibus1 || !vsc.ibus2) continue;
+        const pTransfer = 100.0; // Default nominal VSC setpoint when detailed converter records are omitted
+        workCase.loads.push({
+          i: vsc.ibus1,
+          id: "DC",
+          status: 1,
+          area: 1,
+          zone: 1,
+          pl: pTransfer,
+          ql: 0,
+          ip: 0,
+          iq: 0,
+          yp: 0,
+          yq: 0,
+          owner: 1,
+          scale: 0,
+          intrct: 0,
+        });
+        workCase.loads.push({
+          i: vsc.ibus2,
+          id: "DC",
+          status: 1,
+          area: 1,
+          zone: 1,
+          pl: -pTransfer * 0.99,
+          ql: 0,
+          ip: 0,
+          iq: 0,
+          yp: 0,
+          yq: 0,
+          owner: 1,
+          scale: 0,
+          intrct: 0,
+        });
+      }
+    }
+
     if (doTaps) {
       for (let ti = 0; ti < transformers.length; ti++) {
         const xf = transformers[ti]!;
-        if (xf.stat === 0 || xf.k !== 0 || Math.abs(xf.cod1) !== 1 || tapLocked[ti]) continue;
+        if (xf.stat === 0 || tapLocked[ti]) continue;
+        const codAbs = Math.abs(xf.cod1);
+        if (codAbs !== 1 && codAbs !== 3) continue;
         if (!(xf.vma1 > xf.vmi1 && xf.rma1 > xf.rmi1)) continue;
+
+        if (codAbs === 3) {
+          // Phase-shifter active power flow control (vmi1..vma1 in MW, rmi1..rma1 in deg)
+          const bSol = sol.branches.find(
+            (b) => b.fromBus === xf.i && b.toBus === xf.j && b.ckt.trim() === xf.ckt.trim(),
+          );
+          if (!bSol) continue;
+          const pMeas = bSol.pFromMw;
+          if (pMeas >= xf.vmi1 - 0.5 && pMeas <= xf.vma1 + 0.5) continue;
+          const pTarget = 0.5 * (xf.vmi1 + xf.vma1);
+          const xEff = Math.max(0.01, Math.abs(xf.x12));
+          const dAngDeg = ((pTarget - pMeas) / sbase) * xEff * (180 / Math.PI) * 0.5;
+          const nextAng = Math.max(xf.rmi1, Math.min(xf.rma1, xf.ang1 + dAngDeg));
+          if (Math.abs(nextAng - xf.ang1) > 1e-3) {
+            xf.ang1 = nextAng;
+            tapAdjustments++;
+            anyOuterChange = true;
+          }
+          continue;
+        }
+
         const contBus = xf.cont1 !== 0 ? Math.abs(xf.cont1) : xf.cod1 > 0 ? xf.j : xf.i;
         const vMeas = vmByBus.get(contBus);
         if (vMeas === undefined) continue;
@@ -303,7 +420,7 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
 
         const vTarget = 0.5 * (xf.vmi1 + xf.vma1);
         const stepSize = xf.ntp1 > 1 ? (xf.rma1 - xf.rmi1) / (xf.ntp1 - 1) : 0.00625;
-        const controlsSecondary = contBus === xf.j;
+        const controlsSecondary = contBus === xf.j || (xf.k !== 0 && contBus === xf.k);
         const rawSign = vMeas < xf.vmi1 ? (controlsSecondary ? -1 : 1) : controlsSecondary ? 1 : -1;
         if (tapLastDir[ti] !== 0 && tapLastDir[ti] !== rawSign) {
           tapLocked[ti] = 1;
@@ -385,6 +502,49 @@ export function solvePowerFlow(psseCase: PsseCase, options: PowerFlowOptions = {
           }
           if (movedMw > 1e-3) {
             distributedSlackPasses++;
+            anyOuterChange = true;
+          }
+        }
+      }
+    }
+
+    if (doAreaInterchange) {
+      for (const area of workCase.areas) {
+        if (area.isw <= 0) continue;
+        let areaGen = 0;
+        let areaLoad = 0;
+        for (const b of sol.buses) {
+          if (busMap.get(b.busNumber)?.area === area.i) {
+            areaGen += b.pgMw;
+            areaLoad += b.plMw;
+          }
+        }
+        const netExport = areaGen - areaLoad;
+        const errMw = area.pdes - netExport;
+        if (Math.abs(errMw) > Math.max(0.5, area.ptol)) {
+          const swingGen = generators.find((g) => g.i === area.isw && g.stat === 1 && busMap.get(g.i)?.ide !== 3);
+          if (swingGen) {
+            const nextPg = Math.max(swingGen.pb, Math.min(swingGen.pt, swingGen.pg + 0.8 * errMw));
+            if (Math.abs(nextPg - swingGen.pg) > 1e-3) {
+              swingGen.pg = nextPg;
+              anyOuterChange = true;
+            }
+          }
+        }
+      }
+    }
+
+    if (doRemoteV) {
+      const busVmMap = new Map<number, number>();
+      for (const b of sol.buses) busVmMap.set(b.busNumber, b.vm);
+      for (const g of generators) {
+        if (g.stat !== 1 || g.ireg <= 0 || g.ireg === g.i) continue;
+        const remoteVm = busVmMap.get(g.ireg);
+        const origTarget = psseCase.generators.find((og) => og.i === g.i && og.id === g.id)?.vs ?? g.vs;
+        if (remoteVm !== undefined && Math.abs(origTarget - remoteVm) > 0.002) {
+          const nextVs = Math.max(0.9, Math.min(1.1, g.vs + 0.5 * (origTarget - remoteVm)));
+          if (Math.abs(nextVs - g.vs) > 1e-4) {
+            g.vs = nextVs;
             anyOuterChange = true;
           }
         }
@@ -1319,6 +1479,25 @@ function solvePowerFlowFromNetlist(
   };
 }
 
+export interface PsseDynamicEvent {
+  timeSec: number;
+  type:
+    | "bus_fault"
+    | "clear_fault"
+    | "branch_fault"
+    | "trip_branch"
+    | "trip_generator"
+    | "shed_load"
+    | "step_reference";
+  busNumber?: number | undefined;
+  toBusNumber?: number | undefined;
+  ckt?: string | undefined;
+  faultPositionPct?: number | undefined;
+  loadScale?: number | undefined;
+  pmechStepPu?: number | undefined;
+  vrefStepPu?: number | undefined;
+}
+
 export interface PsseTransientOptions {
   /** Total simulation duration in seconds (default: 5.0). */
   stopTime?: number | undefined;
@@ -1332,8 +1511,16 @@ export interface PsseTransientOptions {
   faultClearSec?: number | undefined;
   /** Fault shunt susceptance in p.u. during fault (default: 5.0). */
   faultSusceptancePu?: number | undefined;
+  /** Optional ordered list of dynamic disturbance/switching events. */
+  events?: PsseDynamicEvent[] | undefined;
   /** Optional parsed PSS/E `.dyr` dynamic model collection. */
   dyr?: import("../types.js").PsseDyrCase | undefined;
+  /**
+   * Transient solver backend:
+   * - `"fast_rk4"` (default): high-speed nodal RK4 with IEEE machines/exciters/governors + WASM/FMU hooks.
+   * - `"dae_ida"`: full 366-model symbolic `lowerPsseToDae` + `@modelscript/simulate` BDF/IDA DAE solver.
+   */
+  solverMode?: "fast_rk4" | "dae_ida" | undefined;
   /** Optional compiled user-written `dsusr.dll` / `libdsusr.so` models executed via Wasm-Machina. */
   userDllModels?:
     | Array<{
@@ -1401,6 +1588,227 @@ export interface PsseTransientResult {
     | undefined;
 }
 
+function clonePsseCaseForEvents(psseCase: PsseCase, dyr: PsseCase["dyr"]): PsseCase {
+  return {
+    ...psseCase,
+    dyr: dyr ?? psseCase.dyr,
+    buses: new Map(Array.from(psseCase.buses.entries()).map(([k, v]) => [k, { ...v }])),
+    loads: psseCase.loads.map((l) => ({ ...l })),
+    fixedShunts: psseCase.fixedShunts.map((s) => ({ ...s })),
+    generators: psseCase.generators.map((g) => ({ ...g })),
+    branches: psseCase.branches.map((b) => ({ ...b })),
+    transformers: psseCase.transformers.map((t) => ({ ...t })),
+    switchedShunts: psseCase.switchedShunts.map((s) => ({ ...s })),
+  };
+}
+
+function simulatePsseTransientDae(psseCase: PsseCase, options: PsseTransientOptions): PsseTransientResult {
+  const pf = solvePowerFlow(psseCase);
+  const sbase = psseCase.header.sbase > 0 ? psseCase.header.sbase : 100.0;
+  const f0 = psseCase.header.basfrq > 0 ? psseCase.header.basfrq : 60.0;
+  const stopTime = options.stopTime ?? 5.0;
+  const dt = options.timeStep ?? 0.01;
+
+  const sortedEvents = [...(options.events ?? [])].sort((a, b) => a.timeSec - b.timeSec);
+  let defaultFaultBus = options.faultBus;
+  if (defaultFaultBus === undefined) {
+    let maxLoad = -1;
+    for (const l of psseCase.loads) {
+      if (l.status === 1 && l.pl > maxLoad) {
+        maxLoad = l.pl;
+        defaultFaultBus = l.i;
+      }
+    }
+    if (defaultFaultBus === undefined) {
+      defaultFaultBus = psseCase.buses.keys().next().value ?? 1;
+    }
+  }
+  const faultStart = options.faultStartSec ?? sortedEvents.find((e) => e.type === "bus_fault")?.timeSec ?? 0.25;
+  const faultClear = options.faultClearSec ?? sortedEvents.find((e) => e.type === "clear_fault")?.timeSec ?? 0.4;
+  const faultB = options.faultSusceptancePu ?? 4.0;
+
+  const effectiveEvents: PsseDynamicEvent[] =
+    sortedEvents.length > 0
+      ? sortedEvents
+      : faultStart < stopTime && faultClear > faultStart
+        ? [
+            { timeSec: faultStart, type: "bus_fault", busNumber: defaultFaultBus },
+            { timeSec: faultClear, type: "clear_fault", busNumber: defaultFaultBus },
+          ]
+        : [];
+
+  // Build piecewise time breakpoints [0, ..., stopTime]
+  const breakpoints = [0];
+  for (const ev of effectiveEvents) {
+    if (ev.timeSec > 0 && ev.timeSec < stopTime && ev.timeSec > breakpoints[breakpoints.length - 1]!) {
+      breakpoints.push(ev.timeSec);
+    }
+  }
+  breakpoints.push(stopTime);
+
+  const workCase = clonePsseCaseForEvents(psseCase, options.dyr);
+  const tAll: number[] = [];
+  const yAll: number[][] = [];
+  let stateNames: string[] = [];
+  const lastValues = new Map<string, number>();
+
+  let evIdx = 0;
+  for (let seg = 0; seg < breakpoints.length - 1; seg++) {
+    const t0 = breakpoints[seg]!;
+    const t1 = breakpoints[seg + 1]!;
+    while (evIdx < effectiveEvents.length && effectiveEvents[evIdx]!.timeSec <= t0 + 1e-9) {
+      const ev = effectiveEvents[evIdx++]!;
+      if (ev.type === "bus_fault" && ev.busNumber !== undefined) {
+        const fb = -faultB * sbase;
+        workCase.fixedShunts.push({ i: ev.busNumber, id: "FLT", status: 1, gl: 0, bl: fb });
+      } else if (ev.type === "clear_fault") {
+        workCase.fixedShunts = workCase.fixedShunts.filter((s) => s.id !== "FLT");
+      } else if (ev.type === "shed_load" && ev.busNumber !== undefined) {
+        const scale = ev.loadScale ?? 0.0;
+        for (const l of workCase.loads) {
+          if (l.i === ev.busNumber) {
+            l.pl *= scale;
+            l.ql *= scale;
+          }
+        }
+      } else if (ev.type === "trip_branch" && ev.busNumber !== undefined && ev.toBusNumber !== undefined) {
+        for (const br of workCase.branches) {
+          if (
+            ((br.i === ev.busNumber && Math.abs(br.j) === ev.toBusNumber) ||
+              (br.i === ev.toBusNumber && Math.abs(br.j) === ev.busNumber)) &&
+            (!ev.ckt || br.ckt.trim() === ev.ckt.trim())
+          ) {
+            br.st = 0;
+          }
+        }
+      } else if (ev.type === "trip_generator" && ev.busNumber !== undefined) {
+        for (const g of workCase.generators) {
+          if (g.i === ev.busNumber && (!ev.ckt || g.id.trim() === ev.ckt.trim())) {
+            g.stat = 0;
+          }
+        }
+      }
+    }
+
+    const dae = lowerPsseToDae(workCase, { mode: "transient", baseFrequency: f0, smoothLimits: false });
+    if (lastValues.size > 0) {
+      for (const [name, val] of lastValues) {
+        const vIdx = dae.getVarIdxByName(name);
+        if (vIdx >= 0 && Number.isFinite(val)) {
+          dae.setVarStartValue(vIdx, val);
+        }
+      }
+    }
+
+    const segRes = simulateArena(dae, {
+      startTime: t0,
+      stopTime: t1,
+      step: dt,
+      solver: "rk4",
+      skipPantelides: true,
+    });
+
+    if (seg === 0) {
+      stateNames = segRes.states;
+    }
+    const startRow = seg === 0 ? 0 : 1;
+    for (let r = startRow; r < segRes.t.length; r++) {
+      tAll.push(segRes.t[r]!);
+      yAll.push(segRes.y[r] ?? []);
+    }
+    const lastRow = segRes.y[segRes.y.length - 1];
+    if (lastRow) {
+      for (let c = 0; c < segRes.states.length; c++) {
+        lastValues.set(segRes.states[c]!, lastRow[c]!);
+      }
+    }
+  }
+
+  const variables: Record<string, number[]> = { time: tAll };
+  const stateIdxMap = new Map<string, number>();
+  for (let c = 0; c < stateNames.length; c++) {
+    const name = stateNames[c]!;
+    stateIdxMap.set(name, c);
+    variables[name] = yAll.map((row) => row[c] ?? 0);
+  }
+
+  let minBusVoltagePu = 10.0;
+  const pfBusMap = new Map(pf.buses.map((b) => [b.busNumber, b]));
+  for (const busNum of psseCase.buses.keys()) {
+    const vrIdx = stateIdxMap.get(`V_${busNum}_r`);
+    const viIdx = stateIdxMap.get(`V_${busNum}_i`);
+    if (vrIdx !== undefined && viIdx !== undefined) {
+      const vmArr: number[] = [];
+      const vaArr: number[] = [];
+      for (let r = 0; r < tAll.length; r++) {
+        const vr = yAll[r]?.[vrIdx] ?? 1.0;
+        const vi = yAll[r]?.[viIdx] ?? 0.0;
+        const vm = Math.hypot(vr, vi);
+        if (vm < minBusVoltagePu) minBusVoltagePu = vm;
+        vmArr.push(vm);
+        vaArr.push((Math.atan2(vi, vr) * 180) / Math.PI);
+      }
+      variables[`Bus_${busNum}_Vm`] = vmArr;
+      variables[`Bus_${busNum}_Va`] = vaArr;
+    } else {
+      const bSol = pfBusMap.get(busNum);
+      const vm = bSol?.vm ?? 1.0;
+      const va = bSol?.va ?? 0.0;
+      if (vm < minBusVoltagePu) minBusVoltagePu = vm;
+      variables[`Bus_${busNum}_Vm`] = new Array<number>(tAll.length).fill(vm);
+      variables[`Bus_${busNum}_Va`] = new Array<number>(tAll.length).fill(va);
+    }
+  }
+
+  let maxRotorAngleSpreadDeg = 0;
+  const deltaSeries: number[][] = [];
+  for (const name of stateNames) {
+    if (name.endsWith("_delta") && variables[name]) {
+      deltaSeries.push(variables[name]!);
+    }
+  }
+  if (deltaSeries.length > 0) {
+    for (let r = 0; r < tAll.length; r++) {
+      let minD = Infinity;
+      let maxD = -Infinity;
+      for (const s of deltaSeries) {
+        const deg = (s[r]! * 180) / Math.PI;
+        if (deg < minD) minD = deg;
+        if (deg > maxD) maxD = deg;
+      }
+      const spread = maxD - minD;
+      if (spread > maxRotorAngleSpreadDeg) maxRotorAngleSpreadDeg = spread;
+    }
+  }
+
+  let maxFreqDeviationHz = 0;
+  for (const name of stateNames) {
+    if (name.endsWith("_omega") && variables[name]) {
+      for (const w of variables[name]!) {
+        const dev = Math.abs((w - 1.0) * f0);
+        if (dev > maxFreqDeviationHz) maxFreqDeviationHz = dev;
+      }
+    }
+  }
+
+  return {
+    t: tAll,
+    states: stateNames,
+    y: yAll,
+    variables,
+    summary: {
+      convergedPowerFlow: pf.converged,
+      stable: maxRotorAngleSpreadDeg < 180 && Number.isFinite(minBusVoltagePu),
+      faultBus: defaultFaultBus,
+      faultStartSec: faultStart,
+      faultClearSec: faultClear,
+      maxRotorAngleSpreadDeg,
+      maxFreqDeviationHz,
+      minBusVoltagePu: minBusVoltagePu < 10 ? minBusVoltagePu : 1.0,
+    },
+  };
+}
+
 /**
  * Multi-Machine Electro-Mechanical Transient Stability Simulator for PSS/E Cases.
  *
@@ -1410,6 +1818,9 @@ export interface PsseTransientResult {
  * across pre-fault, fault-on, and post-fault ringdown stages.
  */
 export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransientOptions = {}): PsseTransientResult {
+  if (options.solverMode === "dae_ida") {
+    return simulatePsseTransientDae(psseCase, options);
+  }
   const pf = solvePowerFlow(psseCase);
   const netlist = extractPowerFlowNetlist(psseCase);
   const N = netlist.nBuses;
@@ -1419,8 +1830,11 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
 
   const stopTime = options.stopTime ?? 5.0;
   const dt = options.timeStep ?? 0.01;
-  const faultStart = options.faultStartSec ?? 0.25;
-  const faultClear = options.faultClearSec ?? 0.4;
+  const sortedEvents = [...(options.events ?? [])].sort((a, b) => a.timeSec - b.timeSec);
+  const firstFaultEvt = sortedEvents.find((e) => e.type === "bus_fault");
+  const firstClearEvt = sortedEvents.find((e) => e.type === "clear_fault");
+  const faultStart = options.faultStartSec ?? firstFaultEvt?.timeSec ?? 0.25;
+  const faultClear = options.faultClearSec ?? firstClearEvt?.timeSec ?? 0.4;
   const faultB = options.faultSusceptancePu ?? 4.0;
 
   // Map solved bus voltages
@@ -1432,8 +1846,8 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
     Va0[i] = bRes ? (bRes.va * Math.PI) / 180.0 : 0.0;
   }
 
-  // Pick fault bus: user-specified, or highest-load PQ bus, or last bus
-  let faultBusNum = options.faultBus;
+  // Pick fault bus: user-specified, event-specified, or highest-load PQ bus, or last bus
+  let faultBusNum = options.faultBus ?? firstFaultEvt?.busNumber;
   if (faultBusNum === undefined || !netlist.busIndices.has(faultBusNum)) {
     let bestLoad = -1;
     for (const bRes of pf.buses) {
@@ -1733,6 +2147,9 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
     }
   }
 
+  const eventShuntG = new Float64Array(N);
+  const eventShuntB = new Float64Array(N);
+  const branchFaultB = new Float64Array(N);
   let cachedNetLu: SparseLU | null = null;
   let cachedFaultState: boolean | null = null;
   let cachedStallSum = NaN;
@@ -1829,8 +2246,8 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
       const diagG = new Float64Array(N);
       const diagB = new Float64Array(N);
       for (let i = 0; i < N; i++) {
-        diagG[i] = baseG[i * N + i]!;
-        let b = baseB[i * N + i]! + motorStallShuntB[i]!;
+        diagG[i] = baseG[i * N + i]! + eventShuntG[i]!;
+        let b = baseB[i * N + i]! + motorStallShuntB[i]! + eventShuntB[i]! + branchFaultB[i]!;
         if (faultActive && i === faultBusIdx) {
           b -= faultB;
         }
@@ -1993,8 +2410,91 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
   let maxFreqDeviationHz = 0;
   let minBusVoltagePu = 2.0;
 
+  const appliedEvents = new Set<number>();
+
   for (let step = 0; step <= nSteps; step++) {
     const t = Number((step * dt).toFixed(4));
+    for (let ei = 0; ei < sortedEvents.length; ei++) {
+      if (appliedEvents.has(ei)) continue;
+      const ev = sortedEvents[ei]!;
+      if (t >= ev.timeSec - 1e-9) {
+        appliedEvents.add(ei);
+        if (ev.type === "trip_generator" && ev.busNumber !== undefined) {
+          for (let m = 0; m < M; m++) {
+            if (machines[m]!.busNum === ev.busNumber) {
+              wasmMachTripMult[m] = 0.0;
+            }
+          }
+        } else if (ev.type === "shed_load" && ev.busNumber !== undefined) {
+          const bIdx = netlist.busIndices.get(ev.busNumber);
+          if (bIdx !== undefined) {
+            const scale = Math.max(0.0, Math.min(1.0, ev.loadScale ?? 0.0));
+            const shedFrac = 1.0 - scale;
+            const bRes = pf.buses[bIdx];
+            const vm2 = Math.max(0.25, (Vm0[bIdx] ?? 1.0) * (Vm0[bIdx] ?? 1.0));
+            const gLoad = (bRes?.plMw ?? 0) / sbase / vm2;
+            const bLoad = -((bRes?.qlMvar ?? 0) / sbase) / vm2;
+            eventShuntG[bIdx] = (eventShuntG[bIdx] ?? 0) - shedFrac * gLoad;
+            eventShuntB[bIdx] = (eventShuntB[bIdx] ?? 0) - shedFrac * bLoad;
+            cachedNetLu = null;
+          }
+        } else if (ev.type === "trip_branch" && ev.busNumber !== undefined && ev.toBusNumber !== undefined) {
+          const idxA = netlist.busIndices.get(ev.busNumber);
+          const idxB = netlist.busIndices.get(ev.toBusNumber);
+          const cleanCkt = (ev.ckt ?? "1").trim() || "1";
+          const br = psseCase.branches.find(
+            (x) =>
+              ((x.i === ev.busNumber && x.j === ev.toBusNumber) || (x.i === ev.toBusNumber && x.j === ev.busNumber)) &&
+              (x.ckt.trim() || "1") === cleanCkt,
+          );
+          if (idxA !== undefined && idxB !== undefined && br) {
+            const denom = br.r * br.r + br.x * br.x;
+            if (denom > 1e-12) {
+              const gSer = br.r / denom;
+              const bSer = -br.x / denom;
+              for (let k = 0; k < offDiagI.length; k++) {
+                if ((offDiagI[k] === idxA && offDiagK[k] === idxB) || (offDiagI[k] === idxB && offDiagK[k] === idxA)) {
+                  offDiagG[k] = (offDiagG[k] ?? 0) + gSer;
+                  offDiagB[k] = (offDiagB[k] ?? 0) + bSer;
+                }
+              }
+              eventShuntG[idxA] = (eventShuntG[idxA] ?? 0) - gSer;
+              eventShuntB[idxA] = (eventShuntB[idxA] ?? 0) - (bSer + br.b * 0.5);
+              eventShuntG[idxB] = (eventShuntG[idxB] ?? 0) - gSer;
+              eventShuntB[idxB] = (eventShuntB[idxB] ?? 0) - (bSer + br.b * 0.5);
+              cachedNetLu = null;
+            }
+          }
+        } else if (ev.type === "clear_fault") {
+          branchFaultB.fill(0);
+          cachedNetLu = null;
+        } else if (ev.type === "branch_fault" && ev.busNumber !== undefined && ev.toBusNumber !== undefined) {
+          const idxA = netlist.busIndices.get(ev.busNumber);
+          const idxB = netlist.busIndices.get(ev.toBusNumber);
+          const pct = Math.max(0.05, Math.min(0.95, (ev.faultPositionPct ?? 50) / 100));
+          if (idxA !== undefined) {
+            branchFaultB[idxA] = (branchFaultB[idxA] ?? 0) - faultB * (1 - pct);
+            cachedNetLu = null;
+          }
+          if (idxB !== undefined) {
+            branchFaultB[idxB] = (branchFaultB[idxB] ?? 0) - faultB * pct;
+            cachedNetLu = null;
+          }
+        } else if (ev.type === "step_reference" && ev.busNumber !== undefined) {
+          for (let m = 0; m < M; m++) {
+            const mach = machines[m]!;
+            if (mach.busNum === ev.busNumber) {
+              if (ev.pmechStepPu !== undefined) {
+                mach.Pm0 += ev.pmechStepPu;
+              }
+              if (ev.vrefStepPu !== undefined) {
+                mach.vRef += ev.vrefStepPu;
+              }
+            }
+          }
+        }
+      }
+    }
     const faultActive = t >= faultStart - 1e-9 && t < faultClear - 1e-9;
 
     const { vr, vi, pe } = solveNetworkVoltages(delta, eqPrime, faultActive, t);
@@ -2343,7 +2843,11 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
 /**
  * Formats an AC Power Flow solution into a human-readable engineering report.
  */
-export function formatPowerFlowReport(sol: PowerFlowSolution, caseTitle = "PSS/E BASE CASE"): string {
+export function formatPowerFlowReport(
+  sol: PowerFlowSolution,
+  caseTitle = "PSS/E BASE CASE",
+  psseCase?: PsseCase,
+): string {
   const lines: string[] = [];
   lines.push(`================================================================================`);
   lines.push(`  PSS/E AC POWER FLOW SOLUTION REPORT — ${caseTitle}`);
@@ -2366,13 +2870,70 @@ export function formatPowerFlowReport(sol: PowerFlowSolution, caseTitle = "PSS/E
   }
   lines.push(`--------------------------------------------------------------------------------`);
   lines.push(`  BRANCH & TRANSFORMER POWER FLOWS`);
-  lines.push(`  From    To  Ckt    P_from (MW)   Q_from (Mvar)    P_to (MW)   Q_to (Mvar)   Loss (MW)   Flow (MVA)`);
-  lines.push(`  ----  ----  ---  -------------  --------------  -----------  ------------  ----------  -----------`);
+  lines.push(
+    `  From    To  Ckt    P_from (MW)   Q_from (Mvar)    P_to (MW)   Q_to (Mvar)   Loss (MW)   Flow (MVA)   Load (%)`,
+  );
+  lines.push(
+    `  ----  ----  ---  -------------  --------------  -----------  ------------  ----------  -----------  ---------`,
+  );
   for (const br of sol.branches) {
+    const pctStr = br.loadingPercent !== undefined ? `${br.loadingPercent.toFixed(1)}%` : "-";
     lines.push(
-      `  ${String(br.fromBus).padStart(4)}  ${String(br.toBus).padStart(4)}  ${br.ckt.padEnd(3).slice(0, 3)}  ${br.pFromMw.toFixed(2).padStart(13)}  ${br.qFromMvar.toFixed(2).padStart(14)}  ${br.pToMw.toFixed(2).padStart(11)}  ${br.qToMvar.toFixed(2).padStart(12)}  ${br.lossMw.toFixed(3).padStart(10)}  ${br.mvaFlow.toFixed(2).padStart(11)}`,
+      `  ${String(br.fromBus).padStart(4)}  ${String(br.toBus).padStart(4)}  ${br.ckt.padEnd(3).slice(0, 3)}  ${br.pFromMw.toFixed(2).padStart(13)}  ${br.qFromMvar.toFixed(2).padStart(14)}  ${br.pToMw.toFixed(2).padStart(11)}  ${br.qToMvar.toFixed(2).padStart(12)}  ${br.lossMw.toFixed(3).padStart(10)}  ${br.mvaFlow.toFixed(2).padStart(11)}  ${pctStr.padStart(9)}`,
     );
   }
+
+  if (psseCase) {
+    const tierAlerts: string[] = [];
+    for (const br of sol.branches) {
+      const rawBr = psseCase.branches.find(
+        (x) =>
+          ((x.i === br.fromBus && Math.abs(x.j) === br.toBus) || (x.i === br.toBus && Math.abs(x.j) === br.fromBus)) &&
+          x.ckt.trim() === br.ckt.trim(),
+      );
+      const rA = rawBr?.rateA ?? br.rateMva ?? 0;
+      const rB = rawBr?.rateB ?? 0;
+      const rC = rawBr?.rateC ?? 0;
+      const pA = rA > 0 ? (br.mvaFlow / rA) * 100 : 0;
+      const pB = rB > 0 ? (br.mvaFlow / rB) * 100 : 0;
+      const pC = rC > 0 ? (br.mvaFlow / rC) * 100 : 0;
+      if (pA >= 80 || pB >= 100 || pC >= 100) {
+        tierAlerts.push(
+          `  ${br.fromBus}-${br.toBus} (${br.ckt.trim()}): ${br.mvaFlow.toFixed(1)} MVA | RateA=${pA.toFixed(1)}%${rB > 0 ? ` RateB=${pB.toFixed(1)}%` : ""}${rC > 0 ? ` RateC=${pC.toFixed(1)}%` : ""}`,
+        );
+      }
+    }
+    if (tierAlerts.length > 0) {
+      lines.push(`--------------------------------------------------------------------------------`);
+      lines.push(`  MULTI-TIER THERMAL LOADING ALERTS (>= 80% RATEA / RATEB / RATEC)`);
+      lines.push(...tierAlerts);
+    }
+
+    const tieFlows = new Map<string, { aFrom: number; aTo: number; pMw: number; qMvar: number; count: number }>();
+    for (const br of sol.branches) {
+      const a1 = psseCase.buses.get(br.fromBus)?.area ?? 1;
+      const a2 = psseCase.buses.get(br.toBus)?.area ?? 1;
+      if (a1 !== a2) {
+        const key = `${a1}->${a2}`;
+        const cur = tieFlows.get(key) ?? { aFrom: a1, aTo: a2, pMw: 0, qMvar: 0, count: 0 };
+        cur.pMw += br.pFromMw;
+        cur.qMvar += br.qFromMvar;
+        cur.count++;
+        tieFlows.set(key, cur);
+      }
+    }
+    if (tieFlows.size > 0) {
+      lines.push(`--------------------------------------------------------------------------------`);
+      lines.push(`  AREA-TO-AREA TIE-LINE INTERCHANGE MATRIX`);
+      lines.push(`  From Area -> To Area   Lines     Net P (MW)   Net Q (Mvar)`);
+      for (const tf of tieFlows.values()) {
+        lines.push(
+          `  ${String(tf.aFrom).padStart(9)} -> ${String(tf.aTo).padEnd(7)}  ${String(tf.count).padStart(5)}  ${tf.pMw.toFixed(2).padStart(12)}  ${tf.qMvar.toFixed(2).padStart(14)}`,
+        );
+      }
+    }
+  }
+
   lines.push(`================================================================================`);
   return lines.join("\n");
 }
@@ -2825,6 +3386,7 @@ export interface ShortCircuitBusResult {
   ikLineToLineKa: number;
   ik2LineGroundKa: number;
   ipPeakMakeKa: number;
+  breakerDutyKa: number;
   sk3PhaseMva: number;
 }
 
@@ -2904,6 +3466,38 @@ export function calculateShortCircuit(
     Y0B[i * N + i] = (Y0B[i * N + i] ?? 0) - 1e-4;
     Y1B[i * N + i] = (Y1B[i * N + i] ?? 0) - 1e-5;
     Y2B[i * N + i] = (Y2B[i * N + i] ?? 0) - 1e-5;
+  }
+
+  // Negative-sequence phase-shifter / Delta-Y conjugation: Y2_ij uses -ang1 (conjugate off-diagonal rotation)
+  for (const xf of psseCase.transformers) {
+    if (xf.stat === 0 || Math.abs(xf.ang1) < 1e-3) continue;
+    const iIdx = netlist.busIndices.get(xf.i);
+    const jIdx = netlist.busIndices.get(xf.j);
+    if (iIdx === undefined || jIdx === undefined) continue;
+    const theta = (xf.ang1 * Math.PI) / 180.0;
+    const cos2 = Math.cos(-2 * theta);
+    const sin2 = Math.sin(-2 * theta);
+    const g12 = Y1G[iIdx * N + jIdx] ?? 0;
+    const b12 = Y1B[iIdx * N + jIdx] ?? 0;
+    const g21 = Y1G[jIdx * N + iIdx] ?? 0;
+    const b21 = Y1B[jIdx * N + iIdx] ?? 0;
+    Y2G[iIdx * N + jIdx] = g12 * cos2 - b12 * sin2;
+    Y2B[iIdx * N + jIdx] = g12 * sin2 + b12 * cos2;
+    Y2G[jIdx * N + iIdx] = g21 * cos2 + b21 * sin2;
+    Y2B[jIdx * N + iIdx] = b21 * cos2 - g21 * sin2;
+    hasDistinctY2 = true;
+
+    if (!seqCase && Math.abs(xf.ang1) >= 15) {
+      // Heuristic Delta-Y zero-sequence isolation when .seq is omitted: block pass-through and ground Wye side
+      const g0 = -(Y0G[iIdx * N + jIdx] ?? 0);
+      const b0 = -(Y0B[iIdx * N + jIdx] ?? 0);
+      Y0G[iIdx * N + jIdx] = 0;
+      Y0B[iIdx * N + jIdx] = 0;
+      Y0G[jIdx * N + iIdx] = 0;
+      Y0B[jIdx * N + iIdx] = 0;
+      Y0G[jIdx * N + jIdx] = (Y0G[jIdx * N + jIdx] ?? 0) - g0;
+      Y0B[jIdx * N + jIdx] = (Y0B[jIdx * N + jIdx] ?? 0) - b0;
+    }
   }
 
   // If explicit .seq data is present, assemble exact zero-sequence network from branches, transformers (connection codes), and shunts
@@ -2991,6 +3585,76 @@ export function calculateShortCircuit(
       if (idx === undefined) continue;
       Y0G[idx * N + idx] = (Y0G[idx * N + idx] ?? 0) + sh.g0 / sbase;
       Y0B[idx * N + idx] = (Y0B[idx * N + idx] ?? 0) + sh.b0 / sbase;
+    }
+
+    // Mutual zero-sequence branch couplings: invert 2x2 Z = [[Z1, Zm], [Zm, Z2]] and stamp delta Y0
+    for (const m of seqCase.mutuals) {
+      const i1 = netlist.busIndices.get(m.i1);
+      const j1 = netlist.busIndices.get(m.j1);
+      const i2 = netlist.busIndices.get(m.i2);
+      const j2 = netlist.busIndices.get(m.j2);
+      if (i1 === undefined || j1 === undefined || i2 === undefined || j2 === undefined) continue;
+      const b1 = psseCase.branches.find(
+        (b) =>
+          ((b.i === m.i1 && b.j === m.j1) || (b.i === m.j1 && b.j === m.i1)) &&
+          (b.ckt.trim() || "1") === (m.ckt1.trim() || "1"),
+      );
+      const b2 = psseCase.branches.find(
+        (b) =>
+          ((b.i === m.i2 && b.j === m.j2) || (b.i === m.j2 && b.j === m.i2)) &&
+          (b.ckt.trim() || "1") === (m.ckt2.trim() || "1"),
+      );
+      if (!b1 || !b2 || b1.st === 0 || b2.st === 0) continue;
+      const sb1 = seqBranchMap.get(`${m.i1}_${m.j1}_${m.ckt1.trim() || "1"}`);
+      const sb2 = seqBranchMap.get(`${m.i2}_${m.j2}_${m.ckt2.trim() || "1"}`);
+      const r1 = sb1 ? sb1.r0 : b1.r * 2.5;
+      const x1 = sb1 && Math.abs(sb1.x0) > 1e-7 ? sb1.x0 : b1.x * 2.5;
+      const r2 = sb2 ? sb2.r0 : b2.r * 2.5;
+      const x2 = sb2 && Math.abs(sb2.x0) > 1e-7 ? sb2.x0 : b2.x * 2.5;
+
+      const z1z2R = r1 * r2 - x1 * x2;
+      const z1z2I = r1 * x2 + x1 * r2;
+      const zm2R = m.rm * m.rm - m.xm * m.xm;
+      const zm2I = 2 * m.rm * m.xm;
+      const detR = z1z2R - zm2R;
+      const detI = z1z2I - zm2I;
+      if (detR * detR + detI * detI < 1e-14) continue;
+
+      const cDiv = (ar: number, ai: number, br: number, bi: number): [number, number] => {
+        const d = br * br + bi * bi;
+        return [(ar * br + ai * bi) / d, (ai * br - ar * bi) / d];
+      };
+
+      const [y11R, y11I] = cDiv(r2, x2, detR, detI);
+      const [y22R, y22I] = cDiv(r1, x1, detR, detI);
+      const [y12R, y12I] = cDiv(-m.rm, -m.xm, detR, detI);
+      const [y1SelfR, y1SelfI] = cDiv(1, 0, r1, x1);
+      const [y2SelfR, y2SelfI] = cDiv(1, 0, r2, x2);
+
+      const stampBranch = (a: number, b: number, g: number, bVal: number) => {
+        Y0G[a * N + a] = (Y0G[a * N + a] ?? 0) + g;
+        Y0B[a * N + a] = (Y0B[a * N + a] ?? 0) + bVal;
+        Y0G[b * N + b] = (Y0G[b * N + b] ?? 0) + g;
+        Y0B[b * N + b] = (Y0B[b * N + b] ?? 0) + bVal;
+        Y0G[a * N + b] = (Y0G[a * N + b] ?? 0) - g;
+        Y0B[a * N + b] = (Y0B[a * N + b] ?? 0) - bVal;
+        Y0G[b * N + a] = (Y0G[b * N + a] ?? 0) - g;
+        Y0B[b * N + a] = (Y0B[b * N + a] ?? 0) - bVal;
+      };
+
+      stampBranch(i1, j1, y11R - y1SelfR, y11I - y1SelfI);
+      stampBranch(i2, j2, y22R - y2SelfR, y22I - y2SelfI);
+
+      const addPair = (r: number, c: number, g: number, bVal: number) => {
+        Y0G[r * N + c] = (Y0G[r * N + c] ?? 0) + g;
+        Y0B[r * N + c] = (Y0B[r * N + c] ?? 0) + bVal;
+        Y0G[c * N + r] = (Y0G[c * N + r] ?? 0) + g;
+        Y0B[c * N + r] = (Y0B[c * N + r] ?? 0) + bVal;
+      };
+      addPair(i1, i2, y12R, y12I);
+      addPair(j1, j2, y12R, y12I);
+      addPair(i1, j2, -y12R, -y12I);
+      addPair(j1, i2, -y12R, -y12I);
     }
   }
 
@@ -3153,9 +3817,13 @@ export function calculateShortCircuit(
     const ik2LgKa = Math.sqrt(3.0) * i1_2lg * iBaseKa;
 
     // 5. IEC 60909 Peak Asymmetrical Make Current: i_p = kappa * sqrt(2) * I''_k3
+    //    and ANSI C37 3-cycle (tc = 0.05s) asymmetrical breaker interrupting duty
     const xrRatio = z1.x / Math.max(1e-5, z1.r);
     const kappa = 1.02 + 0.98 * Math.exp(-3.0 / Math.max(0.1, xrRatio));
     const ipPeakKa = kappa * Math.SQRT2 * ik3Ka;
+    const fBase = psseCase.header.basfrq > 0 ? psseCase.header.basfrq : 60.0;
+    const tauDc = xrRatio / (2 * Math.PI * fBase);
+    const breakerDutyKa = ik3Ka * Math.sqrt(1.0 + 2.0 * Math.exp((-2.0 * 0.05) / Math.max(1e-4, tauDc)));
 
     if (ik3Ka > maxFaultCurrentKa) {
       maxFaultCurrentKa = ik3Ka;
@@ -3176,6 +3844,7 @@ export function calculateShortCircuit(
       ikLineToLineKa: Number(ikLlKa.toFixed(3)),
       ik2LineGroundKa: Number(ik2LgKa.toFixed(3)),
       ipPeakMakeKa: Number(ipPeakKa.toFixed(3)),
+      breakerDutyKa: Number(breakerDutyKa.toFixed(3)),
       sk3PhaseMva: Number(sk3Mva.toFixed(1)),
     });
   }
@@ -3229,4 +3898,115 @@ export async function solvePowerFlowAsync(
 ): Promise<PowerFlowSolution> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   return solvePowerFlow(psseCase, options);
+}
+
+export interface QvCurvePoint {
+  vSchedPu: number;
+  qMarginMvar: number;
+  converged: boolean;
+}
+
+export interface QvCurveResult {
+  targetBus: number;
+  points: QvCurvePoint[];
+  minQMvar: number;
+  criticalVoltagePu: number;
+  qMarginAtNominalMvar: number;
+  reportText: string;
+}
+
+/**
+ * Computes a Q-V Reactive Power Margin Curve at `targetBus` by sweeping scheduled
+ * voltage `V_sched` via a fictitious synchronous condenser (`Qmin=-9999, Qmax=9999`).
+ * Positive `qMarginMvar` is the reactive reserve before voltage collapse (`minQMvar`).
+ */
+export function solveQvCurve(
+  psseCase: PsseCase,
+  targetBus: number,
+  options?: {
+    vStartPu?: number | undefined;
+    vEndPu?: number | undefined;
+    vStepPu?: number | undefined;
+    powerFlowOptions?: PowerFlowOptions | undefined;
+  },
+): QvCurveResult {
+  const vStart = options?.vStartPu ?? 1.1;
+  const vEnd = options?.vEndPu ?? 0.7;
+  const vStep = Math.max(0.005, options?.vStepPu ?? 0.025);
+  const pfOpts = options?.powerFlowOptions ?? { enforceQLimits: true };
+
+  const points: QvCurvePoint[] = [];
+  let minQMvar = Infinity;
+  let criticalVoltagePu = vStart;
+  let qMarginAtNominalMvar = 0;
+  let bestNomDist = Infinity;
+
+  for (let v = vStart; v >= vEnd - 1e-6; v -= vStep) {
+    const vSched = Number(v.toFixed(4));
+    const cloned = clonePsseCaseForEvents(psseCase, psseCase.dyr);
+    const busRec = cloned.buses.get(targetBus);
+    if (!busRec) break;
+    busRec.ide = busRec.ide === 3 ? 3 : 2;
+    busRec.vm = vSched;
+    cloned.generators.push({
+      i: targetBus,
+      id: "QV",
+      pg: 0,
+      qg: 0,
+      qt: 9999,
+      qb: -9999,
+      vs: vSched,
+      ireg: 0,
+      mbase: cloned.header.sbase > 0 ? cloned.header.sbase : 100,
+      zr: 0,
+      zx: 1,
+      rt: 0,
+      xt: 0,
+      gtap: 1,
+      stat: 1,
+      rmpct: 100,
+      pt: 9999,
+      pb: -9999,
+    });
+
+    const sol = solvePowerFlow(cloned, pfOpts);
+    const busSol = sol.buses.find((b) => b.busNumber === targetBus);
+    // In PSS/E Q-V convention, Q_condenser = Q_req - Q_existing_gen; positive = reactive reserve margin
+    const qCond = sol.converged && busSol ? busSol.qgMvar : NaN;
+    const qMarginMvar = Number.isFinite(qCond) ? -qCond : 0;
+    points.push({ vSchedPu: vSched, qMarginMvar, converged: sol.converged });
+
+    if (sol.converged) {
+      if (qMarginMvar < minQMvar) {
+        minQMvar = qMarginMvar;
+        criticalVoltagePu = vSched;
+      }
+      const dist = Math.abs(vSched - 1.0);
+      if (dist < bestNomDist) {
+        bestNomDist = dist;
+        qMarginAtNominalMvar = qMarginMvar;
+      }
+    }
+  }
+
+  if (!Number.isFinite(minQMvar)) minQMvar = 0;
+
+  const lines = [
+    `Q-V REACTIVE POWER MARGIN CURVE — BUS ${targetBus}`,
+    `  Critical Voltage : ${criticalVoltagePu.toFixed(3)} pu | Min Q Margin : ${minQMvar.toFixed(2)} MVAr`,
+    `  V_sched (pu)   Q_margin (MVAr)   Status`,
+    ...points.map(
+      (p) =>
+        `  ${p.vSchedPu.toFixed(4).padStart(12)}   ${p.qMarginMvar.toFixed(2).padStart(15)}   ${p.converged ? "CONVERGED" : "DIVERGED"}`,
+    ),
+  ];
+
+  return {
+    targetBus,
+    points,
+    minQMvar,
+    criticalVoltagePu,
+    qMarginAtNominalMvar,
+    reportText: lines.join("\n"),
+  };
 }

@@ -26,6 +26,7 @@ import { requireFeatureFlag } from "./middleware/feature-flag-middleware.js";
 import { defaultApiLimiter } from "./middleware/rate-limiter.js";
 import { allMigrations } from "./migrations/index.js";
 import { adminRouter } from "./routes/admin.js";
+import { aiRouter } from "./routes/ai.js";
 import { artifactViewerRouter } from "./routes/artifact-viewer.js";
 import { authRouter } from "./routes/auth.js";
 import { billingRouter } from "./routes/billing.js";
@@ -807,6 +808,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/libraries", publishRouter(libraryStorage, jobQueue, database, federationWorker));
   app.use("/api/v1", optionalAuth, simulateRouter(libraryStorage, jobQueue, database));
   app.use("/api/v1", optionalAuth, physicsRouter(jobQueue, database));
+  app.use("/api/v1", optionalAuth, aiRouter(database));
 
   app.use("/api/v1/jobs", scriptsRouter(database));
   app.use("/api/v1/studies", scriptsRouter(database));

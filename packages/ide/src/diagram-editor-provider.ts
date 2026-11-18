@@ -331,6 +331,16 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
               ];
               vscode.commands.executeCommand("modelscript.diagram.simulate", document.uri);
               break;
+            case "interactiveWrite":
+              actions = [
+                {
+                  type: "updateParameter",
+                  name: String(message.nodeId ?? message.name ?? ""),
+                  parameter: String(message.variableName ?? message.parameter ?? ""),
+                  value: message.value,
+                },
+              ];
+              break;
             case "openLineGeometryEditor":
               vscode.commands.executeCommand("modelscript.openLineGeometryEditor", {
                 uri: document.uri.toString(),

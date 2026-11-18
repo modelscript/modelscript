@@ -20,6 +20,7 @@ import type {
   PortKind,
   PscadCheckRule,
   PscadFlyByDoc,
+  PscadGraphFrame,
   PscadScriptSegment,
   PscxDefinitionGraphic,
   PscxLine,
@@ -445,7 +446,7 @@ export function parsePscxCst(
     const classId = attr(defEl, "classid");
     const defType = attr(defEl, "type");
 
-    if (classId === "StationDefn" || defName === "DS") {
+    if (classId === "StationDefn" || classId === "TLineDefn" || classId === "CableDefn" || defName === "DS") {
       excludedElements.add(defEl);
       continue;
     }
@@ -577,14 +578,126 @@ export function parsePscxCst(
     let wireId = 1;
     let stickyId = 1;
     let lineId = 1;
+    let graphId = 1;
     const stickies: PscxSticky[] = [];
     const lines: PscxLine[] = [];
+    const graphFrames: PscadGraphFrame[] = [];
+
+    function readElementParams(pel: XmlElement): Record<string, string> {
+      const out: Record<string, string> = {};
+      for (const ch of pel.children) {
+        const ct = ch.name.toLowerCase();
+        if (ct === "param") {
+          const pn = attr(ch, "name");
+          const pv = attr(ch, "value") ?? ch.text.trim();
+          if (pn && pv !== undefined) out[pn.toLowerCase()] = pv;
+        } else if (ct === "paramlist") {
+          Object.assign(out, readElementParams(ch));
+        }
+      }
+      return out;
+    }
+
+    function extractGraphElement(gel: XmlElement, fallbackTitle: string): void {
+      const gClass = (attr(gel, "classid") || "").toLowerCase();
+      const gParams = readElementParams(gel);
+      const kind: PscadGraphFrame["kind"] = gClass.includes("xy")
+        ? "xy"
+        : gClass.includes("poly")
+          ? "poly"
+          : gClass.includes("overlay")
+            ? "overlay"
+            : "graphframe";
+      const title = (
+        gParams["title"] ??
+        gParams["name"] ??
+        attr(gel, "title") ??
+        attr(gel, "name") ??
+        fallbackTitle
+      ).trim();
+      const ymin = Number(gParams["ymin"] ?? gParams["min"]);
+      const ymax = Number(gParams["ymax"] ?? gParams["max"]);
+      const curves: string[] = [];
+      const seenCurves = new Set<string>();
+      const pushCurve = (c: string | undefined) => {
+        const trimmed = c?.trim();
+        if (trimmed && !seenCurves.has(trimmed)) {
+          seenCurves.add(trimmed);
+          curves.push(trimmed);
+        }
+      };
+
+      const walkGraphChildren = (node: XmlElement) => {
+        for (const ch of node.children) {
+          const ct = ch.name.toLowerCase();
+          if (
+            ct === "curve" ||
+            ct === "trace" ||
+            (ct === "user" && (attr(ch, "classid") || "").toLowerCase().includes("curve"))
+          ) {
+            const cp = readElementParams(ch);
+            pushCurve(
+              attr(ch, "link") ??
+                cp["link"] ??
+                attr(ch, "pgb") ??
+                cp["pgb"] ??
+                cp["name"] ??
+                attr(ch, "name") ??
+                attr(ch, "id"),
+            );
+          } else if (ct !== "graph" && ct !== "paramlist" && ct !== "param") {
+            walkGraphChildren(ch);
+          }
+        }
+      };
+      walkGraphChildren(gel);
+
+      if (curves.length === 0 && gParams["curves"]) {
+        for (const c of gParams["curves"].split(/[,\s;]+/)) pushCurve(c);
+      }
+      const gid = attr(gel, "id") || `graph_${graphId++}`;
+      graphFrames.push({
+        id: gid,
+        title: title || gid,
+        kind,
+        curves,
+        min: Number.isFinite(ymin) ? ymin : undefined,
+        max: Number.isFinite(ymax) ? ymax : undefined,
+      });
+    }
 
     function walk(el: XmlElement) {
       if (skipExcluded && excludedElements.has(el)) return;
 
       const tag = el.name.toLowerCase();
       if (tag === "svg" || tag === "graphics" || tag === "form" || tag === "script") return;
+
+      if (tag === "frame") {
+        const fClass = (attr(el, "classid") || "").toLowerCase();
+        if (fClass === "graphframe" || !fClass) {
+          const fParams = readElementParams(el);
+          const fTitle = (fParams["title"] ?? fParams["name"] ?? attr(el, "name") ?? attr(el, "id") ?? "Graph").trim();
+          const nestedGraphs: XmlElement[] = [];
+          const findGraphs = (node: XmlElement) => {
+            for (const ch of node.children) {
+              if (ch.name.toLowerCase() === "graph") nestedGraphs.push(ch);
+              else findGraphs(ch);
+            }
+          };
+          findGraphs(el);
+          if (nestedGraphs.length > 0) {
+            for (const g of nestedGraphs) extractGraphElement(g, fTitle);
+          } else {
+            extractGraphElement(el, fTitle);
+          }
+          return;
+        }
+      }
+
+      if (tag === "graph") {
+        extractGraphElement(el, attr(el, "name") || attr(el, "id") || "Graph");
+        return;
+      }
 
       if (tag === "user" || tag === "component") {
         const defn = attr(el, "defn") || attr(el, "name") || attr(el, "type") || "Component";
@@ -922,6 +1035,9 @@ export function parsePscxCst(
     }
     if (lines.length > 0) {
       mod.lines = lines;
+    }
+    if (graphFrames.length > 0) {
+      mod.graphFrames = graphFrames;
     }
 
     const modelDef = modelDefs?.get(modName);

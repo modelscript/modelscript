@@ -25,13 +25,34 @@ import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
+const SimulationResults = React.lazy(() =>
+  import("../morsel/SimulationResults.js").then((m) => ({ default: m.SimulationResults })),
+);
+
 export interface PsseSldViewerProps {
   viewConfig: {
     artifactId?: string | undefined;
     url?: string | undefined;
     code?: string | undefined;
+    files?: Record<string, string> | undefined;
+    dyrText?: string | undefined;
     svg?: string | undefined;
     title?: string | undefined;
+    cfctSec?: number | undefined;
+    transientSummary?:
+      | {
+          stable?: boolean;
+          maxFreqDeviationHz?: number;
+          maxRotorAngleSpreadDeg?: number;
+          minBusVoltagePu?: number;
+        }
+      | undefined;
+    transientChannels?:
+      | {
+          t: number[];
+          series: Record<string, number[]>;
+        }
+      | undefined;
     metrics?:
       | {
           busCount?: number;
@@ -49,7 +70,7 @@ export interface PsseSldViewerProps {
   isFullScreen?: boolean | undefined;
 }
 
-export type PsseOverlayMode = "powerflow" | "voltage" | "impedance";
+export type PsseOverlayMode = "powerflow" | "voltage" | "impedance" | "interconnection";
 
 const CardWrapper = styled.div<{ $isFullScreen: boolean }>`
   position: relative;
@@ -449,9 +470,32 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
   const isDark = theme === "dark";
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [rawText, setRawText] = useState(viewConfig.code || "");
-  const [viewMode, setViewMode] = useState<"diagram" | "code">("diagram");
+  const filesRawEntry = viewConfig.files
+    ? Object.entries(viewConfig.files).find(([k]) => k.toLowerCase().endsWith(".raw"))?.[1]
+    : undefined;
+  const effectiveDyrText =
+    viewConfig.dyrText ??
+    (viewConfig.files
+      ? Object.entries(viewConfig.files).find(([k]) => k.toLowerCase().endsWith(".dyr"))?.[1]
+      : undefined);
+  const [rawText, setRawText] = useState(filesRawEntry || viewConfig.code || "");
+  const [viewMode, setViewMode] = useState<"diagram" | "code" | "stability">("diagram");
   const [overlayMode, setOverlayMode] = useState<PsseOverlayMode>("powerflow");
+  const [focusBusId, setFocusBusId] = useState<string>("");
+  const [hopDepth, setHopDepth] = useState<number>(2);
+  const [animateFlows, setAnimateFlows] = useState<boolean>(false);
+  const [showHeatmap, setShowHeatmap] = useState<boolean>(false);
+  const [geoLayout, setGeoLayout] = useState<boolean>(false);
+  const [highlightedBuses, setHighlightedBuses] = useState<number[]>([]);
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ buses?: number[] }>).detail;
+      setHighlightedBuses(Array.isArray(detail?.buses) ? detail.buses : []);
+    };
+    window.addEventListener("modelscript:psse-highlight", handler);
+    return () => window.removeEventListener("modelscript:psse-highlight", handler);
+  }, []);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const title = viewConfig.title || "PSS/E Power Flow Case (.raw)";
 
@@ -630,15 +674,127 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
                 }
               : powerflow;
 
+        const parsedFocus = Number.parseInt(focusBusId.trim(), 10);
+        const hasFocusBus =
+          Number.isFinite(parsedFocus) &&
+          focusBusId.trim() !== "" &&
+          psseAnalysis.buses.some((b) => b.i === parsedFocus);
+
+        let visibleBuses = psseAnalysis.buses;
+        let visibleLoads = psseAnalysis.loads;
+        let visibleFixedShunts = psseAnalysis.fixedShunts;
+        let visibleSwitchedShunts = psseAnalysis.switchedShunts;
+        let visibleGenerators = psseAnalysis.generators;
+        let visibleBranches = psseAnalysis.branches;
+        let visibleTransformers = psseAnalysis.transformers;
+
+        if (hasFocusBus) {
+          const adj = new Map<number, number[]>();
+          const addEdge = (a: number, b: number) => {
+            if (!adj.has(a)) adj.set(a, []);
+            if (!adj.has(b)) adj.set(b, []);
+            adj.get(a)!.push(b);
+            adj.get(b)!.push(a);
+          };
+          for (const br of psseAnalysis.branches) addEdge(br.i, br.j);
+          for (const xf of psseAnalysis.transformers) {
+            addEdge(xf.i, xf.j);
+            if (xf.k && xf.k > 0) {
+              addEdge(xf.i, xf.k);
+              addEdge(xf.j, xf.k);
+            }
+          }
+          const visited = new Set<number>([parsedFocus]);
+          let frontier = [parsedFocus];
+          for (let d = 0; d < hopDepth && frontier.length > 0; d++) {
+            const nextFrontier: number[] = [];
+            for (const cur of frontier) {
+              for (const nb of adj.get(cur) ?? []) {
+                if (!visited.has(nb)) {
+                  visited.add(nb);
+                  nextFrontier.push(nb);
+                }
+              }
+            }
+            frontier = nextFrontier;
+          }
+          visibleBuses = psseAnalysis.buses.filter((b) => visited.has(b.i));
+          visibleLoads = psseAnalysis.loads.filter((l) => visited.has(l.i));
+          visibleFixedShunts = psseAnalysis.fixedShunts.filter((s) => visited.has(s.i));
+          visibleSwitchedShunts = psseAnalysis.switchedShunts.filter((s) => visited.has(s.i));
+          visibleGenerators = psseAnalysis.generators.filter((g) => visited.has(g.i));
+          visibleBranches = psseAnalysis.branches.filter((br) => visited.has(br.i) && visited.has(br.j));
+          visibleTransformers = psseAnalysis.transformers.filter(
+            (xf) => visited.has(xf.i) && visited.has(xf.j) && (!xf.k || visited.has(xf.k)),
+          );
+        }
+
+        if (overlayMode === "interconnection") {
+          const areaByBus = new Map<number, number>();
+          for (const b of visibleBuses) {
+            if (typeof b.area === "number") areaByBus.set(b.i, b.area);
+          }
+          const tieBranches = visibleBranches.filter((br) => {
+            const a1 = areaByBus.get(br.i);
+            const a2 = areaByBus.get(br.j);
+            return a1 !== undefined && a2 !== undefined && a1 !== a2;
+          });
+          if (tieBranches.length > 0) {
+            const tieBusSet = new Set<number>();
+            for (const br of tieBranches) {
+              tieBusSet.add(br.i);
+              tieBusSet.add(br.j);
+            }
+            visibleBranches = tieBranches;
+            visibleBuses = visibleBuses.filter((b) => tieBusSet.has(b.i));
+            visibleLoads = visibleLoads.filter((l) => tieBusSet.has(l.i));
+            visibleFixedShunts = visibleFixedShunts.filter((s) => tieBusSet.has(s.i));
+            visibleSwitchedShunts = visibleSwitchedShunts.filter((s) => tieBusSet.has(s.i));
+            visibleGenerators = visibleGenerators.filter((g) => tieBusSet.has(g.i));
+            visibleTransformers = visibleTransformers.filter(
+              (xf) => tieBusSet.has(xf.i) && tieBusSet.has(xf.j) && (!xf.k || tieBusSet.has(xf.k)),
+            );
+          }
+        }
+
+        if (geoLayout && psseAnalysis.parsedCase?.substations && psseAnalysis.parsedCase.substations.length > 0) {
+          const busToSub = new Map<number, { lati: number; long: number }>();
+          for (const sub of psseAnalysis.parsedCase.substations) {
+            if (!Number.isFinite(sub.lati) || !Number.isFinite(sub.long)) continue;
+            for (const nd of sub.nodes) {
+              busToSub.set(nd.ibus, { lati: sub.lati, long: sub.long });
+            }
+          }
+          if (busToSub.size > 0) {
+            const lats = Array.from(busToSub.values()).map((v) => v.lati);
+            const lons = Array.from(busToSub.values()).map((v) => v.long);
+            const minLat = Math.min(...lats);
+            const maxLat = Math.max(...lats);
+            const minLon = Math.min(...lons);
+            const maxLon = Math.max(...lons);
+            const spanLat = Math.max(1e-4, maxLat - minLat);
+            const spanLon = Math.max(1e-4, maxLon - minLon);
+            visibleBuses = visibleBuses.map((b) => {
+              const coord = busToSub.get(b.i);
+              if (!coord) return b;
+              return {
+                ...b,
+                x: Math.round(120 + ((coord.long - minLon) / spanLon) * 1400),
+                y: Math.round(120 + (1 - (coord.lati - minLat) / spanLat) * 900),
+              };
+            });
+          }
+        }
+
         const model: PsseCaseLike = {
           title1: title,
-          buses: psseAnalysis.buses,
-          loads: psseAnalysis.loads,
-          fixedShunts: psseAnalysis.fixedShunts,
-          switchedShunts: psseAnalysis.switchedShunts,
-          generators: psseAnalysis.generators,
-          branches: psseAnalysis.branches,
-          transformers: psseAnalysis.transformers,
+          buses: visibleBuses,
+          loads: visibleLoads,
+          fixedShunts: visibleFixedShunts,
+          switchedShunts: visibleSwitchedShunts,
+          generators: visibleGenerators,
+          branches: visibleBranches,
+          transformers: visibleTransformers,
           ...(effectiveOverlay ? { powerflow: effectiveOverlay } : {}),
         };
 
@@ -647,16 +803,28 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
           {
             ...(effectiveOverlay ?? {}),
             powerflow,
-            overlayMode,
+            overlayMode: overlayMode === "interconnection" ? "powerflow" : overlayMode,
           } as unknown as PssePowerFlowOverlay,
           {
             lodBusThreshold: 500,
-            ...(psseAnalysis.buses.length > 1500
-              ? { viewport: { minX: 0, minY: 0, maxX: 4000, maxY: 3000 } }
-              : {}),
+            ...(visibleBuses.length > 1500 ? { viewport: { minX: 0, minY: 0, maxX: 4000, maxY: 3000 } } : {}),
           },
         );
-        return sanitizeSvgMarkup(built, { isFullScreen, isDark });
+        let svgOut = built;
+        if (animateFlows && overlayMode === "powerflow") {
+          const animStyle = `<style>@keyframes psseFlowDash{to{stroke-dashoffset:-24;}} path[data-edge], line[data-edge]{stroke-dasharray:6 6;animation:psseFlowDash 1.2s linear infinite;}</style>`;
+          svgOut = svgOut.replace("</svg>", `${animStyle}</svg>`);
+        }
+        if (showHeatmap && overlayMode === "voltage") {
+          const heatStyle = `<style>g[data-bus] rect, g[data-bus] circle{filter:drop-shadow(0 0 10px currentColor);}</style>`;
+          svgOut = svgOut.replace("</svg>", `${heatStyle}</svg>`);
+        }
+        if (highlightedBuses.length > 0) {
+          const sel = highlightedBuses.map((b) => `g[data-bus="${b}"] rect, g[data-bus="${b}"] circle`).join(",");
+          const hlStyle = `<style>${sel}{stroke:#f85149 !important;stroke-width:3px !important;filter:drop-shadow(0 0 8px #f85149);}</style>`;
+          svgOut = svgOut.replace("</svg>", `${hlStyle}</svg>`);
+        }
+        return sanitizeSvgMarkup(svgOut, { isFullScreen, isDark });
       } catch {
         // Fallback to pre-rendered svg if available
       }
@@ -665,9 +833,47 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
       return sanitizeSvgMarkup(viewConfig.svg, { isFullScreen, isDark });
     }
     return "";
-  }, [viewConfig.svg, psseAnalysis, overlayMode, title, isFullScreen, isDark]);
+  }, [
+    viewConfig.svg,
+    psseAnalysis,
+    overlayMode,
+    focusBusId,
+    hopDepth,
+    animateFlows,
+    showHeatmap,
+    geoLayout,
+    highlightedBuses,
+    title,
+    isFullScreen,
+    isDark,
+  ]);
 
-  const effectiveViewMode: "diagram" | "code" = viewMode === "diagram" && sanitizedSvg ? "diagram" : "code";
+  const hasStabilityBundle = Boolean(
+    effectiveDyrText || viewConfig.transientSummary || viewConfig.transientChannels || viewConfig.cfctSec !== undefined,
+  );
+  const stabilityRows = useMemo(() => {
+    const ch = viewConfig.transientChannels;
+    if (!ch || !Array.isArray(ch.t) || ch.t.length === 0) return null;
+    const vars = Object.keys(ch.series ?? {}).slice(0, 16);
+    if (vars.length === 0) return null;
+    return {
+      vars,
+      rows: ch.t.map((tVal, i) => {
+        const row: Record<string, number> = { time: tVal };
+        for (const k of vars) {
+          row[k] = ch.series[k]?.[i] ?? 0;
+        }
+        return row;
+      }),
+    };
+  }, [viewConfig.transientChannels]);
+
+  const effectiveViewMode: "diagram" | "code" | "stability" =
+    viewMode === "stability" && hasStabilityBundle
+      ? "stability"
+      : viewMode === "diagram" && sanitizedSvg
+        ? "diagram"
+        : "code";
 
   const handleCopy = () => {
     if (rawText) {
@@ -713,15 +919,26 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
         </HeaderLeft>
 
         <Box display="flex" alignItems="center" gap={2} style={{ flexShrink: 0 }}>
-          {sanitizedSvg && (
+          {(sanitizedSvg || hasStabilityBundle) && (
             <SegmentedControl>
-              <SegmentBtn
-                type="button"
-                $active={effectiveViewMode === "diagram"}
-                onClick={() => setViewMode("diagram")}
-              >
-                <ZapIcon size={12} /> SLD
-              </SegmentBtn>
+              {sanitizedSvg && (
+                <SegmentBtn
+                  type="button"
+                  $active={effectiveViewMode === "diagram"}
+                  onClick={() => setViewMode("diagram")}
+                >
+                  <ZapIcon size={12} /> SLD
+                </SegmentBtn>
+              )}
+              {hasStabilityBundle && (
+                <SegmentBtn
+                  type="button"
+                  $active={effectiveViewMode === "stability"}
+                  onClick={() => setViewMode("stability")}
+                >
+                  Stability
+                </SegmentBtn>
+              )}
               <SegmentBtn type="button" $active={effectiveViewMode === "code"} onClick={() => setViewMode("code")}>
                 <CodeIcon size={12} /> Raw Data
               </SegmentBtn>
@@ -772,17 +989,89 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
         </TelemetryMetricsGroup>
 
         {effectiveViewMode === "diagram" && (
-          <SegmentedControl>
-            <SegmentBtn type="button" $active={overlayMode === "powerflow"} onClick={() => setOverlayMode("powerflow")}>
-              Power Flow
-            </SegmentBtn>
-            <SegmentBtn type="button" $active={overlayMode === "voltage"} onClick={() => setOverlayMode("voltage")}>
-              Voltage
-            </SegmentBtn>
-            <SegmentBtn type="button" $active={overlayMode === "impedance"} onClick={() => setOverlayMode("impedance")}>
-              Impedance
-            </SegmentBtn>
-          </SegmentedControl>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              Focus Bus
+              <input
+                type="text"
+                placeholder="all"
+                value={focusBusId}
+                onChange={(e) => setFocusBusId(e.target.value)}
+                style={{
+                  width: 48,
+                  padding: "1px 4px",
+                  fontSize: 11,
+                  borderRadius: 4,
+                  border: "1px solid var(--color-border-default)",
+                  background: "var(--color-canvas-default)",
+                  color: "var(--color-fg-default)",
+                }}
+              />
+            </label>
+            {focusBusId.trim() !== "" && (
+              <select
+                value={hopDepth}
+                onChange={(e) => setHopDepth(Number(e.target.value))}
+                style={{
+                  padding: "1px 4px",
+                  fontSize: 11,
+                  borderRadius: 4,
+                  border: "1px solid var(--color-border-default)",
+                  background: "var(--color-canvas-default)",
+                  color: "var(--color-fg-default)",
+                }}
+              >
+                <option value={1}>1-hop</option>
+                <option value={2}>2-hop</option>
+                <option value={3}>3-hop</option>
+                <option value={4}>4-hop</option>
+              </select>
+            )}
+            {overlayMode === "powerflow" && (
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
+                <input type="checkbox" checked={animateFlows} onChange={(e) => setAnimateFlows(e.target.checked)} />
+                Flow
+              </label>
+            )}
+            {overlayMode === "voltage" && (
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
+                <input type="checkbox" checked={showHeatmap} onChange={(e) => setShowHeatmap(e.target.checked)} />
+                Heatmap
+              </label>
+            )}
+            {psseAnalysis.parsedCase?.substations && psseAnalysis.parsedCase.substations.length > 0 && (
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
+                <input type="checkbox" checked={geoLayout} onChange={(e) => setGeoLayout(e.target.checked)} />
+                Geo
+              </label>
+            )}
+            <SegmentedControl>
+              <SegmentBtn
+                type="button"
+                $active={overlayMode === "powerflow"}
+                onClick={() => setOverlayMode("powerflow")}
+              >
+                Power Flow
+              </SegmentBtn>
+              <SegmentBtn type="button" $active={overlayMode === "voltage"} onClick={() => setOverlayMode("voltage")}>
+                Voltage
+              </SegmentBtn>
+              <SegmentBtn
+                type="button"
+                $active={overlayMode === "impedance"}
+                onClick={() => setOverlayMode("impedance")}
+              >
+                Impedance
+              </SegmentBtn>
+              <SegmentBtn
+                type="button"
+                $active={overlayMode === "interconnection"}
+                onClick={() => setOverlayMode("interconnection")}
+              >
+                Tie-Lines
+              </SegmentBtn>
+            </SegmentedControl>
+          </div>
         )}
       </TelemetryRibbon>
 
@@ -790,6 +1079,61 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
         {loading ? (
           <Box flex={1} display="flex" justifyContent="center" alignItems="center">
             <Spinner size="medium" />
+          </Box>
+        ) : effectiveViewMode === "stability" ? (
+          <Box p={3} style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: 12, fontFamily: "monospace" }}>
+              {viewConfig.transientSummary?.stable !== undefined && (
+                <span>
+                  Status:{" "}
+                  <strong style={{ color: viewConfig.transientSummary.stable ? "#3fb950" : "#f85149" }}>
+                    {viewConfig.transientSummary.stable ? "STABLE" : "UNSTABLE"}
+                  </strong>
+                </span>
+              )}
+              {viewConfig.cfctSec !== undefined && (
+                <span>
+                  CFCT: <strong>{viewConfig.cfctSec.toFixed(3)} s</strong>
+                </span>
+              )}
+              {viewConfig.transientSummary?.maxFreqDeviationHz !== undefined && (
+                <span>
+                  Max |Δf|: <strong>{viewConfig.transientSummary.maxFreqDeviationHz.toFixed(3)} Hz</strong>
+                </span>
+              )}
+              {viewConfig.transientSummary?.maxRotorAngleSpreadDeg !== undefined && (
+                <span>
+                  Max Angle Spread: <strong>{viewConfig.transientSummary.maxRotorAngleSpreadDeg.toFixed(1)}°</strong>
+                </span>
+              )}
+              {viewConfig.transientSummary?.minBusVoltagePu !== undefined && (
+                <span>
+                  Min V: <strong>{viewConfig.transientSummary.minBusVoltagePu.toFixed(3)} pu</strong>
+                </span>
+              )}
+            </div>
+            {stabilityRows && (
+              <div style={{ height: isFullScreen ? 420 : 280 }}>
+                <React.Suspense fallback={<Spinner size="medium" />}>
+                  <SimulationResults
+                    localData={stabilityRows.rows}
+                    simulationVariables={stabilityRows.vars}
+                    colorMode={isDark ? "dark" : "light"}
+                    modelName="psse-artifact-stability"
+                  />
+                </React.Suspense>
+              </div>
+            )}
+            {effectiveDyrText && (
+              <CodePre style={{ maxHeight: 180 }}>
+                {effectiveDyrText.split(/\r?\n/).map((line, idx) => (
+                  <CodeLine key={idx}>
+                    <LineNo>{idx + 1}</LineNo>
+                    <span>{highlightPolyglotLine(line, "psse")}</span>
+                  </CodeLine>
+                ))}
+              </CodePre>
+            )}
           </Box>
         ) : effectiveViewMode === "code" || !sanitizedSvg ? (
           <CodePre>

@@ -829,11 +829,32 @@ function updateScopeCard(id: string, bodyEl: HTMLElement) {
   const pkStr = formatEngineeringValue(metrics.peak, wf.unit);
   const sparkline = generateSparklineSvg(wf, 256, 44);
 
+  const freqStr = (() => {
+    const times = currentSimData?.time;
+    const vals = wf.values;
+    if (times && vals && vals.length > 4 && times.length === vals.length) {
+      let crossings = 0;
+      let firstT = 0;
+      let lastT = 0;
+      for (let i = 1; i < vals.length; i++) {
+        if (vals[i - 1]! <= 0 && vals[i]! > 0) {
+          if (crossings === 0) firstT = times[i]!;
+          lastT = times[i]!;
+          crossings++;
+        }
+      }
+      if (crossings > 1 && lastT > firstT) {
+        return `${((crossings - 1) / (lastT - firstT)).toFixed(2)} Hz`;
+      }
+    }
+    return "60 Hz";
+  })();
+
   bodyEl.innerHTML = `
     <div class="scope-metrics">
       <span>RMS: <strong style="color:#38bdf8;">${rmsStr}</strong></span>
       <span>Pk: <strong style="color:#a78bfa;">${pkStr}</strong></span>
-      <span>f: <strong style="color:#34d399;">60 Hz</strong></span>
+      <span>f: <strong style="color:#34d399;">${freqStr}</strong></span>
     </div>
     <div style="background: rgba(15,23,42,0.6); padding: 4px; border-radius: 4px; border: 1px solid rgba(51,65,85,0.4);">
       ${sparkline}
@@ -861,6 +882,26 @@ function showProbeTooltip(clientX: number, clientY: number, id: string, name?: s
   const rmsStr = formatEngineeringValue(metrics.rms, wf.unit);
   const pkStr = formatEngineeringValue(metrics.peak, wf.unit);
   const sparkline = generateSparklineSvg(wf, 180, 28);
+  const freqStr = (() => {
+    const times = currentSimData?.time;
+    const vals = wf.values;
+    if (times && vals && vals.length > 4 && times.length === vals.length) {
+      let crossings = 0;
+      let firstT = 0;
+      let lastT = 0;
+      for (let i = 1; i < vals.length; i++) {
+        if (vals[i - 1]! <= 0 && vals[i]! > 0) {
+          if (crossings === 0) firstT = times[i]!;
+          lastT = times[i]!;
+          crossings++;
+        }
+      }
+      if (crossings > 1 && lastT > firstT) {
+        return `${((crossings - 1) / (lastT - firstT)).toFixed(2)} Hz`;
+      }
+    }
+    return "60 Hz";
+  })();
 
   tooltip.innerHTML = `
     <div style="font-weight: 600; font-size: 11px; margin-bottom: 2px; color: #f8fafc;">
@@ -869,7 +910,7 @@ function showProbeTooltip(clientX: number, clientY: number, id: string, name?: s
     <div style="display: flex; gap: 8px; font-family: monospace; font-size: 10px; color: #94a3b8; margin-bottom: 4px;">
       <span>RMS: <strong style="color: #38bdf8;">${rmsStr}</strong></span>
       <span>Pk: <strong style="color: #a78bfa;">${pkStr}</strong></span>
-      <span>f: <strong style="color: #34d399;">60 Hz</strong></span>
+      <span>f: <strong style="color: #34d399;">${freqStr}</strong></span>
     </div>
     ${sparkline}
   `;

@@ -12,8 +12,16 @@ export interface SimulationToolbarProps {
   onToggleNormalized: (v: boolean) => void;
   isLogScale: boolean;
   onToggleLogScale: (v: boolean) => void;
+  isMultiTrack?: boolean | undefined;
+  onToggleMultiTrack?: ((v: boolean) => void) | undefined;
+  isDualY?: boolean | undefined;
+  onToggleDualY?: ((v: boolean) => void) | undefined;
+  useCanvas?: boolean | undefined;
+  onToggleCanvas?: ((v: boolean) => void) | undefined;
   isComparingBaseline: boolean;
+  pinnedRunLabels?: string[] | undefined;
   onPinBaseline: () => void;
+  onRemovePinnedRun?: ((index: number) => void) | undefined;
   onClearBaseline: () => void;
   cursorMode: boolean;
   onToggleCursorMode: () => void;
@@ -22,6 +30,10 @@ export interface SimulationToolbarProps {
   onExportCsv: () => void;
   onExportJson: () => void;
   onExportParquet: () => void;
+  onExportPsout?: (() => void) | undefined;
+  onExportPscadOut?: (() => void) | undefined;
+  onExportComtrade?: (() => void) | undefined;
+  onExportSnapshot?: (() => void) | undefined;
   onCopyClipboard: () => void;
   copied: boolean;
 }
@@ -43,8 +55,16 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
   onToggleNormalized,
   isLogScale,
   onToggleLogScale,
+  isMultiTrack = false,
+  onToggleMultiTrack,
+  isDualY = false,
+  onToggleDualY,
+  useCanvas = false,
+  onToggleCanvas,
   isComparingBaseline,
+  pinnedRunLabels,
   onPinBaseline,
+  onRemovePinnedRun,
   onClearBaseline,
   cursorMode,
   onToggleCursorMode,
@@ -53,6 +73,10 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
   onExportCsv,
   onExportJson,
   onExportParquet,
+  onExportPsout,
+  onExportPscadOut,
+  onExportComtrade,
+  onExportSnapshot,
   onCopyClipboard,
   copied,
 }) => {
@@ -103,6 +127,42 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
         >
           Log
         </Button>
+        {onToggleMultiTrack && (
+          <Button
+            size="small"
+            variant="invisible"
+            aria-pressed={isMultiTrack}
+            style={toggleBtnSx(isMultiTrack)}
+            onClick={() => onToggleMultiTrack(!isMultiTrack)}
+            title="Stack schematic GraphFrames or individual Y-axis tracks"
+          >
+            Multi-Track
+          </Button>
+        )}
+        {onToggleDualY && (
+          <Button
+            size="small"
+            variant="invisible"
+            aria-pressed={isDualY}
+            style={toggleBtnSx(isDualY)}
+            onClick={() => onToggleDualY(!isDualY)}
+            title="Plot second variable group on independent Right Y-Axis (Dual-Y)"
+          >
+            Dual-Y
+          </Button>
+        )}
+        {onToggleCanvas && (
+          <Button
+            size="small"
+            variant="invisible"
+            aria-pressed={useCanvas}
+            style={toggleBtnSx(useCanvas)}
+            onClick={() => onToggleCanvas(!useCanvas)}
+            title="Use GPU/Canvas2D waveform engine (box-zoom, scroll-zoom, Shift+drag pan, 1M pts)"
+          >
+            Canvas Hi-Res
+          </Button>
+        )}
         <Button
           size="small"
           variant="invisible"
@@ -123,7 +183,34 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
         >
           Stats
         </Button>
-        {isComparingBaseline ? (
+        {pinnedRunLabels && pinnedRunLabels.length > 0 ? (
+          <>
+            {pinnedRunLabels.map((lbl, idx) => (
+              <Button
+                key={lbl}
+                size="small"
+                variant="invisible"
+                trailingVisual={() => <XIcon size={12} />}
+                style={toggleBtnSx(true)}
+                onClick={() => (onRemovePinnedRun ? onRemovePinnedRun(idx) : onClearBaseline())}
+                title={`Remove pinned ${lbl} (dashed overlay)`}
+              >
+                {lbl}
+              </Button>
+            ))}
+            {pinnedRunLabels.length < 4 && (
+              <Button
+                size="small"
+                variant="invisible"
+                leadingVisual={() => <PinIcon size={12} />}
+                onClick={onPinBaseline}
+                title={`Pin current run for multi-run comparison (${pinnedRunLabels.length}/4)`}
+              >
+                +Pin
+              </Button>
+            )}
+          </>
+        ) : isComparingBaseline ? (
           <Button
             size="small"
             variant="invisible"
@@ -156,6 +243,31 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
             <ActionList.Item onSelect={onExportCsv}>CSV</ActionList.Item>
             <ActionList.Item onSelect={onExportJson}>JSON</ActionList.Item>
             <ActionList.Item onSelect={onExportParquet}>Parquet</ActionList.Item>
+            {onExportPsout && <ActionList.Item onSelect={onExportPsout}>PSCAD (.psout)</ActionList.Item>}
+            {onExportPscadOut && <ActionList.Item onSelect={onExportPscadOut}>PSCAD (.inf / .out)</ActionList.Item>}
+            {onExportComtrade && <ActionList.Item onSelect={onExportComtrade}>COMTRADE (.cfg / .dat)</ActionList.Item>}
+            {onExportSnapshot && <ActionList.Item onSelect={onExportSnapshot}>Save Snapshot (.snp)</ActionList.Item>}
+            <ActionList.Item
+              onSelect={() => {
+                const inp = document.createElement("input");
+                inp.type = "file";
+                inp.accept = ".snp,.json";
+                inp.onchange = async () => {
+                  const file = inp.files?.[0];
+                  if (!file) return;
+                  try {
+                    const text = await file.text();
+                    (window as unknown as { __morselInitialSnapshot?: unknown }).__morselInitialSnapshot =
+                      JSON.parse(text);
+                  } catch {
+                    (window as unknown as { __morselInitialSnapshot?: unknown }).__morselInitialSnapshot = undefined;
+                  }
+                };
+                inp.click();
+              }}
+            >
+              Start from Snapshot (.snp)…
+            </ActionList.Item>
             <ActionList.Divider />
             <ActionList.Item onSelect={onCopyClipboard}>
               <ActionList.LeadingVisual>

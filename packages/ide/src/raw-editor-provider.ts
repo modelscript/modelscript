@@ -1580,8 +1580,8 @@ export function MY_USRMDL_step(t: f64, dt: f64, conPtr: usize, statePtr: usize, 
                   <td>\${escapeHtml(b.name.trim())}</td>
                   <td>\${b.baseKv.toFixed(1)} kV</td>
                   <td>\${typeBadge}</td>
-                  <td \${vmStyle}>\${vm.toFixed(4)}\${violationBadge}</td>
-                  <td>\${va.toFixed(2)}°</td>
+                  <td \${vmStyle}><input type="number" step="0.005" value="\${vm.toFixed(4)}" style="width:66px;background:transparent;color:inherit;border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;" onchange="vscode.postMessage({type:'writeback',cellId:'bus_\${b.i}',changes:{vm:Number(this.value)}})" />\${violationBadge}</td>
+                  <td><input type="number" step="0.1" value="\${va.toFixed(2)}" style="width:58px;background:transparent;color:inherit;border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;" onchange="vscode.postMessage({type:'writeback',cellId:'bus_\${b.i}',changes:{va:Number(this.value)}})" /></td>
                   <td>\${b.area}</td>
                   <td>\${b.zone}</td>
                   <td><button style="padding:2px 6px; font-size:11px;" data-table-bus="\${b.i}">Inspect SLD</button></td>
@@ -1600,7 +1600,7 @@ export function MY_USRMDL_step(t: f64, dt: f64, conPtr: usize, statePtr: usize, 
               .map(g => \`<tr class="clickable-row" data-table-bus="\${g.i}">
                 <td><b>\${g.i}</b></td>
                 <td>\${escapeHtml(g.id)}</td>
-                <td>\${g.pg.toFixed(1)}</td>
+                <td><input type="number" step="1" value="\${g.pg.toFixed(1)}" style="width:68px;background:transparent;color:inherit;border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;" onchange="vscode.postMessage({type:'writeback',cellId:'gen_\${g.i}_\${escapeHtml(g.id.trim())}',changes:{pg:Number(this.value)}})" /></td>
                 <td>\${g.qg.toFixed(1)}</td>
                 <td>\${g.qt.toFixed(1)}</td>
                 <td>\${g.qb.toFixed(1)}</td>
@@ -1632,12 +1632,12 @@ export function MY_USRMDL_step(t: f64, dt: f64, conPtr: usize, statePtr: usize, 
                   <td><b>\${br.i}</b></td>
                   <td><b>\${br.j}</b></td>
                   <td>\${escapeHtml(br.ckt)}</td>
-                  <td>\${br.r.toFixed(5)}</td>
-                  <td>\${br.x.toFixed(5)}</td>
-                  <td>\${br.rateA > 0 ? br.rateA.toFixed(1) : '-'}</td>
+                  <td><input type="number" step="0.001" value="\${br.r.toFixed(5)}" style="width:68px;background:transparent;color:inherit;border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;" onchange="vscode.postMessage({type:'writeback',cellId:'branch_\${br.i}_\${Math.abs(br.j)}_\${safeCkt}',changes:{r:Number(this.value)}})" /></td>
+                  <td><input type="number" step="0.001" value="\${br.x.toFixed(5)}" style="width:68px;background:transparent;color:inherit;border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;" onchange="vscode.postMessage({type:'writeback',cellId:'branch_\${br.i}_\${Math.abs(br.j)}_\${safeCkt}',changes:{x:Number(this.value)}})" /></td>
+                  <td><input type="number" step="10" value="\${br.rateA.toFixed(1)}" style="width:64px;background:transparent;color:inherit;border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;" onchange="vscode.postMessage({type:'writeback',cellId:'branch_\${br.i}_\${Math.abs(br.j)}_\${safeCkt}',changes:{rateA:Number(this.value)}})" /></td>
                   <td>\${flow}</td>
                   <td>\${loadBadge}</td>
-                  <td>\${br.st === 1 ? 'In-Service' : 'Out'}</td>
+                  <td><input type="checkbox" \${br.st === 1 ? 'checked' : ''} onchange="vscode.postMessage({type:'writeback',cellId:'branch_\${br.i}_\${Math.abs(br.j)}_\${safeCkt}',changes:{st:this.checked?1:0}})" /></td>
                   <td><button style="padding:2px 6px; font-size:11px;" data-table-branch-from="\${br.i}" data-table-branch-to="\${br.j}" data-table-branch-ckt="\${safeCkt}">Inspect</button></td>
                 </tr>\`;
               }).join("")}
@@ -1651,17 +1651,20 @@ export function MY_USRMDL_step(t: f64, dt: f64, conPtr: usize, statePtr: usize, 
           <tbody>
             \${currentData.transformers
               .filter(t => !filter || String(t.i).includes(filter) || String(t.j).includes(filter))
-              .map(t => \`<tr class="clickable-row" data-table-branch-from="\${t.i}" data-table-branch-to="\${t.j}" data-table-branch-ckt="\${escapeHtml(t.ckt.trim())}">
-                <td><b>\${t.i}</b></td>
-                <td><b>\${t.j}</b></td>
-                <td>\${escapeHtml(t.ckt)}</td>
-                <td>\${t.r12.toFixed(5)}</td>
-                <td>\${t.x12.toFixed(5)}</td>
-                <td>\${t.sbase12.toFixed(1)}</td>
-                <td>\${t.windv1.toFixed(4)}</td>
-                <td>\${t.ang1.toFixed(2)}°</td>
-                <td>\${t.stat === 1 ? 'In-Service' : 'Out'}</td>
-              </tr>\`).join("")}
+              .map(t => {
+                const safeCkt = escapeHtml(t.ckt.trim());
+                return \`<tr class="clickable-row" data-table-branch-from="\${t.i}" data-table-branch-to="\${t.j}" data-table-branch-ckt="\${safeCkt}">
+                  <td><b>\${t.i}</b></td>
+                  <td><b>\${t.j}</b></td>
+                  <td>\${escapeHtml(t.ckt)}</td>
+                  <td><input type="number" step="0.001" value="\${t.r12.toFixed(5)}" style="width:68px;background:transparent;color:inherit;border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;" onchange="vscode.postMessage({type:'writeback',cellId:'xfmr_\${t.i}_\${t.j}_\${safeCkt}',changes:{r12:Number(this.value)}})" /></td>
+                  <td><input type="number" step="0.005" value="\${t.x12.toFixed(5)}" style="width:68px;background:transparent;color:inherit;border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;" onchange="vscode.postMessage({type:'writeback',cellId:'xfmr_\${t.i}_\${t.j}_\${safeCkt}',changes:{x12:Number(this.value)}})" /></td>
+                  <td>\${t.sbase12.toFixed(1)}</td>
+                  <td><input type="number" step="0.00625" value="\${t.windv1.toFixed(4)}" style="width:68px;background:transparent;color:inherit;border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;" onchange="vscode.postMessage({type:'writeback',cellId:'xfmr_\${t.i}_\${t.j}_\${safeCkt}',changes:{windv1:Number(this.value)}})" /></td>
+                  <td><input type="number" step="1" value="\${t.ang1.toFixed(2)}" style="width:58px;background:transparent;color:inherit;border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;" onchange="vscode.postMessage({type:'writeback',cellId:'xfmr_\${t.i}_\${t.j}_\${safeCkt}',changes:{ang1:Number(this.value)}})" /></td>
+                  <td><input type="checkbox" \${t.stat === 1 ? 'checked' : ''} onchange="vscode.postMessage({type:'writeback',cellId:'xfmr_\${t.i}_\${t.j}_\${safeCkt}',changes:{stat:this.checked?1:0}})" /></td>
+                </tr>\`;
+              }).join("")}
           </tbody>
         </table>\`;
       } else if (currentGridTab === "loads") {
@@ -1672,15 +1675,18 @@ export function MY_USRMDL_step(t: f64, dt: f64, conPtr: usize, statePtr: usize, 
           <tbody>
             \${currentData.loads
               .filter(l => !filter || String(l.i).includes(filter) || l.id.toLowerCase().includes(filter))
-              .map(l => \`<tr class="clickable-row" data-table-bus="\${l.i}">
-                <td><b>\${l.i}</b></td>
-                <td>\${escapeHtml(l.id)}</td>
-                <td>\${l.pl.toFixed(1)}</td>
-                <td>\${l.ql.toFixed(1)}</td>
-                <td>\${l.status === 1 ? 'In-Service' : 'Out'}</td>
-                <td>\${l.area}</td>
-                <td>\${l.zone}</td>
-              </tr>\`).join("")}
+              .map(l => {
+                const safeId = escapeHtml(l.id.trim());
+                return \`<tr class="clickable-row" data-table-bus="\${l.i}">
+                  <td><b>\${l.i}</b></td>
+                  <td>\${escapeHtml(l.id)}</td>
+                  <td><input type="number" step="1" value="\${l.pl.toFixed(1)}" style="width:66px;background:transparent;color:inherit;border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;" onchange="vscode.postMessage({type:'writeback',cellId:'load_\${l.i}_\${safeId}',changes:{pl:Number(this.value)}})" /></td>
+                  <td><input type="number" step="1" value="\${l.ql.toFixed(1)}" style="width:66px;background:transparent;color:inherit;border:1px solid var(--border);border-radius:3px;padding:1px 3px;font-family:inherit;" onchange="vscode.postMessage({type:'writeback',cellId:'load_\${l.i}_\${safeId}',changes:{ql:Number(this.value)}})" /></td>
+                  <td><input type="checkbox" \${l.status === 1 ? 'checked' : ''} onchange="vscode.postMessage({type:'writeback',cellId:'load_\${l.i}_\${safeId}',changes:{status:this.checked?1:0}})" /></td>
+                  <td>\${l.area}</td>
+                  <td>\${l.zone}</td>
+                </tr>\`;
+              }).join("")}
           </tbody>
         </table>\`;
       }

@@ -15,7 +15,7 @@ const pslxFixturePath = path.resolve(__dirname, "fixtures/Component_Lib.pslx");
 
 describe("PSCAD Library Project (.pslx) Suite", () => {
   it("registers .pslx in pscadLanguage file extensions", () => {
-    assert.ok(pscadLanguage.fileExtensions.includes(".pslx"), "pscadLanguage should support .pslx");
+    assert.ok(pscadLanguage.fileExtensions?.includes(".pslx"), "pscadLanguage should support .pslx");
     assert.ok(pscadLanguage.lsp?.fileExtensions?.includes(".pslx"), "pscad LSP should support .pslx");
   });
 
@@ -83,14 +83,14 @@ describe("PSCAD Library Project (.pslx) Suite", () => {
     `;
     const proj = parsePscx(xml);
     assert.equal(proj.rootModule.lines?.length, 2, "Should parse 2 divider lines");
-    assert.equal(proj.rootModule.lines?.[0].classId, "Divider");
-    assert.equal(proj.rootModule.lines?.[0].x1, 36);
-    assert.equal(proj.rootModule.lines?.[0].y1, 18);
-    assert.equal(proj.rootModule.lines?.[0].x2, 270);
-    assert.equal(proj.rootModule.lines?.[0].y2, 18);
+    assert.equal(proj.rootModule.lines?.[0]?.classId, "Divider");
+    assert.equal(proj.rootModule.lines?.[0]?.x1, 36);
+    assert.equal(proj.rootModule.lines?.[0]?.y1, 18);
+    assert.equal(proj.rootModule.lines?.[0]?.x2, 270);
+    assert.equal(proj.rootModule.lines?.[0]?.y2, 18);
     const ann = proj.rootModule.components.find((c) => c.definitionName === "master:annotation");
     assert.ok(ann, "Should parse annotation component");
-    assert.equal(ann.parameters?.AL1, "Header Title");
+    assert.equal(ann.parameters?.["AL1"], "Header Title");
   });
 
   it("indexes .pslx components into UnifiedWorkspace for the Library panel", async () => {
@@ -102,10 +102,12 @@ describe("PSCAD Library Project (.pslx) Suite", () => {
     const index = ws.getIndex();
 
     assert.ok(index.symbols.size >= 4, "Should index package and at least 3 components");
-    const rootSymbol = Array.from(index.symbols.values()).find((s) => s.parentId === null);
+    const rootSymbol = Array.from(index.symbols.values()).find(
+      (s) => s.parentId === null && s.name === "Component_Lib",
+    );
     assert.ok(rootSymbol, "Should have root library package symbol");
     assert.equal(rootSymbol.name, "Component_Lib");
-    assert.equal(rootSymbol.metadata?.classPrefixes, "package");
+    assert.equal(rootSymbol.metadata?.["classPrefixes"], "package");
 
     const children = index.childrenOf.get(rootSymbol.id) || [];
     assert.equal(children.length, 4, "Library package should have 4 child components including Main");
@@ -118,8 +120,9 @@ describe("PSCAD Library Project (.pslx) Suite", () => {
     assert.ok(childNames.includes("Main"));
 
     for (const child of childSymbols) {
-      assert.ok(child.metadata?.iconSvg, `${child.name} should have an SVG icon`);
-      assert.ok(child.metadata.iconSvg.startsWith("<svg"), `${child.name} iconSvg should be valid SVG`);
+      const iconSvg = child.metadata?.["iconSvg"];
+      assert.ok(typeof iconSvg === "string" && iconSvg.length > 0, `${child.name} should have an SVG icon`);
+      assert.ok(iconSvg.startsWith("<svg"), `${child.name} iconSvg should be valid SVG`);
     }
   });
 
@@ -138,14 +141,14 @@ describe("PSCAD Library Project (.pslx) Suite", () => {
     assert.ok(diagram.cells.length > 0, "Should have diagram cells");
     assert.ok(diagram.metadata.nodeCount >= 8, "Should have node count including components and stickies");
 
-    const compCells = diagram.cells.filter((c) => c.data?.kind === "component");
+    const compCells = diagram.cells.filter((c) => c.data?.["kind"] === "component");
     assert.equal(compCells.length, 3, "Should have 3 component nodes");
     assert.equal(
-      compCells.find((c) => c.data?.name?.includes("Rational_Operator"))?.attrs?.label?.text,
+      compCells.find((c) => String(c.data?.["name"] ?? "").includes("Rational_Operator"))?.attrs?.["label"]?.text,
       "Rational_Operator",
     );
 
-    const stickyCells = diagram.cells.filter((c) => c.data?.kind === "sticky");
+    const stickyCells = diagram.cells.filter((c) => c.data?.["kind"] === "sticky");
     assert.ok(stickyCells.length >= 5, "Should have sticky note card nodes");
     assert.ok(
       stickyCells.every((s) => s.shape === "rect"),

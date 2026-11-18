@@ -8,19 +8,24 @@
  * (MLS §6, §8, §10, §11, §15, §19).
  */
 
-import type { CodeGraph, CompilerLint, i32, u16, u32 } from "@modelscript/dsl";
+import type { CodeGraph, CompilerLint, f64, i32, u16, u32 } from "@modelscript/dsl";
 import { unitsCompatible } from "../units.js";
 import {
   getComponentUnit,
+  getDeclaredArraySubscripts,
   getEnclosingClass,
   getVariableTypeInClass,
   hasTypePrefix,
   hasUnitInClass,
   inferExprType,
   inferExprUnit,
+  isBindingValueLiteral,
   isClassKind,
   isDescendantOfInnerClass,
   isIntEnumConversionActive,
+  isLiteralInValuePosition,
+  isOldFrontendActive,
+  isSimpleNumericLiteral,
   isStreamVariable,
   isTypeCompatible,
   resolveBasePrimitiveType,
@@ -105,169 +110,37 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       // If there is no modification on this declaration, there is no binding equation to check
       if (modNode == 0) return;
 
+      // A literal only fixes the binding's type when it is in value position — not an if-condition,
+      // relation/logical operand, call argument or subscript — and not inside a description,
+      // annotation, or string-valued attribute modification such as `unit="m"`.
       if (expectedType == TYPE_REAL || expectedType == TYPE_INTEGER || expectedType == TYPE_BOOLEAN) {
         if ($.string_literal != 0) {
           for (const str of db.ast.getDescendants(modNode, $.string_literal)) {
-            let isDesc = false;
-            for (const anc of db.ast.getAncestors(str)) {
-              if (anc == node) break;
-              const t = db.ast.getType(anc);
-              if (
-                ($.description != 0 && t == $.description) ||
-                ($.description_string != 0 && t == $.description_string) ||
-                ($.comment != 0 && t == $.comment) ||
-                ($.string_comment != 0 && t == $.string_comment) ||
-                ($.annotation != 0 && t == $.annotation) ||
-                ($.annotation_clause != 0 && t == $.annotation_clause) ||
-                ($.function_call != 0 && t == $.function_call) ||
-                ($.function_call_args != 0 && t == $.function_call_args) ||
-                ($.function_arguments != 0 && t == $.function_arguments) ||
-                ($.named_argument != 0 && t == $.named_argument) ||
-                ($.subscript != 0 && t == $.subscript) ||
-                ($.array_subscripts != 0 && t == $.array_subscripts) ||
-                (expectedType == TYPE_BOOLEAN &&
-                  (($.binary_expression != 0 && t == $.binary_expression) ||
-                    ($.relation != 0 && t == $.relation) ||
-                    ($.logical_factor != 0 && t == $.logical_factor) ||
-                    ($.logical_term != 0 && t == $.logical_term) ||
-                    ($.logical_expression != 0 && t == $.logical_expression)))
-              ) {
-                isDesc = true;
-                break;
-              }
-            }
-            if (isDesc) continue;
-
-            if (expectedType == TYPE_BOOLEAN) {
-              let inRel = false;
-              for (const anc of db.ast.getAncestors(str)) {
-                if (anc == node) break;
-                let ch = db.ast.getFirstChild(anc);
-                while (ch != 0) {
-                  if (
-                    db.ast.textEquals(ch, "==") ||
-                    db.ast.textEquals(ch, "<>") ||
-                    db.ast.textEquals(ch, "<") ||
-                    db.ast.textEquals(ch, "<=") ||
-                    db.ast.textEquals(ch, ">") ||
-                    db.ast.textEquals(ch, ">=")
-                  ) {
-                    inRel = true;
-                    break;
-                  }
-                  ch = db.ast.getNextSibling(ch);
-                }
-                if (inRel) break;
-              }
-              if (inRel) continue;
-            }
-
-            let isAttrMod = false;
-            for (const anc of db.ast.getAncestors(str)) {
-              if (anc == node) break;
-              if (db.ast.getType(anc) == $.element_modification) {
-                for (const id of db.ast.getDescendants(anc, $.identifier)) {
-                  if (
-                    db.ast.textEquals(id, "unit") ||
-                    db.ast.textEquals(id, "displayUnit") ||
-                    db.ast.textEquals(id, "quantity")
-                  ) {
-                    isAttrMod = true;
-                    break;
-                  }
-                }
-                break;
-              }
-            }
-            if (!isAttrMod) {
-              db.diagnosticAt(str, declNode != 0 ? declNode : node, expectedType, TYPE_STRING);
-              return;
-            }
+            if (!isBindingValueLiteral(db, str, node, true, $)) continue;
+            db.diagnosticAt(str, declNode, expectedType, TYPE_STRING);
+            return;
           }
         }
         if (expectedType == TYPE_INTEGER && $.unsigned_real != 0) {
           for (const num of db.ast.getDescendants(modNode, $.unsigned_real)) {
-            let isDesc = false;
-            for (const anc of db.ast.getAncestors(num)) {
-              if (anc == node) break;
-              const t = db.ast.getType(anc);
-              if (
-                ($.description != 0 && t == $.description) ||
-                ($.description_string != 0 && t == $.description_string) ||
-                ($.comment != 0 && t == $.comment) ||
-                ($.string_comment != 0 && t == $.string_comment) ||
-                ($.annotation != 0 && t == $.annotation) ||
-                ($.annotation_clause != 0 && t == $.annotation_clause) ||
-                ($.function_call != 0 && t == $.function_call) ||
-                ($.function_call_args != 0 && t == $.function_call_args) ||
-                ($.function_arguments != 0 && t == $.function_arguments) ||
-                ($.named_argument != 0 && t == $.named_argument)
-              ) {
-                isDesc = true;
-                break;
-              }
-            }
-            if (!isDesc) {
-              db.diagnosticAt(num, declNode != 0 ? declNode : node, TYPE_INTEGER, TYPE_REAL);
-              return;
-            }
+            if (!isBindingValueLiteral(db, num, node, false, $)) continue;
+            db.diagnosticAt(num, declNode, TYPE_INTEGER, TYPE_REAL);
+            return;
           }
         }
       } else if (expectedType == TYPE_STRING) {
         if ($.unsigned_real != 0) {
           for (const num of db.ast.getDescendants(modNode, $.unsigned_real)) {
-            let isDesc = false;
-            for (const anc of db.ast.getAncestors(num)) {
-              if (anc == node) break;
-              const t = db.ast.getType(anc);
-              if (
-                ($.description != 0 && t == $.description) ||
-                ($.description_string != 0 && t == $.description_string) ||
-                ($.comment != 0 && t == $.comment) ||
-                ($.string_comment != 0 && t == $.string_comment) ||
-                ($.annotation != 0 && t == $.annotation) ||
-                ($.annotation_clause != 0 && t == $.annotation_clause) ||
-                ($.function_call != 0 && t == $.function_call) ||
-                ($.function_call_args != 0 && t == $.function_call_args) ||
-                ($.function_arguments != 0 && t == $.function_arguments) ||
-                ($.named_argument != 0 && t == $.named_argument)
-              ) {
-                isDesc = true;
-                break;
-              }
-            }
-            if (!isDesc) {
-              db.diagnosticAt(num, declNode != 0 ? declNode : node, TYPE_STRING, TYPE_REAL);
-              return;
-            }
+            if (!isBindingValueLiteral(db, num, node, false, $)) continue;
+            db.diagnosticAt(num, declNode, TYPE_STRING, TYPE_REAL);
+            return;
           }
         }
         if ($.unsigned_integer != 0) {
           for (const num of db.ast.getDescendants(modNode, $.unsigned_integer)) {
-            let isDesc = false;
-            for (const anc of db.ast.getAncestors(num)) {
-              if (anc == node) break;
-              const t = db.ast.getType(anc);
-              if (
-                ($.description != 0 && t == $.description) ||
-                ($.description_string != 0 && t == $.description_string) ||
-                ($.comment != 0 && t == $.comment) ||
-                ($.string_comment != 0 && t == $.string_comment) ||
-                ($.annotation != 0 && t == $.annotation) ||
-                ($.annotation_clause != 0 && t == $.annotation_clause) ||
-                ($.function_call != 0 && t == $.function_call) ||
-                ($.function_call_args != 0 && t == $.function_call_args) ||
-                ($.function_arguments != 0 && t == $.function_arguments) ||
-                ($.named_argument != 0 && t == $.named_argument)
-              ) {
-                isDesc = true;
-                break;
-              }
-            }
-            if (!isDesc) {
-              db.diagnosticAt(num, declNode != 0 ? declNode : node, TYPE_STRING, TYPE_INTEGER);
-              return;
-            }
+            if (!isBindingValueLiteral(db, num, node, false, $)) continue;
+            db.diagnosticAt(num, declNode, TYPE_STRING, TYPE_INTEGER);
+            return;
           }
         }
       }
@@ -493,45 +366,45 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
 
       if (expectedType == TYPE_UNKNOWN) return;
 
+      // Only literals in value position determine the modification's type (see isLiteralInValuePosition):
+      // `start = if s == "a" then 1 else 0` must not be reported as a String modification.
       if (expectedType == TYPE_REAL || expectedType == TYPE_INTEGER || expectedType == TYPE_BOOLEAN) {
-        let foundStr = false;
-        if ($.string_literal != 0) {
-          if (db.ast.getType(modExpr) == $.string_literal) {
-            db.diagnostic(modExpr);
-            foundStr = true;
-          } else {
-            for (const str of db.ast.getDescendants(modExpr, $.string_literal)) {
-              db.diagnostic(str);
-              foundStr = true;
-              break;
-            }
+        if (db.ast.getType(modExpr) == $.string_literal) {
+          db.diagnostic(modExpr);
+          return;
+        }
+        for (const d of db.ast.getDescendants(modExpr)) {
+          const isStr =
+            db.ast.getType(d) == $.string_literal || (db.ast.getFirstChild(d) == 0 && db.ast.startsWith(d, '"'));
+          if (isStr && isLiteralInValuePosition(db, d, modExpr, $)) {
+            db.diagnostic(d);
+            return;
           }
         }
-        if (!foundStr) {
-          for (const d of db.ast.getDescendants(modExpr)) {
-            if (db.ast.getType(d) == $.string_literal || (db.ast.getFirstChild(d) == 0 && db.ast.startsWith(d, '"'))) {
+        if (expectedType == TYPE_INTEGER && $.unsigned_real != 0) {
+          if (db.ast.getType(modExpr) == $.unsigned_real) {
+            db.diagnostic(modExpr);
+            return;
+          }
+          for (const d of db.ast.getDescendants(modExpr, $.unsigned_real)) {
+            if (isLiteralInValuePosition(db, d, modExpr, $)) {
               db.diagnostic(d);
-              break;
+              return;
             }
           }
         }
       } else if (expectedType == TYPE_STRING) {
-        if ($.unsigned_real != 0) {
-          if (db.ast.getType(modExpr) == $.unsigned_real) {
-            db.diagnostic(modExpr);
-          } else {
-            for (const num of db.ast.getDescendants(modExpr, $.unsigned_real)) {
-              db.diagnostic(num);
-            }
-          }
+        if (db.ast.getType(modExpr) == $.unsigned_real || db.ast.getType(modExpr) == $.unsigned_integer) {
+          db.diagnostic(modExpr);
+          return;
         }
-        if ($.unsigned_integer != 0) {
-          if (db.ast.getType(modExpr) == $.unsigned_integer) {
-            db.diagnostic(modExpr);
-          } else {
-            for (const num of db.ast.getDescendants(modExpr, $.unsigned_integer)) {
-              db.diagnostic(num);
-            }
+        for (const num of db.ast.getDescendants(modExpr)) {
+          const t = db.ast.getType(num);
+          if (
+            (($.unsigned_real != 0 && t == $.unsigned_real) || ($.unsigned_integer != 0 && t == $.unsigned_integer)) &&
+            isLiteralInValuePosition(db, num, modExpr, $)
+          ) {
+            db.diagnostic(num);
           }
         }
       }
@@ -568,36 +441,53 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     message: (target) =>
       `Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: any) => {
-      // 1. Find array_subscripts on node or ancestor component_clause
-      let subNode: u32 = 0;
-      if ($.array_subscripts != 0) {
-        for (const s of db.ast.getDescendants(node, $.array_subscripts)) {
-          subNode = s;
+      // 1. Find array_subscripts declared directly on declaration or enclosing component_clause
+      const subNode = getDeclaredArraySubscripts(db, node, $);
+      if (subNode == 0) return;
+
+      // Require the first declared dimension to be a plain positive integer literal (not `n + 1`).
+      let firstSub: u32 = 0;
+      if ($.subscript != 0) {
+        for (const s of db.ast.getDescendants(subNode, $.subscript)) {
+          firstSub = s;
           break;
         }
-        if (subNode == 0) {
-          for (const anc of db.ast.getAncestors(node)) {
-            const ancType = db.ast.getType(anc);
-            if (ancType == $.component_clause || ancType == $.component_clause1) {
-              for (const s of db.ast.getDescendants(anc, $.array_subscripts)) {
-                subNode = s;
-                break;
-              }
+      }
+      if (firstSub != 0 && !isSimpleNumericLiteral(db, firstSub, $)) return;
+
+      const declaredSize = db.ast.parseInteger(firstSub != 0 ? firstSub : subNode);
+      if (declaredSize <= 0) return;
+
+      // 2. Find direct top-level array_arguments (`{ ... }`) in the declaration's binding expression
+      const decl = db.ast.getType(node) == $.declaration ? node : db.ast.getChildByFieldId(node, "declaration");
+      if (decl == 0) return;
+      const mod = db.ast.getChildByFieldId(decl, "modification");
+      if (mod == 0) return;
+      const modExpr = db.ast.getChildByFieldId(mod, "modification_expression");
+      if (modExpr == 0) return;
+
+      let arrayArgs: u32 = 0;
+      if ($.array_arguments != 0) {
+        for (const args of db.ast.getDescendants(modExpr, $.array_arguments)) {
+          let isTopLevel = true;
+          for (const anc of db.ast.getAncestors(args, 0, modExpr)) {
+            if (anc == args) continue;
+            const at = db.ast.getType(anc);
+            if (
+              ($.function_call_args != 0 && at == $.function_call_args) ||
+              ($.array_subscripts != 0 && at == $.array_subscripts) ||
+              ($.array_arguments != 0 && at == $.array_arguments) ||
+              ($.element_modification != 0 && at == $.element_modification) ||
+              db.ast.getChildByFieldId(anc, "left") != 0 ||
+              db.ast.getChildByFieldId(anc, "right") != 0
+            ) {
+              isTopLevel = false;
               break;
             }
           }
-        }
-      }
-      if (subNode == 0) return;
-
-      const declaredSize = db.ast.parseInteger(subNode);
-      if (declaredSize <= 0) return;
-
-      // 2. Find modification and array_arguments ({ ... })
-      let arrayArgs: u32 = 0;
-      if ($.array_arguments != 0) {
-        for (const args of db.ast.getDescendants(node, $.array_arguments)) {
-          arrayArgs = args;
+          if (isTopLevel) {
+            arrayArgs = args;
+          }
           break;
         }
       }
@@ -781,16 +671,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         if (lhsType != TYPE_UNKNOWN && rhsType != TYPE_UNKNOWN && (lhsType < 0x8000 || rhsType < 0x8000)) {
           const allowIntEnum = isIntEnumConversionActive(db, $);
           if (!isTypeCompatible(rhsType, lhsType, allowIntEnum) && !isTypeCompatible(lhsType, rhsType, allowIntEnum)) {
-            let isOldFrontend: u32 = 0;
-            const docRoot = db.ast.getRootNode();
-            if (docRoot != 0 && $.string_literal != 0) {
-              for (const str of db.ast.getDescendants(docRoot, $.string_literal)) {
-                if (db.ast.textEquals(str, '"-d=-newInst"') || db.ast.textEquals(str, "-d=-newInst")) {
-                  isOldFrontend = 1;
-                  break;
-                }
-              }
-            }
+            const isOldFrontend: u32 = isOldFrontendActive(db, $) ? 1 : 0;
             db.diagnosticAt(rhs, node, lhsType, rhsType, isOldFrontend);
           }
         }
@@ -1165,7 +1046,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M3010: Unit mismatch in component declaration binding (MLS §19).
+   * M3022: Unit mismatch in component declaration binding (MLS §19).
    *
    * Warns when a component with an explicit `unit` attribute is bound to an expression
    * with an incompatible physical unit.
@@ -1173,13 +1054,8 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
   unitMismatchBinding: {
     nodes: ["component_declaration"],
     severity: "warning",
-    code: 3010,
-    message: (target, isEq) => {
-      const eqFlag = isEq && (isEq.asNumber ? isEq.asNumber() : Number(isEq)) === 1;
-      return eqFlag
-        ? `Unit mismatch in equation '${target.text}'.`
-        : `Unit mismatch in component binding '${target.text}'.`;
-    },
+    code: 3022,
+    message: (target) => `Unit mismatch in component binding '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: any) => {
       // Retrieve declared unit on the component and compare against the binding expression's unit
       const compUnit = getComponentUnit(db, node, $);
@@ -1436,9 +1312,9 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       }
       if (!isParam) return;
 
-      // Check for min and max element modifications
-      let minVal = -OCTAGON_INF;
-      let maxVal = OCTAGON_INF;
+      // Check for min and max element modifications with simple numeric literal bounds
+      let minVal: f64 = -(OCTAGON_INF as f64);
+      let maxVal: f64 = OCTAGON_INF as f64;
       let minNode: u32 = 0;
       let maxNode: u32 = 0;
 
@@ -1452,19 +1328,39 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
           }
         }
         if (isNestedMod) continue;
-        for (const nameId of db.ast.getDescendants(mod, $.name)) {
-          if (db.ast.textEquals(nameId, "min")) {
-            for (const expr of db.ast.getDescendants(mod, $.expression)) {
-              minVal = db.ast.parseInteger(expr);
-              minNode = expr;
-              break;
-            }
-          } else if (db.ast.textEquals(nameId, "max")) {
-            for (const expr of db.ast.getDescendants(mod, $.expression)) {
-              maxVal = db.ast.parseInteger(expr);
-              maxNode = expr;
-              break;
-            }
+        let nameId = db.ast.getChildByFieldId(mod, "name");
+        if (nameId == 0) {
+          for (const n of db.ast.getDescendants(mod, $.name)) {
+            nameId = n;
+            break;
+          }
+        }
+        if (nameId == 0) continue;
+        const isMin = db.ast.textEquals(nameId, "min");
+        const isMax = !isMin && db.ast.textEquals(nameId, "max");
+        if (!isMin && !isMax) continue;
+
+        const modClause = db.ast.getChildByFieldId(mod, "modification");
+        const modExpr = modClause != 0 ? db.ast.getChildByFieldId(modClause, "modification_expression") : 0;
+        let expr: u32 = 0;
+        if (modExpr != 0) {
+          for (const e of db.ast.getDescendants(modExpr, $.expression)) {
+            expr = e;
+            break;
+          }
+        } else {
+          for (const e of db.ast.getDescendants(mod, $.expression)) {
+            expr = e;
+            break;
+          }
+        }
+        if (expr != 0 && isSimpleNumericLiteral(db, expr, $)) {
+          if (isMin) {
+            minVal = db.ast.parseReal(expr);
+            minNode = expr;
+          } else {
+            maxVal = db.ast.parseReal(expr);
+            maxNode = expr;
           }
         }
       }

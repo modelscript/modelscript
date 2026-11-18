@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { CursorState, ViewportRange } from "@modelscript/simulate/charts";
 import Papa from "papaparse";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSimulationJobResult } from "../../api";
@@ -10,6 +11,7 @@ import { SIMULATION_COLORS } from "./constants";
 import { Ieee2800VerificationCard } from "./simulation-results/components/Ieee2800VerificationCard";
 import { InteractiveLegend } from "./simulation-results/components/InteractiveLegend";
 import { MeasurementHud } from "./simulation-results/components/MeasurementHud";
+import { PscadInstrumentsPanel } from "./simulation-results/components/PscadInstrumentsPanel";
 import { SimulationToolbar } from "./simulation-results/components/SimulationToolbar";
 import { StatisticsDrawer } from "./simulation-results/components/StatisticsDrawer";
 import { TrajectoryChart } from "./simulation-results/components/TrajectoryChart";
@@ -30,6 +32,8 @@ export function SimulationResults({
   colorMode: propColorMode,
   modelName,
   onRetry,
+  complianceReport,
+  pscadExports,
 }: SimulationResultsProps & { modelName?: string | null | undefined; onRetry?: (() => void) | undefined }) {
   const { theme } = useTheme();
   const colorMode = propColorMode || (theme === "dark" ? "dark" : "light");
@@ -38,11 +42,18 @@ export function SimulationResults({
   const [error, setError] = useState<string | null>(externalError || null);
   const [isNormalized, setIsNormalized] = useState(false);
   const [isLogScale, setIsLogScale] = useState(false);
+  const [isMultiTrack, setIsMultiTrack] = useState(false);
+  const [isDualY, setIsDualY] = useState(false);
+  const [preferCanvas, setPreferCanvas] = useState(false);
+  const [sharedViewport, setSharedViewport] = useState<ViewportRange>({});
+  const [rtpPlaying, setRtpPlaying] = useState(false);
+  const [rtpIndex, setRtpIndex] = useState(0);
   const [xAxisVar, setXAxisVar] = useState<string>("time");
   const [hiddenVars, setHiddenVars] = useState<Set<string>>(new Set());
   const [internalSelectedVars, setInternalSelectedVars] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
   const [showIeee2800, setShowIeee2800] = useState(false);
+  const [showInstruments, setShowInstruments] = useState(false);
 
   const allVars = useMemo(() => {
     if (simulationVariables && simulationVariables.length > 0) {
@@ -69,7 +80,15 @@ export function SimulationResults({
   const autoHiddenRef = useRef(false);
   useEffect(() => {
     autoHiddenRef.current = false;
+    setSharedViewport({});
   }, [modelName, jobId]);
+
+  useEffect(() => {
+    const frames = pscadExports?.graphFrames;
+    if (frames && frames.length > 0 && (frames.length > 1 || frames.some((f) => f.kind === "poly"))) {
+      setIsMultiTrack(true);
+    }
+  }, [pscadExports?.graphFrames]);
 
   useEffect(() => {
     if (propSelectedVariables === undefined && allVars.length > 6 && !autoHiddenRef.current) {
@@ -78,30 +97,7 @@ export function SimulationResults({
     }
   }, [propSelectedVariables, allVars]);
 
-  const hasIeee2800Channels = useMemo(() => {
-    if (!data || data.length === 0) return false;
-    const sample = data[0]!;
-    const keys = Object.keys(sample).map((k) => k.toLowerCase());
-    return keys.some(
-      (k) =>
-        k.includes("vpoi") ||
-        k.includes("iibr") ||
-        k.includes("v_a") ||
-        k.includes("v_b") ||
-        k.includes("ia") ||
-        k.includes("ib") ||
-        k === "v1" ||
-        k === "v2" ||
-        k === "i1q" ||
-        k === "i2q" ||
-        (modelName &&
-          (modelName.toLowerCase().includes("grid") ||
-            modelName.toLowerCase().includes("ibr") ||
-            modelName.toLowerCase().includes("inverter") ||
-            modelName.toLowerCase().includes("solar") ||
-            modelName.toLowerCase().includes("wind"))),
-    );
-  }, [data, modelName]);
+  const hasIeee2800Channels = Boolean(complianceReport);
 
   const baselineScopeKey = modelName || jobId ? `${BASELINE_GLOBAL_KEY}:${modelName || jobId}` : null;
 
@@ -126,6 +122,9 @@ export function SimulationResults({
       return false;
     }
   });
+  const [pinnedRuns, setPinnedRuns] = useState<{ label: string; data: Record<string, number | string>[] }[]>(() =>
+    baselineData ? [{ label: "Baseline", data: baselineData }] : [],
+  );
 
   // Dual-cursor measurement state (C1, C2, dt, frequency, slope)
   const [cursorMode, setCursorMode] = useState<boolean>(false);
@@ -336,47 +335,56 @@ export function SimulationResults({
     return { chartData: data, minMaxMap: minMax };
   }, [data, isNormalized, selectedVariables, sweepResults]);
 
-  // Merge baseline trajectory into chartData if comparison is active (with linear interpolation for mismatched solver timestamps)
+  // Merge up to 4 pinned runs into chartData if comparison is active (with linear interpolation for mismatched solver timestamps)
   const mergedChartData = useMemo(() => {
-    if (!baselineData || !isComparingBaseline || !chartData.length) {
+    const runsToMerge =
+      pinnedRuns.length > 0 ? pinnedRuns : baselineData ? [{ label: "Baseline", data: baselineData }] : [];
+    if (!runsToMerge.length || !isComparingBaseline || !chartData.length) {
       return chartData;
     }
-    const baselineMap = new Map<string, Record<string, number | string>>();
-    const sortedBaseline: { t: number; row: Record<string, number | string> }[] = [];
-    for (const bRow of baselineData) {
-      const t = Number(bRow.time);
-      if (!isNaN(t)) {
-        baselineMap.set(t.toFixed(4), bRow);
-        sortedBaseline.push({ t, row: bRow });
-      }
-    }
-    sortedBaseline.sort((a, b) => a.t - b.t);
 
-    const interpolateBaselineValue = (tTarget: number, varName: string): number | string | undefined => {
-      const exactRow = baselineMap.get(tTarget.toFixed(4));
+    const preparedRuns = runsToMerge.map((run) => {
+      const map = new Map<string, Record<string, number | string>>();
+      const sorted: { t: number; row: Record<string, number | string> }[] = [];
+      for (const bRow of run.data) {
+        const t = Number(bRow.time);
+        if (!isNaN(t)) {
+          map.set(t.toFixed(6), bRow);
+          sorted.push({ t, row: bRow });
+        }
+      }
+      sorted.sort((a, b) => a.t - b.t);
+      return { label: run.label, raw: run.data, map, sorted };
+    });
+
+    const interpolateRunValue = (
+      run: (typeof preparedRuns)[number],
+      tTarget: number,
+      varName: string,
+    ): number | string | undefined => {
+      const exactRow = run.map.get(tTarget.toFixed(6));
       if (exactRow && exactRow[varName] !== undefined) {
         return exactRow[varName];
       }
-      if (sortedBaseline.length === 0) return undefined;
-      const tMin = sortedBaseline[0]!.t;
-      const tMax = sortedBaseline[sortedBaseline.length - 1]!.t;
+      if (run.sorted.length === 0) return undefined;
+      const tMin = run.sorted[0]!.t;
+      const tMax = run.sorted[run.sorted.length - 1]!.t;
       if (tTarget < tMin || tTarget > tMax) return undefined;
-      if (sortedBaseline.length === 1) {
-        return sortedBaseline[0]!.row[varName];
+      if (run.sorted.length === 1) {
+        return run.sorted[0]!.row[varName];
       }
-
       let lo = 0;
-      let hi = sortedBaseline.length - 1;
+      let hi = run.sorted.length - 1;
       while (lo + 1 < hi) {
         const mid = (lo + hi) >> 1;
-        if (sortedBaseline[mid]!.t <= tTarget) {
+        if (run.sorted[mid]!.t <= tTarget) {
           lo = mid;
         } else {
           hi = mid;
         }
       }
-      const p0 = sortedBaseline[lo]!;
-      const p1 = sortedBaseline[hi]!;
+      const p0 = run.sorted[lo]!;
+      const p1 = run.sorted[hi]!;
       const v0 = Number(p0.row[varName]);
       const v1 = Number(p1.row[varName]);
       if (!Number.isFinite(v0) || !Number.isFinite(v1)) {
@@ -391,34 +399,65 @@ export function SimulationResults({
     return chartData.map((row, idx) => {
       const t = Number(row.time);
       const merged: Record<string, number | string> = { ...row };
-      for (const v of selectedVariables || []) {
-        const bVal = !isNaN(t) ? interpolateBaselineValue(t, v) : baselineData[idx]?.[v];
-        if (bVal !== undefined) {
-          const rawBVal = Number(bVal);
-          const mm = minMaxMap[v];
-          if (isNormalized && !isNaN(rawBVal) && mm) {
-            merged[`_raw_${v} [Baseline]`] = rawBVal;
-            merged[`${v} [Baseline]`] = ((rawBVal - mm.min) / (mm.max - mm.min || 1)) * 100;
-          } else {
-            merged[`${v} [Baseline]`] = bVal;
+      for (const run of preparedRuns) {
+        for (const v of selectedVariables || []) {
+          const bVal = !isNaN(t) ? interpolateRunValue(run, t, v) : run.raw[idx]?.[v];
+          if (bVal !== undefined) {
+            const rawBVal = Number(bVal);
+            const mm = minMaxMap[v];
+            if (isNormalized && !isNaN(rawBVal) && mm) {
+              merged[`_raw_${v} [${run.label}]`] = rawBVal;
+              merged[`${v} [${run.label}]`] = ((rawBVal - mm.min) / (mm.max - mm.min || 1)) * 100;
+            } else {
+              merged[`${v} [${run.label}]`] = bVal;
+            }
           }
         }
       }
       return merged;
     });
-  }, [chartData, baselineData, isComparingBaseline, selectedVariables, isNormalized, minMaxMap]);
+  }, [chartData, pinnedRuns, baselineData, isComparingBaseline, selectedVariables, isNormalized, minMaxMap]);
 
   const handlePinBaseline = () => {
     if (!data.length) return;
-    try {
-      const serialized = JSON.stringify(data);
-      if (baselineScopeKey) {
-        sessionStorage.setItem(baselineScopeKey, serialized);
-      }
-      sessionStorage.setItem(BASELINE_GLOBAL_KEY, serialized);
-    } catch {}
-    setBaselineData([...data]);
+    const copy = [...data];
+    setPinnedRuns((prev) => {
+      const nextIdx = prev.length + 1;
+      const label = prev.length === 0 ? "Baseline" : `Run #${nextIdx}`;
+      const next =
+        prev.length >= 4
+          ? [...prev.slice(1), { label: `Run #${Date.now() % 100}`, data: copy }]
+          : [...prev, { label, data: copy }];
+      return next;
+    });
+    if (!baselineData) {
+      try {
+        const serialized = JSON.stringify(copy);
+        if (baselineScopeKey) {
+          sessionStorage.setItem(baselineScopeKey, serialized);
+        }
+        sessionStorage.setItem(BASELINE_GLOBAL_KEY, serialized);
+      } catch {}
+      setBaselineData(copy);
+    }
     setIsComparingBaseline(true);
+  };
+
+  const handleRemovePinnedRun = (index: number) => {
+    setPinnedRuns((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      if (next.length === 0) {
+        try {
+          if (baselineScopeKey) sessionStorage.removeItem(baselineScopeKey);
+          sessionStorage.removeItem(BASELINE_GLOBAL_KEY);
+        } catch {}
+        setBaselineData(null);
+        setIsComparingBaseline(false);
+      } else {
+        setBaselineData(next[0]!.data);
+      }
+      return next;
+    });
   };
 
   const handleClearBaseline = () => {
@@ -428,6 +467,7 @@ export function SimulationResults({
       }
       sessionStorage.removeItem(BASELINE_GLOBAL_KEY);
     } catch {}
+    setPinnedRuns([]);
     setBaselineData(null);
     setIsComparingBaseline(false);
   };
@@ -551,8 +591,27 @@ export function SimulationResults({
     window.dispatchEvent(new CustomEvent("morsel:time-scrub", { detail: { time: t, values: getValuesAtTime(t) } }));
   };
 
+  useEffect(() => {
+    if (!rtpPlaying || data.length < 2) return;
+    const stride = Math.max(1, Math.floor(data.length / 120));
+    const timer = window.setInterval(() => {
+      setRtpIndex((prev) => (prev + stride >= data.length ? 0 : prev + stride));
+    }, 50);
+    return () => window.clearInterval(timer);
+  }, [rtpPlaying, data.length]);
+
+  useEffect(() => {
+    if (!rtpPlaying && rtpIndex === 0) return;
+    const rowT = Number(data[rtpIndex]?.time);
+    if (Number.isFinite(rowT)) {
+      setCursorMode(true);
+      setCursor1Time(rowT);
+      dispatchTimeScrub(rowT);
+    }
+  }, [rtpIndex, rtpPlaying, data]);
+
   const handlePlotMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!data.length) return;
+    if (!data.length || rtpPlaying) return;
     const tStart = Number(data[0]!.time);
     const tEnd = Number(data[data.length - 1]!.time);
     if (!Number.isFinite(tStart) || !Number.isFinite(tEnd)) return;
@@ -560,6 +619,7 @@ export function SimulationResults({
     const gridEl =
       e.currentTarget.querySelector(".recharts-cartesian-grid") ??
       e.currentTarget.querySelector(".recharts-surface") ??
+      e.currentTarget.querySelector("canvas") ??
       e.currentTarget;
     const rect = gridEl.getBoundingClientRect();
     if (rect.width <= 0) return;
@@ -580,7 +640,7 @@ export function SimulationResults({
   };
 
   const handlePlotMouseLeave = () => {
-    dispatchTimeScrub(null);
+    if (!rtpPlaying) dispatchTimeScrub(null);
   };
 
   const handleChartClick = (e: { activeLabel?: string | number | undefined } | null) => {
@@ -638,6 +698,77 @@ export function SimulationResults({
   const handleExportParquet = () => {
     if (!data.length) return;
     downloadParquetFile(data, `simulation_data_${Date.now()}.parquet`);
+  };
+
+  const handleExportPsout = () => {
+    if (!pscadExports?.psoutBase64) return;
+    const bin = atob(pscadExports.psoutBase64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${pscadExports.projectName || "pscad_simulation"}.psout`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportComtrade = () => {
+    if (!pscadExports?.comtrade) return;
+    const base = pscadExports.projectName || "pscad_simulation";
+    for (const [ext, content] of [
+      ["cfg", pscadExports.comtrade.cfg],
+      ["dat", pscadExports.comtrade.dat],
+    ] as const) {
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${base}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const handleExportSnapshot = () => {
+    if (!pscadExports?.snapshot) return;
+    const blob = new Blob([pscadExports.snapshot], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${pscadExports.projectName || "pscad_simulation"}.snp`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportPscadOut = () => {
+    if (!pscadExports?.pscadOut) return;
+    const base = pscadExports.projectName || "pscad_simulation";
+    const files: Array<{ name: string; content: string }> = [
+      { name: `${base}.inf`, content: pscadExports.pscadOut.inf },
+      ...pscadExports.pscadOut.files.map((f) => ({
+        name: f.name.includes(".") ? f.name : `${base}${f.name}`,
+        content: f.content,
+      })),
+    ];
+    for (const file of files) {
+      const blob = new Blob([file.content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
   };
 
   const handleCopyClipboard = async () => {
@@ -746,14 +877,48 @@ export function SimulationResults({
         }}
       >
         <div>No data available to plot.</div>
-        {onRetry && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              style={{
+                background: "var(--ms-brand, #0e7490)",
+                color: "#ffffff",
+                border: "1px solid var(--ms-brand, #0e7490)",
+                borderRadius: 6,
+                padding: "6px 14px",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              ▶ Run Simulation
+            </button>
+          )}
           <button
             type="button"
-            onClick={onRetry}
+            onClick={() => {
+              const inp = document.createElement("input");
+              inp.type = "file";
+              inp.accept = ".snp,.json";
+              inp.onchange = async () => {
+                const file = inp.files?.[0];
+                if (!file) return;
+                try {
+                  const text = await file.text();
+                  (window as unknown as { __morselInitialSnapshot?: unknown }).__morselInitialSnapshot =
+                    JSON.parse(text);
+                } catch {
+                  (window as unknown as { __morselInitialSnapshot?: unknown }).__morselInitialSnapshot = undefined;
+                }
+              };
+              inp.click();
+            }}
             style={{
-              background: "var(--ms-brand, #0e7490)",
-              color: "#ffffff",
-              border: "1px solid var(--ms-brand, #0e7490)",
+              background: "var(--bgColor-muted, var(--ms-bg-elv))",
+              color: "var(--fgColor-default, var(--ms-text))",
+              border: "1px solid var(--borderColor-default, var(--ms-border))",
               borderRadius: 6,
               padding: "6px 14px",
               fontSize: 12,
@@ -761,9 +926,9 @@ export function SimulationResults({
               cursor: "pointer",
             }}
           >
-            ▶ Run Simulation
+            Start from Snapshot (.snp)…
           </button>
-        )}
+        </div>
       </div>
     );
   }
@@ -779,8 +944,16 @@ export function SimulationResults({
         onToggleNormalized={setIsNormalized}
         isLogScale={isLogScale}
         onToggleLogScale={setIsLogScale}
+        isMultiTrack={isMultiTrack}
+        onToggleMultiTrack={setIsMultiTrack}
+        isDualY={isDualY}
+        onToggleDualY={() => setIsDualY((prev) => !prev)}
+        useCanvas={preferCanvas}
+        onToggleCanvas={() => setPreferCanvas((prev) => !prev)}
         isComparingBaseline={isComparingBaseline}
+        pinnedRunLabels={pinnedRuns.map((r) => r.label)}
         onPinBaseline={handlePinBaseline}
+        onRemovePinnedRun={handleRemovePinnedRun}
         onClearBaseline={handleClearBaseline}
         cursorMode={cursorMode}
         onToggleCursorMode={() => {
@@ -798,9 +971,80 @@ export function SimulationResults({
         onExportCsv={handleExportCsv}
         onExportJson={handleExportJson}
         onExportParquet={handleExportParquet}
+        onExportPsout={pscadExports?.psoutBase64 ? handleExportPsout : undefined}
+        onExportPscadOut={pscadExports?.pscadOut ? handleExportPscadOut : undefined}
+        onExportComtrade={pscadExports?.comtrade ? handleExportComtrade : undefined}
+        onExportSnapshot={pscadExports?.snapshot ? handleExportSnapshot : undefined}
         onCopyClipboard={handleCopyClipboard}
         copied={copied}
       />
+
+      {/* Real-Time Playback (RTP) Waveform Scrubber */}
+      {data.length > 2 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "4px 10px",
+            borderRadius: "6px",
+            border: "1px solid var(--borderColor-muted, var(--ms-border))",
+            background: "var(--bgColor-muted, rgba(110,118,129,0.08))",
+            fontSize: "11px",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setRtpPlaying((p) => !p)}
+            style={{
+              padding: "2px 8px",
+              borderRadius: "4px",
+              border: "1px solid var(--borderColor-default, var(--ms-border))",
+              background: rtpPlaying ? "var(--ms-brand-soft)" : "transparent",
+              color: rtpPlaying ? "var(--fgColor-accent, var(--ms-brand))" : "inherit",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+            title="Play or Pause Real-Time Waveform Playback across plots and schematic meters"
+          >
+            {rtpPlaying ? "Pause" : "Play"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setRtpPlaying(false);
+              const step = Math.max(1, Math.floor(data.length / 60));
+              setRtpIndex((prev) => (prev + step >= data.length ? 0 : prev + step));
+            }}
+            style={{
+              padding: "2px 7px",
+              borderRadius: "4px",
+              border: "1px solid var(--borderColor-default, var(--ms-border))",
+              background: "transparent",
+              color: "inherit",
+              cursor: "pointer",
+            }}
+            title="Single-Step forward along trajectory"
+          >
+            Step
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={data.length - 1}
+            value={Math.min(data.length - 1, rtpIndex)}
+            onChange={(e) => {
+              setRtpPlaying(false);
+              setRtpIndex(Number(e.target.value));
+            }}
+            aria-label="Real-time playback scrubber"
+            style={{ flex: 1, minWidth: "100px" }}
+          />
+          <span style={{ fontFamily: "monospace", opacity: 0.85, minWidth: "74px", textAlign: "right" }}>
+            t = {Number(data[Math.min(data.length - 1, rtpIndex)]?.time ?? 0).toFixed(4)}s
+          </span>
+        </div>
+      )}
 
       {/* Floating Measurement HUD Banner */}
       <MeasurementHud
@@ -813,34 +1057,73 @@ export function SimulationResults({
         onClearCursors={handleClearCursors}
       />
 
-      {/* IEEE 2800-2022 Grid Code Verification Toggle & Card */}
-      {hasIeee2800Channels && (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            data-testid="toggle-ieee2800-btn"
-            onClick={() => setShowIeee2800(!showIeee2800)}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "4px 12px",
-              borderRadius: "6px",
-              fontSize: "12px",
-              fontWeight: 600,
-              background: showIeee2800 ? "var(--ms-brand)" : "var(--bgColor-muted, var(--ms-bg-elv))",
-              color: showIeee2800 ? "#ffffff" : "var(--fgColor-default, var(--ms-text))",
-              border: "1px solid var(--borderColor-default, var(--ms-border))",
-              cursor: "pointer",
-            }}
-          >
-            🛡️ IEEE 2800 Verification {showIeee2800 ? "▲" : "▼"}
-          </button>
+      {/* IEEE 2800 & PSCAD Instruments Toggles */}
+      {(complianceReport || hasIeee2800Channels || allVars.length > 0) && (
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", flexWrap: "wrap" }}>
+          {allVars.length > 0 && data.length >= 4 && (
+            <button
+              type="button"
+              data-testid="toggle-pscad-instruments-btn"
+              onClick={() => setShowInstruments(!showInstruments)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "4px 12px",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 600,
+                background: showInstruments ? "var(--ms-brand)" : "var(--bgColor-muted, var(--ms-bg-elv))",
+                color: showInstruments ? "#ffffff" : "var(--fgColor-default, var(--ms-text))",
+                border: "1px solid var(--borderColor-default, var(--ms-border))",
+                cursor: "pointer",
+              }}
+            >
+              📊 Phasor & FFT {showInstruments ? "▲" : "▼"}
+            </button>
+          )}
+          {Boolean(complianceReport) && (
+            <button
+              type="button"
+              data-testid="toggle-ieee2800-btn"
+              onClick={() => setShowIeee2800(!showIeee2800)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "4px 12px",
+                borderRadius: "6px",
+                fontSize: "12px",
+                fontWeight: 600,
+                background: showIeee2800 ? "var(--ms-brand)" : "var(--bgColor-muted, var(--ms-bg-elv))",
+                color: showIeee2800 ? "#ffffff" : "var(--fgColor-default, var(--ms-text))",
+                border: "1px solid var(--borderColor-default, var(--ms-border))",
+                cursor: "pointer",
+              }}
+            >
+              🛡️ IEEE 2800 Verification {showIeee2800 ? "▲" : "▼"}
+            </button>
+          )}
         </div>
       )}
 
-      {hasIeee2800Channels && showIeee2800 && (
-        <Ieee2800VerificationCard data={data} colorMode={colorMode} onClose={() => setShowIeee2800(false)} />
+      {showInstruments && data.length >= 4 && (
+        <PscadInstrumentsPanel
+          data={data}
+          variables={allVars}
+          colorMode={colorMode}
+          nominalFreqHz={pscadExports?.nominalFreqHz}
+          onClose={() => setShowInstruments(false)}
+        />
+      )}
+
+      {complianceReport && showIeee2800 && (
+        <Ieee2800VerificationCard
+          report={complianceReport}
+          data={data}
+          colorMode={colorMode}
+          onClose={() => setShowIeee2800(false)}
+        />
       )}
 
       {/* Interactive Legend Bar */}
@@ -853,36 +1136,187 @@ export function SimulationResults({
       />
 
       {/* Main Plot Area */}
-      <div
-        style={{
-          height: "clamp(360px, 58vh, 680px)",
-          minWidth: 0,
-          display: "flex",
-          flexDirection: "column",
-        }}
-        onMouseMove={handlePlotMouseMove}
-        onMouseLeave={handlePlotMouseLeave}
-      >
-        <TrajectoryChart
-          mergedChartData={mergedChartData}
-          rawData={data}
-          xAxisVar={xAxisVar}
-          isNormalized={isNormalized}
-          isLogScale={isLogScale}
-          colorMode={colorMode}
-          minMaxMap={minMaxMap}
-          isComparingBaseline={isComparingBaseline}
-          cursorMode={cursorMode}
-          cursor1Time={cursor1Time}
-          cursor2Time={cursor2Time}
-          activeVariables={activeVariables}
-          selectedVariables={selectedVariables || []}
-          sweepResults={sweepResults}
-          baselineData={baselineData}
-          colors={SIMULATION_COLORS}
-          onChartClick={handleChartClick}
-        />
-      </div>
+      {(() => {
+        const handleCanvasCursorUpdate = (cursors: CursorState) => {
+          if (cursors.c1 !== undefined) setCursor1Time(cursors.c1);
+          if (cursors.c2 !== undefined) setCursor2Time(cursors.c2);
+          dispatchTimeScrub(cursors.c2 ?? cursors.c1 ?? null);
+        };
+        const renderEngineMode = preferCanvas ? "canvas" : "auto";
+        const frames = pscadExports?.graphFrames ?? [];
+        const matchedFrames = isMultiTrack
+          ? frames
+              .map((gf) => ({
+                gf,
+                curves: gf.curves.filter((c) => activeVariables.includes(c)),
+              }))
+              .filter((entry) => entry.curves.length > 0)
+          : [];
+
+        const rightAxisVars =
+          !isMultiTrack && isDualY && activeVariables.length > 1
+            ? (() => {
+                const secondary = activeVariables.filter((v) => /^I_|(_i|_pu|freq|deg|mw|mvar|tap|Pe)$/i.test(v));
+                if (secondary.length > 0 && secondary.length < activeVariables.length) return secondary;
+                return activeVariables.slice(Math.ceil(activeVariables.length / 2));
+              })()
+            : undefined;
+
+        const showStacked = isMultiTrack && (matchedFrames.length > 0 || activeVariables.length > 1);
+
+        return (
+          <div
+            style={{
+              height: showStacked ? "auto" : "clamp(360px, 58vh, 680px)",
+              maxHeight: showStacked ? "68vh" : undefined,
+              overflowY: showStacked ? "auto" : undefined,
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: showStacked ? "8px" : undefined,
+            }}
+            onMouseMove={handlePlotMouseMove}
+            onMouseLeave={handlePlotMouseLeave}
+          >
+            {showStacked ? (
+              matchedFrames.length > 0 ? (
+                matchedFrames.map(({ gf, curves }, fIdx) => {
+                  const frameDomain: [number | "auto", number | "auto"] | undefined =
+                    gf.min !== undefined || gf.max !== undefined ? [gf.min ?? "auto", gf.max ?? "auto"] : undefined;
+                  const accent = SIMULATION_COLORS[fIdx % SIMULATION_COLORS.length]!;
+                  return (
+                    <div
+                      key={gf.id}
+                      data-graphframe-id={gf.id}
+                      style={{
+                        height: "210px",
+                        minHeight: "180px",
+                        minWidth: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 600, paddingLeft: 8, color: accent }}>
+                        {gf.title || gf.id} ({curves.join(", ")})
+                      </div>
+                      <div style={{ flex: 1, minHeight: 0 }}>
+                        <TrajectoryChart
+                          mergedChartData={mergedChartData}
+                          rawData={data}
+                          xAxisVar={xAxisVar}
+                          isNormalized={isNormalized}
+                          isLogScale={isLogScale}
+                          colorMode={colorMode}
+                          minMaxMap={minMaxMap}
+                          isComparingBaseline={isComparingBaseline}
+                          cursorMode={cursorMode}
+                          cursor1Time={cursor1Time}
+                          cursor2Time={cursor2Time}
+                          activeVariables={curves}
+                          selectedVariables={selectedVariables || curves}
+                          sweepResults={sweepResults}
+                          baselineData={baselineData}
+                          pinnedRunLabels={pinnedRuns.map((r) => r.label)}
+                          colors={SIMULATION_COLORS}
+                          yDomainOverride={frameDomain}
+                          renderEngine={renderEngineMode}
+                          viewport={sharedViewport}
+                          onViewportChange={setSharedViewport}
+                          onCursorUpdate={handleCanvasCursorUpdate}
+                          onChartClick={handleChartClick}
+                        />
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                activeVariables.slice(0, 12).map((v) => {
+                  const colorIdx = (selectedVariables || []).indexOf(v);
+                  const trackColor = SIMULATION_COLORS[(colorIdx >= 0 ? colorIdx : 0) % SIMULATION_COLORS.length]!;
+                  const matchingFrame = pscadExports?.graphFrames?.find((gf) => gf.curves.includes(v));
+                  const trackDomain: [number | "auto", number | "auto"] | undefined =
+                    matchingFrame && (matchingFrame.min !== undefined || matchingFrame.max !== undefined)
+                      ? [matchingFrame.min ?? "auto", matchingFrame.max ?? "auto"]
+                      : undefined;
+                  return (
+                    <div
+                      key={v}
+                      style={{
+                        height: "200px",
+                        minHeight: "170px",
+                        minWidth: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 600, paddingLeft: 8, color: trackColor }}>{v}</div>
+                      <div style={{ flex: 1, minHeight: 0 }}>
+                        <TrajectoryChart
+                          mergedChartData={mergedChartData}
+                          rawData={data}
+                          xAxisVar={xAxisVar}
+                          isNormalized={isNormalized}
+                          isLogScale={isLogScale}
+                          colorMode={colorMode}
+                          minMaxMap={minMaxMap}
+                          isComparingBaseline={isComparingBaseline}
+                          cursorMode={cursorMode}
+                          cursor1Time={cursor1Time}
+                          cursor2Time={cursor2Time}
+                          activeVariables={[v]}
+                          selectedVariables={[v]}
+                          sweepResults={sweepResults}
+                          baselineData={baselineData}
+                          pinnedRunLabels={pinnedRuns.map((r) => r.label)}
+                          colors={[trackColor]}
+                          yDomainOverride={trackDomain}
+                          renderEngine={renderEngineMode}
+                          viewport={sharedViewport}
+                          onViewportChange={setSharedViewport}
+                          onCursorUpdate={handleCanvasCursorUpdate}
+                          onChartClick={handleChartClick}
+                        />
+                      </div>
+                    </div>
+                  );
+                })
+              )
+            ) : (
+              <TrajectoryChart
+                mergedChartData={mergedChartData}
+                rawData={data}
+                xAxisVar={xAxisVar}
+                isNormalized={isNormalized}
+                isLogScale={isLogScale}
+                colorMode={colorMode}
+                minMaxMap={minMaxMap}
+                isComparingBaseline={isComparingBaseline}
+                cursorMode={cursorMode}
+                cursor1Time={cursor1Time}
+                cursor2Time={cursor2Time}
+                activeVariables={activeVariables}
+                selectedVariables={selectedVariables || []}
+                sweepResults={sweepResults}
+                baselineData={baselineData}
+                pinnedRunLabels={pinnedRuns.map((r) => r.label)}
+                colors={SIMULATION_COLORS}
+                yDomainOverride={(() => {
+                  const firstFrame = pscadExports?.graphFrames?.[0];
+                  return firstFrame && (firstFrame.min !== undefined || firstFrame.max !== undefined)
+                    ? [firstFrame.min ?? "auto", firstFrame.max ?? "auto"]
+                    : undefined;
+                })()}
+                renderEngine={renderEngineMode}
+                rightAxisVariables={rightAxisVars}
+                viewport={sharedViewport}
+                onViewportChange={setSharedViewport}
+                onCursorUpdate={handleCanvasCursorUpdate}
+                onChartClick={handleChartClick}
+              />
+            )}
+          </div>
+        );
+      })()}
 
       {/* Collapsible Statistical Summary Drawer */}
       <StatisticsDrawer

@@ -3,6 +3,7 @@
 import assert from "node:assert";
 import {
   bundleExtension,
+  generateFileIconTheme,
   generateLanguageConfiguration,
   generatePackageJson,
   normalizeLanguages,
@@ -111,6 +112,19 @@ async function main() {
   );
   assert.strictEqual(allConfigProps["modelscript.llm.apiKey"]?.scope, "application");
   assert.strictEqual(allConfigProps["modelscript.cloud.apiKey"]?.scope, "application");
+  assert.ok(Array.isArray(pkg.contributes.iconThemes) && pkg.contributes.iconThemes.length > 0);
+  assert.strictEqual(pkg.contributes.iconThemes[0].id, "modelscript-file-icons");
+  assert.strictEqual(pkg.contributes.iconThemes[0].path, "./file-icons/theme.json");
+
+  const iconTheme = generateFileIconTheme([lang0, lang1], new Set(["calc", "default"]));
+  assert.strictEqual(iconTheme.file, "_default");
+  assert.deepStrictEqual(iconTheme.iconDefinitions, {
+    _default: { iconPath: "./default.svg" },
+    calc: { iconPath: "./calc.svg" },
+  });
+  assert.deepStrictEqual(iconTheme.languageIds, {
+    calc: "calc",
+  });
   console.log("  ✓ Manifest generation passed");
 
   // Test 3: Language Configuration

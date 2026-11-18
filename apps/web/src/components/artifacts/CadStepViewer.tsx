@@ -16,6 +16,7 @@ import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
 import type { CadComponent } from "../morsel/cad-viewer/CadViewer";
 import {
+  CadEdgeOverlay,
   ensureGeometryBrushedUvs,
   Gdt3dOverlay,
   HeroStudioEnvironment,
@@ -408,6 +409,7 @@ function CameraController({
 interface RawStepMeshData {
   name?: string | undefined;
   color?: number[] | undefined;
+  faceIds?: number[] | undefined;
   attributes: {
     position: { array: ArrayLike<number> };
     normal?: { array: ArrayLike<number> } | undefined;
@@ -581,6 +583,109 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
     name: string;
     group: string;
     points: [number, number, number][];
+    color?: [number, number, number, number] | undefined;
+  }
+
+  // Extract STEP STYLED_ITEM / COLOUR_RGB / SURFACE_STYLE_TRANSPARENT -> loopId colors
+  const stepEntityRefs = new Map<string, string[]>();
+  const stepRgbMap = new Map<string, [number, number, number]>();
+  const stepAlphaMap = new Map<string, number>();
+  const stepPredefinedColors: Record<string, [number, number, number]> = {
+    red: [0.85, 0.12, 0.12],
+    green: [0.15, 0.72, 0.25],
+    blue: [0.12, 0.38, 0.82],
+    yellow: [0.92, 0.76, 0.12],
+    magenta: [0.82, 0.18, 0.72],
+    cyan: [0.12, 0.75, 0.85],
+    white: [0.92, 0.93, 0.95],
+    black: [0.12, 0.13, 0.15],
+  };
+
+  const rgbRegex = /(#\d+)\s*=\s*COLOUR_RGB\s*\([^,]*,\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*,\s*([-+\d.eE]+)\s*\)/gi;
+  while ((m = rgbRegex.exec(srcText)) !== null) {
+    stepRgbMap.set(m[1]!, [Number(m[2]), Number(m[3]), Number(m[4])]);
+  }
+  const predefRgbRegex = /(#\d+)\s*=\s*DRAUGHTING_PRE_DEFINED_COLOUR\s*\(\s*'([^']+)'\s*\)/gi;
+  while ((m = predefRgbRegex.exec(srcText)) !== null) {
+    const c = stepPredefinedColors[m[2]!.toLowerCase().trim()];
+    if (c) stepRgbMap.set(m[1]!, c);
+  }
+  const transpRegex = /(#\d+)\s*=\s*SURFACE_STYLE_TRANSPARENT\s*\(\s*([-+\d.eE]+)\s*\)/gi;
+  while ((m = transpRegex.exec(srcText)) !== null) {
+    const t = Math.min(1, Math.max(0, Number(m[2])));
+    stepAlphaMap.set(m[1]!, 1 - t);
+  }
+
+  const genericRefRegex =
+    /(#\d+)\s*=\s*(?:PRESENTATION_STYLE_ASSIGNMENT|SURFACE_STYLE_USAGE|SURFACE_SIDE_STYLE|SURFACE_STYLE_FILL_AREA|FILL_AREA_STYLE|FILL_AREA_STYLE_COLOUR|SURFACE_STYLE_RENDERING(?:_WITH_PROPERTIES)?|MANIFOLD_SOLID_BREP|BREP_WITH_VOIDS|FACETED_BREP|CLOSED_SHELL|OPEN_SHELL|ADVANCED_FACE|FACE_SURFACE|FACE_OUTER_BOUND|FACE_BOUND)\s*\(([^;]+)\)\s*;/gi;
+  while ((m = genericRefRegex.exec(srcText)) !== null) {
+    const refs = m[2]!.match(/#\d+/g) || [];
+    stepEntityRefs.set(m[1]!, refs);
+  }
+
+  const solidNameMap = new Map<string, string>();
+  const solidNameRegex = /(#\d+)\s*=\s*(?:MANIFOLD_SOLID_BREP|FACETED_BREP)\s*\(\s*'([^']*)'/gi;
+  while ((m = solidNameRegex.exec(srcText)) !== null) {
+    if (m[2]!.trim()) solidNameMap.set(m[1]!, m[2]!.trim());
+  }
+
+  const resolveStyleColor = (rootId: string): [number, number, number, number] | undefined => {
+    const visited = new Set<string>();
+    const queue = [rootId];
+    let foundRgb: [number, number, number] | undefined;
+    let foundAlpha = 1.0;
+    let steps = 0;
+    while (queue.length > 0 && steps < 64) {
+      const curr = queue.shift()!;
+      if (visited.has(curr)) continue;
+      visited.add(curr);
+      steps++;
+      if (!foundRgb && stepRgbMap.has(curr)) foundRgb = stepRgbMap.get(curr);
+      if (stepAlphaMap.has(curr)) foundAlpha = stepAlphaMap.get(curr)!;
+      const children = stepEntityRefs.get(curr);
+      if (children) {
+        for (const ch of children) queue.push(ch);
+      }
+    }
+    return foundRgb ? [foundRgb[0], foundRgb[1], foundRgb[2], foundAlpha] : undefined;
+  };
+
+  const loopStyleColor = new Map<string, [number, number, number, number]>();
+  const loopSolidGroup = new Map<string, string>();
+
+  const propagateToLoops = (rootId: string, color?: [number, number, number, number], solidGroup?: string) => {
+    const visited = new Set<string>();
+    const queue = [rootId];
+    let steps = 0;
+    while (queue.length > 0 && steps < 4096) {
+      const curr = queue.shift()!;
+      if (visited.has(curr)) continue;
+      visited.add(curr);
+      steps++;
+      if (color && !loopStyleColor.has(curr)) loopStyleColor.set(curr, color);
+      if (solidGroup && !loopSolidGroup.has(curr)) loopSolidGroup.set(curr, solidGroup);
+      const children = stepEntityRefs.get(curr);
+      if (children) {
+        for (const ch of children) queue.push(ch);
+      }
+    }
+  };
+
+  for (const [solidId, sName] of solidNameMap.entries()) {
+    propagateToLoops(solidId, undefined, sName);
+  }
+
+  const styledItemRegex = /#\d+\s*=\s*STYLED_ITEM\s*\([^,]*,\s*\(([^)]+)\)\s*,\s*(#\d+)\s*\)/gi;
+  while ((m = styledItemRegex.exec(srcText)) !== null) {
+    const styleRefs = m[1]!.match(/#\d+/g) || [];
+    const targetId = m[2]!;
+    for (const sr of styleRefs) {
+      const col = resolveStyleColor(sr);
+      if (col) {
+        propagateToLoops(targetId, col);
+        break;
+      }
+    }
   }
 
   const faceLoops: ParsedFaceLoop[] = [];
@@ -646,12 +751,13 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
       loopPts.pop();
     }
     if (loopPts.length >= 3) {
-      const groupPrefix = rawName.includes("_") ? rawName.split("_")[0]! : "SolidBody";
+      const groupPrefix = loopSolidGroup.get(id) ?? (rawName.includes("_") ? rawName.split("_")[0]! : "SolidBody");
       faceLoops.push({
         id,
         name: rawName || id,
         group: groupPrefix || "SolidBody",
         points: loopPts,
+        color: loopStyleColor.get(id),
       });
     }
   }
@@ -769,6 +875,7 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
     groupName: string,
     polygons: [number, number, number][][],
     colorIdx: number,
+    styledColor?: [number, number, number, number],
   ): RawStepMeshData | null => {
     let cx = 0;
     let cy = 0;
@@ -791,8 +898,10 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
     const vertices: number[] = [];
     const normals: number[] = [];
     const indices: number[] = [];
+    const faceIds: number[] = [];
 
-    for (const poly of polygons) {
+    for (let polyIdx = 0; polyIdx < polygons.length; polyIdx++) {
+      const poly = polygons[polyIdx]!;
       if (poly.length < 3) continue;
       let fcx = 0;
       let fcy = 0;
@@ -866,13 +975,15 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
         vertices.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
         normals.push(nx, ny, nz, nx, ny, nz, nx, ny, nz);
         indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+        faceIds.push(polyIdx);
       }
     }
 
     if (indices.length === 0) return null;
     return {
       name: groupName,
-      color: palette[colorIdx % palette.length],
+      color: styledColor ?? palette[colorIdx % palette.length],
+      faceIds,
       attributes: {
         position: { array: vertices },
         normal: { array: normals },
@@ -883,15 +994,23 @@ function tessellateStepBRepClient(srcText: string): RawStepMeshData[] {
 
   const meshes: RawStepMeshData[] = [];
   if (faceLoops.length > 0) {
-    const grouped = new Map<string, [number, number, number][][]>();
+    const grouped = new Map<
+      string,
+      { groupName: string; polys: [number, number, number][][]; color?: [number, number, number, number] }
+    >();
     for (const fl of faceLoops) {
-      const list = grouped.get(fl.group) ?? [];
-      list.push(fl.points);
-      grouped.set(fl.group, list);
+      const colorKey = fl.color ? `:${fl.color.map((v) => v.toFixed(3)).join(",")}` : "";
+      const key = `${fl.group}${colorKey}`;
+      let entry = grouped.get(key);
+      if (!entry) {
+        entry = { groupName: fl.group, polys: [], color: fl.color };
+        grouped.set(key, entry);
+      }
+      entry.polys.push(fl.points);
     }
     let idx = 0;
-    for (const [groupName, polys] of grouped.entries()) {
-      const mesh = buildMeshFromPolygonGroup(groupName, polys, idx++);
+    for (const entry of grouped.values()) {
+      const mesh = buildMeshFromPolygonGroup(entry.groupName, entry.polys, idx++, entry.color);
       if (mesh) meshes.push(mesh);
     }
   }
@@ -1013,20 +1132,36 @@ const StepMeshItem: React.FC<{
     return resolveHeroAlloyConfig(gl, compName, tuple, dark);
   }, [gl, compName, colorRgba, dark]);
 
+  const partAlpha = colorRgba && colorRgba[3] !== undefined ? Number(colorRgba[3]) : 1.0;
+  const effectiveOpacity = renderMode === "xray" ? Math.min(partAlpha, 0.35) : partAlpha;
+  const isTranslucent = effectiveOpacity < 1.0;
+
   return (
     <group>
       <mesh geometry={geo} position={offset} onClick={onMeshClick}>
         <meshPhysicalMaterial
           {...alloyProps}
           wireframe={renderMode === "wireframe"}
-          transparent={renderMode === "xray"}
-          opacity={renderMode === "xray" ? 0.35 : 1.0}
-          clearcoat={0.14}
+          transparent={isTranslucent}
+          opacity={effectiveOpacity}
+          depthWrite={!isTranslucent}
+          polygonOffset={renderMode === "solid"}
+          polygonOffsetFactor={1}
+          polygonOffsetUnits={1}
           side={THREE.DoubleSide}
           clippingPlanes={activeClippingPlanes}
           clipShadows={true}
         />
       </mesh>
+      {renderMode === "solid" && !isDefective && (
+        <CadEdgeOverlay
+          geometry={geo}
+          position={offset}
+          dark={dark}
+          opacity={isTranslucent ? 0.45 : 0.8}
+          clippingPlanes={activeClippingPlanes}
+        />
+      )}
       {renderMode === "section" && solidPlane && wirePlane && (
         <SplitSectionGeometryPasses
           geometry={geo}
@@ -1291,6 +1426,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
         geo.userData = {
           name: meshData.name,
           color: meshData.color,
+          faceIds: meshData.faceIds,
         };
         geo.computeBoundingSphere();
         geo.computeBoundingBox();

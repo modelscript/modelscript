@@ -145,8 +145,66 @@ export function orthogonalize(points: Pt[], obstacles?: ObstacleBox[]): Pt[] {
         if (horizBlocked && !vertBlocked) {
           raw.push(vertElbow);
         } else if (horizBlocked && vertBlocked) {
-          const midX = Math.round((prev.x + p.x) / 2 / 18) * 18;
-          raw.push({ x: midX, y: prev.y }, { x: midX, y: p.y });
+          // Bounded A* orthogonal grid search (18px PSCAD grid) around obstacle boxes
+          const STEP = 18;
+          const snap = (v: number) => Math.round(v / STEP) * STEP;
+          const sx = snap(prev.x);
+          const sy = snap(prev.y);
+          const gx = snap(p.x);
+          const gy = snap(p.y);
+          const key = (x: number, y: number) => `${x},${y}`;
+          const isBlocked = (a: Pt, b: Pt) => obstacles.some((ob) => segmentIntersectsBox(a, b, ob));
+          const open: { x: number; y: number; g: number; f: number }[] = [
+            { x: sx, y: sy, g: 0, f: Math.abs(gx - sx) + Math.abs(gy - sy) },
+          ];
+          const cameFrom = new Map<string, Pt>();
+          const gScore = new Map<string, number>([[key(sx, sy), 0]]);
+          const closed = new Set<string>();
+          let found: Pt[] | null = null;
+          let iters = 0;
+          while (open.length > 0 && iters++ < 400) {
+            open.sort((a, b) => a.f - b.f);
+            const cur = open.shift()!;
+            const ck = key(cur.x, cur.y);
+            if (Math.abs(cur.x - gx) <= STEP && Math.abs(cur.y - gy) <= STEP) {
+              const path: Pt[] = [];
+              let trace: Pt | undefined = { x: cur.x, y: cur.y };
+              while (trace) {
+                path.unshift(trace);
+                trace = cameFrom.get(key(trace.x, trace.y));
+              }
+              found = path;
+              break;
+            }
+            closed.add(ck);
+            const dirs: [number, number][] = [
+              [STEP, 0],
+              [-STEP, 0],
+              [0, STEP],
+              [0, -STEP],
+            ];
+            for (const [dx, dy] of dirs) {
+              const nx = cur.x + dx;
+              const ny = cur.y + dy;
+              const nk = key(nx, ny);
+              if (closed.has(nk)) continue;
+              if (isBlocked(cur, { x: nx, y: ny })) continue;
+              const tentG = cur.g + STEP;
+              if (tentG < (gScore.get(nk) ?? Infinity)) {
+                cameFrom.set(nk, { x: cur.x, y: cur.y });
+                gScore.set(nk, tentG);
+                open.push({ x: nx, y: ny, g: tentG, f: tentG + Math.abs(gx - nx) + Math.abs(gy - ny) });
+              }
+            }
+          }
+          if (found && found.length > 1) {
+            for (const fp of found.slice(1)) raw.push(fp);
+            const lastF = found[found.length - 1]!;
+            if (lastF.x !== p.x && lastF.y !== p.y) raw.push({ x: p.x, y: lastF.y });
+          } else {
+            const midX = Math.round((prev.x + p.x) / 2 / 18) * 18;
+            raw.push({ x: midX, y: prev.y }, { x: midX, y: p.y });
+          }
         } else {
           raw.push(horizElbow);
         }
@@ -262,9 +320,12 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
     touchedWires.add(wid);
     ops.push({ type: "setWirePoints", id: wid, points: orthogonalize(pts, customObstacles ?? obstacles) });
   };
-  const orientCode = (rotation: number): number => {
-    const deg = ((Math.round(rotation) % 360) + 360) % 360;
-    return deg % 90 === 0 ? (deg / 90) % 4 : deg;
+  const orientCode = (rotation: number, flipX?: boolean, flipY?: boolean, currentMirror?: boolean): number => {
+    const mirror = Boolean(currentMirror) !== (Boolean(flipX) !== Boolean(flipY));
+    const effectiveRot = flipY ? rotation + 180 : rotation;
+    const deg = ((Math.round(effectiveRot) % 360) + 360) % 360;
+    const rotIdx = deg % 90 === 0 ? (deg / 90) % 4 : deg;
+    return mirror && rotIdx < 4 ? rotIdx + 4 : rotIdx;
   };
 
   for (const action of actions) {
@@ -272,11 +333,16 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
       case "move": {
         const a = action as Extract<DiagramAction, { type: "move" }>;
         for (const item of a.items as Array<
-          Extract<DiagramAction, { type: "move" }>["items"][number] & { id?: string }
+          Extract<DiagramAction, { type: "move" }>["items"][number] & {
+            id?: string;
+            flipX?: boolean;
+            flipY?: boolean;
+          }
         >) {
           const targetKey = item.id || item.name;
-          if (targetKey.startsWith("bus_") || item.name.startsWith("bus_")) {
-            const busId = stripPrefix(targetKey.startsWith("bus_") ? targetKey : item.name);
+          const busHit = findBus(stripPrefix(targetKey)) ?? findBus(stripPrefix(item.name));
+          if (targetKey.startsWith("bus_") || item.name.startsWith("bus_") || busHit) {
+            const busId = busHit?.id ?? stripPrefix(targetKey.startsWith("bus_") ? targetKey : item.name);
             ops.push({
               type: "resizeBus",
               id: busId,
@@ -288,8 +354,11 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
             renderHint = "immediate";
             continue;
           }
-          if (targetKey.startsWith("sticky_") || item.name.startsWith("sticky_")) {
-            const stickyId = stripPrefix(targetKey.startsWith("sticky_") ? targetKey : item.name);
+          const stickyHit = modules
+            .flatMap((m) => m.stickies ?? [])
+            .find((s) => s.id === stripPrefix(targetKey) || s.id === stripPrefix(item.name));
+          if (targetKey.startsWith("sticky_") || item.name.startsWith("sticky_") || stickyHit) {
+            const stickyId = stickyHit?.id ?? stripPrefix(targetKey.startsWith("sticky_") ? targetKey : item.name);
             ops.push({
               type: "editSticky",
               id: stickyId,
@@ -309,7 +378,11 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
           const nx = Math.round(item.width > 0 ? item.x + item.width / 2 : item.x);
           const ny = Math.round(item.height > 0 ? item.y + item.height / 2 : item.y);
           const move: PscadEditOp = { type: "moveComponent", id: hit.i.id, x: nx, y: ny };
-          if (item.rotation !== undefined) (move as { orient?: number }).orient = orientCode(item.rotation);
+          if (item.rotation !== undefined || item.flipX || item.flipY) {
+            const lc = legacyCmps.find((c) => c.id === hit.i.id);
+            const curRot = item.rotation ?? lc?.rotation ?? 0;
+            (move as { orient?: number }).orient = orientCode(curRot, item.flipX, item.flipY, lc?.mirror);
+          }
           ops.push(move);
           renderHint = "immediate";
           if (item.edges?.length) {
@@ -629,7 +702,11 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
           }
           pts = [s, d];
         }
-        ops.push({ type: "addWire", ...(a.section ? { definition: a.section } : {}), points: orthogonalize(pts) });
+        ops.push({
+          type: "addWire",
+          ...(a.section ? { definition: a.section } : {}),
+          points: orthogonalize(pts, obstacles),
+        });
         renderHint = "immediate";
         break;
       }

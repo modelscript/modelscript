@@ -234,10 +234,33 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
     async invoke(
       options: vscode.LanguageModelToolInvocationOptions<Record<string, unknown>>,
     ): Promise<vscode.LanguageModelToolResult> {
+      const targetUriStr =
+        typeof options.input["uri"] === "string"
+          ? options.input["uri"]
+          : vscode.window.activeTextEditor?.document.uri.toString();
+      const targetUri = targetUriStr ? vscode.Uri.parse(targetUriStr) : undefined;
+      const doc = targetUri
+        ? vscode.workspace.textDocuments.find((d) => d.uri.toString() === targetUri.toString())
+        : vscode.window.activeTextEditor?.document;
+      if (!doc && !targetUri) {
+        return new vscode.LanguageModelToolResult([
+          new vscode.LanguageModelTextPart(JSON.stringify({ error: "No PSCAD document URI or active editor found." })),
+        ]);
+      }
+      const diags = targetUri ? vscode.languages.getDiagnostics(targetUri) : [];
+      const errs = diags.filter((d) => d.severity === vscode.DiagnosticSeverity.Error).length;
+      const warns = diags.filter((d) => d.severity === vscode.DiagnosticSeverity.Warning).length;
       const result = {
-        fileName: options.input["fileName"] ?? "SolarPlant_250MW.pscx",
-        rulesChecked: "M6001-M6011",
-        diagnostics: "0 errors, 0 warnings",
+        uri: (targetUri ?? doc!.uri).toString(),
+        fileName: options.input["fileName"] ?? (targetUri ?? doc!.uri).path.split("/").pop(),
+        errorCount: errs,
+        warningCount: warns,
+        diagnostics: diags.map((d) => ({
+          code: d.code,
+          severity: d.severity === vscode.DiagnosticSeverity.Error ? "error" : "warning",
+          line: d.range.start.line + 1,
+          message: d.message,
+        })),
       };
       return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result))]);
     },
@@ -248,14 +271,46 @@ export function registerMCPTools(context: vscode.ExtensionContext, client: Langu
     async invoke(
       options: vscode.LanguageModelToolInvocationOptions<Record<string, unknown>>,
     ): Promise<vscode.LanguageModelToolResult> {
-      const result = {
-        fileName: options.input["fileName"] ?? "SolarPlant_250MW.pscx",
-        lvrtEnvelope: "No trip (3.0s)",
-        reactiveResponseMs: 28,
-        postFaultRecoveryPct: 96.4,
-        verdict: "All IEEE Std 2800-2022 ride-through criteria satisfied",
-      };
-      return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(JSON.stringify(result))]);
+      const targetUriStr =
+        typeof options.input["uri"] === "string"
+          ? options.input["uri"]
+          : vscode.window.activeTextEditor?.document.uri.toString();
+      const doc = targetUriStr
+        ? vscode.workspace.textDocuments.find((d) => d.uri.toString() === targetUriStr)
+        : vscode.window.activeTextEditor?.document;
+      const documentText =
+        typeof options.input["documentText"] === "string" ? options.input["documentText"] : doc?.getText();
+      if (!documentText && !targetUriStr) {
+        return new vscode.LanguageModelToolResult([
+          new vscode.LanguageModelTextPart(
+            JSON.stringify({ error: "No PSCAD document available for IEEE 2800 verification." }),
+          ),
+        ]);
+      }
+      try {
+        const res = await client.sendRequest<ToolActionResult>("modelscript/executeAction", {
+          actionId: "simulate_hybrid_emt",
+          languageId: "pscad",
+          uri: targetUriStr,
+          inputs: {
+            documentText,
+            verifyIeee2800: true,
+          },
+        });
+        return new vscode.LanguageModelToolResult([
+          new vscode.LanguageModelTextPart(
+            JSON.stringify({
+              uri: targetUriStr,
+              complianceReport: res?.["complianceReport"] ?? null,
+              diagnostics: res?.["diagnostics"] ?? [],
+            }),
+          ),
+        ]);
+      } catch (err) {
+        return new vscode.LanguageModelToolResult([
+          new vscode.LanguageModelTextPart(JSON.stringify({ error: err instanceof Error ? err.message : String(err) })),
+        ]);
+      }
     },
   });
 

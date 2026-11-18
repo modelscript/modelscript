@@ -611,6 +611,58 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     };
   }, []);
 
+  useEffect(() => {
+    const highlightedContainers: Element[] = [];
+    const clearPsseHighlights = () => {
+      for (const el of highlightedContainers) {
+        (el as HTMLElement).style.filter = "";
+        (el as HTMLElement).style.outline = "";
+      }
+      highlightedContainers.length = 0;
+    };
+    const handler = (ev: Event) => {
+      clearPsseHighlights();
+      const detail = (ev as CustomEvent<{ buses?: number[]; branches?: string[] }>).detail;
+      const g = getGraph(containerRef.current) as
+        | (DiagramGraphInstance & {
+            getNodes?: () => Array<{ id?: string }>;
+            getEdges?: () => Array<{ id?: string }>;
+            findViewByCell?: (cellId: string) => { container?: Element } | null;
+          })
+        | null;
+      if (!g || !detail) return;
+      const busIds = new Set((detail.buses ?? []).map((b) => `bus_${b}`));
+      const branchSet = new Set((detail.branches ?? []).map((s) => s.trim()));
+      for (const id of busIds) {
+        const view = g.findViewByCell?.(id);
+        if (view?.container) {
+          (view.container as HTMLElement).style.filter = "drop-shadow(0 0 8px #f85149)";
+          highlightedContainers.push(view.container);
+        }
+      }
+      if (branchSet.size > 0) {
+        for (const edge of g.getEdges?.() ?? []) {
+          const eid = String(edge.id ?? "");
+          for (const br of branchSet) {
+            if (eid.includes(br) || br.includes(eid)) {
+              const view = g.findViewByCell?.(eid);
+              if (view?.container) {
+                (view.container as HTMLElement).style.filter = "drop-shadow(0 0 6px #f85149)";
+                highlightedContainers.push(view.container);
+              }
+              break;
+            }
+          }
+        }
+      }
+    };
+    window.addEventListener("modelscript:psse-highlight", handler);
+    return () => {
+      clearPsseHighlights();
+      window.removeEventListener("modelscript:psse-highlight", handler);
+    };
+  }, []);
+
   return (
     <div style={{ position: "relative", width: "100%", height: "100%", overflow: "hidden" }}>
       <div

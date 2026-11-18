@@ -12,6 +12,13 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
+import {
+  buildCaeSimulationModel,
+  CaePostProcessDrawer,
+  CaeSimulationTree,
+  ScalarColorbarLegend,
+  type CaeSimulationRunEntry,
+} from "../morsel/cad-viewer";
 import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
@@ -1286,6 +1293,19 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
   const [clipOffset, setClipOffset] = useState<number>(0);
   const [presetTrigger, setPresetTrigger] = useState<{ preset: CameraPreset; timestamp: number } | null>(null);
   const [hoverProbe, setHoverProbe] = useState<FeaHoverProbe | null>(null);
+  const [showSimTree, setShowSimTree] = useState<boolean>(Boolean(isFullScreen));
+  const [selectedTreeId, setSelectedTreeId] = useState<string | null>(null);
+  const [postView, setPostView] = useState<{ mode: "convergence" | "log"; runId: string } | null>(null);
+  const [caeRuns, setCaeRuns] = useState<CaeSimulationRunEntry[]>([
+    {
+      id: "run-1",
+      name: "Run 1",
+      status: "finished",
+      fields: ["Von Mises Stress", "Displacement", "Element Quality"],
+    },
+  ]);
+
+  const caeModel = useMemo(() => buildCaeSimulationModel(rawText), [rawText]);
 
   const orbitControlsRef = useRef<OrbitControlsImpl | null>(null);
   const codeContainerRef = useRef<HTMLDivElement | null>(null);
@@ -1622,7 +1642,118 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
               >
                 NODES ({parsedDeck.nodes.length})
               </HudPillButton>
+              <HudPillButton
+                $active={showSimTree}
+                $accent="#06b6d4"
+                onClick={() => setShowSimTree((v) => !v)}
+                title="Toggle SimScale-style Simulation Tree"
+              >
+                SIM TREE
+              </HudPillButton>
             </TopRightHud>
+
+            {showSimTree && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 12,
+                  left: 12,
+                  bottom: 12,
+                  zIndex: 12,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  pointerEvents: "none",
+                }}
+              >
+                <CaeSimulationTree
+                  model={caeModel}
+                  runs={caeRuns}
+                  dark={isDark}
+                  selectedItemId={selectedTreeId}
+                  activeField={
+                    colorBy === "stress"
+                      ? deformed
+                        ? "Displacement"
+                        : "Von Mises Stress"
+                      : colorBy === "quality"
+                        ? "Element Quality"
+                        : undefined
+                  }
+                  jobStatus={{ state: "finished", label: "Finished" }}
+                  onSelectItem={(item) => {
+                    setSelectedTreeId(item.id);
+                    if (item.targetSet) {
+                      setSelectedSetKey((prev) =>
+                        prev === `NSET:${item.targetSet}` ? null : `NSET:${item.targetSet}`,
+                      );
+                    } else if (item.line) {
+                      setHighlightedLine(item.line);
+                    }
+                  }}
+                  onInsertSnippet={(_section, snippet) => {
+                    setRawText((prev) => `${prev.trimEnd()}\n${snippet.trimStart()}`);
+                  }}
+                  onTriggerRun={() => {
+                    const nextNum = caeRuns.length + 1;
+                    const newRun: CaeSimulationRunEntry = {
+                      id: `run-${nextNum}`,
+                      name: `Run ${nextNum}`,
+                      status: "finished",
+                      fields: ["Von Mises Stress", "Displacement", "Element Quality"],
+                    };
+                    setCaeRuns((prev) => [...prev, newRun]);
+                    setPostView({ mode: "convergence", runId: newRun.id });
+                  }}
+                  onSelectField={(field) => {
+                    if (field === "Von Mises Stress") {
+                      setColorBy("stress");
+                      setDeformed(false);
+                    } else if (field === "Displacement") {
+                      setColorBy("stress");
+                      setDeformed(true);
+                    } else if (field === "Element Quality") {
+                      setColorBy("quality");
+                    }
+                  }}
+                  onOpenPostView={(view, runId) => {
+                    if (view === "fields") {
+                      setColorBy("stress");
+                    } else {
+                      setPostView((prev) =>
+                        prev && prev.mode === view && prev.runId === runId ? null : { mode: view, runId },
+                      );
+                    }
+                  }}
+                />
+                {postView && (
+                  <CaePostProcessDrawer
+                    mode={postView.mode}
+                    run={caeRuns.find((r) => r.id === postView.runId) ?? caeRuns[0]!}
+                    dark={isDark}
+                    onClose={() => setPostView(null)}
+                  />
+                )}
+              </div>
+            )}
+
+            {(colorBy === "stress" || colorBy === "quality") && (
+              <div style={{ position: "absolute", bottom: 14, right: 14, zIndex: 11 }}>
+                <ScalarColorbarLegend
+                  title={
+                    colorBy === "stress" ? (deformed ? "Displacement / σ_vM" : "Von Mises Stress") : "Element Quality"
+                  }
+                  unit={colorBy === "stress" ? "MPa" : "AR"}
+                  minLabel={colorBy === "stress" ? "0.0" : "1.0"}
+                  maxLabel={
+                    colorBy === "stress"
+                      ? (Number(viewConfig.loadKn) > 0 ? Number(viewConfig.loadKn) * 14.5 : 180.0).toFixed(1)
+                      : "5.0"
+                  }
+                  dark={isDark}
+                />
+              </div>
+            )}
 
             <Canvas
               gl={{ preserveDrawingBuffer: true, localClippingEnabled: true, antialias: true }}
@@ -1661,7 +1792,12 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
                 {/* Crisp True Hex/Tet Element Perimeter Wireframe Edges */}
                 {showMeshEdges && renderMode !== "wireframe" && (
                   <lineSegments geometry={scene3D.edgeGeometry}>
-                    <lineBasicMaterial color="#bae6fd" transparent opacity={0.78} clippingPlanes={clippingPlanes} />
+                    <lineBasicMaterial
+                      color={colorBy === "stress" || colorBy === "quality" ? "#0f172a" : "#bae6fd"}
+                      transparent
+                      opacity={colorBy === "stress" || colorBy === "quality" ? 0.68 : 0.78}
+                      clippingPlanes={clippingPlanes}
+                    />
                   </lineSegments>
                 )}
 

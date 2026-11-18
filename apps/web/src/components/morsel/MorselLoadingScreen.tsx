@@ -26,11 +26,18 @@ export const MorselLoadingScreen: React.FC<MorselLoadingScreenProps> = ({
       flexDirection: "column",
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor:
-        colorMode === "dark" ? "var(--overlay-bgColor, var(--ms-surface-glass))" : "rgba(255, 255, 255, 0.98)",
+      backgroundColor: colorMode === "dark" ? "var(--color-bg-primary, #0b0f17)" : "var(--color-bg-primary, #ffffff)",
+      backgroundImage: [
+        "radial-gradient(ellipse 60% 40% at 50% 0%, var(--ms-glow-cyan, rgba(8, 145, 178, 0.14)) 0%, transparent 70%)",
+        "radial-gradient(ellipse 40% 30% at 100% 100%, var(--ms-glow-cyan, rgba(8, 145, 178, 0.14)) 0%, transparent 70%)",
+        "linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--color-bg-primary, #ffffff) 55%, transparent) 260px, var(--color-bg-primary, #ffffff) 560px)",
+        `linear-gradient(var(--ms-grid-line, ${colorMode === "dark" ? "rgba(255, 255, 255, 0.06)" : "rgba(15, 23, 42, 0.06)"}) 1px, transparent 1px)`,
+        `linear-gradient(90deg, var(--ms-grid-line, ${colorMode === "dark" ? "rgba(255, 255, 255, 0.06)" : "rgba(15, 23, 42, 0.06)"}) 1px, transparent 1px)`,
+      ].join(", "),
+      backgroundSize: "100% 100%, 100% 100%, 100% 100%, 48px 48px, 48px 48px",
+      backgroundRepeat: "no-repeat, no-repeat, no-repeat, repeat, repeat",
       zIndex: 9999,
       gap: 16,
-      backdropFilter: "blur(12px)",
     }}
   >
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>

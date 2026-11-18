@@ -371,6 +371,9 @@ export class WasmQueryEngine {
     "variability",
     "classInstance",
     "resolvedArrayDimensions",
+    "resolvedArrayDimensionAt",
+    "resolvedDimParamValue",
+    "cyclicDimensionInfo",
   ]);
 
   /** Marks a query name as volatile so its memoized results are cleared when `flushVolatile()` is called. */
@@ -402,6 +405,48 @@ export class WasmQueryEngine {
     this.memos.clear();
     this.inputReverseDependencies.clear();
     this.byNameReverseDependencies.clear();
+    this.queryReverseDependencies.clear();
+  }
+
+  /**
+   * Reverse dependency graph mapping a packed memo key to the set of packed memo keys whose
+   * execution read it via `db.query(...)`. Used to propagate lint dirtiness transitively.
+   */
+  private queryReverseDependencies = new Map<number, Set<number>>();
+
+  /**
+   * Marks the owning symbols of `seedKeys` and of every memo that transitively depends on them
+   * (through `queryReverseDependencies`) dirty in all incremental lint caches.
+   *
+   * Without the transitive walk, a lint `lint__X(A) → classInstance(A) → resolveSimpleName(B)`
+   * would never be re-run when `B`'s input changes, because only `B` would be marked dirty and
+   * `runAllLintsAsync` serves non-dirty symbols straight from `lintCache`.
+   */
+  private markLintDirtyTransitive(seedKeys: Iterable<number>): void {
+    if (this.dirtyLintSymbols.size === 0) return;
+    const visited = new Set<number>();
+    const stack: number[] = [];
+    for (const k of seedKeys) {
+      if (!visited.has(k)) {
+        visited.add(k);
+        stack.push(k);
+      }
+    }
+    while (stack.length > 0) {
+      const key = stack.pop()!;
+      const depSymId = this.symbolIdFromKey(key);
+      for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
+        cacheDirtySet.add(depSymId);
+      }
+      const dependents = this.queryReverseDependencies.get(key);
+      if (!dependents) continue;
+      for (const d of dependents) {
+        if (!visited.has(d)) {
+          visited.add(d);
+          stack.push(d);
+        }
+      }
+    }
   }
 
   /**
@@ -415,11 +460,8 @@ export class WasmQueryEngine {
     if (dependentKeys) {
       for (const key of dependentKeys) {
         this.memos.delete(key);
-        const depSymId = this.symbolIdFromKey(key);
-        for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
-          cacheDirtySet.add(depSymId);
-        }
       }
+      this.markLintDirtyTransitive(dependentKeys);
     }
   }
 
@@ -950,18 +992,15 @@ export class WasmQueryEngine {
     }
 
     // Step 3: Traverse `inputReverseDependencies` for structurally changed symbols,
-    // evicting dependent memos and marking their target symbols dirty for re-linting.
+    // evicting dependent memos and marking their target symbols (transitively) dirty for re-linting.
     if (structIds) {
       for (const id of structIds) {
         const dependentKeys = this.inputReverseDependencies.get(id);
         if (dependentKeys) {
           for (const key of dependentKeys) {
             this.memos.delete(key);
-            const depSymId = this.symbolIdFromKey(key);
-            for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
-              cacheDirtySet.add(depSymId);
-            }
           }
+          this.markLintDirtyTransitive(dependentKeys);
         }
         const entry = this.index.symbols.get(id);
         if (entry?.name) {
@@ -970,19 +1009,15 @@ export class WasmQueryEngine {
       }
     }
 
-    // Step 4: Mark all changed symbols and their direct input reverse dependents dirty in the incremental lint caches.
+    // Step 4: Mark all changed symbols and every memo that transitively reads them dirty in the
+    // incremental lint caches.
     for (const id of ids) {
       for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
         cacheDirtySet.add(id);
       }
       const dependentKeys = this.inputReverseDependencies.get(id);
       if (dependentKeys) {
-        for (const key of dependentKeys) {
-          const depSymId = this.symbolIdFromKey(key);
-          for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
-            cacheDirtySet.add(depSymId);
-          }
-        }
+        this.markLintDirtyTransitive(dependentKeys);
       }
     }
 
@@ -1286,6 +1321,7 @@ export class WasmQueryEngine {
           for (const key of dependentKeys) {
             this.memos.delete(key);
           }
+          this.markLintDirtyTransitive(dependentKeys);
         }
         for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
           cacheDirtySet.add(id);
@@ -1876,6 +1912,17 @@ export class WasmQueryEngine {
         if (!set) {
           set = new Set();
           this.byNameReverseDependencies.set(name, set);
+        }
+        set.add(key);
+      }
+    }
+    if (tracker.queries) {
+      for (const q of tracker.queries) {
+        const depKey = q.key ?? this.memoKey(q.queryName, q.symbolId, q.argsHash);
+        let set = this.queryReverseDependencies.get(depKey);
+        if (!set) {
+          set = new Set();
+          this.queryReverseDependencies.set(depKey, set);
         }
         set.add(key);
       }

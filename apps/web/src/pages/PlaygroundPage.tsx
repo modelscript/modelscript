@@ -11,7 +11,12 @@ import { ComposeContext } from "../components/ComposeContext";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { getDefaultLanguageView, getLanguageInfo, MORSEL_LANGUAGE_MAP } from "../components/morsel/constants";
 import MorselEditor from "../components/morsel/Morsel";
-import { extractPrimaryModelicaClassName, installDependency } from "../components/morsel/util/lsp-bridge";
+import { getLatestPsseStudySnapshot } from "../components/morsel/panels/inspectors/PowerGridInspector";
+import {
+  extractPrimaryModelicaClassName,
+  installDependency,
+  unloadAllMountedLibraries,
+} from "../components/morsel/util/lsp-bridge";
 import {
   buildMorselEmbedHtmlPage,
   compressMorselPayload,
@@ -31,7 +36,6 @@ import { safeJsonParse } from "../util/json";
 import { usePageTitle } from "../util/title";
 import {
   CreatePlaygroundRepoModal,
-  DEFAULT_EMPTY_MODELICA_CODE,
   EditorArea,
   FileConflictModal,
   HERO_EXAMPLES,
@@ -209,16 +213,19 @@ export const PlaygroundPage: React.FC = () => {
       "modelica"
     : null;
 
-  const defaultInitialCode = initialHashPayload?.code ?? (hasInitialTarget ? "" : DEFAULT_EMPTY_MODELICA_CODE);
+  const isInitialLaunchWithoutTarget = !hasInitialTarget && !langParam && !titleParam;
+  const defaultInitialCode = initialHashPayload?.code ?? (hasInitialTarget ? "" : "");
   const defaultInitialTitle =
     initialHashPayload?.title ||
     titleParam ||
-    (hasInitialArtifactTarget ? "Loading Artifact…" : hasInitialTarget ? "" : "Untitled Model");
+    (hasInitialArtifactTarget ? "Loading Artifact…" : hasInitialTarget ? "" : "Untitled Workspace");
   const defaultInitialLang = initialLangFromHash || langParam || "modelica";
 
   const [isLoadingArtifact, setIsLoadingArtifact] = useState<boolean>(hasInitialArtifactTarget);
   const [currentCode, setCurrentCode] = useState<string>(defaultInitialCode);
-  const [projectFiles, setProjectFiles] = useState<Record<string, string> | null>(initialFilesFromHash);
+  const [projectFiles, setProjectFiles] = useState<Record<string, string> | null>(
+    initialFilesFromHash ?? (isInitialLaunchWithoutTarget ? {} : null),
+  );
   const [activeFile, setActiveFile] = useState<string | null>(initialActiveFromHash);
   const [currentTitle, setCurrentTitle] = useState<string>(defaultInitialTitle);
   const [currentLang, setCurrentLang] = useState<string>(defaultInitialLang);
@@ -241,6 +248,7 @@ export const PlaygroundPage: React.FC = () => {
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const [pendingExample, setPendingExample] = useState<HeroExample | null>(null);
   const [pendingClearWorkspace, setPendingClearWorkspace] = useState<boolean>(false);
+  const [openNewModelAfterClear, setOpenNewModelAfterClear] = useState<boolean>(false);
   const [pendingFileConflict, setPendingFileConflict] = useState<{
     templateTitle: string;
     templateLang: string;
@@ -252,7 +260,9 @@ export const PlaygroundPage: React.FC = () => {
 
   usePageTitle(currentTitle ? `${currentTitle} — Morsel` : "Morsel", { includeBrand: false });
   const [isShareModalOpen, setShareModalOpen] = useState(false);
-  const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
+  const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(isInitialLaunchWithoutTarget);
+  const [isTemplateChoiceRequired, setIsTemplateChoiceRequired] = useState(isInitialLaunchWithoutTarget);
+  const [loadingTemplateTitle, setLoadingTemplateTitle] = useState<string | null>(null);
   const [isCreateRepoModalOpen, setIsCreateRepoModalOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
 
@@ -835,18 +845,17 @@ export const PlaygroundPage: React.FC = () => {
     } else if (titleParam) {
       setCurrentTitle(titleParam);
     } else if (!hasInitialTarget && !hasHydratedFromUrlRef.current) {
-      baselineCodeRef.current = DEFAULT_EMPTY_MODELICA_CODE;
+      baselineCodeRef.current = "";
       setIsDirty(false);
-      setProjectFiles(null);
+      setProjectFiles({});
       setActiveFile(null);
-      setCurrentCode(DEFAULT_EMPTY_MODELICA_CODE);
-      setCurrentTitle("Untitled Model");
-      setCurrentLang("modelica");
+      setCurrentCode("");
+      setCurrentTitle("Untitled Workspace");
       setPayload({
         v: 1,
-        lang: "modelica",
-        code: DEFAULT_EMPTY_MODELICA_CODE,
-        title: "Untitled Model",
+        lang: currentLang,
+        code: "",
+        title: "Untitled Workspace",
       });
     }
 
@@ -1093,6 +1102,7 @@ export const PlaygroundPage: React.FC = () => {
     }
     try {
       const isMulti = Boolean(projectFiles && Object.keys(projectFiles).length > 1);
+      const psseSnapshot = currentLang === "psse" ? getLatestPsseStudySnapshot() : null;
       const created = await createArtifactView({
         artifact_type: currentLang === "modelica" ? "modelica-diagram" : currentLang,
         dialect: currentLang,
@@ -1103,6 +1113,7 @@ export const PlaygroundPage: React.FC = () => {
           dialect: currentLang,
           view: currentView,
           ...(isMulti && projectFiles ? { files: projectFiles } : {}),
+          ...(psseSnapshot ?? {}),
         }),
       });
       if (created?.id) {
@@ -1231,17 +1242,21 @@ export const PlaygroundPage: React.FC = () => {
     setIsDirty(true);
   };
 
+  const defaultSingleFileName = `model.${getLanguageInfo(currentLang).ext || "mo"}`;
+
   const handleRemoveProjectFile = (fileName: string) => {
-    if (!projectFiles || !(fileName in projectFiles)) return;
-    const { [fileName]: _removed, ...updatedFiles } = projectFiles;
-    if (activeFile && activeFile !== fileName) {
-      updatedFiles[activeFile] = currentCode;
+    const baseFiles = projectFiles ?? { [defaultSingleFileName]: currentCode };
+    const currentActive = activeFile ?? defaultSingleFileName;
+    if (!(fileName in baseFiles)) return;
+    const { [fileName]: _removed, ...updatedFiles } = baseFiles;
+    if (currentActive && currentActive !== fileName) {
+      updatedFiles[currentActive] = currentCode;
     }
     const remainingKeys = Object.keys(updatedFiles);
-    const nextActive = fileName === activeFile ? (remainingKeys[0] ?? null) : activeFile;
+    const nextActive = fileName === currentActive ? (remainingKeys[0] ?? null) : currentActive;
     setProjectFiles(updatedFiles);
     setActiveFile(nextActive);
-    if (fileName === activeFile) {
+    if (fileName === currentActive) {
       if (nextActive) {
         setCurrentCode(updatedFiles[nextActive] ?? "");
         setCurrentLang(inferDialectFromFilename(nextActive) || currentLang);
@@ -1254,11 +1269,13 @@ export const PlaygroundPage: React.FC = () => {
 
   const handleRenameProjectFile = (oldName: string, newName: string) => {
     const trimmed = newName.trim().replace(/^\/+/, "");
-    if (!projectFiles || !trimmed || trimmed === oldName || !(oldName in projectFiles)) return;
-    if (trimmed in projectFiles) return;
+    const baseFiles = projectFiles ?? { [defaultSingleFileName]: currentCode };
+    const currentActive = activeFile ?? defaultSingleFileName;
+    if (!trimmed || trimmed === oldName || !(oldName in baseFiles)) return;
+    if (trimmed in baseFiles) return;
     const nextFiles: Record<string, string> = {};
-    for (const [k, v] of Object.entries(projectFiles)) {
-      const content = k === activeFile ? currentCode : v;
+    for (const [k, v] of Object.entries(baseFiles)) {
+      const content = k === currentActive ? currentCode : v;
       if (k === oldName) {
         nextFiles[trimmed] = content;
       } else {
@@ -1266,7 +1283,7 @@ export const PlaygroundPage: React.FC = () => {
       }
     }
     setProjectFiles(nextFiles);
-    if (activeFile === oldName) {
+    if (currentActive === oldName) {
       setActiveFile(trimmed);
       setCurrentLang(inferDialectFromFilename(trimmed) || currentLang);
     }
@@ -1274,7 +1291,8 @@ export const PlaygroundPage: React.FC = () => {
   };
 
   const handleMoveProjectFile = (fileName: string, targetDir: string) => {
-    if (!projectFiles || !(fileName in projectFiles)) return;
+    const baseFiles = projectFiles ?? { [defaultSingleFileName]: currentCode };
+    if (!(fileName in baseFiles)) return;
     const cleanDir = targetDir.trim().replace(/^\/+|\/+$/g, "");
     const baseName = fileName.includes("/") ? fileName.slice(fileName.lastIndexOf("/") + 1) : fileName;
     const nextPath = cleanDir ? `${cleanDir}/${baseName}` : baseName;
@@ -1295,15 +1313,26 @@ export const PlaygroundPage: React.FC = () => {
       title: "Untitled Workspace",
     });
     clearPlaygroundUrl(location.pathname);
+    void unloadAllMountedLibraries();
   };
 
-  const handleClearWorkspace = () => {
-    const hasFiles = projectFiles ? Object.keys(projectFiles).length > 0 : Boolean(currentCode.trim());
-    if (isDirty && hasFiles) {
+  const isWorkspaceNonBlank = () => {
+    if (currentCode.trim().length > 0) return true;
+    if (projectFiles) {
+      return Object.values(projectFiles).some((content) => content.trim().length > 0);
+    }
+    return false;
+  };
+
+  const handleBrandClick = () => {
+    if (isWorkspaceNonBlank()) {
+      setOpenNewModelAfterClear(true);
       setPendingClearWorkspace(true);
       return;
     }
     applyClearWorkspace();
+    setIsTemplateChoiceRequired(true);
+    setIsTemplatesModalOpen(true);
   };
 
   const applyAddFilesToWorkspace = (
@@ -1619,8 +1648,7 @@ export const PlaygroundPage: React.FC = () => {
         onViewChange={handleViewChange}
         onSimulate={handleRunSimulation}
         onOpenInVsCode={handleOpenInVsCode}
-        onOpenTemplates={() => setIsTemplatesModalOpen(true)}
-        onClearWorkspace={handleClearWorkspace}
+        onBrandClick={handleBrandClick}
         onSaveToArtifact={handleSaveToArtifact}
         onCreateRepo={handleOpenCreateRepo}
         onDownloadModel={handleDownloadModel}
@@ -1719,10 +1747,15 @@ export const PlaygroundPage: React.FC = () => {
             <MorselEditor
               dataUrl={null}
               initialCode={currentCode}
-              projectFiles={projectFiles ?? undefined}
-              activeFileName={activeFile ?? undefined}
+              isLoadingModel={Boolean(loadingTemplateTitle)}
+              projectFiles={projectFiles ?? { [defaultSingleFileName]: currentCode }}
+              activeFileName={activeFile ?? defaultSingleFileName}
               onSelectProjectFile={handleSwitchProjectFile}
               onAddProjectFile={handleAddProjectFile}
+              onOpenNewModelModal={() => {
+                setIsTemplateChoiceRequired(false);
+                setIsTemplatesModalOpen(true);
+              }}
               onRemoveProjectFile={handleRemoveProjectFile}
               onRenameProjectFile={handleRenameProjectFile}
               onMoveProjectFile={handleMoveProjectFile}
@@ -1867,7 +1900,10 @@ export const PlaygroundPage: React.FC = () => {
             justifyContent: "center",
             zIndex: 2000,
           }}
-          onClick={() => setPendingClearWorkspace(false)}
+          onClick={() => {
+            setPendingClearWorkspace(false);
+            setOpenNewModelAfterClear(false);
+          }}
         >
           <div
             style={{
@@ -1890,15 +1926,28 @@ export const PlaygroundPage: React.FC = () => {
               Discard unsaved changes and remove all files from the workspace?
             </p>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <Button size="small" variant="default" onClick={() => setPendingClearWorkspace(false)}>
+              <Button
+                size="small"
+                variant="default"
+                onClick={() => {
+                  setPendingClearWorkspace(false);
+                  setOpenNewModelAfterClear(false);
+                }}
+              >
                 Cancel
               </Button>
               <Button
                 size="small"
                 variant="danger"
                 onClick={() => {
+                  const shouldOpenNewModel = openNewModelAfterClear;
                   setPendingClearWorkspace(false);
+                  setOpenNewModelAfterClear(false);
                   applyClearWorkspace();
+                  if (shouldOpenNewModel) {
+                    setIsTemplateChoiceRequired(true);
+                    setIsTemplatesModalOpen(true);
+                  }
                 }}
               >
                 Discard & Clear
@@ -1936,9 +1985,26 @@ export const PlaygroundPage: React.FC = () => {
 
       <TemplateGalleryModal
         isOpen={isTemplatesModalOpen}
-        onClose={() => setIsTemplatesModalOpen(false)}
+        onClose={() => {
+          setIsTemplatesModalOpen(false);
+          setIsTemplateChoiceRequired(false);
+        }}
         onSelectTemplate={handleAddModelFromTemplate}
+        onSelectPendingTemplate={async (title, loadTemplate) => {
+          setLoadingTemplateTitle(title);
+          try {
+            const loaded = await loadTemplate();
+            if (loaded) {
+              handleAddModelFromTemplate(loaded);
+            }
+          } catch (err) {
+            console.error("[PlaygroundPage] Failed to load model:", err);
+          } finally {
+            setLoadingTemplateTitle(null);
+          }
+        }}
         currentLang={currentLang}
+        requireChoice={isTemplateChoiceRequired}
       />
 
       <CreatePlaygroundRepoModal

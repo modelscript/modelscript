@@ -32,6 +32,7 @@ export interface MorselDiagnosticsPanelProps {
   onResizeHeight: (height: number) => void;
   onSelectDiagnostic: (marker: editor.IMarkerData) => void;
   onSelectProjectDiagnostic?: ((fileName: string, marker: editor.IMarkerData) => void) | undefined;
+  onFixWithAi?: ((marker: editor.IMarkerData, fileName?: string) => void) | undefined;
 }
 
 type SeverityFilter = "all" | "error" | "warning";
@@ -65,6 +66,7 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
   onResizeHeight,
   onSelectDiagnostic,
   onSelectProjectDiagnostic,
+  onFixWithAi,
 }) => {
   const [filter, setFilter] = useState<SeverityFilter>("all");
   const [scope, setScope] = useState<ScopeFilter>("project");
@@ -608,6 +610,36 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
                     >
                       Ln {d.startLineNumber}, Col {d.startColumn}
                     </span>
+
+                    {onFixWithAi && (isErr || isWarn) && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onFixWithAi(d, fileName);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onFixWithAi(d, fileName);
+                          }
+                        }}
+                        style={{
+                          flexShrink: 0,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: "1px 7px",
+                          borderRadius: 4,
+                          border: "1px solid var(--borderColor-accent-muted, rgba(56, 139, 253, 0.4))",
+                          color: isDark ? "#58a6ff" : "#0969da",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Fix with AI
+                      </span>
+                    )}
                   </button>
                 );
               })

@@ -216,6 +216,12 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     category: "Community & Federation",
     description: "Alias for composer_ai_polish — enable AI text polishing in the composer.",
   },
+  morsel_ai: {
+    title: "Morsel AI Assistant",
+    category: "Advanced",
+    description:
+      "Enable hybrid AI copilot in Morsel (local WebGPU, local Ollama/vLLM, Ansatz cloud models, and 3rd-party BYOK providers with MCP tool calling).",
+  },
   feeds_page: {
     title: "External RSS Feeds Page",
     category: "Community & Federation",

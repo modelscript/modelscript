@@ -13,6 +13,7 @@ import {
   ShareAndroidIcon,
   SidebarCollapseIcon,
   SidebarExpandIcon,
+  SparklesFillIcon,
   StackIcon,
   SunIcon,
   UnwrapIcon,
@@ -68,6 +69,8 @@ export interface MorselFloatingDockProps {
   setContextVersion: React.Dispatch<React.SetStateAction<number>>;
   isDark: boolean;
   toggleTheme: () => void;
+  isAiOpen?: boolean | undefined;
+  onToggleAi?: (() => void) | undefined;
 }
 
 export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
@@ -97,9 +100,12 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
   setContextVersion,
   isDark,
   toggleTheme,
+  isAiOpen = false,
+  onToggleAi,
 }) => {
   const { hasCapability } = useCapabilities();
   const hasCloudSolverFlag = useFeatureFlag("cae_cloud_solver");
+  const hasMorselAiFlag = useFeatureFlag("morsel_ai");
   const isCaeComputeEnabled = hasCloudSolverFlag && hasCapability("caeCompute");
   const visibleMorselLanguages = useVisibleMorselLanguages();
   const activeLangInfo = getLanguageInfo(dialect);
@@ -415,6 +421,16 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
           </ActionMenu>
           <div style={{ width: 1, height: 20, backgroundColor: "var(--ms-divider, rgba(255, 255, 255, 0.08))" }} />
         </>
+      )}
+      {hasMorselAiFlag && onToggleAi && (
+        <IconButton
+          icon={SparklesFillIcon}
+          size="small"
+          variant={isAiOpen ? "primary" : "invisible"}
+          aria-label="Toggle Morsel AI Assistant"
+          title="Morsel AI Assistant"
+          onClick={onToggleAi}
+        />
       )}
       <IconButton
         icon={isDark ? SunIcon : MoonIcon}

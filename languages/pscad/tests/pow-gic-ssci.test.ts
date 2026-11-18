@@ -3,13 +3,13 @@
 import { calculateGic, parseRaw } from "@modelscript/psse";
 import assert from "node:assert";
 import test from "node:test";
-import { runFrequencyScan, runPointOnWaveSweep, type EmtNetlist } from "../src/index.js";
+import { runFrequencyScan, runPointOnWaveSweep, type EmtNetlistInput } from "../src/index.js";
 
 test("PSCAD Point-on-Wave Parametric Sweep & Statistical Switching Overvoltage (SSOV)", () => {
   console.log("=== Testing Point-on-Wave (PoW) Parametric Sweep & SSOV ===");
 
   // Define a 230 kV test network with circuit breaker closing onto a 150 km transmission line
-  const netlist: EmtNetlist = {
+  const netlist: EmtNetlistInput = {
     nominalFrequencyHz: 60.0,
     buses: [
       { id: "SRC_BUS", baseKv: 230.0, connectedBranchIds: ["BRK_1"] },
@@ -20,7 +20,7 @@ test("PSCAD Point-on-Wave Parametric Sweep & Statistical Switching Overvoltage (
       {
         id: "GRID_SRC",
         bus: "SRC_BUS",
-        voltageKvLL: 230.0,
+        voltageKv: 230.0,
         frequencyHz: 60.0,
         phaseAngleDeg: 0.0,
         rSourceOhm: 0.8,
@@ -84,7 +84,7 @@ test("PSCAD Subsynchronous Frequency Scanner (SSR & SSCI Negative Damping)", () 
   // Define an IBR (wind farm) connected through a series-compensated transmission line
   // Resonant frequency f_res = 1 / (2*pi*sqrt(L*C)) ~ 30 Hz (subsynchronous)
   // At 30 Hz, L = 0.08 H, C = 350 uF -> f_res = 1 / (2*pi*sqrt(0.08 * 350e-6)) ~ 30.1 Hz
-  const netlist: EmtNetlist = {
+  const netlist: EmtNetlistInput = {
     nominalFrequencyHz: 60.0,
     buses: [
       { id: "GRID", baseKv: 230.0, connectedBranchIds: ["LINE_COMP"] },
@@ -94,7 +94,7 @@ test("PSCAD Subsynchronous Frequency Scanner (SSR & SSCI Negative Damping)", () 
       {
         id: "INFINITE_BUS",
         bus: "GRID",
-        voltageKvLL: 230.0,
+        voltageKv: 230.0,
         frequencyHz: 60.0,
         phaseAngleDeg: 0.0,
         rSourceOhm: 0.5,
@@ -114,9 +114,10 @@ test("PSCAD Subsynchronous Frequency Scanner (SSR & SSCI Negative Damping)", () 
     fmuInstances: [
       {
         id: "TYPE4_WIND_IBR",
-        busId: "WIND_POI",
+        name: "TYPE4_WIND_IBR",
         busConnection: "WIND_POI",
         fmuPath: "wind_inverter.fmu",
+        controlMode: "grid_forming",
         ratedMva: 250.0,
         ratedKv: 230.0,
       },

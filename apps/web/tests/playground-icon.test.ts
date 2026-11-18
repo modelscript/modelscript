@@ -145,25 +145,31 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
   it("renders authentic Morsel header brand icon in Morsel loading modal", () => {
     const modalsPath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselModals.tsx");
     const modalsSrc = fs.readFileSync(modalsPath, "utf-8");
+    const loaderPath = path.resolve(import.meta.dirname, "../src/components/morsel/MorselLoadingScreen.tsx");
+    const loaderSrc = fs.readFileSync(loaderPath, "utf-8");
 
+    assert.ok(modalsSrc.includes("<MorselLoadingScreen"), "MorselModals.tsx must render MorselLoadingScreen");
     assert.ok(
-      modalsSrc.includes("/brand-dark.png") && modalsSrc.includes("/brand.png"),
-      "MorselModals.tsx loader must render /brand-dark.png and /brand.png",
+      loaderSrc.includes("/brand-dark.png") && loaderSrc.includes("/brand.png"),
+      "MorselLoadingScreen.tsx loader must render /brand-dark.png and /brand.png",
     );
-    assert.ok(modalsSrc.includes('id="morsel-app-loader"'), "MorselModals.tsx must define morsel-app-loader");
+    assert.ok(loaderSrc.includes('id="morsel-app-loader"'), "MorselLoadingScreen.tsx must define morsel-app-loader");
     assert.ok(
-      modalsSrc.includes('data-testid="morsel-brand-icon"'),
-      "MorselModals.tsx loader must provide data-testid='morsel-brand-icon'",
+      loaderSrc.includes('data-testid="morsel-brand-icon"'),
+      "MorselLoadingScreen.tsx loader must provide data-testid='morsel-brand-icon'",
     );
-    assert.ok(modalsSrc.includes('alt="Morsel"'), "MorselModals.tsx loader must have alt='Morsel'");
-    assert.ok(!modalsSrc.includes('alt="ModelScript"'), "MorselModals.tsx loader must not use ModelScript alt text");
+    assert.ok(loaderSrc.includes('alt="Morsel"'), "MorselLoadingScreen.tsx loader must have alt='Morsel'");
     assert.ok(
-      !modalsSrc.includes("/ms-logo-light.png") && !modalsSrc.includes("/ms-logo.png"),
-      "MorselModals.tsx loader must not use ModelScript turbine logo",
+      !loaderSrc.includes('alt="ModelScript"'),
+      "MorselLoadingScreen.tsx loader must not use ModelScript alt text",
     );
     assert.ok(
-      !/>\s*ModelScript\s*<\/span>/.test(modalsSrc),
-      "MorselModals.tsx loader title must not display 'ModelScript'",
+      !loaderSrc.includes("/ms-logo-light.png") && !loaderSrc.includes("/ms-logo.png"),
+      "MorselLoadingScreen.tsx loader must not use ModelScript turbine logo",
+    );
+    assert.ok(
+      !/>\s*ModelScript\s*<\/span>/.test(loaderSrc),
+      "MorselLoadingScreen.tsx loader title must not display 'ModelScript'",
     );
   });
 });

@@ -8,7 +8,7 @@ import {
   LineConstantsSolver,
   stepUlmLine,
   type CableGeometry,
-  type EmtNetlist,
+  type EmtNetlistInput,
   type TowerGeometry,
 } from "../src/index.js";
 
@@ -246,7 +246,7 @@ test("Universal Line Model (ULM): Time-stepping recursive convolution impulse re
 test("Universal Line Model (ULM): Full closed-loop EMT grid simulation vs Bergeron benchmark", () => {
   // Test network: 230 kV AC source -> Bus 1 -> 120 km ULM Line -> Bus 2 -> 50 MW resistive load
   const lengthKm = 120.0;
-  const netlistUlm: EmtNetlist = {
+  const netlistUlm: EmtNetlistInput = {
     nominalFrequencyHz: 60.0,
     buses: [
       { id: "BUS1", baseKv: 230.0 },

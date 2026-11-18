@@ -76,6 +76,21 @@ export const UNIQUE_EXT_TO_SLUG: Record<string, string> = {
   ".su2": "cfd",
   ".yaml": "cantera",
   ".cti": "cantera",
+  ".glm": "gridlabd",
+  ".aux": "powerworld",
+  ".cdf": "powerworld",
+  ".iec104": "iec104",
+  ".104": "iec104",
+  ".c37118": "c37118",
+  ".pmu": "c37118",
+  ".pypsa": "pypsa",
+  ".sxst": "cyme",
+  ".cyme": "cyme",
+  ".dft": "rtds",
+  ".rtds": "rtds",
+  ".pol": "plscadd",
+  ".loa": "plscadd",
+  ".plscadd": "plscadd",
 };
 
 const CONTENT_PATTERNS: ReadonlyArray<{

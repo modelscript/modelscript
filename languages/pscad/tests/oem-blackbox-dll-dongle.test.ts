@@ -20,8 +20,7 @@ import {
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { EmtdcHostBridge } from "../src/script/emtdc-abi-bridge.js";
-import { EmtSolver, OemLicenseError } from "../src/solver/emt-solver.js";
-import type { EmtNetlist } from "../src/types.js";
+import { EmtSolver, OemLicenseError, type EmtNetlistInput } from "../src/solver/emt-solver.js";
 
 function buildOemPeDll(): Uint8Array {
   const buf = new Uint8Array(4096);
@@ -310,7 +309,7 @@ describe("Proprietary OEM Black-Box DLLs & Physical Dongle Security", () => {
   it("simulates full closed-loop power grid coupling with OEM black-box DLL in EmtSolver", () => {
     const peBuffer = buildOemPeDll();
 
-    const netlist: EmtNetlist = {
+    const netlist: EmtNetlistInput = {
       buses: new Map([["Bus1", { id: "Bus1", baseKv: 230.0 }]]),
       branches: [],
       transformers: [],
@@ -379,7 +378,7 @@ describe("Proprietary OEM Black-Box DLLs & Physical Dongle Security", () => {
   it("rejects unlicensed OEM black-box DLL pre-flight and throws OemLicenseError in strict mode", () => {
     const peBuffer = buildOemPeDll();
 
-    const netlist: EmtNetlist = {
+    const netlist: EmtNetlistInput = {
       buses: new Map([["Bus1", { id: "Bus1", baseKv: 230.0 }]]),
       branches: [],
       transformers: [],
@@ -441,7 +440,7 @@ describe("Proprietary OEM Black-Box DLLs & Physical Dongle Security", () => {
     const dongles = await dongleManager.scanAllDongles();
     assert.ok(dongles.length >= 1, "Discovered CodeMeter virtual dongle");
 
-    const netlist: EmtNetlist = {
+    const netlist: EmtNetlistInput = {
       buses: new Map([["Bus1", { id: "Bus1", baseKv: 230.0 }]]),
       branches: [],
       transformers: [],

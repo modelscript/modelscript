@@ -259,4 +259,86 @@ describe("Modelica Control Flow Analysis (CFA) Linter Suite", () => {
     const m5020 = diags.filter((d: any) => d.code === 5020);
     assert.strictEqual(m5020.length, 0, "Expected 0 M5020 for partial function or stub function without algorithm");
   });
+
+  it("should treat code after `while true ... break` as reachable (break only exits the loop)", async () => {
+    const { parser } = await createWasmParser(modelicaWasm);
+    Context.registerParser(".mo", parser as any);
+    const ctx = new Context(new NodeFileSystem());
+
+    const code = `
+      function BreakLoop
+        input Integer n;
+        output Integer y;
+      protected
+        Integer k;
+      algorithm
+        k := 0;
+        while true loop
+          k := k + 1;
+          if k >= n then
+            break;
+          end if;
+        end while;
+        y := k;
+      end BreakLoop;
+    `;
+    const uri = "file:///test/BreakLoop.mo";
+    ctx.load(code, uri);
+
+    const diags = await ctx.queryEngine.runAllLintsAsync(uri);
+    const cfa = diags.filter((d: any) => d.code === 5020 || d.code === 5022);
+    assert.strictEqual(cfa.length, 0, `Expected no M5020/M5022, got: ${cfa.map((d: any) => d.message).join("; ")}`);
+  });
+
+  it("should use the break states of `while true` for definite assignment after the loop", async () => {
+    const { parser } = await createWasmParser(modelicaWasm);
+    Context.registerParser(".mo", parser as any);
+    const ctx = new Context(new NodeFileSystem());
+
+    const code = `
+      function BreakAssign
+        input Boolean c;
+        output Real y;
+      algorithm
+        while true loop
+          if c then
+            y := 1;
+            break;
+          end if;
+          break;
+        end while;
+      end BreakAssign;
+    `;
+    const uri = "file:///test/BreakAssign.mo";
+    ctx.load(code, uri);
+
+    const diags = await ctx.queryEngine.runAllLintsAsync(uri);
+    const m5020 = diags.filter((d: any) => d.code === 5020);
+    assert.ok(m5020.length > 0, "Expected M5020: the second break exits without assigning y");
+  });
+
+  it("should report M5022 only once per unreachable block", async () => {
+    const { parser } = await createWasmParser(modelicaWasm);
+    Context.registerParser(".mo", parser as any);
+    const ctx = new Context(new NodeFileSystem());
+
+    const code = `
+      function DeadTail
+        input Real x;
+        output Real y;
+      algorithm
+        y := x;
+        return;
+        y := y + 1;
+        y := y + 2;
+        y := y + 3;
+      end DeadTail;
+    `;
+    const uri = "file:///test/DeadTail.mo";
+    ctx.load(code, uri);
+
+    const diags = await ctx.queryEngine.runAllLintsAsync(uri);
+    const m5022 = diags.filter((d: any) => d.code === 5022);
+    assert.strictEqual(m5022.length, 1, "Expected exactly one M5022 for the unreachable tail");
+  });
 });

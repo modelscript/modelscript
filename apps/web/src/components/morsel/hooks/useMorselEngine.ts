@@ -24,6 +24,7 @@ import {
   extractPrimaryModelicaClassName,
   getCadComponents,
   getStepMeshesInMorsel,
+  onSimulationProgress,
   simulate,
 } from "../util/lsp-bridge";
 import { getMorselMqttClient } from "../util/mqtt-client";
@@ -1196,6 +1197,8 @@ export function useMorselEngine({
   });
   const [simulationStatus, setSimulationStatus] = useState<any>(null);
   const [localSimulationData, setLocalSimulationData] = useState<Record<string, number | string>[] | null>(null);
+  const [pscadComplianceReport, setPscadComplianceReport] = useState<unknown>(null);
+  const [pscadExports, setPscadExports] = useState<Awaited<ReturnType<typeof simulate>>["pscadExports"] | null>(null);
 
   // Keep simExperiment & cachedSimulator synced with source @experiment(...) annotations and user preferences
   useEffect(() => {
@@ -1328,13 +1331,24 @@ export function useMorselEngine({
       ctrl.goLive();
     }
     const unsub = client.onVariableUpdate((participantId, variable, value) => {
+      const now = Date.now() / 1000;
       const controller = animationControllerRef.current;
       if (controller) {
         if (controller.mode !== "live") controller.goLive();
-        const now = Date.now() / 1000;
         controller.pushLiveValue(variable, value, now);
         controller.pushLiveValue(`${participantId}.${variable}`, value, now);
       }
+      setLocalSimulationData((prev) => {
+        const last = prev && prev.length > 0 ? prev[prev.length - 1] : {};
+        const row: Record<string, number | string> = {
+          ...last,
+          time: now,
+          [variable]: value,
+          [`${participantId}.${variable}`]: value,
+        };
+        const next = prev ? [...prev, row] : [row];
+        return next.length > 1500 ? next.slice(next.length - 1500) : next;
+      });
     });
     return () => unsub();
   }, [cosimDataSource]);
@@ -1655,6 +1669,8 @@ export function useMorselEngine({
     const timer = setTimeout(async () => {
       try {
         const overrideObj = Object.fromEntries(parameterOverrides);
+        const loadedSnap = (window as unknown as { __morselInitialSnapshot?: string | Record<string, unknown> })
+          .__morselInitialSnapshot;
         const result = await simulate(documentUri, {
           className: targetClass,
           parameterOverrides: overrideObj,
@@ -1669,6 +1685,7 @@ export function useMorselEngine({
           equidistant: experimentOverrides.equidistant,
           steadyStateOnly: experimentOverrides.steadyStateOnly,
           flattenerBackend: prefFlattenerBackend,
+          ...(loadedSnap ? { initialSnapshot: loadedSnap } : {}),
         });
 
         if (result.error) throw new Error(result.error);
@@ -1763,6 +1780,10 @@ export function useMorselEngine({
   const handleSimulate = async () => {
     setSimulationStatus({ status: "pending", error: null });
     setLocalSimulationData(null);
+    setSimulationVariables([]);
+    setSelectedSimulationVariables([]);
+    setPscadComplianceReport(null);
+    setPscadExports(null);
 
     try {
       if (dialect === "ampl") {
@@ -1798,21 +1819,42 @@ export function useMorselEngine({
       const overrideObj = Object.fromEntries(parameterOverrides);
       const targetClass = selectedTreeClassName || extractPrimaryModelicaClassName(editorValue || content) || undefined;
 
-      const result = await simulate(documentUri, {
-        className: targetClass,
-        parameterOverrides: overrideObj,
-        sweepConfig: sweepState ?? undefined,
-        startTime: experimentOverrides.startTime ?? simExperiment.startTime,
-        stopTime: experimentOverrides.stopTime ?? simExperiment.stopTime,
-        interval: experimentOverrides.interval ?? simExperiment.interval,
-        solver: experimentOverrides.solver ?? simExperiment.solver ?? prefSolver,
-        numberOfIntervals: experimentOverrides.numberOfIntervals ?? simExperiment.numberOfIntervals ?? prefIntervals,
-        rtol: experimentOverrides.tolerance ?? simExperiment.tolerance ?? prefTolerance,
-        atol: experimentOverrides.atol,
-        equidistant: experimentOverrides.equidistant,
-        steadyStateOnly: experimentOverrides.steadyStateOnly,
-        flattenerBackend: prefFlattenerBackend,
-      });
+      let progressSub: { dispose: () => void } | null = null;
+      if (dialect === "pscad") {
+        progressSub = await onSimulationProgress((frame) => {
+          if (frame.uri !== documentUri) return;
+          setLocalSimulationData((prev) => {
+            const row: Record<string, number | string> = { time: frame.timeSec, ...frame.voltages };
+            const next = prev ? [...prev, row] : [row];
+            return next.length > 2000 ? next.slice(next.length - 2000) : next;
+          });
+          if (!showCadView) setShowResultsView(true);
+        });
+      }
+
+      const loadedSnap = (window as unknown as { __morselInitialSnapshot?: string | Record<string, unknown> })
+        .__morselInitialSnapshot;
+      let result: Awaited<ReturnType<typeof simulate>>;
+      try {
+        result = await simulate(documentUri, {
+          className: targetClass,
+          parameterOverrides: overrideObj,
+          sweepConfig: sweepState ?? undefined,
+          startTime: experimentOverrides.startTime ?? simExperiment.startTime,
+          stopTime: experimentOverrides.stopTime ?? simExperiment.stopTime,
+          interval: experimentOverrides.interval ?? simExperiment.interval,
+          solver: experimentOverrides.solver ?? simExperiment.solver ?? prefSolver,
+          numberOfIntervals: experimentOverrides.numberOfIntervals ?? simExperiment.numberOfIntervals ?? prefIntervals,
+          rtol: experimentOverrides.tolerance ?? simExperiment.tolerance ?? prefTolerance,
+          atol: experimentOverrides.atol,
+          equidistant: experimentOverrides.equidistant,
+          steadyStateOnly: experimentOverrides.steadyStateOnly,
+          flattenerBackend: prefFlattenerBackend,
+          ...(loadedSnap ? { initialSnapshot: loadedSnap } : {}),
+        } as Parameters<typeof simulate>[1]);
+      } finally {
+        progressSub?.dispose();
+      }
 
       if (result.error) {
         throw new Error(result.error);
@@ -1845,12 +1887,19 @@ export function useMorselEngine({
         if (userSelectionMadeRef.current && prev.length === 0) {
           return prev;
         }
-        // 3. Fall back to initialSimulationVariables if valid and user hasn't made a custom selection
+        // 3. Prioritize GraphFrame curves if declared in the PSCAD schematic
+        const frameCurves = (result.pscadExports?.graphFrames ?? [])
+          .flatMap((gf) => gf.curves)
+          .filter((v, idx, arr) => states.includes(v) && arr.indexOf(v) === idx);
+        if (!userSelectionMadeRef.current && frameCurves.length > 0) {
+          return frameCurves;
+        }
+        // 4. Fall back to initialSimulationVariables if valid and user hasn't made a custom selection
         if (!userSelectionMadeRef.current && initialSimulationVariables && initialSimulationVariables.length > 0) {
           const matchedInitial = initialSimulationVariables.filter((v) => states.includes(v));
           if (matchedInitial.length > 0) return matchedInitial;
         }
-        // 4. Default: first 3 non-derivative states
+        // 5. Default: first 3 non-derivative states
         const candidates = states.filter((v) => !v.startsWith("der(") && v !== "time");
         return candidates.length > 0 ? candidates.slice(0, 3) : states.slice(0, 3);
       });
@@ -1891,6 +1940,8 @@ export function useMorselEngine({
         setLocalSimulationData(chartData);
         lastSimTrajectoryRef.current = { t: result.t, y: result.y, states };
       }
+      setPscadComplianceReport(result.complianceReport ?? null);
+      setPscadExports(result.pscadExports ?? null);
       setSimulationStatus({ status: "completed" });
       if (!showCadView) {
         setShowResultsView(true);
@@ -1984,6 +2035,8 @@ export function useMorselEngine({
     setSimulationStatus,
     localSimulationData,
     setLocalSimulationData,
+    pscadComplianceReport,
+    pscadExports,
     cadComponents,
     setCadComponents,
     gdtOverlay,

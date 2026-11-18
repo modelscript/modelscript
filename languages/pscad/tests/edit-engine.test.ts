@@ -223,7 +223,6 @@ describe("pscad diagram actions (corpus)", () => {
     ]);
     assert.deepEqual(planned.unresolved, []);
     assert.ok(planned.edits.length >= 1);
-    const wireOp = planned.edits.find((e) => e.newText.includes("<Wire"));
     // Applying edits gives an orthogonal wire
     const lines = sample.split("\n");
     const off = (p: { line: number; character: number }) =>

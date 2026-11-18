@@ -6,10 +6,15 @@ import { describe, it } from "node:test";
 import {
   DYR_MODEL_SCHEMAS,
   DYR_SCHEMA_LIST,
+  EXACT_LOWERED_MODELS,
+  calculateSotaDiscrepancy,
+  getDyrModelLoweringTier,
   lintPsse,
   lowerPsseComponentToDae,
   parseDyr,
   parseRaw,
+  simulatePsseTransient,
+  solveQvCurve,
   validatePsse,
 } from "../src/index.js";
 
@@ -142,5 +147,178 @@ Q
       lspDiags.some((d) => d.code === "P5013"),
       "Expected P5013 from validatePsse(.dyr)",
     );
+  });
+
+  it("tracks 100% (366/366) of DYR_SCHEMA_LIST in EXACT_LOWERED_MODELS", () => {
+    assert.equal(
+      EXACT_LOWERED_MODELS.size,
+      DYR_SCHEMA_LIST.length,
+      `Expected 100% parity (${DYR_SCHEMA_LIST.length}), got ${EXACT_LOWERED_MODELS.size}`,
+    );
+    for (const schema of DYR_SCHEMA_LIST) {
+      assert.ok(EXACT_LOWERED_MODELS.has(schema.model), `Schema ${schema.model} missing from EXACT_LOWERED_MODELS`);
+    }
+  });
+
+  it("holds steady-state flat-run equilibrium with zero disturbance on GENROU + ESST1A + TGOV1 + PSS2A", () => {
+    const raw = `0, 100.0, 33, 0, 1, 60.0 / FLAT RUN TEST
+FLAT RUN
+TEST
+1, 'GEN1', 138.0, 3, 1, 1, 1, 1.02, 0.0
+2, 'LOAD2', 138.0, 1, 1, 1, 1, 1.00, -2.0
+0 / END OF BUS DATA
+2, '1 ', 1, 1, 1, 50.0, 10.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0
+0 / END OF LOAD DATA
+0 / END OF FIXED SHUNT DATA
+1, '1 ', 50.0, 10.0, 100.0, -50.0, 1.02, 0, 100.0, 0.0, 0.2, 0.0, 0.0, 1.0, 1, 100.0, 100.0, 0.0
+0 / END OF GENERATOR DATA
+1, 2, '1 ', 0.01, 0.05, 0.0, 200.0, 200.0, 200.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0.0
+0 / END OF BRANCH DATA
+0 / END OF TRANSFORMER DATA
+Q
+`;
+    const c = parseRaw(raw);
+    c.dyr = parseDyr(`
+1 'GENROU' '1' 6.5 0.035 1.0 0.05 4.5 0.0 1.8 1.7 0.3 0.55 0.2 0.14 0.05 0.15 /
+1 'ESST1A' '1' 0.02 0.0 0.0 1.0 1.0 0.0 0.0 200.0 0.02 5.0 -5.0 5.0 -5.0 0.05 0.0 1.0 0.0 0.0 0.0 /
+1 'TGOV1' '1' 0.05 0.5 1.05 0.0 2.1 7.0 0.0 /
+1 'PSS2A' '1' 1 1 5.0 5.0 0.0 5.0 0.0 10.0 0.5 0.1 0.5 1.0 0.25 0.04 0.15 0.03 0.0 0.0 0.1 -0.1 /
+`);
+    const sim = simulatePsseTransient(c, {
+      stopTime: 2.0,
+      timeStep: 0.01,
+      faultStartSec: 999.0,
+      faultClearSec: 999.0,
+    });
+    assert.ok(sim.summary.convergedPowerFlow, "Flat-run power flow should converge");
+    assert.ok(sim.summary.stable, "Flat-run simulation should remain stable");
+    assert.ok(
+      sim.summary.maxFreqDeviationHz < 0.05,
+      `Expected minimal flat-run frequency drift, got ${sim.summary.maxFreqDeviationHz} Hz`,
+    );
+  });
+
+  it("executes multi-event sequences (bus_fault, clear_fault, shed_load, step_reference) in simulatePsseTransient", () => {
+    const raw = `0, 100.0, 33, 0, 1, 60.0 / MULTI-EVENT TEST
+MULTI EVENT
+TEST
+1, 'GEN1', 138.0, 3, 1, 1, 1, 1.02, 0.0
+2, 'LOAD2', 138.0, 1, 1, 1, 1, 1.00, -2.0
+0 / END OF BUS DATA
+2, '1 ', 1, 1, 1, 60.0, 15.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0
+0 / END OF LOAD DATA
+0 / END OF FIXED SHUNT DATA
+1, '1 ', 60.0, 15.0, 100.0, -50.0, 1.02, 0, 100.0, 0.0, 0.2, 0.0, 0.0, 1.0, 1, 100.0, 100.0, 0.0
+0 / END OF GENERATOR DATA
+1, 2, '1 ', 0.01, 0.05, 0.0, 200.0, 200.0, 200.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0.0
+0 / END OF BRANCH DATA
+0 / END OF TRANSFORMER DATA
+Q
+`;
+    const c = parseRaw(raw);
+    const sim = simulatePsseTransient(c, {
+      stopTime: 1.5,
+      timeStep: 0.01,
+      events: [
+        { timeSec: 0.1, type: "bus_fault", busNumber: 2 },
+        { timeSec: 0.2, type: "clear_fault" },
+        { timeSec: 0.25, type: "shed_load", busNumber: 2, loadScale: 0.8 },
+        { timeSec: 0.3, type: "step_reference", busNumber: 1, pmechStepPu: 0.02 },
+      ],
+    });
+    assert.ok(sim.summary.convergedPowerFlow, "Multi-event power flow should converge");
+    assert.ok(sim.summary.minBusVoltagePu < 0.95, "Fault at Bus 2 should depress voltage");
+    assert.ok(sim.t.length >= 150, "Expected >= 150 time steps");
+  });
+
+  it("verifies SOTA NRMSE & Theil TIC trajectory parity across DYR variants (GENROU vs GENROE)", () => {
+    const raw = `0, 100.0, 33, 0, 1, 60.0 / NRMSE BENCHMARK
+NRMSE
+TEST
+1, 'GEN1', 138.0, 3, 1, 1, 1, 1.02, 0.0
+2, 'LOAD2', 138.0, 1, 1, 1, 1, 1.00, -2.0
+0 / END OF BUS DATA
+2, '1 ', 1, 1, 1, 50.0, 10.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0
+0 / END OF LOAD DATA
+0 / END OF FIXED SHUNT DATA
+1, '1 ', 50.0, 10.0, 100.0, -50.0, 1.02, 0, 100.0, 0.0, 0.2, 0.0, 0.0, 1.0, 1, 100.0, 100.0, 0.0
+0 / END OF GENERATOR DATA
+1, 2, '1 ', 0.01, 0.05, 0.0, 200.0, 200.0, 200.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0.0
+0 / END OF BRANCH DATA
+0 / END OF TRANSFORMER DATA
+Q
+`;
+    const c1 = parseRaw(raw);
+    c1.dyr = parseDyr(`
+1 'GENROU' '1' 6.5 0.035 1.0 0.05 4.5 0.0 1.8 1.7 0.3 0.55 0.2 0.14 0.05 0.15 /
+1 'ESST1A' '1' 0.02 0.0 0.0 1.0 1.0 0.0 0.0 200.0 0.02 5.0 -5.0 5.0 -5.0 0.05 0.0 1.0 0.0 0.0 0.0 /
+1 'TGOV1' '1' 0.05 0.5 1.05 0.0 2.1 7.0 0.0 /
+`);
+    const c2 = parseRaw(raw);
+    c2.dyr = parseDyr(`
+1 'GENROE' '1' 6.5 0.035 1.0 0.05 4.5 0.0 1.8 1.7 0.3 0.55 0.2 0.14 0.05 0.15 /
+1 'ESST1A' '1' 0.02 0.0 0.0 1.0 1.0 0.0 0.0 200.0 0.02 5.0 -5.0 5.0 -5.0 0.05 0.0 1.0 0.0 0.0 0.0 /
+1 'TGOV1' '1' 0.05 0.5 1.05 0.0 2.1 7.0 0.0 /
+`);
+    const s1 = simulatePsseTransient(c1, {
+      stopTime: 1.5,
+      timeStep: 0.01,
+      faultBus: 2,
+      faultStartSec: 0.1,
+      faultClearSec: 0.2,
+    });
+    const s2 = simulatePsseTransient(c2, {
+      stopTime: 1.5,
+      timeStep: 0.01,
+      faultBus: 2,
+      faultStartSec: 0.1,
+      faultClearSec: 0.2,
+    });
+    const vKey = s1.states.find((k) => k.startsWith("vt_")) ?? s1.states[0]!;
+    const metrics = calculateSotaDiscrepancy(s1.variables[vKey]!, s2.variables[vKey]!);
+    assert.ok(metrics.theilTic < 0.05, `Expected Theil TIC < 0.05, got ${metrics.theilTic}`);
+    assert.ok(metrics.pearsonR > 0.95, `Expected Pearson r > 0.95, got ${metrics.pearsonR}`);
+  });
+
+  it("verifies honest loweringTier classification, solverMode: dae_ida, and solveQvCurve", () => {
+    assert.equal(getDyrModelLoweringTier("GENROU"), "canonical_exact");
+    assert.equal(getDyrModelLoweringTier("GENCC"), "archetype_mapped");
+    assert.equal(getDyrModelLoweringTier("NONEXISTENT_MODEL_XYZ"), "unmapped");
+
+    const raw = `0, 100.0, 33, 0, 1, 60.0 / PHASE B TEST
+PHASE B
+TEST
+1, 'GEN1', 138.0, 3, 1, 1, 1, 1.02, 0.0
+2, 'LOAD2', 138.0, 1, 1, 1, 1, 1.00, -2.0
+0 / END OF BUS DATA
+2, '1 ', 1, 1, 1, 50.0, 10.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0
+0 / END OF LOAD DATA
+0 / END OF FIXED SHUNT DATA
+1, '1 ', 50.0, 10.0, 100.0, -50.0, 1.02, 0, 100.0, 0.0, 0.2, 0.0, 0.0, 1.0, 1, 100.0, 100.0, 0.0
+0 / END OF GENERATOR DATA
+1, 2, '1 ', 0.01, 0.05, 0.0, 200.0, 200.0, 200.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0.0
+0 / END OF BRANCH DATA
+0 / END OF TRANSFORMER DATA
+Q
+`;
+    const c = parseRaw(raw);
+    c.dyr = parseDyr(`
+1 'GENROU' '1' 6.5 0.035 1.0 0.05 4.5 0.0 1.8 1.7 0.3 0.55 0.2 0.14 0.05 0.15 /
+1 'TGOV1' '1' 0.05 0.5 1.05 0.0 2.1 7.0 0.0 /
+`);
+
+    const daeRes = simulatePsseTransient(c, {
+      solverMode: "dae_ida",
+      stopTime: 0.4,
+      timeStep: 0.02,
+      events: [{ timeSec: 0.1, type: "shed_load", busNumber: 2, loadScale: 0.8 }],
+    });
+    assert.ok(daeRes.t.length > 10, "Expected dae_ida time points");
+    assert.ok(daeRes.variables["Bus_2_Vm"]!.length === daeRes.t.length);
+
+    const qv = solveQvCurve(c, 2, { vStartPu: 1.05, vEndPu: 0.85, vStepPu: 0.05 });
+    assert.equal(qv.targetBus, 2);
+    assert.ok(qv.points.length >= 4, "Expected Q-V curve points");
+    assert.ok(qv.reportText.includes("Q-V REACTIVE POWER MARGIN CURVE"));
   });
 });

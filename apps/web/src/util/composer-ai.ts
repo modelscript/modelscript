@@ -12,23 +12,16 @@ import {
   type AiPolishResponse,
 } from "../api";
 
+import {
+  ensureSharedWebLLMEngine,
+  getActiveWebLLMModelId,
+  getSharedBrowserBuiltInSession,
+  isSharedLocalAiLoaded,
+} from "./local-ai-runtime";
+
 export type ComposerAiEngineMode = "auto" | "local" | "remote";
 
 const AI_ENGINE_STORAGE_KEY = "modelscript:composer_ai_engine";
-
-const WEBLLM_MODEL_CANDIDATES: readonly {
-  modelId: string;
-  wasmFiles: readonly string[];
-}[] = [
-  {
-    modelId: "Qwen3-1.7B-q4f16_1-MLC",
-    wasmFiles: ["Qwen3-1.7B-q4f16_1_cs1k-webgpu.wasm", "Qwen3-1.7B-q4f16_1-ctx4k_cs1k-webgpu.wasm"],
-  },
-  {
-    modelId: "Qwen3-0.6B-q4f16_1-MLC",
-    wasmFiles: ["Qwen3-0.6B-q4f16_1-ctx4k_cs1k-webgpu.wasm", "Qwen3-0.6B-q4f16_1_cs1k-webgpu.wasm"],
-  },
-];
 
 export function getPreferredAiEngine(): ComposerAiEngineMode {
   if (typeof window === "undefined") return "auto";
@@ -52,56 +45,12 @@ export function setPreferredAiEngine(mode: ComposerAiEngineMode): void {
   }
 }
 
-interface BrowserPromptSession {
-  prompt(input: string): Promise<string>;
-}
-
-interface BrowserLanguageModelFactory {
-  create(options?: { systemPrompt?: string | undefined }): Promise<BrowserPromptSession>;
-  availability?: (() => Promise<string>) | undefined;
-  capabilities?: (() => Promise<{ available?: string | undefined }>) | undefined;
-}
-
-interface WindowWithBuiltInAi {
-  ai?: {
-    languageModel?: BrowserLanguageModelFactory | undefined;
-  };
-  LanguageModel?: BrowserLanguageModelFactory | undefined;
-}
-
-interface WebLLMChatCompletionResponse {
-  choices?: {
-    message?: {
-      content?: string | null | undefined;
-    };
-  }[];
-}
-
-interface WebLLMEngineInstance {
-  chat: {
-    completions: {
-      create(params: {
-        messages: { role: "system" | "user" | "assistant"; content: string }[];
-        temperature?: number;
-        max_tokens?: number;
-        stream?: false;
-        extra_body?: Record<string, unknown>;
-      }): Promise<WebLLMChatCompletionResponse>;
-    };
-  };
-}
-
-let cachedBrowserSession: BrowserPromptSession | null = null;
-let cachedWebLLMEngine: WebLLMEngineInstance | null = null;
-let activeWebLLMModelId: string = WEBLLM_MODEL_CANDIDATES[0]!.modelId;
-let webllmLoadingPromise: Promise<WebLLMEngineInstance | null> | null = null;
-
 /**
  * Returns true only when an actual in-browser LLM (WebLLM WebGPU engine or Browser Prompt API)
  * is already initialized in memory.
  */
 export function isLocalAiLoaded(): boolean {
-  return cachedWebLLMEngine !== null || cachedBrowserSession !== null;
+  return isSharedLocalAiLoaded();
 }
 
 function stripThinkAndQuotes(raw: string): string {
@@ -118,119 +67,12 @@ function stripThinkAndQuotes(raw: string): string {
   return cleaned;
 }
 
-async function getBrowserBuiltInSession(systemPrompt: string): Promise<BrowserPromptSession | null> {
-  if (typeof window === "undefined") return null;
-  const win = window as unknown as WindowWithBuiltInAi;
-  const factory = win.ai?.languageModel || win.LanguageModel;
-  if (!factory || typeof factory.create !== "function") return null;
-
-  try {
-    if (typeof factory.availability === "function") {
-      const avail = await factory.availability();
-      if (avail === "no" || avail === "unavailable") return null;
-    } else if (typeof factory.capabilities === "function") {
-      const caps = await factory.capabilities();
-      if (caps?.available === "no") return null;
-    }
-    const session = await factory.create({ systemPrompt });
-    cachedBrowserSession = session;
-    return session;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Lazily initializes the in-browser WebLLM engine over WebGPU, preferring
- * `Qwen3-1.7B-q4f16_1-MLC` and falling back to `Qwen3-0.6B-q4f16_1-MLC`
- * on memory-constrained devices or when only 0.6B is cached locally.
- */
-async function ensureWebLLMEngine(): Promise<WebLLMEngineInstance | null> {
-  if (cachedWebLLMEngine) return cachedWebLLMEngine;
-  if (webllmLoadingPromise) return webllmLoadingPromise;
-  if (typeof window === "undefined" || typeof navigator === "undefined") return null;
-
-  const nav = navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } };
-  if (!nav.gpu) return null;
-
-  webllmLoadingPromise = (async () => {
-    try {
-      const adapter = await nav.gpu!.requestAdapter();
-      if (!adapter) return null;
-
-      const webllm = await import("@mlc-ai/web-llm");
-      const origin = window.location.origin;
-
-      for (const candidate of WEBLLM_MODEL_CANDIDATES) {
-        try {
-          const prebuiltModel = webllm.prebuiltAppConfig.model_list.find((m) => m.model_id === candidate.modelId);
-          let modelUrl = prebuiltModel?.model || `https://huggingface.co/mlc-ai/${candidate.modelId}`;
-          let modelLibUrl = prebuiltModel?.model_lib || `${origin}/api/models/${candidate.wasmFiles[0]}`;
-
-          // Check if model weights are self-hosted at /api/models/<modelId> (Docker / EE Appliance / modelscript.org)
-          try {
-            const localConfigRes = await fetch(`${origin}/api/models/${candidate.modelId}/mlc-chat-config.json`, {
-              method: "HEAD",
-            });
-            if (localConfigRes.ok) {
-              modelUrl = `${origin}/api/models/${candidate.modelId}`;
-            }
-          } catch {
-            // Fall back to HuggingFace CDN URL
-          }
-
-          // Check if WASM runtime is self-hosted at /api/models/<wasmFile>
-          for (const wasmFile of candidate.wasmFiles) {
-            try {
-              const localWasmUrl = `${origin}/api/models/${wasmFile}`;
-              const localWasmRes = await fetch(localWasmUrl, { method: "HEAD" });
-              if (localWasmRes.ok) {
-                modelLibUrl = localWasmUrl;
-                break;
-              }
-            } catch {
-              // Ignore and try next or use prebuiltModel.model_lib
-            }
-          }
-
-          const engine = (await webllm.CreateMLCEngine(candidate.modelId, {
-            appConfig: {
-              model_list: [
-                {
-                  model: modelUrl,
-                  model_id: candidate.modelId,
-                  model_lib: modelLibUrl,
-                  overrides: prebuiltModel?.overrides,
-                },
-              ],
-            },
-          })) as unknown as WebLLMEngineInstance;
-
-          cachedWebLLMEngine = engine;
-          activeWebLLMModelId = candidate.modelId;
-          return engine;
-        } catch {
-          // Try next smaller candidate (e.g., Qwen3-0.6B-q4f16_1-MLC)
-        }
-      }
-
-      return null;
-    } catch {
-      return null;
-    } finally {
-      webllmLoadingPromise = null;
-    }
-  })();
-
-  return webllmLoadingPromise;
-}
-
 async function completeWithLocalBrowserLLM(
   systemPrompt: string,
   userPrompt: string,
 ): Promise<{ text: string; provider: string; model: string } | null> {
   // 1. Try WebLLM (Qwen3-1.7B / Qwen3-0.6B WebGPU)
-  const webllmEngine = await ensureWebLLMEngine();
+  const webllmEngine = await ensureSharedWebLLMEngine();
   if (webllmEngine) {
     try {
       const response = await webllmEngine.chat.completions.create({
@@ -249,7 +91,7 @@ async function completeWithLocalBrowserLLM(
         return {
           text,
           provider: "local-window-ai",
-          model: activeWebLLMModelId,
+          model: getActiveWebLLMModelId(),
         };
       }
     } catch {
@@ -258,7 +100,7 @@ async function completeWithLocalBrowserLLM(
   }
 
   // 2. Try Browser Built-in Prompt API (window.ai / LanguageModel)
-  const browserSession = await getBrowserBuiltInSession(systemPrompt);
+  const browserSession = await getSharedBrowserBuiltInSession(systemPrompt);
   if (browserSession) {
     try {
       const raw = await browserSession.prompt(userPrompt);

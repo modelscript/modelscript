@@ -597,8 +597,18 @@ export function registerClassQueryEndpoints(context: LspContext) {
             entry.endOffset > entry.startOffset &&
             (entry.startOffset > 0 || entry.endOffset < text.length)
           ) {
-            const snippet = text.substring(entry.startOffset, entry.endOffset).trim();
+            let sliceEnd = entry.endOffset;
+            if (!text.slice(entry.startOffset, sliceEnd).trimEnd().endsWith(";")) {
+              const semiMatch = text.slice(sliceEnd).match(/^\s*;/);
+              if (semiMatch) {
+                sliceEnd += semiMatch[0].length;
+              }
+            }
+            let snippet = text.substring(entry.startOffset, sliceEnd).trim();
             if (snippet) {
+              if (uri?.endsWith(".mo") && !snippet.endsWith(";")) {
+                snippet += ";";
+              }
               const parentFqn = params.className.includes(".")
                 ? params.className.substring(0, params.className.lastIndexOf("."))
                 : "";

@@ -77,6 +77,22 @@ describe("Studio PBR & GD&T Overlay Shared Primitives", () => {
     assert.ok(ALLOY_MATERIAL_PRESETS["combustor-liner"].emissiveIntensity! > 0.3);
   });
 
+  it("classifies non-metallic plastics, rubbers, clear polymers, and explicit material hints", () => {
+    assert.strictEqual(classifyAlloyPreset("blower_handle", [0.85, 0.1, 0.1, 1.0]), "molded-abs-plastic");
+    assert.strictEqual(classifyAlloyPreset("grip_boot"), "elastomer-rubber");
+    assert.strictEqual(classifyAlloyPreset("rear_shroud_cover", [0.9, 0.9, 0.9, 0.35]), "clear-polycarbonate");
+    assert.strictEqual(classifyAlloyPreset("custom_part", [0.1, 0.35, 0.78, 1.0]), "molded-abs-plastic");
+    assert.strictEqual(classifyAlloyPreset("bracket", [0.8, 0.8, 0.8, 1.0], "ABS Plastic"), "molded-abs-plastic");
+    assert.strictEqual(classifyAlloyPreset("bracket", [0.1, 0.1, 0.1, 1.0], "EPDM Rubber"), "elastomer-rubber");
+    assert.strictEqual(classifyAlloyPreset("bracket", [0.9, 0.1, 0.1, 1.0], "Gloss Enamel Paint"), "gloss-paint");
+    assert.strictEqual(classifyAlloyPreset("bracket", [0.7, 0.7, 0.7, 1.0], "Cast Aluminum"), "cast-aluminum");
+
+    const abs = ALLOY_MATERIAL_PRESETS["molded-abs-plastic"];
+    assert.strictEqual(abs.metalness, 0.0);
+    assert.strictEqual(abs.useBrushedMaps, false);
+    assert.strictEqual(ALLOY_MATERIAL_PRESETS["clear-polycarbonate"].opacity, 0.34);
+  });
+
   it("formats ASME Y14.5 Feature Control Frames with geometric symbols, material modifiers, and datums", () => {
     assert.strictEqual(formatMaterialModifierGlyph("MMC"), "Ⓜ");
     assert.strictEqual(formatMaterialModifierGlyph("LMC"), "Ⓛ");

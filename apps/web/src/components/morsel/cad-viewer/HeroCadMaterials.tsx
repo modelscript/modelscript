@@ -26,6 +26,10 @@ import { Html, Line } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import React, { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { SSAOPass } from "three/examples/jsm/postprocessing/SSAOPass.js";
 
 export interface HeroPbrTextures {
   normal: THREE.DataTexture;
@@ -142,9 +146,11 @@ export interface HeroPhysicalMaterialConfig {
   roughness: number;
   anisotropy: number;
   anisotropyRotation: number;
-  normalMap: THREE.DataTexture;
+  clearcoat: number;
+  clearcoatRoughness: number;
+  normalMap: THREE.DataTexture | null;
   normalScale: THREE.Vector2;
-  roughnessMap: THREE.DataTexture;
+  roughnessMap: THREE.DataTexture | null;
   iridescence: number;
   iridescenceIOR: number;
   iridescenceThicknessRange: [number, number];
@@ -154,6 +160,18 @@ export interface HeroPhysicalMaterialConfig {
   envMapIntensity: number;
 }
 
+const COLOR_PRESERVING_PRESETS = new Set<string>([
+  "default-machined",
+  "molded-abs-plastic",
+  "matte-polymer",
+  "elastomer-rubber",
+  "gloss-paint",
+  "clear-polycarbonate",
+  "anodized-aluminum",
+  "cast-aluminum",
+  "stainless-steel",
+]);
+
 /**
  * Resolves calibrated MeshPhysicalMaterial properties for any CAD part.
  */
@@ -162,13 +180,15 @@ export function resolveHeroAlloyConfig(
   partName?: string | null,
   colorRgba?: readonly number[],
   dark = true,
+  materialHint?: string | null,
 ): HeroPhysicalMaterialConfig {
   const maps = getCachedHeroPbrTextures(gl);
-  const presetKey = classifyAlloyPreset(partName, colorRgba);
+  const presetKey = classifyAlloyPreset(partName, colorRgba, materialHint);
   const spec: AlloyMaterialSpec = ALLOY_MATERIAL_PRESETS[presetKey];
+  const useBrushed = spec.useBrushedMaps !== false;
 
   let colorHex = dark ? spec.colorDark : spec.colorLight;
-  if (presetKey === "default-machined" && colorRgba && colorRgba.length >= 3) {
+  if (COLOR_PRESERVING_PRESETS.has(presetKey) && colorRgba && colorRgba.length >= 3) {
     const c = new THREE.Color(colorRgba[0]!, colorRgba[1]!, colorRgba[2]!);
     colorHex = c.getHex();
   }
@@ -179,9 +199,11 @@ export function resolveHeroAlloyConfig(
     roughness: spec.roughness,
     anisotropy: spec.anisotropy,
     anisotropyRotation: spec.anisotropyRotation,
-    normalMap: maps.normal,
+    clearcoat: spec.clearcoat ?? 0.14,
+    clearcoatRoughness: spec.clearcoatRoughness ?? 0.25,
+    normalMap: useBrushed ? maps.normal : null,
     normalScale: new THREE.Vector2(spec.normalScale[0], spec.normalScale[1]),
-    roughnessMap: maps.roughness,
+    roughnessMap: useBrushed ? maps.roughness : null,
     iridescence: spec.iridescence ?? 0,
     iridescenceIOR: spec.iridescenceIOR ?? 1.3,
     iridescenceThicknessRange: spec.iridescenceThicknessRange
@@ -190,7 +212,7 @@ export function resolveHeroAlloyConfig(
     iridescenceThicknessMap: spec.iridescence ? maps.iridescence : null,
     emissive: (dark ? spec.emissiveDark : spec.emissiveLight) ?? 0x000000,
     emissiveIntensity: spec.emissiveIntensity ?? 0,
-    envMapIntensity: dark ? 1.5 : 1.55,
+    envMapIntensity: spec.metalness > 0.5 ? (dark ? 1.5 : 1.55) : dark ? 0.95 : 1.05,
   };
 }
 
@@ -542,4 +564,110 @@ export const Gdt3dOverlay: React.FC<{
       })}
     </group>
   );
+};
+
+/**
+ * Renders crisp Onshape-style CAD feature/crease edges over shaded geometry.
+ * Automatically disposes the derived EdgesGeometry on unmount or geometry change.
+ */
+export const CadEdgeOverlay: React.FC<{
+  geometry: THREE.BufferGeometry;
+  position?: [number, number, number];
+  thresholdAngle?: number;
+  dark?: boolean;
+  color?: string;
+  opacity?: number;
+  clippingPlanes?: THREE.Plane[];
+}> = ({
+  geometry,
+  position = [0, 0, 0],
+  thresholdAngle = 20,
+  dark = true,
+  color,
+  opacity = 0.85,
+  clippingPlanes = [],
+}) => {
+  const edgeGeometry = useMemo(() => new THREE.EdgesGeometry(geometry, thresholdAngle), [geometry, thresholdAngle]);
+
+  useEffect(() => {
+    return () => {
+      edgeGeometry.dispose();
+    };
+  }, [edgeGeometry]);
+
+  const edgeColor = color ?? (dark ? "#0f172a" : "#111827");
+
+  return (
+    <lineSegments geometry={edgeGeometry} position={position} renderOrder={1}>
+      <lineBasicMaterial
+        color={edgeColor}
+        transparent={opacity < 1.0}
+        opacity={opacity}
+        clippingPlanes={clippingPlanes}
+      />
+    </lineSegments>
+  );
+};
+
+/**
+ * Screen-Space Ambient Occlusion (SSAO) post-processing pass for CAD cavities,
+ * louvers, and contact seams. Only hijacks R3F rendering when `enabled` is true.
+ */
+export const StudioSsaoPass: React.FC<{
+  enabled?: boolean;
+  kernelRadius?: number;
+  minDistance?: number;
+  maxDistance?: number;
+}> = ({ enabled = true, kernelRadius = 0.25, minDistance = 0.001, maxDistance = 0.08 }) => {
+  const { gl, scene, camera, size } = useThree();
+  const composerRef = useRef<EffectComposer | null>(null);
+  const ssaoRef = useRef<SSAOPass | null>(null);
+
+  useEffect(() => {
+    if (!enabled) {
+      composerRef.current?.dispose();
+      composerRef.current = null;
+      ssaoRef.current = null;
+      return;
+    }
+
+    const composer = new EffectComposer(gl);
+    const renderPass = new RenderPass(scene, camera);
+    const ssaoPass = new SSAOPass(scene, camera, Math.max(1, size.width), Math.max(1, size.height));
+    ssaoPass.kernelRadius = kernelRadius;
+    ssaoPass.minDistance = minDistance;
+    ssaoPass.maxDistance = maxDistance;
+    ssaoPass.output = SSAOPass.OUTPUT.Default;
+    const outputPass = new OutputPass();
+
+    composer.addPass(renderPass);
+    composer.addPass(ssaoPass);
+    composer.addPass(outputPass);
+
+    composerRef.current = composer;
+    ssaoRef.current = ssaoPass;
+
+    return () => {
+      composer.dispose();
+      composerRef.current = null;
+      ssaoRef.current = null;
+    };
+  }, [enabled, gl, scene, camera, kernelRadius, minDistance, maxDistance]);
+
+  useEffect(() => {
+    if (!enabled || !composerRef.current) return;
+    composerRef.current.setSize(Math.max(1, size.width), Math.max(1, size.height));
+    ssaoRef.current?.setSize(Math.max(1, size.width), Math.max(1, size.height));
+  }, [enabled, size.width, size.height]);
+
+  useFrame(
+    () => {
+      if (enabled && composerRef.current) {
+        composerRef.current.render();
+      }
+    },
+    enabled ? 1 : 0,
+  );
+
+  return null;
 };

@@ -10,7 +10,6 @@ import {
   ImageIcon,
   MoonIcon,
   PlayIcon,
-  PlusIcon,
   RepoForkedIcon,
   RepoIcon,
   RowsIcon,
@@ -22,7 +21,6 @@ import {
   SunIcon,
   TableIcon,
   TerminalIcon,
-  TrashIcon,
   WorkflowIcon,
   ZapIcon,
 } from "@primer/octicons-react";
@@ -71,8 +69,7 @@ export interface PlaygroundNavbarProps {
   onViewChange?: (view: "diagram" | "code" | "split" | "simulation" | "3d" | "inspector") => void;
   onSimulate?: () => void;
   onOpenInVsCode?: () => void;
-  onOpenTemplates?: () => void;
-  onClearWorkspace?: () => void;
+  onBrandClick?: () => void;
   onSaveToArtifact?: () => void;
   onCreateRepo?: () => void;
   runStatus?: {
@@ -111,8 +108,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   onViewChange,
   onSimulate,
   onOpenInVsCode,
-  onOpenTemplates,
-  onClearWorkspace,
+  onBrandClick,
   onSaveToArtifact,
   onCreateRepo,
   onDownloadModel,
@@ -266,11 +262,19 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           />
         )}
         <BrandLink
-          href={branding.docsBaseUrl || "https://modelscript.org"}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Morsel"
+          href={onBrandClick ? "#new-model" : branding.docsBaseUrl || "https://modelscript.org"}
+          target={onBrandClick ? undefined : "_blank"}
+          rel={onBrandClick ? undefined : "noopener noreferrer"}
+          title={onBrandClick ? "New workspace & New Model" : "Morsel"}
           aria-label="Morsel"
+          onClick={
+            onBrandClick
+              ? (e) => {
+                  e.preventDefault();
+                  onBrandClick();
+                }
+              : undefined
+          }
         >
           <img
             src={customLogoSrc || (theme === "dark" ? "/brand-dark.png" : "/brand.png")}
@@ -316,50 +320,8 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           </Link>
         )}
 
-        {/* Add Model & Clear Workspace CTAs + Static Colored Language Label */}
+        {/* Static Colored Language Label */}
         <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", minWidth: 0, flexShrink: 1 }}>
-          {onOpenTemplates && (
-            <Button
-              size="small"
-              variant="invisible"
-              leadingVisual={PlusIcon}
-              onClick={onOpenTemplates}
-              title="Add a model or starter template to the workspace"
-              data-testid="playground-add-model-btn"
-              style={{
-                height: 30,
-                borderRadius: 8,
-                fontWeight: 600,
-                fontSize: 12,
-                padding: "0 10px",
-                flexShrink: 0,
-              }}
-            >
-              <NavText>Add Model</NavText>
-            </Button>
-          )}
-
-          {onClearWorkspace && (
-            <Button
-              size="small"
-              variant="invisible"
-              leadingVisual={TrashIcon}
-              onClick={onClearWorkspace}
-              title="Clear all files from the workspace"
-              data-testid="playground-clear-workspace-btn"
-              style={{
-                height: 30,
-                borderRadius: 8,
-                fontWeight: 600,
-                fontSize: 12,
-                padding: "0 10px",
-                flexShrink: 0,
-              }}
-            >
-              <NavText>Clear Workspace</NavText>
-            </Button>
-          )}
-
           <span
             data-testid="morsel-language-badge"
             title={`Active language: ${currentLangOption.label} (${currentLangOption.ext})`}

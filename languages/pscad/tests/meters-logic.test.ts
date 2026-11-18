@@ -116,8 +116,22 @@ describe("fixed_load lowering", () => {
     assert.ok(Math.abs(l.inductanceH - 480 ** 2 / 5e6 / (2 * Math.PI * 60)) < 1e-12);
   });
 
-  it("records that voltage/frequency dependence is ignored", () => {
-    assert.ok(net.assumptions?.some((a) => a.includes("fixed_load") && a.includes("ignored")));
+  it("lowers voltage/frequency dependent NP/NQ/KPF/KQF parameters into voltageDependentLoads", () => {
+    const dynXml = project(
+      user(
+        41,
+        "fixed_load",
+        100,
+        100,
+        `<param name="PO" value="10 [MW]" /><param name="QO" value="5 [MVAR]" /><param name="VBO" value="0.48 [kV]" /><param name="FR" value="60 [Hz]" /><param name="NP" value="1.5" /><param name="NQ" value="0.5" /><param name="KPF" value="1.0" />`,
+        `<port name="N" pos="0,-18" kind="electrical" dim="3" />`,
+      ),
+    );
+    const dynNet = extractEmtNetlist(parsePscx(dynXml));
+    assert.equal(dynNet.voltageDependentLoads?.length, 1);
+    assert.equal(dynNet.voltageDependentLoads?.[0]?.np, 1.5);
+    assert.equal(dynNet.voltageDependentLoads?.[0]?.nq, 0.5);
+    assert.equal(dynNet.voltageDependentLoads?.[0]?.kpf, 1.0);
   });
 });
 
