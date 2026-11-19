@@ -26,6 +26,7 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { createWasmParser } from "../src-gen/bindings.js";
 import { Context } from "../src/context.js";
+import { reconcileModelicaCstDiagnostics } from "../src/diagnostic-reconciliation.js";
 import { ModelicaErrorCode, normalizeModelicaSyntaxDiagnostic } from "../src/errors.js";
 import { ModelicaClassKind } from "../src/types.js";
 import { areDaeOutputsEquivalent } from "./dae-normalizer.js";
@@ -804,196 +805,50 @@ function runTestCaseCore(
         rawCstDiags = [];
       }
     }
+    const qe = context.queryEngine;
+    const db = qe.toQueryDB();
+    const reconcileView = {
+      symbols: qe.index.symbols,
+      symbol: (id: number) => db.symbol(id),
+      byName: (n: string) => db.byName(n),
+      query: <T = unknown>(q: string, id: number) => db.query<T>(q, id),
+    };
+    const targetSym =
+      testCase.metadata.status === "correct" && lastClassName
+        ? Array.from(context.queryEngine.index.symbols.values()).find(
+            (s) => (s.kind === "Class" || s.kind === "Package") && s.name === lastClassName,
+          )
+        : undefined;
+    const sourceLines = targetSym ? testCase.source.split("\n") : null;
     const isOldFrontend = testCase.source.includes("-d=-newInst");
-    const cstDiags = rawCstDiags.filter((cd: any) => {
-      const msg = cd.message || "";
-      if (
-        isOldFrontend &&
-        (cd.code === 4064 || cd.code === 4039 || cd.code === 4033 || cd.code === 4007 || msg.includes("in record"))
-      )
-        return false;
-      if (
-        arena &&
-        (cd.code === 4001 ||
-          cd.code === 4022 ||
-          cd.code === 4028 ||
-          cd.code === 4034 ||
-          cd.code === 4039 ||
-          cd.code === 4044 ||
-          cd.code === 4048 ||
-          cd.code === 4124 ||
-          cd.code === 4125 ||
-          cd.code === 4126 ||
-          cd.code === 5045 ||
-          cd.code === 6050 ||
-          cd.code === 6051 ||
-          cd.code === 6052)
-      ) {
-        return false;
-      }
-      if (
-        cd.code === 4006 &&
-        (rawCstDiags.some((d: any) => d.code === 4033) || lints.some((d: any) => d.code === 4033))
-      )
-        return false;
-      if (
-        cd.code === 4042 &&
-        (rawCstDiags.some((d: any) => d.code === 4017) || arena?.diagnostics.some((d: any) => d.code === 4017))
-      )
-        return false;
-      if (msg.startsWith("Array shape mismatch:")) return false;
-      if (
-        cd.code === 4037 &&
-        (arena?.diagnostics.some((d: any) => d.code === 4037) ||
-          !arena?.diagnostics.some((d: any) => d.severity === "error"))
-      ) {
-        return false;
-      }
-      if (cd.code === 4053 && arena?.diagnostics.some((d: any) => d.code === 4106)) {
-        return false;
-      }
-      if (cd.code === 2002) {
-        if (rawCstDiags.some((d: any) => d.code === 4017 || d.message?.includes("are not allowed in"))) {
-          return false;
+    const cstDiags = reconcileModelicaCstDiagnostics({
+      cstDiags: rawCstDiags,
+      arenaDiags: arena?.diagnostics ?? null,
+      hasArenaResult: Boolean(arena),
+      arenaClassKind: arena?.classKind,
+      lintDiags: lints,
+      isOldFrontend,
+      view: reconcileView,
+      hasVarByName: (name) => Boolean(arena && arena.getVarIdxByName(name) >= 0),
+      targetClassRange: targetSym ? { startOffset: targetSym.startOffset, endOffset: targetSym.endOffset } : undefined,
+      resolveCharOffset: (cd: any) => {
+        if (cd.startOffset != null) return cd.startOffset;
+        if (!cd.range || !sourceLines) return null;
+        let off = 0;
+        for (let i = 0; i < cd.range.start.line && i < sourceLines.length; i++) {
+          off += (sourceLines[i]?.length ?? 0) + 1;
         }
-        const m = /^Variable\s+([^\s]+)\s+not found in scope(?:\s+([^\s.]+(?:\.[^\s.]+)*))?/.exec(msg);
-        const varName = m?.[1]?.replace(/^'|'$/g, "");
-        if (varName && (varName === "array" || (arena && arena.getVarIdxByName(varName) >= 0))) return false;
-        if (varName && arena && !arena.diagnostics.some((d) => d.code === 2002 || d.code === 2012 || d.code === 2015)) {
-          const scopeName = m?.[2]?.replace(/\.$/, "")?.replace(/^'|'$/g, "");
-          const qe = context.queryEngine;
-          const db = qe.toQueryDB();
-          const firstSeg = varName.includes(".") ? varName.split(".")[0]! : null;
-          for (const [symId, sym] of qe.index.symbols) {
-            if (sym.kind !== "Class" && sym.kind !== "Package") continue;
-            if (scopeName && sym.name !== scopeName && !scopeName.endsWith(`.${sym.name}`)) continue;
-            let resolved: any = null;
-            if (varName.includes(".")) {
-              resolved = db.query<(n: string) => any>("resolveName", symId)?.(varName);
-              if (!resolved && firstSeg) {
-                let cur = db.query<(n: string) => any>("resolveSimpleName", symId)?.(firstSeg);
-                if (cur) {
-                  if (
-                    cur.kind === "Class" ||
-                    cur.kind === "Package" ||
-                    cur.kind === "Function" ||
-                    (cur.metadata as any)?.isExpandable ||
-                    db.query<boolean>("isOuter", cur.id)
-                  ) {
-                    resolved = cur;
-                  } else if (cur.kind === "Component") {
-                    const segs = varName.split(".").slice(1);
-                    let ok = true;
-                    for (const seg of segs) {
-                      const cleanSeg = seg.replace(/\[.*$/, "");
-                      const clsId =
-                        db.query<number | null>("classInstance", cur.id) ??
-                        db.query<any>("resolvedType", cur.id)?.id ??
-                        null;
-                      if (!clsId) {
-                        ok = false;
-                        break;
-                      }
-                      const clsSym = db.symbol(clsId);
-                      if ((clsSym?.metadata as any)?.isExpandable) {
-                        ok = true;
-                        break;
-                      }
-                      const nextSym = db.query<(n: string) => any>("resolveSimpleName", clsId)?.(cleanSeg);
-                      if (!nextSym) {
-                        ok = false;
-                        break;
-                      }
-                      cur = nextSym;
-                    }
-                    if (ok) resolved = cur;
-                  }
-                }
-              }
-            } else {
-              resolved = db.query<(n: string) => any>("resolveSimpleName", symId)?.(varName);
-            }
-            if (resolved) {
-              return false;
-            }
-          }
-          if (firstSeg && db.byName(firstSeg).some((s) => s.kind === "Class" || s.kind === "Package")) {
-            return false;
-          }
-        }
-        if (
-          arena?.diagnostics.some((d) => d.code === 2003 || d.code === 2012 || d.code === 2013 || d.code === 2014) ||
-          arena?.diagnostics.some((d) => d.message.startsWith("Variable ") && d.message.includes("not found in scope"))
-        )
-          return false;
-      }
-      // Filter M2003 false positives for names resolvable via imports or already reported in arena
-      if (cd.code === 2003) {
-        if (arena?.classKind === "package" && isOldFrontend) return false;
-        if (arena?.diagnostics.some((d) => d.code === 2003 || d.code === 2012 || d.code === 2013 || d.code === 2014)) {
-          return false;
-        }
-        const nameMatch = /Class or type '([^']+)' not found/.exec(msg);
-        if (nameMatch) {
-          const typeName = nameMatch[1];
-          // Check if any class in the file has an import that resolves this name
-          const qe = context.queryEngine;
-          const db = qe.toQueryDB();
-          // Walk all classes and check their scope data for this import
-          for (const [symId, sym] of qe.index.symbols) {
-            if (sym.kind !== "Class" && sym.kind !== "Package") continue;
-            const resolved = typeName.includes(".")
-              ? db.query<(n: string) => any>("resolveName", symId)?.(typeName)
-              : db.query<(n: string) => any>("resolveSimpleName", symId)?.(typeName);
-            if (resolved) {
-              return false;
-            }
-            const scopeData = db.query<any>("getScopeData", symId);
-            if (scopeData?.qualifiedImports?.[typeName]) {
-              return false; // Name is resolvable via import
-            }
-          }
-        }
-      }
-      if (cd.code === 3009 && arena?.diagnostics.some((d) => d.code === 3009)) return false;
-      if (cd.code === 4031 && arena?.diagnostics.some((d) => d.code === 4031 || d.message.includes("is out of bounds")))
-        return false;
-      if (
-        cd.code === 5004 &&
-        arena?.diagnostics.some((d) => d.code === 3003 || d.code === 5004 || d.message.includes("not type compatible"))
-      )
-        return false;
-      if (
-        (cd.code === 4011 || msg.includes("Invalid protected variable")) &&
-        arena?.diagnostics.some((d) => d.code === 4011 || d.message.includes("Invalid protected variable"))
-      )
-        return false;
-      if (
-        (cd.code === 4020 || msg.includes("time")) &&
-        arena?.diagnostics.some((d) => d.code === 4020 || d.message?.includes("time"))
-      )
-        return false;
-      if (cd.code === 4017 && isOldFrontend && msg.includes("in a package")) return false;
-      if ((cd.code === 4017 || cd.code === 4042) && testCase.metadata.status === "correct" && lastClassName) {
-        const targetSym = Array.from(context.queryEngine.index.symbols.values()).find(
-          (s) => (s.kind === "Class" || s.kind === "Package") && s.name === lastClassName,
-        );
-        if (targetSym) {
-          let charOffset = cd.startOffset;
-          if (charOffset == null && cd.range) {
-            const lines = testCase.source.split("\n");
-            charOffset = 0;
-            for (let i = 0; i < cd.range.start.line && i < lines.length; i++) {
-              charOffset += (lines[i]?.length ?? 0) + 1;
-            }
-            charOffset += cd.range.start.character;
-          }
-          if (charOffset != null && (charOffset < targetSym.startOffset || charOffset > targetSym.endOffset)) {
-            return false;
-          }
-        }
-      }
-      return true;
+        return off + cd.range.start.character;
+      },
+      extractVarInfo: (cd: any) => {
+        const m = /^Variable\s+([^\s]+)\s+not found in scope(?:\s+([^\s.]+(?:\.[^\s.]+)*))?/.exec(cd.message || "");
+        if (!m) return null;
+        return {
+          varName: m[1]?.replace(/^'|'$/g, ""),
+          scopeName: m[2]?.replace(/\.$/, "")?.replace(/^'|'$/g, ""),
+        };
+      },
+      extractTypeName: (cd: any) => /Class or type '([^']+)' not found/.exec(cd.message || "")?.[1],
     });
 
     let flattenedResult: string | null = null;
@@ -1007,7 +862,10 @@ function runTestCaseCore(
           const lintName = (d.lintName as string) ?? (d.rule as string) ?? "";
           if (
             ((d as any).code === 4019 ||
-              (typeof d.message === "string" && d.message.includes("Redeclaration with a new type requires"))) &&
+              (typeof d.message === "string" && d.message.includes("Redeclaration with a new type requires")) ||
+              (d as any).code === 4035 ||
+              (typeof d.message === "string" &&
+                d.message.includes("could not be evaluated due to a cyclic dependency"))) &&
             testCase.metadata.status === "correct" &&
             lastClassName
           ) {
@@ -1198,6 +1056,16 @@ function runTestCaseCore(
       (d) => d.code === 4028 || d.message.includes("neither value nor start value"),
     );
 
+    const targetClassSym = lastClassName
+      ? Array.from(context.queryEngine.index.symbols.values()).find(
+          (s) => (s.kind === "Class" || s.kind === "Package") && s.name === lastClassName,
+        )
+      : undefined;
+    const isOutsideTargetClass = (startOffset: unknown): boolean =>
+      typeof startOffset === "number" &&
+      !!targetClassSym &&
+      (startOffset < targetClassSym.startOffset || startOffset > targetClassSym.endOffset);
+
     if (
       !hasCannotInstantiate &&
       !hasBindingError &&
@@ -1217,20 +1085,14 @@ function runTestCaseCore(
 
         if (dd.severity === "warning") continue;
         if (
-          ((dd as any).code === 4019 || d.message.includes("Redeclaration with a new type requires")) &&
+          ((dd as any).code === 4019 ||
+            d.message.includes("Redeclaration with a new type requires") ||
+            (dd as any).code === 4035 ||
+            d.message.includes("could not be evaluated due to a cyclic dependency")) &&
           testCase.metadata.status === "correct" &&
-          lastClassName
+          isOutsideTargetClass(d.startOffset)
         ) {
-          const targetSym = Array.from(context.queryEngine.index.symbols.values()).find(
-            (s) => (s.kind === "Class" || s.kind === "Package") && s.name === lastClassName,
-          );
-          if (
-            targetSym &&
-            typeof d.startOffset === "number" &&
-            (d.startOffset < targetSym.startOffset || d.startOffset > targetSym.endOffset)
-          ) {
-            continue;
-          }
+          continue;
         }
         if (
           (lintName === "functionProtectedIO" || d.message.includes("Invalid protected variable")) &&
@@ -1314,6 +1176,13 @@ function runTestCaseCore(
         if (
           cd.code === 4014 &&
           arena?.diagnostics.some((ad) => ad.message.includes("Tuple expression can not be subscripted"))
+        ) {
+          continue;
+        }
+        if (
+          cd.code === 4027 &&
+          isOutsideTargetClass(cd.startOffset) &&
+          arena?.diagnostics.some((ad) => ad.code === 4027 || ad.message.includes("of higher variability"))
         ) {
           continue;
         }

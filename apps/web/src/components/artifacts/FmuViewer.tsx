@@ -592,7 +592,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
     const artifactId = viewConfig.artifactId
       ? `?fromArtifact=${encodeURIComponent(String(viewConfig.artifactId))}`
       : "";
-    navigate(`/morsel${artifactId}#m=${hash}`);
+    navigate(`/editor${artifactId}#m=${hash}`);
   };
 
   return (
@@ -623,10 +623,10 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
               size="small"
               variant="primary"
               onClick={handleOpenInPlayground}
-              title="Open FMU interface wrapper in ModelScript Morsel"
+              title="Open FMU interface wrapper in Ansatz"
             >
               <DraftingTriangleIcon size={14} />
-              <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Morsel</Text>
+              <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Ansatz</Text>
             </Button>
           )}
         </ActionButtons>

@@ -637,6 +637,20 @@ export interface EmtCustomFortranBlock {
 // Diagnostics & Linter Types
 // ==========================================
 
+export type PscadLintTier = "fast" | "deep" | "formal";
+
+export interface PscadLintOptions {
+  /**
+   * Execution tier for PSCAD linting:
+   * - `"fast"`: `<20ms` keystroke-safe schematic, parameter, and topological checks (skips zonotope fixed-point and formal BMC/reachability).
+   * - `"deep"` (default): includes zonotope control-loop analysis (`M6015`/`M6060`/`M6061`/`M6063`) and formal EMT checks (`M6080`–`M6082`).
+   * - `"formal"`: additionally runs full DAE structural singularity / Pryce high-index verification and strict UDM re-entrancy analysis.
+   */
+  tier?: PscadLintTier | undefined;
+  /** Optional pre-extracted EMT netlist to avoid redundant netlist extraction. */
+  netlist?: EmtNetlist | undefined;
+}
+
 export interface PscadDiagnostic {
   code: string;
   rule: string;
@@ -648,4 +662,6 @@ export interface PscadDiagnostic {
   column?: number | undefined;
   endLine?: number | undefined;
   endColumn?: number | undefined;
+  /** Verification rigor level when produced by a formal or abstract-interpretation check. */
+  rigor?: "rigorous" | "float-sound" | "heuristic" | undefined;
 }

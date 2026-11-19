@@ -109,7 +109,7 @@ describe("M6021-M6065 pre-flight checks & WASM XML completions/hover", () => {
   it("flags near-miss open-circuit wire endpoints (M6022) and dangling wireless tags (M6024)", () => {
     const xmlNearMiss = project(`
       <Bus name="Bus1" id="B1" x="120" y="200" length="60" vbase="16.5"/>
-      <Wire id="W_NEAR"><vertex x="0" y="200"/><vertex x="112" y="200"/></Wire>
+      <Wire id="W_NEAR"><vertex x="0" y="200"/><vertex x="102" y="200"/></Wire>
       <User classid="UserCmp" name="master:datalabel" id="DL1" x="300" y="100"><param name="Name" value="OrphanSig"/></User>
       <User classid="UserCmp" name="master:export" id="EX1" x="350" y="100"><param name="Name" value="OutSig"/></User>
     `);

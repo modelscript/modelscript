@@ -16,7 +16,6 @@ import {
   type DyrSubCategory,
 } from "../schema/index.js";
 import type { PsseDyrCase } from "../types.js";
-import { extractFieldsFromCstTokens, parsePsseCstDocument } from "./cst-tokens.js";
 import { materializeDyrCaseFromSoa, parseDyrSoa, type PsseDyrSoaTables } from "./dyr-soa.js";
 
 export {
@@ -83,45 +82,59 @@ const DYR_KNOWN_PREFIXES = [
   "BUSFRQ",
 ];
 
-function isDyrRecordStart(fields: ReturnType<typeof extractFieldsFromCstTokens>): boolean {
-  if (fields.length < 2) return false;
-  const f0 = fields[0]!;
-  const f1 = fields[1]!;
-  if (f0.tokenType === "Number" && f1.tokenType === "QuotedString") {
-    const bus = Number(f0.value);
-    return Number.isInteger(bus) && bus > 0;
-  }
-  if (f0.tokenType === "QuotedString" && f1.tokenType === "QuotedString") {
-    return true;
-  }
-  if (
-    fields.length >= 4 &&
-    f0.tokenType === "Number" &&
-    f1.tokenType === "Number" &&
-    fields[3]?.tokenType === "QuotedString"
-  ) {
-    const b0 = Number(f0.value);
-    const b1 = Number(f1.value);
-    return Number.isInteger(b0) && b0 > 0 && Number.isInteger(b1) && b1 > 0;
-  }
-  return false;
-}
-
 /**
  * Checks whether a document string looks like a PSS/E `.dyr` dynamic model file
- * rather than a `.raw` power-flow file, using WASM CST tokens.
+ * rather than a `.raw` power-flow file, using a zero-allocation first-line scanner.
  */
 export function isLikelyDyrContent(source: string): boolean {
-  const doc = parsePsseCstDocument(source);
-  for (const line of doc.lines) {
-    if (line.isCommentOrBlank) continue;
-    const fields = extractFieldsFromCstTokens(line.tokens, source, "whitespace");
-    if (!isDyrRecordStart(fields)) return false;
-    const modelField =
-      fields.length >= 4 && fields[0]?.tokenType === "Number" && fields[1]?.tokenType === "Number"
-        ? fields[3]!
-        : fields[1]!;
-    const modelUpper = modelField.value.toUpperCase();
+  let pos = 0;
+  const len = source.length;
+  while (pos < len) {
+    let nl = source.indexOf("\n", pos);
+    if (nl === -1) nl = len;
+    const rawLine = source.slice(pos, nl).trim();
+    pos = nl + 1;
+    if (!rawLine || rawLine.startsWith("//") || rawLine.startsWith("!")) continue;
+    // Extract first up to 4 whitespace/comma-separated tokens (respecting single quotes)
+    const toks: Array<{ value: string; quoted: boolean }> = [];
+    let i = 0;
+    while (i < rawLine.length && toks.length < 4) {
+      while (i < rawLine.length && (rawLine[i] === " " || rawLine[i] === "\t" || rawLine[i] === ",")) i++;
+      if (i >= rawLine.length || rawLine[i] === "/" || rawLine[i] === "!") break;
+      if (rawLine[i] === "'") {
+        const endQ = rawLine.indexOf("'", i + 1);
+        if (endQ === -1) break;
+        toks.push({ value: rawLine.slice(i + 1, endQ).trim(), quoted: true });
+        i = endQ + 1;
+      } else {
+        const start = i;
+        while (
+          i < rawLine.length &&
+          rawLine[i] !== " " &&
+          rawLine[i] !== "\t" &&
+          rawLine[i] !== "," &&
+          rawLine[i] !== "/"
+        ) {
+          i++;
+        }
+        toks.push({ value: rawLine.slice(start, i), quoted: false });
+      }
+    }
+    if (toks.length < 2) return false;
+    const t0 = toks[0]!;
+    const t1 = toks[1]!;
+    let modelCand: string | null = null;
+    if (t1.quoted) {
+      // Standard: `IBUS 'MODEL' ...` or `'DEVNAME' 'MODEL' ...`
+      if (t0.quoted || (/^\d+$/.test(t0.value) && Number(t0.value) > 0)) {
+        modelCand = t1.value;
+      }
+    } else if (toks.length >= 4 && /^\d+$/.test(t0.value) && /^\d+$/.test(t1.value) && toks[3]!.quoted) {
+      // Branch/xfmr DYR header: `IBUS JBUS 'CKT' 'MODEL' ...`
+      modelCand = toks[3]!.value;
+    }
+    if (!modelCand) return false;
+    const modelUpper = modelCand.toUpperCase();
     return Boolean(DYR_MODEL_SCHEMAS[modelUpper] || DYR_KNOWN_PREFIXES.some((p) => modelUpper.startsWith(p)));
   }
   return false;

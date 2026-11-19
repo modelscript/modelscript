@@ -13,7 +13,13 @@ import {
   type SymbolEntry,
 } from "@modelscript/runtime";
 import { kermlStdlibEntries } from "../src-gen/kerml-snapshot.js";
-import { collectCstLeaves, parseSysmlSource, readDottedChainFromLeaves, stripLeadingTilde } from "./cst-utils.js";
+import {
+  collectCstLeaves,
+  parseSysmlSource,
+  readDottedChainFromLeaves,
+  stripLeadingTilde,
+  type CstLeaf,
+} from "./cst-utils.js";
 import { KNOWN_DIMENSIONS } from "./dimensions.js";
 import { SysML2ErrorCode } from "./errors.js";
 import type { SysmlCstNode } from "./flattener/cst-lowerer.js";
@@ -343,6 +349,17 @@ export function normalizeTypeName(name: string): string {
   return parts.length > 0 ? parts[parts.length - 1]! : clean;
 }
 
+const NON_NUMERIC_SCALAR_NAMES = new Set(["Boolean", "String", "BooleanValue", "StringValue"]);
+
+function isKnownIsqQuantityType(normName: string): boolean {
+  if (NON_NUMERIC_SCALAR_NAMES.has(normName)) return false;
+  if (Object.prototype.hasOwnProperty.call(KNOWN_DIMENSIONS, normName)) return true;
+  if (normName.endsWith("Value") && Object.prototype.hasOwnProperty.call(KNOWN_DIMENSIONS, normName.slice(0, -5))) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Checks whether sourceType is assignable to targetType in SysML v2 / KerML,
  * including cross-language WorkspaceTypeRegistry canonical equivalence and Modelica/SysML2 superclasses.
@@ -360,6 +377,31 @@ export function isTypeAssignable(
 
   if (normSource === normTarget) return true;
 
+  // Top-level KerML root supertypes accept any type
+  if (normTarget === "Anything" || normTarget === "Element") {
+    return true;
+  }
+
+  // Fast-path disjointness when source is a built-in non-numeric scalar (String or Boolean)
+  if (
+    (normSource === "String" || normSource === "StringValue") &&
+    normTarget !== "String" &&
+    normTarget !== "StringValue" &&
+    normTarget !== "ScalarValue" &&
+    normTarget !== "DataValue"
+  ) {
+    return false;
+  }
+  if (
+    (normSource === "Boolean" || normSource === "BooleanValue") &&
+    normTarget !== "Boolean" &&
+    normTarget !== "BooleanValue" &&
+    normTarget !== "ScalarValue" &&
+    normTarget !== "DataValue"
+  ) {
+    return false;
+  }
+
   // Cross-language canonical primitive equivalence (widening only where strictly valid: Integer -> Real)
   const registry = getSharedTypeRegistry();
   if (
@@ -370,9 +412,12 @@ export function isTypeAssignable(
     return true;
   }
 
-  // Real accepts Integer, Natural, Positive (widening)
-  if (normTarget === "Real") {
-    if (["Integer", "Natural", "Positive"].includes(normSource)) {
+  // Real accepts Integer, Natural, Positive, and ISQ physical quantities (widening)
+  if (normTarget === "Real" || normTarget === "NumericalValue") {
+    if (
+      ["Real", "Integer", "Natural", "Positive", "Rational"].includes(normSource) ||
+      isKnownIsqQuantityType(normSource)
+    ) {
       return true;
     }
   }
@@ -382,6 +427,11 @@ export function isTypeAssignable(
     if (["Natural", "Positive"].includes(normSource)) {
       return true;
     }
+  }
+
+  // Natural accepts Positive
+  if (normTarget === "Natural" && normSource === "Positive") {
+    return true;
   }
 
   // Prevent circular inheritance loops
@@ -420,6 +470,40 @@ export function isTypeAssignable(
   }
 
   return false;
+}
+
+function isNumericComparableType(db: QueryDB, typeName: string): boolean {
+  const norm = normalizeTypeName(typeName);
+  if (norm === "Boolean" || norm === "String") return false;
+  if (
+    norm === "Real" ||
+    norm === "Integer" ||
+    norm === "Natural" ||
+    norm === "Positive" ||
+    norm === "Rational" ||
+    norm === "NumericalValue" ||
+    isKnownIsqQuantityType(norm)
+  ) {
+    return true;
+  }
+  return isTypeAssignable(db, norm, "Real");
+}
+
+function extractBinaryExprOperands(node: SysmlCstNode): SysmlCstNode[] {
+  const byField: SysmlCstNode[] = node.childrenForFieldName ? node.childrenForFieldName("operand") : [];
+  if (byField.length >= 2) return byField;
+  if (node.children && node.children.length === 3) {
+    return [node.children[0]!, node.children[2]!];
+  }
+  return (
+    node.children?.filter(
+      (c: SysmlCstNode) =>
+        c.type.includes("Expression") ||
+        c.type.includes("Literal") ||
+        c.type.includes("Value") ||
+        c.type.includes("Reference"),
+    ) ?? byField
+  );
 }
 
 /**
@@ -485,17 +569,22 @@ export function inferExpressionType(
 
   // Additive & Multiplicative Arithmetic
   if (type === "AdditiveExpression" || type === "MultiplicativeExpression" || type === "ExponentiationExpression") {
-    const operands: SysmlCstNode[] = node.childrenForFieldName
-      ? node.childrenForFieldName("operand")
-      : (node.children?.filter((c: SysmlCstNode) => c.type.includes("Expression")) ?? []);
+    const operands: SysmlCstNode[] =
+      type === "ExponentiationExpression"
+        ? ([
+            node.childForFieldName ? node.childForFieldName("base") : undefined,
+            node.childForFieldName ? node.childForFieldName("exponent") : undefined,
+          ].filter((x): x is SysmlCstNode => Boolean(x)) as SysmlCstNode[])
+        : extractBinaryExprOperands(node);
+    const effectiveOperands = operands.length > 0 ? operands : extractBinaryExprOperands(node);
 
-    if (operands.length < 2) {
-      const single = operands[0] ?? node.children?.[0];
+    if (effectiveOperands.length < 2) {
+      const single = effectiveOperands[0] ?? node.children?.[0];
       return single ? inferExpressionType(db, single, scopeId) : {};
     }
 
     let isReal = false;
-    for (const opNode of operands) {
+    for (const opNode of effectiveOperands) {
       const res = inferExpressionType(db, opNode, scopeId);
       if (res.error) return res;
       if (res.typeName) {
@@ -508,7 +597,10 @@ export function inferExpressionType(
             },
           };
         }
-        if (res.typeName === "Real" || isTypeAssignable(db, res.typeName, "Real")) {
+        if (
+          res.typeName === "Real" ||
+          (!["Integer", "Natural", "Positive"].includes(res.typeName) && isTypeAssignable(db, res.typeName, "Real"))
+        ) {
           isReal = true;
         }
       }
@@ -516,16 +608,60 @@ export function inferExpressionType(
     return { typeName: isReal ? "Real" : "Integer" };
   }
 
-  // Relational (<, <=, >, >=) & Equality (==, !=)
-  if (type === "RelationalExpression" || type === "EqualityExpression") {
+  // Relational (<, <=, >, >=)
+  if (type === "RelationalExpression") {
+    const operands = extractBinaryExprOperands(node);
+    let prevType: string | undefined;
+    for (const opNode of operands) {
+      const res = inferExpressionType(db, opNode, scopeId);
+      if (res.error) return res;
+      if (res.typeName) {
+        if (res.typeName === "Boolean") {
+          return {
+            error: {
+              message: `Type error: relational ordering operators cannot be applied to 'Boolean' operand.`,
+              startOffset: opNode.startIndex ?? opNode.startOffset,
+              endOffset: opNode.endIndex ?? opNode.endOffset,
+            },
+          };
+        }
+        if (prevType) {
+          const prevNumeric = isNumericComparableType(db, prevType);
+          const currNumeric = isNumericComparableType(db, res.typeName);
+          const bothString = prevType === "String" && res.typeName === "String";
+          const mutuallyAssignable =
+            prevType !== "String" &&
+            res.typeName !== "String" &&
+            (isTypeAssignable(db, prevType, res.typeName) || isTypeAssignable(db, res.typeName, prevType));
+          if (!(prevNumeric && currNumeric) && !bothString && !mutuallyAssignable) {
+            return {
+              error: {
+                message: `Type error: relational operator cannot compare '${prevType}' and '${res.typeName}'.`,
+                startOffset: opNode.startIndex ?? opNode.startOffset,
+                endOffset: opNode.endIndex ?? opNode.endOffset,
+              },
+            };
+          }
+        }
+        prevType = res.typeName;
+      }
+    }
+    return { typeName: "Boolean" };
+  }
+
+  // Equality (==, !=, ===, !==)
+  if (type === "EqualityExpression") {
+    const operands = extractBinaryExprOperands(node);
+    for (const opNode of operands) {
+      const res = inferExpressionType(db, opNode, scopeId);
+      if (res.error) return res;
+    }
     return { typeName: "Boolean" };
   }
 
   // Boolean Logic (and, or, xor, implies)
   if (type === "AndExpression" || type === "OrExpression" || type === "XorExpression" || type === "ImpliesExpression") {
-    const operands: SysmlCstNode[] = node.childrenForFieldName
-      ? node.childrenForFieldName("operand")
-      : (node.children?.filter((c: SysmlCstNode) => c.type.includes("Expression")) ?? []);
+    const operands = extractBinaryExprOperands(node);
 
     for (const opNode of operands) {
       const res = inferExpressionType(db, opNode, scopeId);
@@ -570,21 +706,56 @@ export function inferExpressionType(
 
   // Conditional Expression: if cond ? thenExpr else elseExpr
   if (type === "ConditionalExpression") {
-    const thenNode = node.childForFieldName ? node.childForFieldName("thenOperand") : node.children?.[3];
-    if (thenNode) {
-      return inferExpressionType(db, thenNode, scopeId);
+    const condNode = node.childForFieldName ? node.childForFieldName("operand") : node.children?.[1];
+    if (condNode) {
+      const condRes = inferExpressionType(db, condNode, scopeId);
+      if (condRes.error) return condRes;
+      if (condRes.typeName && condRes.typeName !== "Boolean") {
+        return {
+          error: {
+            message: `Type error: conditional 'if' requires Boolean condition, got '${condRes.typeName}'.`,
+            startOffset: condNode.startIndex ?? condNode.startOffset,
+            endOffset: condNode.endIndex ?? condNode.endOffset,
+          },
+        };
+      }
     }
+    const thenNode = node.childForFieldName ? node.childForFieldName("thenOperand") : node.children?.[3];
+    const elseNode = node.childForFieldName ? node.childForFieldName("elseOperand") : node.children?.[5];
+    const thenRes = thenNode ? inferExpressionType(db, thenNode, scopeId) : {};
+    if (thenRes.error) return thenRes;
+    const elseRes = elseNode ? inferExpressionType(db, elseNode, scopeId) : {};
+    if (elseRes.error) return elseRes;
+
+    const tType = thenRes.typeName;
+    const eType = elseRes.typeName;
+    if (tType && eType) {
+      if (tType === eType) return { typeName: tType };
+      const intLikes = new Set(["Integer", "Natural", "Positive"]);
+      if ((intLikes.has(tType) && eType === "Real") || (tType === "Real" && intLikes.has(eType))) {
+        return { typeName: "Real" };
+      }
+      if (isTypeAssignable(db, tType, eType)) return { typeName: eType };
+      if (isTypeAssignable(db, eType, tType)) return { typeName: tType };
+    }
+    return { typeName: tType ?? eType };
   }
 
   // Transparent wrapper unwrapping
-  const count = node.childCount ?? 0;
+  const count = node.childCount ?? node.children?.length ?? 0;
   if (count === 1) {
     return inferExpressionType(db, node.child ? node.child(0) : node.children?.[0], scopeId);
   }
 
   for (let i = 0; i < count; i++) {
     const c = node.child ? node.child(i) : node.children?.[i];
-    if (c?.type && (c.type.includes("Expression") || c.type.includes("Literal") || c.type.includes("Value"))) {
+    if (
+      c?.type &&
+      (c.type.includes("Expression") ||
+        c.type.includes("Literal") ||
+        c.type.includes("Value") ||
+        c.type.includes("Member"))
+    ) {
       const res = inferExpressionType(db, c, scopeId);
       if (res.typeName || res.error) return res;
     }
@@ -795,6 +966,15 @@ export function checkFeatureAssignmentType(db: QueryDB, self: SymbolEntry): Lint
   return null;
 }
 
+function getSymbolLeaves(db: QueryDB, entry: SymbolEntry): CstLeaf[] {
+  const cst = db.cstNode(entry.id) as SysmlCstNode | null | undefined;
+  if (cst) {
+    return collectCstLeaves(cst);
+  }
+  const text = db.cstText(entry.startOffset, entry.endOffset, entry) || "";
+  return text ? collectCstLeaves(parseSysmlSource(text)) : [];
+}
+
 function extractConnectionEndpointName(db: QueryDB, ref: SymbolEntry): string {
   const chainChildren = db.childrenOf(ref.id).filter((c) => c.name && c.name !== "<anonymous>");
   if (chainChildren.length > 0) {
@@ -803,7 +983,7 @@ function extractConnectionEndpointName(db: QueryDB, ref: SymbolEntry): string {
   if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
     return ref.name.trim();
   }
-  return (db.cstText(ref.startOffset, ref.endOffset) || "").trim();
+  return (db.cstText(ref.startOffset, ref.endOffset, ref) || "").trim();
 }
 
 function makePortLookupDb(db: QueryDB) {
@@ -922,8 +1102,7 @@ export function checkPortConjugationMismatch(db: QueryDB, self: SymbolEntry): Li
       );
       return { baseType: raw ? normalizeTypeName(raw) : null, isConjugated: true };
     }
-    const text = db.cstText(entry.startOffset, entry.endOffset, entry) || "";
-    const leaves = collectCstLeaves(parseSysmlSource(text));
+    const leaves = getSymbolLeaves(db, entry);
     const colonIdx = leaves.findIndex((l) => l.text === ":");
     if (colonIdx !== -1 && leaves[colonIdx + 1]?.text === "~") {
       const chain = readDottedChainFromLeaves(leaves, colonIdx + 2);
@@ -959,8 +1138,7 @@ export function checkPortConjugationMismatch(db: QueryDB, self: SymbolEntry): Li
       for (const member of db.childrenOf(pd.id)) {
         const dir = member.metadata?.["direction"] ?? member.metadata?.["causality"];
         if (dir === "in" || dir === "out" || dir === "input" || dir === "output") return true;
-        const memberText = (db.cstText(member.startOffset, member.endOffset, member) || "").trim();
-        const mLeaves = collectCstLeaves(parseSysmlSource(memberText));
+        const mLeaves = getSymbolLeaves(db, member);
         if (mLeaves[0]?.text === "in" || mLeaves[0]?.text === "out") return true;
       }
     }
@@ -1039,15 +1217,14 @@ export function checkBindingConnectorTypeMismatch(db: QueryDB, self: SymbolEntry
     if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
       return ref.name.trim();
     }
-    return (db.cstText(ref.startOffset, ref.endOffset) || "").trim();
+    return (db.cstText(ref.startOffset, ref.endOffset, ref) || "").trim();
   };
 
   const getFeatureType = (entry: SymbolEntry): string | null => {
     const typeChild = db.childrenOf(entry.id).find((c) => c.ruleName === "OwnedFeatureTyping");
     if (typeChild?.name) return normalizeTypeName(typeChild.name);
     if (entry.metadata?.["typeSpecifier"]) return normalizeTypeName(String(entry.metadata["typeSpecifier"]));
-    const text = db.cstText(entry.startOffset, entry.endOffset, entry) || "";
-    const leaves = collectCstLeaves(parseSysmlSource(text));
+    const leaves = getSymbolLeaves(db, entry);
     const colonIdx = leaves.findIndex((l) => l.text === ":");
     const typeChain = colonIdx !== -1 ? readDottedChainFromLeaves(leaves, colonIdx + 1) : null;
     if (typeChain) return normalizeTypeName(typeChain.text);
@@ -1060,8 +1237,7 @@ export function checkBindingConnectorTypeMismatch(db: QueryDB, self: SymbolEntry
       pairs.push([getEndpointName(refs[r]!), getEndpointName(refs[r + 1]!)]);
     }
   } else {
-    const text = db.cstText(self.startOffset, self.endOffset, self) || "";
-    const leaves = collectCstLeaves(parseSysmlSource(text));
+    const leaves = getSymbolLeaves(db, self);
     const bindIdx = leaves.findIndex((l) => l.text === "bind");
     if (bindIdx !== -1) {
       const lhs = readDottedChainFromLeaves(leaves, bindIdx + 1);
@@ -1162,8 +1338,7 @@ export function checkImportResolution(db: QueryDB, self: SymbolEntry): LintResul
     if (refChild?.name) {
       rawImport = refChild.name.trim();
     } else {
-      const text = db.cstText(self.startOffset, self.endOffset, self) || "";
-      const leaves = collectCstLeaves(parseSysmlSource(text));
+      const leaves = getSymbolLeaves(db, self);
       const impIdx = leaves.findIndex((l) => l.text === "import");
       if (impIdx !== -1) {
         let k = impIdx + 1;

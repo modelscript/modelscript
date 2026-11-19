@@ -202,7 +202,7 @@ function collectRawSyntaxErrors(content: string, cstDoc: PsseCstDocument, precom
             end: { line: ep.row, character: Math.max(sp.column + 1, ep.column) },
           },
           severity: 1,
-          code: "P1001",
+          code: PsseErrorCode.RAW_SYNTAX_ERROR.code,
           source: "modelscript-psse",
           message: node.isMissing
             ? `Syntax error: missing expected token '${node.type}'.`
@@ -298,7 +298,7 @@ function collectRawSyntaxErrors(content: string, cstDoc: PsseCstDocument, precom
               end: { line: info.row, character: Math.max(1, info.line.length) },
             },
         severity: 1,
-        code: "P1001",
+        code: PsseErrorCode.RAW_SYNTAX_ERROR.code,
         source: "modelscript-psse",
         message: `Syntax error in PSS/E record: expected numeric bus identifier, got '${f0?.value ?? info.line.trim()}'.`,
       });
@@ -316,7 +316,7 @@ function collectRawSyntaxErrors(content: string, cstDoc: PsseCstDocument, precom
             end: { line: field.line0, character: Math.max(field.startCol0 + 1, field.endCol0) },
           },
           severity: 1,
-          code: "P1001",
+          code: PsseErrorCode.RAW_SYNTAX_ERROR.code,
           source: "modelscript-psse",
           message: `Syntax error in PSS/E record: expected numeric value at column ${colIdx + 1}, got '${val}'.`,
         });
@@ -329,43 +329,55 @@ function collectRawSyntaxErrors(content: string, cstDoc: PsseCstDocument, precom
 
 /**
  * Validates a PSS/E RAW power flow deck or DYR dynamic data file and returns diagnostics.
+ * Defaults to `"fast"` tier for `<20ms` keystroke LSP responsiveness; pass `{ tier: "deep" | "formal" }` for solver/formal passes.
  */
-export function validatePsse(content: string, uri: string = "model.raw", precomputedTree?: unknown): LspDiagnostic[] {
+export function validatePsse(
+  content: string,
+  uri: string = "model.raw",
+  precomputedTree?: unknown,
+  options?: { tier?: "fast" | "deep" | "formal" },
+): LspDiagnostic[] {
   const cstDoc = parsePsseCstDocument(content, precomputedTree as { rootNode?: unknown } | null | undefined);
   try {
     if (uri.toLowerCase().endsWith(".seq")) {
-      const seq = parseSeq(content);
+      const seq = parseSeq(content, cstDoc);
       const diags: LspDiagnostic[] = [];
       for (const g of seq.generators) {
         if (g.zxpos <= 0 || g.zxneg <= 0 || g.zx0 <= 0) {
           diags.push({
-            range: findSeqRecordRange(cstDoc, content, g.i),
+            range: g.span ? spanToRange(g.span, cstDoc) : findSeqRecordRange(cstDoc, content, g.i),
             severity: 2,
-            code: "P5101",
+            code: PsseErrorCode.SEQ_GENERATOR_REACTANCE_INVALID.code,
             source: "modelscript-psse",
-            message: `Generator '${g.id.trim() || "1"}' at Bus ${g.i} has non-positive sequence reactance (ZX1=${g.zxpos}, ZX2=${g.zxneg}, ZX0=${g.zx0}).`,
+            message: PsseErrorCode.SEQ_GENERATOR_REACTANCE_INVALID.message(
+              g.id.trim() || "1",
+              g.i,
+              g.zxpos,
+              g.zxneg,
+              g.zx0,
+            ),
           });
         }
       }
       for (const br of seq.branches) {
         if (Math.abs(br.r0) < 1e-9 && Math.abs(br.x0) < 1e-9) {
           diags.push({
-            range: findSeqRecordRange(cstDoc, content, br.i),
+            range: br.span ? spanToRange(br.span, cstDoc) : findSeqRecordRange(cstDoc, content, br.i),
             severity: 2,
-            code: "P5102",
+            code: PsseErrorCode.SEQ_BRANCH_ZERO_IMPEDANCE.code,
             source: "modelscript-psse",
-            message: `Branch ${br.i}-${br.j} ('${br.ckt.trim() || "1"}') has zero zero-sequence impedance (R0=0, X0=0).`,
+            message: PsseErrorCode.SEQ_BRANCH_ZERO_IMPEDANCE.message(br.i, br.j, br.ckt.trim() || "1"),
           });
         }
       }
       for (const xf of seq.transformers) {
-        if (xf.cc < 1 || xf.cc > 9) {
+        if (xf.cc < 1 || xf.cc > 22) {
           diags.push({
-            range: findSeqRecordRange(cstDoc, content, xf.i),
+            range: xf.span ? spanToRange(xf.span, cstDoc) : findSeqRecordRange(cstDoc, content, xf.i),
             severity: 1,
-            code: "P5103",
+            code: PsseErrorCode.SEQ_TRANSFORMER_CC_INVALID.code,
             source: "modelscript-psse",
-            message: `Transformer ${xf.i}-${xf.j} specifies invalid zero-sequence connection code CC=${xf.cc} (expected 1..9).`,
+            message: PsseErrorCode.SEQ_TRANSFORMER_CC_INVALID.message(xf.i, xf.j, xf.cc),
           });
         }
       }
@@ -381,9 +393,14 @@ export function validatePsse(content: string, uri: string = "model.raw", precomp
           diags.push({
             range: spanToRange(rec.span, cstDoc),
             severity: 2,
-            code: "P5001",
+            code: PsseErrorCode.DYR_PARAM_COUNT_MISMATCH.code,
             source: "modelscript-psse",
-            message: `Dynamic model '${rec.model}' at Bus ${rec.ibus} specifies ${rec.con.length} CON parameters, expected ${schema.params.length}.`,
+            message: PsseErrorCode.DYR_PARAM_COUNT_MISMATCH.message(
+              rec.model,
+              rec.ibus,
+              rec.con.length,
+              schema.params.length,
+            ),
           });
         }
         if (rec.headerKind === "usrmdl" && !schema) {
@@ -475,22 +492,13 @@ export function validatePsse(content: string, uri: string = "model.raw", precomp
             message: PsseErrorCode.ZERO_INERTIA_DYNAMIC_BUS.message(rec.ibus),
           });
         }
-        if (rec.category === "generator" && (rec.namedParams["H"] ?? 1) < 0) {
-          diags.push({
-            range: spanToRange(rec.span, cstDoc),
-            severity: 1,
-            code: "P5002",
-            source: "modelscript-psse",
-            message: `Generator dynamic model '${rec.model}' at Bus ${rec.ibus} has negative inertia constant H = ${rec.namedParams["H"]}.`,
-          });
-        }
       }
       return diags;
     }
 
     const psseCase = parseRaw(content, cstDoc);
     const syntaxDiags = collectRawSyntaxErrors(content, cstDoc, precomputedTree);
-    const diags = lintPsse(psseCase);
+    const diags = lintPsse(psseCase, { tier: options?.tier ?? "fast" });
 
     return [
       ...syntaxDiags,
@@ -516,7 +524,7 @@ export function validatePsse(content: string, uri: string = "model.raw", precomp
       {
         range: firstTokenRange(cstDoc),
         severity: 1,
-        code: "P1001",
+        code: PsseErrorCode.RAW_SYNTAX_ERROR.code,
         source: "modelscript-psse",
         message: `Failed to parse PSS/E base case: ${err instanceof Error ? err.message : String(err)}`,
       },

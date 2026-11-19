@@ -9,7 +9,7 @@
  * Defines structured `ModelicaDiagnostic` records, the `ModelicaErrorCode` catalog
  * (categorized into `1xxx` syntax, `2xxx` name resolution, `3xxx` type checking,
  * `4xxx` structural/inheritance semantics, `5xxx` equations/algorithms/CFA,
- * `6xxx` synchronous clocks/state machines, and reserved `7xxx` formal verification),
+ * `6xxx` synchronous clocks/state machines, and `7xxx` formal verification),
  * and formatting/lookup utilities.
  */
 
@@ -145,7 +145,7 @@ export const ModelicaErrorCode = {
     code: 2005,
     rule: "identifier-mismatch",
     severity: "error",
-    message: () => "The identifier at start and end are different.",
+    message: () => "Parse error: The identifier at start and end are different",
   },
   MODIFIED_ELEMENT_NOT_FOUND: {
     code: 2006,
@@ -315,23 +315,11 @@ export const ModelicaErrorCode = {
     message: (exprName: string, dim: number | string, callText: string) =>
       `Expression '${exprName}' that determines the size of dimension '${dim}' of '${callText}' is not an evaluable parameter expression.`,
   },
-  CARDINALITY_IN_CONDITION_ONLY: {
-    code: 4094,
-    rule: "cardinality-in-condition-only",
-    severity: "error",
-    message: () => "cardinality may only be used in the condition of an if-statement or if-equation.",
-  },
   CONDITIONAL_EXPRESSION_NOT_EVALUATED: {
     code: 4095,
     rule: "conditional-expression-not-evaluated",
     severity: "error",
     message: (condText: string) => `The conditional expression ${condText} could not be evaluated.`,
-  },
-  DIMENSIONS_MUST_BE_PARAMETER: {
-    code: 4096,
-    rule: "dimensions-must-be-parameter",
-    severity: "error",
-    message: (callStr: string) => `Dimensions must be parameter or constant expression (in ${callStr}).`,
   },
   DUPLICATE_INHERITED_ELEMENT_NOT_IDENTICAL: {
     code: 4056,
@@ -555,25 +543,12 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: () => `Algorithm sections are not allowed in connector.`,
   },
-  INVALID_CONNECTOR_VARIABILITY: {
-    code: 4114,
-    rule: "invalid-connector-variability",
-    severity: "error",
-    message: (variability: string, compName: string) =>
-      `Invalid variability ${variability} on connector '${compName}'.`,
-  },
   REDECLARE_CONDITION_ATTRIBUTE: {
     code: 4068,
     rule: "redeclare-condition-attribute",
     severity: "error",
     message: (elementName: string) =>
       `Invalid redeclaration of ${elementName}, a redeclare may not have a condition attribute.`,
-  },
-  VARIABLE_IN_PACKAGE_NOT_CONSTANT: {
-    code: 4119,
-    rule: "variable-in-package-not-constant",
-    severity: "error",
-    message: (varName: string, pkgName: string) => `Variable ${varName} in package ${pkgName} is not constant.`,
   },
   RANGE_STEP_TOO_SMALL: {
     code: 4021,
@@ -1128,13 +1103,6 @@ export const ModelicaErrorCode = {
     message: (varName: string) =>
       `Following variable is discrete, but does not appear on the LHS of a when-statement: '${varName}'.`,
   },
-  PROTECTED_ELEMENT_MODIFICATION: {
-    code: 4040,
-    rule: "protected-element-modification",
-    severity: "error",
-    message: (varName: string, modText: string) =>
-      `Protected element '${varName}' may not be modified, got '${modText}'.`,
-  },
   CLASS_SPECIALIZATION_VIOLATION: {
     code: 4098,
     rule: "class-specialization-violation",
@@ -1330,7 +1298,7 @@ export const ModelicaErrorCode = {
   LOOP_TERMINATION_INCONCLUSIVE: {
     code: 4077,
     rule: "loop-termination-inconclusive",
-    severity: "error",
+    severity: "warning",
     message: (loopVar: string, condition: string) =>
       `Loop over '${loopVar}' with condition '${condition}' cannot be proven to terminate.`,
   },
@@ -1351,7 +1319,7 @@ export const ModelicaErrorCode = {
     code: 4091,
     rule: "break-outside-loop",
     severity: "error",
-    message: () => `'break' must be inside a for or while loop, or enclose a connect equation.`,
+    message: () => `'break' may only be used in a while- or for-loop.`,
   },
   FUNCTION_NO_NAMED_PARAMETER: {
     code: 5037,
@@ -1516,7 +1484,7 @@ export const ModelicaErrorCode = {
     code: 6002,
     rule: "sample-factor-not-positive",
     severity: "error",
-    message: () => `Sub-clock factor must be a positive integer.`,
+    message: () => `Sub-clock factor must be a non-negative integer (or 0 for inferred factor).`,
   },
   PREVIOUS_OUTSIDE_CLOCKED: {
     code: 6003,
@@ -1620,7 +1588,7 @@ export const ModelicaErrorCode = {
   CLASS_MISSING_DESCRIPTION: {
     code: 4130,
     rule: "class-missing-description",
-    severity: "warning",
+    severity: "info",
     message: (className: string) => `Class '${className}' is missing a description string.`,
   },
   PARAMETER_MISSING_DESCRIPTION: {
@@ -1644,14 +1612,14 @@ export const ModelicaErrorCode = {
   BROKEN_MODELICA_URI: {
     code: 4134,
     rule: "broken-modelica-uri",
-    severity: "error",
+    severity: "warning",
     message: (uri: string) =>
       `Broken 'modelica://' reference: '${uri}' does not resolve to an existing class or model.`,
   },
   RESOURCE_MISSING: {
     code: 4135,
     rule: "resource-missing",
-    severity: "error",
+    severity: "warning",
     message: (res: string) => `Referenced resource file '${res}' does not exist on disk.`,
   },
   RESOURCE_ABSOLUTE_PATH: {
@@ -1688,6 +1656,515 @@ export const ModelicaErrorCode = {
     severity: "error",
     message: (sourceName: string, targetLang: string) =>
       `Counterpart element referenced by '${sourceName}' could not be resolved in '${targetLang}'.`,
+  },
+
+  // -------------------------------------------------------------------------
+  // SOTA parity checks
+  // -------------------------------------------------------------------------
+  IMPORT_NOT_FOUND: {
+    code: 2020,
+    rule: "import-not-found",
+    severity: "warning",
+    message: (importPath: string, className: string) =>
+      `Import '${importPath}' in class '${className}' could not be resolved.`,
+  },
+  IMPORT_CONFLICT: {
+    code: 2021,
+    rule: "import-conflict",
+    severity: "warning",
+    message: (shortName: string, className: string) =>
+      `Conflicting import short name '${shortName}' in class '${className}' (Modelica specification §13.2.1.1).`,
+  },
+  ENCAPSULATED_LOOKUP_VIOLATION: {
+    code: 2022,
+    rule: "encapsulated-lookup-violation",
+    severity: "warning",
+    message: (targetName: string, encapClassName: string) =>
+      `Encapsulated lookup violation: '${targetName}' is referenced inside '${encapClassName}' without being imported or global-rooted (Modelica specification §5.3.1).`,
+  },
+  WITHIN_MISMATCH: {
+    code: 2023,
+    rule: "within-mismatch",
+    severity: "warning",
+    message: (withinPkg: string, filePath: string, reason: string) =>
+      `'within ${withinPkg};' in '${filePath}' does not match package structure (${reason}).`,
+  },
+  UNUSED_IMPORT: {
+    code: 2024,
+    rule: "unused-import",
+    severity: "info",
+    message: (shortName: string, className: string) => `Import '${shortName}' in class '${className}' is unused.`,
+  },
+  REAL_EQUALITY_COMPARISON: {
+    code: 3023,
+    rule: "real-equality-comparison",
+    severity: "warning",
+    message: (expr: string, op: string) =>
+      `Comparing Real expressions in '${expr}' with '${op}' outside a function is discouraged per Modelica specification §3.5.`,
+  },
+  INCOMPATIBLE_DISPLAY_UNIT: {
+    code: 3024,
+    rule: "incompatible-display-unit",
+    severity: "warning",
+    message: (detail: string) => `${detail}.`,
+  },
+  PARAMETER_NO_VALUE: {
+    code: 4146,
+    rule: "parameter-no-value",
+    severity: "warning",
+    message: (paramName: string) =>
+      `Parameter '${paramName}' has no value and relies on default start value during initialization.`,
+  },
+  OBSOLETE_CLASS_USAGE: {
+    code: 4147,
+    rule: "obsolete-class-usage",
+    severity: "warning",
+    message: (className: string, reason?: string) =>
+      reason ? `Class '${className}' is marked obsolete: '${reason}'.` : `Class '${className}' is marked obsolete.`,
+  },
+  CONNECTOR_UNBALANCED: {
+    code: 4148,
+    rule: "connector-unbalanced",
+    severity: "warning",
+    message: (className: string, potCount: string, flowCount: string) =>
+      `Connector '${className}' is unbalanced: ${potCount} potential variable(s) vs ${flowCount} flow variable(s) (Modelica specification §9.3.1).`,
+  },
+  CONNECT_TWO_OUTPUTS: {
+    code: 4149,
+    rule: "connect-two-outputs",
+    severity: "warning",
+    message: (lhs: string, rhs: string) =>
+      `Connected endpoints '${lhs}' and '${rhs}' are both declared with 'output' causality (Modelica specification §9.3).`,
+  },
+  DERIVATIVE_ANNOTATION_MISMATCH: {
+    code: 4150,
+    rule: "derivative-annotation-mismatch",
+    severity: "warning",
+    message: (fnName: string, derivName: string) =>
+      `Derivative function '${derivName}' referenced by annotation on '${fnName}' could not be resolved as a valid function.`,
+  },
+  UNCONNECTED_INPUT: {
+    code: 4151,
+    rule: "unconnected-input",
+    severity: "warning",
+    message: (inputPath: string, compName: string) =>
+      `Input '${inputPath}' on component '${compName}' has no connection or modification binding.`,
+  },
+  EXPERIMENT_ANNOTATION_MISSING: {
+    code: 4152,
+    rule: "experiment-annotation-missing",
+    severity: "info",
+    message: (className: string) => `Example class '${className}' is missing an 'experiment(...)' annotation.`,
+  },
+  MISSING_USES_ANNOTATION: {
+    code: 4153,
+    rule: "missing-uses-annotation",
+    severity: "warning",
+    message: (pkgName: string, externalLib: string) =>
+      `Library package '${pkgName}' references external library '${externalLib}' without declaring 'uses(${externalLib}(...))' in its annotation.`,
+  },
+  LOCALLY_UNBALANCED_CLASS: {
+    code: 4154,
+    rule: "locally-unbalanced-class",
+    severity: "warning",
+    message: (classKind: string, name: string, localEqs: string, localVars: string) =>
+      `The ${classKind} '${name}' is locally unbalanced: ${localEqs} local equation(s) and ${localVars} local unknown variable(s) (Modelica specification §4.8).`,
+  },
+  DER_OF_NON_REAL: {
+    code: 5051,
+    rule: "der-of-non-real",
+    severity: "warning",
+    message: (arg: string) => `Argument '${arg}' of 'der(...)' must have type Real.`,
+  },
+  STATESELECT_ALWAYS_NOT_STATE: {
+    code: 5052,
+    rule: "stateselect-always-not-state",
+    severity: "warning",
+    message: (varName: string) =>
+      `Variable '${varName}' declares 'stateSelect = StateSelect.always' but is not selected or differentiated as a continuous state.`,
+  },
+  LSP_FORMAL_ALGORITHM_PROOF: {
+    code: 5101,
+    rule: "formal-algorithm-proof",
+    severity: "error",
+    message: (detail: string) => `${detail}.`,
+  },
+  LSP_SYSML_CONSTRAINT_VIOLATION: {
+    code: 5102,
+    rule: "sysml-constraint-violation",
+    severity: "error",
+    message: (detail: string) => `${detail}.`,
+  },
+  LSP_DAE_INVARIANT_WARNING: {
+    code: 5103,
+    rule: "dae-invariant-warning",
+    severity: "warning",
+    message: (detail: string) => `${detail}.`,
+  },
+  LSP_STANDARD_COMPLIANCE_VIOLATION: {
+    code: 5104,
+    rule: "S5020",
+    severity: "error",
+    message: (detail: string) => `${detail}.`,
+  },
+  LSP_STANDARD_COMPLIANCE_WARNING: {
+    code: 5105,
+    rule: "S5021",
+    severity: "warning",
+    message: (detail: string) => `${detail}.`,
+  },
+
+  // -------------------------------------------------------------------------
+  // 7xxx: Formal Verification (on-demand structural, abstract interp, SMT, E-graph)
+  // -------------------------------------------------------------------------
+  FORMAL_STRUCTURALLY_SINGULAR: {
+    code: 7101,
+    rule: "formal-structurally-singular",
+    severity: "error",
+    message: (modelName: string, detail: string) => `DAE system '${modelName}' is structurally singular: ${detail}.`,
+  },
+  FORMAL_OVER_DETERMINED_SUBSYSTEM: {
+    code: 7102,
+    rule: "formal-over-determined-subsystem",
+    severity: "error",
+    message: (modelName: string, unmatchedEqs: string) =>
+      `DAE system '${modelName}' has an over-determined subsystem with unmatched equation(s) '${unmatchedEqs}'.`,
+  },
+  FORMAL_HIGH_INDEX_DAE: {
+    code: 7103,
+    rule: "formal-high-index-dae",
+    severity: "warning",
+    message: (modelName: string, indexVal: string) =>
+      `DAE system '${modelName}' has high structural differential index '${indexVal}' (> 1) requiring Pantelides index reduction.`,
+  },
+  FORMAL_STATE_SELECTION_AMBIGUOUS: {
+    code: 7104,
+    rule: "formal-state-selection-ambiguous",
+    severity: "warning",
+    message: (modelName: string, candidates: string) =>
+      `DAE system '${modelName}' has differential index > 1 with candidate state variables (${candidates}) lacking explicit 'stateSelect' priority.`,
+  },
+  FORMAL_LARGE_ALGEBRAIC_LOOP: {
+    code: 7105,
+    rule: "formal-large-algebraic-loop",
+    severity: "warning",
+    message: (blockSize: string, vars: string) =>
+      `Coupled algebraic loop of size '${blockSize}' detected involving '${vars}'.`,
+  },
+  FORMAL_NUMERICALLY_SINGULAR_LOOP: {
+    code: 7106,
+    rule: "formal-numerically-singular-loop",
+    severity: "error",
+    message: (blockDesc: string, jacInterval: string) =>
+      `Equation block '${blockDesc}' is numerically singular: interval Jacobian '${jacInterval}' contains 0.`,
+  },
+  FORMAL_ARRAY_EQUATION_UNBALANCED: {
+    code: 7107,
+    rule: "formal-array-equation-unbalanced",
+    severity: "error",
+    message: (arrayName: string, detail: string) =>
+      `Array variable '${arrayName}' has unbalanced equation coverage: ${detail}.`,
+  },
+  FORMAL_VARIABLE_WITHOUT_EQUATION: {
+    code: 7108,
+    rule: "formal-variable-without-equation",
+    severity: "warning",
+    message: (varName: string) =>
+      `Variable '${varName}' has zero incidence in non-alias equations after alias elimination.`,
+  },
+  FORMAL_ALIAS_CYCLE_NO_SOURCE: {
+    code: 7109,
+    rule: "formal-alias-cycle-no-source",
+    severity: "error",
+    message: (modelName: string, cycleVars: string) =>
+      `Alias chain cycle in '${modelName}' involving (${cycleVars}) has no grounded source.`,
+  },
+  FORMAL_UNDER_DETERMINED_SUBSYSTEM: {
+    code: 7110,
+    rule: "formal-under-determined-subsystem",
+    severity: "error",
+    message: (modelName: string, unmatchedVars: string) =>
+      `DAE system '${modelName}' has an under-determined subsystem with unconstrained variable(s) '${unmatchedVars}'.`,
+  },
+  FORMAL_INITIALIZATION_UNBALANCED: {
+    code: 7111,
+    rule: "formal-initialization-unbalanced",
+    severity: "warning",
+    message: (modelName: string, detail: string) => `Initialization system of '${modelName}' is unbalanced: ${detail}.`,
+  },
+  FORMAL_ITERATION_VARIABLE_NO_START: {
+    code: 7112,
+    rule: "formal-iteration-variable-no-start",
+    severity: "warning",
+    message: (varName: string) =>
+      `Tearing iteration variable '${varName}' has no explicit start attribute and defaults to 0.0.`,
+  },
+  FORMAL_POSSIBLE_DIVISION_BY_ZERO: {
+    code: 7201,
+    rule: "formal-possible-division-by-zero",
+    severity: "error",
+    message: (expr: string, intervalStr: string) =>
+      `Possible division by zero in '${expr}' (denominator interval '${intervalStr}' contains 0).`,
+  },
+  FORMAL_SQRT_OF_NEGATIVE: {
+    code: 7202,
+    rule: "formal-sqrt-of-negative",
+    severity: "error",
+    message: (expr: string, intervalStr: string) =>
+      `Domain error in '${expr}': argument to 'sqrt' reaches negative values ('${intervalStr}').`,
+  },
+  FORMAL_LOG_OF_NONPOSITIVE: {
+    code: 7203,
+    rule: "formal-log-of-nonpositive",
+    severity: "error",
+    message: (expr: string, intervalStr: string) =>
+      `Domain error in '${expr}': argument to logarithm reaches non-positive values ('${intervalStr}').`,
+  },
+  FORMAL_INVERSE_TRIG_DOMAIN: {
+    code: 7204,
+    rule: "formal-inverse-trig-domain",
+    severity: "error",
+    message: (expr: string, intervalStr: string) =>
+      `Domain error in '${expr}': argument to inverse trigonometric/hyperbolic function leaves its real domain ('${intervalStr}').`,
+  },
+  FORMAL_POW_DOMAIN_VIOLATION: {
+    code: 7205,
+    rule: "formal-pow-domain-violation",
+    severity: "error",
+    message: (expr: string, intervalStr: string) =>
+      `Domain error in '${expr}': power base reaches negative or zero values ('${intervalStr}').`,
+  },
+  FORMAL_ARRAY_INDEX_OUT_OF_BOUNDS: {
+    code: 7206,
+    rule: "formal-array-index-out-of-bounds",
+    severity: "error",
+    message: (expr: string, detail: string) => `Array index in '${expr}' may be out of bounds (${detail}).`,
+  },
+  FORMAL_INTEGER_OVERFLOW: {
+    code: 7207,
+    rule: "formal-integer-overflow",
+    severity: "error",
+    message: (expr: string, intervalStr: string) =>
+      `32-bit signed Integer overflow hazard in '${expr}' (reachable interval '${intervalStr}' exceeds [-2147483648, 2147483647]).`,
+  },
+  FORMAL_BINDING_OUTSIDE_MIN_MAX: {
+    code: 7208,
+    rule: "formal-binding-outside-min-max",
+    severity: "error",
+    message: (varName: string, valueStr: string, boundsStr: string) =>
+      `Binding value '${valueStr}' for '${varName}' lies outside declared bounds '${boundsStr}'.`,
+  },
+  FORMAL_START_OUTSIDE_MIN_MAX: {
+    code: 7209,
+    rule: "formal-start-outside-min-max",
+    severity: "warning",
+    message: (varName: string, startStr: string, boundsStr: string) =>
+      `Start attribute '${startStr}' for '${varName}' lies outside declared bounds '${boundsStr}'.`,
+  },
+  FORMAL_PARAMETER_BOUND_CONTRADICTION: {
+    code: 7210,
+    rule: "formal-parameter-bound-contradiction",
+    severity: "error",
+    message: (modelName: string, detail: string) =>
+      `Relational parameter constraints in '${modelName}' are infeasible: ${detail}.`,
+  },
+  FORMAL_NOMINAL_MAGNITUDE_MISMATCH: {
+    code: 7211,
+    rule: "formal-nominal-magnitude-mismatch",
+    severity: "warning",
+    message: (varName: string, intervalStr: string, nominalStr: string) =>
+      `Reachable range '${intervalStr}' for '${varName}' differs by more than 10^3 from declared nominal '${nominalStr}'.`,
+  },
+  FORMAL_LOOP_TERMINATION_UNPROVEN: {
+    code: 7212,
+    rule: "formal-loop-termination-unproven",
+    severity: "warning",
+    message: (loopCond: string) =>
+      `Loop 'while ${loopCond}' lacks a provably decreasing loop variant or explicit 'break' exit.`,
+  },
+  FORMAL_REACHABLE_BOUND_VIOLATION: {
+    code: 7213,
+    rule: "formal-variable-bound-violation-reachable",
+    severity: "warning",
+    message: (varName: string, intervalStr: string, boundsStr: string) =>
+      `Reachable interval '${intervalStr}' for '${varName}' violates declared bounds '${boundsStr}'.`,
+  },
+  FORMAL_ASSERT_ALWAYS_FAILS: {
+    code: 7301,
+    rule: "formal-assert-always-fails",
+    severity: "error",
+    message: (cond: string, assertMsg: string) =>
+      `Assert condition '${cond}' is provably always false ('${assertMsg}').`,
+  },
+  FORMAL_ASSERT_TRIVIALLY_TRUE: {
+    code: 7302,
+    rule: "formal-assert-trivially-true",
+    severity: "info",
+    message: (cond: string) =>
+      `Assert condition '${cond}' is provably always true over declared parameter and variable bounds.`,
+  },
+  FORMAL_DEAD_IF_BRANCH: {
+    code: 7303,
+    rule: "formal-dead-if-branch",
+    severity: "warning",
+    message: (cond: string) => `Conditional branch guard '${cond}' is unsatisfiable under declared bounds.`,
+  },
+  FORMAL_WHEN_CONDITION_UNSAT: {
+    code: 7304,
+    rule: "formal-when-condition-never-true",
+    severity: "warning",
+    message: (cond: string) => `Event condition '${cond}' in 'when' clause is unsatisfiable under declared bounds.`,
+  },
+  FORMAL_SHADOWED_ELSEIF_GUARD: {
+    code: 7305,
+    rule: "formal-shadowed-elseif-guard",
+    severity: "warning",
+    message: (cond: string, earlierCond: string) =>
+      `Branch guard '${cond}' is shadowed by earlier condition '${earlierCond}' and cannot execute.`,
+  },
+  FORMAL_STATE_MACHINE_GUARD_OVERLAP: {
+    code: 7306,
+    rule: "formal-state-machine-guard-overlap",
+    severity: "warning",
+    message: (fromState: string, to1: string, to2: string, prio: string) =>
+      `Transitions from state '${fromState}' to '${to1}' and '${to2}' with equal priority '${prio}' have potentially overlapping guards.`,
+  },
+  FORMAL_STATE_MACHINE_DEADLOCK: {
+    code: 7307,
+    rule: "formal-state-machine-deadlock",
+    severity: "warning",
+    message: (stateName: string) =>
+      `State '${stateName}' has outgoing transition(s) whose guards are all unsatisfiable under declared bounds.`,
+  },
+  FORMAL_BRANCH_DOMAIN_WITHOUT_NOEVENT: {
+    code: 7308,
+    rule: "formal-branch-domain-without-noevent",
+    severity: "warning",
+    message: (expr: string, cond: string) =>
+      `Conditional expression '${expr}' relies on event-generating guard '${cond}' without 'noEvent(...)' to prevent domain violations during event iteration.`,
+  },
+  FORMAL_ZENO_CHATTERING: {
+    code: 7401,
+    rule: "formal-zeno-chattering",
+    severity: "error",
+    message: (detail: string) => `Hybrid Zeno chattering hazard: ${detail}.`,
+  },
+  FORMAL_NONDETERMINISTIC_MODE_SWITCH: {
+    code: 7402,
+    rule: "formal-nondeterministic-mode-switch",
+    severity: "warning",
+    message: (detail: string) => `Nondeterministic hybrid mode switch: ${detail}.`,
+  },
+  FORMAL_REINIT_DISCONTINUITY: {
+    code: 7403,
+    rule: "formal-reinit-discontinuity",
+    severity: "warning",
+    message: (varName: string, jumpStr: string) =>
+      `Continuous state '${varName}' exhibits discrete jump '${jumpStr}' across hybrid when-event.`,
+  },
+  FORMAL_SLIDING_MODE_CHATTERING: {
+    code: 7404,
+    rule: "formal-sliding-mode-chattering",
+    severity: "warning",
+    message: (guardExpr: string, windowStr: string) =>
+      `Sliding-mode chattering hazard near switching surface '${guardExpr}' with root crossing enclosed in '${windowStr}'.`,
+  },
+  FORMAL_ASSERT_VIOLABLE_DISCRETE: {
+    code: 7501,
+    rule: "formal-assert-violable-discrete",
+    severity: "error",
+    message: (cond: string, depth: string) =>
+      `Discrete assert '${cond}' is violable within ${depth} step(s) (IC3 bounded counterexample).`,
+  },
+  FORMAL_CLOCKED_INVARIANT_PROVEN: {
+    code: 7502,
+    rule: "formal-clocked-invariant-proven",
+    severity: "info",
+    message: (invExpr: string, detail: string) => `Discrete invariant '${invExpr}' is inductively proven (${detail}).`,
+  },
+  FORMAL_UNREACHABLE_STATE_MACHINE_STATE: {
+    code: 7503,
+    rule: "formal-unreachable-state-machine-state",
+    severity: "warning",
+    message: (stateName: string, initialState: string) =>
+      `State machine state '${stateName}' is provably unreachable from initial state '${initialState}' (IC3 inductive proof).`,
+  },
+  FORMAL_FUNCTION_POSTCONDITION_VIOLATION: {
+    code: 7504,
+    rule: "formal-function-postcondition-violation",
+    severity: "error",
+    message: (fnName: string, ensuresClause: string, detail: string) =>
+      `Function '${fnName}' can violate postcondition '${ensuresClause}': ${detail}.`,
+  },
+  FORMAL_FUNCTION_RELATIONAL_VIOLATION: {
+    code: 7505,
+    rule: "formal-function-nondeterministic",
+    severity: "error",
+    message: (fnName: string, propertyName: string, detail: string) =>
+      `Function '${fnName}' violates relational property '${propertyName}': ${detail}.`,
+  },
+  FORMAL_PHYSICAL_BOUND_FLOWPIPE: {
+    code: 7601,
+    rule: "formal-physical-bound-flowpipe",
+    severity: "error",
+    message: (varName: string, valueStr: string, limitStr: string, timeStr: string) =>
+      `Validated continuous reachability tube proves physical bound breach for '${varName}': '${valueStr}' violates '${limitStr}' within t in '[0, ${timeStr}]'.`,
+  },
+  FORMAL_BARRIER_CERTIFICATE_NOT_FOUND: {
+    code: 7602,
+    rule: "formal-barrier-certificate-not-found",
+    severity: "info",
+    message: (modelName: string, detail: string) =>
+      `Heuristic quadratic SOS barrier certificate not found for '${modelName}': ${detail}.`,
+  },
+  FORMAL_REQUIREMENT_STL_VIOLATED: {
+    code: 7603,
+    rule: "formal-requirement-stl-violated",
+    severity: "error",
+    message: (formulaText: string, varName: string, rhoStr: string, timeStr: string) =>
+      `STL requirement '${formulaText}' violated for '${varName}' (robustness = ${rhoStr} at t = ${timeStr}s).`,
+  },
+  FORMAL_SYSML_REQUIREMENT_UNSATISFIABLE: {
+    code: 7604,
+    rule: "formal-sysml-requirement-unsatisfiable",
+    severity: "error",
+    message: (reqName: string, detail: string) =>
+      `SysML requirement '${reqName}' is unsatisfiable under declared model parameter/variable bounds: ${detail}.`,
+  },
+  FORMAL_POLYGLOT_PARAMETER_DRIFT: {
+    code: 7605,
+    rule: "formal-polyglot-parameter-drift",
+    severity: "warning",
+    message: (paramName: string, componentName: string, detail: string) =>
+      `Polyglot parameter '${paramName}' on '${componentName}' drifted across models: ${detail}.`,
+  },
+  FORMAL_REDUNDANT_EQUATION: {
+    code: 7701,
+    rule: "formal-redundant-equation",
+    severity: "warning",
+    message: (eqText: string, otherEqText: string) =>
+      `Equation '${eqText}' is algebraically equivalent to '${otherEqText}' after E-graph normalization.`,
+  },
+  FORMAL_EQUATION_TAUTOLOGY: {
+    code: 7702,
+    rule: "formal-equation-tautology",
+    severity: "warning",
+    message: (eqText: string) =>
+      `Equation '${eqText}' simplifies to the trivial identity '0 = 0' and adds no constraint.`,
+  },
+  FORMAL_EQUATION_CONTRADICTION: {
+    code: 7703,
+    rule: "formal-equation-contradiction",
+    severity: "error",
+    message: (eqText: string, residual: string) =>
+      `Equation '${eqText}' simplifies to an inconsistent constant residual '${residual} = 0'.`,
+  },
+  FORMAL_DIMENSION_MISMATCH_INFERRED: {
+    code: 7704,
+    rule: "formal-dimension-mismatch-inferred",
+    severity: "warning",
+    message: (contextExpr: string, lhsDim: string, rhsDim: string) =>
+      `Inferred physical dimension mismatch in '${contextExpr}': '${lhsDim}' vs '${rhsDim}'.`,
   },
 } as const satisfies Record<string, ErrorCodeDef>;
 

@@ -9,7 +9,7 @@
  */
 
 import { type ManifoldSurfaceMesh, ManifoldWorker } from "./manifold-worker.js";
-import { IDENTITY, mat4Multiply, rotate } from "./transforms.js";
+import { IDENTITY, mat4Multiply } from "./transforms.js";
 import type { Assembly, Mat4, Solid, Vec3 } from "./types.js";
 import { SolidKind } from "./types.js";
 
@@ -121,7 +121,7 @@ export function computeSolidAABB(solid: Solid, currentTransform: Mat4 = IDENTITY
     case SolidKind.Cylinder: {
       const r = Math.max(solid.radius, solid.radiusBottom ?? solid.radius, solid.radiusTop ?? solid.radius);
       const hh = solid.height / 2;
-      const local: AABB = { min: [-r, -hh, -r], max: [r, hh, r] };
+      const local: AABB = { min: [-r, -r, -hh], max: [r, r, hh] };
       return transformAABB(local, currentTransform);
     }
     case SolidKind.Polyhedron: {
@@ -152,7 +152,7 @@ export function computeSolidAABB(solid: Solid, currentTransform: Mat4 = IDENTITY
     case SolidKind.Torus: {
       const R = solid.major;
       const r = solid.minor;
-      const local: AABB = { min: [-(R + r), -r, -(R + r)], max: [R + r, r, R + r] };
+      const local: AABB = { min: [-(R + r), -(R + r), -r], max: [R + r, R + r, r] };
       return transformAABB(local, currentTransform);
     }
     case SolidKind.Extrusion: {
@@ -463,37 +463,6 @@ export function verifyAssemblyClearance(
   };
 }
 
-function hasHorizontalPlateBox(s: Solid): boolean {
-  switch (s.kind) {
-    case SolidKind.Box:
-      return s.depth < s.width && s.depth < s.height;
-    case SolidKind.Union:
-    case SolidKind.Subtract:
-    case SolidKind.Intersect:
-      return hasHorizontalPlateBox(s.left) || hasHorizontalPlateBox(s.right);
-    case SolidKind.Transform:
-    case SolidKind.Fillet:
-    case SolidKind.Chamfer:
-    case SolidKind.TaggedPatch:
-      return hasHorizontalPlateBox(s.child);
-    default:
-      return false;
-  }
-}
-
-function collectSilhouetteBranches(s: Solid, alignUntransformedCylindersZ: boolean, out: Solid[]): void {
-  if (s.kind === SolidKind.Union) {
-    collectSilhouetteBranches(s.left, alignUntransformedCylindersZ, out);
-    collectSilhouetteBranches(s.right, alignUntransformedCylindersZ, out);
-    return;
-  }
-  if (s.kind === SolidKind.Cylinder && alignUntransformedCylindersZ) {
-    out.push(rotate(s, [1, 0, 0], 90));
-    return;
-  }
-  out.push(s);
-}
-
 /**
  * Computes projected frontal area of a Solid along a projection normal (default [0, 0, 1] for climb).
  * Translates CAD geometry units (mm or m) to SI square meters (m²).
@@ -524,12 +493,7 @@ export function computeProjectedFrontalArea(solid: Solid | ManifoldSurfaceMesh, 
   if ("vertices" in solid) {
     meshes.push(solid);
   } else {
-    const alignCylZ = solid.kind === SolidKind.Union && Math.abs(nz) > 0.9 && hasHorizontalPlateBox(solid);
-    const branches: Solid[] = [];
-    collectSilhouetteBranches(solid, alignCylZ, branches);
-    for (const branch of branches) {
-      meshes.push(ManifoldWorker.evaluateSolid(branch));
-    }
+    meshes.push(ManifoldWorker.evaluateSolid(solid));
   }
 
   let minX = Infinity,

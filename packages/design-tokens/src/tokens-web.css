@@ -1,0 +1,21 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/*
+ * Host adapter stylesheet for Ansatz / Morsel web host.
+ * Maps canonical --ms-* design tokens onto apps/web Primer/canvas CSS variables.
+ */
+
+:root {
+  --ms-bg: var(--color-canvas-default, #ffffff);
+  --ms-bg-alt: var(--color-canvas-subtle, #f6f8fa);
+  --ms-bg-elv: var(--color-canvas-overlay, #ffffff);
+  --ms-bg-soft: var(--color-neutral-subtle, #f1f5f9);
+  --ms-border: var(--color-border-default, rgba(15, 23, 42, 0.12));
+  --ms-border-strong: var(--color-border-muted, rgba(15, 23, 42, 0.18));
+  --ms-text-1: var(--color-fg-default, #0f172a);
+  --ms-text-2: var(--color-fg-muted, #475569);
+  --ms-text-3: var(--color-fg-subtle, #64748b);
+  --ms-brand: var(--color-accent-emphasis, #0e7490);
+  --ms-link: var(--color-accent-fg, #0e7490);
+  --ms-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --ms-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}

@@ -175,6 +175,17 @@
       "\\*/"
     ]
   },
+  "c37118": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "cantera": {
     "keywords": [],
     "types": [],
@@ -233,6 +244,17 @@
     "keywords": [
       "CSVVirtualComponent"
     ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "cyme": {
+    "keywords": [],
     "types": [],
     "lineComments": [
       "//.*$"
@@ -535,6 +557,23 @@
       "\\*/"
     ]
   },
+  "gridlabd": {
+    "keywords": [
+      "class",
+      "clock",
+      "module",
+      "object",
+      "schedule"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "gtfs": {
     "keywords": [],
     "types": [],
@@ -586,6 +625,17 @@
     ]
   },
   "ibis": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "iec104": {
     "keywords": [],
     "types": [],
     "lineComments": [
@@ -1237,11 +1287,38 @@
       "-->"
     ]
   },
+  "plscadd": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
   "powerfactory": {
     "keywords": [],
     "types": [],
     "lineComments": [
       "!.*$"
+    ]
+  },
+  "powerworld": {
+    "keywords": [
+      "DATA",
+      "SCRIPT",
+      "data",
+      "script"
+    ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
     ]
   },
   "pscad": {
@@ -1265,6 +1342,17 @@
     ]
   },
   "psse": {
+    "keywords": [],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "pypsa": {
     "keywords": [],
     "types": [],
     "lineComments": [
@@ -1364,6 +1452,17 @@
       "TYPE",
       "XP"
     ],
+    "types": [],
+    "lineComments": [
+      "//.*$"
+    ],
+    "blockComment": [
+      "/\\*",
+      "\\*/"
+    ]
+  },
+  "rtds": {
+    "keywords": [],
     "types": [],
     "lineComments": [
       "//.*$"

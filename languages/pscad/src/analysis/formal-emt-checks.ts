@@ -16,13 +16,18 @@ import type { EmtControlBlock, EmtNetlist, PscadDiagnostic } from "../types.js";
 /**
  * `M6080`: Formal BMC/SAT verification of PSCAD breaker/tbreakn and logic-driven protection
  * state machines using `@modelscript/runtime` (`TseitinEncoder` + `CdclSatSolver`).
+ * Translates upstream CSMF logic gates (`not`/`and`/`or`/`nand`/`nor`/`xor`) and analog
+ * comparators (`compar`) into CNF with mutual-exclusion clauses so mutually exclusive
+ * interlocks are proven UNSAT (safe) while genuine races emit M6080 (`rigor: "rigorous"`).
  */
 export function verifyProtectionRelayBmc(blocks: readonly EmtControlBlock[]): PscadDiagnostic[] {
   const diagnostics: PscadDiagnostic[] = [];
   if (blocks.length === 0) return diagnostics;
 
+  const byId = new Map<string, EmtControlBlock>();
   const byActuatorTarget = new Map<string, EmtControlBlock[]>();
   for (const b of blocks) {
+    byId.set(b.id, b);
     if (b.actuator?.targetId) {
       let arr = byActuatorTarget.get(b.actuator.targetId);
       if (!arr) {
@@ -43,33 +48,169 @@ export function verifyProtectionRelayBmc(blocks: readonly EmtControlBlock[]): Ps
           severity: "error",
           componentId: b.componentId ?? b.id,
           message: `Timed breaker controller '${b.id}' has contradictory open/reclose timings (TO1=${to1} s >= TO2=${to2} s), causing immediate breaker pumping/deadlock.`,
+          rigor: "rigorous",
         });
       }
     }
   }
 
+  interface CompInfo {
+    varName: string;
+    signal: string;
+    op: "<" | "<=" | ">" | ">=";
+    threshold: number;
+  }
+
+  const encodeSignal = (id: string, visiting: Set<string>, comps: CompInfo[]): PropExpr => {
+    if (visiting.has(id)) return { op: "var", name: `sig_${id}` };
+    const blk = byId.get(id);
+    if (!blk) return { op: "var", name: `sig_${id}` };
+
+    const gate = String(blk.params["op"] ?? blk.params["OP"] ?? blk.params["gate"] ?? blk.params["type"] ?? "")
+      .trim()
+      .toLowerCase();
+    const kind = blk.kind.toLowerCase();
+
+    // Analog comparator block: track threshold predicate for mutual-exclusion clauses
+    if (kind === "compar" || kind === "compare" || kind === "comparator") {
+      const thr = Number(blk.params["threshold"] ?? blk.params["Th"] ?? blk.params["TH"] ?? blk.params["Vref"] ?? NaN);
+      const cmpOpRaw = String(blk.params["cmp"] ?? blk.params["mode"] ?? blk.params["op"] ?? ">").trim();
+      const cmpOp: "<" | "<=" | ">" | ">=" =
+        cmpOpRaw === "<" || cmpOpRaw === "lt"
+          ? "<"
+          : cmpOpRaw === "<=" || cmpOpRaw === "le"
+            ? "<="
+            : cmpOpRaw === ">=" || cmpOpRaw === "ge"
+              ? ">="
+              : ">";
+      const varName = `cmp_${blk.id}`;
+      if (Number.isFinite(thr) && blk.inputs.length >= 1) {
+        comps.push({ varName, signal: blk.inputs[0]!, op: cmpOp, threshold: thr });
+      }
+      return { op: "var", name: varName };
+    }
+
+    if (blk.inputs.length === 0) {
+      return { op: "var", name: `drv_${blk.id}` };
+    }
+
+    visiting.add(id);
+    const children = blk.inputs.map((inp) => encodeSignal(inp, visiting, comps));
+    visiting.delete(id);
+
+    if (gate === "not" || gate === "inv" || gate === "invert" || kind === "not") {
+      return { op: "not", child: children[0]! };
+    }
+    if (gate === "and" && children.length >= 2) {
+      return { op: "and", children };
+    }
+    if (gate === "or" && children.length >= 2) {
+      return { op: "or", children };
+    }
+    if (gate === "nand" && children.length >= 2) {
+      return { op: "not", child: { op: "and", children } };
+    }
+    if (gate === "nor" && children.length >= 2) {
+      return { op: "not", child: { op: "or", children } };
+    }
+    if (gate === "xor" && children.length === 2) {
+      return {
+        op: "and",
+        children: [
+          { op: "or", children: [children[0]!, children[1]!] },
+          { op: "not", child: { op: "and", children: [children[0]!, children[1]!] } },
+        ],
+      };
+    }
+    // Single-input pass-through (buffer/wire/gain>0/logic wrapper)
+    if (children.length === 1) {
+      if (kind === "gain" && Number(blk.params["K"] ?? blk.params["k"] ?? 1) < 0) {
+        return { op: "not", child: children[0]! };
+      }
+      return children[0]!;
+    }
+    return { op: "var", name: `drv_${blk.id}` };
+  };
+
+  const areCompsDisjoint = (a: CompInfo, b: CompInfo): boolean => {
+    if (a.signal !== b.signal) return false;
+    let lo = -Infinity;
+    let loClosed = false;
+    let hi = Infinity;
+    let hiClosed = false;
+    for (const p of [a, b]) {
+      if (p.op === ">" && p.threshold >= lo) {
+        if (p.threshold > lo || !loClosed) {
+          lo = p.threshold;
+          loClosed = false;
+        }
+      } else if (p.op === ">=" && p.threshold > lo) {
+        lo = p.threshold;
+        loClosed = true;
+      } else if (p.op === "<" && p.threshold <= hi) {
+        if (p.threshold < hi || !hiClosed) {
+          hi = p.threshold;
+          hiClosed = false;
+        }
+      } else if (p.op === "<=" && p.threshold < hi) {
+        hi = p.threshold;
+        hiClosed = true;
+      }
+    }
+    return lo > hi || (lo === hi && !(loClosed && hiClosed));
+  };
+
   // Check multi-driver or SR-latch contradictions driving the same physical breaker
   for (const [targetId, drivers] of byActuatorTarget) {
     if (drivers.length < 2) continue;
-    const enc = new TseitinEncoder();
-    const vars = drivers.map((d) => ({ op: "var" as const, name: `drv_${d.id}` }));
-    const tripCond: PropExpr = vars[0]!;
-    const recloseCond: PropExpr = { op: "var", name: `close_${drivers[1]!.id}` };
-    // Prove whether both trip (driver0=true) and opposing close (driver1=true) can hold simultaneously
-    const root = enc.encode({ op: "and", children: [tripCond, recloseCond] });
-    const solver = new CdclSatSolver();
-    for (const c of enc.clauses) solver.addClause(c);
-    solver.addClause([root]);
-    const res = solver.solve();
-    solver.destroy();
-    if (res.status === "SAT") {
-      diagnostics.push({
-        code: "M6080",
-        rule: "protection-breaker-state-machine-deadlock",
-        severity: "error",
-        componentId: drivers[0]?.componentId ?? drivers[0]?.id,
-        message: `Breaker '${targetId}' has multiple conflicting control drivers (${drivers.map((d) => d.id).join(", ")}) with satisfiable simultaneous trip/close race.`,
-      });
+    let raceFound = false;
+    for (let i = 0; i < drivers.length && !raceFound; i++) {
+      for (let j = i + 1; j < drivers.length && !raceFound; j++) {
+        const dA = drivers[i]!;
+        const dB = drivers[j]!;
+        const comps: CompInfo[] = [];
+        const exprA = encodeSignal(dA.id, new Set(), comps);
+        const exprB = encodeSignal(dB.id, new Set(), comps);
+
+        const constraints: PropExpr[] = [exprA, exprB];
+        // Add sound mutual-exclusion clauses for disjoint analog comparators on the same signal
+        for (let ci = 0; ci < comps.length; ci++) {
+          for (let cj = ci + 1; cj < comps.length; cj++) {
+            if (areCompsDisjoint(comps[ci]!, comps[cj]!)) {
+              constraints.push({
+                op: "not",
+                child: {
+                  op: "and",
+                  children: [
+                    { op: "var", name: comps[ci]!.varName },
+                    { op: "var", name: comps[cj]!.varName },
+                  ],
+                },
+              });
+            }
+          }
+        }
+
+        const enc = new TseitinEncoder();
+        const root = enc.encode({ op: "and", children: constraints });
+        const solver = new CdclSatSolver();
+        for (const c of enc.clauses) solver.addClause(c);
+        solver.addClause([root]);
+        const res = solver.solve();
+        solver.destroy();
+
+        if (res.status === "SAT") {
+          raceFound = true;
+          diagnostics.push({
+            code: "M6080",
+            rule: "protection-breaker-state-machine-deadlock",
+            severity: "error",
+            componentId: dA.componentId ?? dA.id,
+            message: `Breaker '${targetId}' has multiple conflicting control drivers (${dA.id}, ${dB.id}) with satisfiable simultaneous trip/close race.`,
+            rigor: "rigorous",
+          });
+        }
+      }
     }
   }
 
@@ -92,16 +233,17 @@ export function verifyControlDelayStability(blocks: readonly EmtControlBlock[], 
   if (delayBlocks.length === 0) return diagnostics;
 
   for (const db of delayBlocks) {
-    // Trace shortest cycle back to `db.id`
+    // Trace cycle back to `db.id`, preserving exact input-pin sign on `sum` blocks
     const queue: Array<{ id: string; gain: number; depth: number }> = db.inputs.map((inp) => ({
       id: inp,
       gain: 1,
       depth: 1,
     }));
     const seen = new Set<string>();
+    let head = 0;
     let loopGain: number | null = null;
-    while (queue.length > 0) {
-      const cur = queue.shift()!;
+    while (head < queue.length) {
+      const cur = queue[head++]!;
       if (cur.id === db.id) {
         loopGain = cur.gain;
         break;
@@ -110,17 +252,18 @@ export function verifyControlDelayStability(blocks: readonly EmtControlBlock[], 
       seen.add(cur.id);
       const blk = byId.get(cur.id);
       if (!blk) continue;
-      let stepGain = cur.gain;
+      let baseGain = cur.gain;
       if (blk.kind === "gain") {
-        stepGain *= Number(blk.params["K"] ?? blk.params["k"] ?? blk.params["G"] ?? 1);
-      } else if (blk.kind === "sum") {
-        const s1 = Number(blk.params["s1"] ?? 1);
-        stepGain *= s1;
-      } else if (blk.kind !== "lag" && blk.kind !== "pi" && blk.kind !== "limit") {
-        stepGain *= 1;
+        baseGain *= Number(blk.params["K"] ?? blk.params["k"] ?? blk.params["G"] ?? 1);
       }
-      for (const up of blk.inputs) {
-        queue.push({ id: up, gain: stepGain, depth: cur.depth + 1 });
+      for (let inIdx = 0; inIdx < blk.inputs.length; inIdx++) {
+        const up = blk.inputs[inIdx]!;
+        let edgeGain = baseGain;
+        if (blk.kind === "sum") {
+          const pinSign = Number(blk.params[`s${inIdx + 1}`] ?? (inIdx === 0 ? 1 : 1));
+          edgeGain *= Number.isFinite(pinSign) ? pinSign : 1;
+        }
+        queue.push({ id: up, gain: edgeGain, depth: cur.depth + 1 });
       }
     }
 
@@ -131,14 +274,18 @@ export function verifyControlDelayStability(blocks: readonly EmtControlBlock[], 
     );
     if (tauSec <= 0) continue;
 
-    // Model delayed loop perturbation dx/dt = (-x + loopGain * x(t - tau)) / tau_eff
-    if (Math.abs(loopGain) > 1.05) {
+    // Model signed delayed loop perturbation dx/dt = (-x + loopGain * x(t - tau)) / tau_eff
+    // By Hayes' theorem for tau*dx/dt + x = K*x(t - tau), asymptotic stability holds for
+    // K in (-sqrt(1 + (pi/2)^2), +1.0) ≈ (-2.26, +1.0); positive feedback > 1.05 diverges
+    // monotonically, while negative feedback destabilizes below -2.26 via Hopf oscillation.
+    const signedGain = loopGain;
+    if (signedGain > 1.05 || signedGain < -2.26) {
       const aPole = 1.0 / Math.max(1e-3, tauSec);
       const res = DdeFlowpipeSolver.solve(
         {
           numStates: 1,
           delay: tauSec,
-          f: (_t, x, xDel) => [-aPole * x[0]! + aPole * Math.abs(loopGain!) * xDel[0]!],
+          f: (_t, x, xDel) => [-aPole * x[0]! + aPole * signedGain * xDel[0]!],
           historyEnclosure: () => [new Interval(0.95, 1.05)],
           nominalHistory: () => [1.0],
         },
@@ -153,7 +300,8 @@ export function verifyControlDelayStability(blocks: readonly EmtControlBlock[], 
           rule: "time-delay-control-loop-instability",
           severity: "warning",
           componentId: db.componentId ?? db.id,
-          message: `Delayed feedback loop through '${db.id}' (τ=${(tauSec * 1e3).toFixed(2)} ms, |K_loop|=${Math.abs(loopGain).toFixed(2)} > 1) grows to ${finalMag.toFixed(2)} pu in DDE flowpipe analysis.`,
+          message: `Delayed feedback loop through '${db.id}' (τ=${(tauSec * 1e3).toFixed(2)} ms, K_loop=${signedGain.toFixed(2)}) grows to ${finalMag.toFixed(2)} pu in DDE flowpipe analysis.`,
+          rigor: "heuristic",
         });
       }
     }

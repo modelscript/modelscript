@@ -171,8 +171,9 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
                   toast.success("Copied <modelscript-morsel> intranet embed snippet!");
                 } catch {
                   const fallbackSrc = buildShareUrl()
-                    .replace("/playground", "/embed/morsel")
-                    .replace("/morsel", "/embed/morsel");
+                    .replace("/editor", "/embed/editor")
+                    .replace("/playground", "/embed/editor")
+                    .replace("/morsel", "/embed/editor");
                   const snippet = `<script src="${origin}/static/embed.js" defer></script>\n<modelscript-morsel src="${fallbackSrc}" height="480px"></modelscript-morsel>`;
                   await navigator.clipboard.writeText(snippet);
                   toast.success("Copied <modelscript-morsel> embed snippet!");

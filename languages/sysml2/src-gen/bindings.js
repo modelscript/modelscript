@@ -541,15 +541,15 @@ export const SYNTAX_NAMES =
     ? ["ERROR","/\\s/","\"<\"","\">\"","\";\"","\"{\"","\"}\"","\"public\"","\"private\"","\"protected\"","\"dependency\"","\"from\"","\",\"","\"to\"","\"comment\"","\"about\"","\"locale\"","\"doc\"","\"rep\"","\"language\"","\"#\"","\"metadata\"","\"@\"","\":\"","\"defined\"","\"by\"","\"ref\"","\":>>\"","\"redefines\"","\"def\"","\"package\"","\"standard\"","\"library\"","\"filter\"","\"alias\"","\"for\"","\"import\"","\"all\"","\"::\"","\"**\"","\"*\"","\"[\"","\"]\"","\":>\"","\"specializes\"","\"ordered\"","\"nonunique\"","\"subsets\"","\"subset\"","\"::>\"","\"references\"","\"reference\"","\"=>\"","\"crosses\"","\"redefine\"","\"..\"","\"variant\"","\"end\"","\"in\"","\"out\"","\"inout\"","\"derived\"","\"abstract\"","\"variation\"","\"constant\"","\"individual\"","\"snapshot\"","\"timeslice\"","\"=\"","\":=\"","\"default\"","\"attribute\"","\"enum\"","\"occurrence\"","\"item\"","\"part\"","\"port\"","\"~\"","\"connection\"","\"connect\"","\"(\"","\")\"","\"binding\"","\"bind\"","\"succession\"","\"first\"","\"then\"","\"if\"","\"interface\"","\"allocation\"","\"allocate\"","\"flow\"","\"of\"","\".\"","\"action\"","\"else\"","\"while\"","\"loop\"","\"until\"","\"merge\"","\"decide\"","\"join\"","\"fork\"","\"accept\"","\"via\"","\"send\"","\"assign\"","\"=:\"","\"perform\"","\"calc\"","\"return\"","\"constraint\"","\"assert\"","\"not\"","\"requirement\"","\"subject\"","\"assume\"","\"require\"","\"actor\"","\"stakeholder\"","\"satisfy\"","\"concern\"","\"case\"","\"analysis\"","\"verification\"","\"verify\"","\"objective\"","\"use\"","\"include\"","\"state\"","\"parallel\"","\"entry\"","\"do\"","\"exit\"","\"exhibit\"","\"transition\"","\"view\"","\"viewpoint\"","\"rendering\"","\"?\"","\"??\"","\"implies\"","\"|\"","\"or\"","\"xor\"","\"&\"","\"and\"","\"==\"","\"!=\"","\"===\"","\"!==\"","\"hastype\"","\"istype\"","\"@@\"","\"as\"","\"meta\"","\"<=\"","\">=\"","\"+\"","\"-\"","\"/\"","\"%\"","\"^\"","\"->\"","\".?\"","\"new\"","\"null\"","\"true\"","\"false\"","\"$\"","/[0-9]+/","/[0-9]+[eE][+-]?[0-9]+/","/[a-zA-Z_][a-zA-Z_0-9\\u00B2\\u00B3\\u00B9\\u2070-\\u2079]*/","/'(?:[^'\\\\]|\\\\.)*'/","/\"(?:[^\"\\\\]|\\\\.)*\"/","/\\/\\*[^*]*\\*+([^/*][^*]*\\*+)*\\//","/\\/\\/[^\\r\\n]*/","RootNamespace","_PackageBodyElement","_Identification","_RelationshipBody","VisibilityIndicator","Dependency","Annotation","OwnedAnnotation","AnnotatingMember","_AnnotatingElement","Comment","Documentation","TextualRepresentation","PrefixMetadataAnnotation","PrefixMetadataMember","PrefixMetadataUsage","MetadataUsage","MetadataTyping","_MetadataBody","MetadataBodyUsageMember","MetadataBodyUsage","MetadataDefinition","Package","LibraryPackage","_PackageBody","PackageMember","ElementFilterMember","AliasMember","_ImportPrefix","Import","MembershipImport","_ImportedMembership","NamespaceImport","_ImportedNamespace","FilterPackage","FilterPackageImport","FilterPackageMembershipImport","FilterPackageNamespaceImport","FilterPackageMember","_DefinitionElement","_UsageElement","_NonOccurrenceUsageElement","_OccurrenceUsageElement","_StructureUsageElement","_BehaviorUsageElement","_SubclassificationPart","OwnedSubclassification","_FeatureDeclaration","_FeatureSpecializationPart","_MultiplicityPart","_FeatureSpecialization","_Typings","_Subsettings","_References","_Crosses","_Redefinitions","FeatureTyping","OwnedFeatureTyping","OwnedSubsetting","OwnedReferenceSubsetting","OwnedCrossSubsetting","OwnedRedefinition","OwnedMultiplicity","MultiplicityRange","MultiplicityExpressionMember","_Definition","_DefinitionBody","_DefinitionBodyItem","DefinitionMember","VariantUsageMember","NonOccurrenceUsageMember","OccurrenceUsageMember","_usage_modifier","_UsageDeclaration","_UsageCompletion","_Usage","_ValuePart","FeatureValue","DefaultReferenceUsage","ReferenceUsage","AttributeDefinition","AttributeUsage","EnumerationDefinition","_EnumerationBody","EnumerationUsageMember","EnumeratedValue","EnumerationUsage","OccurrenceDefinition","OccurrenceUsage","ItemDefinition","ItemUsage","PartDefinition","PartUsage","PortDefinition","PortUsage","ConjugatedPortTyping","ConnectorEndMember","ConnectorEnd","ConnectionDefinition","ConnectionUsage","_ConnectorPart","_BinaryConnectorPart","_NaryConnectorPart","BindingConnectorAsUsage","SuccessionAsUsage","InterfaceDefinition","InterfaceUsage","AllocationDefinition","AllocationUsage","FlowDefinition","FlowUsage","SuccessionFlowUsage","PayloadFeatureMember","PayloadFeature","FlowEndMember","FlowEnd","FlowFeatureMember","FlowFeature","ActionDefinition","_ActionBody","_ActionBodyItem","EmptySuccessionMember","MultiplicitySourceEnd","ActionNodeMember","_ActionNode","IfNode","ActionBodyParameter","WhileLoopNode","ForLoopNode","ForVariableDeclaration","ControlNode","MergeNode","DecisionNode","JoinNode","ForkNode","ActionUsage","AcceptActionNode","SendActionNode","AssignActionNode","PerformActionUsage","CalculationDefinition","_CalculationBody","_ParameterList","ParameterMember","ReturnParameterMember","ResultExpressionMember","CalculationUsage","ConstraintDefinition","ConstraintUsage","AssertConstraintUsage","RequirementDefinition","_RequirementBody","_RequirementBodyItem","SubjectMember","SubjectUsage","RequirementConstraintMember","RequirementConstraintUsage","ActorMember","ActorUsage","StakeholderMember","StakeholderUsage","RequirementUsage","SatisfyRequirementUsage","ConcernDefinition","ConcernUsage","CaseDefinition","_CaseBody","CaseUsage","AnalysisCaseDefinition","AnalysisCaseUsage","VerificationCaseDefinition","VerificationCaseUsage","_VerificationBody","_VerificationBodyItem","VerifyRequirementUsageMember","VerifyRequirementUsage","ObjectiveMember","ObjectiveRequirementUsage","UseCaseDefinition","UseCaseUsage","IncludeUseCaseUsage","StateDefinition","_StateBodyItem","EntryActionMember","DoActionMember","ExitActionMember","StateActionUsage","StateUsage","ExhibitStateUsage","TransitionUsageMember","TransitionUsage","ViewDefinition","ViewUsage","ViewpointDefinition","ViewpointUsage","RenderingDefinition","RenderingUsage","OwnedExpressionMember","OwnedExpression","_Expression","OwnedExpressionReference","ConditionalExpression","NullCoalescingExpression","ImpliesExpressionReference","ImpliesExpressionMember","ImpliesExpression","OrExpressionReference","OrExpressionMember","OrExpression","XorExpressionReference","XorExpressionMember","XorExpression","AndExpression","EqualityExpressionReference","EqualityExpressionMember","EqualityExpression","EqualityOperator","ClassificationExpression","ClassificationTestOperator","MetadataReference","TypeReferenceMember","TypeResultMember","TypeReference","ReferenceTyping","RelationalExpression","RelationalOperator","RangeExpression","AdditiveExpression","AdditiveOperator","MultiplicativeExpression","MultiplicativeOperator","ExponentiationExpression","ExponentiationOperator","UnaryExpression","UnaryOperator","ExtentExpression","_postfix_operation","MeasurementExpression","_UnitExpression","UnitBinaryExpression","UnitExponentExpression","_UnitPrimaryExpression","PrimaryExpression","FunctionReferenceExpression","FunctionReferenceMember","FunctionReference","FeatureChainMember","OwnedFeatureChain","_BaseExpression","BodyExpression","ExpressionBodyMember","ExpressionBody","SequenceExpression","FeatureReferenceExpression","FeatureReferenceMember","ElementReferenceMember","InvocationExpression","ConstructorExpression","ConstructorResultMember","ConstructorResult","InstantiatedTypeMember","_FeatureChain","OwnedFeatureChaining","_ArgumentList","_PositionalArgumentList","ArgumentMember","Argument","_NamedArgumentList","NamedArgumentMember","NamedArgument","ParameterRedefinition","ArgumentValue","NullExpression","_LiteralExpression","LiteralBoolean","BooleanValue","LiteralString","LiteralInteger","LiteralReal","RealValue","Name","GlobalQualification","Qualification","QualifiedName","_START","__PackageBodyElement*","_(PackageMember | ElementFilterMember | A_27a8ae4e","_Name?","_((\"<\" Name \">\" Name?) | Name)","_(\";\" | (\"{\" OwnedAnnotation* \"}\"))","_OwnedAnnotation*","_(\"public\" | \"private\" | \"protected\")","_PrefixMetadataAnnotation*","__Identification?","_(_Identification? \"from\")?","_(\",\" QualifiedName)*","_(\",\" QualifiedName)*_1","_(Comment | Documentation | TextualRepres_0a13afbf","_(\",\" Annotation)*","_(\"about\" Annotation (\",\" Annotation)*)?","_(\"locale\" STRING_VALUE)?","_(REGULAR_COMMENT | STRING_VALUE)","_(REGULAR_COMMENT | STRING_VALUE)?","_((\"comment\" _Identification? (\"about\" An_29799de2","_\";\"?","_((\"doc\" _Identification? (\"locale\" STRIN_3bec61bc","_(\"<\" Name \">\")?","_(\"rep\" _Identification?)?","_PrefixMetadataMember*","_(\"metadata\" | \"@\")","_(\":\" | (\"defined\" \"by\"))","_((\":\" | (\"defined\" \"by\")))?","_(_Identification? ((\":\" | (\"defined\" \"by\")))?)?","_(\";\" | (\"{\" (DefinitionMember | Metadata_7f7dd01b","_(DefinitionMember | MetadataBodyUsageMem_97d954d0","_(DefinitionMember | MetadataBodyUsageMem_0520c58e","_\"ref\"?","_(\":>>\" | \"redefines\")","_(\":>>\" | \"redefines\")?","__FeatureSpecializationPart?","__ValuePart?","__usage_modifier*","_\"standard\"?","_(\";\" | (\"{\" _PackageBodyElement* \"}\"))","_VisibilityIndicator?","_(_DefinitionElement | _UsageElement)","_(\"<\" Name \">\")?_1","_Name?_1","_\"all\"?","_(MembershipImport | NamespaceImport)","_(\"::\" \"**\")?","_(_ImportedNamespace | FilterPackage)","_FilterPackageMember+","_(FilterPackageMembershipImport | FilterP_7a609cbd","_(Package | LibraryPackage | Dependency |_0bf8855f","_(_NonOccurrenceUsageElement | _Occurrenc_3e4805f1","_(DefaultReferenceUsage | ReferenceUsage _2ddc0e91","_(_StructureUsageElement | _BehaviorUsageElement)","_(OccurrenceUsage | ItemUsage | PartUsage_df5681fe","_(ActionUsage | CalculationUsage | StateU_dbc84088","_(\":>\" | \"specializes\")","_(\",\" OwnedSubclassification)*","_((_Identification _FeatureSpecialization_8036ba59","_(_FeatureSpecialization | _MultiplicityPart)","_(_FeatureSpecialization | _MultiplicityPart)+","_(OwnedMultiplicity | (OwnedMultiplicity?_ab087de1","_OwnedMultiplicity?","_\"nonunique\"?","_((\"ordered\" \"nonunique\"?) | (\"nonunique\"_5c5f5bb0","_\"ordered\"?","_(_Typings | _Subsettings | _References |_3376d6eb","_(\",\" FeatureTyping)*","_(\":>\" | \"subsets\" | \"subset\")","_(\",\" OwnedSubsetting)*","_(\"::>\" | \"references\" | \"reference\")","_(\"=>\" | \"crosses\")","_(\":>>\" | \"redefines\" | \"redefine\")","_(\",\" OwnedRedefinition)*","_(OwnedFeatureTyping | ConjugatedPortTyping)","_(QualifiedName | OwnedFeatureChain)","_(QualifiedName | OwnedFeatureChain)_1","_(QualifiedName | OwnedFeatureChain)_2","_(QualifiedName | OwnedFeatureChain)_3","_(QualifiedName | OwnedFeatureChain)_4","_(\"..\" MultiplicityExpressionMember)?","_(_LiteralExpression | FeatureReferenceEx_26767539","__SubclassificationPart?","_(\";\" | (\"{\" _DefinitionBodyItem* \"}\"))","__DefinitionBodyItem*","_(DefinitionMember | VariantUsageMember |_c230fc7c","_EmptySuccessionMember?","_(\"end\" | \"in\" | \"out\" | \"inout\" | \"deriv_ad4ac787","__UsageDeclaration?","_(\"=\" | \":=\" | (\"default\" (\"=\" | \":=\")?))","_(\"=\" | \":=\")","_(\"=\" | \":=\")?","_(\";\" | (\"{\" (AnnotatingMember | Enumerat_4425a5a8","_(AnnotatingMember | EnumerationUsageMember)","_(AnnotatingMember | EnumerationUsageMember)*","_\"enum\"?","_OwnedMultiplicity?_1","_(\"::>\" | \"references\")","_(Name (\"::>\" | \"references\"))?","_(\"connect\" _ConnectorPart)?","_((\"connection\" _UsageDeclaration? _Value_c51089d9","_(_BinaryConnectorPart | _NaryConnectorPart)","_(\",\" ConnectorEndMember)*","_(\"binding\" _UsageDeclaration?)?","_(\"succession\" _UsageDeclaration?)?","_\"first\"?","_(\"if\" OwnedExpression)?","_(\"allocate\" _ConnectorPart)?","_((\"allocation\" _UsageDeclaration? (\"allo_cab94563","_((FlowEndMember \"to\" FlowEndMember) | (__8b5d55f4","_(\"of\" PayloadFeatureMember)?","_(\"from\" FlowEndMember \"to\" FlowEndMember)?","_((_Identification? _FeatureSpecializatio_7bdfda61","_(OwnedReferenceSubsetting \".\")?","__ParameterList?","_(\";\" | (\"{\" _ActionBodyItem* \"}\"))","__ActionBodyItem*","_(Import | AliasMember | DefinitionMember_5111fd6e","_(IfNode | WhileLoopNode | ForLoopNode | _92d978d7","_(\"action\" _UsageDeclaration?)?","_(ActionBodyParameter | IfNode)","_(\"else\" (ActionBodyParameter | IfNode))?","_((\"while\" OwnedExpression) | \"loop\")","_(\"until\" OwnedExpression \";\")?","_(MergeNode | DecisionNode | JoinNode | ForkNode)","_(\"via\" OwnedReferenceSubsetting)?","_(\"to\" OwnedExpression)?","_((OwnedExpression \":=\" OwnedExpression) _14b03b06","_((OwnedReferenceSubsetting _FeatureSpeci_940e4e3b","_(\";\" | (\"{\" (_ActionBodyItem | ReturnPar_9e0b235a","_(_ActionBodyItem | ReturnParameterMember)","_(_ActionBodyItem | ReturnParameterMember)*","_ResultExpressionMember?","_(\",\" ParameterMember)*","_(ParameterMember (\",\" ParameterMember)*)?","_\"not\"?","_((OwnedReferenceSubsetting _FeatureSpeci_2cacb0f2","_(\";\" | (\"{\" _RequirementBodyItem* \"}\"))","__RequirementBodyItem*","_(_DefinitionBodyItem | SubjectMember | R_648ae186","_(\"assume\" | \"require\")","__FeatureSpecialization*","_((OwnedReferenceSubsetting _FeatureSpeci_66743355","_\"constraint\"?","_\"assert\"?","_((OwnedReferenceSubsetting _FeatureSpeci_c3f6ebaa","_(\"by\" OwnedReferenceSubsetting)?","_(\";\" | (\"{\" (_ActionBodyItem | SubjectMe_f085546f","_(_ActionBodyItem | SubjectMember | Actor_54ecea9a","_(_ActionBodyItem | SubjectMember | Actor_60f57310","_(\";\" | (\"{\" _VerificationBodyItem* Resul_d56fdc5b","__VerificationBodyItem*","_(_ActionBodyItem | VerifyRequirementUsag_d99fdf43","_((OwnedReferenceSubsetting _FeatureSpeci_2a5debe0","_(\";\" | (\"parallel\"? \"{\" _StateBodyItem* \"}\"))","_\"parallel\"?","__StateBodyItem*","_(Import | AliasMember | DefinitionMember_d01c3858","_(\";\" | (_UsageDeclaration? _ValuePart? __e06b7bd6","_((OwnedReferenceSubsetting _FeatureSpeci_a886f140","_(_UsageDeclaration? \"first\")?","_(\"accept\" PayloadFeatureMember)?","_(\"do\" StateActionUsage)?","_(\";\" | (\"{\" (_DefinitionBodyItem | Eleme_72e83fa8","_(_DefinitionBodyItem | ElementFilterMember)","_(_DefinitionBodyItem | ElementFilterMember)*","_(ConditionalExpression | NullCoalescingE_8bca3c8f","_(\"if\" _Expression \"?\" OwnedExpressionRef_a140faef","_(\"??\" ImpliesExpressionReference)+","_(_Expression (\"??\" ImpliesExpressionReference)+)","_(\"implies\" ImpliesExpressionReference)+","_(_Expression (\"implies\" ImpliesExpressio_7e1e2348","_((\"|\" _Expression) | (\"or\" XorExpression_53cf5e8a","_((\"|\" _Expression) | (\"or\" XorExpression_9071f773","_(_Expression ((\"|\" _Expression) | (\"or\" _ccce6941","_(\"xor\" _Expression)+","_(_Expression (\"xor\" _Expression)+)","_((\"&\" _Expression) | (\"and\" EqualityExpr_5d13fc07","_((\"&\" _Expression) | (\"and\" EqualityExpr_b275f944","_(_Expression ((\"&\" _Expression) | (\"and\"_59f97c98","_(EqualityOperator _Expression)+","_(_Expression (EqualityOperator _Expression)+)","_(\"==\" | \"!=\" | \"===\" | \"!==\")","_((ClassificationTestOperator TypeReferen_9d16b665","_((_Expression ((ClassificationTestOperat_4bc10124","_((_Expression ((ClassificationTestOperat_208d90cb","_(\"hastype\" | \"istype\" | \"@\")","MetaClassificationTestOperator","CastOperator","MetaCastOperator","_(RelationalOperator _Expression)+","_(_Expression (RelationalOperator _Expression)+)","_(\"<\" | \">\" | \"<=\" | \">=\")","_(_Expression \"..\" _Expression)","_(AdditiveOperator _Expression)+","_(_Expression (AdditiveOperator _Expression)+)","_(\"+\" | \"-\")","_(MultiplicativeOperator _Expression)+","_(_Expression (MultiplicativeOperator _Ex_7bca4f1c","_(\"*\" | \"/\" | \"%\")","_(_Expression ExponentiationOperator _Expression)","_(\"**\" | \"^\")","_(UnaryOperator _Expression)","_(\"+\" | \"-\" | \"~\" | \"not\")","_(\"all\" TypeResultMember)","_((\"#\" \"(\" SequenceExpression \")\") | (\"[\"_a1e4855a","_(BodyExpression | FunctionReferenceExpre_c9930080","_(_LiteralExpression | FeatureReferenceEx_26767539_1","_((_LiteralExpression | FeatureReferenceE_461b7cb3","_((_LiteralExpression | FeatureReferenceE_eab51084","_(UnitBinaryExpression | UnitExponentExpr_28b453a1","_(\"*\" | \"/\")","_(_UnitExpression (\"*\" | \"/\") _UnitExpression)","_(\"^\" | \"**\")","_(LiteralInteger | (\"-\" LiteralInteger))","_(_UnitPrimaryExpression (\"^\" | \"**\") (Li_c832a65b","_(FeatureReferenceExpression | (\"(\" _Unit_49c7d010","__postfix_operation*","_((_BaseExpression (\".\" FeatureChainMembe_a1182a25","__postfix_operation+","_((_BaseExpression (\".\" FeatureChainMembe_acaee0ca","_(NullExpression | _LiteralExpression | F_f15de4f3","_(\",\" | (\",\" SequenceExpression))","_(\",\" | (\",\" SequenceExpression))?","_(QualifiedName | OwnedFeatureChain)_5","_(\".\" OwnedFeatureChaining)+","_(_PositionalArgumentList | _NamedArgumentList)","_(_PositionalArgumentList | _NamedArgumentList)?","_(\",\" ArgumentMember)*","_(\",\" NamedArgumentMember)*","_(\"null\" | (\"(\" \")\"))","_(LiteralBoolean | LiteralString | Litera_de1646ae","_(\"true\" | \"false\")","_DECIMAL_VALUE?","_(DECIMAL_VALUE | EXP_VALUE)","_((DECIMAL_VALUE? \".\" (DECIMAL_VALUE | EX_9be90db7","LiteralInfinity","_(ID | UNRESTRICTED_NAME)","_GlobalQualification?","_((GlobalQualification? Name) | (Qualifie_ddc789f7","_(QualifiedName \"::\" Name)","DECIMAL_VALUE","EXP_VALUE","ID","UNRESTRICTED_NAME","STRING_VALUE","REGULAR_COMMENT","ML_NOTE","SL_NOTE","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
     : [];
 export const LINT_MESSAGES =
-  typeof {} !== "undefined"
-    ? {}
+  typeof {"1003": target=>`Definition '${target.text}' should start with an uppercase letter (PascalCase).`,"1004": target=>`Usage '${target.text}' should start with a lowercase letter (camelCase).`,"1005": target=>`Package '${target.text}' should start with an uppercase letter (PascalCase).`,"4014": ()=>`A 'variant' member is only permitted inside an 'enum' or a definition/usage declared as 'variation'.`,"4016": target=>{const name=target.field("declaredName");const label=name&&name.length>0?name:"parallel state";return`Parallel state '${label}' cannot directly own transitions or successions between concurrent regions.`},"4020": (_target,kindArg,ownerArg)=>{const k=kindArg?kindArg.asNumber():0;const memberKind=k===1?"entry":k===2?"do":k===3?"exit":k===4?"subject":k===5?"objective":"return";const ownerName=ownerArg?ownerArg.field("declaredName"):"";const label=ownerName&&ownerName.length>0?ownerName:"element";return`Duplicate '${memberKind}' member in '${label}': at most one '${memberKind}' member is allowed.`}} !== "undefined"
+    ? {"1003": target=>`Definition '${target.text}' should start with an uppercase letter (PascalCase).`,"1004": target=>`Usage '${target.text}' should start with a lowercase letter (camelCase).`,"1005": target=>`Package '${target.text}' should start with an uppercase letter (PascalCase).`,"4014": ()=>`A 'variant' member is only permitted inside an 'enum' or a definition/usage declared as 'variation'.`,"4016": target=>{const name=target.field("declaredName");const label=name&&name.length>0?name:"parallel state";return`Parallel state '${label}' cannot directly own transitions or successions between concurrent regions.`},"4020": (_target,kindArg,ownerArg)=>{const k=kindArg?kindArg.asNumber():0;const memberKind=k===1?"entry":k===2?"do":k===3?"exit":k===4?"subject":k===5?"objective":"return";const ownerName=ownerArg?ownerArg.field("declaredName"):"";const label=ownerName&&ownerName.length>0?ownerName:"element";return`Duplicate '${memberKind}' member in '${label}': at most one '${memberKind}' member is allowed.`}}
     : {};
 export const LINT_SEVERITIES =
-  typeof {} !== "undefined"
-    ? {}
+  typeof {"1003": 2,"1004": 2,"1005": 2,"4014": 1,"4016": 1,"4020": 1} !== "undefined"
+    ? {"1003": 2,"1004": 2,"1005": 2,"4014": 1,"4016": 1,"4020": 1}
     : {};
 export const LINT_CODES =
-  typeof {} !== "undefined" ? {} : {};
+  typeof {"1003": 1003,"1004": 1004,"1005": 1005,"4014": 4014,"4016": 4016,"4020": 4020} !== "undefined" ? {"1003": 1003,"1004": 1004,"1005": 1005,"4014": 4014,"4016": 4016,"4020": 4020} : {};
 export const EXTRAS_PATTERN = "\\s";
 export const FIELD_NAMES =
   typeof {"declaredShortName":1,"declaredName":2,"client":3,"supplier":4,"annotatedElement":5,"ownedRelatedElement":6,"locale":7,"body":8,"language":9,"ownedRelationship":10,"type":11,"isStandard":12,"memberShortName":13,"memberName":14,"memberElement":15,"isImportAll":16,"importedMembership":17,"isRecursive":18,"importedNamespace":19,"superclassifier":20,"isOrdered":21,"isNonunique":22,"subsettedFeature":23,"referencedFeature":24,"crossedFeature":25,"redefinedFeature":26,"lowerBound":27,"upperBound":28,"isEnd":29,"direction":30,"isDerived":31,"isAbstract":32,"isVariation":33,"isConstant":34,"isRef":35,"isRedefine":36,"isSubsetting":37,"isInitial":38,"isDefault":39,"conjugatedPortDefinition":40,"guard":41,"condition":42,"thenBody":43,"elseBody":44,"untilCondition":45,"variable":46,"range":47,"sentItem":48,"receiver":49,"targetFeature":50,"assignedValue":51,"isNegated":52,"constraintKind":53,"satisfyingFeature":54,"isParallel":55,"source":56,"trigger":57,"effect":58,"operator":59,"operand":60,"thenOperand":61,"elseOperand":62,"typeReference":63,"typeResult":64,"base":65,"exponent":66,"indexOperand":67,"filterOperand":68,"invocationType":69,"functionRef":70,"collect":71,"select":72,"value":73,"unit":74,"left":75,"right":76,"featureChain":77,"result":78,"chaining":79,"chainingFeature":80,"argument":81,"namedArgument":82,"parameterRedefinition":83,"name":84} !== "undefined" ? {"declaredShortName":1,"declaredName":2,"client":3,"supplier":4,"annotatedElement":5,"ownedRelatedElement":6,"locale":7,"body":8,"language":9,"ownedRelationship":10,"type":11,"isStandard":12,"memberShortName":13,"memberName":14,"memberElement":15,"isImportAll":16,"importedMembership":17,"isRecursive":18,"importedNamespace":19,"superclassifier":20,"isOrdered":21,"isNonunique":22,"subsettedFeature":23,"referencedFeature":24,"crossedFeature":25,"redefinedFeature":26,"lowerBound":27,"upperBound":28,"isEnd":29,"direction":30,"isDerived":31,"isAbstract":32,"isVariation":33,"isConstant":34,"isRef":35,"isRedefine":36,"isSubsetting":37,"isInitial":38,"isDefault":39,"conjugatedPortDefinition":40,"guard":41,"condition":42,"thenBody":43,"elseBody":44,"untilCondition":45,"variable":46,"range":47,"sentItem":48,"receiver":49,"targetFeature":50,"assignedValue":51,"isNegated":52,"constraintKind":53,"satisfyingFeature":54,"isParallel":55,"source":56,"trigger":57,"effect":58,"operator":59,"operand":60,"thenOperand":61,"elseOperand":62,"typeReference":63,"typeResult":64,"base":65,"exponent":66,"indexOperand":67,"filterOperand":68,"invocationType":69,"functionRef":70,"collect":71,"select":72,"value":73,"unit":74,"left":75,"right":76,"featureChain":77,"result":78,"chaining":79,"chainingFeature":80,"argument":81,"namedArgument":82,"parameterRedefinition":83,"name":84} : {};
@@ -628,6 +628,8 @@ export class LspFacade {
   _nextFileId = 1;
   _idleTimer = null;
   _maxMemoryQuotaBytes = 32 * 1024 * 1024; // 32MB threshold
+  _lastInputBufferUri = undefined;
+  _lastInputBufferLength = 0;
   /**
    * Retrieves or assigns a stable numeric fileId for a given URI.
    */
@@ -729,8 +731,11 @@ export class LspFacade {
    */
   setDocumentRoot(uri, rootPtr, version = 0) {
     const oldRoot = this.documentRoots.get(uri);
-    if (oldRoot && oldRoot !== rootPtr && this.exports.dropRoot) {
-      this.exports.dropRoot(oldRoot);
+    if (oldRoot && oldRoot !== rootPtr) {
+      this.rootSourceCode.delete(oldRoot);
+      if (this.exports.dropRoot) {
+        this.exports.dropRoot(oldRoot);
+      }
     }
     this.documentRoots.set(uri, rootPtr);
     this.documentVersions.set(uri, version);
@@ -750,14 +755,22 @@ export class LspFacade {
       this._fileIdToUri.delete(fileId);
     }
     const root = this.documentRoots.get(uri);
-    if (root && this.exports.dropRoot) {
-      this.exports.dropRoot(root);
+    if (root) {
+      this.rootSourceCode.delete(root);
+      if (this.exports.dropRoot) {
+        this.exports.dropRoot(root);
+      }
     }
     this.documentRoots.delete(uri);
     this.documentVersions.delete(uri);
     if (this.lastAstRoot === root) {
       this.lastAstRoot = 0;
     }
+    if (this._lastInputBufferUri === uri) {
+      this._lastInputBufferUri = undefined;
+      this._lastInputBufferLength = 0;
+    }
+    this._childTailCache.clear();
     // Trigger 3: Document lifecycle event (cleanup on close)
     this.scheduleCompaction(true);
     this.uriSourceCode.delete(uri);
@@ -798,6 +811,8 @@ export class LspFacade {
     else if (this.exports.setInputLength) this.exports.setInputLength(inputLen);
     this.currentInputLength = text.length;
     this._cachedLineStarts = null;
+    this._lastInputBufferUri = undefined;
+    this._lastInputBufferLength = 0;
   }
   /**
    * Returns all active document roots across open files in the workspace.
@@ -812,34 +827,75 @@ export class LspFacade {
    * Schedules a generational sweep/compaction pass.
    * Trigger 1: Quiescence / Idle Timer (1500ms debounce).
    */
-  scheduleCompaction(_immediate = false) {
+  scheduleCompaction(immediate = false) {
     if (this._idleTimer) {
       clearTimeout(this._idleTimer);
       this._idleTimer = null;
+    }
+    if (immediate) {
+      this.gcCompact();
+      return;
+    }
+    if (typeof setTimeout === "function") {
+      const handle = setTimeout(() => {
+        this._idleTimer = null;
+        this.gcCompact();
+      }, 1500);
+      handle.unref?.();
+      this._idleTimer = handle;
     }
   }
   /**
    * Trigger 2: Checks if allocated memory exceeds high-water mark quota.
    */
   checkMemoryQuota() {
-    // In immutable append-only arena, memory is reset on generation boundaries (didOpen/didClose/config)
+    const allocatedBytes = this.wasmMemory?.buffer?.byteLength ?? 0;
+    if (allocatedBytes >= this._maxMemoryQuotaBytes) {
+      this.gcCompact();
+    }
   }
   /**
-   * Performs compaction protecting all live document roots if requested.
+   * Reclaims WASM slab arenas for closed/stale documents and resets parser
+   * generations cleanly once all open document roots have been closed.
    */
   gcCompact() {
-    // No-op during active editing sessions to preserve append-only immutability
+    for (const [uri, fileId] of Array.from(this._uriToFileId.entries())) {
+      const root = this.documentRoots.get(uri) ?? 0;
+      if (root === 0) {
+        this.evictDocumentAst(fileId);
+        this._uriToFileId.delete(uri);
+        this._fileIdToUri.delete(fileId);
+        this.uriSourceCode.delete(uri);
+      }
+    }
+    if (this.documentRoots.size === 0 && this.lastAstRoot === 0) {
+      if (this.exports.resetParser) {
+        this.exports.resetParser();
+      }
+      this._cachedLineStarts = null;
+      this._childTailCache.clear();
+      this._lastInputBufferUri = undefined;
+      this._lastInputBufferLength = 0;
+    }
   }
   /** Resets the internal parser state and clears all cached data. */
   resetParser() {
+    if (this._idleTimer) {
+      clearTimeout(this._idleTimer);
+      this._idleTimer = null;
+    }
     if (this.exports.resetParser) {
       this.exports.resetParser();
     }
     this.lastAstRoot = 0;
     this.documentRoots.clear();
     this.documentVersions.clear();
+    this._uriToFileId.clear();
+    this._fileIdToUri.clear();
     this._cachedLineStarts = null;
     this._childTailCache.clear();
+    this._lastInputBufferUri = undefined;
+    this._lastInputBufferLength = 0;
   }
   getInputEncoding() {
     return this._inputEncoding !== undefined
@@ -888,6 +944,8 @@ export class LspFacade {
     this._cachedLineStarts = null;
     this._childTailCache.clear(); // Invalidate tail pointers on edit
     this.currentInputLength = newTotalLength;
+    this._lastInputBufferUri = uri;
+    this._lastInputBufferLength = Math.max(0, newTotalLength);
     if (this.exports.abortSuspend) this.exports.abortSuspend();
     const lenBytes = newTotalLength * 2;
     const prevAstRoot = this.getDocumentRoot(uri);
@@ -4268,6 +4326,33 @@ export class LspFacade {
     this._cachedLineStarts = null; // Invalidate cached line starts on edit
     this._childTailCache.clear(); // Invalidate tail pointers on edit
     if (this.exports.abortSuspend) this.exports.abortSuspend();
+    const prevAstRoot = uri ? this.getDocumentRoot(uri) : 0;
+    if (
+      typeof editStartOrEdits === "number" &&
+      uri !== undefined &&
+      uri === this._lastInputBufferUri &&
+      prevAstRoot > 0 &&
+      (oldRoot === undefined || oldRoot === prevAstRoot) &&
+      editOldEnd >= editStartOrEdits &&
+      editNewEnd >= editStartOrEdits &&
+      (editOldEnd > 0 || editNewEnd > 0) &&
+      text.length ===
+        this._lastInputBufferLength -
+          (editOldEnd - editStartOrEdits) +
+          (editNewEnd - editStartOrEdits)
+    ) {
+      const incRoot = this.parseIncremental(
+        text.slice(editStartOrEdits, editNewEnd),
+        editStartOrEdits,
+        editOldEnd - editStartOrEdits,
+        text.length,
+        uri,
+      );
+      if (incRoot > 0) {
+        this.uriSourceCode.set(uri, text);
+      }
+      return incRoot;
+    }
     const lenBytes = text.length * 2;
     const textPtr = this.exports.ensureInputBuffer
       ? this.exports.ensureInputBuffer(lenBytes)
@@ -4289,7 +4374,8 @@ export class LspFacade {
       this.exports.lsp_setInputLength(inputLen);
     else if (this.exports.setInputLength) this.exports.setInputLength(inputLen);
     this.currentInputLength = text.length;
-    const prevAstRoot = uri ? this.getDocumentRoot(uri) : 0;
+    this._lastInputBufferUri = uri;
+    this._lastInputBufferLength = uri ? text.length : 0;
     let baseRoot =
       oldRoot !== undefined
         ? oldRoot

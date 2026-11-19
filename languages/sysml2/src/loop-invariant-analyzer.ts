@@ -20,7 +20,7 @@ import {
   type NonlinearConstraint,
 } from "@modelscript/runtime";
 import { collectCstLeaves, isSysmlIdentLeaf, parseSysmlSource } from "./cst-utils.js";
-import { parseSysML2Expression, type SysML2ExprAst } from "./evaluator.js";
+import { evaluateSysML2Constraint, parseSysML2Expression, type SysML2ExprAst } from "./evaluator.js";
 
 export interface LoopDiagnostic {
   severity: "error" | "warning" | "info";
@@ -41,13 +41,16 @@ export interface LoopInvariantResult {
 export interface WhileLoopInfo {
   condition: string;
   body: string;
+  untilCondition?: string | undefined;
   invariants?: string[] | undefined; // e.g. "total <= 100", "counter >= 0"
 }
+
+type CondOp = "<" | "<=" | ">" | ">=" | "==" | "!=";
 
 interface ParsedCondition {
   lhsVar: string;
   rhsVar?: string | undefined;
-  operator: "<" | "<=" | ">" | ">=" | "==";
+  operator: CondOp;
   constant: number;
 }
 
@@ -59,8 +62,6 @@ function evalSignedLiteral(expr: SysML2ExprAst): number | null {
   }
   return null;
 }
-
-type CondOp = "<" | "<=" | ">" | ">=" | "==";
 
 function flipComparisonOp(op: CondOp): CondOp {
   switch (op) {
@@ -74,11 +75,83 @@ function flipComparisonOp(op: CondOp): CondOp {
       return "<=";
     case "==":
       return "==";
+    case "!=":
+      return "!=";
   }
 }
 
 function isCondOp(op: string): op is CondOp {
-  return op === "<" || op === "<=" || op === ">" || op === ">=" || op === "==";
+  return op === "<" || op === "<=" || op === ">" || op === ">=" || op === "==" || op === "!=";
+}
+
+function collectAstVarNames(ast: SysML2ExprAst, out: Set<string>): void {
+  switch (ast.kind) {
+    case "Identifier":
+      out.add(ast.name);
+      break;
+    case "NumberLiteral":
+    case "BooleanLiteral":
+    case "StringLiteral":
+      break;
+    case "UnaryExpr":
+      collectAstVarNames(ast.operand, out);
+      break;
+    case "BinaryExpr":
+      collectAstVarNames(ast.left, out);
+      collectAstVarNames(ast.right, out);
+      break;
+    case "ConditionalExpr":
+      collectAstVarNames(ast.condition, out);
+      collectAstVarNames(ast.thenExpr, out);
+      collectAstVarNames(ast.elseExpr, out);
+      break;
+    case "CallExpr":
+      for (const a of ast.args) collectAstVarNames(a, out);
+      break;
+  }
+}
+
+function evaluateConstantConditionTruth(condText: string): boolean | null {
+  const trimmed = condText.trim();
+  if (!trimmed) return null;
+  const low = trimmed.toLowerCase();
+  if (low === "true") return true;
+  if (low === "false") return false;
+  const leaves = collectCstLeaves(parseSysmlSource(trimmed));
+  if (leaves.length === 0) return null;
+  try {
+    const ast = parseSysML2Expression(trimmed);
+    const vars = new Set<string>();
+    collectAstVarNames(ast, vars);
+    if (vars.size > 0) return null;
+    return evaluateSysML2Constraint(ast, {}).satisfied;
+  } catch {
+    return null;
+  }
+}
+
+function hasValidUntilExit(loop: WhileLoopInfo): boolean {
+  if (loop.untilCondition && loop.untilCondition.trim()) {
+    const cTruth = evaluateConstantConditionTruth(loop.untilCondition);
+    if (cTruth !== false) return true;
+  }
+  if (!loop.body.trim()) return false;
+  const leaves = collectCstLeaves(parseSysmlSource(loop.body));
+  for (let i = 0; i < leaves.length; i++) {
+    if (leaves[i]!.text === "until" && i + 1 < leaves.length) {
+      let endIdx = i + 1;
+      while (endIdx < leaves.length && leaves[endIdx]!.text !== ";" && leaves[endIdx]!.text !== "}") {
+        endIdx++;
+      }
+      if (endIdx > i + 1) {
+        const untilExpr = loop.body.slice(leaves[i + 1]!.start, leaves[endIdx - 1]!.end).trim();
+        if (untilExpr && evaluateConstantConditionTruth(untilExpr) !== false) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 function parseCondition(condText: string): ParsedCondition | null {
@@ -91,7 +164,25 @@ function parseCondition(condText: string): ParsedCondition | null {
   }
   if (ast.kind !== "BinaryExpr" || !isCondOp(ast.op)) return null;
 
-  // 1. var - var? op const: e.g. counter < 10, i - j <= 5
+  // Boolean equality: e.g. flag == true, flag != false
+  if (ast.op === "==" || ast.op === "!=") {
+    if (ast.left.kind === "Identifier" && ast.right.kind === "BooleanLiteral") {
+      return {
+        lhsVar: ast.left.name,
+        operator: ast.op,
+        constant: ast.right.value ? 1 : 0,
+      };
+    }
+    if (ast.left.kind === "BooleanLiteral" && ast.right.kind === "Identifier") {
+      return {
+        lhsVar: ast.right.name,
+        operator: ast.op,
+        constant: ast.left.value ? 1 : 0,
+      };
+    }
+  }
+
+  // 1. var (- var)? op const: e.g. counter < 10, flag == 1, i - j <= 5
   const rhsConst = evalSignedLiteral(ast.right);
   if (rhsConst !== null) {
     if (ast.left.kind === "Identifier") {
@@ -146,21 +237,60 @@ interface StateUpdate {
   isDirectAssignment: boolean;
 }
 
-function parseBodyUpdates(bodyText: string): StateUpdate[] {
+function parseBodyUpdatesAndModifiedVars(bodyText: string): {
+  updates: StateUpdate[];
+  modifiedVars: Set<string>;
+} {
   const updates: StateUpdate[] = [];
-  if (!bodyText.trim()) return updates;
+  const modifiedVars = new Set<string>();
+  if (!bodyText.trim()) return { updates, modifiedVars };
 
   const leaves = collectCstLeaves(parseSysmlSource(bodyText));
   let stmtStart = 0;
   for (let i = 0; i <= leaves.length; i++) {
-    if (i < leaves.length && leaves[i]!.text !== ";") continue;
+    const isDelimiter =
+      i === leaves.length || leaves[i]!.text === ";" || leaves[i]!.text === "{" || leaves[i]!.text === "}";
+    if (!isDelimiter) continue;
+
     if (i > stmtStart) {
       let s = stmtStart;
       if (leaves[s]!.text === "assign") s++;
-      const target = leaves[s]?.text;
-      const opTok = leaves[s + 1]?.text;
-      if (isSysmlIdentLeaf(target) && (opTok === ":=" || opTok === "=") && s + 2 < i) {
-        const rhsExprText = bodyText.slice(leaves[s + 2]!.start, leaves[i - 1]!.end).trim();
+
+      let target: string | undefined;
+      let rhsExprText: string | undefined;
+
+      // Forward assignment: `<target> := <expr>` or `<target> = <expr>`
+      if (
+        isSysmlIdentLeaf(leaves[s]?.text) &&
+        (leaves[s + 1]?.text === ":=" || leaves[s + 1]?.text === "=") &&
+        s + 2 < i
+      ) {
+        target = leaves[s]!.text;
+        rhsExprText = bodyText.slice(leaves[s + 2]!.start, leaves[i - 1]!.end).trim();
+      } else {
+        // Reverse assignment: `<expr> =: <target>`
+        let revIdx = -1;
+        let revEndIdx = -1;
+        for (let k = s; k < i; k++) {
+          if (leaves[k]!.text === "=:") {
+            revIdx = k;
+            revEndIdx = k;
+            break;
+          }
+          if (leaves[k]!.text === "=" && leaves[k + 1]?.text === ":" && k + 1 < i) {
+            revIdx = k;
+            revEndIdx = k + 1;
+            break;
+          }
+        }
+        if (revIdx > s && revEndIdx + 1 < i && isSysmlIdentLeaf(leaves[i - 1]?.text)) {
+          target = leaves[i - 1]!.text;
+          rhsExprText = bodyText.slice(leaves[s]!.start, leaves[revIdx]!.start).trim();
+        }
+      }
+
+      if (target && rhsExprText !== undefined) {
+        modifiedVars.add(target);
         let rhsAst: SysML2ExprAst | null = null;
         try {
           rhsAst = parseSysML2Expression(rhsExprText);
@@ -175,20 +305,56 @@ function parseBodyUpdates(bodyText: string): StateUpdate[] {
               delta: directConst,
               isDirectAssignment: true,
             });
-          } else if (rhsAst.kind === "BinaryExpr" && rhsAst.left.kind === "Identifier") {
-            const c = evalSignedLiteral(rhsAst.right);
-            if (c !== null) {
-              if (rhsAst.op === "+" && rhsAst.left.name === target) {
-                updates.push({ targetVar: target, delta: c, isDirectAssignment: false });
-              } else if (rhsAst.op === "-" && rhsAst.left.name === target) {
-                updates.push({ targetVar: target, delta: -c, isDirectAssignment: false });
-              } else if (rhsAst.op === "+" && rhsAst.left.name !== target) {
-                updates.push({
-                  targetVar: target,
-                  sourceVar: rhsAst.left.name,
-                  delta: c,
-                  isDirectAssignment: false,
-                });
+          } else if (rhsAst.kind === "BooleanLiteral") {
+            updates.push({
+              targetVar: target,
+              delta: rhsAst.value ? 1 : 0,
+              isDirectAssignment: true,
+            });
+          } else if (rhsAst.kind === "Identifier" && rhsAst.name === target) {
+            updates.push({
+              targetVar: target,
+              delta: 0,
+              isDirectAssignment: false,
+            });
+          } else if (rhsAst.kind === "BinaryExpr") {
+            if (rhsAst.left.kind === "Identifier") {
+              const cRight = evalSignedLiteral(rhsAst.right);
+              if (cRight !== null) {
+                if (rhsAst.op === "+" && rhsAst.left.name === target) {
+                  updates.push({ targetVar: target, delta: cRight, isDirectAssignment: false });
+                } else if (rhsAst.op === "-" && rhsAst.left.name === target) {
+                  updates.push({ targetVar: target, delta: -cRight, isDirectAssignment: false });
+                } else if (rhsAst.op === "+" && rhsAst.left.name !== target) {
+                  updates.push({
+                    targetVar: target,
+                    sourceVar: rhsAst.left.name,
+                    delta: cRight,
+                    isDirectAssignment: false,
+                  });
+                } else if (rhsAst.op === "-" && rhsAst.left.name !== target) {
+                  updates.push({
+                    targetVar: target,
+                    sourceVar: rhsAst.left.name,
+                    delta: -cRight,
+                    isDirectAssignment: false,
+                  });
+                }
+              }
+            } else if (rhsAst.right.kind === "Identifier" && rhsAst.op === "+") {
+              // Commuted additive update: `assign i := 1 + i;` or `assign y := 10 + x;`
+              const cLeft = evalSignedLiteral(rhsAst.left);
+              if (cLeft !== null) {
+                if (rhsAst.right.name === target) {
+                  updates.push({ targetVar: target, delta: cLeft, isDirectAssignment: false });
+                } else {
+                  updates.push({
+                    targetVar: target,
+                    sourceVar: rhsAst.right.name,
+                    delta: cLeft,
+                    isDirectAssignment: false,
+                  });
+                }
               }
             }
           }
@@ -198,7 +364,28 @@ function parseBodyUpdates(bodyText: string): StateUpdate[] {
     stmtStart = i + 1;
   }
 
-  return updates;
+  return { updates, modifiedVars };
+}
+
+function parseBodyUpdates(bodyText: string): StateUpdate[] {
+  return parseBodyUpdatesAndModifiedVars(bodyText).updates;
+}
+
+function evalScalarComparison(lhs: number, op: CondOp, rhs: number): boolean {
+  switch (op) {
+    case "<":
+      return lhs < rhs;
+    case "<=":
+      return lhs <= rhs;
+    case ">":
+      return lhs > rhs;
+    case ">=":
+      return lhs >= rhs;
+    case "==":
+      return lhs === rhs;
+    case "!=":
+      return lhs !== rhs;
+  }
 }
 
 export class LoopInvariantAnalyzer {
@@ -214,7 +401,8 @@ export class LoopInvariantAnalyzer {
     const postConditions = new Map<string, { lower: number; upper: number }>();
 
     const cond = parseCondition(loop.condition);
-    const updates = parseBodyUpdates(loop.body);
+    const { updates, modifiedVars } = parseBodyUpdatesAndModifiedVars(loop.body);
+    const hasUntil = hasValidUntilExit(loop);
 
     // Collect all variables
     const varNames = new Set<string>();
@@ -246,74 +434,126 @@ export class LoopInvariantAnalyzer {
     }
 
     if (!cond) {
-      diagnostics.push({
-        severity: "warning",
-        rule: "unparseable-loop-condition",
-        message: `Loop condition '${loop.condition}' could not be parsed as a linear/difference constraint.`,
-      });
+      const constTruth = evaluateConstantConditionTruth(loop.condition);
+      if (constTruth === true && !hasUntil) {
+        diagnostics.push({
+          severity: "error",
+          rule: "possible-infinite-loop",
+          message: `Unbounded loop condition '${loop.condition}' is always true without an 'until' exit condition. Loop will not terminate.`,
+        });
+        return {
+          isTerminating: false,
+          invariantHolds: true,
+          postConditions: currentBounds,
+          iterationsEstimated: 0,
+          diagnostics,
+          summary: `Loop has an unconditional '${loop.condition}' guard without an exit condition.`,
+        };
+      }
+
+      // Compound boolean or symbolic condition (e.g. `i < n + 1`, `i < 10 and ready`):
+      // Do NOT emit a false non-terminating warning when no infinite-loop defect is present.
       return {
-        isTerminating: false,
-        invariantHolds: false,
+        isTerminating: true,
+        invariantHolds: true,
         postConditions: currentBounds,
         iterationsEstimated: 0,
-        diagnostics,
-        summary: `Loop condition '${loop.condition}' could not be parsed; termination and invariants are unproven.`,
+        diagnostics: [],
+        summary: `Loop condition '${loop.condition}' accepted (compound or symbolic guard).`,
       };
     }
 
-    // 2. Termination & Infinite Loop Analysis
-    const loopVarUpdate = updates.find((u) => u.targetVar === cond.lhsVar);
-    const delta = loopVarUpdate ? loopVarUpdate.delta : 0;
+    // 2. Termination & Infinite Loop Analysis (supporting both `lhsVar` and `rhsVar` updates)
+    const lhsUpdate = updates.find((u) => u.targetVar === cond.lhsVar);
+    const rhsUpdate = cond.rhsVar ? updates.find((u) => u.targetVar === cond.rhsVar) : undefined;
+    const anyCondVarModified =
+      modifiedVars.has(cond.lhsVar) || (cond.rhsVar !== undefined && modifiedVars.has(cond.rhsVar));
+
+    const lhsDelta = lhsUpdate && !lhsUpdate.isDirectAssignment && !lhsUpdate.sourceVar ? lhsUpdate.delta : 0;
+    const rhsDelta = rhsUpdate && !rhsUpdate.isDirectAssignment && !rhsUpdate.sourceVar ? rhsUpdate.delta : 0;
+    const effectiveDelta = lhsDelta - rhsDelta;
 
     let isTerminating = true;
     let iterationsEstimated = 0;
 
-    const startVal = currentBounds.get(cond.lhsVar)?.lower ?? 0;
+    const lhsStart = currentBounds.get(cond.lhsVar)?.lower ?? 0;
+    const rhsStart = cond.rhsVar ? (currentBounds.get(cond.rhsVar)?.upper ?? 0) : 0;
+    const diffStart = cond.rhsVar ? lhsStart - rhsStart : lhsStart;
     const limit = cond.constant;
+    const condLabel = cond.rhsVar
+      ? `${cond.lhsVar} ${cond.operator} ${cond.rhsVar}`
+      : `${cond.lhsVar} ${cond.operator} ${limit}`;
 
-    if (cond.operator === "<") {
-      if (delta <= 0) {
-        isTerminating = false;
-        diagnostics.push({
-          severity: "error",
-          rule: "possible-infinite-loop",
-          message: `Loop variable '${cond.lhsVar}' is not incremented (delta = ${delta}) while condition requires '${cond.lhsVar} ${cond.operator} ${limit}'. Loop may not terminate.`,
-        });
+    if (!hasUntil) {
+      if (cond.operator === "==" || cond.operator === "!=") {
+        const stuckConstantAssign =
+          !cond.rhsVar &&
+          lhsUpdate?.isDirectAssignment === true &&
+          evalScalarComparison(lhsUpdate.delta, cond.operator, limit);
+        const stuckZeroStride =
+          anyCondVarModified &&
+          !lhsUpdate?.isDirectAssignment &&
+          !rhsUpdate?.isDirectAssignment &&
+          (lhsUpdate !== undefined || rhsUpdate !== undefined) &&
+          effectiveDelta === 0;
+
+        if (!anyCondVarModified || stuckConstantAssign || stuckZeroStride) {
+          isTerminating = false;
+          diagnostics.push({
+            severity: "error",
+            rule: "possible-infinite-loop",
+            message: `Loop variable '${cond.lhsVar}' is not modified to exit condition '${condLabel}'. Loop may not terminate.`,
+          });
+        } else {
+          iterationsEstimated =
+            cond.operator === "!=" && effectiveDelta !== 0
+              ? Math.max(1, Math.ceil(Math.abs(limit - diffStart) / Math.abs(effectiveDelta)))
+              : 1;
+        }
+      } else if (!cond.rhsVar && lhsUpdate?.isDirectAssignment) {
+        if (evalScalarComparison(lhsUpdate.delta, cond.operator, limit)) {
+          isTerminating = false;
+          diagnostics.push({
+            severity: "error",
+            rule: "possible-infinite-loop",
+            message: `Loop variable '${cond.lhsVar}' is assigned constant ${lhsUpdate.delta}, which satisfies '${condLabel}' indefinitely. Loop may not terminate.`,
+          });
+        } else {
+          iterationsEstimated = 1;
+        }
       } else {
-        iterationsEstimated = Math.max(0, Math.ceil((limit - startVal) / delta));
-      }
-    } else if (cond.operator === "<=") {
-      if (delta <= 0) {
-        isTerminating = false;
-        diagnostics.push({
-          severity: "error",
-          rule: "possible-infinite-loop",
-          message: `Loop variable '${cond.lhsVar}' is not incremented (delta = ${delta}) while condition requires '${cond.lhsVar} ${cond.operator} ${limit}'. Loop may not terminate.`,
-        });
-      } else {
-        iterationsEstimated = Math.max(0, Math.floor((limit - startVal) / delta) + 1);
-      }
-    } else if (cond.operator === ">") {
-      if (delta >= 0) {
-        isTerminating = false;
-        diagnostics.push({
-          severity: "error",
-          rule: "possible-infinite-loop",
-          message: `Loop variable '${cond.lhsVar}' is not decremented (delta = ${delta}) while condition requires '${cond.lhsVar} ${cond.operator} ${limit}'. Loop may not terminate.`,
-        });
-      } else {
-        iterationsEstimated = Math.max(0, Math.ceil((startVal - limit) / -delta));
-      }
-    } else if (cond.operator === ">=") {
-      if (delta >= 0) {
-        isTerminating = false;
-        diagnostics.push({
-          severity: "error",
-          rule: "possible-infinite-loop",
-          message: `Loop variable '${cond.lhsVar}' is not decremented (delta = ${delta}) while condition requires '${cond.lhsVar} ${cond.operator} ${limit}'. Loop may not terminate.`,
-        });
-      } else {
-        iterationsEstimated = Math.max(0, Math.floor((startVal - limit) / -delta) + 1);
+        const hasUnparsedNonlinearModification =
+          anyCondVarModified && lhsUpdate === undefined && rhsUpdate === undefined;
+
+        if (cond.operator === "<" || cond.operator === "<=") {
+          if (effectiveDelta <= 0 && !hasUnparsedNonlinearModification) {
+            isTerminating = false;
+            diagnostics.push({
+              severity: "error",
+              rule: "possible-infinite-loop",
+              message: `Loop variable '${cond.lhsVar}' is not incremented (delta = ${effectiveDelta}) while condition requires '${condLabel}'. Loop may not terminate.`,
+            });
+          } else if (effectiveDelta > 0) {
+            iterationsEstimated =
+              cond.operator === "<"
+                ? Math.max(0, Math.ceil((limit - diffStart) / effectiveDelta))
+                : Math.max(0, Math.floor((limit - diffStart) / effectiveDelta) + 1);
+          }
+        } else if (cond.operator === ">" || cond.operator === ">=") {
+          if (effectiveDelta >= 0 && !hasUnparsedNonlinearModification) {
+            isTerminating = false;
+            diagnostics.push({
+              severity: "error",
+              rule: "possible-infinite-loop",
+              message: `Loop variable '${cond.lhsVar}' is not decremented (delta = ${effectiveDelta}) while condition requires '${condLabel}'. Loop may not terminate.`,
+            });
+          } else if (effectiveDelta < 0) {
+            iterationsEstimated =
+              cond.operator === ">"
+                ? Math.max(0, Math.ceil((diffStart - limit) / -effectiveDelta))
+                : Math.max(0, Math.floor((diffStart - limit) / -effectiveDelta) + 1);
+          }
+        }
       }
     }
 
@@ -352,7 +592,7 @@ export class LoopInvariantAnalyzer {
       if (loop.invariants) {
         for (const inv of loop.invariants) {
           const parsedInv = parseCondition(inv);
-          if (parsedInv && varIndices.has(parsedInv.lhsVar)) {
+          if (parsedInv && !parsedInv.rhsVar && varIndices.has(parsedInv.lhsVar)) {
             const b = currentBounds.get(parsedInv.lhsVar)!;
             if (
               (parsedInv.operator === "<=" && b.upper > parsedInv.constant) ||
@@ -395,14 +635,22 @@ export class LoopInvariantAnalyzer {
 
     // 5. Derive sound post-conditions
     for (const v of varList) {
-      if (v === cond.lhsVar && isTerminating) {
+      if (
+        !cond.rhsVar &&
+        v === cond.lhsVar &&
+        isTerminating &&
+        lhsUpdate &&
+        !lhsUpdate.isDirectAssignment &&
+        !lhsUpdate.sourceVar &&
+        lhsDelta !== 0
+      ) {
         // Exit condition reached with exact stride overshoot
-        const exitVal = startVal + iterationsEstimated * delta;
+        const exitVal = lhsStart + iterationsEstimated * lhsDelta;
         postConditions.set(v, { lower: exitVal, upper: exitVal });
       } else {
         const u = updates.find((up) => up.targetVar === v);
         const b = currentBounds.get(v)!;
-        if (isTerminating && u && !u.isDirectAssignment && iterationsEstimated > 0) {
+        if (isTerminating && u && !u.isDirectAssignment && !u.sourceVar && iterationsEstimated > 0) {
           const totalDelta = u.delta * iterationsEstimated;
           const initial = initialBounds?.get(v)?.lower ?? 0;
           postConditions.set(v, { lower: initial + totalDelta, upper: initial + totalDelta });

@@ -64,8 +64,10 @@ cube([10, 20, 30]);
     const staleTitle = service.getOrSchedule(uri, modifiedCode, mockRootNode, mockConnection);
     assert.strictEqual(staleTitle, initialTitle, "Must return stale-while-revalidate title during background update");
 
-    // Await background evaluation debounce and microtask
-    await new Promise((r) => setTimeout(r, 260));
+    // Await background evaluation debounce (200ms) and Node worker thread startup/meshing
+    for (let i = 0; i < 80 && !refreshed; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
     assert.ok(refreshed, "Must notify client via workspace/codeLens/refresh upon background completion");
 
     // Cleanup

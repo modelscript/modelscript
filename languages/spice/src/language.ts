@@ -39,6 +39,28 @@ export const spiceLanguage = language({
   },
   rules: spiceNetlistGrammar.rules,
 
+  ui: {
+    panels: [
+      {
+        id: "spiceEditor",
+        viewType: "modelscript.spiceEditor",
+        title: "SPICE Analog Circuit Inspector",
+        shortTitle: "SPICE",
+        selector: ["*.sp", "*.spi", "*.cir", "*.spice"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/SpicePanel.tsx",
+        artifactViewTypes: ["spice", "cir"],
+      },
+    ],
+    stencils: [
+      { label: "Resistor", snippet: "R_new n1 n2 1k\n" },
+      { label: "Capacitor", snippet: "C_new n2 0 10n\n" },
+      { label: "Inductor", snippet: "L_new n1 n2 1m\n" },
+      { label: "Voltage Source", snippet: "V_new in 0 DC 5.0\n" },
+    ],
+  },
+
   actions: [
     {
       id: "spice_run_op",

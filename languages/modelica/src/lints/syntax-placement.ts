@@ -48,7 +48,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     nodes: ["primary"],
     severity: "error",
     code: 1003,
-    message: (target) => `Empty array constructor '${target.text}' is not valid in Modelica.`,
+    message: () => `Parse error: Empty array constructors are not valid in Modelica.`,
     query: (db: CodeGraph, node: u32) => {
       // Flag literal `[]` or `{}` primary expressions
       if (db.ast.textEquals(node, "[]") || db.ast.textEquals(node, "{}")) {
@@ -1585,7 +1585,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     nodes: ["type_prefix"],
     severity: "warning",
     code: 4038,
-    message: (target) => `Prefix '${target.text}' used outside connector declaration.`,
+    message: () => `Prefix 'flow' used outside connector declaration.`,
     query: (db: CodeGraph, node: u32, $: any) => {
       // Warn when `flow` is used inside a class whose specialization is not `connector`
       if (db.ast.textEquals(node, "flow")) {
@@ -1611,103 +1611,113 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     message: (target) => `Constant '${target.text}' has no value.`,
     query: (db: CodeGraph, node: u32, $: any) => {
       // Ensure top-level non-replaceable primitive `constant` declarations specify a binding or equation
-      const docRoot = db.ast.getRootNode();
+      let constantComp: u32 = 0;
+      for (const comp of db.ast.getAncestors(node, $.component_clause)) {
+        if (hasTypePrefix(db, comp, "constant", $)) {
+          constantComp = comp;
+        }
+        break;
+      }
+      if (constantComp == 0) return;
+
+      for (const mod of db.ast.getDescendants(node, $.modification)) {
+        if (mod != 0) return;
+      }
+
       if (isOldFrontendActive(db, $)) return;
+      const docRoot = db.ast.getRootNode();
       let encClass: u32 = 0;
-      let classCount = 0;
+      let classCount: u32 = 0;
       for (const cls of db.ast.getAncestors(node, $.class_definition)) {
         if (classCount === 0) encClass = cls;
         classCount++;
         if (isClassKind(db, cls, "function")) return;
         if (isClassKind(db, cls, "partial")) return;
         if (isClassKind(db, cls, "package") && docRoot != 0) {
+          const rootSpan = db.ast.getTextSpan(docRoot);
           let lastTopCls: u32 = 0;
-          for (const topCls of db.ast.getDescendants(docRoot, $.class_definition)) {
-            let isTop = true;
-            for (const anc of db.ast.getAncestors(topCls, $.class_definition)) {
-              if (anc != topCls) {
-                isTop = false;
-                break;
+          const cachedTop = db.ast.getCachedByName(0x4c434c53, rootSpan);
+          if (cachedTop >= 0) {
+            lastTopCls = cachedTop as u32;
+          } else {
+            for (const topCls of db.ast.getDescendants(docRoot, $.class_definition)) {
+              let isTop = true;
+              for (const anc of db.ast.getAncestors(topCls, $.class_definition)) {
+                if (anc != topCls) {
+                  isTop = false;
+                  break;
+                }
               }
+              if (isTop) lastTopCls = topCls;
             }
-            if (isTop) lastTopCls = topCls;
+            db.ast.setCachedByName(0x4c434c53, rootSpan, lastTopCls);
           }
           if (lastTopCls != 0 && lastTopCls != cls) return;
         }
       }
       if (classCount > 1) return;
 
-      for (const comp of db.ast.getAncestors(node, $.component_clause)) {
-        if (!hasTypePrefix(db, comp, "constant", $)) return;
-        for (const el of db.ast.getAncestors(comp, $.element)) {
-          if (isElementReplaceable(db, el, $)) return;
-        }
-        let isPrimitive = false;
-        if ($.type_specifier != 0) {
-          for (const ts of db.ast.getDescendants(comp, $.type_specifier)) {
-            for (const id of db.ast.getDescendants(ts, $.identifier)) {
-              if (
-                db.ast.textEquals(id, "Real") ||
-                db.ast.textEquals(id, "Integer") ||
-                db.ast.textEquals(id, "Boolean") ||
-                db.ast.textEquals(id, "String")
-              ) {
-                isPrimitive = true;
-              }
-              break;
+      for (const el of db.ast.getAncestors(constantComp, $.element)) {
+        if (isElementReplaceable(db, el, $)) return;
+      }
+      let isPrimitive = false;
+      if ($.type_specifier != 0) {
+        for (const ts of db.ast.getDescendants(constantComp, $.type_specifier)) {
+          for (const id of db.ast.getDescendants(ts, $.identifier)) {
+            if (
+              db.ast.textEquals(id, "Real") ||
+              db.ast.textEquals(id, "Integer") ||
+              db.ast.textEquals(id, "Boolean") ||
+              db.ast.textEquals(id, "String")
+            ) {
+              isPrimitive = true;
             }
             break;
           }
+          break;
         }
-        if (!isPrimitive) return;
+      }
+      if (!isPrimitive) return;
 
-        if (hasTypePrefix(db, comp, "constant", $)) {
-          let hasMod = false;
-          for (const mod of db.ast.getDescendants(node, $.modification)) {
-            if (mod != 0) hasMod = true;
-            break;
-          }
-          let nameId: u32 = 0;
-          for (const id of db.ast.getDescendants(node, $.identifier)) {
-            nameId = id;
-            break;
-          }
-          if (!hasMod && encClass != 0 && nameId != 0 && $.equation_section != 0) {
-            for (const eqSec of db.ast.getDescendants(encClass, $.equation_section)) {
-              for (const eq of db.ast.getDescendants(eqSec, $.equation)) {
-                let ch = db.ast.getFirstChild(eq);
-                while (ch != 0) {
-                  if (db.ast.textEquals(ch, "=")) break;
-                  for (const id of db.ast.getDescendants(ch, $.identifier)) {
-                    if (db.ast.textEqualsNode(id, nameId)) {
-                      hasMod = true;
-                      break;
-                    }
-                  }
-                  if (hasMod) break;
-                  ch = db.ast.getNextSibling(ch);
-                }
-                if (hasMod) break;
-              }
-              if (hasMod) break;
-            }
-          }
-          if (!hasMod && nameId != 0 && docRoot != 0) {
-            for (const elemMod of db.ast.getDescendants(docRoot, $.element_modification)) {
-              for (const n of db.ast.getDescendants(elemMod, $.name)) {
-                if (db.ast.textEqualsNode(n, nameId)) {
+      let hasMod = false;
+      let nameId: u32 = 0;
+      for (const id of db.ast.getDescendants(node, $.identifier)) {
+        nameId = id;
+        break;
+      }
+      if (!hasMod && encClass != 0 && nameId != 0 && $.equation_section != 0) {
+        for (const eqSec of db.ast.getDescendants(encClass, $.equation_section)) {
+          for (const eq of db.ast.getDescendants(eqSec, $.equation)) {
+            let ch = db.ast.getFirstChild(eq);
+            while (ch != 0) {
+              if (db.ast.textEquals(ch, "=")) break;
+              for (const id of db.ast.getDescendants(ch, $.identifier)) {
+                if (db.ast.textEqualsNode(id, nameId)) {
                   hasMod = true;
                   break;
                 }
               }
               if (hasMod) break;
+              ch = db.ast.getNextSibling(ch);
+            }
+            if (hasMod) break;
+          }
+          if (hasMod) break;
+        }
+      }
+      if (!hasMod && nameId != 0 && docRoot != 0) {
+        for (const elemMod of db.ast.getDescendants(docRoot, $.element_modification)) {
+          for (const n of db.ast.getDescendants(elemMod, $.name)) {
+            if (db.ast.textEqualsNode(n, nameId)) {
+              hasMod = true;
+              break;
             }
           }
-          if (!hasMod) {
-            db.diagnosticAt(nameId != 0 ? nameId : node, node);
-          }
+          if (hasMod) break;
         }
-        break;
+      }
+      if (!hasMod) {
+        db.diagnosticAt(nameId != 0 ? nameId : node, node);
       }
     },
   },
@@ -1719,8 +1729,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     nodes: ["function_call"],
     severity: "error",
     code: 4047,
-    message: (target) =>
-      `Operator '${target.text}' may only be used in the condition of an if-statement/equation or an assert.`,
+    message: () => `cardinality may only be used in the condition of an if-statement/equation or an assert.`,
     query: (db: CodeGraph, node: u32, $: any) => {
       // Allow `cardinality(...)` only when enclosed by an `if_equation` or `if_statement`
       const name = db.ast.getChildByFieldId(node, "name");

@@ -53,6 +53,21 @@ export const olgaLanguage = language({
       dark: "./assets/olga/icon-dark.png",
     },
   },
+  ui: {
+    panels: [
+      {
+        id: "olgaEditor",
+        viewType: "modelscript.olgaEditor",
+        title: "OLGA Multiphase Flow Assurance Editor",
+        shortTitle: "Flow Assurance",
+        selector: ["*.opi", "*.key", "*.genkey", "*.tpl", "*.ppl"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/OlgaPanel.tsx",
+        artifactViewTypes: ["olga", "opi", "olga-flow"],
+      },
+    ],
+  },
 
   actions: [
     {

@@ -245,14 +245,15 @@ for (const file of walk(docsRoot)) {
       problems.push({ file: rel, line, message: "local file:// link or absolute /home path" });
     }
     if (!inFence) checkWording(rel, line, text);
-    const codes = pageCommand ? ruleCodes.get(pageCommand) : undefined;
+    const ruleCatalogSlug = pageCommand?.endsWith("-lints") ? pageCommand.replace(/-lints$/, "") : pageCommand;
+    const codes = ruleCatalogSlug ? ruleCodes.get(ruleCatalogSlug) : undefined;
     if (codes && !inFence) {
       for (const m of text.matchAll(/`([A-Z]\d{4})`/g)) {
         if (!codes.has(m[1] ?? "")) {
           problems.push({
             file: rel,
             line,
-            message: `rule code '${m[1] ?? ""}' is not in the ${pageCommand ?? ""} rule catalog`,
+            message: `rule code '${m[1] ?? ""}' is not in the ${ruleCatalogSlug ?? ""} rule catalog`,
           });
         }
       }
@@ -373,6 +374,7 @@ if (benchData) {
   for (const file of fs.readdirSync(langPagesDir)) {
     if (!file.endsWith(".md") || file === "overview.md") continue;
     const slug = file.replace(/\.md$/, "");
+    if (!LANGUAGE_BY_SLUG[slug]) continue;
     const content = fs.readFileSync(path.join(langPagesDir, file), "utf8");
     if (!content.includes(`<LanguageBenchmarks lang="${slug}"`)) {
       problems.push({

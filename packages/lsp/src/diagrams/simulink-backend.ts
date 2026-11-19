@@ -7,6 +7,7 @@ import {
   mergeCoincidentInsertEdits,
 } from "../cross-language-drop.js";
 import {
+  computeMinimalTextEdit,
   deduplicateAndSort,
   getUnifiedIndexFromDeps,
   type DiagramBackend,
@@ -181,6 +182,13 @@ export function createSimulinkDiagramBackend(backends: DiagramDispatchDeps): Dia
         if (typeof raw !== "string") {
           return { seq: params.seq, edits: [], renderHint: "none" };
         }
+        // Never touch binary .slx archives
+        if (raw.startsWith("PK")) {
+          return { seq: params.seq, edits: [], renderHint: "none" };
+        }
+        // Legacy curly-brace .mdl files support native curly-brace `addComponent` drops,
+        // but must not have XML `<P>`/`<Line>` tags injected by XML-mutating actions.
+        const isCurlyMdl = !raw.includes("<Block") && !raw.includes("<System") && /^\s*Model\s*\{/m.test(raw);
         const unifiedIndex = getUnifiedIndexFromDeps(backends);
         const batchState = createDropBatchState();
         const addEdits: TextEdit[] = [];
@@ -237,6 +245,8 @@ export function createSimulinkDiagramBackend(backends: DiagramDispatchDeps): Dia
             });
             addEdits.push(...edits);
             if (edits.length > 0) hasStructural = true;
+          } else if (isCurlyMdl) {
+            continue;
           } else if (action.type === "move") {
             for (const item of action.items) {
               const name = stripBlk(item.name);
@@ -321,14 +331,9 @@ export function createSimulinkDiagramBackend(backends: DiagramDispatchDeps): Dia
         }
 
         const allEdits: TextEdit[] = [...addEdits];
-        if (workingText !== raw) {
-          const lines = raw.split("\n");
-          const lastLine = Math.max(0, lines.length - 1);
-          const lastChar = lines[lastLine]?.length ?? 0;
-          allEdits.push({
-            range: { start: { line: 0, character: 0 }, end: { line: lastLine, character: lastChar } },
-            newText: workingText,
-          });
+        const textEdit = computeMinimalTextEdit(raw, workingText);
+        if (textEdit) {
+          allEdits.push(textEdit);
         }
 
         const renderHint: "none" | "immediate" | "debounced" = hasStructural ? "immediate" : "none";

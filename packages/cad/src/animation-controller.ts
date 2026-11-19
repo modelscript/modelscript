@@ -400,8 +400,10 @@ export class AnimationController {
     const lengthDir: [number, number, number] = def.lengthDirection ? [...def.lengthDirection] : [1, 0, 0];
     const widthDir: [number, number, number] = def.widthDirection ? [...def.widthDirection] : [0, 1, 0];
     let hasLocalDirections = Boolean(def.lengthDirection || def.widthDirection);
-    const vecCoords: [number, number, number] = def.vectorCoordinates ? [...def.vectorCoordinates] : [0, 0, 0];
-    let hasVectorCoords = Boolean(def.vectorCoordinates);
+    const vecCoords: [number, number, number] = Array.isArray(def.vectorCoordinates)
+      ? [...def.vectorCoordinates]
+      : [0, 0, 0];
+    let hasVectorCoords = Array.isArray(def.vectorCoordinates);
     let color: [number, number, number] | undefined = def.color ? [...def.color] : undefined;
 
     // Check for 3×3 rotation matrix bindings

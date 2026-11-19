@@ -24,6 +24,46 @@ export const owl2Language = language({
       dark: "./assets/owl2/icon-dark.png",
     },
   },
+  ui: {
+    panels: [
+      {
+        id: "owl2Diagram",
+        viewType: "modelscript.owl2Diagram",
+        title: "OWL 2 Ontology Taxonomy & Inspector",
+        shortTitle: "Ontology",
+        selector: ["*.owl", "*.owl2", "*.ofn", "*.ttl"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/Owl2Panel.tsx",
+        artifactViewTypes: ["owl2", "owl", "ontology"],
+      },
+    ],
+    stencils: [
+      { label: "Class", snippet: "Declaration(Class(:NewConcept))\n" },
+      { label: "ObjectProperty", snippet: "Declaration(ObjectProperty(:connectedTo))\n" },
+      { label: "SubClassOf", snippet: "SubClassOf(:NewConcept :SystemComponent)\n" },
+      {
+        label: "Individual",
+        snippet: "Declaration(NamedIndividual(:instance_1))\nClassAssertion(:NewConcept :instance_1)\n",
+      },
+    ],
+    treeViews: [
+      {
+        id: "modelscript.owl2ClassHierarchy",
+        name: "OWL2 Class Hierarchy",
+        container: "explorer",
+        when: "modelscript.owl2Active && config.modelscript.languages.owl2.enabled",
+        vscodeEntry: "./src/ui/Owl2Panel.tsx",
+      },
+      {
+        id: "modelscript.owl2PropertyHierarchy",
+        name: "OWL2 Property Hierarchy",
+        container: "explorer",
+        when: "modelscript.owl2Active && config.modelscript.languages.owl2.enabled",
+        vscodeEntry: "./src/ui/Owl2Panel.tsx",
+      },
+    ],
+  },
 
   // Bi-directional source writeback for updating literal values inside DataPropertyAssertion axioms
   writeback: (ctx) => {

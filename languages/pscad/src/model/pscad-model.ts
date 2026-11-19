@@ -203,8 +203,12 @@ function collectSchematic(
   }
 }
 
-export function buildProjectModel(source: string, external?: ExternalDefinitions): PscadProjectModel {
-  const doc = parsePscadXmlDocument(source);
+export function buildProjectModel(
+  source: string,
+  external?: ExternalDefinitions,
+  preParsedDoc?: ReturnType<typeof parsePscadXmlDocument>,
+): PscadProjectModel {
+  const doc = preParsedDoc ?? parsePscadXmlDocument(source);
   const root = doc.root;
   if (!root) {
     throw new Error("PSCAD project has no root element");

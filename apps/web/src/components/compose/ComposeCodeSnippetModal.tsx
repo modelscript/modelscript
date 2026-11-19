@@ -761,7 +761,7 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
                   <span>Inline Code Block</span>
                 </span>
                 <span style={{ fontSize: "11px", color: "var(--color-fg-muted)", lineHeight: 1.35 }}>
-                  Embeds a syntax-highlighted snippet with line numbers, Copy &amp; Open in Morsel.
+                  Embeds a syntax-highlighted snippet with line numbers, Copy &amp; Open in Ansatz.
                 </span>
               </button>
 

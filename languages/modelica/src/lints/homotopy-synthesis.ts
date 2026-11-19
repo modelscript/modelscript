@@ -52,8 +52,8 @@ export function deriveSimplification(
   varName: string,
   extra?: { power?: number | undefined; arg?: string | undefined; startVal?: number | undefined },
 ): string {
-  // Default nominal linearization point: 300.0 for thermodynamic temperatures (T*), 1.0 for general variables
-  const startVal = extra?.startVal ?? (varName.toLowerCase().startsWith("t") ? 300.0 : 1.0);
+  // Default nominal linearization point: 300.0 for Kelvin temperatures (T, T_*), 1.0 for general variables
+  const startVal = extra?.startVal ?? (/^T($|_|\d|[A-Z]|in\b|out\b)/.test(varName) ? 300.0 : 1.0);
 
   switch (kind) {
     case "power": {
@@ -110,6 +110,99 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
   const results: NonlinearTermInfo[] = [];
   if (!cst) return results;
 
+  const isWordChar = (ch: string | undefined): boolean =>
+    Boolean(ch && ((ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch === "_"));
+
+  const isCallBoundary = (s: string, callStartIdx: number): boolean =>
+    callStartIdx <= 0 || !isWordChar(s[callStartIdx - 1]);
+
+  const findMatchingParen = (s: string, openIdx: number): number => {
+    let depth = 0;
+    let inStr = false;
+    for (let i = openIdx; i < s.length; i++) {
+      const ch = s[i]!;
+      if (inStr) {
+        if (ch === "\\" && i + 1 < s.length) {
+          i++;
+        } else if (ch === '"') {
+          inStr = false;
+        }
+        continue;
+      }
+      if (ch === '"') {
+        inStr = true;
+      } else if (ch === "(") {
+        depth++;
+      } else if (ch === ")") {
+        depth--;
+        if (depth === 0) return i;
+      }
+    }
+    return -1;
+  };
+
+  // Collect declared parameter/constant variable names at class scope to suppress M5010 noise on constant math
+  const constParamVars = new Set<string>();
+  const collectConstParams = (node: any): void => {
+    if (!node) return;
+    const nt = node.type || "";
+    if (node !== cst && (nt === "class_definition" || nt === "ClassDefinition")) return;
+    if (nt === "component_clause" || nt === "ComponentClause") {
+      const clauseText = (node.text || "").trimStart();
+      if (/^(parameter|constant)\b/.test(clauseText)) {
+        const declList = node.children?.find((c: any) => c.type === "component_list" || c.type === "ComponentList");
+        const scanDecls = (dNode: any): void => {
+          if (!dNode) return;
+          if (dNode.type === "declaration" || dNode.type === "Declaration") {
+            const firstId = dNode.children?.find((c: any) => c.type === "identifier" || c.type === "Identifier");
+            const idText = firstId?.text?.trim();
+            if (idText) constParamVars.add(idText);
+            return;
+          }
+          for (const ch of dNode.children ?? []) scanDecls(ch);
+        };
+        scanDecls(declList ?? node);
+      }
+      return;
+    }
+    if (typeof node.childCount === "number") {
+      for (let i = 0; i < node.childCount; i++) collectConstParams(node.child(i));
+    } else if (Array.isArray(node.children)) {
+      for (const ch of node.children) collectConstParams(ch);
+    }
+  };
+  collectConstParams(cst);
+
+  const BUILTIN_FN_NAMES = new Set([
+    "exp",
+    "sqrt",
+    "abs",
+    "log",
+    "log10",
+    "sin",
+    "cos",
+    "tan",
+    "asin",
+    "acos",
+    "atan",
+    "min",
+    "max",
+    "der",
+    "pre",
+  ]);
+  const isAllConstParams = (exprText: string): boolean => {
+    if (constParamVars.size === 0) return false;
+    const idents = exprText.match(/[A-Za-z_][A-Za-z0-9_]*/g);
+    if (!idents || idents.length === 0) return false;
+    let sawVar = false;
+    for (const id of idents) {
+      if (BUILTIN_FN_NAMES.has(id)) continue;
+      sawVar = true;
+      if (!constParamVars.has(id)) return false;
+    }
+    return sawVar;
+  };
+
   // Find all equation sections and simple equations without crossing into nested class definitions
   function walk(node: any) {
     if (!node) return;
@@ -127,12 +220,7 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
       const text = node.text || "";
       // If already wrapped in homotopy, skip per MLS §3.7.2.4 (nested homotopy is not needed)
       const isHomotopyCallAt = (s: string, kwIdx: number): boolean => {
-        if (kwIdx > 0) {
-          const prev = s.charCodeAt(kwIdx - 1);
-          if ((prev >= 65 && prev <= 90) || (prev >= 97 && prev <= 122) || (prev >= 48 && prev <= 57) || prev === 95) {
-            return false;
-          }
-        }
+        if (!isCallBoundary(s, kwIdx)) return false;
         let j = kwIdx + 8;
         while (j < s.length && (s[j] === " " || s[j] === "\t" || s[j] === "\n" || s[j] === "\r")) j++;
         return s[j] === "(";
@@ -179,6 +267,7 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
         extra?: { power?: number | undefined; arg?: string | undefined },
       ) => {
         if (relIdx < 0 || isAlreadyInHomotopy(relIdx)) return;
+        if (isAllConstParams(extra?.arg ?? termText)) return;
         const startOffset = eqStart + relIdx;
         const endOffset = startOffset + termText.length;
         const key = `${kind}:${startOffset}:${endOffset}`;
@@ -290,14 +379,14 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
             }
           }
         } else if (et === "function_call" || et === "primary") {
-          if (eText.startsWith("exp(") && eText.endsWith(")")) {
+          if (eText.startsWith("exp(") && findMatchingParen(eText, 3) === eText.length - 1) {
             const arg = eText.slice(4, -1).trim();
             if (!isNumeric(arg)) {
               const varName = extractFirstIdent(arg) || "x";
               recordTerm("exp", eText, relIdx, varName, { arg });
               return;
             }
-          } else if (eText.startsWith("sqrt(") && eText.endsWith(")")) {
+          } else if (eText.startsWith("sqrt(") && findMatchingParen(eText, 4) === eText.length - 1) {
             const arg = eText.slice(5, -1).trim();
             if (!isNumeric(arg)) {
               const varName = extractFirstIdent(arg) || "x";
@@ -354,56 +443,54 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
         // 2. Quadratic drag / friction: v * abs(v) or abs(v) * v
         let absIdx = text.indexOf("abs(");
         while (absIdx !== -1) {
-          const closeParen = text.indexOf(")", absIdx);
-          if (closeParen !== -1) {
-            const vName = text.slice(absIdx + 4, closeParen).trim();
-            if (isIdent(vName)) {
-              // check if preceded by `vName * ` or followed by ` * vName`
-              const pre = text.slice(0, absIdx).trimEnd();
-              const post = text.slice(closeParen + 1).trimStart();
-              if (pre.endsWith(`*`) && pre.slice(0, -1).trimEnd().endsWith(vName)) {
-                const termStart = text.lastIndexOf(vName, absIdx);
-                const fullMatch = text.slice(termStart, closeParen + 1);
-                recordTerm("quadratic_drag", fullMatch, termStart, vName);
-              } else if (post.startsWith(`*`) && post.slice(1).trimStart().startsWith(vName)) {
-                const termEnd = closeParen + 1 + text.slice(closeParen + 1).indexOf(vName) + vName.length;
-                const fullMatch = text.slice(absIdx, termEnd);
-                recordTerm("quadratic_drag", fullMatch, absIdx, vName);
+          if (isCallBoundary(text, absIdx)) {
+            const closeParen = findMatchingParen(text, absIdx + 3);
+            if (closeParen !== -1) {
+              const vName = text.slice(absIdx + 4, closeParen).trim();
+              if (isIdent(vName)) {
+                const pre = text.slice(0, absIdx).trimEnd();
+                const post = text.slice(closeParen + 1).trimStart();
+                const preLhs = pre.endsWith("*") ? pre.slice(0, -1).trimEnd() : "";
+                if (preLhs.endsWith(vName) && isCallBoundary(preLhs, preLhs.length - vName.length)) {
+                  const termStart = preLhs.length - vName.length;
+                  const fullMatch = text.slice(termStart, closeParen + 1);
+                  recordTerm("quadratic_drag", fullMatch, termStart, vName);
+                } else if (post.startsWith("*")) {
+                  const postRhs = post.slice(1).trimStart();
+                  if (postRhs.startsWith(vName) && !isWordChar(postRhs[vName.length])) {
+                    const postOffset = text.length - postRhs.length;
+                    const termEnd = postOffset + vName.length;
+                    const fullMatch = text.slice(absIdx, termEnd);
+                    recordTerm("quadratic_drag", fullMatch, absIdx, vName);
+                  }
+                }
               }
             }
           }
           absIdx = text.indexOf("abs(", absIdx + 1);
         }
 
-        // 3. Exponentials: exp(...)
-        let expIdx = text.indexOf("exp(");
-        while (expIdx !== -1) {
-          const closeParen = text.indexOf(")", expIdx);
-          if (closeParen !== -1) {
-            const arg = text.slice(expIdx + 4, closeParen).trim();
-            if (!isNumeric(arg)) {
-              const varName = extractFirstIdent(arg) || "x";
-              const fullMatch = text.slice(expIdx, closeParen + 1);
-              recordTerm("exp", fullMatch, expIdx, varName, { arg });
+        // 3 & 4. Exponentials and square roots with identifier boundary + balanced parens
+        const scanUnaryNonlinear = (fnName: "exp" | "sqrt") => {
+          const prefix = `${fnName}(`;
+          let fnIdx = text.indexOf(prefix);
+          while (fnIdx !== -1) {
+            if (isCallBoundary(text, fnIdx)) {
+              const closeParen = findMatchingParen(text, fnIdx + fnName.length);
+              if (closeParen !== -1) {
+                const arg = text.slice(fnIdx + prefix.length, closeParen).trim();
+                if (!isNumeric(arg)) {
+                  const varName = extractFirstIdent(arg) || "x";
+                  const fullMatch = text.slice(fnIdx, closeParen + 1);
+                  recordTerm(fnName, fullMatch, fnIdx, varName, { arg });
+                }
+              }
             }
+            fnIdx = text.indexOf(prefix, fnIdx + 1);
           }
-          expIdx = text.indexOf("exp(", expIdx + 1);
-        }
-
-        // 4. Square roots: sqrt(...)
-        let sqrtIdx = text.indexOf("sqrt(");
-        while (sqrtIdx !== -1) {
-          const closeParen = text.indexOf(")", sqrtIdx);
-          if (closeParen !== -1) {
-            const arg = text.slice(sqrtIdx + 5, closeParen).trim();
-            if (!isNumeric(arg)) {
-              const varName = extractFirstIdent(arg) || "x";
-              const fullMatch = text.slice(sqrtIdx, closeParen + 1);
-              recordTerm("sqrt", fullMatch, sqrtIdx, varName, { arg });
-            }
-          }
-          sqrtIdx = text.indexOf("sqrt(", sqrtIdx + 1);
-        }
+        };
+        scanUnaryNonlinear("exp");
+        scanUnaryNonlinear("sqrt");
       }
 
       return; // Do not recurse deeper into simple_equation children once handled

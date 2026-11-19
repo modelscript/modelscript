@@ -39,6 +39,21 @@ export const canteraLanguage = language({
   writeback: {
     operators: [":", "="],
   },
+  ui: {
+    panels: [
+      {
+        id: "canteraEditor",
+        viewType: "modelscript.canteraEditor",
+        title: "Cantera Chemical Kinetics Studio",
+        shortTitle: "Cantera",
+        selector: ["*.cti", "*.cantera.yaml"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/CanteraPanel.tsx",
+        artifactViewTypes: ["cantera", "cti"],
+      },
+    ],
+  },
 
   actions: [
     {

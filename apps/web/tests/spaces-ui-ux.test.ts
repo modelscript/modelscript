@@ -576,9 +576,9 @@ describe("Spaces UI/UX Layout & Polish Invariants", () => {
     assert.ok(
       spaceIssuesSrc.includes("issue.severity") &&
         spaceIssuesSrc.includes("impacted_models") &&
-        spaceIssuesSrc.includes("/morsel?code=") &&
+        spaceIssuesSrc.includes("/editor?code=") &&
         spaceIssuesSrc.includes("linked_pr_number"),
-      "SpaceIssuesTab must render engineering severity badges, Morsel simulator links for impacted models, and linked PR badges",
+      "SpaceIssuesTab must render engineering severity badges, Ansatz links for impacted models, and linked PR badges",
     );
 
     // 5. Discussion thread and Close / Reopen state management

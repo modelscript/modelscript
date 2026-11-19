@@ -215,18 +215,21 @@ export function getEnclosingClass(db: CodeGraph, node: u32, $: any): u32 {
   let root = db.ast.getRootNode();
   if (root != 0) {
     let cached = db.ast.getCachedEnclosingClass(root);
-    if (cached != 0) return cached;
-
-    let count: u32 = 0;
-    let singleClass: u32 = 0;
-    for (const cDef of db.ast.getDescendants(root, $.class_definition)) {
-      count++;
-      singleClass = cDef;
-      if (count > 1) break;
-    }
-    if (count == 1 && !hasAnyInnerClass(db, singleClass, $)) {
-      db.ast.setCachedEnclosingClass(root, singleClass);
-      return singleClass;
+    if (cached != 0) {
+      if (cached != 0xffffffff) return cached;
+    } else {
+      let count: u32 = 0;
+      let singleClass: u32 = 0;
+      for (const cDef of db.ast.getDescendants(root, $.class_definition)) {
+        count++;
+        singleClass = cDef;
+        if (count > 1) break;
+      }
+      if (count == 1 && !hasAnyInnerClass(db, singleClass, $)) {
+        db.ast.setCachedEnclosingClass(root, singleClass);
+        return singleClass;
+      }
+      db.ast.setCachedEnclosingClass(root, 0xffffffff);
     }
   }
 
@@ -503,7 +506,14 @@ function findTargetElementInClassRecursive(db: CodeGraph, targetClass: u32, rede
  * within `targetClass` or its inherited base classes.
  */
 export function findTargetElementInClass(db: CodeGraph, targetClass: u32, redeclName: u32, $: any): u32 {
-  return findTargetElementInClassRecursive(db, targetClass, redeclName, $, 0);
+  if (targetClass == 0 || redeclName == 0) return 0;
+  const memoKind: u32 = targetClass ^ 0x88880000;
+  const span = db.ast.getTextSpan(redeclName);
+  const cached = db.ast.getCachedByName(memoKind, span);
+  if (cached >= 0) return cached as u32;
+  const res = findTargetElementInClassRecursive(db, targetClass, redeclName, $, 0);
+  db.ast.setCachedByName(memoKind, span, res);
+  return res;
 }
 
 /**
@@ -2432,9 +2442,13 @@ function getFlowVariableCountRecursive(db: CodeGraph, classDefNode: u32, $: any,
  */
 export function getFlowVariableCount(db: CodeGraph, classDefNode: u32, $: any): u32 {
   if (classDefNode == 0) return 0;
+  const span = db.ast.getTextSpan(classDefNode);
+  const cached = db.ast.getCachedByName(0x44440000, span);
+  if (cached >= 0) return cached as u32;
   const visited = db.set.create();
   const count = getFlowVariableCountRecursive(db, classDefNode, $, visited, 0);
   db.set.release(visited);
+  db.ast.setCachedByName(0x44440000, span, count);
   return count;
 }
 
@@ -4022,7 +4036,8 @@ export function hasMixedClockDomains(db: CodeGraph, exprNode: u32, $: any): bool
 }
 
 /**
- * Checks if the second positional argument (factor) of subSample/superSample/shiftSample/backSample is <= 0.
+ * Checks if the second positional argument (factor) of subSample/superSample/shiftSample/backSample is negative.
+ * Factor `0` means an inferred factor per MLS §16.3 and is valid.
  */
 export function hasNonPositiveSampleFactor(db: CodeGraph, callNode: u32, $: any): boolean {
   let argIdx: u32 = 0;
@@ -4046,7 +4061,7 @@ export function hasNonPositiveSampleFactor(db: CodeGraph, callNode: u32, $: any)
     }
   }
   if (secondArg == 0) return false;
-  if (db.ast.textEquals(secondArg, "0") || db.ast.startsWith(secondArg, "-")) {
+  if (db.ast.startsWith(secondArg, "-") && !db.ast.textEquals(secondArg, "-0")) {
     return true;
   }
   return false;
@@ -4092,7 +4107,29 @@ export function isPreviousOnNonClocked(db: CodeGraph, callNode: u32, $: any): bo
 /**
  * Checks if an impure function is called inside a pure (non-impure) function.
  */
+function isInsidePureOperator(db: CodeGraph, callNode: u32, $: any): boolean {
+  for (const anc of db.ast.getAncestors(callNode, 0)) {
+    const t = db.ast.getType(anc);
+    if (t == $.function_call || t == $.primary || t == $.lhs_primary) {
+      if (
+        db.ast.startsWith(anc, "pure(") ||
+        db.ast.startsWith(anc, "pure ") ||
+        db.ast.startsWith(anc, "pure\t") ||
+        db.ast.startsWith(anc, "pure\n")
+      ) {
+        return true;
+      }
+      const ancCallee = getCallCalleeNode(db, anc, $);
+      if (ancCallee != 0 && db.ast.textEquals(ancCallee, "pure")) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function isImpureCalledInPureFunction(db: CodeGraph, callNode: u32, $: any): boolean {
+  if (isInsidePureOperator(db, callNode, $)) return false;
   const name = getCallCalleeNode(db, callNode, $);
   if (name == 0) return false;
   const callerCls = getEnclosingClass(db, callNode, $);
@@ -4104,14 +4141,18 @@ export function isImpureCalledInPureFunction(db: CodeGraph, callNode: u32, $: an
 }
 
 /**
- * Checks if an impure function is called inside a continuous equation_section (outside when_equation).
+ * Checks if an impure function is called inside a continuous equation_section (outside when_equation and initial equation).
  */
 export function isImpureCalledInEquationSection(db: CodeGraph, callNode: u32, $: any): boolean {
+  if (isInsidePureOperator(db, callNode, $)) return false;
   let inEqSec = false;
   for (const anc of db.ast.getAncestors(callNode, 0)) {
     const t = db.ast.getType(anc);
     if (t == $.when_equation) return false;
-    if (t == $.equation_section) inEqSec = true;
+    if (t == $.equation_section) {
+      if (db.ast.startsWith(anc, "initial")) return false;
+      inEqSec = true;
+    }
   }
   if (!inEqSec) return false;
   const name = getCallCalleeNode(db, callNode, $);
@@ -4122,8 +4163,26 @@ export function isImpureCalledInEquationSection(db: CodeGraph, callNode: u32, $:
 }
 
 /**
- * Checks if a simple_equation accesses a stream variable on its RHS without an enclosing inStream() or actualStream() operator.
- * Returns the RHS stream variable AST node if invalid, or 0 otherwise.
+ * Checks whether a component_reference has at least 3 non-subscript identifier segments
+ * (e.g., `subcomp.port.h_outflow`), representing an inside connector stream access.
+ * Direct `port.h_outflow` (2 segments) on an outside connector is legal per MLS §15.2.
+ */
+function isInsideConnectorStreamRef(db: CodeGraph, encClass: u32, crNode: u32, $: any): boolean {
+  let idCount: u32 = 0;
+  for (const id of db.ast.getDescendants(crNode, $.identifier)) {
+    if (id != 0 && !isDescendantOfSubscript(db, id, crNode, $)) {
+      idCount++;
+      if (idCount >= 3) break;
+    }
+  }
+  if (idCount < 3) return false;
+  return isStreamVariable(db, encClass, crNode, $);
+}
+
+/**
+ * Checks if a simple_equation accesses an inside connector's stream variable on its RHS
+ * (e.g., `sub.port.h_outflow`) without an enclosing inStream() or actualStream() operator (MLS §15.2).
+ * Direct reads on an outside connector (`port.h_outflow`) are allowed.
  */
 export function getStreamMissingInStreamNode(db: CodeGraph, eqNode: u32, $: any): u32 {
   let lhs = db.ast.getFirstChild(eqNode);
@@ -4160,11 +4219,11 @@ export function getStreamMissingInStreamNode(db: CodeGraph, eqNode: u32, $: any)
   if (encClass == 0) return 0;
 
   for (const cr of db.ast.getDescendants(rhs, $.component_reference)) {
-    if (isStreamVariable(db, encClass, cr, $)) {
+    if (isInsideConnectorStreamRef(db, encClass, cr, $)) {
       return cr;
     }
   }
-  if (isStreamVariable(db, encClass, rhs, $)) {
+  if (isInsideConnectorStreamRef(db, encClass, rhs, $)) {
     return rhs;
   }
   return 0;
@@ -4229,23 +4288,43 @@ export function getInnerOuterCausalityConflictNode(db: CodeGraph, compClause: u3
 
   const root = db.ast.getRootNode();
   if (root == 0) return 0;
+  const rootSpan = db.ast.getTextSpan(root);
+  const hasAnyInnerCached = db.ast.getCachedByName(0x494e434b /* INCK */, rootSpan);
+  if (hasAnyInnerCached == 0) return 0;
+
+  const outerSpan = db.ast.getTextSpan(outerId);
+  const dirMemoKind: u32 = outerIsInput ? 0x494f494e /* IOIN */ : 0x494f4f55; /* IOOU */
+  const cachedMatch = db.ast.getCachedByName(dirMemoKind, outerSpan);
+  if (cachedMatch >= 0) return cachedMatch as u32;
+
+  let hasAnyInnerCausal: u32 = 0;
+  let matchedNode: u32 = 0;
   for (const otherComp of db.ast.getDescendants(root, $.component_clause)) {
     if (otherComp == compClause) continue;
     if (!hasElementOrTypePrefix(db, otherComp, "inner", $)) continue;
     const innerIsInput = hasTypePrefix(db, otherComp, "input", $);
     const innerIsOutput = hasTypePrefix(db, otherComp, "output", $);
+    if (!innerIsInput && !innerIsOutput) continue;
+    hasAnyInnerCausal = 1;
     if ((outerIsInput && innerIsOutput) || (outerIsOutput && innerIsInput)) {
       for (const decl of db.ast.getDescendants(otherComp, $.declaration)) {
         for (const id of db.ast.getDescendants(decl, $.identifier)) {
           if (db.ast.textEqualsNode(id, outerId)) {
-            return id;
+            matchedNode = id;
+            break;
           }
           break;
         }
+        if (matchedNode != 0) break;
       }
+      if (matchedNode != 0) break;
     }
   }
-  return 0;
+  if (hasAnyInnerCached < 0) {
+    db.ast.setCachedByName(0x494e434b /* INCK */, rootSpan, hasAnyInnerCausal);
+  }
+  db.ast.setCachedByName(dirMemoKind, outerSpan, matchedNode);
+  return matchedNode;
 }
 
 /**
@@ -4265,19 +4344,31 @@ export function getUnusedProtectedParameterNode(db: CodeGraph, compClause: u32, 
     }
   }
   if (encClass == 0) return 0;
-  if (isClassKind(db, encClass, "partial")) return 0;
-  if (!isClassKind(db, encClass, "model") && !isClassKind(db, encClass, "block")) return 0;
 
-  // Ensure the class has no extends_clause and has at least one equation
-  for (const _ext of db.ast.getDescendants(encClass, $.extends_clause)) {
-    return 0;
+  const classSpan = db.ast.getTextSpan(encClass);
+  const eligCached = db.ast.getCachedByName(0x4e4f5052 /* NOPR */, classSpan);
+  if (eligCached == 0) return 0;
+  if (eligCached < 0) {
+    let eligible: u32 = 1;
+    if (isClassKind(db, encClass, "partial")) eligible = 0;
+    else if (!isClassKind(db, encClass, "model") && !isClassKind(db, encClass, "block")) eligible = 0;
+    if (eligible != 0) {
+      for (const _ext of db.ast.getDescendants(encClass, $.extends_clause)) {
+        eligible = 0;
+        break;
+      }
+    }
+    if (eligible != 0) {
+      let hasEquation = false;
+      for (const _eq of db.ast.getDescendants(encClass, $.simple_equation)) {
+        hasEquation = true;
+        break;
+      }
+      if (!hasEquation) eligible = 0;
+    }
+    db.ast.setCachedByName(0x4e4f5052 /* NOPR */, classSpan, eligible);
+    if (eligible == 0) return 0;
   }
-  let hasEquation = false;
-  for (const _eq of db.ast.getDescendants(encClass, $.simple_equation)) {
-    hasEquation = true;
-    break;
-  }
-  if (!hasEquation) return 0;
 
   let paramId: u32 = 0;
   for (const decl of db.ast.getDescendants(compClause, $.declaration)) {

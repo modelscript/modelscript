@@ -61,7 +61,7 @@ export const IdeWorkbenchFrame: React.FC<IdeWorkbenchFrameProps> = ({
                 )}
                 {onOpenInPlayground && (
                   <Button size="small" variant="primary" leadingVisual={CodeIcon} onClick={onOpenInPlayground}>
-                    Open in Morsel
+                    Open in Ansatz
                   </Button>
                 )}
               </div>

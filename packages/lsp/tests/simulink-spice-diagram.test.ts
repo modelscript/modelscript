@@ -199,4 +199,106 @@ RLOAD 3 0 1k
     assert.ok(palette.categories.some((c) => c.name === "Passive Components"));
     assert.ok(palette.categories.some((c) => c.name === "Semiconductors"));
   });
+
+  await t.test("should connect, disconnect, reconnect SPICE nets with minimal diff hunks", async () => {
+    const { TextDocument } = await import("vscode-languageserver-textdocument");
+    const backend = dispatch.getBackend(dummySpiceUri);
+    const apply = (src: string, edits: any[]) =>
+      TextDocument.applyEdits(TextDocument.create(dummySpiceUri, "spice", 1, src), edits);
+
+    // Connect disconnected R1 pin_1 (net 2) -> RLOAD pin_1 (net 0) reuses net 2 with minimal edit
+    const connRes = await backend.applyEdits({
+      uri: dummySpiceUri,
+      seq: 1,
+      actions: [{ type: "connect", source: "comp_R1", sourcePort: "pin_1", target: "comp_RLOAD", targetPort: "pin_1" }],
+    });
+    assert.strictEqual(connRes.edits.length, 1);
+    assert.strictEqual(connRes.edits[0]!.range.start.line, 5, "Minimal hunk must start on RLOAD line");
+    const connected = apply(sampleSpice, connRes.edits);
+    assert.ok(connected.includes("RLOAD 3 2 1k"));
+
+    // Disconnect R1 pin_1 <-> L1 pin_0 (both on net 2)
+    const discRes = await backend.applyEdits({
+      uri: dummySpiceUri,
+      seq: 2,
+      actions: [{ type: "disconnect", source: "comp_R1", sourcePort: "pin_1", target: "comp_L1", targetPort: "pin_0" }],
+    });
+    assert.strictEqual(discRes.edits.length, 1);
+    assert.strictEqual(discRes.edits[0]!.range.start.line, 3, "Minimal hunk must target L1 line");
+    const disconnected = apply(sampleSpice, discRes.edits);
+    assert.ok(disconnected.includes("L1 nc_L1_1 3 100u"));
+  });
+
+  await t.test("OpenDRIVE applyEdits emits minimal hunks rather than 0..EOF full replacements", async () => {
+    const { TextDocument } = await import("vscode-languageserver-textdocument");
+    const dummyXodrUri = "file:///workspace/demo_road.xodr";
+    const sampleXodr = [
+      `<?xml version="1.0" encoding="UTF-8"?>`,
+      `<OpenDRIVE>`,
+      `  <header revMajor="1" revMinor="6" name="Test"/>`,
+      `  <road id="1" name="Main" length="100.0">`,
+      `    <link/>`,
+      `  </road>`,
+      `  <road id="2" name="Exit" length="50.0">`,
+      `    <link/>`,
+      `  </road>`,
+      `</OpenDRIVE>`,
+    ].join("\n");
+
+    const xodrGeneric: any = {
+      deps: { getDocumentText: (u: string) => (u === dummyXodrUri ? sampleXodr : undefined) },
+      getData: async () => null,
+      getComponentProperties: () => null,
+      applyEdits: async () => ({ seq: 1, edits: [], renderHint: "none" }),
+    };
+    const xodrDispatch = createDiagramDispatch({ generic: xodrGeneric });
+    const backend = xodrDispatch.getBackend(dummyXodrUri);
+
+    const res = await backend.applyEdits({
+      uri: dummyXodrUri,
+      seq: 1,
+      actions: [{ type: "connect", source: "road_1", target: "road_2" }],
+    });
+
+    assert.strictEqual(res.edits.length, 1);
+    assert.ok(
+      res.edits[0]!.range.start.line >= 3,
+      `Expected minimal hunk start >= line 3, got ${res.edits[0]!.range.start.line}`,
+    );
+    const patched = TextDocument.applyEdits(TextDocument.create(dummyXodrUri, "opendrive", 1, sampleXodr), res.edits);
+    assert.ok(patched.includes(`elementType="road" elementId="2"`));
+  });
+
+  await t.test(
+    "DOMAIN_BUILDERS persists spatial moves via .layout sidecar while blocking structural edits",
+    async () => {
+      const forwardedActions: any[] = [];
+      const oscalUri = "file:///workspace/ssp.oscal.json";
+      const mockGeneric: any = {
+        deps: { getDocumentText: () => `{ "system-security-plan": { "metadata": { "title": "SSP" } } }` },
+        getLayoutStorage: () => null,
+        getData: async () => null,
+        getComponentProperties: () => null,
+        applyEdits: async (p: any) => {
+          forwardedActions.push(...p.actions);
+          return { seq: p.seq, edits: [], sidecarContent: JSON.stringify({ moved: true }), renderHint: "none" };
+        },
+      };
+      const domainDispatch = createDiagramDispatch({ generic: mockGeneric });
+      const backend = domainDispatch.getBackend(oscalUri);
+
+      const res = await backend.applyEdits({
+        uri: oscalUri,
+        seq: 7,
+        actions: [
+          { type: "move", elementName: "comp_1", x: 120, y: 80 },
+          { type: "addComponent", className: "component", name: "comp_2", x: 0, y: 0 },
+        ],
+      });
+
+      assert.strictEqual(res.edits.length, 0);
+      assert.deepStrictEqual(forwardedActions, [{ type: "move", elementName: "comp_1", x: 120, y: 80 }]);
+      assert.ok(res.sidecarContent?.includes('"moved":true'));
+    },
+  );
 });

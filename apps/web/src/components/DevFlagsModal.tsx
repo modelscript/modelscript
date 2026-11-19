@@ -78,9 +78,9 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     description: "In-browser WASM simulation using SUNDIALS CVODE, RK4, and DOPRI5 integrators.",
   },
   morsel_playground: {
-    title: "Morsel Simulation Playground",
+    title: "Ansatz",
     category: "Simulation",
-    description: "Interactive block-based physical modeling and equation playground.",
+    description: "Interactive block-based physical modeling and equation editor.",
   },
   package_browser: {
     title: "Package Ecosystem Browser",
@@ -217,10 +217,10 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     description: "Alias for composer_ai_polish — enable AI text polishing in the composer.",
   },
   morsel_ai: {
-    title: "Morsel AI Assistant",
+    title: "Ansatz AI Assistant",
     category: "Advanced",
     description:
-      "Enable hybrid AI copilot in Morsel (local WebGPU, local Ollama/vLLM, Ansatz cloud models, and 3rd-party BYOK providers with MCP tool calling).",
+      "Enable hybrid AI copilot in Ansatz (local WebGPU, local Ollama/vLLM, Ansatz cloud models, and 3rd-party BYOK providers with MCP tool calling).",
   },
   feeds_page: {
     title: "External RSS Feeds Page",

@@ -10,7 +10,13 @@ import { hasWorkspaceLinter, runWorkspaceLinterForDocument } from "./workspace-l
 import { WorkspaceManager } from "./workspace-manager.js";
 
 import { parseXmlSync } from "@modelscript/dsl/xml";
-import { getModelicaErrorCodeDef } from "@modelscript/modelica";
+import {
+  getModelicaErrorCodeDef,
+  type ModelicaReconcileView,
+  reconcileModelicaCstDiagnostics,
+  resolveModelicaTypeInWorkspace,
+  resolveModelicaVariableInWorkspace,
+} from "@modelscript/modelica";
 import {
   type CorrespondenceDiagnostic,
   cstLineText,
@@ -768,6 +774,87 @@ export function extractCanonicalErrorInfo(
 }
 
 /**
+ * Line-indexed lookup table for fast Step 5b semantic diagnostic deduplication/merging.
+ * Avoids O(n^2) scans over existing diagnostics while preserving insertion-order matching.
+ */
+export class SemanticDiagnosticLineIndex {
+  private readonly byLine = new Map<number, Diagnostic[]>();
+  private readonly multiLine: Diagnostic[] = [];
+
+  constructor(initial?: Diagnostic[]) {
+    if (initial) {
+      for (const d of initial) this.add(d);
+    }
+  }
+
+  add(diag: Diagnostic): void {
+    const startLine = diag.range.start.line;
+    const endLine = diag.range.end.line;
+    if (endLine - startLine > 16) {
+      this.multiLine.push(diag);
+      return;
+    }
+    for (let line = startLine; line <= endLine; line++) {
+      let bucket = this.byLine.get(line);
+      if (!bucket) {
+        bucket = [];
+        this.byLine.set(line, bucket);
+      }
+      bucket.push(diag);
+    }
+  }
+
+  updateRange(diag: Diagnostic, prevStartLine: number, prevEndLine: number): void {
+    const nextStart = diag.range.start.line;
+    const nextEnd = diag.range.end.line;
+    if (nextStart === prevStartLine && nextEnd === prevEndLine) return;
+    if (nextEnd - nextStart > 16) {
+      if (prevEndLine - prevStartLine <= 16) {
+        this.multiLine.push(diag);
+      }
+      return;
+    }
+    for (let line = nextStart; line <= nextEnd; line++) {
+      if (line >= prevStartLine && line <= prevEndLine) continue;
+      let bucket = this.byLine.get(line);
+      if (!bucket) {
+        bucket = [];
+        this.byLine.set(line, bucket);
+      }
+      bucket.push(diag);
+    }
+  }
+
+  candidatesFor(incoming: Diagnostic, existingList: Diagnostic[]): Diagnostic[] {
+    const startLine = incoming.range.start.line;
+    const endLine = incoming.range.end.line;
+    if (endLine - startLine > 16) return existingList;
+    if (startLine === endLine && this.multiLine.length === 0) {
+      return this.byLine.get(startLine) ?? [];
+    }
+    const seen = new Set<Diagnostic>();
+    const out: Diagnostic[] = [];
+    for (let line = startLine; line <= endLine; line++) {
+      const bucket = this.byLine.get(line);
+      if (!bucket) continue;
+      for (const d of bucket) {
+        if (!seen.has(d)) {
+          seen.add(d);
+          out.push(d);
+        }
+      }
+    }
+    for (const d of this.multiLine) {
+      if (!seen.has(d)) {
+        seen.add(d);
+        out.push(d);
+      }
+    }
+    return out;
+  }
+}
+
+/**
  * Deduplicate or merge a semantic diagnostic from Step 5b into the existing Step 5a diagnostics list.
  * Returns true if the diagnostic was merged or recognized as a duplicate.
  */
@@ -775,10 +862,12 @@ export function tryDeduplicateOrMergeSemanticDiagnostic(
   existingList: Diagnostic[],
   incoming: Diagnostic,
   plugin?: any,
+  lineIndex?: SemanticDiagnosticLineIndex,
 ): boolean {
   const incomingInfo = extractCanonicalErrorInfo(incoming.code, undefined, plugin);
+  const candidates = lineIndex ? lineIndex.candidatesFor(incoming, existingList) : existingList;
 
-  for (const existing of existingList) {
+  for (const existing of candidates) {
     // 1. Line match or overlap
     const sameLine = existing.range.start.line === incoming.range.start.line;
     const linesOverlap =
@@ -812,8 +901,25 @@ export function tryDeduplicateOrMergeSemanticDiagnostic(
     // 4. Duplicate decision
     let isMatch = false;
     if (codesMatch) {
-      // If error codes match on the same line, it's the same error
-      if (sameLine || charOverlap || charAdjacent) {
+      // Same error code on the same line should only merge when spans overlap OR one message
+      // is generic / a prefix specialization of the other; distinct targets on one line (e.g.
+      // `y := a + b` with two M5021 warnings) stay separate.
+      const existingGeneric =
+        !existing.message ||
+        existing.message.startsWith("Linter Rule ") ||
+        existing.message.startsWith("Linter rule ") ||
+        existing.message === "Syntax Error";
+      const incomingGeneric =
+        !incoming.message || incoming.message.startsWith("Linter Rule ") || incoming.message.startsWith("Linter rule ");
+      const existingStem = existing.message.replace(/\.$/, "");
+      const incomingStem = incoming.message.replace(/\.$/, "");
+      const messageCompatible =
+        existing.message === incoming.message ||
+        existingGeneric ||
+        incomingGeneric ||
+        (existingStem.length > 0 && incoming.message.startsWith(existingStem)) ||
+        (incomingStem.length > 0 && existing.message.startsWith(incomingStem));
+      if (charOverlap || ((sameLine || charAdjacent) && messageCompatible)) {
         isMatch = true;
       }
     } else if (charOverlap) {
@@ -835,6 +941,9 @@ export function tryDeduplicateOrMergeSemanticDiagnostic(
     }
 
     if (isMatch) {
+      const prevStartLine = existing.range.start.line;
+      const prevEndLine = existing.range.end.line;
+
       // Merge / enrich existing diagnostic with incoming diagnostic details
       const existingIsGeneric =
         !existing.message ||
@@ -871,6 +980,10 @@ export function tryDeduplicateOrMergeSemanticDiagnostic(
         existing.range = incoming.range;
       }
 
+      if (lineIndex) {
+        lineIndex.updateRange(existing, prevStartLine, prevEndLine);
+      }
+
       return true; // Successfully deduplicated / merged
     }
   }
@@ -883,55 +996,62 @@ export function tryDeduplicateOrMergeSemanticDiagnostic(
  */
 export function deduplicateAllDiagnostics(diagnostics: Diagnostic[]): Diagnostic[] {
   const result: Diagnostic[] = [];
-  for (const d of diagnostics) {
-    const isDup = result.some((existing, idx) => {
-      const sameStart =
-        existing.range.start.line === d.range.start.line && existing.range.start.character === d.range.start.character;
-      const sameEnd =
-        existing.range.end.line === d.range.end.line && existing.range.end.character === d.range.end.character;
+  // All deduplication conditions require matching start position (line, character),
+  // so indexing by start position reduces the common case from O(n^2) to O(n).
+  const startBuckets = new Map<string, number[]>();
 
-      if (sameStart && sameEnd) {
-        // 1. Exact range and message
-        if (existing.message === d.message) {
-          return true;
+  for (const d of diagnostics) {
+    const startKey = `${d.range.start.line}:${d.range.start.character}`;
+    const bucket = startBuckets.get(startKey);
+    let isDup = false;
+
+    if (bucket) {
+      for (const idx of bucket) {
+        const existing = result[idx]!;
+        const sameEnd =
+          existing.range.end.line === d.range.end.line && existing.range.end.character === d.range.end.character;
+
+        if (sameEnd) {
+          // 1 & 2. Exact range and message
+          if (existing.message === d.message) {
+            isDup = true;
+            break;
+          }
+          // 3. Symmetrical generic syntax error shadowing
+          const existingIsGeneric = existing.message === "Syntax Error" || existing.message === "Syntax error";
+          const dIsGeneric = d.message === "Syntax Error" || d.message === "Syntax error";
+          if (existingIsGeneric && !dIsGeneric) {
+            result[idx] = d;
+            isDup = true;
+            break;
+          }
+          if (!existingIsGeneric && dIsGeneric) {
+            isDup = true;
+            break;
+          }
         }
-        // 2. Exact range, code, and message
+
+        // Same start position + same error code + same message duplicate
         if (
           existing.code !== undefined &&
           d.code !== undefined &&
           String(existing.code) === String(d.code) &&
           existing.message === d.message
         ) {
-          return true;
-        }
-        // 3. Symmetrical generic syntax error shadowing
-        const existingIsGeneric = existing.message === "Syntax Error" || existing.message === "Syntax error";
-        const dIsGeneric = d.message === "Syntax Error" || d.message === "Syntax error";
-        if (existingIsGeneric && !dIsGeneric) {
-          result[idx] = d;
-          return true;
-        }
-        if (!existingIsGeneric && dIsGeneric) {
-          return true;
+          isDup = true;
+          break;
         }
       }
-
-      // Same start position + same error code + same message duplicate
-      if (
-        sameStart &&
-        existing.code !== undefined &&
-        d.code !== undefined &&
-        String(existing.code) === String(d.code) &&
-        existing.message === d.message
-      ) {
-        return true;
-      }
-
-      return false;
-    });
+    }
 
     if (!isDup) {
+      const nextIdx = result.length;
       result.push(d);
+      if (bucket) {
+        bucket.push(nextIdx);
+      } else {
+        startBuckets.set(startKey, [nextIdx]);
+      }
     }
   }
   return result;
@@ -1824,7 +1944,7 @@ export class ValidationService {
             oldTree?.facade ??
             oldTree?.rootNode?.tree?.facade ??
             this.parserService.facade) as { lastAstRoot?: number; loadSource?: (text: string) => void } | undefined;
-          const isOldTreeActiveInWasm = isWasmTreeActiveInFacade(cached?.tree, activeFacade);
+          const isOldTreeActiveInWasm = isWasmTreeActiveInFacade(cached?.tree, activeFacade, uri);
 
           if (cached?.tree && cached.text !== text && isOldTreeActiveInWasm && parser) {
             const edit = computeTreeEdit(cached.text, text);
@@ -1833,7 +1953,18 @@ export class ValidationService {
             }
             tree = parser.parse(processedText, cached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
           } else if (parser) {
-            tree = parser.parse(processedText);
+            tree = (
+              parser as unknown as {
+                parse(
+                  t: string,
+                  p?: unknown,
+                  a?: number,
+                  b?: number,
+                  c?: number,
+                  u?: string,
+                ): ReturnType<NonNullable<typeof parser>["parse"]>;
+              }
+            ).parse(processedText, null, 0, 0, 0, uri);
           } else if (this.parserService.sharedContext && isModelica) {
             tree = this.parserService.sharedContext.parse(".mo", processedText);
           }
@@ -2459,7 +2590,7 @@ export class ValidationService {
             oldTree?.facade ??
             oldTree?.rootNode?.tree?.facade ??
             this.parserService.facade) as { lastAstRoot?: number; loadSource?: (text: string) => void } | undefined;
-          const isOldTreeActiveInWasm = isWasmTreeActiveInFacade(oldCached?.tree, activeFacade);
+          const isOldTreeActiveInWasm = isWasmTreeActiveInFacade(oldCached?.tree, activeFacade, uri);
 
           if (oldCached && oldCached.text !== text && isOldTreeActiveInWasm) {
             const edit = computeTreeEdit(oldCached.text, text);
@@ -2495,7 +2626,18 @@ export class ValidationService {
             }
           } else {
             if (parser) {
-              tree = parser.parse(processedText);
+              tree = (
+                parser as unknown as {
+                  parse(
+                    t: string,
+                    p?: unknown,
+                    a?: number,
+                    b?: number,
+                    c?: number,
+                    u?: string,
+                  ): ReturnType<NonNullable<typeof parser>["parse"]>;
+                }
+              ).parse(processedText, null, 0, 0, 0, uri);
             } else if (this.parserService.sharedContext && isModelica) {
               tree = this.parserService.sharedContext.parse(".mo", processedText);
             }
@@ -2668,20 +2810,21 @@ export class ValidationService {
 
       if (wsIndex) {
         if (textChanged) {
-          let totalDelta = 0;
-          let actualEditRanges = editRanges;
+          let actualEditRanges: { startOffset: number; endOffset: number; delta?: number }[] | undefined = editRanges;
+          let totalDelta = actualEditRanges ? actualEditRanges.reduce((acc, r) => acc + (r.delta ?? 0), 0) : 0;
           if (!actualEditRanges) {
             const lastText = this.lastIndexedText.get(effectiveUri);
             if (lastText) {
               const edit = computeTreeEdit(lastText, text);
               const maxEnd = Math.max(edit.oldEndIndex, edit.newEndIndex);
+              totalDelta = edit.newEndIndex - edit.oldEndIndex;
               actualEditRanges = [
                 {
                   startOffset: edit.startIndex,
                   endOffset: maxEnd,
+                  delta: totalDelta,
                 },
               ];
-              totalDelta = edit.newEndIndex - edit.oldEndIndex;
             }
           }
 
@@ -2841,6 +2984,7 @@ export class ValidationService {
       // 5b. Salsa QueryEngine symbol lints
       const skipHeavyLints = (!isWorkspaceFile && docSymbolCount > 1000) || hasSyntaxErrors;
       let capturedEngineDiags: EngineLintDiagnosticLike[] = [];
+      const semanticLineIndex = new SemanticDiagnosticLineIndex(newSemanticDiagnostics);
       if (!skipHeavyLints && vEngine && typeof vEngine.runAllLintsAsync === "function") {
         const viewportRange = this.documentViewports.get(uri) ?? undefined;
         const engineDiags = await vEngine.runAllLintsAsync(effectiveUri, yieldAndCheckStale, viewportRange);
@@ -2866,10 +3010,16 @@ export class ValidationService {
             ...(diagCode !== undefined ? { code: diagCode } : {}),
           };
 
-          const isDuplicate = tryDeduplicateOrMergeSemanticDiagnostic(newSemanticDiagnostics, incomingDiag, plugin);
+          const isDuplicate = tryDeduplicateOrMergeSemanticDiagnostic(
+            newSemanticDiagnostics,
+            incomingDiag,
+            plugin,
+            semanticLineIndex,
+          );
 
           if (!isDuplicate) {
             newSemanticDiagnostics.push(incomingDiag);
+            semanticLineIndex.add(incomingDiag);
           }
         }
       }
@@ -2888,8 +3038,9 @@ export class ValidationService {
           plugin,
         );
         for (const wd of reconciledWasm) {
-          if (!tryDeduplicateOrMergeSemanticDiagnostic(newSemanticDiagnostics, wd, plugin)) {
+          if (!tryDeduplicateOrMergeSemanticDiagnostic(newSemanticDiagnostics, wd, plugin, semanticLineIndex)) {
             newSemanticDiagnostics.push(wd);
+            semanticLineIndex.add(wd);
           }
         }
       }
@@ -3462,7 +3613,31 @@ export class ValidationService {
         return Math.max(es, startOff) <= Math.min(ee, endOff) + 2;
       });
 
-    return wasmDiags.filter((diag) => {
+    const modelicaView: ModelicaReconcileView | null =
+      normLang === "modelica" && engine && typeof engine.query === "function"
+        ? {
+            symbols: unifiedIndex.symbols,
+            symbol: (id: number) => unifiedIndex.symbols.get(id),
+            byName: (n: string) =>
+              (unifiedIndex.byName?.get(n) ?? [])
+                .map((id: number) => unifiedIndex.symbols.get(id))
+                .filter((s): s is SymbolEntry => Boolean(s)),
+            query: <T = unknown>(q: string, id: number) => engine.query<T>(q, id),
+          }
+        : null;
+    const docScopeIds = docSymbols.filter((s) => s.kind === "Class" || s.kind === "Package").map((s) => s.id);
+
+    const preFiltered =
+      normLang === "modelica"
+        ? reconcileModelicaCstDiagnostics({
+            cstDiags: wasmDiags,
+            hasArenaResult: false,
+            engineDiags,
+            isOldFrontend: text.includes("-d=-newInst"),
+          })
+        : wasmDiags;
+
+    return preFiltered.filter((diag) => {
       const info = extractCanonicalErrorInfo(diag.code, undefined, plugin);
       const codeNum = info.codeNum;
       const isTypeNotFound = codeNum === 2003 || info.ruleName === "typenotfound" || info.ruleName === "classnotfound";
@@ -3480,6 +3655,13 @@ export class ValidationService {
           return false;
         }
         if (resolveImportedOrQualifiedChain(fullChain) || resolveImportedOrQualifiedChain(tokenText)) {
+          return false;
+        }
+        if (
+          modelicaView &&
+          (resolveModelicaTypeInWorkspace(modelicaView, fullChain, docScopeIds) ||
+            resolveModelicaTypeInWorkspace(modelicaView, tokenText, docScopeIds))
+        ) {
           return false;
         }
         // Check enclosing declaration resolved cleanly via Step 5b typeSpecifier
@@ -3505,6 +3687,9 @@ export class ValidationService {
         return false;
       }
       if (resolveMemberViaComponentType(startOff, fullChain)) {
+        return false;
+      }
+      if (modelicaView && resolveModelicaVariableInWorkspace(modelicaView, fullChain, null, docScopeIds)) {
         return false;
       }
       return true;
@@ -4247,7 +4432,7 @@ export class ValidationService {
         const activeFacade = (plugin?.facade ?? this.parserService.getFacade(langId)) as
           | { lastAstRoot?: number }
           | undefined;
-        if (!activeFacade || isWasmTreeActiveInFacade(cachedTree, activeFacade)) {
+        if (!activeFacade || isWasmTreeActiveInFacade(cachedTree, activeFacade, uri)) {
           const edit = computeTreeEdit(cached.text, text);
           cachedTree.edit(edit as never);
           const nextTree = wasmParser.parse(text, cachedTree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
@@ -4257,7 +4442,7 @@ export class ValidationService {
           return nextTree ?? null;
         }
       }
-      const freshTree = wasmParser.parse(text);
+      const freshTree = wasmParser.parse(text, null, 0, 0, 0, uri);
       if (cachedTree && cachedTree !== freshTree) {
         cachedTree.delete?.();
       }
@@ -4293,8 +4478,7 @@ export class ValidationService {
         }
       }
       const project = parsePscx(text, { cstTree: wasmTree });
-      const xmlErrors =
-        project.xmlErrors && project.xmlErrors.length > 0 ? project.xmlErrors : parseXmlSync(text).errors;
+      const xmlErrors = project.xmlErrors !== undefined ? project.xmlErrors : parseXmlSync(text).errors;
       if (xmlErrors.length > 0) {
         for (const err of xmlErrors) {
           const start = textDocument.positionAt(err.start);
@@ -4312,7 +4496,7 @@ export class ValidationService {
           });
         }
       }
-      const lints = lintPscx(project);
+      const lints = lintPscx(project, { tier: "fast" });
 
       for (const lint of lints) {
         const line = Math.max(0, (lint.line ?? 1) - 1);

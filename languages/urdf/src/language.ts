@@ -19,6 +19,45 @@ export const urdfLanguage = language({
   lsp: {
     fileExtensions: [".urdf", ".sdf", ".xacro"],
   },
+  ui: {
+    panels: [
+      {
+        id: "urdfEditor",
+        viewType: "modelscript.urdfEditor",
+        title: "URDF / SDF Robot Kinematics Studio",
+        shortTitle: "URDF",
+        selector: ["*.urdf", "*.sdf", "*.xacro"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/UrdfPanel.tsx",
+        artifactViewTypes: ["urdf", "sdf", "xacro", "urdf-kinematics"],
+      },
+    ],
+    stencils: [
+      {
+        label: "Rigid Body / Link",
+        snippet:
+          '  <link name="link_new">\n    <inertial><mass value="1.5"/><inertia ixx="0.02" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.02"/></inertial>\n  </link>\n',
+      },
+      {
+        label: "Revolute Joint",
+        snippet:
+          '  <joint name="joint_new" type="revolute">\n    <parent link="base_link"/>\n    <child link="link_new"/>\n    <axis xyz="0 0 1"/>\n  </joint>\n',
+      },
+    ],
+  },
+  diagram: {
+    placement: {
+      persistence: "sidecar",
+    },
+    mutations: {
+      sections: { node: "robot", edge: "robot" },
+      createNode: (className: string, name: string) =>
+        `<link name="${name}"><!-- ${className} --><inertial><mass value="1.0"/><inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01"/></inertial></link>`,
+      createEdge: (source: string, target: string) =>
+        `<joint name="${source}_to_${target}" type="fixed"><parent link="${source}"/><child link="${target}"/></joint>`,
+    },
+  },
 
   rules: {
     Document: ($) => repeat(choice($["Element"]!, $["Comment"]!)),

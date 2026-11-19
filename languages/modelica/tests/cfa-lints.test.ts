@@ -341,4 +341,55 @@ describe("Modelica Control Flow Analysis (CFA) Linter Suite", () => {
     const m5022 = diags.filter((d: any) => d.code === 5022);
     assert.strictEqual(m5022.length, 1, "Expected exactly one M5022 for the unreachable tail");
   });
+
+  it("should detect M5020 when output is only assigned inside a statically empty for-range", async () => {
+    const { parser } = await createWasmParser(modelicaWasm);
+    Context.registerParser(".mo", parser as any);
+    const ctx = new Context(new NodeFileSystem());
+
+    const code = `
+      function EmptyForRange
+        input Real x;
+        output Real y;
+      algorithm
+        for i in 1:0 loop
+          y := x + i;
+        end for;
+      end EmptyForRange;
+    `;
+    const uri = "file:///test/EmptyForRange.mo";
+    ctx.load(code, uri);
+
+    const diags = await ctx.queryEngine.runAllLintsAsync(uri);
+    const m5020 = diags.filter((d: any) => d.code === 5020);
+    assert.ok(m5020.length > 0, `Expected M5020 for empty 1:0 for-range, got ${JSON.stringify(diags)}`);
+  });
+
+  it("should detect M5021 for uninitialized read inside elsewhen condition in algorithm", async () => {
+    const { parser } = await createWasmParser(modelicaWasm);
+    Context.registerParser(".mo", parser as any);
+    const ctx = new Context(new NodeFileSystem());
+
+    const code = `
+      function ElsewhenCondRead
+        input Boolean b1;
+        output Real y;
+      protected
+        Boolean uninitFlag;
+      algorithm
+        y := 0.0;
+        when b1 then
+          y := 1.0;
+        elsewhen uninitFlag then
+          y := 2.0;
+        end when;
+      end ElsewhenCondRead;
+    `;
+    const uri = "file:///test/ElsewhenCondRead.mo";
+    ctx.load(code, uri);
+
+    const diags = await ctx.queryEngine.runAllLintsAsync(uri);
+    const m5021 = diags.filter((d: any) => d.code === 5021 && String(d.message).includes("uninitFlag"));
+    assert.ok(m5021.length > 0, `Expected M5021 for uninitFlag in elsewhen guard, got ${JSON.stringify(diags)}`);
+  });
 });

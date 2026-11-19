@@ -1538,7 +1538,7 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
       code: rawCode || `// ${title}\n`,
       title: resolvedTitle,
     });
-    navigate(`/morsel?fromArtifact=${resolvedId}#m=${hash}`);
+    navigate(`/editor?fromArtifact=${resolvedId}#m=${hash}`);
   };
 
   const handleRunStudy = () => {
@@ -1649,8 +1649,8 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
               type="button"
               $primary
               onClick={handleOpenAction}
-              title={isMultiFile ? "Open in VS Code" : "Open in Morsel"}
-              aria-label={isMultiFile ? "Open in VS Code" : "Open in Morsel"}
+              title={isMultiFile ? "Open in VS Code" : "Open in Ansatz"}
+              aria-label={isMultiFile ? "Open in VS Code" : "Open in Ansatz"}
             >
               <DraftingTriangleIcon size={14} />
             </IconBtn>

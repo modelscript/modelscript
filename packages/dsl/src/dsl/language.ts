@@ -16,6 +16,7 @@ import type { ASTQueryFunction, CompilationPipeline, CompilerLint, ModelProperty
 import type { ExternalScannerFunction, RuntimeFileInput, ScannerPrimitives } from "./scanner-types.js";
 import type { TabularConfig } from "./tabular-types.js";
 import type { PolyglotConfig } from "./tgg-types.js";
+import type { LanguageUiConfig } from "./ui-types.js";
 import type { WritebackConfig, WritebackHandler } from "./writeback-types.js";
 
 /**
@@ -711,6 +712,12 @@ export interface LanguageOptions<
    * or digital thread twins are patched back into source code for this language.
    */
   writeback?: WritebackConfig | WritebackHandler | undefined;
+
+  /**
+   * Declarative Cross-Host UI Panels, Stencils, Simulation Cards, and Tree Views.
+   * Consumed at build time by the VS Code extension generator and Morsel/Ansatz Vite plugin.
+   */
+  ui?: LanguageUiConfig | undefined;
 }
 
 /**
@@ -824,6 +831,7 @@ export * from "./query-types.js";
 export * from "./scanner-types.js";
 export * from "./tabular-types.js";
 export * from "./tgg-types.js";
+export * from "./ui-types.js";
 
 export {
   AffineArithmeticMixin,

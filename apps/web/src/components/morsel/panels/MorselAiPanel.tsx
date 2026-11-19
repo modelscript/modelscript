@@ -206,7 +206,7 @@ export const MorselAiPanel: React.FC<MorselAiPanelProps> = ({
   return (
     <aside
       data-testid="morsel-ai-panel"
-      aria-label="Morsel AI Assistant"
+      aria-label="Ansatz AI Assistant"
       style={{
         position: "fixed",
         top: 56,
@@ -238,7 +238,7 @@ export const MorselAiPanel: React.FC<MorselAiPanelProps> = ({
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <SparklesFillIcon size={16} />
-          <span style={{ fontWeight: 600, fontSize: 13 }}>Morsel AI</span>
+          <span style={{ fontWeight: 600, fontSize: 13 }}>Ansatz AI</span>
           <Label size="small" variant="accent">
             {settings.mode}
           </Label>
@@ -258,7 +258,7 @@ export const MorselAiPanel: React.FC<MorselAiPanelProps> = ({
             aria-label="Clear conversation"
             onClick={() => setTurns([])}
           />
-          <IconButton size="small" variant="invisible" icon={XIcon} aria-label="Close Morsel AI" onClick={onClose} />
+          <IconButton size="small" variant="invisible" icon={XIcon} aria-label="Close Ansatz AI" onClick={onClose} />
         </div>
       </div>
 
@@ -429,7 +429,7 @@ export const MorselAiPanel: React.FC<MorselAiPanelProps> = ({
       >
         {turns.length === 0 && (
           <div style={{ opacity: 0.7, fontSize: 12, lineHeight: 1.5 }}>
-            Ask Morsel AI to explain equations, fix compiler diagnostics, edit your model, flatten, or run a simulation.
+            Ask Ansatz AI to explain equations, fix compiler diagnostics, edit your model, flatten, or run a simulation.
           </div>
         )}
 

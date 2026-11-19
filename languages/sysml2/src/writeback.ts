@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { WritebackContext, WritebackEdit, WritebackHandler } from "@modelscript/dsl";
+import {
+  CstUnparser,
+  type SyntaxNode,
+  type WritebackContext,
+  type WritebackEdit,
+  type WritebackHandler,
+} from "@modelscript/dsl";
 import {
   collectCstLeaves,
   findMatchingDelimiterLeaf,
@@ -47,17 +53,21 @@ function extractTrailingUnitSuffix(rawVal: string): string {
   return trimmed.slice(startInVal, endInVal);
 }
 
-function buildWritebackEdit(fullText: string, valStart: number, valEnd: number, newValue: string): WritebackEdit {
-  const rawVal = fullText.substring(valStart, valEnd);
+function formatSysmlValueWithUnit(rawVal: string, newValue: string): string {
   let replacement = newValue.trim();
   const unitSuffix = extractTrailingUnitSuffix(rawVal);
   if (unitSuffix && !replacement.includes("[")) {
     replacement = `${replacement} ${unitSuffix}`;
   }
+  return replacement;
+}
+
+function buildWritebackEdit(fullText: string, valStart: number, valEnd: number, newValue: string): WritebackEdit {
+  const rawVal = fullText.substring(valStart, valEnd);
   return {
     startOffset: valStart,
     endOffset: valEnd,
-    newText: replacement,
+    newText: formatSysmlValueWithUnit(rawVal, newValue),
   };
 }
 
@@ -101,14 +111,33 @@ function findValueSpanAfterAssignLeaf(
 
 /**
  * First-class writeback handler for SysML v2 / KerML.
- * Handles attribute and value definitions, preserves unit brackets (e.g. `[kg]`),
- * and operates directly on source CST byte slices.
+ * Uses CstUnparser for surgical CST field/value replacement while preserving unit brackets (e.g. `[kg]`).
  */
 export const sysml2Writeback: WritebackHandler = (ctx: WritebackContext): WritebackEdit | WritebackEdit[] | null => {
-  const { entry, fullText, newValue } = ctx;
+  const { entry, fullText, newValue, rootCst } = ctx;
   if (!entry) return null;
 
-  // 0. Exact CST node field range from AST indexing (Tier 0)
+  const cstRoot =
+    ((rootCst as { rootNode?: SyntaxNode } | undefined)?.rootNode ??
+      (rootCst as SyntaxNode | undefined) ??
+      (parseSysmlSource(fullText) as unknown as SyntaxNode | null)) ||
+    null;
+
+  // 0. Canonical CstUnparser CST field/value patching
+  const cstUnparse = CstUnparser.patchWritebackValue(fullText, cstRoot, entry, newValue, {
+    valueFields: ["value", "expression", "ownedRelatedElement", "featureValue", "defaultValue"],
+    operators: [":=", "="],
+    formatValue: formatSysmlValueWithUnit,
+  });
+  if (cstUnparse) {
+    return {
+      startOffset: cstUnparse.startIndex,
+      endOffset: cstUnparse.endIndex,
+      newText: cstUnparse.text,
+    };
+  }
+
+  // Fallback CST leaf slice if fieldRanges didn't align cleanly
   if (entry.fieldRanges) {
     const valField =
       entry.fieldRanges["value"] ??
@@ -133,7 +162,7 @@ export const sysml2Writeback: WritebackHandler = (ctx: WritebackContext): Writeb
     }
   }
 
-  const docLeaves = collectCstLeaves(parseSysmlSource(fullText));
+  const docLeaves = collectCstLeaves((cstRoot as Parameters<typeof collectCstLeaves>[0]) ?? parseSysmlSource(fullText));
 
   // 1. Precise CST byte-range replacement within the indexed declaration
   if (entry.startOffset != null && entry.endOffset != null && entry.endOffset > entry.startOffset) {

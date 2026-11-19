@@ -174,14 +174,42 @@ export class AssemblyBVH {
         this.flatItemIds[i] = item.id;
       }
 
-      // Pre-compute 64-byte binary BVH nodes for zero-allocation WASM tree raycasting
+      // Pre-compute 64-byte binary BVH nodes for zero-allocation WASM tree raycasting.
+      // WASM `cad_bvh_tree_raycast` tests one item per leaf node (`itemId` at offset +56),
+      // so expand any multi-item leaf (`maxLeafSize > 1`) into a binary subtree of 1-item leaves.
+      const toUnitLeafTree = (n: BVHNode): BVHNode => {
+        if (!n.items) {
+          return {
+            aabb: n.aabb,
+            left: n.left ? toUnitLeafTree(n.left) : undefined,
+            right: n.right ? toUnitLeafTree(n.right) : undefined,
+          };
+        }
+        if (n.items.length <= 1) {
+          const single = n.items[0];
+          return {
+            aabb: single ? single.aabb : n.aabb,
+            items: n.items,
+          };
+        }
+        const mid = Math.floor(n.items.length / 2);
+        const leftItems = n.items.slice(0, mid);
+        const rightItems = n.items.slice(mid);
+        return {
+          aabb: n.aabb,
+          left: toUnitLeafTree({ aabb: computeEnclosingAABB(leftItems), items: leftItems }),
+          right: toUnitLeafTree({ aabb: computeEnclosingAABB(rightItems), items: rightItems }),
+        };
+      };
+
+      const flatRoot = toUnitLeafTree(this.root);
       let nodeCount = 0;
       const countNodes = (n: BVHNode) => {
         nodeCount++;
         if (n.left) countNodes(n.left);
         if (n.right) countNodes(n.right);
       };
-      countNodes(this.root);
+      countNodes(flatRoot);
       this.totalNodes = nodeCount;
 
       const nodeBuf = new ArrayBuffer(nodeCount * 64);
@@ -215,7 +243,7 @@ export class AssemblyBVH {
         }
         return idx;
       };
-      flatten(this.root);
+      flatten(flatRoot);
       this.flatNodes = nodeF64;
     }
   }

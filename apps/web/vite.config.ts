@@ -395,10 +395,108 @@ function unifiedDocsPlugin(): Plugin {
 
 const { targets: languageWasmTargets, manifest: languagesManifest } = discoverLanguageWasmTargets();
 
+/**
+ * Discovers declarative `language({ ui: { panels, stencils, simulationCards } })`
+ * contributions across `languages/*` and exposes them via `virtual:modelscript-language-ui`
+ * as lazy-loaded `import(...)` factories for Morsel and Ansatz Artifact viewers.
+ */
+function modelscriptLanguageUiPlugin(): Plugin {
+  const virtualId = "virtual:modelscript-language-ui";
+  const resolvedVirtualId = `\0${virtualId}`;
+
+  return {
+    name: "modelscript-language-ui",
+    resolveId(id) {
+      if (id === virtualId) return resolvedVirtualId;
+      return null;
+    },
+    async load(id) {
+      if (id !== resolvedVirtualId) return null;
+      const languagesRoot = path.resolve(import.meta.dirname, "../../languages");
+      try {
+        const { discoverWorkspaceLanguages } = await import("@modelscript/dsl");
+        const discovered = await discoverWorkspaceLanguages(languagesRoot);
+
+        const panelMetaEntries: string[] = [];
+        const morselLoaderEntries: string[] = [];
+        const artifactLoaderEntries: string[] = [];
+        const seenMorselKeys = new Set<string>();
+        const seenArtifactKeys = new Set<string>();
+
+        for (const panel of discovered.ui.panels) {
+          const importSpec = JSON.stringify(panel.resolvedEntryPath);
+          const loaderExpr =
+            panel.exportName === "default"
+              ? `() => import(${importSpec})`
+              : `() => import(${importSpec}).then((m) => ({ default: m[${JSON.stringify(panel.exportName)}] }))`;
+
+          panelMetaEntries.push(
+            JSON.stringify({
+              languageId: panel.languageId,
+              id: panel.id,
+              viewType: panel.viewType,
+              title: panel.title,
+              shortTitle: panel.shortTitle,
+              targets: panel.targets,
+              artifactViewTypes: panel.artifactViewTypes,
+            }),
+          );
+
+          if (panel.targets.includes("morsel")) {
+            for (const key of [panel.languageId, `${panel.languageId}:${panel.id}`]) {
+              if (!seenMorselKeys.has(key)) {
+                seenMorselKeys.add(key);
+                morselLoaderEntries.push(`${JSON.stringify(key)}: ${loaderExpr}`);
+              }
+            }
+          }
+
+          if (panel.targets.includes("artifact")) {
+            const artifactKeys = [panel.languageId, panel.viewType, ...panel.artifactViewTypes];
+            for (const key of artifactKeys) {
+              if (key && !seenArtifactKeys.has(key)) {
+                seenArtifactKeys.add(key);
+                artifactLoaderEntries.push(`${JSON.stringify(key)}: ${loaderExpr}`);
+              }
+            }
+          }
+        }
+
+        const simCardEntries = discovered.ui.simulationCards.map((card) => {
+          const importSpec = JSON.stringify(card.resolvedEntryPath);
+          const loaderExpr =
+            card.exportName === "default"
+              ? `() => import(${importSpec})`
+              : `() => import(${importSpec}).then((m) => ({ default: m[${JSON.stringify(card.exportName)}] }))`;
+          return `{ languageId: ${JSON.stringify(card.languageId)}, id: ${JSON.stringify(card.id)}, title: ${JSON.stringify(card.title)}, load: ${loaderExpr} }`;
+        });
+
+        return `
+export const LANGUAGE_PANEL_META = [${panelMetaEntries.join(",\n")}];
+export const MORSEL_PANEL_LOADERS = {\n  ${morselLoaderEntries.join(",\n  ")}\n};
+export const ARTIFACT_PANEL_LOADERS = {\n  ${artifactLoaderEntries.join(",\n  ")}\n};
+export const LANGUAGE_STENCILS = ${JSON.stringify(discovered.ui.stencilsByLanguage, null, 2)};
+export const LANGUAGE_SIMULATION_CARDS = [${simCardEntries.join(",\n")}];
+`;
+      } catch (err) {
+        console.warn("[modelscript-language-ui] Discovery fallback (empty registry):", err);
+        return `
+export const LANGUAGE_PANEL_META = [];
+export const MORSEL_PANEL_LOADERS = {};
+export const ARTIFACT_PANEL_LOADERS = {};
+export const LANGUAGE_STENCILS = {};
+export const LANGUAGE_SIMULATION_CARDS = [];
+`;
+      }
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     unifiedDocsPlugin(),
+    modelscriptLanguageUiPlugin(),
     react(),
     tsconfigPaths({ root: import.meta.dirname }),
     inlineStaticCopy(

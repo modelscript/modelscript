@@ -854,6 +854,223 @@ export class CstUnparser {
   }
 
   /**
+   * Patches a declaration's value/initializer expression via CST node lookup and field-range resolution.
+   * Used as the canonical intra-file writeback path for generic DSLs and language plugins.
+   */
+  static patchWritebackValue(
+    source: string,
+    rootNode: SyntaxNode | null | undefined,
+    entry: {
+      startOffset?: number | undefined;
+      endOffset?: number | undefined;
+      name?: string | undefined;
+      fieldRanges?: Record<string, { startOffset: number; endOffset: number }> | undefined;
+    },
+    newValue: string,
+    options?: {
+      valueFields?: string[] | undefined;
+      operators?: string[] | undefined;
+      formatValue?: ((rawValue: string, newValue: string) => string) | undefined;
+    },
+  ): UnparseResult | null {
+    const candidateFields = options?.valueFields?.length
+      ? options.valueFields
+      : [
+          "value",
+          "expression",
+          "val",
+          "modification",
+          "initializer",
+          "init",
+          "binding",
+          "defaultValue",
+          "default",
+          "assignedExpression",
+          "ownedRelatedElement",
+          "featureValue",
+        ];
+    const sortedOps = [...(options?.operators ?? [":=", "="])].sort((a, b) => b.length - a.length);
+
+    const hasEntrySpan = entry.startOffset != null && entry.endOffset != null && entry.endOffset > entry.startOffset;
+    const declNode =
+      rootNode && hasEntrySpan ? this.findBestNodeForSpan(rootNode, entry.startOffset!, entry.endOffset!) : null;
+
+    let rawStart: number | null = null;
+    let rawEnd: number | null = null;
+
+    if (declNode && typeof declNode.childForFieldName === "function") {
+      for (const fieldName of candidateFields) {
+        const fieldNode = declNode.childForFieldName(fieldName);
+        if (fieldNode && fieldNode.endIndex > fieldNode.startIndex) {
+          rawStart = fieldNode.startIndex;
+          rawEnd = fieldNode.endIndex;
+          break;
+        }
+      }
+    }
+
+    if ((rawStart === null || rawEnd === null) && entry.fieldRanges) {
+      for (const fieldName of candidateFields) {
+        const fr = entry.fieldRanges[fieldName];
+        if (fr && fr.startOffset != null && fr.endOffset != null && fr.endOffset > fr.startOffset) {
+          rawStart = fr.startOffset;
+          rawEnd = fr.endOffset;
+          break;
+        }
+      }
+    }
+
+    if (rawStart === null || rawEnd === null || rawEnd <= rawStart) {
+      return null;
+    }
+
+    let valStart = rawStart;
+    let valEnd = rawEnd;
+    const valSlice = source.substring(valStart, valEnd);
+    for (const op of sortedOps) {
+      if (valSlice.startsWith(op)) {
+        valStart += op.length;
+        while (valStart < valEnd && /[ \t\r\n]/.test(source[valStart] ?? "")) {
+          valStart++;
+        }
+        break;
+      }
+    }
+
+    let trimmedEnd = valEnd;
+    while (trimmedEnd > valStart && /[;}\r\n, \t]/.test(source[trimmedEnd - 1] ?? "")) {
+      trimmedEnd--;
+    }
+    valEnd = trimmedEnd;
+    if (valEnd <= valStart) {
+      return null;
+    }
+
+    const rawVal = source.substring(valStart, valEnd);
+    const replacement = options?.formatValue ? options.formatValue(rawVal, newValue) : newValue.trim();
+
+    if (rootNode) {
+      const exactNode = this.findBestNodeForSpan(declNode ?? rootNode, valStart, valEnd);
+      if (exactNode && exactNode.startIndex === valStart && exactNode.endIndex === valEnd && exactNode.startPosition) {
+        return CstUnparser.patchAndUnparse({
+          target: exactNode,
+          replaceText: replacement,
+        });
+      }
+    }
+
+    return {
+      text: replacement,
+      edit: {
+        range: {
+          start: this.offsetToPosition(source, valStart),
+          end: this.offsetToPosition(source, valEnd),
+        },
+        newText: replacement,
+      },
+      startIndex: valStart,
+      endIndex: valEnd,
+    };
+  }
+
+  /**
+   * Deletes a declaration using CST node boundaries (plus surrounding single-line indentation/newline
+   * cleanup when the declaration is the sole content on its line).
+   */
+  static deleteDeclaration(
+    source: string,
+    rootNode: SyntaxNode | null | undefined,
+    entry: {
+      startOffset?: number | undefined;
+      endOffset?: number | undefined;
+    },
+  ): UnparseResult | null {
+    if (entry.startOffset == null || entry.endOffset == null || entry.endOffset <= entry.startOffset) {
+      return null;
+    }
+
+    const declNode = rootNode ? this.findBestNodeForSpan(rootNode, entry.startOffset, entry.endOffset) : null;
+    let delStart = declNode && declNode.endIndex > declNode.startIndex ? declNode.startIndex : entry.startOffset;
+    let delEnd = declNode && declNode.endIndex > declNode.startIndex ? declNode.endIndex : entry.endOffset;
+
+    // Expand across whole-line declaration whitespace/newline when sole statement on those lines
+    const lineStart = source.lastIndexOf("\n", Math.max(0, delStart - 1)) + 1;
+    const leadingText = source.slice(lineStart, delStart);
+    if (/^[ \t]*$/.test(leadingText)) {
+      let afterEnd = delEnd;
+      while (afterEnd < source.length && (source[afterEnd] === " " || source[afterEnd] === "\t")) {
+        afterEnd++;
+      }
+      if (source[afterEnd] === ";") {
+        afterEnd++;
+        while (afterEnd < source.length && (source[afterEnd] === " " || source[afterEnd] === "\t")) {
+          afterEnd++;
+        }
+      }
+      if (afterEnd === source.length || source[afterEnd] === "\r" || source[afterEnd] === "\n") {
+        delStart = lineStart;
+        if (source[afterEnd] === "\r" && source[afterEnd + 1] === "\n") {
+          delEnd = afterEnd + 2;
+        } else if (source[afterEnd] === "\n" || source[afterEnd] === "\r") {
+          delEnd = afterEnd + 1;
+        } else {
+          delEnd = afterEnd;
+        }
+      }
+    }
+
+    if (declNode && declNode.startIndex === delStart && declNode.endIndex === delEnd && declNode.startPosition) {
+      return CstUnparser.patchAndUnparse({
+        target: declNode,
+        replaceText: "",
+      });
+    }
+
+    return {
+      text: "",
+      edit: {
+        range: {
+          start: this.offsetToPosition(source, delStart),
+          end: this.offsetToPosition(source, delEnd),
+        },
+        newText: "",
+      },
+      startIndex: delStart,
+      endIndex: delEnd,
+    };
+  }
+
+  private static findBestNodeForSpan(root: SyntaxNode, startOffset: number, endOffset: number): SyntaxNode | null {
+    if (typeof root.descendantForIndex === "function") {
+      try {
+        const hit = root.descendantForIndex(startOffset, endOffset);
+        if (hit && hit.startIndex <= startOffset && hit.endIndex >= endOffset) {
+          return hit;
+        }
+      } catch {
+        // Fallback to manual traversal below
+      }
+    }
+
+    let best: SyntaxNode | null = root.startIndex <= startOffset && root.endIndex >= endOffset ? root : null;
+    const stack: SyntaxNode[] = [root];
+    while (stack.length > 0) {
+      const curr = stack.pop()!;
+      if (curr.startIndex > startOffset || curr.endIndex < endOffset) continue;
+      if (!best || curr.endIndex - curr.startIndex <= best.endIndex - best.startIndex) {
+        best = curr;
+      }
+      if (Array.isArray(curr.children)) {
+        for (let i = curr.children.length - 1; i >= 0; i--) {
+          const child = curr.children[i];
+          if (child) stack.push(child);
+        }
+      }
+    }
+    return best;
+  }
+
+  /**
    * Helper to convert an absolute character offset into a { line, character } position.
    */
   private static offsetToPosition(source: string, offset: number, _hintPoint?: Point): UnparsePosition {

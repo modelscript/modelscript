@@ -3,7 +3,6 @@
 import { StoppedEvent } from "@vscode/debugadapter";
 import * as vscode from "vscode";
 import { commands, workspace } from "vscode";
-import { CfgEditorProvider } from "./cfg-editor-provider.js";
 import { ChatViewProvider } from "./chat-panel.js";
 import { registerChatParticipant } from "./chat-participant.js";
 import { CloudStatusBar } from "./cloud-status-bar.js";
@@ -21,7 +20,6 @@ import { CosimViewProvider } from "./cosim-panel.js";
 import { activeDebugSession } from "./debug-adapter.js";
 import { DiagramEditorProvider } from "./diagram-editor-provider.js";
 import { HardwareDongleStatusBar } from "./hardware-dongle-status-bar.js";
-import { InpEditorProvider } from "./inp-editor-provider.js";
 import { registerLLMProvider } from "./llm-provider.js";
 import { registerMCPTools } from "./mcp-bridge.js";
 import { registerMultiDomainScaffolding } from "./multi-domain-scaffolding.js";
@@ -391,9 +389,9 @@ export async function activate(context: vscode.ExtensionContext) {
                   !filePath.endsWith(".relap5.inp") &&
                   !filePath.endsWith(".aspen.inp") &&
                   activeEditor?.document.languageId === "fea"
-                ? InpEditorProvider.viewType
+                ? "modelscript.inpEditor"
                 : filePath.endsWith(".cfg") || filePath.endsWith(".cfgt")
-                  ? CfgEditorProvider.viewType
+                  ? "modelscript.cfgEditor"
                   : filePath.endsWith(".sysml") || filePath.endsWith(".sysml2")
                     ? "sysml2.diagramEditor"
                     : filePath.endsWith(".mo")

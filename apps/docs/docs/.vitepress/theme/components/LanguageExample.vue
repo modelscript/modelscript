@@ -75,8 +75,8 @@ const activeSvg = computed<string>(() => {
 });
 
 const morselHref = computed<string>(() => {
-  if (!example.value) return `${ansatzOrigin.value}/morsel`;
-  return `${ansatzOrigin.value}/morsel#m=${example.value.permalinkToken}`;
+  if (!example.value) return `${ansatzOrigin.value}/editor`;
+  return `${ansatzOrigin.value}/editor#m=${example.value.permalinkToken}`;
 });
 const sketchHref = morselHref;
 
@@ -255,9 +255,9 @@ function onPointerUp(e: PointerEvent) {
           target="_blank"
           rel="noopener noreferrer"
           class="open-playground-link"
-          title="Open this model in Ansatz Morsel"
+          title="Open this model in Ansatz"
         >
-          <span>Morsel</span>
+          <span>Ansatz</span>
           <MsIcon name="arrow-up-right" :size="13" />
         </a>
       </div>

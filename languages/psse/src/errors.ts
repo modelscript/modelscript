@@ -171,8 +171,8 @@ export const PsseErrorCode = {
     code: "P4009",
     rule: "three-winding-star-point-negative-reactance",
     severity: "warning" as const,
-    message: (ckt: string, i: number, j: number, k: number, xStar: number) =>
-      `3-winding transformer '${ckt}' (${i}-${j}-${k}) star-equivalent reactance X1 = ${xStar.toFixed(4)} p.u. is strongly negative.`,
+    message: (ckt: string, i: number, j: number, k: number, xStar: number, winding: string = "X1") =>
+      `3-winding transformer '${ckt}' (${i}-${j}-${k}) star-equivalent reactance ${winding} = ${xStar.toFixed(4)} p.u. is strongly negative.`,
   },
   SWITCHED_SHUNT_BAND_INVERTED: {
     code: "P4010",
@@ -316,8 +316,10 @@ export const PsseErrorCode = {
     code: "P6005",
     rule: "dae-structural-singularity-or-high-index",
     severity: "error" as const,
-    message: (varCount: number, eqCount: number) =>
-      `Lowered PSS/E DAE system is structurally unbalanced (${varCount} variables vs ${eqCount} equations).`,
+    message: (varCount: number, eqCount: number, detail?: string) =>
+      detail
+        ? `Lowered PSS/E DAE system is structurally singular or high-index (${varCount} variables vs ${eqCount} equations): ${detail}.`
+        : `Lowered PSS/E DAE system is structurally unbalanced (${varCount} variables vs ${eqCount} equations).`,
   },
   POORLY_DAMPED_MODE: {
     code: "P6006",
@@ -450,6 +452,61 @@ export const PsseErrorCode = {
     severity: "info" as const,
     message: (model: string, busId: number) =>
       `User-defined USRMDL '${model}' at bus ${busId} is not a standard built-in alias; attach an AssemblyScript/FMU/DLL module for active stepping.`,
+  },
+  RAW_SYNTAX_ERROR: {
+    code: "P1007",
+    rule: "raw-syntax-error",
+    severity: "error" as const,
+    message: (detail: string) => `PSS/E RAW syntax error: ${detail}.`,
+  },
+  SEQ_GENERATOR_REACTANCE_INVALID: {
+    code: "P5101",
+    rule: "seq-generator-reactance-invalid",
+    severity: "warning" as const,
+    message: (genId: string, busId: number, zxpos: number, zxneg: number, zx0: number) =>
+      `Generator '${genId}' at Bus ${busId} has non-positive sequence reactance (ZX1=${zxpos}, ZX2=${zxneg}, ZX0=${zx0}).`,
+  },
+  SEQ_BRANCH_ZERO_IMPEDANCE: {
+    code: "P5102",
+    rule: "seq-branch-zero-impedance",
+    severity: "warning" as const,
+    message: (iBus: number, jBus: number, ckt: string) =>
+      `Branch ${iBus}-${jBus} ('${ckt}') has zero zero-sequence impedance (R0=0, X0=0).`,
+  },
+  SEQ_TRANSFORMER_CC_INVALID: {
+    code: "P5103",
+    rule: "seq-transformer-cc-invalid",
+    severity: "error" as const,
+    message: (iBus: number, jBus: number, cc: number) =>
+      `Transformer ${iBus}-${jBus} specifies invalid zero-sequence connection code CC=${cc} (expected 1..22).`,
+  },
+  ZBR_CLOSED_LOOP: {
+    code: "P4011",
+    rule: "zbr-closed-loop",
+    severity: "error" as const,
+    message: (ckt: string, fromBus: number, toBus: number) =>
+      `Zero-impedance branch '${ckt}' (${fromBus}-${toBus}) closes a zero-impedance loop, causing a singular nodal admittance matrix.`,
+  },
+  DYR_TIME_CONSTANT_UNDERFLOW: {
+    code: "P5021",
+    rule: "dyr-time-constant-step-underflow",
+    severity: "warning" as const,
+    message: (model: string, busId: number, paramName: string, valueSec: number, minStepSec: number) =>
+      `Dynamic model '${model}' at bus ${busId} has time constant '${paramName}' = ${valueSec} s < ${(minStepSec * 1e3).toFixed(2)} ms, risking numerical chatter in PSS/E dynamic integration.`,
+  },
+  MON_SUB_TARGET_NOT_FOUND: {
+    code: "P5022",
+    rule: "mon-sub-target-not-found",
+    severity: "warning" as const,
+    message: (fileKind: string, detail: string) =>
+      `PSS/E ${fileKind} file references unresolved or invalid target: ${detail}.`,
+  },
+  NERC_ONTOLOGY_VIOLATION: {
+    code: "P8005",
+    rule: "nerc-mod032-ontology-violation",
+    severity: "warning" as const,
+    message: (entityDesc: string, axiomDetail: string) =>
+      `Formal ontology compliance gap for ${entityDesc}: ${axiomDetail}.`,
   },
 } as const;
 

@@ -141,8 +141,10 @@ describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Ro
     });
 
     assert.ok(
-      singleFileUrl.startsWith("/morsel?") || singleFileUrl.startsWith("/sketch?"),
-      `Expected /morsel URL, got ${singleFileUrl}`,
+      singleFileUrl.startsWith("/editor?") ||
+        singleFileUrl.startsWith("/morsel?") ||
+        singleFileUrl.startsWith("/sketch?"),
+      `Expected /editor URL, got ${singleFileUrl}`,
     );
     assert.ok(singleFileUrl.includes("fromArtifact=42"));
     assert.ok(singleFileUrl.includes("lang=sysml2"));
@@ -199,17 +201,19 @@ describe("66-Language Playground Registry & Single-File vs. Multi-File Editor Ro
     const nginxConfPath = path.resolve(import.meta.dirname, "../nginx.conf");
     const nginxConf = fs.readFileSync(nginxConfPath, "utf-8");
 
-    // Must have explicit location for /playground, /sketch, /morsel, /ide, /studio
+    // Must have explicit location for /playground, /sketch, /morsel, /editor, /ide, /studio
     assert.ok(
-      nginxConf.includes("location ~ ^/(playground|sketch|morsel|ide|studio)(/|$)") ||
+      nginxConf.includes("location ~ ^/(playground|sketch|morsel|editor|ide|studio)(/|$)") ||
+        nginxConf.includes("location ~ ^/(playground|sketch|morsel|ide|studio)(/|$)") ||
         nginxConf.includes("location ~ ^/(playground|sketch|ide|studio)(/|$)") ||
         nginxConf.includes("location ~ ^/(playground|ide|studio)(/|$)"),
-      "nginx.conf must contain regex location block for playground, sketch, morsel, ide, and studio",
+      "nginx.conf must contain regex location block for playground, sketch, morsel, editor, ide, and studio",
     );
     assert.ok(nginxConf.includes("root /usr/share/nginx/html;"), "nginx.conf must specify SPA root for web surfaces");
 
     // Verify regex matches intended paths
-    const playgroundRegex = /^\/(playground|sketch|morsel|ide|studio)(\/|$)/;
+    const playgroundRegex = /^\/(playground|sketch|morsel|editor|ide|studio)(\/|$)/;
+    assert.ok(playgroundRegex.test("/editor"), "Must match /editor");
     assert.ok(playgroundRegex.test("/playground"), "Must match /playground");
     assert.ok(playgroundRegex.test("/playground/"), "Must match /playground/");
     assert.ok(playgroundRegex.test("/playground/subpath"), "Must match /playground/subpath");

@@ -2,3 +2,4 @@
 
 export * from "./conflict-manager.js";
 export * from "./reconciler.js";
+export * from "./state.js";

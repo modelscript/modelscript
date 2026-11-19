@@ -723,7 +723,7 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
   }
 
   const qs = params.toString();
-  return `/morsel${qs ? `?${qs}` : ""}${hash}`;
+  return `/editor${qs ? `?${qs}` : ""}${hash}`;
 }
 
 /**

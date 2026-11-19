@@ -571,25 +571,36 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
 
   /** Per-document dirty offset edit ranges used to narrow incremental symbol invalidation during `indexCst()`. */
   private fileDirtyRanges = new Map<string, { startOffset: number; endOffset: number }[]>();
+  /** Per-document byte/char length delta accumulated alongside dirty edit ranges. */
+  private fileDeltas = new Map<string, number>();
 
   /** Returns the pending dirty offset edit ranges recorded for `uri`, if any. */
   getDirtyRanges(uri: string): { startOffset: number; endOffset: number }[] | undefined {
     return this.fileDirtyRanges.get(uri);
   }
 
-  /** Clears recorded dirty edit ranges for `uri` after incremental indexing completes. */
+  /** Returns the pending character length delta recorded for `uri`, if any. */
+  getDirtyDelta(uri: string): number | undefined {
+    return this.fileDeltas.get(uri);
+  }
+
+  /** Clears recorded dirty edit ranges and deltas for `uri` after incremental indexing completes. */
   clearDirtyRanges(uri: string): void {
     this.fileDirtyRanges.delete(uri);
+    this.fileDeltas.delete(uri);
   }
 
   /**
    * Re-indexes a document or marks it dirty upon edit.
    */
-  reindexDocument(uri: string, loader?: () => any, editRanges?: any, _totalDelta?: number): void {
+  reindexDocument(uri: string, loader?: () => any, editRanges?: any, totalDelta?: number): void {
     const existingEntry = this.fileLoaders.get(uri);
     this.fileLoaders.delete(uri);
     if (editRanges && Array.isArray(editRanges)) {
       this.fileDirtyRanges.set(uri, editRanges);
+    }
+    if (typeof totalDelta === "number" && totalDelta !== 0) {
+      this.fileDeltas.set(uri, (this.fileDeltas.get(uri) ?? 0) + totalDelta);
     }
     if (typeof loader === "function") {
       const rootNode = loader();
@@ -2934,6 +2945,16 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   /** Returns the registered `WasmQueryEngine` for `language`, if any. */
   getQueryEngine(language: string): any {
     return this.queryEngines.get(language);
+  }
+
+  /**
+   * Convenience getter returning the primary registered `WasmQueryEngine`
+   * (prioritizing `modelica` or `sysml2`, otherwise the first registered engine).
+   */
+  get queryEngine(): any {
+    return (
+      this.queryEngines.get("modelica") ?? this.queryEngines.get("sysml2") ?? this.queryEngines.values().next().value
+    );
   }
 
   /** When `true`, forces symbol IDs merged across multiple languages to be bit-prefixed with their `LanguageDomainId`. */

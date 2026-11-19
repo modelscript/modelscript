@@ -41,6 +41,8 @@ const SimulationResults = React.lazy(() =>
   import("../SimulationResults").then((m) => ({ default: m.SimulationResults })),
 );
 
+import { getDslStencilsForDialect } from "../util/LanguagePanelHost";
+
 interface StencilItem {
   label: string;
   snippet: string;
@@ -48,209 +50,14 @@ interface StencilItem {
 }
 
 function getStencilsForDialect(dialect: string): StencilItem[] {
-  switch (dialect) {
-    case "modelica":
-    case "modelscript":
-      return [
-        {
-          label: "Resistor",
-          className: "Modelica.Electrical.Analog.Basic.Resistor",
-          snippet: "  Modelica.Electrical.Analog.Basic.Resistor R_new(R=100);\n",
-        },
-        {
-          label: "Capacitor",
-          className: "Modelica.Electrical.Analog.Basic.Capacitor",
-          snippet: "  Modelica.Electrical.Analog.Basic.Capacitor C_new(C=1e-3);\n",
-        },
-        {
-          label: "Inductor",
-          className: "Modelica.Electrical.Analog.Basic.Inductor",
-          snippet: "  Modelica.Electrical.Analog.Basic.Inductor L_new(L=0.1);\n",
-        },
-        {
-          label: "Ground",
-          className: "Modelica.Electrical.Analog.Basic.Ground",
-          snippet: "  Modelica.Electrical.Analog.Basic.Ground G_new;\n",
-        },
-        {
-          label: "Constant",
-          className: "Modelica.Blocks.Sources.Constant",
-          snippet: "  Modelica.Blocks.Sources.Constant const_new(k=1.0);\n",
-        },
-        {
-          label: "Integrator",
-          className: "Modelica.Blocks.Continuous.Integrator",
-          snippet: "  Modelica.Blocks.Continuous.Integrator integ_new(k=1.0);\n",
-        },
-        {
-          label: "3D Shape",
-          className: "Modelica.Mechanics.MultiBody.Visualizers.FixedShape",
-          snippet:
-            '  Modelica.Mechanics.MultiBody.Visualizers.FixedShape shape_new(shapeType="box", length=1.0, width=0.2, height=0.2, color={0, 128, 255});\n',
-        },
-        {
-          label: "3D Arrow",
-          className: "Modelica.Mechanics.MultiBody.Visualizers.SignalArrow",
-          snippet:
-            "  Modelica.Mechanics.MultiBody.Visualizers.SignalArrow arrow_new(diameter=0.04, color={255, 80, 0});\n",
-        },
-        {
-          label: "3D Torus",
-          className: "Modelica.Mechanics.MultiBody.Visualizers.Torus",
-          snippet: "  Modelica.Mechanics.MultiBody.Visualizers.Torus torus_new(ri=0.5, ro=0.1, color={0, 180, 120});\n",
-        },
-      ];
-    case "sysml2":
-      return [
-        {
-          label: "Part Def",
-          snippet: "\npart def SubSystem {\n  attribute mass : Real = 10.0;\n}\n",
-        },
-        {
-          label: "Port Def",
-          snippet: "\nport def SignalPort {\n  in item cmd : Real;\n  out item status : Real;\n}\n",
-        },
-        {
-          label: "Requirement",
-          snippet:
-            "\nrequirement def <'REQ-NEW'> PerformanceReq {\n  doc /* System shall satisfy target response time */\n}\n",
-        },
-        {
-          label: "Action Def",
-          snippet: "\naction def ExecuteControl {\n  in item sensorIn;\n  out item actuatorOut;\n}\n",
-        },
-        {
-          label: "State Def",
-          snippet: "\nstate def OperatingState {\n  entry; then Nominal;\n  state Nominal;\n}\n",
-        },
-      ];
-    case "owl2":
-      return [
-        { label: "Class", snippet: "Declaration(Class(:NewConcept))\n" },
-        { label: "ObjectProperty", snippet: "Declaration(ObjectProperty(:connectedTo))\n" },
-        { label: "SubClassOf", snippet: "SubClassOf(:NewConcept :SystemComponent)\n" },
-        {
-          label: "Individual",
-          snippet: "Declaration(NamedIndividual(:instance_1))\nClassAssertion(:NewConcept :instance_1)\n",
-        },
-      ];
-    case "spice":
-    case "verilog-a":
-      return [
-        { label: "Resistor", snippet: "R_new n1 n2 1k\n" },
-        { label: "Capacitor", snippet: "C_new n2 0 10n\n" },
-        { label: "Inductor", snippet: "L_new n1 n2 1m\n" },
-        { label: "Voltage Source", snippet: "V_new in 0 DC 5.0\n" },
-      ];
-    case "pscad":
-      return [
-        { label: "AC Source", className: "master:source_3", snippet: "" },
-        { label: "Resistor", className: "master:resistor", snippet: "" },
-        { label: "Inductor", className: "master:inductor", snippet: "" },
-        { label: "Capacitor", className: "master:capacitor", snippet: "" },
-        { label: "Ground", className: "master:ground", snippet: "" },
-        { label: "Breaker", className: "master:breaker3", snippet: "" },
-        { label: "Fault", className: "master:tpflt", snippet: "" },
-        { label: "Transformer", className: "master:xfmr-3p2w", snippet: "" },
-        { label: "PI Line", className: "master:pi_line", snippet: "" },
-        { label: "Gain", className: "master:gain", snippet: "" },
-        { label: "PI Control", className: "master:pi_ctlr", snippet: "" },
-        { label: "PGB Output", className: "master:pgb", snippet: "" },
-      ];
-    case "psse":
-      return [
-        { label: "Bus Record", snippet: "   99, 'BUS_NEW     ', 138.0000,1,   1,   1,   1,1.00000,   0.0000\n" },
-        {
-          label: "Load Record",
-          snippet:
-            "   99,'1 ',1,   1,   1,    50.000,    15.000,     0.000,     0.000,     0.000,     0.000,   1,1,0\n",
-        },
-      ];
-    case "opendss":
-      return [
-        { label: "Bus", snippet: "New Circuit.Bus_New basekv=13.8 pu=1.0\n" },
-        { label: "Line", snippet: "New Line.Line_New Bus1=SourceBus Bus2=LoadBus R1=0.05 X1=0.15\n" },
-        {
-          label: "Transformer",
-          snippet: "New Transformer.TR_New Buses=[SourceBus LoadBus] kVs=[13.8 0.48] kVAs=[1000 1000]\n",
-        },
-        { label: "Load", snippet: "New Load.Load_New Bus1=LoadBus kV=0.48 kW=250 kvar=100\n" },
-      ];
-    case "simulink":
-    case "easy5":
-    case "xcos":
-      return [
-        { label: "Gain", snippet: 'Block { BlockType Gain Name "Gain_New" Gain "2.0" }\n' },
-        { label: "Integrator", snippet: 'Block { BlockType Integrator Name "Integ_New" InitialCondition "0" }\n' },
-        { label: "Sum", snippet: 'Block { BlockType Sum Name "Sum_New" Inputs "+-" }\n' },
-        { label: "Step", snippet: 'Block { BlockType Step Name "Step_New" After "1.0" }\n' },
-      ];
-    case "plcopen":
-      return [
-        { label: "Contact / Coil", snippet: "IF Start_Cmd AND NOT Fault_Bit THEN\n  Drive_Enable := TRUE;\nEND_IF;\n" },
-        { label: "TON Timer", snippet: "TON_Delay(IN := Start_Cmd, PT := T#500ms, Q => Delay_Done);\n" },
-        { label: "CTU Counter", snippet: "CTU_Parts(CU := Part_Sensor, R := Reset_Cmd, PV := 25, Q => Batch_Full);\n" },
-      ];
-    case "simpack":
-      return [
-        {
-          label: "Body ($B)",
-          snippet:
-            "body.id            = '$B_NewBody'\nbody.mass          = 1200.0\nbody.inertia       = [450.0, 1800.0, 1850.0]\n",
-        },
-        {
-          label: "Force Element ($F)",
-          snippet:
-            "force.id           = '$F_PrimarySpring'\nforce.type         = 43\nforce.stiffness    = 1.2e6\nforce.damping      = 1.5e4\n",
-        },
-      ];
-    case "gensys":
-      return [
-        {
-          label: "Mass (mass)",
-          snippet: "mass m_body_new  0.0 0.0 -1.2   m=15000  Jx=22000 Jy=450000 Jz=450000\n",
-        },
-        {
-          label: "Spring/Damper (coupl)",
-          snippet: "coupl k_susp_new  body_1 body_2  0.0 1.0 -0.5  0.0 1.0 -0.8  k=350e3 c=18e3\n",
-        },
-      ];
-    case "adams":
-      return [
-        { label: "Part", snippet: "PART/99, MASS = 12.5, CM = 9901, IP = 1.2, 1.2, 0.8\n" },
-        { label: "Joint", snippet: "JOINT/99, REVOLUTE, I = 101, J = 201\n" },
-      ];
-    case "urdf":
-      return [
-        {
-          label: "Rigid Body / Link",
-          snippet:
-            '  <link name="link_new">\n    <inertial><mass value="1.5"/><inertia ixx="0.02" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.02"/></inertial>\n  </link>\n',
-        },
-        {
-          label: "Revolute Joint",
-          snippet:
-            '  <joint name="joint_new" type="revolute">\n    <parent link="base_link"/>\n    <child link="link_new"/>\n    <axis xyz="0 0 1"/>\n  </joint>\n',
-        },
-      ];
-    case "fea":
-      return [
-        { label: "Material", snippet: "*MATERIAL, NAME=ALUMINUM_6061\n*ELASTIC\n68900.0, 0.33\n*DENSITY\n2.7e-9\n" },
-        { label: "Boundary", snippet: "*BOUNDARY\n1, 1, 3, 0.0\n" },
-        { label: "Concentrated Load", snippet: "*CLOAD\n4, 2, -500.0\n" },
-      ];
-    case "cfd":
-      return [
-        { label: "Farfield", snippet: "MARKER_FAR= ( farfield )\n" },
-        { label: "Euler Wall", snippet: "MARKER_EULER= ( wall_surface )\n" },
-        { label: "Pressure Outlet", snippet: "MARKER_OUTLET= ( outlet, 101325.0 )\n" },
-      ];
-    default:
-      return [
-        { label: "Parameter", snippet: "parameter Real k_new = 1.0;\n" },
-        { label: "Component", snippet: "// Added element\n" },
-      ];
+  const dslStencils = getDslStencilsForDialect(dialect);
+  if (dslStencils && dslStencils.length > 0) {
+    return dslStencils;
   }
+  return [
+    { label: "Parameter", snippet: "parameter Real k_new = 1.0;\n" },
+    { label: "Component", snippet: "// Added element\n" },
+  ];
 }
 
 export interface MorselVisualizerPaneProps {
@@ -293,6 +100,9 @@ export interface MorselVisualizerPaneProps {
   setIsDiagramLoading: (loading: boolean) => void;
   handleSelectComponent: (name: string | null, cachedProps?: any[], isLoading?: boolean) => void;
   enqueueDiagramAction: (action: any) => void;
+  onResetSpatialCooldown?: (() => void) | undefined;
+  onDiagramUndo?: (() => boolean) | undefined;
+  onDiagramRedo?: (() => boolean) | undefined;
   editor: editor.ICodeEditor | null;
   editorRef: React.RefObject<editor.ICodeEditor | null>;
   isSpatialEditPending: React.MutableRefObject<boolean>;
@@ -400,6 +210,9 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   setIsDiagramLoading,
   handleSelectComponent,
   enqueueDiagramAction,
+  onResetSpatialCooldown,
+  onDiagramUndo,
+  onDiagramRedo,
   editor,
   editorRef,
   isSpatialEditPending,
@@ -567,6 +380,12 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
 
   const handleUndo = () => {
     if (isSpatialEditPending) isSpatialEditPending.current = false;
+    onResetSpatialCooldown?.();
+    const shouldUndoText = onDiagramUndo ? onDiagramUndo() : true;
+    if (!shouldUndoText) {
+      setIsDiagramLoading(false);
+      return;
+    }
     editorRef?.current?.focus();
     const prev = editorRef?.current?.getValue();
     editorRef?.current?.trigger("diagram", "undo", null);
@@ -577,6 +396,12 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
 
   const handleRedo = () => {
     if (isSpatialEditPending) isSpatialEditPending.current = false;
+    onResetSpatialCooldown?.();
+    const shouldRedoText = onDiagramRedo ? onDiagramRedo() : true;
+    if (!shouldRedoText) {
+      setIsDiagramLoading(false);
+      return;
+    }
     editorRef?.current?.focus();
     const prev = editorRef?.current?.getValue();
     editorRef?.current?.trigger("diagram", "redo", null);
@@ -604,7 +429,8 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
   const stencils = useMemo(() => getStencilsForDialect(dialect), [dialect]);
   const isPlaygroundRoute =
     typeof window !== "undefined" &&
-    (window.location.pathname.startsWith("/playground") ||
+    (window.location.pathname.startsWith("/editor") ||
+      window.location.pathname.startsWith("/playground") ||
       window.location.pathname.startsWith("/sketch") ||
       window.location.pathname.startsWith("/morsel"));
 
@@ -1905,6 +1731,35 @@ export const MorselVisualizerPane: React.FC<MorselVisualizerPaneProps> = ({
                       parameter: variableName,
                       value,
                     });
+                  }}
+                  onAction={enqueueDiagramAction}
+                  onMessage={(msg: any) => {
+                    if (!msg || typeof msg !== "object") return;
+                    if (msg.type === "revealSource" && typeof msg.startOffset === "number") {
+                      const ed = editorRef?.current;
+                      const model = ed?.getModel();
+                      if (ed && model) {
+                        const startPos = model.getPositionAt(msg.startOffset);
+                        const endPos = model.getPositionAt(msg.endOffset ?? msg.startOffset);
+                        ed.revealRangeInCenter({
+                          startLineNumber: startPos.lineNumber,
+                          startColumn: startPos.column,
+                          endLineNumber: endPos.lineNumber,
+                          endColumn: endPos.column,
+                        });
+                        ed.setSelection({
+                          startLineNumber: startPos.lineNumber,
+                          startColumn: startPos.column,
+                          endLineNumber: endPos.lineNumber,
+                          endColumn: endPos.column,
+                        });
+                      }
+                    } else if (msg.type === "navigateTo") {
+                      if (msg.className !== undefined) setSelectedTreeClassName(msg.className);
+                      if (msg.diagramType) setDiagramType?.(msg.diagramType);
+                    } else if (msg.type === "changeDiagramType" && msg.diagramType) {
+                      setDiagramType?.(msg.diagramType);
+                    }
                   }}
                   onUndo={handleUndo}
                   onRedo={handleRedo}

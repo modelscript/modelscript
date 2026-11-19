@@ -25,13 +25,17 @@ export interface ExtractedLanguageAST {
  * @param sourcePathOrText File path on disk or raw TypeScript source text
  * @returns Extracted AST mapping container or null if extraction fails
  */
-export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageAST | null {
+export function extractLanguageAST(
+  sourcePathOrText: string,
+  _memo: Map<string, ExtractedLanguageAST | null> = new Map(),
+): ExtractedLanguageAST | null {
   const proc =
     typeof process !== "undefined" ? (process as unknown as { getBuiltinModule?: (id: string) => unknown }) : undefined;
   const fs = proc?.getBuiltinModule?.("node:fs") as typeof fsType | undefined;
   const path = proc?.getBuiltinModule?.("node:path") as typeof pathType | undefined;
   let sourceText = "";
   let filePath = "language.ts";
+  let resolvedMemoKey: string | null = null;
 
   if (
     fs &&
@@ -44,10 +48,15 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
       sourcePathOrText.endsWith(".js")) &&
     fs.existsSync(sourcePathOrText)
   ) {
+    resolvedMemoKey = path.resolve(sourcePathOrText);
+    if (_memo.has(resolvedMemoKey)) {
+      return _memo.get(resolvedMemoKey) ?? null;
+    }
     try {
-      sourceText = fs.readFileSync(sourcePathOrText, "utf-8");
-      filePath = sourcePathOrText;
+      sourceText = fs.readFileSync(resolvedMemoKey, "utf-8");
+      filePath = resolvedMemoKey;
     } catch {
+      _memo.set(resolvedMemoKey, null);
       return null;
     }
   } else if (typeof sourcePathOrText === "string" && sourcePathOrText.length > 0) {
@@ -67,6 +76,9 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
     constants: new Map(),
     pipelines: new Map(),
   };
+  if (resolvedMemoKey) {
+    _memo.set(resolvedMemoKey, result);
+  }
 
   // 1. Index top-level class, function, variable, and relative import declarations
   const topLevelClasses = new Map<string, ts.ClassDeclaration>();
@@ -149,7 +161,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
             continue;
           }
           if (fs!.existsSync(normalized)) {
-            const subAst = extractLanguageAST(normalized);
+            const subAst = extractLanguageAST(normalized, _memo);
             if (subAst) {
               if (subAst.constants.has(imp.importedName)) {
                 result.constants.set(localName, subAst.constants.get(imp.importedName)!);
@@ -197,7 +209,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
             continue;
           }
           if (fs!.existsSync(normalized)) {
-            const subAst = extractLanguageAST(normalized);
+            const subAst = extractLanguageAST(normalized, _memo);
             if (subAst) {
               const cls = subAst.classes.get(imp.importedName);
               if (cls) return cls;
@@ -231,7 +243,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
             continue;
           }
           if (fs!.existsSync(normalized)) {
-            const subAst = extractLanguageAST(normalized);
+            const subAst = extractLanguageAST(normalized, _memo);
             if (subAst) {
               const fn = subAst.functions.get(imp.importedName);
               if (fn) return fn;
@@ -263,7 +275,7 @@ export function extractLanguageAST(sourcePathOrText: string): ExtractedLanguageA
             continue;
           }
           if (fs!.existsSync(normalized)) {
-            const subAst = extractLanguageAST(normalized);
+            const subAst = extractLanguageAST(normalized, _memo);
             if (subAst) {
               for (const [k, v] of subAst.constants) {
                 result.constants.set(k, v);

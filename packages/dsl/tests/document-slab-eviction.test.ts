@@ -181,4 +181,66 @@ describe("Document Page/Slab Arena & Tree.edit() Suite", () => {
     assert.ok(tree2.rootNode, "tree2 must have rootNode");
     assert.strictEqual(tree2.rootNode.type, "Program");
   });
+
+  it("delegates consecutive single-URI LspFacade.parse edits to parseIncremental", () => {
+    const uri = "file:///workspace/IncrementalFastPath.mo";
+    const initial = `model FastPath Real a; end FastPath;`;
+    const root1 = activeFacade.parse(initial, 0, 0, 0, uri);
+    assert.ok(root1 > 0, "initial parse should succeed");
+
+    let parseIncrementalCalls = 0;
+    const origParseIncremental = activeFacade.parseIncremental.bind(activeFacade);
+    activeFacade.parseIncremental = (...args: any[]) => {
+      parseIncrementalCalls++;
+      return origParseIncremental(...args);
+    };
+
+    try {
+      const insertText = "Real b; ";
+      const offset = initial.indexOf("end FastPath;");
+      const updated = initial.slice(0, offset) + insertText + initial.slice(offset);
+      const root2 = activeFacade.parse(updated, offset, offset, offset + insertText.length, uri, root1);
+      assert.ok(root2 > 0, "incremental delegated parse should succeed");
+      assert.strictEqual(parseIncrementalCalls, 1, "consecutive same-URI edit should delegate to parseIncremental");
+      assert.strictEqual(activeFacade.getUriSourceCode?.(uri) ?? activeFacade.uriSourceCode?.get(uri), updated);
+
+      // Different URI should NOT take incremental path from another URI's buffer
+      const otherUri = "file:///workspace/OtherDoc.mo";
+      const rootOther = activeFacade.parse(initial, 0, 0, 0, otherUri);
+      assert.ok(rootOther > 0);
+      assert.strictEqual(parseIncrementalCalls, 1, "fresh URI parse must take full buffer copy path");
+
+      // loadSource must clear _lastInputBufferUri so subsequent same-URI parse doesn't splice stale buffer
+      activeFacade.loadSource("model Temp Real t; end Temp;");
+      const rootAfterLoad = activeFacade.parse(updated, offset, offset, offset + insertText.length, uri);
+      assert.ok(rootAfterLoad > 0);
+      assert.strictEqual(parseIncrementalCalls, 1, "loadSource must invalidate incremental buffer identity");
+
+      // Fresh workspace session: opening then closing all open docs triggers gcCompact and generation reset
+      let gcCalls = 0;
+      const origGcCompact = activeFacade.gcCompact.bind(activeFacade);
+      activeFacade.gcCompact = () => {
+        gcCalls++;
+        return origGcCompact();
+      };
+      try {
+        activeFacade.resetParser();
+        const soloUri = "file:///workspace/SoloGc.mo";
+        const soloRoot = activeFacade.parse(initial, 0, 0, 0, soloUri);
+        assert.ok(soloRoot > 0);
+        activeFacade.removeDocument(soloUri);
+        assert.ok(gcCalls >= 1, "removeDocument must schedule immediate gcCompact reclamation");
+        assert.strictEqual(activeFacade.getAllDocumentRoots().length, 0);
+        assert.strictEqual(activeFacade.lastAstRoot, 0);
+        // High-water quota check safely invokes gcCompact without throwing on empty workspace
+        (activeFacade as any)._maxMemoryQuotaBytes = 1;
+        activeFacade.checkMemoryQuota();
+        assert.ok(gcCalls >= 2, "checkMemoryQuota exceeding threshold must trigger gcCompact");
+      } finally {
+        activeFacade.gcCompact = origGcCompact;
+      }
+    } finally {
+      activeFacade.parseIncremental = origParseIncremental;
+    }
+  });
 });

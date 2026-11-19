@@ -32,6 +32,28 @@ export const swmmLanguage = language({
       dark: "./assets/swmm/icon-dark.png",
     },
   },
+  ui: {
+    panels: [
+      {
+        id: "swmmEditor",
+        viewType: "modelscript.swmmEditor",
+        title: "SWMM Stormwater Drainage Studio",
+        shortTitle: "SWMM",
+        selector: ["*.swmm", "*.swmm.inp"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/SwmmPanel.tsx",
+        artifactViewTypes: ["swmm"],
+      },
+    ],
+    simulationCards: [
+      {
+        id: "cso-npdes",
+        title: "EPA CSO / NPDES Compliance",
+        entry: "./src/ui/CsoNpdesCard.tsx",
+      },
+    ],
+  },
 
   writeback: {
     operators: ["="],

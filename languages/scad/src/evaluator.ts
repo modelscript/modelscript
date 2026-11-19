@@ -33,6 +33,7 @@ import {
   cylinder,
   fillet,
   intersect,
+  invertAffineExpression,
   linearExtrude,
   ManifoldWorker,
   mirror,
@@ -58,7 +59,7 @@ import {
 
 import type { UnifiedWorkspace } from "@modelscript/runtime";
 import { resolveScadDependencyInfo } from "./indexing.js";
-import type { ScadCstNode, ScadCstTree } from "./patcher.js";
+import { ScadPatcher, type ScadCstNode, type ScadCstTree } from "./patcher.js";
 
 export type ScadValue = number | string | boolean | undefined | ScadValue[];
 
@@ -1613,6 +1614,21 @@ export class ScadEvaluator {
   }
 
   /**
+   * Resolves the single free driving variable name for an individual primitive slot expression.
+   * Returns `undefined` for numeric literals, multi-variable formulas (`w1 + w2`), or non-affine
+   * formulas (`r * r`, `sin(x)`) so unrelated slots are never mis-attributed.
+   */
+  private extractSlotVariable(exprNode: ScadCstNode | null | undefined): string | undefined {
+    if (!exprNode) return undefined;
+    const unique = Array.from(new Set(this.collectIdentifiers(exprNode)));
+    if (unique.length !== 1) return undefined;
+    const exprText = exprNode.text.trim();
+    const inv = invertAffineExpression(exprText, 0);
+    if (inv.locked || inv.kind !== "single_var_affine") return undefined;
+    return inv.variableName ?? unique[0];
+  }
+
+  /**
    * Evaluates a 3D/2D primitive (`cube`, `cylinder`, `sphere`, `polyhedron`, `polygon`, `square`, `circle`)
    * or user-defined `ModuleInstantiation` into a `Solid` with attached source metadata.
    */
@@ -1631,10 +1647,24 @@ export class ScadEvaluator {
       let paramName: string | undefined;
       let dimensionParams: [string | undefined, string | undefined, string | undefined] | undefined;
       if (argListNode) {
-        const idents = this.collectIdentifiers(argListNode).filter((id) => id !== "size" && id !== "center");
-        if (idents.length > 0) {
-          paramName = idents[0];
-          dimensionParams = [idents[0], idents[1] ?? idents[0], idents[2] ?? idents[0]];
+        const sizeArg = ScadPatcher.findArgumentByNameOrPos(argListNode, "size", 0);
+        const vecNode = sizeArg ? ScadPatcher.findDescendantByTypeStatic(sizeArg, "VectorLiteral") : null;
+        if (vecNode) {
+          const elems = ScadPatcher.collectVectorElements(vecNode);
+          const dx = this.extractSlotVariable(elems[0]);
+          const dy = this.extractSlotVariable(elems[1]);
+          const dz = this.extractSlotVariable(elems[2]);
+          if (dx || dy || dz) {
+            dimensionParams = [dx, dy, dz];
+            paramName = dx ?? dy ?? dz;
+          }
+        } else if (sizeArg) {
+          const expr = ScadPatcher.findArgumentExpression(sizeArg);
+          const sideVar = this.extractSlotVariable(expr);
+          if (sideVar) {
+            paramName = sideVar;
+            dimensionParams = [sideVar, sideVar, sideVar];
+          }
         }
       }
 
@@ -1678,12 +1708,18 @@ export class ScadEvaluator {
       let paramName: string | undefined;
       let dimensionParams: [string | undefined, string | undefined, string | undefined] | undefined;
       if (argListNode) {
-        const idents = this.collectIdentifiers(argListNode).filter(
-          (id) => !["h", "r", "r1", "r2", "d", "d1", "d2", "center", "$fn"].includes(id),
-        );
-        if (idents.length > 0) {
-          paramName = idents[0];
-          dimensionParams = [idents[0], idents[1] ?? idents[0], idents[2] ?? idents[0]];
+        const hArg = ScadPatcher.findArgumentByNameOrPos(argListNode, "h", 0);
+        const rArg =
+          ScadPatcher.findArgumentByName(argListNode, "r") ??
+          ScadPatcher.findArgumentByName(argListNode, "d") ??
+          ScadPatcher.findArgumentByName(argListNode, "r1") ??
+          ScadPatcher.findArgumentByName(argListNode, "d1") ??
+          ScadPatcher.findArgumentByNameOrPos(argListNode, "r", 1);
+        const hId = this.extractSlotVariable(hArg ? ScadPatcher.findArgumentExpression(hArg) : null);
+        const rId = this.extractSlotVariable(rArg ? ScadPatcher.findArgumentExpression(rArg) : null);
+        if (rId || hId) {
+          dimensionParams = [rId, hId, rId];
+          paramName = rId ?? hId;
         }
       }
 
@@ -1708,7 +1744,7 @@ export class ScadEvaluator {
         sourceMetadata: sourceMeta,
       });
       if (center) return c;
-      return translate(c, [0, h / 2, 0]);
+      return translate(c, [0, 0, h / 2]);
     }
 
     if (type === "SpherePrimitive") {
@@ -1721,8 +1757,11 @@ export class ScadEvaluator {
 
       let paramName: string | undefined;
       if (argListNode) {
-        const idents = this.collectIdentifiers(argListNode).filter((id) => !["r", "d", "$fn"].includes(id));
-        if (idents.length > 0) paramName = idents[0];
+        const rArg =
+          ScadPatcher.findArgumentByName(argListNode, "r") ??
+          ScadPatcher.findArgumentByName(argListNode, "d") ??
+          ScadPatcher.findArgumentByNameOrPos(argListNode, "r", 0);
+        paramName = this.extractSlotVariable(rArg ? ScadPatcher.findArgumentExpression(rArg) : null);
       }
 
       const startOffset = node.startIndex ?? node.startOffset;

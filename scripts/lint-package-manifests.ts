@@ -354,6 +354,37 @@ export function checkPackageManifest(pkgJsonPath: string): Violation[] {
           message: `Language "${slug}" must have at least 1 unit/integration test file in tests/.`,
         });
       }
+
+      // 2b. Decentralized UI boundary checks for languages owning src/ui/*.tsx panels
+      const uiDir = path.join(pkgDir, "src", "ui");
+      if (fs.existsSync(uiDir) && fs.readdirSync(uiDir).some((f) => f.endsWith(".tsx"))) {
+        const exportsMap = (pkg["exports"] as Record<string, unknown> | undefined) ?? {};
+        const deps = (pkg["dependencies"] as Record<string, unknown> | undefined) ?? {};
+        const peerDeps = (pkg["peerDependencies"] as Record<string, unknown> | undefined) ?? {};
+        const peerMeta = (pkg["peerDependenciesMeta"] as Record<string, { optional?: boolean }> | undefined) ?? {};
+
+        if (!exportsMap["./ui"]) {
+          violations.push({
+            file: relPath,
+            rule: "language-ui-export-missing",
+            message: `Language "${slug}" defines src/ui/*.tsx panels but is missing "./ui" in package.json#exports.`,
+          });
+        }
+        if ("react" in deps || "react-dom" in deps || "@modelscript/react" in deps) {
+          violations.push({
+            file: relPath,
+            rule: "language-ui-runtime-dep",
+            message: `Language "${slug}" must list react / @modelscript/react in optional peerDependencies, not dependencies.`,
+          });
+        }
+        if (!("react" in peerDeps) || peerMeta["react"]?.optional !== true) {
+          violations.push({
+            file: relPath,
+            rule: "language-ui-peer-dep",
+            message: `Language "${slug}" defines src/ui/*.tsx panels and must declare "react" in peerDependencies with peerDependenciesMeta.react.optional = true.`,
+          });
+        }
+      }
     }
   }
 
@@ -626,6 +657,58 @@ export function syncDockerfileManifests(packagePaths: string[] = getWorkspacePac
   return false;
 }
 
+/**
+ * Enforce architectural boundaries for declarative Language UI panels:
+ * 1. `languages/<lang>/src/language.ts` and `src/index.ts` must remain runtime-pure
+ *    (no `react`, `react-dom`, `vscode`, `@primer/react`, or `./ui/` imports).
+ * 2. `languages/<lang>/src/ui/*.ts(x)` must remain host-agnostic
+ *    (no `vscode`, `@primer/react`, `react-router-dom`, `apps/web`, or `packages/ide` imports).
+ */
+export function checkLanguageUiBoundaries(packagePaths: string[]): Violation[] {
+  const violations: Violation[] = [];
+  const runtimeForbidden =
+    /(?:^|\n)\s*(?:import|export)\b[^;\n]*\bfrom\s+["'](?:react|react-dom|vscode|@primer\/react|\.\.?\/ui(?:\/|["']))/;
+  const uiForbidden =
+    /(?:^|\n)\s*(?:import|export)\b[^;\n]*\bfrom\s+["'](?:vscode|@primer\/react|react-router-dom|[^"']*(?:apps\/web|packages\/ide))/;
+
+  for (const pkgPath of packagePaths) {
+    const relDir = path.relative(REPO_ROOT, path.dirname(pkgPath)).replace(/\\/g, "/");
+    if (!relDir.startsWith("languages/")) continue;
+
+    const pkgDir = path.dirname(pkgPath);
+    for (const pureFile of ["src/language.ts", "src/index.ts"]) {
+      const fullPath = path.join(pkgDir, pureFile);
+      if (!fs.existsSync(fullPath)) continue;
+      const src = fs.readFileSync(fullPath, "utf-8");
+      if (runtimeForbidden.test(src)) {
+        violations.push({
+          file: `${relDir}/${pureFile}`,
+          rule: "language-runtime-purity",
+          message: `${relDir}/${pureFile} must not import React, vscode, @primer/react, or ./ui/* — declare UI panels via string entry paths in LanguageOptions.ui.`,
+        });
+      }
+    }
+
+    const uiDir = path.join(pkgDir, "src", "ui");
+    if (fs.existsSync(uiDir) && fs.statSync(uiDir).isDirectory()) {
+      for (const entry of fs.readdirSync(uiDir, { withFileTypes: true })) {
+        if (!entry.isFile() || (!entry.name.endsWith(".ts") && !entry.name.endsWith(".tsx"))) continue;
+        const fullPath = path.join(uiDir, entry.name);
+        const src = fs.readFileSync(fullPath, "utf-8");
+        if (uiForbidden.test(src)) {
+          violations.push({
+            file: `${relDir}/src/ui/${entry.name}`,
+            rule: "language-ui-host-isolation",
+            message: `${relDir}/src/ui/${entry.name} must remain host-agnostic (must not import vscode, @primer/react, react-router-dom, apps/web, or packages/ide).`,
+          });
+        }
+      }
+    }
+  }
+
+  return violations;
+}
+
 export function checkAllManifests(packagePaths: string[] = getWorkspacePackages()): {
   packageCount: number;
   version: string;
@@ -639,6 +722,7 @@ export function checkAllManifests(packagePaths: string[] = getWorkspacePackages(
   }
 
   allViolations.push(...checkCrossWorkspaceRules(packagePaths));
+  allViolations.push(...checkLanguageUiBoundaries(packagePaths));
 
   const versionResult = syncVersions({ checkOnly: true });
   for (const mismatch of versionResult.mismatches) {

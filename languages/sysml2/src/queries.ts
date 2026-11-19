@@ -69,6 +69,7 @@ export interface SysmlRuleSelf {
   isRecursive?: boolean | string | undefined;
   guard?: unknown;
   isParallel?: boolean | string | undefined;
+  isNegated?: boolean | string | undefined;
   trigger?: unknown;
   effect?: unknown;
   ownedMultiplicity?:
@@ -112,6 +113,7 @@ export const usageAttrs = (_usageKind: string) => (self: SysmlRuleSelf) => ({
     isOrdered: self.isOrdered,
     isNonunique: self.isNonunique,
     isConstant: self.isConstant,
+    isNegated: self.isNegated,
     shortName: self.declaredShortName,
     multiplicityLower: self.ownedMultiplicity?.ownedRelatedElement?.lowerBound,
     multiplicityUpper: self.ownedMultiplicity?.ownedRelatedElement?.upperBound,
@@ -2715,14 +2717,14 @@ export const verificationCaseUsageQueries = {
 /** Lint rules for VerificationCaseDefinition */
 export const getAllocationEndpointName = (db: QueryDB, ref: SymbolEntry): string => {
   if (ref.name && ref.name !== "OwnedReferenceSubsetting" && !ref.name.includes(".")) {
-    const raw = (db.cstText(ref.startOffset, ref.endOffset) || "").trim();
+    const raw = (db.cstText(ref.startOffset, ref.endOffset, ref) || "").trim();
     if (raw.includes(".")) return raw;
     return ref.name.trim();
   }
   if (ref.name && ref.name !== "OwnedReferenceSubsetting") {
     return ref.name.trim();
   }
-  return (db.cstText(ref.startOffset, ref.endOffset) || "").trim();
+  return (db.cstText(ref.startOffset, ref.endOffset, ref) || "").trim();
 };
 
 export const getUnresolvedFeatureRange = (
@@ -2868,11 +2870,25 @@ export const collectDescendants = (db: QueryDB, parentId: number, ruleNames: str
   const walk = (id: number) => {
     for (const c of db.childrenOf(id)) {
       if (ruleNames.includes(c.ruleName)) results.push(c);
-      if (c.kind === "Package" || c.kind === "Definition") walk(c.id);
+      if (c.kind === "Package" || c.kind === "Definition" || c.kind === "Usage") walk(c.id);
     }
   };
   walk(parentId);
   return results;
+};
+
+const collectTargetNames = (db: QueryDB, entries: SymbolEntry[]): Set<string> => {
+  const names = new Set<string>();
+  for (const e of entries) {
+    const raw = getRelationshipTargetName(db, e) || e.name;
+    if (!raw) continue;
+    names.add(raw);
+    const tailColon = raw.lastIndexOf("::");
+    if (tailColon !== -1) names.add(raw.slice(tailColon + 2));
+    const tailDot = raw.lastIndexOf(".");
+    if (tailDot !== -1) names.add(raw.slice(tailDot + 1));
+  }
+  return names;
 };
 
 export interface TaxonomyEntry {
@@ -2886,28 +2902,28 @@ export const traceabilityQueries = {
     collectDescendants(db, self.id, ["RequirementDefinition", "RequirementUsage"]),
   satisfiedRequirements: (db: QueryDB, self: SymbolEntry) => {
     const satisfies = collectDescendants(db, self.id, ["SatisfyRequirementUsage"]);
-    const satisfiedNames = new Set(satisfies.map((s) => s.name).filter(Boolean));
+    const satisfiedNames = collectTargetNames(db, satisfies);
     return collectDescendants(db, self.id, ["RequirementDefinition", "RequirementUsage"]).filter(
       (r) => r.name && satisfiedNames.has(r.name),
     );
   },
   unsatisfiedRequirements: (db: QueryDB, self: SymbolEntry) => {
     const satisfies = collectDescendants(db, self.id, ["SatisfyRequirementUsage"]);
-    const satisfiedNames = new Set(satisfies.map((s) => s.name).filter(Boolean));
+    const satisfiedNames = collectTargetNames(db, satisfies);
     return collectDescendants(db, self.id, ["RequirementDefinition", "RequirementUsage"]).filter(
       (r) => r.name && !satisfiedNames.has(r.name),
     );
   },
   verifiedRequirements: (db: QueryDB, self: SymbolEntry) => {
     const verifies = collectDescendants(db, self.id, ["VerifyRequirementUsage"]);
-    const verifiedNames = new Set(verifies.map((v) => v.name).filter(Boolean));
+    const verifiedNames = collectTargetNames(db, verifies);
     return collectDescendants(db, self.id, ["RequirementDefinition", "RequirementUsage"]).filter(
       (r) => r.name && verifiedNames.has(r.name),
     );
   },
   unverifiedRequirements: (db: QueryDB, self: SymbolEntry) => {
     const verifies = collectDescendants(db, self.id, ["VerifyRequirementUsage"]);
-    const verifiedNames = new Set(verifies.map((v) => v.name).filter(Boolean));
+    const verifiedNames = collectTargetNames(db, verifies);
     return collectDescendants(db, self.id, ["RequirementDefinition", "RequirementUsage"]).filter(
       (r) => r.name && !verifiedNames.has(r.name) && metaStr(r, "isAbstract") !== "true",
     );
@@ -2920,6 +2936,16 @@ export const traceabilityQueries = {
     reasoner.loadOntology(axioms);
     reasoner.classify();
     return reasoner.getTaxonomy();
+  },
+  ontologyConsistency: (db: QueryDB, self: SymbolEntry) => {
+    const axioms = emitAxioms(db, self) as Parameters<TableauReasoner["loadOntology"]>[0];
+    if (!axioms || axioms.length === 0) {
+      return { isConsistent: true as const, minimalConflictCore: undefined };
+    }
+    const reasoner = new TableauReasoner();
+    reasoner.loadOntology(axioms);
+    reasoner.classify();
+    return reasoner.checkConsistency();
   },
   inferredSuperClasses: (db: QueryDB, self: SymbolEntry) => {
     // Traverse up to find the root package

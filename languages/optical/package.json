@@ -40,6 +40,10 @@
     "./wasm-parser": {
       "types": "./src-gen/bindings.d.ts",
       "default": "./src-gen/bindings.js"
+    },
+    "./ui": {
+      "types": "./dist/src/ui/OpticalPanel.d.ts",
+      "default": "./dist/src/ui/OpticalPanel.js"
     }
   },
   "files": [
@@ -52,6 +56,7 @@
     "build:parser": "node ../../scripts/build-language-parser.js --force",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",
+    "playground": "npx tsx ../../scripts/language-playground.ts .",
     "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
@@ -62,6 +67,18 @@
   "devDependencies": {
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@modelscript/design-tokens": "*",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@modelscript/design-tokens": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   },
   "modelscript": {
     "tier": "alpha",

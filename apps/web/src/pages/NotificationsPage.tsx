@@ -474,7 +474,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ initialView }) =>
 
       if (isSimulation || isSimFailed) {
         if (meta.name) {
-          navigate(`/morsel?model=${encodeURIComponent(meta.name)}`);
+          navigate(`/editor?model=${encodeURIComponent(meta.name)}`);
         } else {
           navigate(meta.jobId || target.job_id ? `/jobs/${meta.jobId || target.job_id}` : "/jobs");
         }

@@ -37,6 +37,10 @@
       "types": "./dist/properties/index.d.ts",
       "default": "./dist/properties/index.js"
     },
+    "./action-dispatch": {
+      "types": "./dist/action-dispatch.d.ts",
+      "default": "./dist/action-dispatch.js"
+    },
     "./builder": {
       "types": "./dist/polyglot-diagram-builder.d.ts",
       "default": "./dist/polyglot-diagram-builder.js"

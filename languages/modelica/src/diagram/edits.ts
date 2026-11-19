@@ -9,7 +9,7 @@ import { CstUnparser } from "@modelscript/dsl";
 import { Position, Range, TextEdit } from "vscode-languageserver";
 
 import type { EdgeUpdate as EdgeItem, PlacementItem } from "@modelscript/diagram/protocol";
-import { Cst } from "../../src-gen/bindings.js";
+import { Cst, type SyntaxNode } from "../../src-gen/bindings.js";
 import {
   containsWholeWordOutsideStrings,
   isAsciiIdentContinue,
@@ -368,30 +368,9 @@ function getAnnotationClauseNode(node: any): any {
   return findAnn(node);
 }
 
-function getDeclarationNode(node: any): any {
-  if (!node) return null;
-  if (node.declaration) return node.declaration;
-  if (Cst.ComponentDeclaration.is(node)) {
-    const cstDecl = Cst.ComponentDeclaration.declaration(node);
-    if (cstDecl) return cstDecl;
-  }
-  const findDecl = (n: any): any => {
-    if (!n) return null;
-    if (Cst.Declaration.is(n)) return n;
-    for (const ch of n.children || []) {
-      const res = findDecl(ch);
-      if (res) return res;
-    }
-    return null;
-  };
-  return findDecl(node);
-}
-
-function getDeclarationIdentNode(node: any): any {
-  if (!node) return null;
-  if (node.declaration?.identifier) return node.declaration.identifier;
-  if (node.identifier) return node.identifier;
-  const decl = getDeclarationNode(node) ?? node;
+function getDeclarationIdentNodeFromDecl(decl: any): any {
+  if (!decl) return null;
+  if (decl.identifier) return decl.identifier;
   if (Cst.Declaration.is(decl)) {
     const cstName = Cst.Declaration.name(decl);
     if (cstName) return cstName;
@@ -406,6 +385,51 @@ function getDeclarationIdentNode(node: any): any {
     return null;
   };
   return findIdent(decl);
+}
+
+function getDeclarationNode(node: any, componentName?: string): any {
+  if (!node) return null;
+  if (!componentName) {
+    if (node.declaration) return node.declaration;
+    if (Cst.ComponentDeclaration.is(node)) {
+      const cstDecl = Cst.ComponentDeclaration.declaration(node);
+      if (cstDecl) return cstDecl;
+    }
+  }
+  const decls: any[] = [];
+  const collectDecls = (n: any) => {
+    if (!n) return;
+    if (Cst.Declaration.is(n)) {
+      decls.push(n);
+      return;
+    }
+    if (n.declaration) {
+      decls.push(n.declaration);
+      return;
+    }
+    for (const ch of n.children || []) {
+      collectDecls(ch);
+    }
+  };
+  collectDecls(node);
+  if (componentName) {
+    const matched = decls.find((d) => getDeclarationIdentNodeFromDecl(d)?.text?.trim() === componentName);
+    if (matched) return matched;
+  }
+  return decls[0] ?? null;
+}
+
+function getDeclarationIdentNode(node: any, componentName?: string): any {
+  if (!node) return null;
+  if (componentName) {
+    const decl = getDeclarationNode(node, componentName);
+    const ident = getDeclarationIdentNodeFromDecl(decl);
+    if (ident) return ident;
+  }
+  if (node.declaration?.identifier) return node.declaration.identifier;
+  if (node.identifier) return node.identifier;
+  const decl = getDeclarationNode(node, componentName) ?? node;
+  return getDeclarationIdentNodeFromDecl(decl);
 }
 
 function getModificationNode(node: any): any {
@@ -479,12 +503,46 @@ export function computePlacementEdits(
   return deduplicateAndSort(edits);
 }
 
+function patchExistingPlacementCall(
+  existingPlacementText: string,
+  transformKey: "transformation" | "iconTransformation",
+  newTransformCall: string,
+): string {
+  const masked = maskModelicaCommentsAndStrings(existingPlacementText);
+  const plCall = findKeywordCallOpenParen(masked, "Placement");
+  if (!plCall) return `Placement(${newTransformCall})`;
+  const plClose = findBalancedClose(masked, plCall.openParenIndex, existingPlacementText.length);
+  if (plClose === -1) return `Placement(${newTransformCall})`;
+
+  const innerStart = plCall.openParenIndex + 1;
+  const innerMasked = masked.slice(innerStart, plClose);
+  const trCall = findKeywordCallOpenParen(innerMasked, transformKey);
+  if (trCall) {
+    const trStartOff = innerStart + trCall.startIndex;
+    const trOpenParen = innerStart + trCall.openParenIndex;
+    const trCloseParen = findBalancedClose(masked, trOpenParen, plClose);
+    if (trCloseParen !== -1) {
+      return (
+        existingPlacementText.slice(0, trStartOff) + newTransformCall + existingPlacementText.slice(trCloseParen + 1)
+      );
+    }
+  }
+
+  const rawInner = existingPlacementText.slice(innerStart, plClose);
+  const sep = rawInner.trim().length > 0 ? ", " : "";
+  return (
+    existingPlacementText.slice(0, innerStart) + `${newTransformCall}${sep}` + existingPlacementText.slice(innerStart)
+  );
+}
+
 function applyScannedPlacementEdit(
   docText: string,
   lineStarts: number[],
   maskedText: string,
   scannedComp: ScannedComponentDecl,
   newPlacement: string,
+  transformKey: "transformation" | "iconTransformation" = "transformation",
+  newTransformCall?: string,
 ): TextEdit {
   if (scannedComp.annotationOpenParenOffset !== null && scannedComp.annotationCloseParenOffset !== null) {
     const annInnerStart = scannedComp.annotationOpenParenOffset + 1;
@@ -496,9 +554,13 @@ function applyScannedPlacementEdit(
       const plOpenParen = annInnerStart + plCall.openParenIndex;
       const plCloseParen = findBalancedClose(maskedText, plOpenParen, annClose);
       if (plCloseParen !== -1) {
+        const existingPlText = docText.slice(plStartOff, plCloseParen + 1);
+        const patchedText = newTransformCall
+          ? patchExistingPlacementCall(existingPlText, transformKey, newTransformCall)
+          : newPlacement;
         return TextEdit.replace(
           Range.create(offsetToPosition(lineStarts, plStartOff), offsetToPosition(lineStarts, plCloseParen + 1)),
-          newPlacement,
+          patchedText,
         );
       }
     }
@@ -511,36 +573,57 @@ function applyScannedPlacementEdit(
 }
 
 function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance, item: PlacementItem): TextEdit | null {
-  const originX = Math.round(item.x + item.width / 2);
-  const originY = Math.round(-(item.y + item.height / 2));
-  const w = Math.round(item.width);
-  const h = Math.round(item.height);
-  const r = Math.round(-(item.rotation ?? 0));
-  const rotationPart = r !== 0 ? `, rotation=${r}` : "";
-
   const component = Array.from(classInstance?.components ?? []).find((c: any) => c.name === item.name);
+  const isIconLayer = Boolean((item as PlacementItem & { isIconLayer?: boolean }).isIconLayer);
+  const transformKey: "transformation" | "iconTransformation" = isIconLayer ? "iconTransformation" : "transformation";
 
-  // Detect flip from explicit item override or original extent in the source text
+  // Detect existing transform & flip from explicit item override or original annotation
   let flipX = false;
   let flipY = false;
+  let existingOriginX = 0;
+  let existingOriginY = 0;
+  let existingWidth = 20;
+  let existingHeight = 20;
 
   const placement: any =
     typeof (component as any)?.annotation === "function" ? (component as any).annotation("Placement") : null;
-  const extent = placement?.transformation?.extent;
+  const layerTrans = isIconLayer ? placement?.iconTransformation : placement?.transformation;
+  const extent = layerTrans?.extent ?? placement?.transformation?.extent;
+  if (Array.isArray(layerTrans?.origin) && layerTrans.origin.length >= 2) {
+    if (Number.isFinite(Number(layerTrans.origin[0]))) existingOriginX = Number(layerTrans.origin[0]);
+    if (Number.isFinite(Number(layerTrans.origin[1]))) existingOriginY = Number(layerTrans.origin[1]);
+  }
   if (extent && extent.length >= 2) {
     const [[x1, y1], [x2, y2]] = extent;
-    if (!isNaN(x1) && !isNaN(x2)) flipX = x1 > x2;
-    if (!isNaN(y1) && !isNaN(y2)) flipY = y1 > y2;
+    if (Number.isFinite(x1) && Number.isFinite(x2)) {
+      flipX = x1 > x2;
+      if (Math.abs(x2 - x1) > 0) existingWidth = Math.abs(x2 - x1);
+    }
+    if (Number.isFinite(y1) && Number.isFinite(y2)) {
+      flipY = y1 > y2;
+      if (Math.abs(y2 - y1) > 0) existingHeight = Math.abs(y2 - y1);
+    }
   }
   if (item.flipX !== undefined) flipX = Boolean(item.flipX);
   if (item.flipY !== undefined) flipY = Boolean(item.flipY);
+
+  const safeW = Number.isFinite(item.width) ? item.width : existingWidth;
+  const safeH = Number.isFinite(item.height) ? item.height : existingHeight;
+  const w = Math.round(safeW);
+  const h = Math.round(safeH);
+  const originX = Number.isFinite(item.x) ? Math.round(item.x + safeW / 2) : Math.round(existingOriginX);
+  const originY = Number.isFinite(item.y) ? Math.round(-(item.y + safeH / 2)) : Math.round(existingOriginY);
+  const existingRot = Number.isFinite(Number(layerTrans?.rotation)) ? Number(layerTrans.rotation) : 0;
+  const r = Number.isFinite(item.rotation) ? Math.round(-(item.rotation ?? 0)) : Math.round(existingRot);
+  const rotationPart = r !== 0 ? `, rotation=${r}` : "";
 
   const ex1 = flipX ? w / 2 : -(w / 2);
   const ex2 = flipX ? -(w / 2) : w / 2;
   const ey1 = flipY ? h / 2 : -(h / 2);
   const ey2 = flipY ? -(h / 2) : h / 2;
   const newTransformationCore = `origin={${originX},${originY}}, extent={{${ex1},${ey1}},{${ex2},${ey2}}}${rotationPart}`;
-  const newPlacement = `Placement(transformation(${newTransformationCore}))`;
+  const newTransformCall = `${transformKey}(${newTransformationCore})`;
+  const newPlacement = `Placement(${newTransformCall})`;
 
   const abstractNode = (component as any)?.cstNode ?? (component as any)?.abstractSyntaxNode;
   const compRange = getNodeRange(abstractNode);
@@ -558,9 +641,16 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
         if (annotationClause) {
           const placementNode = findDescendantModification(annotationClause, "Placement");
           if (placementNode && placementNode.startPosition) {
+            const plRange = getNodeRange(placementNode);
+            const rawExistingPl = plRange
+              ? getTextInRange(lines, plRange.startLine, plRange.startCol, plRange.endLine, plRange.endCol)
+              : "";
+            const patchedPlacement = rawExistingPl.trimStart().startsWith("Placement")
+              ? patchExistingPlacementCall(rawExistingPl, transformKey, newTransformCall)
+              : newPlacement;
             const patchRes = CstUnparser.patchAndUnparse({
               target: placementNode,
-              replaceText: newPlacement,
+              replaceText: patchedPlacement,
             });
             const actualSlice = getTextInRange(
               lines,
@@ -587,7 +677,7 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
             }
           }
 
-          const classModNode = annotationClause.children?.find((c: any) => Cst.ClassModification.is(c));
+          const classModNode = annotationClause.children?.find((c: SyntaxNode) => Cst.ClassModification.is(c));
           if (classModNode && classModNode.children && classModNode.children.length > 0) {
             const cmRange = getNodeRange(classModNode);
             const cmSlice = cmRange
@@ -628,7 +718,15 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
   const layout = scanModelicaClassLayout(docText, classInstance?.name);
   const scannedComp = layout?.components.find((c) => c.name === item.name);
   if (layout && scannedComp) {
-    return applyScannedPlacementEdit(docText, layout.lineStarts, layout.maskedText, scannedComp, newPlacement);
+    return applyScannedPlacementEdit(
+      docText,
+      layout.lineStarts,
+      layout.maskedText,
+      scannedComp,
+      newPlacement,
+      transformKey,
+      newTransformCall,
+    );
   }
 
   // Last-resort fallback for synthetic unit-test mock nodes without full Modelica class wrapper
@@ -761,13 +859,35 @@ export function computeConnectInsert(
       }
 
       const lastCodeEndOffset = targetEqSec.headerEndOffset + lastNonWsRel + 1;
-      const lastCodePos = offsetToPosition(layout.lineStarts, lastCodeEndOffset);
-      const restOfLine = layout.maskedText.slice(lastCodeEndOffset).split("\n", 1)[0]!.trim();
+      // Advance past any trailing comments (e.g. `/* ... */` or `// ...`) inside targetEqSec
+      // so we never insert a `connect(...)` statement inside a multi-line block comment.
+      let safeOffset = lastCodeEndOffset;
+      while (safeOffset < targetEqSec.endOffset) {
+        const ch = docText[safeOffset]!;
+        if (ch === " " || ch === "\t" || ch === "\r" || ch === "\n") {
+          safeOffset++;
+          continue;
+        }
+        if (ch === "/" && docText[safeOffset + 1] === "/") {
+          const nl = docText.indexOf("\n", safeOffset + 2);
+          safeOffset = nl === -1 || nl >= targetEqSec.endOffset ? targetEqSec.endOffset : nl;
+          break;
+        }
+        if (ch === "/" && docText[safeOffset + 1] === "*") {
+          const closeIdx = docText.indexOf("*/", safeOffset + 2);
+          safeOffset = closeIdx === -1 ? targetEqSec.endOffset : Math.min(closeIdx + 2, targetEqSec.endOffset);
+          continue;
+        }
+        break;
+      }
+
+      const safePos = offsetToPosition(layout.lineStarts, safeOffset);
+      const restOfLine = layout.maskedText.slice(safeOffset).split("\n", 1)[0]!.trim();
 
       if (restOfLine === "") {
-        return [TextEdit.insert({ line: lastCodePos.line + 1, character: 0 }, connectEq)];
+        return [TextEdit.insert({ line: safePos.line + 1, character: 0 }, connectEq)];
       }
-      return [TextEdit.insert(lastCodePos, `\n${connectEq.trimEnd()}`)];
+      return [TextEdit.insert(safePos, `\n${connectEq.trimEnd()}`)];
     }
 
     // 2. No regular `equation` section exists: insert BEFORE `external`, non-stranded class `annotation(...)`, or `end <ClassName>;`
@@ -995,8 +1115,84 @@ export function computeComponentsDelete(
     if (!component) continue;
 
     const compNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
-    const parentNode = compNode?.parent ?? compNode;
-    const compRange = getNodeRange(parentNode);
+    const isDeclLike = (n: any) =>
+      Cst.ComponentDeclaration.is(n) ||
+      Cst.Declaration.is(n) ||
+      n?.type === "component_declaration" ||
+      n?.type === "declaration";
+
+    let targetDeleteNode = compNode?.parent ?? compNode;
+    if (isDeclLike(compNode) && compNode?.parent) {
+      const siblingDecls = (compNode.parent.children || []).filter(isDeclLike);
+      if (siblingDecls.length > 1) {
+        const allDeleted = siblingDecls.every((s: any) => {
+          const id = getDeclarationIdentNode(s)?.text?.trim();
+          return id ? nameSet.has(id) : false;
+        });
+        if (!allDeleted) {
+          const patchRes = CstUnparser.patchAndUnparse({
+            target: compNode.parent,
+            deleteChildren: [compNode],
+          });
+          edits.push(
+            TextEdit.replace(
+              Range.create(
+                patchRes.edit.range.start.line,
+                patchRes.edit.range.start.character,
+                patchRes.edit.range.end.line,
+                patchRes.edit.range.end.character,
+              ),
+              patchRes.edit.newText,
+            ),
+          );
+          continue;
+        }
+        if (
+          compNode.parent.parent &&
+          (Cst.ComponentClause?.is?.(compNode.parent.parent) || compNode.parent.parent.type === "component_clause")
+        ) {
+          targetDeleteNode = compNode.parent.parent;
+        }
+      }
+    } else if (compNode) {
+      const nestedDecls: any[] = [];
+      const collectDecls = (n: any) => {
+        if (!n) return;
+        if (isDeclLike(n)) {
+          nestedDecls.push(n);
+          return;
+        }
+        for (const ch of n.children || []) collectDecls(ch);
+      };
+      collectDecls(compNode);
+      if (nestedDecls.length > 1) {
+        const matchedDecl = nestedDecls.find((d) => getDeclarationIdentNode(d, name)?.text?.trim() === name);
+        const allDeleted = nestedDecls.every((d) => {
+          const id = getDeclarationIdentNode(d)?.text?.trim();
+          return id ? nameSet.has(id) : false;
+        });
+        if (matchedDecl && matchedDecl.parent && !allDeleted) {
+          const patchRes = CstUnparser.patchAndUnparse({
+            target: matchedDecl.parent,
+            deleteChildren: [matchedDecl],
+          });
+          edits.push(
+            TextEdit.replace(
+              Range.create(
+                patchRes.edit.range.start.line,
+                patchRes.edit.range.start.character,
+                patchRes.edit.range.end.line,
+                patchRes.edit.range.end.character,
+              ),
+              patchRes.edit.newText,
+            ),
+          );
+          continue;
+        }
+      }
+    }
+
+    const compRange = getNodeRange(targetDeleteNode);
     if (compRange) {
       edits.push(makeDeleteRange(lines, compRange.startLine, compRange.startCol, compRange.endLine, compRange.endCol));
     }
@@ -1137,7 +1333,7 @@ export function computeEdgePointEdits(
             }
 
             if (!handledViaCst) {
-              const classModNode = annotationClause.children?.find((c: any) => Cst.ClassModification.is(c));
+              const classModNode = annotationClause.children?.find((c: SyntaxNode) => Cst.ClassModification.is(c));
               if (classModNode && classModNode.children && classModNode.children.length > 0) {
                 const cmRange = getNodeRange(classModNode);
                 const cmSlice = cmRange
@@ -1515,6 +1711,101 @@ export function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
 
 // ── Component Property edits (Name, Description, Parameters) ──
 
+function collectClassBodyReferenceRenameEdits(
+  layout: ReturnType<typeof scanModelicaClassLayout> & object,
+  oldName: string,
+  newName: string,
+  alreadyHandled: Array<{ start: number; end: number }>,
+): TextEdit[] {
+  const edits: TextEdit[] = [];
+  const { maskedText, lineStarts, headerEndOffset, endKeywordOffset } = layout;
+  const bodyStart = Math.max(0, headerEndOffset);
+  const bodyEnd = Math.min(maskedText.length, endKeywordOffset);
+  if (bodyEnd <= bodyStart) return edits;
+
+  // Exclude class/component/connect annotation(...) blocks and connect(...) headers
+  const excluded: Array<{ start: number; end: number }> = [...alreadyHandled];
+  for (const ca of layout.classAnnotations) {
+    excluded.push({ start: ca.keywordOffset, end: ca.statementEndOffset });
+  }
+  for (const comp of layout.components) {
+    if (comp.annotationKeywordOffset !== null && comp.annotationCloseParenOffset !== null) {
+      excluded.push({ start: comp.annotationKeywordOffset, end: comp.annotationCloseParenOffset + 1 });
+    }
+  }
+  for (const conn of layout.connects) {
+    excluded.push({ start: conn.startOffset, end: conn.closeConnectParenOffset + 1 });
+    if (conn.annotationKeywordOffset !== null && conn.annotationCloseParenOffset !== null) {
+      excluded.push({ start: conn.annotationKeywordOffset, end: conn.annotationCloseParenOffset + 1 });
+    }
+  }
+
+  const isExcluded = (start: number, end: number) => excluded.some((r) => start < r.end && end > r.start);
+
+  const isInPublicOrProtectedHeader = (offset: number) => {
+    let activeKind = "public";
+    for (const sec of layout.sections) {
+      if (sec.keywordOffset <= offset) activeKind = sec.kind;
+      else break;
+    }
+    return activeKind === "public" || activeKind === "protected";
+  };
+
+  let parenDepth = 0;
+  let i = bodyStart;
+  while (i < bodyEnd) {
+    const ch = maskedText[i]!;
+    if (ch === "(") {
+      parenDepth++;
+      i++;
+      continue;
+    }
+    if (ch === ")") {
+      if (parenDepth > 0) parenDepth--;
+      i++;
+      continue;
+    }
+
+    if (
+      maskedText.startsWith(oldName, i) &&
+      (i === 0 || !isAsciiIdentContinue(maskedText.charCodeAt(i - 1))) &&
+      (i + oldName.length >= maskedText.length || !isAsciiIdentContinue(maskedText.charCodeAt(i + oldName.length)))
+    ) {
+      const matchEnd = i + oldName.length;
+      if (!isExcluded(i, matchEnd)) {
+        // Check preceding non-whitespace character: never rename dotted member accesses (other.oldName)
+        let prev = i - 1;
+        while (prev >= bodyStart && isAsciiWhitespaceCode(maskedText.charCodeAt(prev))) prev--;
+        const isDottedMember = prev >= bodyStart && maskedText[prev] === ".";
+
+        // Check if match is an LHS parameter modification key like `Comp c(oldName = 5)`
+        let next = matchEnd;
+        while (next < bodyEnd && isAsciiWhitespaceCode(maskedText.charCodeAt(next))) next++;
+        const isAssignEq =
+          next < bodyEnd && maskedText[next] === "=" && maskedText[next + 1] !== "=" && maskedText[prev] !== ":"; // ignore `:=` equation context safely covered by section check
+        const isModLhsKey = isAssignEq && parenDepth > 0 && isInPublicOrProtectedHeader(i);
+
+        // Do not rename a sibling component's declarator name if one somehow shared the identifier
+        if (!isDottedMember && !isModLhsKey) {
+          edits.push(
+            TextEdit.replace(
+              Range.create(offsetToPosition(lineStarts, i), offsetToPosition(lineStarts, matchEnd)),
+              newName,
+            ),
+          );
+          alreadyHandled.push({ start: i, end: matchEnd });
+        }
+      }
+      i = matchEnd;
+      continue;
+    }
+
+    i++;
+  }
+
+  return edits;
+}
+
 export function computeNameEdit(
   classInstance: ModelicaClassInstance,
   oldName: string,
@@ -1539,6 +1830,14 @@ export function computeNameEdit(
           newName,
         ),
       ];
+      const handledSpans: Array<{ start: number; end: number }> = [];
+      // Protect all component declaration type specifiers and identifier headers from body-ref sweeps
+      for (const comp of layout.components) {
+        handledSpans.push({
+          start: comp.declStartOffset,
+          end: comp.subscriptsEndOffset ?? comp.identEndOffset,
+        });
+      }
 
       // Also update all connect(oldName.port, ...) / connect(oldName, ...) references in the class!
       const replaceEndpointPrefix = (refStart: number, refEnd: number) => {
@@ -1556,6 +1855,7 @@ export function computeNameEdit(
                 newName,
               ),
             );
+            handledSpans.push({ start: refStart, end: refStart + oldName.length });
           }
         }
       };
@@ -1564,6 +1864,9 @@ export function computeNameEdit(
         replaceEndpointPrefix(conn.lhsStartOffset, conn.lhsEndOffset);
         replaceEndpointPrefix(conn.rhsStartOffset, conn.rhsEndOffset);
       }
+
+      // Safely rename whole-word non-dotted references inside equation/algorithm/modifier RHS expressions
+      edits.push(...collectClassBodyReferenceRenameEdits(layout, oldName, newName, handledSpans));
 
       return deduplicateAndSort(edits);
     }
@@ -1601,7 +1904,7 @@ function findDescriptionStringNode(node: any): any {
   const descNode =
     node.description ??
     (Cst.ComponentDeclaration.is(node) ? Cst.ComponentDeclaration.description(node) : null) ??
-    (node.children || []).find((c: any) => Cst.Description.is(c));
+    (node.children || []).find((c: SyntaxNode) => Cst.Description.is(c));
   if (descNode) {
     if (isString(descNode)) return descNode;
     for (const child of descNode.children || []) {
@@ -1724,7 +2027,7 @@ export function computeDescriptionEdit(
 function findArgumentByName(
   classModOrArgList: any,
   name: string,
-): { argumentNode: any; elementModNode: any; valueModNode: any } | null {
+): { argumentNode: any; elementModNode: any; valueModNode: any; ownerContainer: any; matchedName: string } | null {
   if (!classModOrArgList) return null;
   const findArgs = (node: any): any[] => {
     const results: any[] = [];
@@ -1755,8 +2058,10 @@ function findArgumentByName(
 
     const findName = (n: any): any => {
       if (!n) return null;
+      if (Cst.Name.is(n) || n.type === "name") return n;
       if (Cst.Identifier.is(n)) return n;
       for (const ch of n.children || []) {
+        if (Cst.Modification.is(ch) || Cst.ClassModification.is(ch)) continue;
         const found = findName(ch);
         if (found) return found;
       }
@@ -1764,14 +2069,66 @@ function findArgumentByName(
     };
     const nameNode =
       (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.name(elemMod) : null) ?? findName(elemMod);
-    if (nameNode && nameNode.text?.trim() === name) {
-      const valueModNode =
-        (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.modification(elemMod) : null) ??
-        (elemMod.children || []).find((c: any) => Cst.Modification.is(c));
-      return { argumentNode: arg, elementModNode: elemMod, valueModNode };
+    const argName = nameNode?.text ? stripWhitespaceAroundDots(nameNode.text.trim()) : "";
+    if (!argName) continue;
+
+    const valueModNode =
+      (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.modification(elemMod) : null) ??
+      (elemMod.children || []).find((c: SyntaxNode) => Cst.Modification.is(c) || Cst.ClassModification.is(c));
+
+    if (argName === name) {
+      return {
+        argumentNode: arg,
+        elementModNode: elemMod,
+        valueModNode,
+        ownerContainer: classModOrArgList,
+        matchedName: argName,
+      };
+    }
+
+    if (name.startsWith(`${argName}.`) && valueModNode) {
+      const rest = name.slice(argName.length + 1);
+      const nestedCm =
+        (Cst.ClassModification.is(valueModNode) ? valueModNode : null) ??
+        valueModNode.children?.find((c: SyntaxNode) => Cst.ClassModification.is(c) || c.type === "class_modification");
+      if (nestedCm) {
+        const nestedArgList = nestedCm.children?.find((c: SyntaxNode) => Cst.ArgumentList.is(c)) ?? nestedCm;
+        const nestedMatch = findArgumentByName(nestedArgList, rest);
+        if (nestedMatch) return nestedMatch;
+      }
     }
   }
 
+  return null;
+}
+
+function findNestedModificationContainer(
+  classModOrArgList: any,
+  name: string,
+): { containerNode: any; leafName: string } | null {
+  if (!classModOrArgList || !name.includes(".")) return null;
+  for (const arg of getAllArgumentNodes(classModOrArgList)) {
+    const elemMod =
+      (arg.children || []).find((c: SyntaxNode) => Cst.ElementModification.is(c)) ??
+      (Cst.ElementModification.is(arg) ? arg : null);
+    if (!elemMod) continue;
+    const nameNode =
+      (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.name(elemMod) : null) ??
+      (elemMod.children || []).find((c: SyntaxNode) => Cst.Name.is(c) || Cst.Identifier.is(c));
+    const argName = nameNode?.text ? stripWhitespaceAroundDots(nameNode.text.trim()) : "";
+    if (!argName || !name.startsWith(`${argName}.`)) continue;
+    const rest = name.slice(argName.length + 1);
+    const valueModNode =
+      (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.modification(elemMod) : null) ??
+      (elemMod.children || []).find((c: SyntaxNode) => Cst.Modification.is(c) || Cst.ClassModification.is(c));
+    const nestedCm =
+      (Cst.ClassModification.is(valueModNode) ? valueModNode : null) ??
+      valueModNode?.children?.find((c: SyntaxNode) => Cst.ClassModification.is(c) || c.type === "class_modification");
+    if (nestedCm) {
+      const nestedArgList = nestedCm.children?.find((c: SyntaxNode) => Cst.ArgumentList.is(c)) ?? nestedCm;
+      return findNestedModificationContainer(nestedArgList, rest) ?? { containerNode: nestedArgList, leafName: rest };
+    }
+  }
   return null;
 }
 
@@ -1826,6 +2183,112 @@ function splitTopLevelModificationSegments(
   return segments;
 }
 
+function patchScannedModificationArgs(
+  docText: string,
+  maskedText: string,
+  lineStarts: number[],
+  openParenOffset: number,
+  closeParenOffset: number,
+  modEndOffset: number | null,
+  parameterName: string,
+  newValue: string,
+): TextEdit[] {
+  const shouldRemove = newValue === "";
+  const innerStart = openParenOffset + 1;
+  const innerEnd = closeParenOffset;
+  const segments = splitTopLevelModificationSegments(docText, maskedText, innerStart, innerEnd);
+  const argIndex = segments.findIndex((seg) =>
+    matchesModificationArgHead(maskedText.slice(seg.trimmedStart, seg.trimmedEnd), parameterName),
+  );
+
+  if (argIndex !== -1) {
+    const seg = segments[argIndex]!;
+    if (shouldRemove) {
+      if (segments.length <= 1) {
+        const startPos = offsetToPosition(lineStarts, openParenOffset);
+        const endPos = offsetToPosition(lineStarts, modEndOffset ?? closeParenOffset + 1);
+        return [TextEdit.replace(Range.create(startPos, endPos), "")];
+      }
+      if (argIndex < segments.length - 1) {
+        const nextSeg = segments[argIndex + 1]!;
+        const startPos = offsetToPosition(lineStarts, seg.trimmedStart);
+        const endPos = offsetToPosition(lineStarts, nextSeg.trimmedStart);
+        return [TextEdit.replace(Range.create(startPos, endPos), "")];
+      }
+      const prevSeg = segments[argIndex - 1]!;
+      const startPos = offsetToPosition(lineStarts, prevSeg.trimmedEnd);
+      const endPos = offsetToPosition(lineStarts, seg.trimmedEnd);
+      return [TextEdit.replace(Range.create(startPos, endPos), "")];
+    }
+
+    // Find top-level `=` inside this argument segment (after any nested `(...)`)
+    let depth = 0;
+    let eqOffset = -1;
+    for (let i = seg.trimmedStart; i < seg.trimmedEnd; i++) {
+      const ch = maskedText[i];
+      if (ch === "(" || ch === "{" || ch === "[") depth++;
+      else if (ch === ")" || ch === "}" || ch === "]") {
+        if (depth > 0) depth--;
+      } else if (ch === "=" && depth === 0 && maskedText[i + 1] !== "=" && maskedText[i - 1] !== ":") {
+        eqOffset = i;
+        break;
+      }
+    }
+
+    if (eqOffset !== -1) {
+      const afterEq = docText.slice(eqOffset + 1, seg.trimmedEnd);
+      const hasSpace = afterEq.length > 0 && isAsciiWhitespaceCode(afterEq.charCodeAt(0));
+      const startPos = offsetToPosition(lineStarts, eqOffset);
+      const endPos = offsetToPosition(lineStarts, seg.trimmedEnd);
+      return [TextEdit.replace(Range.create(startPos, endPos), `${hasSpace ? "= " : "="}${newValue}`)];
+    }
+
+    // Segment has no top-level `=` (e.g. `each Real x` or `v(start=0)`): append binding cleanly without wiping prefixes or nested attributes
+    const endPos = offsetToPosition(lineStarts, seg.trimmedEnd);
+    return [TextEdit.insert(endPos, ` = ${newValue}`)];
+  }
+
+  // If dotted path (e.g. `v.start`) wasn't flat, recurse into matching prefix's nested `(...)` (e.g. `v(fixed=true)`)
+  const dotIdx = parameterName.indexOf(".");
+  if (dotIdx !== -1) {
+    const head = parameterName.slice(0, dotIdx);
+    const tail = parameterName.slice(dotIdx + 1);
+    const headIdx = segments.findIndex((seg) =>
+      matchesModificationArgHead(maskedText.slice(seg.trimmedStart, seg.trimmedEnd), head),
+    );
+    if (headIdx !== -1) {
+      const headSeg = segments[headIdx]!;
+      let nestedOpen = -1;
+      for (let i = headSeg.trimmedStart; i < headSeg.trimmedEnd; i++) {
+        if (maskedText[i] === "(") {
+          nestedOpen = i;
+          break;
+        }
+      }
+      if (nestedOpen !== -1) {
+        const nestedClose = findBalancedClose(maskedText, nestedOpen, headSeg.trimmedEnd + 1);
+        if (nestedClose !== -1) {
+          return patchScannedModificationArgs(
+            docText,
+            maskedText,
+            lineStarts,
+            nestedOpen,
+            nestedClose,
+            null,
+            tail,
+            newValue,
+          );
+        }
+      }
+    }
+  }
+
+  if (shouldRemove) return [];
+  const closePos = offsetToPosition(lineStarts, innerEnd);
+  const hasArgs = segments.length > 0;
+  return [TextEdit.insert(closePos, `${hasArgs ? ", " : ""}${parameterName} = ${newValue}`)];
+}
+
 function computeScannedParameterEdit(
   docText: string,
   classInstance: ModelicaClassInstance,
@@ -1845,64 +2308,16 @@ function computeScannedParameterEdit(
   const { lineStarts, maskedText } = layout;
 
   if (scannedComp.modOpenParenOffset !== null && scannedComp.modCloseParenOffset !== null) {
-    const innerStart = scannedComp.modOpenParenOffset + 1;
-    const innerEnd = scannedComp.modCloseParenOffset;
-    const segments = splitTopLevelModificationSegments(docText, maskedText, innerStart, innerEnd);
-    const argIndex = segments.findIndex((seg) =>
-      matchesModificationArgHead(maskedText.slice(seg.trimmedStart, seg.trimmedEnd), parameterName),
+    return patchScannedModificationArgs(
+      docText,
+      maskedText,
+      lineStarts,
+      scannedComp.modOpenParenOffset,
+      scannedComp.modCloseParenOffset,
+      scannedComp.modEndOffset,
+      parameterName,
+      newValue,
     );
-
-    if (argIndex !== -1) {
-      const seg = segments[argIndex]!;
-      if (shouldRemove) {
-        if (segments.length <= 1) {
-          const startPos = offsetToPosition(lineStarts, scannedComp.modOpenParenOffset);
-          const endPos = offsetToPosition(lineStarts, scannedComp.modEndOffset ?? scannedComp.modCloseParenOffset + 1);
-          return [TextEdit.replace(Range.create(startPos, endPos), "")];
-        }
-        if (argIndex < segments.length - 1) {
-          const nextSeg = segments[argIndex + 1]!;
-          const startPos = offsetToPosition(lineStarts, seg.trimmedStart);
-          const endPos = offsetToPosition(lineStarts, nextSeg.trimmedStart);
-          return [TextEdit.replace(Range.create(startPos, endPos), "")];
-        }
-        const prevSeg = segments[argIndex - 1]!;
-        const startPos = offsetToPosition(lineStarts, prevSeg.trimmedEnd);
-        const endPos = offsetToPosition(lineStarts, seg.trimmedEnd);
-        return [TextEdit.replace(Range.create(startPos, endPos), "")];
-      }
-
-      // Find top-level `=` inside this argument segment
-      let depth = 0;
-      let eqOffset = -1;
-      for (let i = seg.trimmedStart; i < seg.trimmedEnd; i++) {
-        const ch = maskedText[i];
-        if (ch === "(" || ch === "{" || ch === "[") depth++;
-        else if (ch === ")" || ch === "}" || ch === "]") {
-          if (depth > 0) depth--;
-        } else if (ch === "=" && depth === 0 && maskedText[i + 1] !== "=" && maskedText[i - 1] !== ":") {
-          eqOffset = i;
-          break;
-        }
-      }
-
-      if (eqOffset !== -1) {
-        const afterEq = docText.slice(eqOffset + 1, seg.trimmedEnd);
-        const hasSpace = afterEq.length > 0 && isAsciiWhitespaceCode(afterEq.charCodeAt(0));
-        const startPos = offsetToPosition(lineStarts, eqOffset);
-        const endPos = offsetToPosition(lineStarts, seg.trimmedEnd);
-        return [TextEdit.replace(Range.create(startPos, endPos), `${hasSpace ? "= " : "="}${newValue}`)];
-      }
-
-      const startPos = offsetToPosition(lineStarts, seg.trimmedStart);
-      const endPos = offsetToPosition(lineStarts, seg.trimmedEnd);
-      return [TextEdit.replace(Range.create(startPos, endPos), `${parameterName} = ${newValue}`)];
-    }
-
-    if (shouldRemove) return [];
-    const closePos = offsetToPosition(lineStarts, innerEnd);
-    const hasArgs = segments.length > 0;
-    return [TextEdit.insert(closePos, `${hasArgs ? ", " : ""}${parameterName} = ${newValue}`)];
   }
 
   if (shouldRemove) return [];
@@ -1933,7 +2348,7 @@ export function computeParameterEdit(
       : [];
   }
 
-  const declNode = getDeclarationNode(abstractNode) ?? abstractNode;
+  const declNode = getDeclarationNode(abstractNode, componentName) ?? abstractNode;
 
   // When docText is provided, verify the component CST node still aligns with docText
   if (docLines) {
@@ -1957,21 +2372,23 @@ export function computeParameterEdit(
   // 1. Check for real CST structure (nodes with children / startPosition)
   const modNode = getModificationNode(declNode);
   const classModNode = modNode
-    ? (modNode.children?.find((c: any) => Cst.ClassModification.is(c)) ??
+    ? (modNode.children?.find((c: SyntaxNode) => Cst.ClassModification.is(c)) ??
       (Cst.ClassModification.is(modNode) ? modNode : null))
     : null;
 
   if (classModNode && classModNode.children && classModNode.children.length > 0) {
-    const argListNode = classModNode.children?.find((c: any) => Cst.ArgumentList.is(c));
+    const argListNode = classModNode.children?.find((c: SyntaxNode) => Cst.ArgumentList.is(c));
     const containerNode = argListNode ?? classModNode;
     const existingArg = findArgumentByName(containerNode, parameterName);
 
     if (existingArg) {
+      const targetContainer = existingArg.ownerContainer ?? containerNode;
       if (shouldRemove) {
-        const allArgs = getAllArgumentNodes(containerNode);
+        const allArgs = getAllArgumentNodes(targetContainer);
         if (allArgs.length <= 1) {
-          // Sole argument: remove entire modification
-          const target = modNode ?? classModNode;
+          // Sole argument in its class modification: remove enclosing modification / parent arg
+          const target =
+            targetContainer === containerNode ? (modNode ?? classModNode) : (targetContainer.parent ?? targetContainer);
           const patchRes = CstUnparser.patchAndUnparse({
             target,
             replaceText: "",
@@ -1989,9 +2406,9 @@ export function computeParameterEdit(
           ];
         }
 
-        // Multiple arguments: delete this argument from argument_list
+        // Multiple arguments: delete this argument from its argument_list
         const patchRes = CstUnparser.patchAndUnparse({
-          target: containerNode,
+          target: targetContainer,
           deleteChildren: [existingArg.argumentNode],
         });
         return [
@@ -2007,14 +2424,43 @@ export function computeParameterEdit(
         ];
       }
 
-      // Update existing argument value
+      // Update existing argument value while preserving nested ClassModification (`R(unit="Ohm") = 10` or `v(start=0)`)
       if (existingArg.valueModNode) {
-        const modStr = existingArg.valueModNode.text || "";
+        const vm = existingArg.valueModNode;
+        const nestedCm =
+          (Cst.ClassModification.is(vm) || vm.type === "class_modification" ? vm : null) ??
+          vm.children?.find((c: SyntaxNode) => Cst.ClassModification.is(c) || c.type === "class_modification");
+        if (nestedCm) {
+          const vmRange = getNodeRange(vm);
+          const cmRange = getNodeRange(nestedCm);
+          if (vmRange && cmRange) {
+            const afterCmText = docLines
+              ? getTextInRange(docLines, cmRange.endLine, cmRange.endCol, vmRange.endLine, vmRange.endCol)
+              : "";
+            const eqIdx = afterCmText.indexOf("=");
+            if (
+              eqIdx !== -1 ||
+              (typeof vm.text === "string" && vm.text.indexOf("=", nestedCm.text?.length ?? 0) !== -1)
+            ) {
+              const afterEq = eqIdx !== -1 ? afterCmText.slice(eqIdx + 1) : "";
+              const hasSpaceAfterEq = afterEq.length > 0 && isAsciiWhitespaceCode(afterEq.charCodeAt(0));
+              return [
+                TextEdit.replace(
+                  Range.create(cmRange.endLine, cmRange.endCol, vmRange.endLine, vmRange.endCol),
+                  hasSpaceAfterEq ? ` = ${newValue}` : `=${newValue}`,
+                ),
+              ];
+            }
+            return [TextEdit.insert(Position.create(cmRange.endLine, cmRange.endCol), ` = ${newValue}`)];
+          }
+        }
+
+        const modStr = vm.text || "";
         const hasSpaceAfterEq =
           modStr.startsWith("=") && modStr.length > 1 && isAsciiWhitespaceCode(modStr.charCodeAt(1));
         const newModText = hasSpaceAfterEq ? `= ${newValue}` : `=${newValue}`;
         const patchRes = CstUnparser.patchAndUnparse({
-          target: existingArg.valueModNode,
+          target: vm,
           replaceText: newModText,
         });
         return [
@@ -2029,9 +2475,13 @@ export function computeParameterEdit(
           ),
         ];
       } else {
+        const emRange = getNodeRange(existingArg.elementModNode);
+        if (emRange) {
+          return [TextEdit.insert(Position.create(emRange.endLine, emRange.endCol), ` = ${newValue}`)];
+        }
         const patchRes = CstUnparser.patchAndUnparse({
           target: existingArg.elementModNode,
-          replaceText: `${parameterName} = ${newValue}`,
+          replaceText: `${existingArg.matchedName || parameterName} = ${newValue}`,
         });
         return [
           TextEdit.replace(
@@ -2046,13 +2496,16 @@ export function computeParameterEdit(
         ];
       }
     } else {
-      // Argument not found, append to existing class modification
+      // Argument not found — if dotted path has an existing parent container (e.g. `v(fixed=true)` for `v.start`), insert there
       if (shouldRemove) return [];
+      const nestedTarget = findNestedModificationContainer(containerNode, parameterName);
+      const insertContainer = nestedTarget ? nestedTarget.containerNode : containerNode;
+      const insertName = nestedTarget ? nestedTarget.leafName : parameterName;
       const patchRes = CstUnparser.patchAndUnparse({
-        target: containerNode,
+        target: insertContainer,
         insertChildren: [
           {
-            content: `${parameterName} = ${newValue}`,
+            content: `${insertName} = ${newValue}`,
             position: "end",
             separator: ", ",
           },
@@ -2177,6 +2630,11 @@ export function computeParameterEdit(
 
 // ── Component Insert ──
 
+export interface ComponentIconCoordinateSystem {
+  extent?: [[number, number], [number, number]] | undefined;
+  initialScale?: number | undefined;
+}
+
 export function computeComponentInsert(
   classInstance: ModelicaClassInstance,
   className: string,
@@ -2184,16 +2642,23 @@ export function computeComponentInsert(
   x: number,
   y: number,
   docText: string,
+  componentIconCoord?: ComponentIconCoordinateSystem | null | undefined,
 ): TextEdit[] {
-  const diagram: any = typeof classInstance?.annotation === "function" ? classInstance.annotation("Diagram") : null;
-  const initialScale = diagram?.coordinateSystem?.initialScale ?? 0.1;
-  const extent = diagram?.coordinateSystem?.extent;
+  const initialScale =
+    componentIconCoord?.initialScale &&
+    Number.isFinite(componentIconCoord.initialScale) &&
+    componentIconCoord.initialScale > 0
+      ? componentIconCoord.initialScale
+      : 0.1;
+  const extent = componentIconCoord?.extent;
 
   let width = 200;
   let height = 200;
-  if (extent && extent.length >= 2) {
-    width = Math.abs(extent[1][0] - extent[0][0]);
-    height = Math.abs(extent[1][1] - extent[0][1]);
+  if (extent && extent.length >= 2 && extent[0] && extent[1]) {
+    const extW = Math.abs(extent[1][0] - extent[0][0]);
+    const extH = Math.abs(extent[1][1] - extent[0][1]);
+    if (extW > 0 && Number.isFinite(extW)) width = extW;
+    if (extH > 0 && Number.isFinite(extH)) height = extH;
   }
   const w = width * initialScale;
   const h = height * initialScale;

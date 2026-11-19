@@ -15,8 +15,12 @@ import type {
 export function createSspDiagramBackend(backends: DiagramDispatchDeps): DiagramBackend {
   const readSsdSource = async (targetUri: string): Promise<string | null> => {
     const memText =
-      (backends.generic as any)?.deps?.getDocumentText?.(targetUri) ??
-      (backends.modelica as any)?.deps?.getDocumentText?.(targetUri);
+      (
+        backends.generic as { deps?: { getDocumentText?: (u: string) => unknown } } | undefined
+      )?.deps?.getDocumentText?.(targetUri) ??
+      (
+        backends.modelica as { deps?: { getDocumentText?: (u: string) => unknown } } | undefined
+      )?.deps?.getDocumentText?.(targetUri);
     if (typeof memText === "string") return memText;
     try {
       const fs = await import("node:fs");
@@ -127,6 +131,18 @@ export function createSspDiagramBackend(backends: DiagramDispatchDeps): DiagramB
 
     async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
       try {
+        const cleanUri = (params.uri || "").split("?")[0]!.toLowerCase();
+        const hasMemText =
+          typeof (
+            backends.generic as { deps?: { getDocumentText?: (u: string) => unknown } } | undefined
+          )?.deps?.getDocumentText?.(params.uri) === "string" ||
+          typeof (
+            backends.modelica as { deps?: { getDocumentText?: (u: string) => unknown } } | undefined
+          )?.deps?.getDocumentText?.(params.uri) === "string";
+        if (cleanUri.endsWith(".ssp") && !hasMemText) {
+          // Binary .ssp ZIP archive: never emit plain-text XML TextEdits against the ZIP file itself
+          return { seq: params.seq, edits: [], renderHint: "none" };
+        }
         const text = await readSsdSource(params.uri);
         if (!text) return { seq: params.seq, edits: [], renderHint: "none" };
         const { applySspDiagramEdits } = await import("@modelscript/ssp/diagram");

@@ -28,6 +28,21 @@ export const openSimLanguage = language({
   lsp: {
     fileExtensions: [".osim"],
   },
+  ui: {
+    panels: [
+      {
+        id: "opensimEditor",
+        viewType: "modelscript.opensimEditor",
+        title: "OpenSim Biomechanics & Musculoskeletal Studio",
+        shortTitle: "OpenSim",
+        selector: ["*.osim"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/OpenSimPanel.tsx",
+        artifactViewTypes: ["opensim", "osim"],
+      },
+    ],
+  },
   extras: ($) => {
     const comment = $["COMMENT"];
     const pi = $["PROCESSING_INSTRUCTION"];

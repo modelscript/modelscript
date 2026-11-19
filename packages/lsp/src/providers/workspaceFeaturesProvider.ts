@@ -1290,6 +1290,289 @@ export function registerWorkspaceFeaturesProvider(
         continue;
       }
 
+      // ── SysML v2 QuickFixes (S6002, S2010, S2011, S4021) ────────────
+      const rawDiagCode = diagnostic.code;
+      const isSysmlDocOrDiag =
+        /\.(?:sysml|sysml2|kerml|sysmlx|sys2)$/i.test(docUri) ||
+        document.languageId === "sysml2" ||
+        document.languageId === "sysml" ||
+        document.languageId === "kerml" ||
+        (typeof rawDiagCode === "string" && /^S\d{4}$/i.test(rawDiagCode.trim())) ||
+        Boolean(diagnostic.source?.toLowerCase().includes("sysml"));
+
+      if (isSysmlDocOrDiag) {
+        const normSysmlCode =
+          typeof rawDiagCode === "number"
+            ? `S${rawDiagCode}`
+            : typeof rawDiagCode === "string"
+              ? /^\d{4}$/.test(rawDiagCode.trim())
+                ? `S${rawDiagCode.trim()}`
+                : rawDiagCode.trim().toUpperCase()
+              : "";
+
+        // 1. S6002 (requirement-decomposition-gap): Insert synthesized Craig interpolant constraint
+        if (normSysmlCode === "S6002") {
+          const reqConstraintMatch = /require\s+constraint\s*\{\s*([^}]+?)\s*\}/i.exec(diagnostic.message);
+          const interpMatch = !reqConstraintMatch ? /interpolant[^:]*:\s*([^)\]]+)/i.exec(diagnostic.message) : null;
+          const violatingMatch =
+            !reqConstraintMatch && !interpMatch ? /violating\s+'([^']+)'/i.exec(diagnostic.message) : null;
+
+          let synthExpr = reqConstraintMatch?.[1]?.trim();
+          if (!synthExpr && interpMatch?.[1]) {
+            const rawInterp = interpMatch[1]
+              .trim()
+              .replace(/[.;]+$/, "")
+              .trim();
+            const nestedReq = /^require\s+constraint\s*\{\s*([^}]+?)\s*\}$/i.exec(rawInterp);
+            synthExpr = nestedReq?.[1]?.trim() ?? rawInterp;
+          }
+          if (!synthExpr && violatingMatch?.[1]) {
+            synthExpr = violatingMatch[1].trim();
+          }
+
+          if (synthExpr) {
+            const reqHeaderRe =
+              /^\s*(?:(?:public|private|protected|abstract|individual|variation|variant)\s+)*requirement\b/;
+            let reqHeaderLine = -1;
+            const diagLine = Math.max(0, Math.min(docLines.length - 1, diagnostic.range.start.line));
+
+            const findMatchingCloseBrace = (startSearchOffset: number): number => {
+              let depth = 0;
+              let seenOpen = false;
+              let inLineComment = false;
+              let inBlockComment = false;
+              let quoteChar = "";
+
+              for (let idx = startSearchOffset; idx < docText.length; idx++) {
+                const ch = docText[idx]!;
+                const next = docText[idx + 1] ?? "";
+                if (inLineComment) {
+                  if (ch === "\n") inLineComment = false;
+                  continue;
+                }
+                if (inBlockComment) {
+                  if (ch === "*" && next === "/") {
+                    inBlockComment = false;
+                    idx++;
+                  }
+                  continue;
+                }
+                if (quoteChar) {
+                  if (ch === "\\" && next) {
+                    idx++;
+                    continue;
+                  }
+                  if (ch === quoteChar) quoteChar = "";
+                  continue;
+                }
+                if (ch === "/" && next === "/") {
+                  inLineComment = true;
+                  idx++;
+                  continue;
+                }
+                if (ch === "/" && next === "*") {
+                  inBlockComment = true;
+                  idx++;
+                  continue;
+                }
+                if (ch === '"' || ch === "'") {
+                  quoteChar = ch;
+                  continue;
+                }
+                if (ch === "{") {
+                  seenOpen = true;
+                  depth++;
+                } else if (ch === "}" && seenOpen) {
+                  depth--;
+                  if (depth === 0) return idx;
+                }
+              }
+              return -1;
+            };
+
+            const diagStartOffset = document.offsetAt(diagnostic.range.start);
+            if (reqHeaderRe.test(docLines[diagLine] ?? "")) {
+              reqHeaderLine = diagLine;
+            } else {
+              for (let r = diagLine - 1; r >= 0; r--) {
+                if (!reqHeaderRe.test(docLines[r] ?? "")) continue;
+                const candStart = document.offsetAt({ line: r, character: 0 });
+                const candClose = findMatchingCloseBrace(candStart);
+                if (candClose > diagStartOffset) {
+                  reqHeaderLine = r;
+                  break;
+                }
+              }
+            }
+
+            const searchStart =
+              reqHeaderLine >= 0 ? document.offsetAt({ line: reqHeaderLine, character: 0 }) : diagStartOffset;
+            const closeOffset = findMatchingCloseBrace(searchStart);
+            if (closeOffset >= 0) {
+              const closePos = document.positionAt(closeOffset);
+              const closeLineText = docLines[closePos.line] ?? "";
+              const prefixBeforeBrace = closeLineText.slice(0, closePos.character);
+              const isBraceOnOwnLine = prefixBeforeBrace.trim().length === 0;
+              const insertPos = isBraceOnOwnLine ? { line: closePos.line, character: 0 } : closePos;
+              const indent = isBraceOnOwnLine ? `${prefixBeforeBrace}  ` : "  ";
+
+              actions.push({
+                title: "Insert synthesized Craig interpolant constraint",
+                kind: CodeActionKind.QuickFix,
+                isPreferred: true,
+                diagnostics: [diagnostic],
+                edit: {
+                  changes: {
+                    [docUri]: [
+                      {
+                        range: { start: insertPos, end: insertPos },
+                        newText: `${indent}require constraint { ${synthExpr} }\n`,
+                      },
+                    ],
+                  },
+                },
+              });
+            }
+          }
+          continue;
+        }
+
+        // 2. S2010 (top-level-import-not-private): Make top-level import 'private'
+        if (normSysmlCode === "S2010") {
+          const lineIdx = diagnostic.range.start.line;
+          const lineText = docLines[lineIdx] ?? "";
+          const importLineMatch = /^(\s*)(?:(public|protected)\s+)?(import\b)/.exec(lineText);
+          let editRange: LspRange;
+          let newText: string;
+
+          if (importLineMatch && importLineMatch[2]) {
+            const visStart = importLineMatch[1]!.length;
+            editRange = {
+              start: { line: lineIdx, character: visStart },
+              end: { line: lineIdx, character: visStart + importLineMatch[2].length },
+            };
+            newText = "private";
+          } else if (importLineMatch) {
+            const impCol = importLineMatch[1]!.length;
+            editRange = {
+              start: { line: lineIdx, character: impCol },
+              end: { line: lineIdx, character: impCol },
+            };
+            newText = "private ";
+          } else {
+            editRange = {
+              start: diagnostic.range.start,
+              end: diagnostic.range.start,
+            };
+            newText = "private ";
+          }
+
+          actions.push({
+            title: "Make top-level import 'private'",
+            kind: CodeActionKind.QuickFix,
+            isPreferred: true,
+            diagnostics: [diagnostic],
+            edit: {
+              changes: {
+                [docUri]: [{ range: editRange, newText }],
+              },
+            },
+          });
+          continue;
+        }
+
+        // 3. S2011 (inherited-member-shadowing): Add ':>>' ('redefines') to shadowed member
+        if (normSysmlCode === "S2011") {
+          const shadowedName = /Member\s+'([^']+)'\s+shadows/i.exec(diagnostic.message)?.[1];
+          const lineIdx = diagnostic.range.start.line;
+          const lineText = docLines[lineIdx] ?? "";
+          const rangeSlice = docText.slice(
+            document.offsetAt(diagnostic.range.start),
+            document.offsetAt(diagnostic.range.end),
+          );
+
+          let insertChar = -1;
+          if (shadowedName && rangeSlice === shadowedName) {
+            insertChar = diagnostic.range.start.character;
+          } else if (shadowedName) {
+            const escapedName = shadowedName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const declBeforeDelim = lineText.split(/[:={;]/)[0] ?? lineText;
+            const nameMatch = new RegExp(`\\b(${escapedName})\\b`).exec(declBeforeDelim);
+            if (nameMatch && typeof nameMatch.index === "number") {
+              insertChar = nameMatch.index;
+            }
+          } else if (rangeSlice && isIdentStartCode(rangeSlice.charCodeAt(0))) {
+            insertChar = diagnostic.range.start.character;
+          }
+
+          if (insertChar >= 0) {
+            const pos = { line: lineIdx, character: insertChar };
+            actions.push({
+              title: "Add ':>>' ('redefines') to shadowed member",
+              kind: CodeActionKind.QuickFix,
+              isPreferred: true,
+              diagnostics: [diagnostic],
+              edit: {
+                changes: {
+                  [docUri]: [{ range: { start: pos, end: pos }, newText: ":>> " }],
+                },
+              },
+            });
+          }
+          continue;
+        }
+
+        // 4. S4021 (send-to-port-without-via): Replace 'to' with 'via' for port send
+        if (normSysmlCode === "S4021") {
+          const portFromMsg =
+            /Sending to port '([^']+)'/i.exec(diagnostic.message)?.[1] ??
+            /instead of 'to\s+([^']+)'/i.exec(diagnostic.message)?.[1];
+          const lineIdx = diagnostic.range.start.line;
+          const lineText = docLines[lineIdx] ?? "";
+          let replaceRange: LspRange | undefined;
+          let replacementText: string | undefined;
+
+          if (portFromMsg) {
+            const escapedPort = portFromMsg.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const toPortRe = new RegExp(`\\bto(\\s+${escapedPort})(?![A-Za-z0-9_])`);
+            const m = toPortRe.exec(lineText);
+            if (m && typeof m.index === "number") {
+              replaceRange = {
+                start: { line: lineIdx, character: m.index },
+                end: { line: lineIdx, character: m.index + m[0].length },
+              };
+              replacementText = `via${m[1]}`;
+            }
+          }
+
+          if (!replaceRange) {
+            const fallbackMatch = /\bto(\s+[A-Za-z_][A-Za-z0-9_.'"]*)/.exec(lineText);
+            if (fallbackMatch && typeof fallbackMatch.index === "number") {
+              replaceRange = {
+                start: { line: lineIdx, character: fallbackMatch.index },
+                end: { line: lineIdx, character: fallbackMatch.index + fallbackMatch[0].length },
+              };
+              replacementText = `via${fallbackMatch[1]}`;
+            }
+          }
+
+          if (replaceRange && replacementText !== undefined) {
+            actions.push({
+              title: "Replace 'to' with 'via' for port send",
+              kind: CodeActionKind.QuickFix,
+              isPreferred: true,
+              diagnostics: [diagnostic],
+              edit: {
+                changes: {
+                  [docUri]: [{ range: replaceRange, newText: replacementText }],
+                },
+              },
+            });
+          }
+          continue;
+        }
+      }
+
       if (diagnostic.source !== "modelscript" && diagnostic.source !== "modelica") continue;
 
       // Suggest adding import for unresolved references

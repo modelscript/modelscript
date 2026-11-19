@@ -6,6 +6,7 @@ import assert from "node:assert";
 import { describe, it } from "node:test";
 import { PositionIndex } from "../src/lsp-bridge.js";
 import {
+  SemanticDiagnosticLineIndex,
   ValidationService,
   deduplicateAllDiagnostics,
   tryDeduplicateOrMergeSemanticDiagnostic,
@@ -739,6 +740,30 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
       assert.strictEqual(existingDiags.length, 1);
     });
 
+    it("should NOT merge distinct non-overlapping same-code diagnostics on the same line", () => {
+      const existingDiags: any[] = [
+        {
+          severity: 2,
+          range: { start: { line: 4, character: 7 }, end: { line: 4, character: 8 } },
+          message: "Variable 'a' is read before being definitely assigned.",
+          source: "modelica",
+          code: 5021,
+        },
+      ];
+
+      const incomingDiag: any = {
+        severity: 2,
+        range: { start: { line: 4, character: 11 }, end: { line: 4, character: 12 } },
+        message: "Variable 'b' is read before being definitely assigned.",
+        source: "modelica",
+        code: 5021,
+      };
+
+      const isDup = tryDeduplicateOrMergeSemanticDiagnostic(existingDiags, incomingDiag);
+      assert.strictEqual(isDup, false, "Distinct variable warnings on the same line should remain separate");
+      assert.strictEqual(existingDiags.length, 1);
+    });
+
     it("should deduplicate exact matches and shadow generic syntax errors in Step 8", () => {
       const allDiags: any[] = [
         {
@@ -764,6 +789,50 @@ describe("Phase 1 Diagnostic Handling Fixes", () => {
       assert.strictEqual(deduped.length, 1, "Duplicate code 3001 and generic Syntax Error should be pruned");
       assert.strictEqual(deduped[0].code, 3001);
       assert.strictEqual(deduped[0].message, "Type mismatch in binding.");
+    });
+
+    it("should produce identical merge and deduplication results with SemanticDiagnosticLineIndex", () => {
+      const existingDiags: any[] = [];
+      const lineIndex = new SemanticDiagnosticLineIndex(existingDiags);
+
+      for (let i = 0; i < 200; i++) {
+        const d = {
+          severity: 2,
+          range: { start: { line: i, character: 2 }, end: { line: i, character: 6 } },
+          message: "Linter Rule 3001",
+          code: 3001,
+        };
+        if (!tryDeduplicateOrMergeSemanticDiagnostic(existingDiags, d, undefined, lineIndex)) {
+          existingDiags.push(d);
+          lineIndex.add(d);
+        }
+      }
+
+      const incomingSpecific = {
+        severity: 1,
+        range: { start: { line: 42, character: 2 }, end: { line: 44, character: 8 } },
+        message: "Type mismatch in binding on x.",
+        code: 3001,
+      };
+      const merged = tryDeduplicateOrMergeSemanticDiagnostic(existingDiags, incomingSpecific, undefined, lineIndex);
+      assert.strictEqual(merged, true, "Line index should find and merge matching diagnostic on line 42");
+      assert.strictEqual(existingDiags.length, 200);
+      assert.strictEqual(existingDiags[42].message, "Type mismatch in binding on x.");
+      assert.strictEqual(existingDiags[42].severity, 1);
+
+      const secondOnLine44 = {
+        severity: 1,
+        range: { start: { line: 44, character: 2 }, end: { line: 44, character: 8 } },
+        message: "Type mismatch in binding on x.",
+        code: 3001,
+      };
+      const mergedExpanded = tryDeduplicateOrMergeSemanticDiagnostic(
+        existingDiags,
+        secondOnLine44,
+        undefined,
+        lineIndex,
+      );
+      assert.strictEqual(mergedExpanded, true, "Expanded line span (42..44) should still match on line 44");
     });
   });
 

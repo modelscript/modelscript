@@ -202,6 +202,7 @@ export class SysML2NRASolver {
     let fallbackCandidate: Record<string, number> | undefined = undefined;
 
     const checkPointSatisfies = (pt: Record<string, number>, pointTol = tol): boolean => {
+      const strictMargin = Math.min(pointTol, 1e-9);
       for (const [v, [vLo, vHi]] of Object.entries(variables)) {
         const val = pt[v] ?? 0;
         if (val < vLo - pointTol || val > vHi + pointTol) return false;
@@ -209,8 +210,10 @@ export class SysML2NRASolver {
       for (const c of constraints) {
         const val = evalPolynomial(c.polynomial, pt);
         if (c.op === "==" && Math.abs(val) > pointTol) return false;
-        else if ((c.op === "<=" || c.op === "<") && val > pointTol) return false;
-        else if ((c.op === ">=" || c.op === ">") && val < -pointTol) return false;
+        else if (c.op === "<=" && val > pointTol) return false;
+        else if (c.op === "<" && !(val < -strictMargin)) return false;
+        else if (c.op === ">=" && val < -pointTol) return false;
+        else if (c.op === ">" && !(val > strictMargin)) return false;
       }
       return true;
     };
@@ -229,13 +232,23 @@ export class SysML2NRASolver {
             feasible = false;
             break;
           }
-        } else if (c.op === "<=" || c.op === "<") {
+        } else if (c.op === "<=") {
           if (rng.lo > tol) {
             feasible = false;
             break;
           }
-        } else if (c.op === ">=" || c.op === ">") {
+        } else if (c.op === "<") {
+          if (rng.lo >= 0) {
+            feasible = false;
+            break;
+          }
+        } else if (c.op === ">=") {
           if (rng.hi < -tol) {
+            feasible = false;
+            break;
+          }
+        } else if (c.op === ">") {
+          if (rng.hi <= 0) {
             feasible = false;
             break;
           }
@@ -279,10 +292,12 @@ export class SysML2NRASolver {
         let maxCorrection = 0;
         for (const c of constraints) {
           if (c.op !== "==") continue;
-          const val = evalPolynomial(c.polynomial, refinedPoint);
+          let val = evalPolynomial(c.polynomial, refinedPoint);
           if (Math.abs(val) <= tol) continue;
 
           for (const v of varNames) {
+            val = evalPolynomial(c.polynomial, refinedPoint);
+            if (Math.abs(val) <= tol) break;
             const deriv = evalPolyPartialDerivative(c.polynomial, v, refinedPoint);
             if (Math.abs(deriv) > 1e-12) {
               const delta = -val / deriv;

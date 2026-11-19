@@ -530,6 +530,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     const isEmbedRoute =
       req.path.startsWith("/embed") ||
       req.path.startsWith("/render-artifact") ||
+      req.path.startsWith("/editor") ||
       req.path.startsWith("/morsel") ||
       req.path.startsWith("/api/v1/oembed") ||
       req.path.startsWith("/api/v1/morsels") ||

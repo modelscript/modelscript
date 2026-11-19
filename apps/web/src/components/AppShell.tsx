@@ -480,8 +480,9 @@ const AppShell: React.FC = () => {
 
   const isDev = import.meta.env.DEV;
 
-  // Standalone full-bleed layout for /playground, /sketch, and /morsel (renders its own navbar & viewport, but shares ComposeContext & ComposeModal)
+  // Standalone full-bleed layout for /editor, /playground, /sketch, and /morsel (renders its own navbar & viewport, but shares ComposeContext & ComposeModal)
   const isStandaloneRoute =
+    location.pathname.startsWith("/editor") ||
     location.pathname.startsWith("/playground") ||
     location.pathname.startsWith("/sketch") ||
     location.pathname.startsWith("/morsel");
@@ -579,6 +580,7 @@ const AppShell: React.FC = () => {
       }
 
       if (
+        location.pathname.startsWith("/editor") ||
         location.pathname.startsWith("/playground") ||
         location.pathname.startsWith("/sketch") ||
         location.pathname.startsWith("/morsel") ||
@@ -913,8 +915,8 @@ const AppShell: React.FC = () => {
                       <hr />
                     </>
                   )}
-                  <Link to="/morsel" onClick={() => handleMoreLinkClick("/morsel")}>
-                    <MorselIcon size={20} /> Morsel
+                  <Link to="/editor" onClick={() => handleMoreLinkClick("/editor")}>
+                    <MorselIcon size={20} /> Ansatz
                   </Link>
                   {hasPackages && (
                     <Link to="/packages" onClick={() => handleMoreLinkClick("/packages")}>

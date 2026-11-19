@@ -291,7 +291,7 @@ export default function RenderArtifactPage() {
               {error || "Artifact not found"}
             </div>
             <Link
-              to="/morsel"
+              to="/editor"
               style={{
                 fontSize: "13px",
                 fontWeight: 600,
@@ -299,7 +299,7 @@ export default function RenderArtifactPage() {
                 textDecoration: "none",
               }}
             >
-              ← Back to Morsel
+              ← Back to Ansatz
             </Link>
           </Box>
         </BaseStyles>

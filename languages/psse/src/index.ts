@@ -7,6 +7,8 @@ export * from "./errors.js";
 export { default, psseLanguage } from "./language.js";
 export * from "./lints/index.js";
 
+export * from "./analysis/cross-domain-equivalence.js";
+export * from "./analysis/grid-ontology-check.js";
 export * from "./benchmarking/accc-benchmarker.js";
 export * from "./benchmarking/activsg2000.js";
 export * from "./benchmarking/ibr-cross-benchmarker.js";

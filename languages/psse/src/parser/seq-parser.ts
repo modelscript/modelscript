@@ -21,13 +21,18 @@ import type {
   SeqTransformerRecord,
 } from "../types.js";
 
-import { extractFieldsFromCstTokens, isPsseSectionTerminator, parsePsseCstDocument } from "./cst-tokens.js";
+import {
+  extractFieldsFromCstTokens,
+  isPsseSectionTerminator,
+  parsePsseCstDocument,
+  type PsseCstDocument,
+} from "./cst-tokens.js";
 
 /**
  * Parses a PSS/E `.seq` sequence data file string into a structured `PsseSeqCase` via WASM CST.
  */
-export function parseSeq(source: string): PsseSeqCase {
-  const cstDoc = parsePsseCstDocument(source);
+export function parseSeq(source: string, precomputedCst?: PsseCstDocument): PsseSeqCase {
+  const cstDoc = precomputedCst ?? parsePsseCstDocument(source);
   const generators: SeqGeneratorRecord[] = [];
   const branches: SeqBranchRecord[] = [];
   const mutuals: SeqMutualRecord[] = [];
@@ -83,6 +88,13 @@ export function parseSeq(source: string): PsseSeqCase {
     const firstInt = Number.parseInt(tokens[0] ?? "", 10);
     if (!Number.isFinite(firstInt) || firstInt <= 0) continue;
 
+    const span = {
+      startOffset: entry.startOffset,
+      endOffset: entry.endOffset,
+      line: entry.row + 1,
+      column: 1,
+    };
+
     if (section === 0) {
       // Machine sequence impedance record: I, ID, ZRPOS, ZXPOS, ZRNEG, ZXNEG, ZR0, ZX0, ZRG, ZXG
       const numOr = (idx: number, def: number): number => {
@@ -110,6 +122,7 @@ export function parseSeq(source: string): PsseSeqCase {
         zx0,
         zrg,
         zxg,
+        span,
       });
     } else if (section === 1 || section === 2) {
       // If tokens[1] is a positive integer bus J, it's a zero-sequence branch (I, J, CKT, R0, X0, B0, ...)
@@ -128,7 +141,7 @@ export function parseSeq(source: string): PsseSeqCase {
         const bi0 = numOr(7, 0.0);
         const gj0 = numOr(8, 0.0);
         const bj0 = numOr(9, 0.0);
-        branches.push({ i: firstInt, j: jBus, ckt, r0, x0, b0, gi0, bi0, gj0, bj0 });
+        branches.push({ i: firstInt, j: jBus, ckt, r0, x0, b0, gi0, bi0, gj0, bj0, span });
       }
     } else if (section === 3) {
       // Mutual coupling: I1, J1, CKT1, I2, J2, CKT2, RM, XM
@@ -161,7 +174,7 @@ export function parseSeq(source: string): PsseSeqCase {
         const xg2 = Number.parseFloat(tokens[9 + offset] ?? "0") || 0.0;
         const r02 = Number.parseFloat(tokens[10 + offset] ?? "0") || 0.0;
         const x02 = Number.parseFloat(tokens[11 + offset] ?? "0") || 0.0;
-        transformers.push({ i: firstInt, j: jBus, ckt, cc, rg1, xg1, r01, x01, rg2, xg2, r02, x02 });
+        transformers.push({ i: firstInt, j: jBus, ckt, cc, rg1, xg1, r01, x01, rg2, xg2, r02, x02, span });
       }
     } else if (section >= 5) {
       const g0 = Number.parseFloat(tokens[1] ?? "0") || 0.0;

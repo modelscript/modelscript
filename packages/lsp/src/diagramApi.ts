@@ -16,8 +16,8 @@ import {
 
 import { buildDiagramFromDSL, buildPolyglotDiagram } from "@modelscript/diagram/builder";
 import type { FileSystemBridge } from "@modelscript/diagram/fs-bridge";
-import { SidecarLayoutStorage, parseLayout } from "@modelscript/diagram/layout-storage";
-import { compileDiagramConfigToPolyglot } from "@modelscript/dsl";
+import { parseLayout, SidecarLayoutStorage } from "@modelscript/diagram/layout-storage";
+import { compileDiagramConfigToPolyglot, CstUnparser, type SyntaxNode } from "@modelscript/dsl";
 import {
   buildOWL2DiagramData,
   computeOWL2ConnectionDelete,
@@ -103,6 +103,41 @@ export function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
     accepted.push(edit);
   }
   return accepted;
+}
+
+function offsetToLspPosition(src: string, off: number): { line: number; character: number } {
+  let line = 0;
+  let lastNl = -1;
+  for (let i = 0; i < off; i++) {
+    if (src.charCodeAt(i) === 10) {
+      line++;
+      lastNl = i;
+    }
+  }
+  return { line, character: off - lastNl - 1 };
+}
+
+/**
+ * Computes a single minimal common-prefix/common-suffix `TextEdit` between `origText` and `nextText`,
+ * returning `null` when both strings are identical. Avoids full-document `0..EOF` replacements.
+ */
+export function computeMinimalTextEdit(origText: string, nextText: string): TextEdit | null {
+  if (origText === nextText) return null;
+  let prefix = 0;
+  const minLen = Math.min(origText.length, nextText.length);
+  while (prefix < minLen && origText.charCodeAt(prefix) === nextText.charCodeAt(prefix)) {
+    prefix++;
+  }
+  let oldEnd = origText.length;
+  let newEnd = nextText.length;
+  while (oldEnd > prefix && newEnd > prefix && origText.charCodeAt(oldEnd - 1) === nextText.charCodeAt(newEnd - 1)) {
+    oldEnd--;
+    newEnd--;
+  }
+  return {
+    range: { start: offsetToLspPosition(origText, prefix), end: offsetToLspPosition(origText, oldEnd) },
+    newText: nextText.slice(prefix, newEnd),
+  };
 }
 
 // ── Backend Interface ──
@@ -379,38 +414,95 @@ export class ModelicaDiagramBackend implements DiagramBackend {
       }
     }
 
-    if (iconActions.length > 0 && remainingActions.length === 0) {
-      const nextText = applyIconEditActions(docText, targetInstance.name, iconActions);
-      if (nextText !== docText) {
-        const lines = docText.split("\n");
-        return {
-          seq: params.seq,
-          edits: [
-            {
-              range: {
-                start: { line: 0, character: 0 },
-                end: { line: lines.length - 1, character: lines[lines.length - 1]?.length ?? 0 },
+    const needsUnifiedIndex = params.actions.some((a) => a.type === "addComponent");
+
+    if (iconActions.length > 0) {
+      const workingText = applyIconEditActions(docText, targetInstance.name, iconActions);
+      const ops = getModelicaDiagramOps();
+      if (remainingActions.length === 0) {
+        if (workingText !== docText) {
+          const lines = docText.split("\n");
+          return {
+            seq: params.seq,
+            edits: [
+              {
+                range: {
+                  start: { line: 0, character: 0 },
+                  end: { line: lines.length - 1, character: lines[lines.length - 1]?.length ?? 0 },
+                },
+                newText: workingText,
               },
-              newText: nextText,
-            },
-          ],
-          renderHint: "immediate",
-        };
+            ],
+            renderHint: "immediate",
+          };
+        }
+        return { seq: params.seq, edits: [], renderHint: "none" };
+      }
+
+      // Mixed batch: apply remaining non-icon edits on top of the updated icon text
+      const updatedTarget =
+        (typeof ops.buildFallbackClassInstance === "function"
+          ? ops.buildFallbackClassInstance(workingText, targetInstance.name)
+          : null) ?? targetInstance;
+      const effectiveParams: DiagramApplyEditsParams = { ...params, actions: remainingActions };
+      const unifiedIndex = needsUnifiedIndex ? (this.deps.getUnifiedIndex?.() ?? null) : null;
+      const dropIconOptions = {
+        getResourceText: this.deps.getDocumentText,
+        resolveComponentIconCoord: (clsName: string) =>
+          (
+            this.deps.resolveClassInstance?.(params.uri, clsName)?.annotation?.("Icon") as
+              | { coordinateSystem?: unknown }
+              | null
+              | undefined
+          )?.coordinateSystem ?? null,
+      };
+      const remResult = processDiagramEditBatch(
+        effectiveParams,
+        updatedTarget,
+        workingText,
+        unifiedIndex,
+        dropIconOptions,
+      );
+      const finalText = remResult.edits.length > 0 ? applyTextEditsInMemory(workingText, remResult.edits) : workingText;
+      if (finalText !== docText) {
+        const lines = docText.split("\n");
+        const edits =
+          typeof ops.computeMinimalNonOverlappingEdits === "function"
+            ? ops.computeMinimalNonOverlappingEdits(docText, finalText)
+            : [
+                {
+                  range: {
+                    start: { line: 0, character: 0 },
+                    end: { line: lines.length - 1, character: lines[lines.length - 1]?.length ?? 0 },
+                  },
+                  newText: finalText,
+                },
+              ];
+        return { seq: params.seq, edits, renderHint: "immediate" };
       }
       return { seq: params.seq, edits: [], renderHint: "none" };
     }
 
     const effectiveParams =
       remainingActions.length !== params.actions.length ? { ...params, actions: remainingActions } : params;
-    const needsUnifiedIndex = params.actions.some((a) => a.type === "addComponent");
     const unifiedIndex = needsUnifiedIndex ? (this.deps.getUnifiedIndex?.() ?? null) : null;
-    let result = processDiagramEditBatch(effectiveParams, targetInstance, docText, unifiedIndex);
+    const dropIconOptions = {
+      getResourceText: this.deps.getDocumentText,
+      resolveComponentIconCoord: (clsName: string) =>
+        (
+          this.deps.resolveClassInstance?.(params.uri, clsName)?.annotation?.("Icon") as
+            | { coordinateSystem?: unknown }
+            | null
+            | undefined
+        )?.coordinateSystem ?? null,
+    };
+    let result = processDiagramEditBatch(effectiveParams, targetInstance, docText, unifiedIndex, dropIconOptions);
 
     // If no edits could be produced (e.g. stale AST where component ranges no longer match),
     // flush validation once to synchronize AST and retry.
     if (
       result.edits.length === 0 &&
-      params.actions.some(
+      effectiveParams.actions.some(
         (a) =>
           a.type === "move" ||
           a.type === "resize" ||
@@ -428,7 +520,7 @@ export class ModelicaDiagramBackend implements DiagramBackend {
       if (freshDocText) {
         const freshTarget = this.resolveTargetInstance(params.uri, params.className, freshInstances, freshDocText);
         if (freshTarget) {
-          result = processDiagramEditBatch(params, freshTarget, freshDocText, unifiedIndex);
+          result = processDiagramEditBatch(effectiveParams, freshTarget, freshDocText, unifiedIndex, dropIconOptions);
         }
       }
     }
@@ -1588,6 +1680,21 @@ function findSectionClosingLine(lines: string[], sectionName: string): number | 
 
 function insertIntoSectionOrRoot(lines: string[], allEdits: TextEdit[], content: string, targetSection?: string) {
   if (targetSection) {
+    const escaped = targetSection.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const xmlCloseRe = new RegExp(`</(?:[A-Za-z0-9_-]+:)?${escaped}\\s*>`, "i");
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const m = xmlCloseRe.exec(lines[i]!);
+      if (m) {
+        allEdits.push({
+          range: {
+            start: { line: i, character: m.index },
+            end: { line: i, character: m.index },
+          },
+          newText: "\n  " + content.trim() + "\n",
+        });
+        return;
+      }
+    }
     const secLine = findSectionClosingLine(lines, targetSection);
     if (secLine !== null) {
       allEdits.push({
@@ -1618,9 +1725,22 @@ function insertIntoSectionOrRoot(lines: string[], allEdits: TextEdit[], content:
   }
 
   let insertLine = lines.length;
+  let indentPrefix = "";
   for (let i = lines.length - 1; i >= 0; i--) {
-    if (lines[i]!.trim() === "}") {
+    const trimmed = lines[i]!.trim();
+    if (trimmed === "}") {
       insertLine = i;
+      indentPrefix = "  ";
+      break;
+    }
+  }
+  if (insertLine === lines.length) {
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const trimmed = lines[i]!.trim();
+      if (!trimmed) continue;
+      if (/^END$/i.test(trimmed)) {
+        insertLine = i;
+      }
       break;
     }
   }
@@ -1629,7 +1749,7 @@ function insertIntoSectionOrRoot(lines: string[], allEdits: TextEdit[], content:
       start: { line: insertLine, character: 0 },
       end: { line: insertLine, character: 0 },
     },
-    newText: (insertLine < lines.length ? "  " : "") + content.trim() + "\n",
+    newText: indentPrefix + content.trim() + "\n",
   });
 }
 
@@ -2251,6 +2371,56 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
     };
   }
 
+  private resolveSymbolEntry(
+    symbolIndex:
+      | {
+          byName?: Map<string, number[]>;
+          symbols?: Map<
+            number,
+            { id: number; name: string; startOffset?: number; endOffset?: number; parentId?: number }
+          >;
+        }
+      | null
+      | undefined,
+    name: string,
+  ): { id: number; name: string; startOffset?: number; endOffset?: number; parentId?: number } | null {
+    if (!symbolIndex || !name) return null;
+    const candidateIds: number[] = symbolIndex.byName?.get?.(name) ?? [];
+    for (const id of candidateIds) {
+      const sym = symbolIndex.symbols?.get?.(id);
+      if (sym) return sym;
+    }
+    if (symbolIndex.symbols?.values) {
+      for (const sym of symbolIndex.symbols.values()) {
+        if (sym?.name === name) return sym;
+      }
+    }
+    return null;
+  }
+
+  private resolveChildSymbolEntry(
+    symbolIndex:
+      | {
+          childrenOf?: Map<number, number[]>;
+          symbols?: Map<
+            number,
+            { id: number; name: string; startOffset?: number; endOffset?: number; parentId?: number }
+          >;
+        }
+      | null
+      | undefined,
+    parentEntry: { id: number } | null | undefined,
+    name: string,
+  ): { id: number; name: string; startOffset?: number; endOffset?: number; parentId?: number } | null {
+    if (!symbolIndex || !parentEntry || !name) return null;
+    const childIds: number[] = symbolIndex.childrenOf?.get?.(parentEntry.id) ?? [];
+    for (const cid of childIds) {
+      const sym = symbolIndex.symbols?.get?.(cid);
+      if (sym?.name === name) return sym;
+    }
+    return null;
+  }
+
   async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
     const allEdits: TextEdit[] = [];
     const itemsToSave: any[] = [];
@@ -2260,6 +2430,29 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
     const maskedLines = maskedText !== undefined ? maskedText.split("\n") : [];
     const config = this.deps.getDiagramConfig?.(params.uri);
     const mutations = config?.mutations;
+    const symbolIndex = this.deps.getSymbolIndex?.(params.uri);
+    let cachedCstRoot: SyntaxNode | null | undefined = undefined;
+    const getCstRoot = (): SyntaxNode | null => {
+      if (cachedCstRoot !== undefined) return cachedCstRoot;
+      cachedCstRoot = null;
+      if (docText === undefined || !this.deps.getParser) return null;
+      const ext = (params.uri || "").split(".").pop()?.split("?")[0] || "";
+      const langHint = config?.language || config?.name || ext;
+      const parser = this.deps.getParser(langHint) ?? (ext && ext !== langHint ? this.deps.getParser(ext) : undefined);
+      try {
+        const tree = parser?.parse?.(docText) as { rootNode?: SyntaxNode } | undefined;
+        cachedCstRoot = tree?.rootNode ?? null;
+      } catch {
+        cachedCstRoot = null;
+      }
+      return cachedCstRoot;
+    };
+
+    const cleanUriLower = (params.uri || "").split("?")[0]!.toLowerCase();
+    const isKnownNonModelicaExt =
+      /\.(scad|sysml2?|spice|cir|sp|ssp|ssd|reqif|arxml|adm|cmd|acf|spck|sim|mbs|xodr|urdf|sdf|xacro|vhdl?|sv|v|f90|c|cpp|h|py|json|xml|yaml|yml)$/.test(
+        cleanUriLower,
+      );
 
     for (const action of params.actions) {
       switch (action.type) {
@@ -2300,6 +2493,9 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
             (action.edgeType && mutations?.edgeTemplates?.[action.edgeType]) ||
             mutations?.edgeTemplate ||
             mutations?.createEdge;
+          if (!edgeTemplate && isKnownNonModelicaExt) {
+            break;
+          }
           const edgeText = expandEdgeTemplateText(
             edgeTemplate,
             action.source,
@@ -2331,7 +2527,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           break;
         }
         case "disconnect": {
-          if (docText !== undefined) {
+          if (docText !== undefined && !isKnownNonModelicaExt) {
             const matchSpan = findMatchingEdgeStatement(
               maskedLines,
               action.source,
@@ -2364,6 +2560,9 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
               (action.edgeType && mutations?.edgeTemplates?.[action.edgeType]) ||
               mutations?.edgeTemplate ||
               mutations?.createEdge;
+            if (typeof edgeTemplate !== "function" && typeof edgeTemplate !== "string" && isKnownNonModelicaExt) {
+              break;
+            }
 
             if (matchSpan) {
               const { startLine: i, endLine } = matchSpan;
@@ -2443,7 +2642,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
             nodeText = mutations.nodeTemplate
               .replaceAll("${className}", resolvedClassName)
               .replaceAll("${name}", uniqueName);
-          } else {
+          } else if (!isKnownNonModelicaExt) {
             nodeText = `${resolvedClassName} ${uniqueName};\n`;
           }
 
@@ -2463,8 +2662,25 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           break;
         }
         case "deleteComponents": {
-          if (docText !== undefined) {
+          const hasExplicitMutations = Boolean(
+            mutations?.createNode || mutations?.nodeTemplate || mutations?.deleteEntity,
+          );
+          if (docText !== undefined && (!isKnownNonModelicaExt || hasExplicitMutations)) {
+            const cstRoot = getCstRoot();
             for (const name of action.names) {
+              const entry = this.resolveSymbolEntry(symbolIndex, name);
+              if (
+                entry &&
+                entry.startOffset != null &&
+                entry.endOffset != null &&
+                entry.endOffset > entry.startOffset
+              ) {
+                const delRes = CstUnparser.deleteDeclaration(docText, cstRoot, entry);
+                if (delRes) {
+                  allEdits.push({ range: delRes.edit.range, newText: "" });
+                  continue;
+                }
+              }
               for (let i = 0; i < lines.length; i++) {
                 if (hasWordMatch(maskedLines[i]!, name)) {
                   allEdits.push({
@@ -2502,8 +2718,35 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           if (action.oldName && action.newName) {
             await this.getLayoutStorage(params.uri).renameElement(params.uri, action.oldName, action.newName);
           }
-          if (docText !== undefined && action.oldName && action.newName) {
-            for (let i = 0; i < lines.length; i++) {
+          if (docText !== undefined && maskedLines.length > 0 && action.oldName && action.newName) {
+            const entry = this.resolveSymbolEntry(symbolIndex, action.oldName);
+            const parentSym = entry?.parentId != null ? symbolIndex?.symbols?.get?.(entry.parentId) : null;
+            let scopeStartLine = 0;
+            let scopeEndLine = lines.length - 1;
+            if (
+              parentSym &&
+              parentSym.startOffset != null &&
+              parentSym.endOffset != null &&
+              parentSym.endOffset > parentSym.startOffset
+            ) {
+              // Limit word matches to the enclosing parent declaration lines
+              let lineStartIdx = 0;
+              let offset = 0;
+              for (let li = 0; li < lines.length; li++) {
+                const nextOffset = offset + lines[li]!.length + 1;
+                if (offset <= parentSym.startOffset && parentSym.startOffset < nextOffset) {
+                  scopeStartLine = li;
+                }
+                if (offset <= parentSym.endOffset && parentSym.endOffset <= nextOffset) {
+                  scopeEndLine = li;
+                  break;
+                }
+                offset = nextOffset;
+                lineStartIdx++;
+              }
+              void lineStartIdx;
+            }
+            for (let i = scopeStartLine; i <= scopeEndLine && i < lines.length; i++) {
               for (const col of findAllWordMatchIndices(maskedLines[i]!, action.oldName)) {
                 allEdits.push({
                   range: {
@@ -2550,6 +2793,20 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
                 }
               } catch (e) {
                 console.error("[diagram] mutator.updateModifier error:", e);
+              }
+            }
+
+            // Canonical CST Unparser writeback via SymbolIndex declaration/child entry
+            const compEntry = action.name ? this.resolveSymbolEntry(symbolIndex, action.name) : null;
+            const targetEntry = this.resolveChildSymbolEntry(symbolIndex, compEntry, paramName) ?? compEntry;
+            if (targetEntry) {
+              const cstRes = CstUnparser.patchWritebackValue(docText, getCstRoot(), targetEntry, String(paramVal));
+              if (cstRes) {
+                allEdits.push({
+                  range: cstRes.edit.range,
+                  newText: cstRes.edit.newText,
+                });
+                break;
               }
             }
 
@@ -2989,6 +3246,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
         metadata: {
           ...rawDiagram?.metadata,
           readOnly: true,
+          layoutEditable: Boolean(backends.generic),
         },
       } as any;
     };
@@ -3041,9 +3299,31 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
         return backends.generic ? await backends.generic.getComponentProperties(params) : null;
       },
       async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
-        console.warn(
-          `[Diagram] Cannot apply visual edits: ${domainName ?? "domain"} diagram for ${params.uri} is read-only.`,
+        const hasMutations = Boolean(
+          (
+            backends.generic as { deps?: { getDiagramConfig?: (u: string) => { mutations?: unknown } } } | undefined
+          )?.deps?.getDiagramConfig?.(params.uri)?.mutations,
         );
+        if (hasMutations && backends.generic) {
+          return await backends.generic.applyEdits(params);
+        }
+        const spatialActions = params.actions.filter(
+          (a) => a.type === "move" || a.type === "resize" || a.type === "rotate" || a.type === "moveEdge",
+        );
+        if (spatialActions.length < params.actions.length) {
+          console.warn(
+            `[Diagram] Cannot apply structural edits: ${domainName ?? "domain"} diagram for ${params.uri} only supports layout persistence.`,
+          );
+        }
+        if (spatialActions.length > 0 && backends.generic) {
+          const genericRes = await backends.generic.applyEdits({ ...params, actions: spatialActions });
+          return {
+            seq: params.seq,
+            edits: genericRes?.edits ?? [],
+            sidecarContent: genericRes?.sidecarContent,
+            renderHint: genericRes?.renderHint ?? "none",
+          };
+        }
         return { seq: params.seq, edits: [], renderHint: "none" };
       },
     });
@@ -4436,6 +4716,14 @@ export function processDiagramEditBatch(
   classInstance: any,
   docText: string,
   unifiedIndex?: any,
+  dropIconOptions?: {
+    getResourceText?: ((uri: string) => string | undefined) | undefined;
+    resolveComponentIconCoord?:
+      | ((
+          className: string,
+        ) => { extent?: [[number, number], [number, number]]; initialScale?: number } | null | undefined)
+      | undefined;
+  },
 ): DiagramApplyEditsResult {
   const ops = getModelicaDiagramOps();
   const sortFn: (edits: TextEdit[]) => TextEdit[] = ops.deduplicateAndSort ?? deduplicateAndSort;
@@ -4519,11 +4807,16 @@ export function processDiagramEditBatch(
     const execWithInstance = (ci: any): TextEdit[] => {
       if (!ci) return [];
       switch (action.type) {
-        case "move":
-          return ops.computePlacementEdits ? ops.computePlacementEdits(currentText, ci, action.items) : [];
+        case "move": {
+          const isIconLayer = request.diagramType === "icon";
+          const items = isIconLayer ? action.items.map((it) => ({ ...it, isIconLayer: true })) : action.items;
+          return ops.computePlacementEdits ? ops.computePlacementEdits(currentText, ci, items) : [];
+        }
         case "resize":
-        case "rotate":
-          return ops.computePlacementEdits ? ops.computePlacementEdits(currentText, ci, [action.item]) : [];
+        case "rotate": {
+          const item = request.diagramType === "icon" ? { ...action.item, isIconLayer: true } : action.item;
+          return ops.computePlacementEdits ? ops.computePlacementEdits(currentText, ci, [item]) : [];
+        }
         case "moveEdge": {
           const lines = currentText.split("\n");
           return ops.computeEdgePointEdits ? ops.computeEdgePointEdits(lines, ci, action.edges) : [];
@@ -4557,6 +4850,7 @@ export function processDiagramEditBatch(
             }
           }
           createdComponentNames.add(uniqueName);
+          const componentIconCoord = dropIconOptions?.resolveComponentIconCoord?.(action.className) ?? null;
           return computeModelicaComponentDropEdits({
             docText: currentText,
             uri: request.uri,
@@ -4567,6 +4861,8 @@ export function processDiagramEditBatch(
             computeComponentInsert: ops.computeComponentInsert,
             unifiedIndex,
             instanceName: uniqueName,
+            componentIconCoord,
+            getResourceText: dropIconOptions?.getResourceText,
           });
         }
         case "deleteComponents":

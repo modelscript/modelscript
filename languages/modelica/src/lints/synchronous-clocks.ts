@@ -33,7 +33,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     nodes: ["expression"],
     severity: "error",
     code: 6001,
-    message: (target) => `Mixed clock domains in expression '${target.text}' without explicit conversion operator.`,
+    message: (target) => `Clocked expression '${target.text}' mixes signals from different clock domains.`,
     query: (db: CodeGraph, node: u32, $: any) => {
       // Check if left and right sub-expressions reference distinct Clock(...) definitions or mix sample() and previous()
       if (hasMixedClockDomains(db, node, $)) {
@@ -51,7 +51,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     nodes: ["function_call", "primary"],
     severity: "error",
     code: 6002,
-    message: (target) => `Sample factor '${target.text}' must be a positive non-zero integer.`,
+    message: () => `Sub-clock factor must be a non-negative integer (or 0 for inferred factor).`,
     query: (db: CodeGraph, node: u32, $: any) => {
       // Inspect calls to synchronous multi-rate clock conversion operators
       const name = getCallCalleeNode(db, node, $);
@@ -62,7 +62,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
           db.ast.textEquals(name, "shiftSample") ||
           db.ast.textEquals(name, "backSample"))
       ) {
-        // Verify that the 2nd positional argument (factor) is not <= 0
+        // Verify that the 2nd positional argument (factor) is not negative (0 means inferred)
         if (hasNonPositiveSampleFactor(db, node, $)) {
           db.diagnosticAt(name, node);
         }
@@ -80,7 +80,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 6003,
     message: (target) =>
-      `previous() can only be called on clocked discrete variables, but '${target.text}' is unclocked.`,
+      `Operator 'previous()' may only be applied to clocked discrete-time variables in '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: any) => {
       const name = getCallCalleeNode(db, node, $);
       if (name != 0 && db.ast.textEquals(name, "previous")) {
@@ -101,7 +101,8 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     nodes: ["function_call", "primary"],
     severity: "error",
     code: 6004,
-    message: () => `hold() operator cannot be called in continuous equation section without boundary causality.`,
+    message: (target) =>
+      `Operator 'hold()' converts a clocked signal to continuous-time and cannot be used inside a clocked partition: '${target.text}'.`,
     query: (db: CodeGraph, node: u32, $: any) => {
       const name = getCallCalleeNode(db, node, $);
       if (name != 0 && db.ast.textEquals(name, "hold")) {
@@ -171,20 +172,163 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
         return;
       }
 
-      // In each equation section (each represents an independent state machine partition per MLS §17.3.7),
-      // verify at most one initialState(...) is called.
+      // In each equation section, cluster states connected by `transition(from, to, ...)` calls so
+      // multiple disjoint parallel state machines in one equation section may each have one initialState().
       if ($.equation_section != 0) {
+        const getCallArgIdNode = (callNode: u32, targetIndex: u32): u32 => {
+          let argList: u32 = 0;
+          for (const fa of db.ast.getDescendants(callNode, $.function_arguments)) {
+            if (fa != callNode) {
+              argList = fa;
+              break;
+            }
+          }
+          if (argList == 0) return 0;
+          let posIdx: u32 = 0;
+          for (const fa of db.ast.getDescendants(argList, $.function_argument)) {
+            let nestedCall = false;
+            for (const anc of db.ast.getAncestors(fa, 0, argList)) {
+              const at = db.ast.getType(anc);
+              if (at == $.function_call || at == $.function_call_args) {
+                nestedCall = true;
+                break;
+              }
+            }
+            if (nestedCall) continue;
+            if (posIdx == targetIndex) {
+              for (const cr of db.ast.getDescendants(fa, $.component_reference)) {
+                return cr;
+              }
+              for (const id of db.ast.getDescendants(fa, $.identifier)) {
+                return id;
+              }
+              return fa;
+            }
+            posIdx++;
+          }
+          return 0;
+        };
+
         for (const eqSec of db.ast.getDescendants(node, $.equation_section)) {
           if (isDescendantOfInnerClass(db, eqSec, node, $)) continue;
-          let eqInitCount = 0;
+          const initArgNodes = new Array<u32>();
+          const edgeFromNodes = new Array<u32>();
+          const edgeToNodes = new Array<u32>();
+
           for (const fc of db.ast.getDescendants(eqSec, $.function_call)) {
             if (isDescendantOfInnerClass(db, fc, eqSec, $)) continue;
             const fnName = getCallCalleeNode(db, fc, $);
-            if (fnName != 0 && db.ast.textEquals(fnName, "initialState")) {
-              eqInitCount++;
+            if (fnName == 0) continue;
+            if (db.ast.textEquals(fnName, "initialState")) {
+              const sNode = getCallArgIdNode(fc, 0);
+              let already = false;
+              for (let k: u32 = 0; k < (initArgNodes.length as u32); k++) {
+                if ((initArgNodes[k] as u32) == sNode) {
+                  already = true;
+                  break;
+                }
+              }
+              if (!already) initArgNodes.push(sNode);
+            } else if (db.ast.textEquals(fnName, "transition")) {
+              const fromN = getCallArgIdNode(fc, 0);
+              const toN = getCallArgIdNode(fc, 1);
+              if (fromN != 0 && toN != 0) {
+                edgeFromNodes.push(fromN);
+                edgeToNodes.push(toN);
+              }
             }
           }
-          if (eqInitCount > 1) {
+          if ($.primary != 0) {
+            for (const pr of db.ast.getDescendants(eqSec, $.primary)) {
+              if (isDescendantOfInnerClass(db, pr, eqSec, $)) continue;
+              const fnName = getCallCalleeNode(db, pr, $);
+              if (fnName == 0) continue;
+              if (db.ast.textEquals(fnName, "initialState")) {
+                const sNode = getCallArgIdNode(pr, 0);
+                // Avoid double-counting when primary wraps function_call
+                let already = false;
+                for (let k: u32 = 0; k < (initArgNodes.length as u32); k++) {
+                  if ((initArgNodes[k] as u32) == sNode) {
+                    already = true;
+                    break;
+                  }
+                }
+                if (!already) initArgNodes.push(sNode);
+              } else if (db.ast.textEquals(fnName, "transition")) {
+                const fromN = getCallArgIdNode(pr, 0);
+                const toN = getCallArgIdNode(pr, 1);
+                if (fromN != 0 && toN != 0) {
+                  edgeFromNodes.push(fromN);
+                  edgeToNodes.push(toN);
+                }
+              }
+            }
+          }
+
+          if (initArgNodes.length <= 1) continue;
+
+          // If no transition(...) edges exist at all, multiple initialState() calls belong to one ambiguous scope
+          if (edgeFromNodes.length == 0) {
+            db.diagnostic(targetNode);
+            return;
+          }
+
+          // Check whether any pair of initialState(s_i), initialState(s_j) are in the same undirected transition component
+          let conflict = false;
+          for (let i: u32 = 0; i < (initArgNodes.length as u32) && !conflict; i++) {
+            const si = initArgNodes[i] as u32;
+            if (si == 0) {
+              conflict = true;
+              break;
+            }
+            // BFS reachable state nodes starting from si
+            const reached = new Array<u32>();
+            reached.push(si);
+            let head: u32 = 0;
+            while (head < (reached.length as u32)) {
+              const cur = reached[head++] as u32;
+              for (let e: u32 = 0; e < (edgeFromNodes.length as u32); e++) {
+                const ef = edgeFromNodes[e] as u32;
+                const et = edgeToNodes[e] as u32;
+                if (db.ast.textEqualsNode(cur, ef)) {
+                  let seenT = false;
+                  for (let r: u32 = 0; r < (reached.length as u32); r++) {
+                    if (db.ast.textEqualsNode(reached[r] as u32, et)) {
+                      seenT = true;
+                      break;
+                    }
+                  }
+                  if (!seenT) reached.push(et);
+                } else if (db.ast.textEqualsNode(cur, et)) {
+                  let seenF = false;
+                  for (let r: u32 = 0; r < (reached.length as u32); r++) {
+                    if (db.ast.textEqualsNode(reached[r] as u32, ef)) {
+                      seenF = true;
+                      break;
+                    }
+                  }
+                  if (!seenF) reached.push(ef);
+                }
+              }
+            }
+
+            for (let j: u32 = i + 1; j < (initArgNodes.length as u32); j++) {
+              const sj = initArgNodes[j] as u32;
+              if (sj == 0) {
+                conflict = true;
+                break;
+              }
+              for (let r: u32 = 0; r < (reached.length as u32); r++) {
+                if (db.ast.textEqualsNode(reached[r] as u32, sj)) {
+                  conflict = true;
+                  break;
+                }
+              }
+              if (conflict) break;
+            }
+          }
+
+          if (conflict) {
             db.diagnostic(targetNode);
             return;
           }
@@ -202,7 +346,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     nodes: ["function_call", "primary"],
     severity: "error",
     code: 6020,
-    message: (target) => `Pure function cannot call impure function '${target.text}'.`,
+    message: (target) => `Impure function '${target.text}' cannot be called inside a pure function.`,
     query: (db: CodeGraph, node: u32, $: any) => {
       // Verify that the enclosing function is pure and the target callee is declared impure
       if (isImpureCalledInPureFunction(db, node, $)) {
@@ -221,7 +365,8 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     nodes: ["function_call", "primary"],
     severity: "error",
     code: 6021,
-    message: (target) => `Impure function '${target.text}' may only be called in algorithm sections or when equations.`,
+    message: (target) =>
+      `Impure function '${target.text}' may only be called inside a when-equation or when-statement.`,
     query: (db: CodeGraph, node: u32, $: any) => {
       // Check if an impure function is invoked directly inside an equation_section outside any when_equation
       if (isImpureCalledInEquationSection(db, node, $)) {

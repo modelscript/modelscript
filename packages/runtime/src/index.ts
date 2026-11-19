@@ -90,6 +90,7 @@ export * from "./interop/thread_hypergraph.js";
 export * from "./interop/thread_serializer.js";
 export * from "./interop/trade_study.js";
 export * from "./interop/vcycle_verifier.js";
+export * from "./interop/wasm-polyglot-bridge.js";
 export * from "./ontology/bfo_vocabulary.js";
 export * from "./ontology/parallel_reasoner.js";
 export * from "./ontology/semantic_projector.js";

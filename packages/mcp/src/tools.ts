@@ -8957,4 +8957,260 @@ export function registerTools(server: McpServer, ctx: ServerContext): void {
       }
     },
   );
+
+  // ── sysml2_verify_formal ────────────────────────────────────────────────────
+  type DslWasmParserBundle = Awaited<ReturnType<(typeof import("@modelscript/dsl"))["createWasmParser"]>>;
+  let cachedSysmlWasmBundle: DslWasmParserBundle | null = null;
+
+  server.tool(
+    "sysml2_verify_formal",
+    "Run deep formal verification (S7001–S7006: IC3/PDR state reachability, ISO 26262 MOCUS/ASIL fault trees, analytical UQ chance constraints, mechanical GD&T tolerance stacks, 2-safety non-interference/Lipschitz, continuous DAE Taylor-model flowpipes & SOS barriers) and optional standard lints (S1xxx–S6xxx) on a SysML v2 / KerML model.",
+    {
+      code: z.string().optional().describe("Optional inline SysML v2 / KerML source code to verify"),
+      filePath: z.string().optional().describe("Optional workspace file path to a .sysml / .sysml2 / .kerml file"),
+      includeStandardLints: z
+        .boolean()
+        .optional()
+        .describe("When true (default false), also runs Salsa & WASM compiler lints (S1xxx–S6xxx)"),
+      maxStates: z
+        .number()
+        .optional()
+        .describe("Optional maximum state exploration bound forwarded to formal verification"),
+      timeHorizon: z
+        .number()
+        .optional()
+        .describe("Optional continuous reachability time horizon (seconds) forwarded to formal verification"),
+    },
+    withSandbox(
+      "sysml2_verify_formal",
+      async ({ code, filePath, includeStandardLints = false, maxStates, timeHorizon }) => {
+        let sourceText: string;
+        let resourceUri: string;
+
+        if (typeof code === "string" && code.trim().length > 0) {
+          sourceText = code;
+          if (filePath && filePath.trim().length > 0) {
+            const safePath = resolveWorkspacePath(filePath);
+            resourceUri = `file://${safePath}`;
+          } else {
+            resourceUri = "file:///mcp/inline.sysml";
+          }
+        } else if (typeof filePath === "string" && filePath.trim().length > 0) {
+          const safePath = resolveWorkspacePath(filePath);
+          if (!fs.existsSync(safePath)) {
+            return {
+              isError: true,
+              content: [{ type: "text" as const, text: `File not found: '${filePath}'.` }],
+            };
+          }
+          sourceText = fs.readFileSync(safePath, "utf-8");
+          resourceUri = `file://${safePath}`;
+        } else {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text" as const,
+                text: "Either 'code' (inline SysML v2 source) or 'filePath' (workspace file path) must be provided.",
+              },
+            ],
+          };
+        }
+
+        const sysmlMod = await import("@modelscript/sysml2");
+        let bundle = cachedSysmlWasmBundle;
+        if (!bundle) {
+          const { createWasmParser: createDslWasmParser } = await import("@modelscript/dsl");
+          const { createRequire } = await import("node:module");
+          const { fileURLToPath } = await import("node:url");
+          const req = createRequire(import.meta.url);
+          let wasmPath: string;
+          try {
+            wasmPath = req.resolve("@modelscript/sysml2/parser.wasm");
+          } catch {
+            const currentDir = path.dirname(fileURLToPath(import.meta.url));
+            wasmPath = path.resolve(currentDir, "../../../languages/sysml2/dist/parser.wasm");
+          }
+          bundle = await createDslWasmParser(wasmPath);
+          cachedSysmlWasmBundle = bundle;
+        }
+
+        const { parser: sysmlParser, facade: sysmlFacade } = bundle;
+        if (typeof sysmlMod.registerSysmlWasmParser === "function") {
+          sysmlMod.registerSysmlWasmParser(
+            sysmlParser as unknown as Parameters<typeof sysmlMod.registerSysmlWasmParser>[0],
+          );
+        }
+
+        const sIdx = createSysML2WorkspaceIndex();
+        if (typeof sysmlMod.loadEmbeddedKerMLStdlib === "function") {
+          sysmlMod.loadEmbeddedKerMLStdlib(
+            sIdx,
+            sysmlParser as unknown as Parameters<typeof sysmlMod.loadEmbeddedKerMLStdlib>[1],
+          );
+        }
+
+        const parsedTree = sysmlParser.parse(sourceText);
+        const rootNode = parsedTree?.rootNode as
+          | {
+              id?: number | undefined;
+              ptr?: number | undefined;
+              descendantForIndex?: ((start: number, end: number) => unknown) | undefined;
+            }
+          | undefined;
+
+        try {
+          if (rootNode) {
+            sIdx.register(
+              resourceUri,
+              (() => rootNode) as unknown as NonNullable<Parameters<typeof sIdx.register>[1]>,
+              sourceText,
+            );
+          }
+
+          const localDb = await sIdx.getIndexAsync();
+          const cstProvider: NonNullable<Parameters<typeof createSysML2QueryEngine>[1]> = {
+            getText: (startOffset: number, endOffset: number, entry) => {
+              if (entry?.resourceId && entry.resourceId !== resourceUri) return null;
+              return sourceText.slice(startOffset, endOffset);
+            },
+            getNode: (startOffset: number, endOffset: number, entry) => {
+              if (entry?.resourceId && entry.resourceId !== resourceUri) return null;
+              if (!rootNode || typeof rootNode.descendantForIndex !== "function") return null;
+              return rootNode.descendantForIndex(startOffset, Math.max(startOffset, endOffset - 1));
+            },
+          };
+
+          const qe = createSysML2QueryEngine(localDb, cstProvider);
+          const formalOpts: Record<string, unknown> = { resourceUri };
+          if (maxStates !== undefined) formalOpts["maxStates"] = maxStates;
+          if (timeHorizon !== undefined) formalOpts["timeHorizon"] = timeHorizon;
+
+          const rawFormal = await sysmlMod.verifySysML2Formal(
+            qe.toQueryDB(),
+            formalOpts as Parameters<typeof sysmlMod.verifySysML2Formal>[1],
+          );
+
+          const formalDiagnostics = rawFormal.map((fd) => ({
+            code: `S${fd.code}`,
+            numericCode: fd.code,
+            rule: fd.rule,
+            severity: fd.severity,
+            engine: fd.engine,
+            symbolName: fd.symbolName,
+            message: fd.message,
+            startOffset: fd.startOffset,
+            endOffset: fd.endOffset,
+            ...(fd.witness ? { witness: fd.witness } : {}),
+          }));
+
+          let standardDiagnostics:
+            | Array<{
+                code: string;
+                rule: string;
+                severity: string;
+                message: string;
+                startOffset: number;
+                endOffset: number;
+              }>
+            | undefined;
+
+          if (includeStandardLints) {
+            const stdList: NonNullable<typeof standardDiagnostics> = [];
+            standardDiagnostics = stdList;
+            const seenStd = new Set<string>();
+            const pushStd = (item: {
+              code: string;
+              rule: string;
+              severity: string;
+              message: string;
+              startOffset: number;
+              endOffset: number;
+            }) => {
+              const key = `${item.startOffset}:${item.code}:${item.message}`;
+              if (seenStd.has(key)) return;
+              seenStd.add(key);
+              stdList.push(item);
+            };
+
+            const salsaDiags = await qe.runAllLintsAsync(resourceUri);
+            for (const sd of salsaDiags) {
+              const codeStr =
+                typeof sd.code === "number" ? `S${sd.code}` : sd.code ? String(sd.code) : sd.lintName || "S0000";
+              pushStd({
+                code: codeStr,
+                rule: sd.lintName || codeStr,
+                severity: sd.severity,
+                message: sd.message,
+                startOffset: sd.startOffset ?? 0,
+                endOffset: sd.endOffset ?? 0,
+              });
+            }
+
+            if (rootNode && sysmlFacade && typeof sysmlFacade.getDiagnostics === "function") {
+              const rootPtr = parsedTree?.rootPtr ?? rootNode.id ?? rootNode.ptr ?? 0;
+              if (rootPtr) {
+                if (typeof sysmlFacade.loadSource === "function") sysmlFacade.loadSource(sourceText);
+                for (const cd of sysmlFacade.getDiagnostics(rootPtr, 0, 0, sourceText) ?? []) {
+                  const codeNum = typeof cd.code === "number" ? cd.code : 1001;
+                  const def = sysmlMod.getSysML2ErrorCodeDef?.(codeNum);
+                  pushStd({
+                    code: `S${codeNum}`,
+                    rule: def?.rule ?? `S${codeNum}`,
+                    severity: cd.severity === 2 ? "warning" : (def?.severity ?? "error"),
+                    message: cd.message || "Compiler lint diagnostic",
+                    startOffset: cd.startOffset ?? 0,
+                    endOffset: cd.endOffset ?? 0,
+                  });
+                }
+              }
+            }
+          }
+
+          const formalErrorCount = formalDiagnostics.filter((d) => d.severity === "error").length;
+          const formalWarningCount = formalDiagnostics.filter((d) => d.severity === "warning").length;
+          const stdErrorCount = standardDiagnostics
+            ? standardDiagnostics.filter((d) => d.severity === "error").length
+            : 0;
+          const stdWarningCount = standardDiagnostics
+            ? standardDiagnostics.filter((d) => d.severity === "warning").length
+            : 0;
+          const passed = formalDiagnostics.length === 0 && stdErrorCount === 0;
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    passed,
+                    formalDiagnostics,
+                    ...(standardDiagnostics !== undefined ? { standardDiagnostics } : {}),
+                    counts: {
+                      formalTotal: formalDiagnostics.length,
+                      formalErrors: formalErrorCount,
+                      formalWarnings: formalWarningCount,
+                      ...(standardDiagnostics !== undefined
+                        ? {
+                            standardTotal: standardDiagnostics.length,
+                            standardErrors: stdErrorCount,
+                            standardWarnings: stdWarningCount,
+                          }
+                        : {}),
+                      total: formalDiagnostics.length + (standardDiagnostics?.length ?? 0),
+                    },
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        } finally {
+          parsedTree?.delete?.();
+        }
+      },
+      () => ctx.sandboxLimits,
+    ),
+  );
 }

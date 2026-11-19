@@ -11,6 +11,7 @@ import {
   type SymbolEntry,
 } from "@modelscript/runtime";
 import { extractActivityGraphFromQueryDB, extractActivityGraphFromText, type ActivityGraph } from "./activity-cfa.js";
+import { evaluateSysML2Constraint, parseSysML2Expression, type SysML2ExprAst } from "./evaluator.js";
 import { SysmlExprParser, tokenizeSysml } from "./sysml2-dae-lowerer.js";
 
 export interface ParsedActionElement {
@@ -33,6 +34,140 @@ export interface ParsedSuccession {
 
 export type FumlActionBehavior = NonNullable<Parameters<WasmFumlEngine["addNode"]>[2]>;
 
+function collectAstIdentifiers(ast: SysML2ExprAst, out: Set<string>): void {
+  switch (ast.kind) {
+    case "Identifier":
+      out.add(ast.name);
+      break;
+    case "NumberLiteral":
+    case "BooleanLiteral":
+    case "StringLiteral":
+      break;
+    case "UnaryExpr":
+      collectAstIdentifiers(ast.operand, out);
+      break;
+    case "BinaryExpr":
+      collectAstIdentifiers(ast.left, out);
+      collectAstIdentifiers(ast.right, out);
+      break;
+    case "ConditionalExpr":
+      collectAstIdentifiers(ast.condition, out);
+      collectAstIdentifiers(ast.thenExpr, out);
+      collectAstIdentifiers(ast.elseExpr, out);
+      break;
+    case "CallExpr":
+      for (const a of ast.args) collectAstIdentifiers(a, out);
+      break;
+  }
+}
+
+function unwrapOuterGuardDelimiters(raw: string): string {
+  let s = raw.trim();
+  if (s.startsWith("[") && s.endsWith("]")) s = s.slice(1, -1).trim();
+  while (s.startsWith("(") && s.endsWith(")")) {
+    let depth = 0;
+    let outer = true;
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === "(") depth++;
+      else if (s[i] === ")") {
+        depth--;
+        if (depth === 0 && i < s.length - 1) {
+          outer = false;
+          break;
+        }
+      }
+    }
+    if (outer && depth === 0) s = s.slice(1, -1).trim();
+    else break;
+  }
+  return s;
+}
+
+function isGuardLiterallyFalse(guardText: string | undefined): boolean {
+  if (!guardText) return false;
+  const cleaned = unwrapOuterGuardDelimiters(guardText);
+  const lower = cleaned.toLowerCase();
+  if (lower === "false" || lower === "not true" || lower === "!true") {
+    return true;
+  }
+  if (lower === "else" || lower === "default" || lower === "true" || lower === "") {
+    return false;
+  }
+  try {
+    const ast = parseSysML2Expression(cleaned);
+    const idents = new Set<string>();
+    collectAstIdentifiers(ast, idents);
+    if (idents.size === 0) {
+      return !evaluateSysML2Constraint(ast, {}).satisfied;
+    }
+    // Catch top-level conjunction with a literal false (`false and x > 0`)
+    if (ast.kind === "BinaryExpr" && ast.op === "and") {
+      if (
+        (ast.left.kind === "BooleanLiteral" && !ast.left.value) ||
+        (ast.right.kind === "BooleanLiteral" && !ast.right.value)
+      ) {
+        return true;
+      }
+    }
+  } catch {
+    // Keep edge if guard cannot be statically refuted
+  }
+  return false;
+}
+
+function isElseGuard(guardText: string | undefined): boolean {
+  if (!guardText) return false;
+  const low = unwrapOuterGuardDelimiters(guardText).toLowerCase();
+  return low === "else" || low === "default";
+}
+
+function buildFumlEdgeGuard(
+  guardText: string | undefined,
+): ((context: Record<string, unknown>, tokenValue?: unknown) => boolean) | undefined {
+  if (!guardText) return undefined;
+  const cleaned = unwrapOuterGuardDelimiters(guardText);
+  const lower = cleaned.toLowerCase();
+  if (!cleaned || lower === "true") return undefined;
+  if (lower === "else" || lower === "default") return () => true;
+
+  let ast: SysML2ExprAst;
+  const referencedVars = new Set<string>();
+  try {
+    ast = parseSysML2Expression(cleaned);
+    collectAstIdentifiers(ast, referencedVars);
+  } catch {
+    return undefined;
+  }
+
+  return (context: Record<string, unknown>, tokenValue?: unknown): boolean => {
+    for (const v of referencedVars) {
+      if (!(v in context)) {
+        return true;
+      }
+    }
+    const env: Record<string, number | boolean | string> = {};
+    for (const [k, val] of Object.entries(context)) {
+      if (typeof val === "number" || typeof val === "boolean" || typeof val === "string") {
+        env[k] = val;
+      }
+    }
+    if (typeof tokenValue === "number" || typeof tokenValue === "boolean" || typeof tokenValue === "string") {
+      env["value"] = tokenValue;
+    }
+    return evaluateSysML2Constraint(ast, env).satisfied;
+  };
+}
+
+function resolveNodeBaseName(endpoint: string, nodeMap: ReadonlyMap<string, number>): string | undefined {
+  if (nodeMap.has(endpoint)) return endpoint;
+  const dotIdx = endpoint.indexOf(".");
+  if (dotIdx > 0) {
+    const base = endpoint.slice(0, dotIdx);
+    if (nodeMap.has(base)) return base;
+  }
+  return undefined;
+}
+
 export class SysML2FumlBridge {
   /**
    * Compiles SysML v2 action / activity model into an executable WasmFumlEngine.
@@ -52,16 +187,19 @@ export class SysML2FumlBridge {
       graph = extractActivityGraphFromText(input);
       behaviors = customBehaviorsOrSymbol as Record<string, FumlActionBehavior> | undefined;
     } else {
-      const db = input as QueryDB;
+      const db = input;
       const rootSym = customBehaviorsOrSymbol as SymbolEntry;
       graph = extractActivityGraphFromQueryDB(db, rootSym);
       behaviors = customBehaviors;
     }
 
-    const { nodes: actions, flows: successions } = graph;
+    const { nodes: actions, flows: rawSuccessions } = graph;
+    // Drop edges whose guard is tautologically false (`if false`, `if not true`, etc.)
+    const successions = rawSuccessions.filter((s) => !isGuardLiterallyFalse(s.guard));
 
     // 1. Register nodes in WasmFumlEngine
     const nodeMap = new Map<string, number>();
+    const actionKindByName = new Map<string, ActivityGraph["nodes"][number]["kind"]>();
 
     // Initial node
     const initNodeId = engine.addNode("__initial__", ActivityNodeKind.Initial);
@@ -93,6 +231,7 @@ export class SysML2FumlBridge {
 
       const nodeId = engine.addNode(act.name, nodeKind, behavior);
       nodeMap.set(act.name, nodeId);
+      actionKindByName.set(act.name, act.kind);
 
       // Add pins
       for (const pin of act.inputs) {
@@ -106,19 +245,26 @@ export class SysML2FumlBridge {
     // ActivityFinal node
     const finalNodeId = engine.addNode("__final__", ActivityNodeKind.ActivityFinal);
 
-    // 2. Connect edges
-    const targets = new Set(successions.map((s) => s.target));
-    const sources = new Set(successions.map((s) => s.source));
+    // 2. Connect edges (with normalized pin endpoints and ordered `else` guards)
+    const targets = new Set<string>();
+    const sources = new Set<string>();
+    for (const s of successions) {
+      const srcBase = resolveNodeBaseName(s.source, nodeMap);
+      const tgtBase = resolveNodeBaseName(s.target, nodeMap);
+      if (srcBase && tgtBase) {
+        sources.add(srcBase);
+        targets.add(tgtBase);
+      }
+    }
 
     // Connect Initial node to actions that are entry points
-    if (successions.length === 0) {
+    if (sources.size === 0 && targets.size === 0) {
       if (actions.length > 0) {
         const tgtId = nodeMap.get(actions[0]!.name)!;
         engine.addEdge(initNodeId, tgtId, ActivityEdgeKind.Control);
       }
     } else {
       for (const act of actions) {
-        // Must have outgoing transitions (or be root) and no incoming transitions
         if (!targets.has(act.name) && sources.has(act.name) && act.kind !== "merge" && act.kind !== "join") {
           const tgtId = nodeMap.get(act.name)!;
           engine.addEdge(initNodeId, tgtId, ActivityEdgeKind.Control);
@@ -126,18 +272,54 @@ export class SysML2FumlBridge {
       }
     }
 
-    // Connect specified successions
-    for (const s of successions) {
-      const srcId = nodeMap.get(s.source);
-      const tgtId = nodeMap.get(s.target);
-      if (srcId && tgtId) {
-        const edgeKind = s.kind === "object" ? ActivityEdgeKind.Object : ActivityEdgeKind.Control;
-        engine.addEdge(srcId, tgtId, edgeKind);
+    // Order `else` / `default` branches after explicit guarded branches so Decision evaluates specific guards first
+    const orderedSuccessions = [...successions].sort((a, b) => {
+      const aElse = isElseGuard(a.guard) ? 1 : 0;
+      const bElse = isElseGuard(b.guard) ? 1 : 0;
+      return aElse - bElse;
+    });
+
+    // If an Action node has guarded outgoing control edges, route them via a synthetic Decision router node
+    const actionGuardRouterIds = new Map<string, number>();
+    for (const s of orderedSuccessions) {
+      const srcBase = resolveNodeBaseName(s.source, nodeMap);
+      const tgtBase = resolveNodeBaseName(s.target, nodeMap);
+      if (!srcBase || !tgtBase) continue;
+      if (s.kind !== "object" && s.guard && s.guard.trim() && s.guard.trim().toLowerCase() !== "true") {
+        if (actionKindByName.get(srcBase) === "action" && !actionGuardRouterIds.has(srcBase)) {
+          const routerId = engine.addNode(`__guard_${srcBase}__`, ActivityNodeKind.Decision);
+          engine.addEdge(nodeMap.get(srcBase)!, routerId, ActivityEdgeKind.Control);
+          actionGuardRouterIds.set(srcBase, routerId);
+        }
       }
     }
 
+    // Connect specified successions with guard callbacks and pin IDs
+    for (const s of orderedSuccessions) {
+      const srcBase = resolveNodeBaseName(s.source, nodeMap);
+      const tgtBase = resolveNodeBaseName(s.target, nodeMap);
+      if (!srcBase || !tgtBase) continue;
+
+      const tgtId = nodeMap.get(tgtBase)!;
+      const edgeKind = s.kind === "object" ? ActivityEdgeKind.Object : ActivityEdgeKind.Control;
+      const srcId =
+        edgeKind === ActivityEdgeKind.Control && actionGuardRouterIds.has(srcBase)
+          ? actionGuardRouterIds.get(srcBase)!
+          : nodeMap.get(srcBase)!;
+
+      const guardFn = buildFumlEdgeGuard(s.guard);
+      const sourcePinId = s.source.includes(".") ? engine.getPinId(s.source) : undefined;
+      const targetPinId = s.target.includes(".") ? engine.getPinId(s.target) : undefined;
+
+      engine.addEdge(srcId, tgtId, edgeKind, {
+        guard: guardFn,
+        sourcePinId,
+        targetPinId,
+      });
+    }
+
     // Connect terminal actions to ActivityFinal
-    if (successions.length === 0) {
+    if (sources.size === 0 && targets.size === 0) {
       if (actions.length > 0) {
         const srcId = nodeMap.get(actions[actions.length - 1]!.name)!;
         engine.addEdge(srcId, finalNodeId, ActivityEdgeKind.Control);

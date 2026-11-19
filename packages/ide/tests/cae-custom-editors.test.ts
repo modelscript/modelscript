@@ -318,7 +318,7 @@ Test Deck
   it("extracts and normalizes 3D geometry from SCAD and SU2 mesh files for the CFD .cfg editor", async () => {
     const { extractScadCadComponents } = await import("@modelscript/scad");
     const { CaeParametricSampler } = await import("@modelscript/simulate");
-    const { normalizeCfdGeometry, parseSu2MeshSurface } = await import("../src/cfg-editor-provider.js");
+    const { normalizeCfdGeometry, parseSu2MeshSurface } = await import("@modelscript/cfd");
 
     // 1. Evaluate multi-part OpenSCAD geometry (e.g. fuselage + wings in mm scale)
     const scadSource = `

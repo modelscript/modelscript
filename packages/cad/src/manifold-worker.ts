@@ -23,19 +23,116 @@ export interface ManifoldSurfaceMesh {
   sourceMetadata?: SolidSourceMetadata | undefined;
 }
 
+/** Bounded LRU cache storing content-addressed evaluated local CSG subtree meshes. */
+const MAX_CSG_MESH_CACHE = 256;
+const csgSubtreeMeshCache = new Map<string, ManifoldSurfaceMesh>();
+
+function fnv1aHash(str: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function fmtNum(n: number): string {
+  return Number.isFinite(n) ? Number(n.toFixed(6)).toString() : "0";
+}
+
+function computeSolidCacheKey(solid: Solid, depth = 0): string | null {
+  if (depth > 32) return null;
+  switch (solid.kind) {
+    case SolidKind.Box:
+      return `B(${fmtNum(solid.width)},${fmtNum(solid.height)},${fmtNum(solid.depth)})`;
+    case SolidKind.Cylinder:
+      return `C(${fmtNum(solid.radiusBottom ?? solid.radius)},${fmtNum(solid.radiusTop ?? solid.radius)},${fmtNum(solid.height)},${solid.segments ?? 0})`;
+    case SolidKind.Sphere:
+      return `S(${fmtNum(solid.radius)},${solid.widthSegments ?? 0},${solid.heightSegments ?? 0})`;
+    case SolidKind.Torus:
+      return `T(${fmtNum(solid.major)},${fmtNum(solid.minor)},${solid.majorSegments ?? 0},${solid.minorSegments ?? 0})`;
+    case SolidKind.Extrusion: {
+      if (solid.polygon.length > 128) return null;
+      const pts = solid.polygon.map(([x, y]) => `${fmtNum(x)},${fmtNum(y)}`).join(";");
+      return `E(${fmtNum(solid.height)},${fmtNum(solid.twist ?? 0)},${fmtNum(solid.scale ?? 1)},${fnv1aHash(pts)})`;
+    }
+    case SolidKind.Revolve: {
+      if (solid.polygon.length > 128) return null;
+      const pts = solid.polygon.map(([x, y]) => `${fmtNum(x)},${fmtNum(y)}`).join(";");
+      return `R(${solid.segments ?? 24},${fnv1aHash(pts)})`;
+    }
+    case SolidKind.Polyhedron: {
+      if (solid.points.length > 256 || solid.faces.length > 256) return null;
+      const pts = solid.points.map((p) => `${fmtNum(p[0])},${fmtNum(p[1])},${fmtNum(p[2])}`).join(";");
+      const fcs = solid.faces.map((f) => f.join(",")).join(";");
+      return `P(${fnv1aHash(pts)}:${fnv1aHash(fcs)})`;
+    }
+    case SolidKind.Transform: {
+      const ck = computeSolidCacheKey(solid.child, depth + 1);
+      if (!ck) return null;
+      return `X(${solid.matrix.map(fmtNum).join(",")}|${ck})`;
+    }
+    case SolidKind.TaggedPatch: {
+      const ck = computeSolidCacheKey(solid.child, depth + 1);
+      if (!ck) return null;
+      return `G(${solid.tag.portName}:${solid.tag.portType}|${ck})`;
+    }
+    case SolidKind.Union:
+    case SolidKind.Subtract:
+    case SolidKind.Intersect: {
+      const lk = computeSolidCacheKey(solid.left, depth + 1);
+      const rk = computeSolidCacheKey(solid.right, depth + 1);
+      if (!lk || !rk) return null;
+      return `${solid.kind}(${fnv1aHash(lk)},${fnv1aHash(rk)})`;
+    }
+    case SolidKind.Fillet:
+    case SolidKind.Chamfer: {
+      const ck = computeSolidCacheKey(solid.child, depth + 1);
+      if (!ck) return null;
+      const param = solid.kind === SolidKind.Fillet ? solid.radius : solid.distance;
+      return `${solid.kind}(${fmtNum(param)}|${fnv1aHash(ck)})`;
+    }
+    default:
+      return null;
+  }
+}
+
 /**
  * Procedural Manifold CSG Mesher.
  * Evaluates the constructive solid geometry tree and synthesizes
  * watertight 2-manifold triangular boundary surfaces.
  */
 export class ManifoldWorker {
+  /** Clears cached evaluated CSG subtree meshes. */
+  public static clearMeshCache(): void {
+    csgSubtreeMeshCache.clear();
+  }
+
   /**
    * Evaluates a Solid CSG tree into a clean watertight triangular mesh.
    */
   public static evaluateSolid(solid: Solid): ManifoldSurfaceMesh {
+    const key = computeSolidCacheKey(solid);
+    if (key) {
+      const hit = csgSubtreeMeshCache.get(key);
+      if (hit) {
+        // Refresh LRU order & attach current node's sourceMetadata
+        csgSubtreeMeshCache.delete(key);
+        csgSubtreeMeshCache.set(key, hit);
+        return solid.sourceMetadata !== hit.sourceMetadata ? { ...hit, sourceMetadata: solid.sourceMetadata } : hit;
+      }
+    }
     const meshBuilder = new SurfaceMeshBuilder();
     meshBuilder.processSolid(solid, IDENTITY, undefined);
-    return meshBuilder.finalize();
+    const result = meshBuilder.finalize();
+    if (key) {
+      if (csgSubtreeMeshCache.size >= MAX_CSG_MESH_CACHE) {
+        const oldest = csgSubtreeMeshCache.keys().next().value;
+        if (oldest !== undefined) csgSubtreeMeshCache.delete(oldest);
+      }
+      csgSubtreeMeshCache.set(key, result);
+    }
+    return result;
   }
 }
 
@@ -167,13 +264,16 @@ class SurfaceMeshBuilder {
       case SolidKind.Union:
       case SolidKind.Subtract:
       case SolidKind.Intersect: {
-        const leftBuilder = new SurfaceMeshBuilder(this.tagMap, this.tags);
-        const rightBuilder = new SurfaceMeshBuilder(this.tagMap, this.tags);
-        leftBuilder.processSolid(solid.left, parentMat, activeTag);
-        rightBuilder.processSolid(solid.right, parentMat, activeTag);
+        const leftMesh = ManifoldWorker.evaluateSolid(solid.left);
+        const rightMesh = ManifoldWorker.evaluateSolid(solid.right);
+        if (leftMesh.sourceMetadata && !this.sourceMetadata) {
+          this.sourceMetadata = leftMesh.sourceMetadata;
+        } else if (rightMesh.sourceMetadata && !this.sourceMetadata) {
+          this.sourceMetadata = rightMesh.sourceMetadata;
+        }
 
-        const leftPolys = leftBuilder.toPolygons();
-        const rightPolys = rightBuilder.toPolygons();
+        const leftPolys = this.meshToPolygons(leftMesh, parentMat, activeTag);
+        const rightPolys = this.meshToPolygons(rightMesh, parentMat, activeTag);
 
         let resultPolys: CsgPolygon[];
         if (solid.kind === SolidKind.Union) {
@@ -189,80 +289,69 @@ class SurfaceMeshBuilder {
       }
 
       case SolidKind.Fillet: {
-        let inner = solid.child;
-        let innerMat = parentMat;
-        let innerTag = activeTag;
-        while (inner.kind === SolidKind.Transform || inner.kind === SolidKind.TaggedPatch) {
-          if (inner.sourceMetadata && !this.sourceMetadata) {
-            this.sourceMetadata = inner.sourceMetadata;
-          }
-          if (inner.kind === SolidKind.Transform) {
-            innerMat = mat4Multiply(innerMat, inner.matrix);
-            inner = inner.child;
-          } else {
-            innerTag = inner.tag;
-            inner = inner.child;
-          }
-        }
-        if (inner.sourceMetadata && !this.sourceMetadata) {
-          this.sourceMetadata = inner.sourceMetadata;
-        }
-        if (inner.kind === SolidKind.Box) {
-          this.emitFilletedBox(inner.width, inner.height, inner.depth, solid.radius, innerMat, innerTag);
-        } else if (inner.kind === SolidKind.Cylinder) {
-          this.emitFilletedCylinder(
-            inner.radiusBottom ?? inner.radius,
-            inner.radiusTop ?? inner.radius,
-            inner.height,
-            inner.segments,
-            solid.radius,
-            false,
-            innerMat,
-            innerTag,
-          );
-        } else {
-          this.processSolid(solid.child, parentMat, activeTag);
-        }
+        this.processBeveledSolid(solid.child, solid.radius, false, parentMat, activeTag);
         break;
       }
 
       case SolidKind.Chamfer: {
-        let inner = solid.child;
-        let innerMat = parentMat;
-        let innerTag = activeTag;
-        while (inner.kind === SolidKind.Transform || inner.kind === SolidKind.TaggedPatch) {
-          if (inner.sourceMetadata && !this.sourceMetadata) {
-            this.sourceMetadata = inner.sourceMetadata;
-          }
-          if (inner.kind === SolidKind.Transform) {
-            innerMat = mat4Multiply(innerMat, inner.matrix);
-            inner = inner.child;
-          } else {
-            innerTag = inner.tag;
-            inner = inner.child;
-          }
-        }
-        if (inner.sourceMetadata && !this.sourceMetadata) {
-          this.sourceMetadata = inner.sourceMetadata;
-        }
-        if (inner.kind === SolidKind.Box) {
-          this.emitChamferedBox(inner.width, inner.height, inner.depth, solid.distance, innerMat, innerTag);
-        } else if (inner.kind === SolidKind.Cylinder) {
-          this.emitFilletedCylinder(
-            inner.radiusBottom ?? inner.radius,
-            inner.radiusTop ?? inner.radius,
-            inner.height,
-            inner.segments,
-            solid.distance,
-            true,
-            innerMat,
-            innerTag,
-          );
-        } else {
-          this.processSolid(solid.child, parentMat, activeTag);
-        }
+        this.processBeveledSolid(solid.child, solid.distance, true, parentMat, activeTag);
         break;
       }
+    }
+  }
+
+  private processBeveledSolid(
+    child: Solid,
+    amount: number,
+    isChamfer: boolean,
+    parentMat: Mat4,
+    activeTag?: BoundaryPatchTag,
+  ): void {
+    let inner = child;
+    let innerMat = parentMat;
+    let innerTag = activeTag;
+    while (inner.kind === SolidKind.Transform || inner.kind === SolidKind.TaggedPatch) {
+      if (inner.sourceMetadata && !this.sourceMetadata) {
+        this.sourceMetadata = inner.sourceMetadata;
+      }
+      if (inner.kind === SolidKind.Transform) {
+        innerMat = mat4Multiply(innerMat, inner.matrix);
+        inner = inner.child;
+      } else {
+        innerTag = inner.tag;
+        inner = inner.child;
+      }
+    }
+    if (inner.sourceMetadata && !this.sourceMetadata) {
+      this.sourceMetadata = inner.sourceMetadata;
+    }
+    if (inner.kind === SolidKind.Box) {
+      if (isChamfer) {
+        this.emitChamferedBox(inner.width, inner.height, inner.depth, amount, innerMat, innerTag);
+      } else {
+        this.emitFilletedBox(inner.width, inner.height, inner.depth, amount, innerMat, innerTag);
+      }
+    } else if (inner.kind === SolidKind.Cylinder) {
+      this.emitFilletedCylinder(
+        inner.radiusBottom ?? inner.radius,
+        inner.radiusTop ?? inner.radius,
+        inner.height,
+        inner.segments,
+        amount,
+        isChamfer,
+        innerMat,
+        innerTag,
+      );
+    } else if (inner.kind === SolidKind.Extrusion) {
+      this.emitExtrusion(inner.polygon, inner.height, inner.twist, inner.scale, innerMat, innerTag, {
+        amount,
+        isChamfer,
+      });
+    } else if (inner.kind === SolidKind.Union) {
+      this.processBeveledSolid(inner.left, amount, isChamfer, innerMat, innerTag);
+      this.processBeveledSolid(inner.right, amount, isChamfer, innerMat, innerTag);
+    } else {
+      this.processSolid(child, parentMat, activeTag);
     }
   }
 
@@ -289,6 +378,59 @@ class SurfaceMeshBuilder {
             pos: [this.vertices[i2]!, this.vertices[i2 + 1]!, this.vertices[i2 + 2]!],
             normal: [this.normals[i2]!, this.normals[i2 + 1]!, this.normals[i2 + 2]!],
           },
+        ],
+        tagIndex,
+      );
+      if (poly) polys.push(poly);
+    }
+    return polys;
+  }
+
+  /** Transforms a cached local {@link ManifoldSurfaceMesh} into world-space {@link CsgPolygon} records for boolean clipping. */
+  public meshToPolygons(mesh: ManifoldSurfaceMesh, parentMat: Mat4, activeTag?: BoundaryPatchTag): CsgPolygon[] {
+    const polys: CsgPolygon[] = [];
+    const isIdentity = parentMat === IDENTITY;
+    const det = isIdentity
+      ? 1
+      : parentMat[0] * (parentMat[5] * parentMat[10] - parentMat[6] * parentMat[9]) -
+        parentMat[4] * (parentMat[1] * parentMat[10] - parentMat[2] * parentMat[9]) +
+        parentMat[8] * (parentMat[1] * parentMat[6] - parentMat[2] * parentMat[5]);
+    const flipWinding = det < 0;
+
+    for (let i = 0; i < mesh.indices.length; i += 3) {
+      const a = mesh.indices[i]! * 3;
+      const b = (flipWinding ? mesh.indices[i + 2]! : mesh.indices[i + 1]!) * 3;
+      const c = (flipWinding ? mesh.indices[i + 1]! : mesh.indices[i + 2]!) * 3;
+
+      const rawTagId = mesh.faceTagIndices[i / 3] ?? 0;
+      const tag = rawTagId > 0 ? mesh.tags[rawTagId - 1] : activeTag;
+      const tagIndex = this.getTagIndex(tag);
+
+      const posA: [number, number, number] = isIdentity
+        ? [mesh.vertices[a]!, mesh.vertices[a + 1]!, mesh.vertices[a + 2]!]
+        : this.transformPoint(parentMat, mesh.vertices[a]!, mesh.vertices[a + 1]!, mesh.vertices[a + 2]!);
+      const posB: [number, number, number] = isIdentity
+        ? [mesh.vertices[b]!, mesh.vertices[b + 1]!, mesh.vertices[b + 2]!]
+        : this.transformPoint(parentMat, mesh.vertices[b]!, mesh.vertices[b + 1]!, mesh.vertices[b + 2]!);
+      const posC: [number, number, number] = isIdentity
+        ? [mesh.vertices[c]!, mesh.vertices[c + 1]!, mesh.vertices[c + 2]!]
+        : this.transformPoint(parentMat, mesh.vertices[c]!, mesh.vertices[c + 1]!, mesh.vertices[c + 2]!);
+
+      const normA: [number, number, number] = isIdentity
+        ? [mesh.normals[a]!, mesh.normals[a + 1]!, mesh.normals[a + 2]!]
+        : this.transformNormal(parentMat, mesh.normals[a]!, mesh.normals[a + 1]!, mesh.normals[a + 2]!);
+      const normB: [number, number, number] = isIdentity
+        ? [mesh.normals[b]!, mesh.normals[b + 1]!, mesh.normals[b + 2]!]
+        : this.transformNormal(parentMat, mesh.normals[b]!, mesh.normals[b + 1]!, mesh.normals[b + 2]!);
+      const normC: [number, number, number] = isIdentity
+        ? [mesh.normals[c]!, mesh.normals[c + 1]!, mesh.normals[c + 2]!]
+        : this.transformNormal(parentMat, mesh.normals[c]!, mesh.normals[c + 1]!, mesh.normals[c + 2]!);
+
+      const poly = createPolygon(
+        [
+          { pos: posA, normal: normA },
+          { pos: posB, normal: normB },
+          { pos: posC, normal: normC },
         ],
         tagIndex,
       );
@@ -702,7 +844,7 @@ class SurfaceMeshBuilder {
     const segs = Math.max(8, segments);
     const rimSteps = isChamfer ? 1 : 4;
 
-    // Build profile (r, y) from bottom cap rim to top cap rim
+    // Build profile (r, z) along canonical +Z axis from bottom cap rim (-hh) to top cap rim (+hh)
     const profile: [number, number][] = [];
     for (let s = 0; s <= rimSteps; s++) {
       const t = s / rimSteps;
@@ -724,51 +866,51 @@ class SurfaceMeshBuilder {
     }
 
     for (let p = 0; p < profile.length - 1; p++) {
-      const [r0, y0] = profile[p]!;
-      const [r1, y1] = profile[p + 1]!;
-      const dy = y1 - y0;
+      const [r0, z0] = profile[p]!;
+      const [r1, z1] = profile[p + 1]!;
+      const dz = z1 - z0;
       const dr = r0 - r1;
-      const len = Math.hypot(dr, dy) || 1.0;
-      const cosS = dy / len;
+      const len = Math.hypot(dr, dz) || 1.0;
+      const cosS = dz / len;
       const sinS = dr / len;
       for (let i = 0; i < segs; i++) {
         const th0 = (i / segs) * 2 * Math.PI;
         const th1 = ((i + 1) / segs) * 2 * Math.PI;
-        const p0 = this.transformPoint(mat, r0 * Math.cos(th0), y0, r0 * Math.sin(th0));
-        const p1 = this.transformPoint(mat, r0 * Math.cos(th1), y0, r0 * Math.sin(th1));
-        const p2 = this.transformPoint(mat, r1 * Math.cos(th1), y1, r1 * Math.sin(th1));
-        const p3 = this.transformPoint(mat, r1 * Math.cos(th0), y1, r1 * Math.sin(th0));
+        const p0 = this.transformPoint(mat, r0 * Math.cos(th0), r0 * Math.sin(th0), z0);
+        const p1 = this.transformPoint(mat, r0 * Math.cos(th1), r0 * Math.sin(th1), z0);
+        const p2 = this.transformPoint(mat, r1 * Math.cos(th1), r1 * Math.sin(th1), z1);
+        const p3 = this.transformPoint(mat, r1 * Math.cos(th0), r1 * Math.sin(th0), z1);
         const mid = 0.5 * (th0 + th1);
-        const norm = this.transformNormal(mat, Math.cos(mid) * cosS, sinS, Math.sin(mid) * cosS);
-        this.addTriangle(p0, p2, p1, norm, tag);
-        this.addTriangle(p0, p3, p2, norm, tag);
+        const norm = this.transformNormal(mat, Math.cos(mid) * cosS, Math.sin(mid) * cosS, sinS);
+        this.addTriangle(p0, p1, p2, norm, tag);
+        this.addTriangle(p0, p2, p3, norm, tag);
       }
     }
 
     const rTopInner = Math.max(1e-6, radiusTop - c);
-    const topNorm = this.transformNormal(mat, 0, 1, 0);
-    const topCenter = this.transformPoint(mat, 0, hh, 0);
+    const topNorm = this.transformNormal(mat, 0, 0, 1);
+    const topCenter = this.transformPoint(mat, 0, 0, hh);
     for (let i = 0; i < segs; i++) {
       const th0 = (i / segs) * 2 * Math.PI;
       const th1 = ((i + 1) / segs) * 2 * Math.PI;
-      const p0 = this.transformPoint(mat, rTopInner * Math.cos(th0), hh, rTopInner * Math.sin(th0));
-      const p1 = this.transformPoint(mat, rTopInner * Math.cos(th1), hh, rTopInner * Math.sin(th1));
-      this.addTriangle(topCenter, p1, p0, topNorm, tag);
+      const p0 = this.transformPoint(mat, rTopInner * Math.cos(th0), rTopInner * Math.sin(th0), hh);
+      const p1 = this.transformPoint(mat, rTopInner * Math.cos(th1), rTopInner * Math.sin(th1), hh);
+      this.addTriangle(topCenter, p0, p1, topNorm, tag);
     }
 
     const rBotInner = Math.max(1e-6, radiusBottom - c);
-    const botNorm = this.transformNormal(mat, 0, -1, 0);
-    const botCenter = this.transformPoint(mat, 0, -hh, 0);
+    const botNorm = this.transformNormal(mat, 0, 0, -1);
+    const botCenter = this.transformPoint(mat, 0, 0, -hh);
     for (let i = 0; i < segs; i++) {
       const th0 = (i / segs) * 2 * Math.PI;
       const th1 = ((i + 1) / segs) * 2 * Math.PI;
-      const p0 = this.transformPoint(mat, rBotInner * Math.cos(th0), -hh, rBotInner * Math.sin(th0));
-      const p1 = this.transformPoint(mat, rBotInner * Math.cos(th1), -hh, rBotInner * Math.sin(th1));
-      this.addTriangle(botCenter, p0, p1, botNorm, tag);
+      const p0 = this.transformPoint(mat, rBotInner * Math.cos(th0), rBotInner * Math.sin(th0), -hh);
+      const p1 = this.transformPoint(mat, rBotInner * Math.cos(th1), rBotInner * Math.sin(th1), -hh);
+      this.addTriangle(botCenter, p1, p0, botNorm, tag);
     }
   }
 
-  /** Tessellates a cylinder, cone, or frustum along the Y axis with `segments` radial subdivisions. */
+  /** Tessellates a cylinder, cone, or frustum along the canonical +Z axis with `segments` radial subdivisions. */
   private emitCylinder(
     radiusBottom: number,
     radiusTop: number,
@@ -794,45 +936,45 @@ class SurfaceMeshBuilder {
       const c1 = Math.cos(theta1);
       const s1 = Math.sin(theta1);
 
-      const p0 = this.transformPoint(mat, radiusBottom * c0, -hh, radiusBottom * s0);
-      const p1 = this.transformPoint(mat, radiusBottom * c1, -hh, radiusBottom * s1);
-      const p2 = this.transformPoint(mat, radiusTop * c1, hh, radiusTop * s1);
-      const p3 = this.transformPoint(mat, radiusTop * c0, hh, radiusTop * s0);
+      const p0 = this.transformPoint(mat, radiusBottom * c0, radiusBottom * s0, -hh);
+      const p1 = this.transformPoint(mat, radiusBottom * c1, radiusBottom * s1, -hh);
+      const p2 = this.transformPoint(mat, radiusTop * c1, radiusTop * s1, hh);
+      const p3 = this.transformPoint(mat, radiusTop * c0, radiusTop * s0, hh);
 
       const midTheta = (theta0 + theta1) / 2;
-      const tNorm = this.transformNormal(mat, Math.cos(midTheta) * cosSlope, sinSlope, Math.sin(midTheta) * cosSlope);
+      const tNorm = this.transformNormal(mat, Math.cos(midTheta) * cosSlope, Math.sin(midTheta) * cosSlope, sinSlope);
 
       if (radiusBottom > 1e-9) {
-        this.addTriangle(p0, p2, p1, tNorm, tag);
+        this.addTriangle(p0, p1, p2, tNorm, tag);
       }
       if (radiusTop > 1e-9) {
-        this.addTriangle(p0, p3, p2, tNorm, tag);
+        this.addTriangle(p0, p2, p3, tNorm, tag);
       }
     }
 
-    // Top cap (+Y)
+    // Top cap (+Z)
     if (radiusTop > 1e-9) {
-      const topNorm = this.transformNormal(mat, 0, 1, 0);
-      const topCenter = this.transformPoint(mat, 0, hh, 0);
+      const topNorm = this.transformNormal(mat, 0, 0, 1);
+      const topCenter = this.transformPoint(mat, 0, 0, hh);
       for (let i = 0; i < segs; i++) {
         const theta0 = (i / segs) * 2 * Math.PI;
         const theta1 = ((i + 1) / segs) * 2 * Math.PI;
-        const p0 = this.transformPoint(mat, radiusTop * Math.cos(theta0), hh, radiusTop * Math.sin(theta0));
-        const p1 = this.transformPoint(mat, radiusTop * Math.cos(theta1), hh, radiusTop * Math.sin(theta1));
-        this.addTriangle(topCenter, p1, p0, topNorm, tag);
+        const p0 = this.transformPoint(mat, radiusTop * Math.cos(theta0), radiusTop * Math.sin(theta0), hh);
+        const p1 = this.transformPoint(mat, radiusTop * Math.cos(theta1), radiusTop * Math.sin(theta1), hh);
+        this.addTriangle(topCenter, p0, p1, topNorm, tag);
       }
     }
 
-    // Bottom cap (-Y)
+    // Bottom cap (-Z)
     if (radiusBottom > 1e-9) {
-      const botNorm = this.transformNormal(mat, 0, -1, 0);
-      const botCenter = this.transformPoint(mat, 0, -hh, 0);
+      const botNorm = this.transformNormal(mat, 0, 0, -1);
+      const botCenter = this.transformPoint(mat, 0, 0, -hh);
       for (let i = 0; i < segs; i++) {
         const theta0 = (i / segs) * 2 * Math.PI;
         const theta1 = ((i + 1) / segs) * 2 * Math.PI;
-        const p0 = this.transformPoint(mat, radiusBottom * Math.cos(theta0), -hh, radiusBottom * Math.sin(theta0));
-        const p1 = this.transformPoint(mat, radiusBottom * Math.cos(theta1), -hh, radiusBottom * Math.sin(theta1));
-        this.addTriangle(botCenter, p0, p1, botNorm, tag);
+        const p0 = this.transformPoint(mat, radiusBottom * Math.cos(theta0), radiusBottom * Math.sin(theta0), -hh);
+        const p1 = this.transformPoint(mat, radiusBottom * Math.cos(theta1), radiusBottom * Math.sin(theta1), -hh);
+        this.addTriangle(botCenter, p1, p0, botNorm, tag);
       }
     }
   }
@@ -982,7 +1124,7 @@ class SurfaceMeshBuilder {
         const tp01 = this.transformPoint(mat, p01[0], p01[1], p01[2]);
         const tp11 = this.transformPoint(mat, p11[0], p11[1], p11[2]);
 
-        const n = this.transformNormal(mat, Math.cos(u0) * Math.cos(v0), Math.sin(v0), Math.sin(u0) * Math.cos(v0));
+        const n = this.transformNormal(mat, Math.cos(u0) * Math.cos(v0), Math.sin(u0) * Math.cos(v0), Math.sin(v0));
 
         this.addTriangle(tp00, tp10, tp01, n, tag);
         this.addTriangle(tp10, tp11, tp01, n, tag);
@@ -990,11 +1132,11 @@ class SurfaceMeshBuilder {
     }
   }
 
-  /** Evaluates toroidal angles `(u, v)` with radii `(R, r)` to Cartesian `[x, y, z]`. */
+  /** Evaluates toroidal angles `(u, v)` with radii `(R, r)` in the canonical XY plane (`+Z` axis). */
   private torusPoint(R: number, r: number, u: number, v: number): [number, number, number] {
     const x = (R + r * Math.cos(v)) * Math.cos(u);
-    const y = r * Math.sin(v);
-    const z = (R + r * Math.cos(v)) * Math.sin(u);
+    const y = (R + r * Math.cos(v)) * Math.sin(u);
+    const z = r * Math.sin(v);
     return [x, y, z];
   }
 
@@ -1006,6 +1148,7 @@ class SurfaceMeshBuilder {
     scale: number | undefined,
     mat: Mat4,
     tag?: BoundaryPatchTag,
+    bevel?: { amount: number; isChamfer: boolean },
   ): void {
     const N = polygon.length;
     if (N < 3) return;
@@ -1080,23 +1223,82 @@ class SurfaceMeshBuilder {
       }
     }
 
-    // 3. Compute top cap transformation (twist and scale)
+    // 3. Compute top cap transformation (twist and scale) & optional bevel rings
     const rad = twist ? (twist * Math.PI) / 180.0 : 0;
-    const cosT = Math.cos(rad);
-    const sinT = Math.sin(rad);
     const scl = scale !== undefined ? scale : 1.0;
+    const zSign = height < 0 ? -1 : 1;
 
-    const topPts: [number, number, number][] = [];
-    const botPts: [number, number, number][] = [];
-    for (let i = 0; i < N; i++) {
-      const [x, y] = pts[i]!;
-      botPts.push([x, y, 0]);
-      const tx = (x * cosT - y * sinT) * scl;
-      const ty = (x * sinT + y * cosT) * scl;
-      topPts.push([tx, ty, height]);
+    let cx = 0;
+    let cy = 0;
+    for (const [px, py] of pts) {
+      cx += px;
+      cy += py;
+    }
+    cx /= N;
+    cy /= N;
+    let minRadius = Infinity;
+    for (const [px, py] of pts) {
+      const dist = Math.hypot(px - cx, py - cy);
+      if (dist > 1e-6 && dist < minRadius) minRadius = dist;
+    }
+    const maxBevel = Math.min(Math.abs(height) * 0.25, (Number.isFinite(minRadius) ? minRadius : 1) * 0.35);
+    const effBevel = bevel && bevel.amount > 1e-6 ? Math.min(bevel.amount, maxBevel) : 0;
+
+    const ringSpecs: Array<{ zFrac: number; inset: number }> = [];
+    if (effBevel > 1e-6 && Math.abs(height) > 1e-6) {
+      const zFrac = effBevel / Math.abs(height);
+      if (bevel!.isChamfer) {
+        ringSpecs.push(
+          { zFrac: 0, inset: effBevel },
+          { zFrac, inset: 0 },
+          { zFrac: 1 - zFrac, inset: 0 },
+          { zFrac: 1, inset: effBevel },
+        );
+      } else {
+        const steps = 3;
+        for (let s = 0; s <= steps; s++) {
+          const theta = (s / steps) * (Math.PI / 2);
+          ringSpecs.push({
+            zFrac: zFrac * (1 - Math.cos(theta)),
+            inset: effBevel * (1 - Math.sin(theta)),
+          });
+        }
+        for (let s = 0; s <= steps; s++) {
+          const theta = (s / steps) * (Math.PI / 2);
+          ringSpecs.push({
+            zFrac: 1 - zFrac * (1 - Math.sin(theta)),
+            inset: effBevel * (1 - Math.cos(theta)),
+          });
+        }
+      }
+    } else {
+      ringSpecs.push({ zFrac: 0, inset: 0 }, { zFrac: 1, inset: 0 });
     }
 
-    const zSign = height < 0 ? -1 : 1;
+    const rings: [number, number, number][][] = ringSpecs.map(({ zFrac, inset }) => {
+      const z = zFrac * height;
+      const tRad = zFrac * rad;
+      const tc = twist ? Math.cos(tRad) : 1;
+      const ts = twist ? Math.sin(tRad) : 0;
+      const curScale = 1 + (scl - 1) * zFrac;
+      const ring: [number, number, number][] = [];
+      for (let i = 0; i < N; i++) {
+        const [ox, oy] = pts[i]!;
+        const dx = ox - cx;
+        const dy = oy - cy;
+        const dLen = Math.hypot(dx, dy);
+        const radialShrink = dLen > 1e-6 ? Math.max(0.1, (dLen - inset) / dLen) : 1;
+        const bx = cx + dx * radialShrink;
+        const by = cy + dy * radialShrink;
+        const tx = (bx * tc - by * ts) * curScale;
+        const ty = (bx * ts + by * tc) * curScale;
+        ring.push([tx, ty, z]);
+      }
+      return ring;
+    });
+
+    const botPts = rings[0]!;
+    const topPts = rings[rings.length - 1]!;
 
     // 4. Emit bottom cap
     const botNorm = this.transformNormal(mat, 0, 0, -zSign);
@@ -1116,55 +1318,57 @@ class SurfaceMeshBuilder {
       this.addTriangle(p0, p1, p2, topNorm, tag);
     }
 
-    // 6. Emit side quad walls
-    for (let i = 0; i < N; i++) {
-      const j = (i + 1) % N;
-      const lb0 = botPts[i]!;
-      const lb1 = botPts[j]!;
-      const lt1 = topPts[j]!;
-      const lt0 = topPts[i]!;
+    // 6. Emit quad strips between consecutive rings
+    for (let r = 0; r < rings.length - 1; r++) {
+      const rBot = rings[r]!;
+      const rTop = rings[r + 1]!;
+      for (let i = 0; i < N; i++) {
+        const j = (i + 1) % N;
+        const lb0 = rBot[i]!;
+        const lb1 = rBot[j]!;
+        const lt1 = rTop[j]!;
+        const lt0 = rTop[i]!;
 
-      const b0 = this.transformPoint(mat, lb0[0], lb0[1], lb0[2]);
-      const b1 = this.transformPoint(mat, lb1[0], lb1[1], lb1[2]);
-      const t1 = this.transformPoint(mat, lt1[0], lt1[1], lt1[2]);
-      const t0 = this.transformPoint(mat, lt0[0], lt0[1], lt0[2]);
+        const b0 = this.transformPoint(mat, lb0[0], lb0[1], lb0[2]);
+        const b1 = this.transformPoint(mat, lb1[0], lb1[1], lb1[2]);
+        const t1 = this.transformPoint(mat, lt1[0], lt1[1], lt1[2]);
+        const t0 = this.transformPoint(mat, lt0[0], lt0[1], lt0[2]);
 
-      // First triangle (lb0, lb1, lt1) local normal: zSign * (lb1 - lb0) x (lt1 - lb0)
-      const u1x = lb1[0] - lb0[0],
-        u1y = lb1[1] - lb0[1],
-        u1z = lb1[2] - lb0[2];
-      const v1x = lt1[0] - lb0[0],
-        v1y = lt1[1] - lb0[1],
-        v1z = lt1[2] - lb0[2];
-      const n1x = zSign * (u1y * v1z - u1z * v1y);
-      const n1y = zSign * (u1z * v1x - u1x * v1z);
-      const n1z = zSign * (u1x * v1y - u1y * v1x);
-      const len1 = Math.hypot(n1x, n1y, n1z);
+        const u1x = lb1[0] - lb0[0],
+          u1y = lb1[1] - lb0[1],
+          u1z = lb1[2] - lb0[2];
+        const v1x = lt1[0] - lb0[0],
+          v1y = lt1[1] - lb0[1],
+          v1z = lt1[2] - lb0[2];
+        const n1x = zSign * (u1y * v1z - u1z * v1y);
+        const n1y = zSign * (u1z * v1x - u1x * v1z);
+        const n1z = zSign * (u1x * v1y - u1y * v1x);
+        const len1 = Math.hypot(n1x, n1y, n1z);
 
-      // Second triangle (lb0, lt1, lt0) local normal: zSign * (lt1 - lb0) x (lt0 - lb0)
-      const v2x = lt0[0] - lb0[0],
-        v2y = lt0[1] - lb0[1],
-        v2z = lt0[2] - lb0[2];
-      const n2x = zSign * (v1y * v2z - v1z * v2y);
-      const n2y = zSign * (v1z * v2x - v1x * v2z);
-      const n2z = zSign * (v1x * v2y - v1y * v2x);
-      const len2 = Math.hypot(n2x, n2y, n2z);
+        const v2x = lt0[0] - lb0[0],
+          v2y = lt0[1] - lb0[1],
+          v2z = lt0[2] - lb0[2];
+        const n2x = zSign * (v1y * v2z - v1z * v2y);
+        const n2y = zSign * (v1z * v2x - v1x * v2z);
+        const n2z = zSign * (v1x * v2y - v1y * v2x);
+        const len2 = Math.hypot(n2x, n2y, n2z);
 
-      const dx = pts[j]![0] - pts[i]![0];
-      const dy = pts[j]![1] - pts[i]![1];
-      const lenFallback = Math.hypot(dx, dy) || 1.0;
+        const dx = pts[j]![0] - pts[i]![0];
+        const dy = pts[j]![1] - pts[i]![1];
+        const lenFallback = Math.hypot(dx, dy) || 1.0;
 
-      const norm1 =
-        len1 > 1e-12
-          ? this.transformNormal(mat, n1x / len1, n1y / len1, n1z / len1)
-          : this.transformNormal(mat, dy / lenFallback, -dx / lenFallback, 0);
-      const norm2 = len2 > 1e-12 ? this.transformNormal(mat, n2x / len2, n2y / len2, n2z / len2) : norm1;
+        const norm1 =
+          len1 > 1e-12
+            ? this.transformNormal(mat, n1x / len1, n1y / len1, n1z / len1)
+            : this.transformNormal(mat, dy / lenFallback, -dx / lenFallback, 0);
+        const norm2 = len2 > 1e-12 ? this.transformNormal(mat, n2x / len2, n2y / len2, n2z / len2) : norm1;
 
-      if (len1 > 1e-12) {
-        this.addTriangle(b0, b1, t1, norm1, tag);
-      }
-      if (len2 > 1e-12) {
-        this.addTriangle(b0, t1, t0, norm2, tag);
+        if (len1 > 1e-12) {
+          this.addTriangle(b0, b1, t1, norm1, tag);
+        }
+        if (len2 > 1e-12) {
+          this.addTriangle(b0, t1, t0, norm2, tag);
+        }
       }
     }
   }

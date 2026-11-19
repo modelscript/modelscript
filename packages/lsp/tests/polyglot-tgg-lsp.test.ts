@@ -254,4 +254,51 @@ part def Motor {
     // Verify updated attribute value
     expect(res.targetSource).toContain("attribute R : Real = 1.5");
   });
+
+  it("should process live DBSP Z-set symbol additions and retractions via modelscript/syncSymbolDeltas", async () => {
+    const handlers = new Map<string, (...args: any[]) => any>();
+    const corr = new MockCorrespondenceIndex();
+    let propagated = false;
+    (corr as any).propagateAllStale = () => {
+      propagated = true;
+      return 1;
+    };
+
+    const mockConnection: any = {
+      onRequest: (method: string, handler: (...args: any[]) => any) => {
+        handlers.set(method, handler);
+      },
+      sendDiagnostics: () => {},
+      console: { info: () => {}, warn: () => {}, error: () => {} },
+    };
+    const mockWorkspaceManager = {
+      unifiedWorkspace: { queryEngine: { getCorrespondenceIndex: () => corr } },
+    };
+
+    registerPolyglotEndpoints(mockConnection, { get: () => undefined }, {}, {}, mockWorkspaceManager);
+
+    const deltaHandler = handlers.get("modelscript/syncSymbolDeltas");
+    expect(deltaHandler).toBeDefined();
+
+    const addRes = await deltaHandler!({
+      uri: "file:///test/Motor.mo",
+      targetLang: "sysml2",
+      deltas: {
+        added: [{ id: "Motor", kind: "model", name: "Motor", attributes: [{ name: "R", type: "Real", value: "2.5" }] }],
+      },
+    });
+    expect(addRes.success).toBe(true);
+    expect(addRes.applied).toBe(1);
+    expect(addRes.retracted).toBe(0);
+    expect(addRes.targetSources[0]).toContain("Motor");
+    expect(propagated).toBe(true);
+
+    const retractRes = await deltaHandler!({
+      uri: "file:///test/Motor.mo",
+      targetLang: "sysml2",
+      deltas: { removed: ["Motor"] },
+    });
+    expect(retractRes.success).toBe(true);
+    expect(retractRes.retracted).toBe(1);
+  });
 });

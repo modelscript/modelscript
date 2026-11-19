@@ -5498,6 +5498,13 @@
         "type": "boolean",
         "description": "Treat warnings as errors",
         "default": false
+      },
+      {
+        "name": "formal",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Run on-demand deep formal verification checks (Modelica M7xxx & SysML v2 S7xxx)",
+        "default": false
       }
     ],
     "subcommands": []

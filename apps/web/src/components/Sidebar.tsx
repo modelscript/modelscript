@@ -1171,6 +1171,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
       return;
     }
     if (
+      location.pathname === "/editor" ||
+      location.pathname.startsWith("/editor/") ||
       location.pathname === "/morsel" ||
       location.pathname.startsWith("/morsel/") ||
       location.pathname === "/sketch" ||
@@ -1375,15 +1377,15 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
               </SplitPostButtonAction>
               <SplitPostButtonDivider aria-hidden="true" className="post-split-divider" />
               <SplitMorselButtonLink
-                to="/morsel"
+                to="/editor"
                 onClick={handleMorselClick}
                 className="post-split-btn post-split-btn-morsel"
-                aria-label="Morsel"
-                title="Morsel"
+                aria-label="Ansatz"
+                title="Ansatz"
                 data-testid="sidebar-morsel-button"
               >
                 <MorselIcon size={16} color="currentColor" className="post-split-icon post-split-morsel-icon" />
-                <span className="post-text">Morsel</span>
+                <span className="post-text">Ansatz</span>
               </SplitMorselButtonLink>
               <SplitStudioButtonLink
                 to="/studio"
@@ -1401,15 +1403,15 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
           <Box mt={2} width="100%" px={1} className="post-btn-container">
             <SplitPostButtonContainer className="post-split-btn-group">
               <GuestMorselButtonLink
-                to="/morsel"
+                to="/editor"
                 onClick={handleMorselClick}
                 className="post-split-btn post-split-btn-morsel"
-                aria-label="Morsel"
-                title="Morsel"
+                aria-label="Ansatz"
+                title="Ansatz"
                 data-testid="sidebar-guest-morsel-button"
               >
                 <MorselIcon size={16} color="currentColor" className="post-split-icon" />
-                <span className="post-text">Morsel</span>
+                <span className="post-text">Ansatz</span>
               </GuestMorselButtonLink>
               <SplitStudioButtonLink
                 to="/studio"

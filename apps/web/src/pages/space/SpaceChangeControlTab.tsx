@@ -1522,8 +1522,8 @@ export const SpaceChangeControlTab: React.FC<SpaceChangeControlTabProps> = ({
                             {activeEco.impacted_models.map((model) => (
                               <Link
                                 key={model}
-                                to={`/morsel?code=${encodeURIComponent(`// Modelica model: ${model}\nmodel ImpactedModel\n  // DAE verification gate\nend ImpactedModel;\n`)}`}
-                                title={`Simulate ${model} in WebAssembly Playground`}
+                                to={`/editor?code=${encodeURIComponent(`// Modelica model: ${model}\nmodel ImpactedModel\n  // DAE verification gate\nend ImpactedModel;\n`)}`}
+                                title={`Simulate ${model} in Ansatz`}
                                 style={{
                                   display: "inline-flex",
                                   alignItems: "center",

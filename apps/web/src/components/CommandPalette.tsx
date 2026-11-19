@@ -373,11 +373,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       {
         id: "nav-morsel",
         category: "Navigation",
-        title: "Morsel",
-        subtitle: "Draft, simulate, and visualize engineering models in the browser",
+        title: "Ansatz",
+        subtitle: "Draft, simulate, and visualize models in the browser",
         icon: <MorselIcon size={16} />,
         action: () => {
-          navigate("/morsel");
+          navigate("/editor");
           onClose();
         },
       },
@@ -611,6 +611,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       : [];
 
     const isEngineeringRoute =
+      location.pathname.startsWith("/editor") ||
       location.pathname.startsWith("/playground") ||
       location.pathname.startsWith("/sketch") ||
       location.pathname.startsWith("/morsel") ||

@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  applyOptimisticPropertyAction,
+  DiagramActionQueue,
+  isOptimisticDiagramActionBatch,
+  SerializedDiagramEditRunner,
+} from "@modelscript/diagram";
 import { decodeDataUrl } from "@modelscript/dsl/utils";
 import { detectPolyglotLanguage } from "@modelscript/lsp/utils/polyglot-detector.js";
 import type { editor } from "monaco-editor";
@@ -8,11 +14,11 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useTheme as useSiteTheme } from "../../theme";
 import type { CodeEditorHandle } from "./Code";
 import {
-  MORSEL_LANGUAGES,
   detectLanguageFromFilename,
   getDefaultLanguageView,
   getLanguageExtension,
   getLanguageInfo,
+  MORSEL_LANGUAGES,
 } from "./constants";
 import type { DiagramEditorHandle } from "./Diagram";
 import "./morsel.css";
@@ -29,6 +35,8 @@ import {
   getComponentProperties,
   getDiagramData,
   parseCode,
+  runFormalLints,
+  type MorselOnDemandLintMode,
 } from "./util/lsp-bridge";
 import { startLsp } from "./util/lsp-worker";
 
@@ -148,6 +156,12 @@ export default function MorselEditor(props: MorselEditorProps) {
     }
   }, [props.diagramType, props.initialDiagramType, initialLangInfo.diagramTypes]);
   const [sidecarContent, setSidecarContent] = useState<string | undefined>(undefined);
+  const sidecarContentRef = useRef<string | undefined>(undefined);
+  sidecarContentRef.current = sidecarContent;
+  const sidecarHistoryRef = useRef<{
+    undo: Array<{ prev: string | undefined; next: string | undefined; hadTextEdit: boolean }>;
+    redo: Array<{ prev: string | undefined; next: string | undefined; hadTextEdit: boolean }>;
+  }>({ undo: [], redo: [] });
   const instanceDocPrefix = useMemo(
     () => (props.embed ? `file:///embed_${nextEmbedMorselId++}_document` : "file:///document"),
     [props.embed],
@@ -165,6 +179,39 @@ export default function MorselEditor(props: MorselEditorProps) {
   }, [embedRootPrefix, instanceDocPrefix, dialect, props.activeFileName]);
   const documentUriRef = useRef(documentUri);
   documentUriRef.current = documentUri;
+  const activeFileNameRef = useRef(props.activeFileName);
+  activeFileNameRef.current = props.activeFileName;
+  const projectFilesRef = useRef(props.projectFiles);
+  projectFilesRef.current = props.projectFiles;
+  const onUpdateProjectFileRef = useRef(props.onUpdateProjectFile);
+  onUpdateProjectFileRef.current = props.onUpdateProjectFile;
+
+  const persistSidecarToProjectFiles = useCallback((nextContent: string | undefined) => {
+    const activeName = activeFileNameRef.current;
+    const updater = onUpdateProjectFileRef.current;
+    if (!activeName || !updater) return;
+    const primaryKey = `${activeName}.layout`;
+    const dotIdx = activeName.lastIndexOf(".");
+    const legacyKey = dotIdx > 0 ? `${activeName.slice(0, dotIdx)}.layout` : undefined;
+    const files = projectFilesRef.current;
+    const targetKey =
+      files && primaryKey in files ? primaryKey : files && legacyKey && legacyKey in files ? legacyKey : primaryKey;
+    updater(targetKey, nextContent ?? "{}");
+  }, []);
+
+  useEffect(() => {
+    sidecarHistoryRef.current = { undo: [], redo: [] };
+    const activeName = activeFileNameRef.current;
+    const files = projectFilesRef.current;
+    let initialSidecar: string | undefined = undefined;
+    if (files && activeName) {
+      const primaryKey = `${activeName}.layout`;
+      const dotIdx = activeName.lastIndexOf(".");
+      const legacyKey = dotIdx > 0 ? `${activeName.slice(0, dotIdx)}.layout` : undefined;
+      initialSidecar = files[primaryKey] ?? (legacyKey ? files[legacyKey] : undefined);
+    }
+    setSidecarContent(initialSidecar);
+  }, [documentUri]);
 
   const syncedProjectFilesRef = useRef<Map<string, { uri: string; text: string }>>(new Map());
   useEffect(() => {
@@ -188,7 +235,7 @@ export default function MorselEditor(props: MorselEditorProps) {
     };
 
     for (const [fileName, text] of Object.entries(files)) {
-      if (fileName === props.activeFileName) {
+      if (fileName === props.activeFileName || fileName.toLowerCase().endsWith(".layout")) {
         synced.delete(fileName);
         continue;
       }
@@ -346,6 +393,8 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [contextVersion, setContextVersion] = useState(0);
   const [editorDiagnostics, setEditorDiagnostics] = useState<editor.IMarkerData[]>([]);
   const [diagnosticsByUri, setDiagnosticsByUri] = useState<Map<string, editor.IMarkerData[]>>(() => new Map());
+  const [onDemandMarkersByUri, setOnDemandMarkersByUri] = useState<Map<string, editor.IMarkerData[]>>(() => new Map());
+  const [isRunningOnDemandLints, setIsRunningOnDemandLints] = useState(false);
   const [isDiagnosticsExpanded, setIsDiagnosticsExpanded] = useState(false);
   const [diagnosticsPanelHeight, setDiagnosticsPanelHeight] = useState(160);
   const userToggledDiagnosticsRef = useRef(false);
@@ -373,19 +422,113 @@ export default function MorselEditor(props: MorselEditorProps) {
     setEditorDiagnostics(diagnosticsByUri.get(documentUri) ?? []);
   }, [documentUri, diagnosticsByUri]);
 
+  const activeOnDemandMarkers = useMemo(
+    () => onDemandMarkersByUri.get(documentUri) ?? [],
+    [documentUri, onDemandMarkersByUri],
+  );
+
+  const mergedEditorDiagnostics = useMemo(() => {
+    if (activeOnDemandMarkers.length === 0) return editorDiagnostics;
+    const seen = new Set<string>();
+    const out: editor.IMarkerData[] = [];
+    for (const m of editorDiagnostics) {
+      const codeVal = typeof m.code === "object" && m.code !== null ? m.code.value : (m.code ?? "");
+      seen.add(`${m.startLineNumber}:${m.startColumn}:${codeVal}:${m.message}`);
+      out.push(m);
+    }
+    for (const m of activeOnDemandMarkers) {
+      const codeVal = typeof m.code === "object" && m.code !== null ? m.code.value : (m.code ?? "");
+      const key = `${m.startLineNumber}:${m.startColumn}:${codeVal}:${m.message}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(m);
+      }
+    }
+    return out;
+  }, [editorDiagnostics, activeOnDemandMarkers]);
+
+  const handleClearOnDemandLints = useCallback(() => {
+    const targetUri = documentUriRef.current;
+    setOnDemandMarkersByUri((prev) => {
+      if (!prev.has(targetUri)) return prev;
+      const next = new Map(prev);
+      next.delete(targetUri);
+      return next;
+    });
+  }, []);
+
+  const handleRunOnDemandLints = useCallback(
+    async (mode: MorselOnDemandLintMode = "all") => {
+      const targetUri = documentUriRef.current;
+      const currentCode = editor?.getValue() ?? content;
+      setIsRunningOnDemandLints(true);
+      try {
+        await didOpen(targetUri, currentCode, dialect);
+        const res = await runFormalLints(targetUri, {
+          includeFormal: mode === "all" || mode === "formal",
+          includeCompilerLints: mode === "all" || mode === "compiler",
+        });
+        if (!res.ok) {
+          toast.error(res.error || "On-demand verification failed.");
+          return;
+        }
+        const converted: editor.IMarkerData[] = (res.diagnostics ?? []).map((d) => ({
+          startLineNumber: (d.range?.start?.line ?? 0) + 1,
+          startColumn: (d.range?.start?.character ?? 0) + 1,
+          endLineNumber: (d.range?.end?.line ?? 0) + 1,
+          endColumn: Math.max((d.range?.end?.character ?? 0) + 1, (d.range?.start?.character ?? 0) + 2),
+          severity: d.severity === 1 ? 8 : d.severity === 2 ? 4 : 2,
+          message: d.message,
+          ...(d.code !== undefined ? { code: String(d.code) } : {}),
+          source: d.source ?? "modelscript-formal",
+        }));
+        setOnDemandMarkersByUri((prev) => {
+          const next = new Map(prev);
+          if (converted.length === 0) {
+            next.delete(targetUri);
+          } else {
+            next.set(targetUri, converted);
+          }
+          return next;
+        });
+        const modeLabel =
+          mode === "formal"
+            ? "Formal verification"
+            : mode === "compiler"
+              ? "WASM compiler lints"
+              : "Formal & compiler verification";
+        if (converted.length === 0) {
+          toast.success(`${modeLabel} passed with no diagnostics.`);
+        } else {
+          setIsDiagnosticsExpanded(true);
+          toast.warning(
+            `${modeLabel} found ${converted.length} diagnostic(s) (${res.formalCount ?? 0} formal, ${res.compilerCount ?? 0} compiler).`,
+          );
+        }
+      } catch (err) {
+        toast.error(`Failed to run on-demand verification: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setIsRunningOnDemandLints(false);
+      }
+    },
+    [editor, content, dialect, toast],
+  );
+
   const projectDiagnostics = useMemo(() => {
     if (!props.projectFiles) return undefined;
     const result: Array<{ fileName: string; uri: string; markers: editor.IMarkerData[] }> = [];
     for (const fileName of Object.keys(props.projectFiles)) {
       const cleanName = fileName.replace(/^\/+/, "");
       const uri = `${embedRootPrefix}/${cleanName}`;
-      const markers = diagnosticsByUri.get(uri);
+      const baseMarkers = diagnosticsByUri.get(uri) ?? [];
+      const extraMarkers = onDemandMarkersByUri.get(uri) ?? [];
+      const markers = extraMarkers.length > 0 ? [...baseMarkers, ...extraMarkers] : baseMarkers;
       if (markers && markers.length > 0) {
         result.push({ fileName, uri, markers });
       }
     }
     return result;
-  }, [props.projectFiles, embedRootPrefix, diagnosticsByUri]);
+  }, [props.projectFiles, embedRootPrefix, diagnosticsByUri, onDemandMarkersByUri]);
 
   const fileDiagnosticCounts = useMemo(() => {
     if (!props.projectFiles) return undefined;
@@ -393,7 +536,9 @@ export default function MorselEditor(props: MorselEditorProps) {
     for (const fileName of Object.keys(props.projectFiles)) {
       const cleanName = fileName.replace(/^\/+/, "");
       const uri = `${embedRootPrefix}/${cleanName}`;
-      const markers = diagnosticsByUri.get(uri);
+      const baseMarkers = diagnosticsByUri.get(uri) ?? [];
+      const extraMarkers = onDemandMarkersByUri.get(uri) ?? [];
+      const markers = extraMarkers.length > 0 ? [...baseMarkers, ...extraMarkers] : baseMarkers;
       if (markers && markers.length > 0) {
         let errors = 0;
         let warnings = 0;
@@ -407,7 +552,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       }
     }
     return counts;
-  }, [props.projectFiles, embedRootPrefix, diagnosticsByUri]);
+  }, [props.projectFiles, embedRootPrefix, diagnosticsByUri, onDemandMarkersByUri]);
 
   const handleToggleDiagnostics = useCallback(() => {
     userToggledDiagnosticsRef.current = true;
@@ -720,134 +865,135 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
   const translations = useMemo(() => getTranslations(language), [language]);
 
-  const pendingDiagramActionsRef = useRef<any[]>([]);
-  const diagramActionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const diagramEditQueueRef = useRef<Promise<void>>(Promise.resolve());
-  const diagramEditSeqRef = useRef(1);
+  const diagramActionQueueRef = useRef<DiagramActionQueue<any> | null>(null);
+  const diagramEditRunnerRef = useRef<SerializedDiagramEditRunner>(new SerializedDiagramEditRunner());
   const selectedTreeClassNameRef = useRef<string | null>(selectedTreeClassName);
   selectedTreeClassNameRef.current = selectedTreeClassName;
   const onCodeChangeRef = useRef(props.onCodeChange);
   onCodeChangeRef.current = props.onCodeChange;
 
-  const enqueueDiagramAction = useCallback(
-    (action: any) => {
-      pendingDiagramActionsRef.current.push(action);
-      if (diagramActionTimerRef.current) clearTimeout(diagramActionTimerRef.current);
-
-      // Optimistically update selectedComponentProperties so Property Panel stays in sync immediately
-      if (action.type === "updateParameter" || action.type === "updateProperty") {
-        const paramKey = action.type === "updateParameter" ? action.parameter : action.key;
-        const paramVal = String(action.value ?? "");
-        setSelectedComponentProperties((prev: any) => {
-          if (!prev || prev.name !== action.name) return prev;
-          return {
-            ...prev,
-            values: {
-              ...(prev.values || {}),
-              [paramKey]: action.value,
-            },
-            parameters: Array.isArray(prev.parameters)
-              ? prev.parameters.map((p: any) => (p.name === paramKey ? { ...p, value: paramVal } : p))
-              : prev.parameters,
-            properties:
-              prev.properties && typeof prev.properties === "object"
-                ? { ...prev.properties, [paramKey]: action.value }
-                : prev.properties,
-          };
-        });
-        diagramEditorRef.current?.updateParameterText?.(action.name, paramKey, action.oldValue ?? "", paramVal);
-      } else if (action.type === "updateName") {
-        setSelectedComponentProperties((prev: any) =>
-          prev && prev.name === action.oldName ? { ...prev, name: action.newName } : prev,
-        );
-      } else if (action.type === "updateDescription") {
-        setSelectedComponentProperties((prev: any) =>
-          prev && prev.name === action.name ? { ...prev, description: action.description } : prev,
-        );
-      }
-
-      const isSpatial = ["move", "resize", "rotate", "moveEdge"].includes(action.type);
-      const isOptimisticOnly =
-        isSpatial ||
-        action.type === "updateParameter" ||
-        action.type === "updateProperty" ||
-        action.type === "updateName" ||
-        action.type === "updateDescription";
-      if (!isOptimisticOnly && !diagramDataRef.current) {
-        setIsDiagramLoading(true);
-      }
-      const delay = isSpatial ? 8 : 0;
-
-      diagramActionTimerRef.current = setTimeout(() => {
-        const actions = pendingDiagramActionsRef.current;
-        pendingDiagramActionsRef.current = [];
-        diagramActionTimerRef.current = null;
-        if (actions.length > 0) {
-          diagramEditQueueRef.current = diagramEditQueueRef.current
-            .then(async () => {
-              // Flush any pending/debounced live Monaco edits before computing LSP diagram TextEdits
-              if (editorRef.current) {
-                const liveCode = editorRef.current.getValue();
-                if (liveCode !== lastLoadedContentRef.current) {
-                  setLastLoadedContent(liveCode);
-                  if (codeEditorRef.current) {
-                    await codeEditorRef.current.sync();
-                  } else {
-                    await didChange(documentUriRef.current, liveCode);
-                  }
-                }
-              }
-              const seq = diagramEditSeqRef.current++;
-              const response = await applyDiagramEdits(
-                documentUriRef.current,
-                actions,
-                seq,
-                selectedTreeClassNameRef.current ?? undefined,
-              );
-              if (response?.sidecarContent !== undefined) {
-                setSidecarContent(response.sidecarContent);
-              }
-              if (response && response.edits && response.edits.length > 0) {
-                isSpatialEditPending.current = true;
-                lastDiagramEditTimeRef.current = Date.now();
-                if (editorRef.current) {
-                  applyLspEdits(editorRef.current, response.edits, actions[0].type);
-                  const updatedCode = editorRef.current.getValue();
-                  setLastLoadedContent(updatedCode);
-                  if (codeEditorRef.current) {
-                    await codeEditorRef.current.sync();
-                  } else {
-                    await didChange(documentUriRef.current, updatedCode);
-                  }
-                  onCodeChangeRef.current?.(updatedCode);
-                } else {
-                  const baseText = lastLoadedContentRef.current || content;
-                  const updatedCode = applyLspTextEditsToString(baseText, response.edits);
-                  setLastLoadedContent(updatedCode);
-                  await didChange(documentUriRef.current, updatedCode);
-                  onCodeChangeRef.current?.(updatedCode);
-                }
-                if (response.renderHint === "none") {
-                  setIsDiagramLoading(false);
-                } else {
-                  setContextVersion((v) => v + 1);
-                }
-              } else if (response?.sidecarContent !== undefined) {
-                setIsDiagramLoading(false);
-                setContextVersion((v) => v + 1);
+  const flushDiagramActionBatch = useCallback(
+    (actions: any[]) => {
+      if (actions.length === 0) return;
+      diagramEditRunnerRef.current.enqueue(
+        async (seq) => {
+          // Flush any pending/debounced live Monaco edits before computing LSP diagram TextEdits
+          if (editorRef.current) {
+            const liveCode = editorRef.current.getValue();
+            if (liveCode !== lastLoadedContentRef.current) {
+              setLastLoadedContent(liveCode);
+              if (codeEditorRef.current) {
+                await codeEditorRef.current.sync();
               } else {
-                setIsDiagramLoading(false);
+                await didChange(documentUriRef.current, liveCode);
               }
-            })
-            .catch((err) => {
-              console.error("Failed to apply diagram edit batch:", err);
+            }
+          }
+          const response = await applyDiagramEdits(
+            documentUriRef.current,
+            actions,
+            seq,
+            selectedTreeClassNameRef.current ?? undefined,
+          );
+          if (response?.sidecarContent !== undefined) {
+            if (response.sidecarContent !== sidecarContentRef.current) {
+              const stack = sidecarHistoryRef.current;
+              stack.undo.push({
+                prev: sidecarContentRef.current,
+                next: response.sidecarContent,
+                hadTextEdit: Boolean(response?.edits && response.edits.length > 0),
+              });
+              if (stack.undo.length > 100) stack.undo.shift();
+              stack.redo.length = 0;
+              persistSidecarToProjectFiles(response.sidecarContent);
+            }
+            setSidecarContent(response.sidecarContent);
+          }
+          if (response && response.edits && response.edits.length > 0) {
+            isSpatialEditPending.current = true;
+            lastDiagramEditTimeRef.current = Date.now();
+            if (editorRef.current) {
+              applyLspEdits(editorRef.current, response.edits, actions[0].type);
+              const updatedCode = editorRef.current.getValue();
+              setLastLoadedContent(updatedCode);
+              if (codeEditorRef.current) {
+                await codeEditorRef.current.sync();
+              } else {
+                await didChange(documentUriRef.current, updatedCode);
+              }
+              onCodeChangeRef.current?.(updatedCode);
+            } else {
+              const baseText = lastLoadedContentRef.current || content;
+              const updatedCode = applyLspTextEditsToString(baseText, response.edits);
+              setLastLoadedContent(updatedCode);
+              await didChange(documentUriRef.current, updatedCode);
+              onCodeChangeRef.current?.(updatedCode);
+            }
+            if (response.renderHint === "none") {
               setIsDiagramLoading(false);
-            });
-        }
-      }, delay);
+            } else {
+              setContextVersion((v) => v + 1);
+            }
+          } else if (response?.sidecarContent !== undefined) {
+            setIsDiagramLoading(false);
+            setContextVersion((v) => v + 1);
+          } else {
+            setIsDiagramLoading(false);
+          }
+        },
+        (err) => {
+          console.error("Failed to apply diagram edit batch:", err);
+          setIsDiagramLoading(false);
+        },
+      );
     },
     [content],
   );
+
+  const flushDiagramActionBatchRef = useRef(flushDiagramActionBatch);
+  flushDiagramActionBatchRef.current = flushDiagramActionBatch;
+
+  useEffect(() => {
+    const queue = new DiagramActionQueue<any>({
+      spatialDelayMs: 8,
+      structuralDelayMs: 0,
+      onFlush: (actions) => flushDiagramActionBatchRef.current(actions),
+    });
+    diagramActionQueueRef.current = queue;
+    return () => {
+      queue.dispose();
+      diagramActionQueueRef.current = null;
+    };
+  }, []);
+
+  const enqueueDiagramAction = useCallback((action: any) => {
+    // Optimistically update selectedComponentProperties so Property Panel stays in sync immediately
+    if (
+      action.type === "updateParameter" ||
+      action.type === "updateProperty" ||
+      action.type === "updateName" ||
+      action.type === "updateDescription"
+    ) {
+      setSelectedComponentProperties((prev: any) => applyOptimisticPropertyAction(prev, action));
+      if (action.type === "updateParameter" || action.type === "updateProperty") {
+        const paramKey = action.type === "updateParameter" ? action.parameter : action.key;
+        const paramVal = String(action.value ?? "");
+        diagramEditorRef.current?.updateParameterText?.(action.name, paramKey, action.oldValue ?? "", paramVal);
+      }
+    }
+
+    const isOptimisticOnly =
+      isOptimisticDiagramActionBatch([action]) || action.type === "updateName" || action.type === "updateDescription";
+    if (!isOptimisticOnly && !diagramDataRef.current) {
+      setIsDiagramLoading(true);
+    }
+
+    if (diagramActionQueueRef.current) {
+      diagramActionQueueRef.current.enqueue(action);
+    } else {
+      flushDiagramActionBatchRef.current([action]);
+    }
+  }, []);
 
   const handleRevealLine = useCallback((line: number, identifier?: string) => {
     const ed = editorRef.current;
@@ -1753,7 +1899,8 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   const isPlaygroundRoute =
     typeof window !== "undefined" &&
-    (window.location.pathname.startsWith("/playground") ||
+    (window.location.pathname.startsWith("/editor") ||
+      window.location.pathname.startsWith("/playground") ||
       window.location.pathname.startsWith("/sketch") ||
       window.location.pathname.startsWith("/morsel"));
   const isFloatingWorkspace =
@@ -1972,6 +2119,32 @@ export default function MorselEditor(props: MorselEditorProps) {
                 setIsDiagramLoading={setIsDiagramLoading}
                 handleSelectComponent={handleSelectComponent}
                 enqueueDiagramAction={enqueueDiagramAction}
+                onResetSpatialCooldown={() => {
+                  lastDiagramEditTimeRef.current = 0;
+                  isSpatialEditPending.current = false;
+                }}
+                onDiagramUndo={() => {
+                  lastDiagramEditTimeRef.current = 0;
+                  isSpatialEditPending.current = false;
+                  const entry = sidecarHistoryRef.current.undo.pop();
+                  if (!entry) return true;
+                  sidecarHistoryRef.current.redo.push(entry);
+                  setSidecarContent(entry.prev);
+                  persistSidecarToProjectFiles(entry.prev);
+                  setContextVersion((v) => v + 1);
+                  return entry.hadTextEdit;
+                }}
+                onDiagramRedo={() => {
+                  lastDiagramEditTimeRef.current = 0;
+                  isSpatialEditPending.current = false;
+                  const entry = sidecarHistoryRef.current.redo.pop();
+                  if (!entry) return true;
+                  sidecarHistoryRef.current.undo.push(entry);
+                  setSidecarContent(entry.next);
+                  persistSidecarToProjectFiles(entry.next);
+                  setContextVersion((v) => v + 1);
+                  return entry.hadTextEdit;
+                }}
                 editor={editor}
                 editorRef={editorRef}
                 isSpatialEditPending={isSpatialEditPending}
@@ -2282,7 +2455,10 @@ export default function MorselEditor(props: MorselEditorProps) {
                     embed={props.embed ?? false}
                     setEditor={setEditor}
                     content={content}
-                    onChange={props.onCodeChange}
+                    onChange={(nextText) => {
+                      handleClearOnDemandLints();
+                      props.onCodeChange?.(nextText);
+                    }}
                     onParsed={() => {
                       if (dialect !== "modelica" && dialect !== "modelscript") {
                         setContextVersion((v) => v + 1);
@@ -2295,13 +2471,14 @@ export default function MorselEditor(props: MorselEditorProps) {
                     externalErrors={
                       simulationStatus?.status === "failed" && simulationStatus.error ? [simulationStatus.error] : []
                     }
+                    externalMarkers={activeOnDemandMarkers}
                   />
                 </Suspense>
               </div>
             </div>
             {!isNarrow && !props.embed && (
               <MorselDiagnosticsPanel
-                diagnostics={editorDiagnostics}
+                diagnostics={mergedEditorDiagnostics}
                 projectDiagnostics={projectDiagnostics}
                 activeFileName={props.activeFileName}
                 colorMode={colorMode}
@@ -2313,6 +2490,10 @@ export default function MorselEditor(props: MorselEditorProps) {
                 panelHeight={diagnosticsPanelHeight}
                 onResizeHeight={setDiagnosticsPanelHeight}
                 onSelectDiagnostic={handleSelectDiagnostic}
+                onRunOnDemandLints={handleRunOnDemandLints}
+                onClearOnDemandLints={handleClearOnDemandLints}
+                isRunningOnDemandLints={isRunningOnDemandLints}
+                hasOnDemandResults={activeOnDemandMarkers.length > 0}
                 onSelectProjectDiagnostic={(fileName, marker) => {
                   if (fileName !== props.activeFileName) {
                     props.onSelectProjectFile?.(fileName);
@@ -2356,6 +2537,8 @@ export default function MorselEditor(props: MorselEditorProps) {
             onSimulate={handleSimulate}
             onOpenCloudModal={() => setIsCloudModalOpen(true)}
             onFlatten={handleFlatten}
+            onRunOnDemandLints={handleRunOnDemandLints}
+            isRunningOnDemandLints={isRunningOnDemandLints}
             shareButtonRef={shareButtonRef}
             isShareDialogOpen={isShareDialogOpen}
             setShareDialogOpen={setShareDialogOpen}
@@ -2377,7 +2560,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             colorMode={colorMode}
             fileName={props.activeFileName || `model.${getLanguageExtension(dialect)}`}
             dialect={dialect}
-            diagnostics={formatMonacoMarkers(editorDiagnostics)}
+            diagnostics={formatMonacoMarkers(mergedEditorDiagnostics)}
             initialPrompt={aiInitialPrompt}
             onConsumeInitialPrompt={() => setAiInitialPrompt(undefined)}
             toolHost={
@@ -2385,7 +2568,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                 getFileName: () => props.activeFileName || `model.${getLanguageExtension(dialect)}`,
                 getDialect: () => dialect,
                 getCode: () => editor?.getValue() ?? content,
-                getDiagnostics: () => formatMonacoMarkers(editorDiagnostics),
+                getDiagnostics: () => formatMonacoMarkers(mergedEditorDiagnostics),
                 getSelectedComponent: () => selectedTreeClassName || undefined,
                 applyCodeEdit: (nextCode, description) => {
                   const model = editor?.getModel();

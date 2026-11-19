@@ -1049,7 +1049,7 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
                               {activeIssueDetail.impacted_models.map((m) => (
                                 <Link
                                   key={m}
-                                  to={`/morsel?code=${encodeURIComponent(`// Modelica model: ${m}\nmodel InvestigatedModel\n  // Issue investigation\nend InvestigatedModel;\n`)}`}
+                                  to={`/editor?code=${encodeURIComponent(`// Modelica model: ${m}\nmodel InvestigatedModel\n  // Issue investigation\nend InvestigatedModel;\n`)}`}
                                   style={{
                                     display: "inline-flex",
                                     alignItems: "center",

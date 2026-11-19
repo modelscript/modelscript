@@ -58,6 +58,26 @@ export const feaLanguage = language({
       dark: "./assets/fea/icon-dark.png",
     },
   },
+  ui: {
+    panels: [
+      {
+        id: "inpEditor",
+        viewType: "modelscript.inpEditor",
+        title: "FEA Deck & 3D Simulation Viewer",
+        shortTitle: "FEA Deck",
+        selector: ["*.inp", "*.inpt"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/FeaPanel.tsx",
+        artifactViewTypes: ["fea", "inp", "calculix", "fea-deck"],
+      },
+    ],
+    stencils: [
+      { label: "Material", snippet: "*MATERIAL, NAME=ALUMINUM_6061\n*ELASTIC\n68900.0, 0.33\n*DENSITY\n2.7e-9\n" },
+      { label: "Boundary", snippet: "*BOUNDARY\n1, 1, 3, 0.0\n" },
+      { label: "Concentrated Load", snippet: "*CLOAD\n4, 2, -500.0\n" },
+    ],
+  },
 
   // IDE and AI agent actions for 3D FEA mesh viewing, template materialization, and linear-elasticity simulation
   actions: [

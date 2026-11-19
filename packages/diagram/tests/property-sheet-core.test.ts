@@ -2,8 +2,22 @@
 
 import assert from "node:assert";
 import { describe, it } from "node:test";
+import {
+  coalesceDiagramActions,
+  DiagramActionQueue,
+  isOptimisticDiagramActionBatch,
+  isSpatialDiagramAction,
+  SerializedDiagramEditRunner,
+} from "../src/action-dispatch.js";
+import { ConflictManager } from "../src/properties/conflict-manager.js";
+import {
+  applyLivePropertyIconSubstitutions,
+  applyOptimisticPropertyAction,
+  buildPropertyContextValues,
+  getVisiblePropertyTabs,
+  resolveActivePropertyTabId,
+} from "../src/properties/state.js";
 import { evaluatePropertyPredicate } from "../src/property-evaluator.js";
-import { PropertySheetController } from "../src/property-sheet-controller.js";
 import { validatePropertyValue } from "../src/property-validator.js";
 import type { ComponentPropertyData, PropertyFieldConfig } from "../src/protocol.js";
 
@@ -99,12 +113,13 @@ describe("Property Inspector Core Engine", () => {
     });
   });
 
-  describe("PropertySheetController", () => {
+  describe("Canonical Property State & Action Dispatch", () => {
     const mockData: ComponentPropertyData = {
       className: "Modelica.Electrical.Analog.Basic.Resistor",
       name: "r1",
       description: "Ideal electrical resistor",
       values: { R: "100", use_HeatPort: false, T: "293.15" },
+      parameters: [{ name: "R", value: "100", defaultValue: "1", isBoolean: false }],
       schema: {
         tabs: [
           {
@@ -144,48 +159,102 @@ describe("Property Inspector Core Engine", () => {
       },
     };
 
-    it("manages properties, tabs, and conditions", () => {
-      const controller = new PropertySheetController({ debounceMs: 10 });
-      controller.setProperties("r1", mockData);
+    it("builds context values, filters tabs, and coordinates ConflictManager", () => {
+      const conflictMgr = new ConflictManager();
+      conflictMgr.reset(mockData.values || {});
 
-      assert.strictEqual(controller.getComponentId(), "r1");
-      assert.strictEqual(controller.getValue("R"), "100");
-      assert.strictEqual(controller.getActiveTabId(), "general");
+      const ctxInitial = buildPropertyContextValues(mockData, conflictMgr.getAllLocalValues());
+      const tabs = getVisiblePropertyTabs(mockData.schema, ctxInitial);
+      assert.strictEqual(resolveActivePropertyTabId(tabs, "missing"), "general");
 
-      // Verify thermal field enabled state based on use_HeatPort (false)
-      const thermalTab = controller.getVisibleTabs().find((t) => t.id === "thermal")!;
-      const tField = thermalTab.groups[0].fields.find((f) => f.key === "T")!;
-      assert.strictEqual(controller.isFieldEnabled(tField), false);
+      const thermalTab = tabs.find((t) => t.id === "thermal")!;
+      const tField = thermalTab.groups[0]!.fields.find((f) => f.key === "T")!;
+      assert.strictEqual(evaluatePropertyPredicate(tField.enabledIf, ctxInitial), false);
 
-      // Update use_HeatPort to true
-      controller.updateValue("use_HeatPort", true);
-      assert.strictEqual(controller.isFieldEnabled(tField), true);
+      conflictMgr.setLocalValue("use_HeatPort", "true");
+      const ctxUpdated = buildPropertyContextValues(mockData, conflictMgr.getAllLocalValues());
+      assert.strictEqual(evaluatePropertyPredicate(tField.enabledIf, ctxUpdated), true);
 
-      // Verify validation error
-      controller.updateValue("R", -50);
-      assert.ok(controller.getFieldError("R"));
-
-      controller.destroy();
+      assert.ok(validatePropertyValue(tabs[0]!.groups[0]!.fields[0]!, -50, ctxUpdated));
     });
 
-    it("debounces property change events", async () => {
-      const controller = new PropertySheetController({ debounceMs: 20 });
-      controller.setProperties("r1", mockData);
+    it("applies optimistic property updates and escapes SVG substitutions", () => {
+      const updated = applyOptimisticPropertyAction(mockData, {
+        type: "updateProperty",
+        name: "r1",
+        key: "R",
+        value: "220",
+      });
+      assert.strictEqual(updated?.values?.R, "220");
+      assert.strictEqual(updated?.parameters?.[0]?.value, "220");
 
-      let eventReceived: any = null;
-      controller.updateValue("R", "220", (e) => {
-        eventReceived = e;
+      const svg = applyLivePropertyIconSubstitutions(
+        "<svg><text>r[1]</text><text>R = 100</text></svg>",
+        { R: "220" },
+        "r_new",
+        "r[1]",
+      );
+      assert.ok(svg.includes("<text>r_new</text>"));
+      assert.ok(svg.includes("<text>R = 220</text>"));
+    });
+
+    it("coalesces adjacent redundant actions without crossing structural barriers", async () => {
+      const coalesced = coalesceDiagramActions([
+        { type: "move", items: [{ name: "r1", x: 10, y: 20 }] },
+        {
+          type: "move",
+          items: [
+            { name: "r1", x: 30, y: 40 },
+            { name: "c1", x: 50, y: 60 },
+          ],
+        },
+        { type: "addComponent", className: "Ground", x: 0, y: 0 },
+        { type: "updateProperty", name: "r1", key: "R", previousValue: "100", value: "150" },
+        { type: "updateProperty", name: "r1", key: "R", previousValue: "150", value: "220" },
+      ]);
+      assert.strictEqual(coalesced.length, 3);
+      assert.deepStrictEqual(coalesced[0]!.items, [
+        { name: "r1", x: 30, y: 40 },
+        { name: "c1", x: 50, y: 60 },
+      ]);
+      assert.strictEqual(coalesced[2]!.previousValue, "100");
+      assert.strictEqual(coalesced[2]!.value, "220");
+
+      assert.strictEqual(isSpatialDiagramAction({ type: "move" }), true);
+      assert.strictEqual(isOptimisticDiagramActionBatch([{ type: "move" }, { type: "updateProperty" }]), true);
+      assert.strictEqual(isOptimisticDiagramActionBatch([{ type: "move" }, { type: "addComponent" }]), false);
+
+      const flushed: any[][] = [];
+      const immediate: any[] = [];
+      const queue = new DiagramActionQueue({
+        spatialDelayMs: 15,
+        structuralDelayMs: 0,
+        onFlush: (batch) => flushed.push(batch),
+        onImmediateAction: (act) => immediate.push(act),
       });
 
-      assert.strictEqual(eventReceived, null);
+      queue.enqueue({ type: "interactiveWrite", name: "sw1", value: "true" });
+      assert.strictEqual(immediate.length, 1);
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      assert.ok(eventReceived);
-      assert.strictEqual(eventReceived.componentId, "r1");
-      assert.strictEqual(eventReceived.key, "R");
-      assert.strictEqual(eventReceived.value, "220");
+      queue.enqueue({ type: "move", items: [{ name: "r1", x: 10, y: 10 }] });
+      queue.enqueue({ type: "move", items: [{ name: "r1", x: 25, y: 35 }] });
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      assert.strictEqual(flushed.length, 1);
+      assert.deepStrictEqual(flushed[0], [{ type: "move", items: [{ name: "r1", x: 25, y: 35 }] }]);
 
-      controller.destroy();
+      const runner = new SerializedDiagramEditRunner();
+      const order: number[] = [];
+      await Promise.all([
+        runner.enqueue(async (seq) => {
+          await new Promise((r) => setTimeout(r, 15));
+          order.push(seq);
+        }),
+        runner.enqueue(async (seq) => {
+          order.push(seq);
+        }),
+      ]);
+      assert.deepStrictEqual(order, [1, 2]);
+      queue.dispose();
     });
   });
 });

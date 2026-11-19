@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { invertAffineExpression } from "@modelscript/cad";
+
 export interface ScadCstTree {
   sourceCode?: string | undefined;
   mem32?: Uint32Array | undefined;
@@ -39,6 +41,22 @@ export interface PatchResult {
   replacedRange: { startOffset: number; endOffset: number };
   oldValue: string;
   newValue: string;
+  /** True when the target expression is compound multi-variable or non-affine and cannot be safely inverted. */
+  locked?: boolean | undefined;
+  /** Human-readable explanation when `locked` is true. */
+  lockReason?: string | undefined;
+  /** Variable identifier resolved via analytical single-variable affine inversion. */
+  invertedVariable?: string | undefined;
+  /** Variables involved in a locked compound expression. */
+  lockedVariables?: string[] | undefined;
+}
+
+function isPlainNumericLiteral(text: string): boolean {
+  return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text.trim());
+}
+
+function formatScalarNumber(val: number): string {
+  return String(Number(val.toFixed(4)));
 }
 
 export class ScadPatcher {
@@ -62,14 +80,39 @@ export class ScadPatcher {
   }
 
   /**
-   * Finds a VariableDeclaration for `varName` in the CST and patches its value expression.
-   * If not found, returns null.
+   * Builds a non-mutating locked PatchResult when an expression cannot be analytically inverted.
+   */
+  public static createLockedResult(
+    source: string,
+    node: ScadCstNode,
+    reason: string,
+    variables?: string[],
+  ): PatchResult {
+    const startOffset = node.startIndex ?? node.startOffset ?? 0;
+    const endOffset = node.endIndex ?? node.endOffset ?? 0;
+    const exprText = source.slice(startOffset, endOffset);
+    return {
+      updatedSource: source,
+      replacedRange: { startOffset, endOffset },
+      oldValue: exprText,
+      newValue: exprText,
+      locked: true,
+      lockReason: reason,
+      lockedVariables: variables,
+    };
+  }
+
+  /**
+   * Finds a VariableDeclaration for `varName` in the CST and updates its RHS value.
+   * If the RHS is itself a single-variable affine expression (`a*y + b`), analytically
+   * inverts up to `maxDepth` hops; locks multi-variable or non-affine definitions.
    */
   public static patchVariable(
     source: string,
     rootNode: ScadCstNode,
     varName: string,
     newValue: number | string,
+    depth = 0,
   ): PatchResult | null {
     const varDeclNode = this.findVariableDeclaration(rootNode, varName);
     if (!varDeclNode) return null;
@@ -92,7 +135,82 @@ export class ScadPatcher {
     }
 
     if (!valueNode) return null;
-    return this.patchNode(source, valueNode, newValue);
+
+    const rhsText = valueNode.text.trim();
+    if (typeof newValue === "number" && !isPlainNumericLiteral(rhsText)) {
+      const inv = invertAffineExpression(rhsText, newValue);
+      if (inv.locked) {
+        return this.createLockedResult(
+          source,
+          valueNode,
+          inv.reason ?? `Locked: variable '${varName}' has compound expression '${rhsText}'.`,
+          inv.variables,
+        );
+      }
+      if (inv.kind === "single_var_affine" && inv.variableName && inv.solvedValue !== undefined) {
+        if (inv.variableName === varName || depth >= 4) {
+          return this.createLockedResult(source, valueNode, `Locked: cyclical definition for variable '${varName}'.`, [
+            varName,
+          ]);
+        }
+        const upstream = this.patchVariable(source, rootNode, inv.variableName, inv.solvedValue, depth + 1);
+        if (upstream) {
+          return {
+            ...upstream,
+            invertedVariable: upstream.invertedVariable ?? inv.variableName,
+          };
+        }
+      }
+    }
+
+    const res = this.patchNode(source, valueNode, newValue);
+    return { ...res, invertedVariable: varName };
+  }
+
+  /**
+   * Analytically inverts `exprNode` against `targetNumericValue` (`a * x + b = target`),
+   * patching literal nodes directly, inverting single-variable affine expressions back to the
+   * driving variable declaration, or returning `locked: true` for multi-variable / non-affine formulas.
+   */
+  public static patchExpressionTarget(
+    source: string,
+    rootNode: ScadCstNode,
+    exprNode: ScadCstNode,
+    targetNumericValue: number,
+  ): PatchResult {
+    const exprText = exprNode.text.trim();
+    if (isPlainNumericLiteral(exprText)) {
+      return this.patchNode(source, exprNode, formatScalarNumber(targetNumericValue));
+    }
+
+    const inv = invertAffineExpression(exprText, targetNumericValue);
+    if (inv.locked) {
+      return this.createLockedResult(
+        source,
+        exprNode,
+        inv.reason ?? `Locked: expression '${exprText}' cannot be inverted.`,
+        inv.variables,
+      );
+    }
+
+    if (inv.kind === "single_var_affine" && inv.variableName && inv.solvedValue !== undefined) {
+      const varPatch = this.patchVariable(source, rootNode, inv.variableName, Number(inv.solvedValue.toFixed(4)));
+      if (varPatch) {
+        return {
+          ...varPatch,
+          invertedVariable: varPatch.invertedVariable ?? inv.variableName,
+        };
+      }
+      // Single free variable wasn't declared at top level (e.g. module arg / loop var) -> lock safely
+      return this.createLockedResult(
+        source,
+        exprNode,
+        `Locked: driving variable '${inv.variableName}' in '${exprText}' has no top-level declaration to patch.`,
+        inv.variables,
+      );
+    }
+
+    return this.patchNode(source, exprNode, formatScalarNumber(targetNumericValue));
   }
 
   /**
@@ -129,6 +247,36 @@ export class ScadPatcher {
 
     for (const arg of argNodes) {
       if (currentArgIdx === argIndex) {
+        const vecNode = this.findDescendantByType(arg, "VectorLiteral");
+        if (vecNode) {
+          const exprs = this.collectVectorElements(vecNode);
+          const nonLiteralIndices = exprs
+            .map((e, idx) => ({ e, idx }))
+            .filter(({ e }) => !isPlainNumericLiteral(e.text.trim()));
+          if (nonLiteralIndices.length > 0) {
+            // Check if any non-literal element is locked or multi-variable; only invert if safe
+            if (nonLiteralIndices.length === 1) {
+              const only = nonLiteralIndices[0]!;
+              const allOtherLiteralsUnchanged = exprs.every((e, idx) => {
+                if (idx === only.idx) return true;
+                const litVal = Number(e.text.trim());
+                return Number.isFinite(litVal) && Math.abs(litVal - (newVec[idx] ?? litVal)) <= 1e-3;
+              });
+              if (allOtherLiteralsUnchanged) {
+                return this.patchExpressionTarget(source, rootNode, only.e, newVec[only.idx] ?? 0);
+              }
+            }
+            const firstNonLit = nonLiteralIndices[0]!;
+            const inv = invertAffineExpression(firstNonLit.e.text.trim(), newVec[firstNonLit.idx] ?? 0);
+            return this.createLockedResult(
+              source,
+              arg,
+              inv.reason ??
+                `Locked: transform vector '${arg.text.trim()}' contains compound parametric expressions. Edit in code.`,
+              inv.variables,
+            );
+          }
+        }
         const formattedVec = `[${Number(newVec[0].toFixed(4))}, ${Number(newVec[1].toFixed(4))}, ${Number(newVec[2].toFixed(4))}]`;
         return this.patchNode(source, arg, formattedVec);
       }
@@ -140,7 +288,7 @@ export class ScadPatcher {
 
   /**
    * Patches a single component of a vector argument in a transform or method call
-   * (scoped to `targetRange` when provided).
+   * (scoped to `targetRange` when provided), analytically inverting single-variable affine expressions.
    */
   public static patchVectorComponent(
     source: string,
@@ -166,15 +314,9 @@ export class ScadPatcher {
         const vecNode = this.findDescendantByType(arg, "VectorLiteral");
         if (!vecNode) return null;
 
-        const exprs: ScadCstNode[] = [];
-        for (let j = 0; j < vecNode.childCount; j++) {
-          const c = vecNode.child(j);
-          if (c && (c.type === "Expression" || c.type.endsWith("Expression") || c.type === "NUMBER")) {
-            exprs.push(c);
-          }
-        }
+        const exprs = this.collectVectorElements(vecNode);
         if (compIndex >= 0 && compIndex < exprs.length) {
-          return this.patchNode(source, exprs[compIndex]!, String(newValue));
+          return this.patchExpressionTarget(source, rootNode, exprs[compIndex]!, newValue);
         }
       }
       currentArgIdx++;
@@ -434,123 +576,77 @@ export class ScadPatcher {
     paramName?: string,
     primitiveType?: string,
   ): PatchResult | null {
-    if (paramName) {
-      const varRes = this.patchVariable(source, rootNode, paramName, newValue);
-      if (varRes) return varRes;
-    }
-
     const primNode = this.findPrimitiveInRange(rootNode, targetRange, primitiveType);
-    if (!primNode) return null;
+    const argListNode = primNode
+      ? (this.findChildByType(primNode, "ArgumentList") ?? this.findDescendantByType(primNode, "ArgumentList"))
+      : null;
 
-    const argListNode =
-      this.findChildByType(primNode, "ArgumentList") ?? this.findDescendantByType(primNode, "ArgumentList");
-    if (!argListNode) return null;
-
-    const formattedVal = String(Number(newValue.toFixed(4)));
-
-    if (primNode.type === "CubePrimitive" || primNode.text.startsWith("cube")) {
-      const sizeArg = this.findArgumentByNameOrPos(argListNode, "size", 0);
-      if (!sizeArg) return null;
-
-      const vecNode = this.findDescendantByType(sizeArg, "VectorLiteral");
-      if (vecNode) {
-        const exprs = this.collectVectorElements(vecNode);
-        if (dimensionIndex >= 0 && dimensionIndex < exprs.length) {
-          const targetElem = exprs[dimensionIndex]!;
-          const ident = targetElem.type === "IDENTIFIER" ? targetElem.text.trim() : null;
-          if (ident) {
-            const varPatch = this.patchVariable(source, rootNode, ident, newValue);
-            if (varPatch) return varPatch;
-          }
-          return this.patchNode(source, targetElem, formattedVal);
-        }
-      } else {
-        const expr = this.findArgumentExpression(sizeArg);
-        if (expr) {
-          if (expr.type === "IDENTIFIER") {
-            const varPatch = this.patchVariable(source, rootNode, expr.text.trim(), newValue);
-            if (varPatch) return varPatch;
-          }
-          return this.patchNode(source, expr, formattedVal);
-        }
-      }
-    } else if (primNode.type === "CylinderPrimitive" || primNode.text.startsWith("cylinder")) {
-      if (dimensionIndex === 1) {
-        const hArg = this.findArgumentByNameOrPos(argListNode, "h", 0);
-        if (hArg) {
-          const expr = this.findArgumentExpression(hArg);
-          if (expr) {
-            if (expr.type === "IDENTIFIER") {
-              const varPatch = this.patchVariable(source, rootNode, expr.text.trim(), newValue);
-              if (varPatch) return varPatch;
+    if (primNode && argListNode) {
+      if (primNode.type === "CubePrimitive" || primNode.text.startsWith("cube")) {
+        const sizeArg = this.findArgumentByNameOrPos(argListNode, "size", 0);
+        if (sizeArg) {
+          const vecNode = this.findDescendantByType(sizeArg, "VectorLiteral");
+          if (vecNode) {
+            const exprs = this.collectVectorElements(vecNode);
+            if (dimensionIndex >= 0 && dimensionIndex < exprs.length) {
+              return this.patchExpressionTarget(source, rootNode, exprs[dimensionIndex]!, newValue);
             }
-            return this.patchNode(source, expr, formattedVal);
+          } else {
+            const expr = this.findArgumentExpression(sizeArg);
+            if (expr) {
+              return this.patchExpressionTarget(source, rootNode, expr, newValue);
+            }
           }
         }
-      } else {
+      } else if (primNode.type === "CylinderPrimitive" || primNode.text.startsWith("cylinder")) {
+        if (dimensionIndex === 1) {
+          const hArg = this.findArgumentByNameOrPos(argListNode, "h", 0);
+          const expr = hArg ? this.findArgumentExpression(hArg) : null;
+          if (expr) {
+            return this.patchExpressionTarget(source, rootNode, expr, newValue);
+          }
+        } else {
+          const rArg =
+            this.findArgumentByName(argListNode, "r") ??
+            this.findArgumentByName(argListNode, "d") ??
+            this.findArgumentByName(argListNode, "r1") ??
+            this.findArgumentByName(argListNode, "d1") ??
+            this.findArgumentByNameOrPos(argListNode, "r", 1);
+          const expr = rArg ? this.findArgumentExpression(rArg) : null;
+          if (rArg && expr) {
+            const argIdent = this.findChildByType(rArg, "IDENTIFIER")?.text.trim();
+            const isDiameter = argIdent === "d" || argIdent === "d1";
+            return this.patchExpressionTarget(source, rootNode, expr, isDiameter ? newValue * 2 : newValue);
+          }
+        }
+      } else if (primNode.type === "SpherePrimitive" || primNode.text.startsWith("sphere")) {
         const rArg =
           this.findArgumentByName(argListNode, "r") ??
           this.findArgumentByName(argListNode, "d") ??
-          this.findArgumentByName(argListNode, "r1") ??
-          this.findArgumentByNameOrPos(argListNode, "r", 1);
-        if (rArg) {
-          const expr = this.findArgumentExpression(rArg);
-          if (expr) {
-            const isDiameter = this.findChildByType(rArg, "IDENTIFIER")?.text.trim() === "d";
-            const valToPatch = isDiameter ? String(Number((newValue * 2).toFixed(4))) : formattedVal;
-            if (expr.type === "IDENTIFIER") {
-              const varPatch = this.patchVariable(
-                source,
-                rootNode,
-                expr.text.trim(),
-                isDiameter ? newValue * 2 : newValue,
-              );
-              if (varPatch) return varPatch;
-            }
-            return this.patchNode(source, expr, valToPatch);
-          }
-        }
-      }
-    } else if (primNode.type === "SpherePrimitive" || primNode.text.startsWith("sphere")) {
-      const rArg =
-        this.findArgumentByName(argListNode, "r") ??
-        this.findArgumentByName(argListNode, "d") ??
-        this.findArgumentByNameOrPos(argListNode, "r", 0);
-      if (rArg) {
-        const expr = this.findArgumentExpression(rArg);
-        if (expr) {
+          this.findArgumentByNameOrPos(argListNode, "r", 0);
+        const expr = rArg ? this.findArgumentExpression(rArg) : null;
+        if (rArg && expr) {
           const isDiameter = this.findChildByType(rArg, "IDENTIFIER")?.text.trim() === "d";
-          const valToPatch = isDiameter ? String(Number((newValue * 2).toFixed(4))) : formattedVal;
-          if (expr.type === "IDENTIFIER") {
-            const varPatch = this.patchVariable(
-              source,
-              rootNode,
-              expr.text.trim(),
-              isDiameter ? newValue * 2 : newValue,
-            );
-            if (varPatch) return varPatch;
-          }
-          return this.patchNode(source, expr, valToPatch);
+          return this.patchExpressionTarget(source, rootNode, expr, isDiameter ? newValue * 2 : newValue);
         }
-      }
-    } else if (
-      primNode.type === "LinearExtrudeOp" ||
-      primNode.type === "ExtrusionOp" ||
-      primNode.text.startsWith("linear_extrude")
-    ) {
-      if (dimensionIndex === 1) {
-        const hArg = this.findArgumentByNameOrPos(argListNode, "height", 0);
-        if (hArg) {
-          const expr = this.findArgumentExpression(hArg);
+      } else if (
+        primNode.type === "LinearExtrudeOp" ||
+        primNode.type === "ExtrusionOp" ||
+        primNode.text.startsWith("linear_extrude")
+      ) {
+        if (dimensionIndex === 1) {
+          const hArg = this.findArgumentByNameOrPos(argListNode, "height", 0);
+          const expr = hArg ? this.findArgumentExpression(hArg) : null;
           if (expr) {
-            if (expr.type === "IDENTIFIER") {
-              const varPatch = this.patchVariable(source, rootNode, expr.text.trim(), newValue);
-              if (varPatch) return varPatch;
-            }
-            return this.patchNode(source, expr, formattedVal);
+            return this.patchExpressionTarget(source, rootNode, expr, newValue);
           }
         }
       }
+    }
+
+    if (paramName) {
+      const varRes = this.patchVariable(source, rootNode, paramName, newValue);
+      if (varRes) return varRes;
     }
 
     return null;
@@ -591,7 +687,7 @@ export class ScadPatcher {
     return null;
   }
 
-  private static findArgumentByName(argListNode: ScadCstNode, name: string): ScadCstNode | null {
+  public static findArgumentByName(argListNode: ScadCstNode, name: string): ScadCstNode | null {
     for (let i = 0; i < argListNode.childCount; i++) {
       const arg = argListNode.child(i);
       if (!arg || arg.type !== "Argument") continue;
@@ -603,7 +699,7 @@ export class ScadPatcher {
     return null;
   }
 
-  private static findArgumentByNameOrPos(argListNode: ScadCstNode, name: string, pos: number): ScadCstNode | null {
+  public static findArgumentByNameOrPos(argListNode: ScadCstNode, name: string, pos: number): ScadCstNode | null {
     const named = this.findArgumentByName(argListNode, name);
     if (named) return named;
 
@@ -621,7 +717,7 @@ export class ScadPatcher {
     return null;
   }
 
-  private static findArgumentExpression(argNode: ScadCstNode): ScadCstNode | null {
+  public static findArgumentExpression(argNode: ScadCstNode): ScadCstNode | null {
     const hasEquals = this.findChildByText(argNode, "=");
     if (hasEquals) {
       let foundEq = false;
@@ -646,7 +742,7 @@ export class ScadPatcher {
     return null;
   }
 
-  private static collectVectorElements(vecNode: ScadCstNode): ScadCstNode[] {
+  public static collectVectorElements(vecNode: ScadCstNode): ScadCstNode[] {
     const exprs: ScadCstNode[] = [];
     for (let j = 0; j < vecNode.childCount; j++) {
       const c = vecNode.child(j);
@@ -656,6 +752,10 @@ export class ScadPatcher {
       exprs.push(c);
     }
     return exprs;
+  }
+
+  public static findDescendantByTypeStatic(node: ScadCstNode | null | undefined, type: string): ScadCstNode | null {
+    return this.findDescendantByType(node, type);
   }
 
   private static findChildByText(node: ScadCstNode | null | undefined, text: string): ScadCstNode | null {

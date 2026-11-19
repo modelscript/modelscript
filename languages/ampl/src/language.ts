@@ -31,6 +31,21 @@ export const amplLanguage = language({
   lsp: {
     fileExtensions: [".mod", ".dat", ".run", ".ampl", ".mps"],
   },
+  ui: {
+    panels: [
+      {
+        id: "amplEditor",
+        viewType: "modelscript.amplEditor",
+        title: "AMPL Optimization Studio",
+        shortTitle: "AMPL",
+        selector: ["*.mod", "*.ampl"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/AmplPanel.tsx",
+        artifactViewTypes: ["ampl"],
+      },
+    ],
+  },
 
   writeback: {
     operators: [":=", "="],

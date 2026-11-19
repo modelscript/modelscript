@@ -125,7 +125,7 @@ describe("Polyglot Paste Auto-Detection, Fault Injection & Docs-to-Morsel Handof
     ];
 
     const url = await buildMorselHandoffUrl("https://ansatz.social", tabs, 1);
-    assert.ok(url.startsWith("https://ansatz.social/morsel#m="), `Expected compressed #m= permalink, got: ${url}`);
+    assert.ok(url.startsWith("https://ansatz.social/editor#m="), `Expected compressed #m= permalink, got: ${url}`);
 
     const hash = url.slice(url.indexOf("#"));
     const decoded = decompressMorselPayload(hash) as

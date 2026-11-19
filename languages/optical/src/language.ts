@@ -33,6 +33,21 @@ export const opticalLanguage = language({
   lsp: {
     fileExtensions: [".sor", ".openroadm.json"],
   },
+  ui: {
+    panels: [
+      {
+        id: "opticalEditor",
+        viewType: "modelscript.opticalEditor",
+        title: "Optical DWDM / OpenROADM Studio",
+        shortTitle: "Optical",
+        selector: ["*.openroadm.json", "*.sor"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/OpticalPanel.tsx",
+        artifactViewTypes: ["openroadm"],
+      },
+    ],
+  },
 
   actions: [
     {

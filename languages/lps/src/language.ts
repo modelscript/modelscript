@@ -33,6 +33,21 @@ export const lpsLanguage = language({
       dark: "./assets/lps/icon-dark.png",
     },
   },
+  ui: {
+    panels: [
+      {
+        id: "lpsEditor",
+        viewType: "modelscript.lpsEditor",
+        title: "LPS Pipeline Hydraulic Studio",
+        shortTitle: "LPS Hydraulics",
+        selector: ["*.lps", "*.lpsx"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/LpsPanel.tsx",
+        artifactViewTypes: ["lps", "pipelinestudio"],
+      },
+    ],
+  },
   indexing: {
     indexFile(ctx) {
       const parsedModel = parseLps(ctx.text, ctx.uri);

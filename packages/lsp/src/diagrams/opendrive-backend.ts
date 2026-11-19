@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { DiagramBackend, DiagramDispatchDeps } from "../diagramApi.js";
+import {
+  computeMinimalTextEdit,
+  deduplicateAndSort,
+  type DiagramBackend,
+  type DiagramDispatchDeps,
+} from "../diagramApi.js";
 import type {
   ComponentPropertyData,
   DiagramApplyEditsParams,
@@ -401,14 +406,9 @@ export function createOpenDriveDiagramBackend(backends: DiagramDispatchDeps): Di
         range: { start: { line: number; character: number }; end: { line: number; character: number } };
         newText: string;
       }> = [];
-      if (workingText !== text) {
-        const origLines = text.split("\n");
-        const lastLine = Math.max(0, origLines.length - 1);
-        const lastChar = origLines[lastLine]?.length ?? 0;
-        edits.push({
-          range: { start: { line: 0, character: 0 }, end: { line: lastLine, character: lastChar } },
-          newText: workingText,
-        });
+      const textEdit = computeMinimalTextEdit(text, workingText);
+      if (textEdit) {
+        edits.push(textEdit);
       }
 
       if (spatialActions.length > 0 && backends.generic) {
@@ -418,7 +418,7 @@ export function createOpenDriveDiagramBackend(backends: DiagramDispatchDeps): Di
         }
         return {
           seq: params.seq,
-          edits,
+          edits: deduplicateAndSort(edits),
           sidecarContent: genericRes?.sidecarContent,
           renderHint: hasStructural ? "immediate" : (genericRes?.renderHint ?? "none"),
         };
@@ -426,7 +426,7 @@ export function createOpenDriveDiagramBackend(backends: DiagramDispatchDeps): Di
 
       return {
         seq: params.seq,
-        edits,
+        edits: deduplicateAndSort(edits),
         renderHint: hasStructural ? "immediate" : "none",
       };
     },

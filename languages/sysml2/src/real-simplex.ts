@@ -77,106 +77,304 @@ export interface SimplexResult {
   violatedConstraint?: LinearConstraint | undefined;
 }
 
+interface LinearAccumulator {
+  terms: Map<string, number>;
+  constant: number;
+}
+
+function addLinearAcc(a: LinearAccumulator, b: LinearAccumulator, sign: 1 | -1): LinearAccumulator {
+  const terms = new Map<string, number>(a.terms);
+  for (const [k, v] of b.terms) {
+    const next = (terms.get(k) ?? 0) + sign * v;
+    if (Math.abs(next) < 1e-15) terms.delete(k);
+    else terms.set(k, next);
+  }
+  return { terms, constant: a.constant + sign * b.constant };
+}
+
+function scaleLinearAcc(a: LinearAccumulator, factor: number): LinearAccumulator {
+  if (Math.abs(factor) < 1e-15) {
+    return { terms: new Map(), constant: 0 };
+  }
+  const terms = new Map<string, number>();
+  for (const [k, v] of a.terms) {
+    const prod = v * factor;
+    if (Math.abs(prod) >= 1e-15) terms.set(k, prod);
+  }
+  return { terms, constant: a.constant * factor };
+}
+
 /**
- * Parses a linear expression string (e.g. "2*x + 3.5*y - z" or "1.2e-4*x - 3.5e-2*y") into terms and constant offset.
+ * Parses a linear expression string (e.g. "2*x + 3.5*y - z", "-(x + y)", "2 * (x + y)", "x * 2", "x / 2")
+ * into variable terms and a constant offset.
  */
 export function parseLinearExpression(expr: string): { terms: LinearTerm[]; constant: number } {
-  let cleaned = "";
-  for (let j = 0; j < expr.length; j++) {
-    const ch = expr[j]!;
-    if (ch !== " " && ch !== "\t" && ch !== "\r" && ch !== "\n") {
-      cleaned += ch;
+  const src = expr.trim();
+  if (!src) return { terms: [], constant: 0 };
+
+  let pos = 0;
+  const len = src.length;
+
+  const skipWs = (): void => {
+    while (pos < len) {
+      const c = src[pos]!;
+      if (c === " " || c === "\t" || c === "\r" || c === "\n") pos++;
+      else break;
     }
-  }
-  if (!cleaned) return { terms: [], constant: 0 };
+  };
 
-  const terms: LinearTerm[] = [];
-  let constant = 0;
-  let idx = 0;
-  const cLen = cleaned.length;
+  const isIdentStart = (c: string): boolean => (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c === "_";
+  const isIdentPart = (c: string): boolean => {
+    const code = c.charCodeAt(0);
+    return (
+      (c >= "a" && c <= "z") ||
+      (c >= "A" && c <= "Z") ||
+      (c >= "0" && c <= "9") ||
+      c === "_" ||
+      c === "." ||
+      code === 0x00b2 ||
+      code === 0x00b3 ||
+      code === 0x00b9 ||
+      (code >= 0x2070 && code <= 0x2079)
+    );
+  };
 
-  while (idx < cLen) {
-    let sign = 1;
-    const ch = cleaned[idx]!;
-    if (ch === "+") {
-      sign = 1;
-      idx++;
-    } else if (ch === "-") {
-      sign = -1;
-      idx++;
-    }
-
-    if (idx >= cLen) break;
-
-    // Scan number if present
-    let numStr: string | undefined = undefined;
-    const numStart = idx;
+  const tryScanNumber = (): number | null => {
+    skipWs();
+    const start = pos;
+    let hasDigits = false;
     let hasDot = false;
     let hasExp = false;
-    let isNum = false;
 
-    while (idx < cLen) {
-      const c = cleaned[idx]!;
+    while (pos < len) {
+      const c = src[pos]!;
       if (c >= "0" && c <= "9") {
-        isNum = true;
-        idx++;
+        hasDigits = true;
+        pos++;
       } else if (c === "." && !hasDot && !hasExp) {
+        // Avoid consuming `..` range operator
+        if (src[pos + 1] === ".") break;
         hasDot = true;
-        isNum = true;
-        idx++;
-      } else if ((c === "e" || c === "E") && isNum && !hasExp) {
-        hasExp = true;
-        idx++;
-        if (idx < cLen && (cleaned[idx] === "+" || cleaned[idx] === "-")) {
-          idx++;
+        pos++;
+      } else if ((c === "e" || c === "E") && hasDigits && !hasExp) {
+        const save = pos;
+        pos++;
+        if (pos < len && (src[pos] === "+" || src[pos] === "-")) pos++;
+        if (pos < len && src[pos]! >= "0" && src[pos]! <= "9") {
+          hasExp = true;
+          while (pos < len && src[pos]! >= "0" && src[pos]! <= "9") pos++;
+        } else {
+          pos = save;
+          break;
         }
       } else {
         break;
       }
     }
 
-    if (isNum) {
-      numStr = cleaned.slice(numStart, idx);
+    if (!hasDigits) {
+      pos = start;
+      return null;
     }
+    const val = parseFloat(src.slice(start, pos));
+    return Number.isFinite(val) ? val : null;
+  };
 
-    // Optional '*'
-    if (idx < cLen && cleaned[idx] === "*") {
-      idx++;
-    }
+  const tryScanIdent = (): string | null => {
+    skipWs();
+    if (pos >= len) return null;
 
-    // Scan identifier if present
-    let ident: string | undefined = undefined;
-    if (idx < cLen) {
-      const ic = cleaned[idx]!;
-      if ((ic >= "a" && ic <= "z") || (ic >= "A" && ic <= "Z") || ic === "_") {
-        const idStart = idx;
-        idx++;
-        while (idx < cLen) {
-          const c = cleaned[idx]!;
-          if ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_" || c === ".") {
-            idx++;
-          } else {
-            break;
-          }
+    const readSegment = (): string | null => {
+      if (pos >= len) return null;
+      if (src[pos] === "'") {
+        const close = src.indexOf("'", pos + 1);
+        if (close > pos + 1) {
+          const inner = src.slice(pos + 1, close);
+          pos = close + 1;
+          return inner;
         }
-        ident = cleaned.slice(idStart, idx);
+        return null;
+      }
+      if (!isIdentStart(src[pos]!)) return null;
+      const start = pos;
+      pos++;
+      while (pos < len && isIdentPart(src[pos]!)) {
+        // Stop before `.` if followed by `'...'` so outer loop handles `'...'` segment
+        if (src[pos] === "." && src[pos + 1] === "'") break;
+        pos++;
+      }
+      return src.slice(start, pos);
+    };
+
+    const first = readSegment();
+    if (!first) return null;
+    let full = first;
+    while (pos < len) {
+      if (src[pos] === ":" && src[pos + 1] === ":") {
+        const save = pos;
+        pos += 2;
+        const seg = readSegment();
+        if (seg) full += `::${seg}`;
+        else {
+          pos = save;
+          break;
+        }
+      } else if (src[pos] === ".") {
+        const save = pos;
+        pos += 1;
+        const seg = readSegment();
+        if (seg) full += `.${seg}`;
+        else {
+          pos = save;
+          break;
+        }
+      } else {
+        break;
       }
     }
+    return full;
+  };
 
-    if (!numStr && !ident) {
-      if (idx === numStart) idx++;
-      continue;
+  function parseAddSub(): LinearAccumulator {
+    let left = parseMulDiv();
+    while (true) {
+      skipWs();
+      if (pos >= len) break;
+      const ch = src[pos]!;
+      if (ch === "+" || ch === "-") {
+        pos++;
+        const right = parseMulDiv();
+        left = addLinearAcc(left, right, ch === "+" ? 1 : -1);
+      } else {
+        break;
+      }
     }
-
-    if (ident) {
-      const coeff = (numStr !== undefined ? parseFloat(numStr) : 1.0) * sign;
-      terms.push({ varName: ident, coeff });
-    } else if (numStr !== undefined) {
-      constant += parseFloat(numStr) * sign;
-    }
+    return left;
   }
 
-  return { terms, constant };
+  function parseMulDiv(): LinearAccumulator {
+    let left = parseUnary();
+    while (true) {
+      skipWs();
+      if (pos >= len) break;
+      const ch = src[pos]!;
+      if (ch === "*" || ch === "/") {
+        pos++;
+        const right = parseUnary();
+        if (ch === "*") {
+          if (left.terms.size === 0) {
+            left = scaleLinearAcc(right, left.constant);
+          } else if (right.terms.size === 0) {
+            left = scaleLinearAcc(left, right.constant);
+          } else {
+            // Non-linear product fallback: preserve synthetic product variable name
+            const lEntries = Array.from(left.terms.entries());
+            const rEntries = Array.from(right.terms.entries());
+            const combined = new Map<string, number>();
+            for (const [lk, lv] of lEntries) {
+              for (const [rk, rv] of rEntries) {
+                const key = lk <= rk ? `${lk}*${rk}` : `${rk}*${lk}`;
+                combined.set(key, (combined.get(key) ?? 0) + lv * rv);
+              }
+            }
+            left = { terms: combined, constant: left.constant * right.constant };
+          }
+        } else {
+          // Division by constant scalar
+          if (right.terms.size === 0 && Math.abs(right.constant) > 1e-15) {
+            left = scaleLinearAcc(left, 1.0 / right.constant);
+          }
+        }
+      } else {
+        break;
+      }
+    }
+    return left;
+  }
+
+  function parseUnary(): LinearAccumulator {
+    skipWs();
+    if (pos < len) {
+      if (src[pos] === "+") {
+        pos++;
+        return parseUnary();
+      }
+      if (src[pos] === "-") {
+        pos++;
+        return scaleLinearAcc(parseUnary(), -1);
+      }
+    }
+    return parsePrimary();
+  }
+
+  function parsePrimary(): LinearAccumulator {
+    skipWs();
+    if (pos >= len) return { terms: new Map(), constant: 0 };
+
+    if (src[pos] === "(") {
+      pos++;
+      const inner = parseAddSub();
+      skipWs();
+      if (pos < len && src[pos] === ")") pos++;
+      return inner;
+    }
+
+    const num = tryScanNumber();
+    if (num !== null) {
+      // Support implicit multiplication `2x` when immediately followed by an identifier without operator
+      if (pos < len && (isIdentStart(src[pos]!) || src[pos] === "'")) {
+        const id = tryScanIdent();
+        if (id) {
+          const m = new Map<string, number>();
+          if (Math.abs(num) >= 1e-15) m.set(id, num);
+          return { terms: m, constant: 0 };
+        }
+      }
+      return { terms: new Map(), constant: num };
+    }
+
+    const id = tryScanIdent();
+    if (id !== null) {
+      // Skip unit brackets `[kg]` if attached to identifier
+      skipWs();
+      if (pos < len && src[pos] === "[") {
+        let depth = 1;
+        pos++;
+        while (pos < len && depth > 0) {
+          if (src[pos] === "[") depth++;
+          else if (src[pos] === "]") depth--;
+          pos++;
+        }
+      }
+      const m = new Map<string, number>();
+      m.set(id, 1);
+      return { terms: m, constant: 0 };
+    }
+
+    // Skip unexpected character (e.g. `[unit]` after number)
+    if (src[pos] === "[") {
+      let depth = 1;
+      pos++;
+      while (pos < len && depth > 0) {
+        if (src[pos] === "[") depth++;
+        else if (src[pos] === "]") depth--;
+        pos++;
+      }
+      return { terms: new Map(), constant: 0 };
+    }
+
+    pos++;
+    return { terms: new Map(), constant: 0 };
+  }
+
+  const acc = parseAddSub();
+  const terms: LinearTerm[] = [];
+  for (const [varName, coeff] of acc.terms) {
+    if (Math.abs(coeff) >= 1e-15) {
+      terms.push({ varName, coeff });
+    }
+  }
+  return { terms, constant: acc.constant };
 }
 
 /**

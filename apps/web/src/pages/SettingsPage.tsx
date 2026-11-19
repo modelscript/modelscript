@@ -574,10 +574,10 @@ export const DEEP_SETTINGS_INDEX: DeepSettingEntry[] = [
   {
     id: "modeling-auto-simulate",
     title: "Auto-Simulate on Model Load",
-    description: "Automatically execute simulation runs when opening a model in Morsel.",
+    description: "Automatically execute simulation runs when opening a model in Ansatz.",
     tab: "modeling",
     tabLabel: "Modeling & Simulation",
-    keywords: "auto-simulate morsel run automatically model load",
+    keywords: "auto-simulate ansatz editor morsel run automatically model load",
   },
 
   // 5. Display & Accessibility

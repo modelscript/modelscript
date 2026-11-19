@@ -265,8 +265,8 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
           href={onBrandClick ? "#new-model" : branding.docsBaseUrl || "https://modelscript.org"}
           target={onBrandClick ? undefined : "_blank"}
           rel={onBrandClick ? undefined : "noopener noreferrer"}
-          title={onBrandClick ? "New workspace & New Model" : "Morsel"}
-          aria-label="Morsel"
+          title={onBrandClick ? "New workspace & New Model" : "Ansatz"}
+          aria-label="Ansatz"
           onClick={
             onBrandClick
               ? (e) => {
@@ -278,15 +278,15 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
         >
           <img
             src={customLogoSrc || (theme === "dark" ? "/brand-dark.png" : "/brand.png")}
-            alt="Morsel"
+            alt="Ansatz"
             height={22}
             style={{ height: "22px", width: "auto", flexShrink: 0, display: "block" }}
             data-testid="morsel-brand-icon"
           />
           {Boolean(customLogoSrc) && (
-            <Badge data-testid="playground-brand-badge" title="Morsel" className="nav-hide-xl">
+            <Badge data-testid="playground-brand-badge" title="Ansatz" className="nav-hide-xl">
               <MorselIcon size={13} style={{ marginRight: "3px" }} />
-              <span>Morsel</span>
+              <span>Ansatz</span>
             </Badge>
           )}
           <BrandTierBadge data-testid="morsel-brand-beta-badge">
@@ -298,7 +298,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
 
         {fromArtifactParam && (
           <Link
-            to={`/morsel?fromArtifact=${fromArtifactParam}`}
+            to={`/editor?fromArtifact=${fromArtifactParam}`}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -314,7 +314,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
               fontWeight: 600,
               flexShrink: 0,
             }}
-            title={`Forked from Morsel #${fromArtifactParam}`}
+            title={`Forked from Model #${fromArtifactParam}`}
           >
             <RepoForkedIcon size={12} /> Fork of #{fromArtifactParam}
           </Link>

@@ -4,22 +4,31 @@
 // renders it using AntV X6.
 
 import {
+  applyOptimisticPropertyAction,
+  buildPropertyContextValues,
   ConflictManager,
+  DiagramActionQueue,
   dropComponentGhost,
-  evaluatePropertyPredicate,
   getGraph,
   getTypicalNodeSize,
+  getVisiblePropertyTabs,
+  hydrateDiagramWasm,
   initGraph,
   reconcilePropertiesDOM,
   rerouteEdgeOrthogonal,
+  resolveActivePropertyTabId,
   setDiagramOptions,
-  toggleMinimapHud,
-  updateMinimapHud,
   updateParameterText,
   type ComponentPropertyData,
-  type PropertyTabConfig,
 } from "@modelscript/diagram";
 import DOMPurify from "dompurify";
+
+if (typeof document !== "undefined") {
+  const wasmUrl = document.getElementById("container")?.dataset?.wasmUrl;
+  if (wasmUrl) {
+    void hydrateDiagramWasm(wasmUrl);
+  }
+}
 
 interface PlacementPayload {
   className: string;
@@ -143,32 +152,21 @@ const vscode = diagramWindow.acquireVsCodeApi?.() ?? {
   },
 };
 
-let pendingDiagramActions: WebviewDiagramAction[] = [];
-let diagramActionTimer: ReturnType<typeof setTimeout> | null = null;
+const diagramActionQueue = new DiagramActionQueue<WebviewDiagramAction>({
+  spatialDelayMs: 10,
+  structuralDelayMs: 0,
+  onImmediateAction: (action) => {
+    vscode.postMessage({ type: "interactiveWrite", ...action });
+  },
+  onFlush: (actions) => {
+    console.log("[diagram.ts] posting diagram edits to host:", actions.length);
+    vscode.postMessage({ type: "diagramEdit", actions });
+  },
+});
 
 function enqueueDiagramAction(action: WebviewDiagramAction) {
   console.log("[diagram.ts] enqueuing diagram action:", action.type, action);
-
-  if (action.type === "interactiveWrite") {
-    vscode.postMessage({ type: "interactiveWrite", ...action });
-    return;
-  }
-
-  pendingDiagramActions.push(action);
-  if (diagramActionTimer) clearTimeout(diagramActionTimer);
-
-  const isSpatial = ["move", "resize", "rotate", "toggleDisable", "moveEdge"].includes(action.type);
-  const delay = isSpatial ? 10 : 0;
-
-  diagramActionTimer = setTimeout(() => {
-    const actions = pendingDiagramActions;
-    pendingDiagramActions = [];
-    diagramActionTimer = null;
-    if (actions.length > 0) {
-      console.log("[diagram.ts] posting diagram edits to host:", actions.length);
-      vscode.postMessage({ type: "diagramEdit", actions });
-    }
-  }, delay);
+  diagramActionQueue.enqueue(action);
 }
 
 let activeLanguage = "modelica";
@@ -437,6 +435,7 @@ function initDiagramBridge() {
   setDiagramOptions({
     container,
     isDark,
+    disableBuiltinContextMenu: true,
     onAction: enqueueDiagramAction,
     onSelect: (id: string | null) => {
       if (!id) {
@@ -449,10 +448,6 @@ function initDiagramBridge() {
         return;
       }
       showProperties({ id: nodeId, properties: cachedProps, isLoading });
-      // Only request full properties if not already loaded or if explicitly in loading state
-      if (!cachedProps || isLoading === true) {
-        vscode.postMessage({ type: "getProperties", componentName: nodeId });
-      }
     },
     onUndo: () => vscode.postMessage({ type: "undo" }),
     onRedo: () => vscode.postMessage({ type: "redo" }),
@@ -978,6 +973,7 @@ function initContextMenu() {
     }
 
     g.on("node:click", ({ node }: { node: DiagramNodeCell }) => {
+      if (!isPscadLanguage(activeLanguage)) return;
       const defn = String(node.getData()?.definition || "").toLowerCase();
       const name = String(node.getData()?.name || node.id).toLowerCase();
       if (defn.includes("breaker") || defn.includes("switch") || name.includes("brk") || name.includes("breaker")) {
@@ -1388,29 +1384,6 @@ function initKeyboardAccelerators() {
     const selectedCells = g.getSelectedCells() as DiagramNodeCell[];
     const selectedNodes = selectedCells.filter((c: DiagramNodeCell) => c.isNode());
 
-    // Inline rename: F2
-    if (e.key === "F2" && selectedNodes.length > 0) {
-      e.preventDefault();
-      const node = selectedNodes[0]!;
-      diagramWindow.__startInlineNodeEdit?.(node.id);
-      return;
-    }
-
-    // Rotate: R
-    if (e.key.toLowerCase() === "r" && !e.ctrlKey && !e.metaKey) {
-      if (selectedNodes.length > 0) {
-        e.preventDefault();
-        const deg = e.shiftKey ? -90 : 90;
-        selectedNodes.forEach((node: DiagramNodeCell) => {
-          const curAngle = node.getAngle() || 0;
-          const newAngle = (((curAngle + deg) % 360) + 360) % 360;
-          node.rotate(deg);
-          enqueueDiagramAction({ type: "rotate", item: { name: node.id, rotation: newAngle } });
-        });
-        return;
-      }
-    }
-
     // Toggle Disable/Bypass: D
     if (e.key.toLowerCase() === "d" && !e.ctrlKey && !e.metaKey) {
       if (selectedNodes.length > 0) {
@@ -1484,31 +1457,6 @@ function initKeyboardAccelerators() {
         return;
       }
     }
-
-    // Open properties: Enter
-    if (e.key === "Enter" && selectedNodes.length > 0) {
-      e.preventDefault();
-      const node = selectedNodes[0]!;
-      showProperties({ id: node.id, properties: node.getData()?.properties });
-      vscode.postMessage({ type: "getProperties", componentName: node.id });
-      return;
-    }
-
-    // Toggle Minimap HUD: M
-    if (e.key.toLowerCase() === "m" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      e.preventDefault();
-      const container = g.container as HTMLElement | undefined;
-      if (container) {
-        const isOpen = toggleMinimapHud(container);
-        if (isOpen) {
-          const hud = container.querySelector("#modelscript-minimap-hud") as HTMLElement | null;
-          if (hud) {
-            updateMinimapHud(hud, g);
-          }
-        }
-      }
-      return;
-    }
   });
 }
 
@@ -1564,15 +1512,11 @@ function showProperties(nodeData: DiagramShowPropertiesInput) {
   }
 
   // Active tab resolution
-  const availableTabs = (props.schema?.tabs || []).filter((t: PropertyTabConfig) =>
-    evaluatePropertyPredicate(t.visibleIf, conflictMgr.getAllLocalValues()),
-  );
-  let activeTabId = nodeActiveTabMap.get(nodeIdStr);
-  if (!activeTabId || !availableTabs.some((t: PropertyTabConfig) => t.id === activeTabId)) {
-    activeTabId = availableTabs[0]?.id;
-    if (activeTabId) {
-      nodeActiveTabMap.set(nodeIdStr, activeTabId);
-    }
+  const contextValues = buildPropertyContextValues(props, conflictMgr.getAllLocalValues());
+  const availableTabs = getVisiblePropertyTabs(props.schema, contextValues);
+  const activeTabId = resolveActivePropertyTabId(availableTabs, nodeActiveTabMap.get(nodeIdStr));
+  if (activeTabId) {
+    nodeActiveTabMap.set(nodeIdStr, activeTabId);
   }
 
   // In-place differential DOM reconciliation
@@ -1602,12 +1546,14 @@ function showProperties(nodeData: DiagramShowPropertiesInput) {
         const prevValue = conflictMgr.getLocalValue(fieldKey) ?? props.values?.[fieldKey];
         const txId = conflictMgr.setLocalValue(fieldKey, newValue);
 
-        if (props.values) {
-          props.values[fieldKey] = newValue;
-        }
-        if (props.parameters) {
-          const p = props.parameters.find((param) => param.name === fieldKey);
-          if (p) p.value = String(newValue);
+        const updatedProps = applyOptimisticPropertyAction(props, {
+          type: "updateProperty",
+          name: nodeIdStr,
+          key: fieldKey,
+          value: newValue,
+        });
+        if (updatedProps) {
+          nodeData.properties = updatedProps;
         }
 
         // Optimistically patch diagram SVG text in-place

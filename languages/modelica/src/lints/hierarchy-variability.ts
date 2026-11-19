@@ -1030,135 +1030,6 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
   },
 
   /**
-   * M4004: Unbalanced model (variable / equation count mismatch).
-   *
-   * Per MLS §4.7, a simulatable model or block should have the same number of
-   * local scalar unknown variables and equations. Counts non-parameter,
-   * non-constant, non-input component declarations (expanding array dimensions)
-   * and compares against the number of simple equations.
-   */
-  unbalancedModel: {
-    nodes: ["class_definition"],
-    severity: "warning",
-    code: 4004,
-    message: (target, eqCount, varCount) =>
-      `Model '${target["name"] || target.text}' is not balanced: ${eqCount.asNumber()} equations for ${varCount.asNumber()} variables.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
-      // Skip non-equation-bearing specialized classes (functions, records, types, connectors, packages)
-      if (
-        isClassKind(db, node, "function") ||
-        isClassKind(db, node, "record") ||
-        isClassKind(db, node, "type") ||
-        isClassKind(db, node, "connector") ||
-        isClassKind(db, node, "package")
-      ) {
-        return;
-      }
-      let varCount = 0;
-      let eqCount = 0;
-      // Count continuous/discrete local variables (multiplying by explicit or parameter array dimensions)
-      for (const clause of db.ast.getDescendants(node, $.component_clause)) {
-        if (clause == 0 || isDescendantOfInnerClass(db, clause, node, $)) continue;
-        if (
-          hasTypePrefix(db, clause, "parameter", $) ||
-          hasTypePrefix(db, clause, "constant", $) ||
-          hasTypePrefix(db, clause, "input", $)
-        ) {
-          continue;
-        }
-        for (const elem of db.ast.getDescendants(clause, $.component_declaration)) {
-          if (elem == 0) continue;
-          let dim = 1;
-          for (const subs of db.ast.getDescendants(elem, $.array_subscripts)) {
-            for (const sub of db.ast.getDescendants(subs, $.subscript)) {
-              let parsedDim = 0;
-              for (const num of db.ast.getDescendants(sub, $.unsigned_integer)) {
-                parsedDim = db.ast.parseInteger(num);
-                break;
-              }
-              if (parsedDim == 0 && $.number != 0) {
-                for (const num of db.ast.getDescendants(sub, $.number)) {
-                  parsedDim = db.ast.parseInteger(num);
-                  break;
-                }
-              }
-              if (parsedDim == 0) {
-                for (const id of db.ast.getDescendants(sub, $.identifier)) {
-                  for (const pClause of db.ast.getDescendants(node, $.component_clause)) {
-                    if (pClause == 0 || isDescendantOfInnerClass(db, pClause, node, $)) continue;
-                    if (!hasTypePrefix(db, pClause, "parameter", $)) continue;
-                    for (const decl of db.ast.getDescendants(pClause, $.declaration)) {
-                      let match = false;
-                      for (const pId of db.ast.getDescendants(decl, $.identifier)) {
-                        if (db.ast.textEqualsNode(id, pId)) {
-                          match = true;
-                          break;
-                        }
-                        break;
-                      }
-                      if (match) {
-                        for (const num of db.ast.getDescendants(decl, $.unsigned_integer)) {
-                          parsedDim = db.ast.parseInteger(num);
-                          break;
-                        }
-                        if (parsedDim == 0 && $.number != 0) {
-                          for (const num of db.ast.getDescendants(decl, $.number)) {
-                            parsedDim = db.ast.parseInteger(num);
-                            break;
-                          }
-                        }
-                      }
-                      if (parsedDim > 0) break;
-                    }
-                    if (parsedDim > 0) break;
-                  }
-                  break;
-                }
-              }
-              if (parsedDim > 0) {
-                dim *= parsedDim;
-              }
-            }
-          }
-          varCount += dim;
-        }
-      }
-      if ($.component_clause1 != 0) {
-        for (const clause of db.ast.getDescendants(node, $.component_clause1)) {
-          if (clause == 0 || isDescendantOfInnerClass(db, clause, node, $)) continue;
-          if (
-            hasTypePrefix(db, clause, "parameter", $) ||
-            hasTypePrefix(db, clause, "constant", $) ||
-            hasTypePrefix(db, clause, "input", $)
-          )
-            continue;
-          varCount++;
-        }
-      }
-
-      for (const eq of db.ast.getDescendants(node, $.simple_equation)) {
-        if (eq != 0 && !isDescendantOfInnerClass(db, eq, node, $)) eqCount++;
-      }
-      if (varCount > 0 && eqCount > 0 && varCount != eqCount) {
-        let targetNode = node;
-        for (const spec of db.ast.getDescendants(node, $.long_class_specifier)) {
-          const nameId = db.ast.getChildByFieldId(spec, "name");
-          if (nameId != 0) targetNode = nameId;
-          else targetNode = spec;
-          break;
-        }
-        for (const spec of db.ast.getDescendants(node, $.short_class_specifier)) {
-          const nameId = db.ast.getChildByFieldId(spec, "name");
-          if (nameId != 0) targetNode = nameId;
-          else targetNode = spec;
-          break;
-        }
-        db.diagnostic(targetNode, eqCount, varCount);
-      }
-    },
-  },
-
-  /**
    * M4027: Parameter with continuous binding.
    *
    * Per MLS §3.8, a `parameter` component's binding expression must have at
@@ -1409,84 +1280,76 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
    * must solve for the exact same set of variables as the initial `when` branch.
    */
   elsewhenVariableMismatch: {
-    nodes: ["when_equation", "when_statement"],
+    nodes: ["when_equation"],
     severity: "error",
     code: 5023,
     message: () => `The same variables must be solved in elsewhen clause as in the when clause.`,
     query: (db: CodeGraph, node: u32, $: any) => {
-      // Partition LHS targets by branch ('when' vs each 'elsewhen') and compare sorted hash sets
-      let ch = db.ast.getFirstChild(node);
+      // Partition LHS targets by branch ('when' vs each 'elsewhen') in pre-order across GLR wrappers.
+      if ($.simple_equation == 0) return;
+
+      // Nested if-equations inside a when-branch have branch-by-branch semantics handled by the flattener
+      if ($.if_equation != 0) {
+        for (const _ifNode of db.ast.getDescendants(node, $.if_equation)) {
+          return;
+        }
+      }
+
       const branches: u64[][] = [[]];
       let branchIdx = 0;
 
-      while (ch != 0) {
-        if (db.ast.textEquals(ch, "elsewhen")) {
-          branchIdx++;
-          branches.push([]);
-        } else {
-          const currentList = branches[branchIdx]!;
-          if ($.simple_equation != 0) {
-            if (db.ast.getType(ch) == $.simple_equation) {
-              let lhs = db.ast.getChildByFieldId(ch, "lhs");
-              if (lhs == 0 && $.lhs_expression != 0) {
-                for (const l of db.ast.getDescendants(ch, $.lhs_expression)) {
-                  lhs = l;
-                  break;
-                }
-              }
-              if (lhs != 0) {
-                const s = db.ast.getTextSpan(lhs);
-                const h = db.hash.span64(s);
-                if (!currentList.includes(h)) currentList.push(h);
-              }
-            }
-            for (const eq of db.ast.getDescendants(ch, $.simple_equation)) {
-              let lhs = db.ast.getChildByFieldId(eq, "lhs");
-              if (lhs == 0 && $.lhs_expression != 0) {
-                for (const l of db.ast.getDescendants(eq, $.lhs_expression)) {
-                  lhs = l;
-                  break;
-                }
-              }
-              if (lhs != 0) {
-                const s = db.ast.getTextSpan(lhs);
-                const h = db.hash.span64(s);
-                if (!currentList.includes(h)) currentList.push(h);
-              }
-            }
-          }
-          if ($.assignment_statement != 0) {
-            if (db.ast.getType(ch) == $.assignment_statement) {
-              let target = db.ast.getChildByFieldId(ch, "target");
-              if (target == 0 && $.component_reference != 0) {
-                for (const cr of db.ast.getDescendants(ch, $.component_reference)) {
-                  target = cr;
-                  break;
-                }
-              }
-              if (target != 0) {
-                const s = db.ast.getTextSpan(target);
-                const h = db.hash.span64(s);
-                if (!currentList.includes(h)) currentList.push(h);
-              }
-            }
-            for (const asgn of db.ast.getDescendants(ch, $.assignment_statement)) {
-              let target = db.ast.getChildByFieldId(asgn, "target");
-              if (target == 0 && $.component_reference != 0) {
-                for (const cr of db.ast.getDescendants(asgn, $.component_reference)) {
-                  target = cr;
-                  break;
-                }
-              }
-              if (target != 0) {
-                const s = db.ast.getTextSpan(target);
-                const h = db.hash.span64(s);
-                if (!currentList.includes(h)) currentList.push(h);
-              }
-            }
+      for (const d of db.ast.getDescendants(node)) {
+        let insideNestedWhen = false;
+        for (const anc of db.ast.getAncestors(d)) {
+          if (anc == node) break;
+          if (db.ast.getType(anc) == $.when_equation) {
+            insideNestedWhen = true;
+            break;
           }
         }
-        ch = db.ast.getNextSibling(ch);
+        if (insideNestedWhen) continue;
+
+        if (db.ast.getFirstChild(d) == 0 && db.ast.textEquals(d, "elsewhen")) {
+          branchIdx++;
+          branches.push([]);
+          continue;
+        }
+
+        if (db.ast.getType(d) == $.simple_equation) {
+          let lhs = db.ast.getChildByFieldId(d, "lhs");
+          if (lhs == 0 && $.lhs_expression != 0) {
+            for (const l of db.ast.getDescendants(d, $.lhs_expression)) {
+              lhs = l;
+              break;
+            }
+          }
+          if (lhs != 0) {
+            let hashTarget = lhs;
+            if ($.array_subscripts != 0 && $.identifier != 0) {
+              let hasSubs = false;
+              for (const _sub of db.ast.getDescendants(lhs, $.array_subscripts)) {
+                hasSubs = true;
+                break;
+              }
+              if (hasSubs) {
+                let firstId: u32 = 0;
+                let idCount = 0;
+                for (const idNode of db.ast.getDescendants(lhs, $.identifier)) {
+                  if (firstId == 0) firstId = idNode;
+                  idCount++;
+                  if (idCount > 1) break;
+                }
+                if (firstId != 0 && idCount == 1) {
+                  hashTarget = firstId;
+                }
+              }
+            }
+            const s = db.ast.getTextSpan(hashTarget);
+            const h = db.hash.span64(s);
+            const currentList = branches[branchIdx]!;
+            if (!currentList.includes(h)) currentList.push(h);
+          }
+        }
       }
 
       if (branches.length > 1) {
@@ -2151,6 +2014,114 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       if (stateId != 0) {
         db.diagnostic(stateId);
       }
+    },
+  },
+
+  /**
+   * M4146: Parameter declared without binding equation or start attribute (MLS §4.4, §8.6).
+   *
+   * Fixed parameters in non-partial models/blocks with neither a binding expression
+   * nor a `start` value rely on type defaults during initialization.
+   */
+  parameterNoValue: {
+    nodes: ["component_declaration"],
+    severity: "warning",
+    code: 4146,
+    message: (target) =>
+      `Parameter '${target.text}' has no value and relies on default start value during initialization.`,
+    query: (db: CodeGraph, node: u32, $: any) => {
+      let compClause: u32 = 0;
+      let enclosingEl: u32 = 0;
+      for (const anc of db.ast.getAncestors(node)) {
+        const at = db.ast.getType(anc);
+        if (compClause == 0 && at == $.component_clause) {
+          compClause = anc;
+        }
+        if (at == $.element) {
+          enclosingEl = anc;
+          break;
+        }
+        if (at == $.class_definition) break;
+      }
+      if (compClause == 0) return;
+
+      if (!hasTypePrefix(db, compClause, "parameter", $)) return;
+      if (hasTypePrefix(db, compClause, "input", $) || hasTypePrefix(db, compClause, "output", $)) return;
+
+      if (enclosingEl != 0) {
+        let ch = db.ast.getFirstChild(enclosingEl);
+        while (ch != 0) {
+          if (db.ast.textEquals(ch, "outer") || db.ast.textEquals(ch, "replaceable")) return;
+          ch = db.ast.getNextSibling(ch);
+        }
+      }
+
+      const cls = getEnclosingClass(db, node, $);
+      if (cls != 0) {
+        if (
+          isClassKind(db, cls, "partial") ||
+          isClassKind(db, cls, "function") ||
+          isClassKind(db, cls, "record") ||
+          isClassKind(db, cls, "connector") ||
+          isClassKind(db, cls, "package") ||
+          isClassKind(db, cls, "type") ||
+          isClassKind(db, cls, "operator")
+        ) {
+          return;
+        }
+      }
+
+      const decl = db.ast.getChildByFieldId(node, "declaration");
+      if (decl == 0) return;
+      const nameNode = db.ast.getChildByFieldId(decl, "name");
+
+      // Check direct binding expression (`= value`) on declaration
+      for (const me of db.ast.getDescendants(decl, $.modification_expression)) {
+        let nested = false;
+        for (const anc of db.ast.getAncestors(me)) {
+          if (anc == decl) break;
+          const at = db.ast.getType(anc);
+          if (at == $.element_modification || at == $.class_modification) {
+            nested = true;
+            break;
+          }
+        }
+        if (!nested) return;
+      }
+
+      // Check top-level attributes (`start = ...`, `fixed = false`)
+      for (const mod of db.ast.getDescendants(decl, $.element_modification)) {
+        let isNestedMod = false;
+        let modDepth = 0;
+        for (const anc of db.ast.getAncestors(mod)) {
+          if (anc == decl) break;
+          if (db.ast.getType(anc) == $.class_modification) {
+            modDepth++;
+            if (modDepth > 1) {
+              isNestedMod = true;
+              break;
+            }
+          }
+        }
+        if (isNestedMod) continue;
+
+        let modName = db.ast.getChildByFieldId(mod, "name");
+        if (modName == 0) {
+          for (const n of db.ast.getDescendants(mod, $.name)) {
+            modName = n;
+            break;
+          }
+        }
+        if (modName == 0) continue;
+        if (db.ast.textEquals(modName, "start")) return;
+        if (db.ast.textEquals(modName, "fixed")) {
+          for (const ancMod of db.ast.getDescendants(mod, $.modification_expression)) {
+            if (db.ast.textEquals(ancMod, "false")) return;
+          }
+        }
+      }
+
+      db.diagnostic(nameNode != 0 ? nameNode : decl);
     },
   },
 };

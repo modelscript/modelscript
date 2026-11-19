@@ -88,8 +88,8 @@ describe("Sidebar Navigation Structure & Workbench Placement", () => {
     );
     assert.ok(content.includes("onClick={onPostClick}"), "Sidebar.tsx Post button must invoke onPostClick");
     assert.ok(
-      content.includes('to="/morsel"') || content.includes('to="/sketch"'),
-      "Sidebar.tsx Morsel button must point to /morsel",
+      content.includes('to="/editor"') || content.includes('to="/morsel"') || content.includes('to="/sketch"'),
+      "Sidebar.tsx editor button must point to /editor",
     );
     assert.ok(
       content.includes("MorselIcon") || content.includes("AnsatzSketchIcon"),

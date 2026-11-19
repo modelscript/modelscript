@@ -25,10 +25,12 @@ export type ActivityDiagnostic = CfaDiagnostic;
 
 export interface ActivitySoundnessResult {
   isSound: boolean;
+  isDefiniteAssigned?: boolean | undefined;
   diagnostics: ActivityDiagnostic[];
   deadlockNodes: string[];
   unreachableActions: string[];
   unassignedOutputs: string[];
+  uninitializedReads?: { variable: string; nodeName: string }[] | undefined;
   summary: string;
 }
 
@@ -60,7 +62,7 @@ export function parseActivityElements(sysmlSource: string): {
     endOffset: f.endOffset,
   }));
 
-  const declaredOutputs = graph.declaredOutputs.map((p) => p.name);
+  const declaredOutputs = graph.declaredOutputs.filter((p) => p.direction !== "in").map((p) => p.name);
 
   return { actions, successions, declaredOutputs };
 }
@@ -74,10 +76,12 @@ export function checkActivitySoundness(sysmlSource: string): ActivitySoundnessRe
 
   return {
     isSound: result.isSound,
+    isDefiniteAssigned: result.isDefiniteAssigned,
     diagnostics: result.diagnostics,
     deadlockNodes: result.deadlockNodes,
     unreachableActions: result.unreachableActions,
     unassignedOutputs: result.unassignedOutputs,
+    uninitializedReads: result.uninitializedReads,
     summary: result.summary,
   };
 }
@@ -91,10 +95,12 @@ export function checkActivitySoundnessForSymbol(db: QueryDB, actionSymbol: Symbo
 
   return {
     isSound: result.isSound,
+    isDefiniteAssigned: result.isDefiniteAssigned,
     diagnostics: result.diagnostics,
     deadlockNodes: result.deadlockNodes,
     unreachableActions: result.unreachableActions,
     unassignedOutputs: result.unassignedOutputs,
+    uninitializedReads: result.uninitializedReads,
     summary: result.summary,
   };
 }

@@ -17,13 +17,17 @@ import {
   getCstChildren,
   getDocumentationCommentText,
   parseSysmlSource,
+  readDottedChainFromLeaves,
+  stripLeadingTilde,
   tokenizeSysmlExpressionCst,
+  unwrapSysmlConstraintBodyCst,
   type CstLeaf,
   type SysmlCstNode,
   type SysmlExprToken,
 } from "./cst-utils.js";
 import { evaluateSysML2Constraint, parseSysML2Expression, sysmlAstSome } from "./evaluator.js";
 import { SysML2EventTraceExplorer } from "./event-trace-explorer.js";
+import { getAllocationEndpointName, resolveFeatureInScope, resolveTypeOf } from "./queries.js";
 import { extractVariables, parseGuardConstraints, type GuardConstraint } from "./state-machine-verifier.js";
 
 /**
@@ -216,16 +220,66 @@ export function verifyTemporalContract(
 }
 
 /**
+ * Unwraps `require constraint { ... }`, `assume constraint { ... }`, `assert constraint { ... }`,
+ * and `constraint { ... }` wrappers cleanly into raw Boolean/relational expressions.
+ */
+function unwrapContractConstraintText(rawText: string): string {
+  const trimmed = rawText.trim();
+  if (!trimmed) return "";
+
+  const lower = trimmed.toLowerCase();
+  const needsCstUnwrap =
+    trimmed.includes("{") ||
+    trimmed.endsWith(";") ||
+    lower.startsWith("require") ||
+    lower.startsWith("assume") ||
+    lower.startsWith("assert") ||
+    lower.startsWith("constraint") ||
+    lower.startsWith("public") ||
+    lower.startsWith("private") ||
+    lower.startsWith("protected");
+
+  let unwrapped = needsCstUnwrap ? unwrapSysmlConstraintBodyCst(trimmed) : trimmed;
+
+  // Strip any remaining leading `require`, `assume`, `assert`, or `constraint` keyword on brace-less clauses
+  while (unwrapped) {
+    const uLow = unwrapped.toLowerCase();
+    let stripped = false;
+    for (const kw of ["public", "private", "protected", "require", "assume", "assert", "constraint"]) {
+      if (uLow.startsWith(kw) && unwrapped.length > kw.length) {
+        const nextCh = unwrapped[kw.length]!;
+        if (nextCh === " " || nextCh === "\t" || nextCh === "\r" || nextCh === "\n" || nextCh === "{") {
+          unwrapped = unwrapped.slice(kw.length).trim();
+          stripped = true;
+          break;
+        }
+      }
+    }
+    if (!stripped) break;
+  }
+
+  if (unwrapped.startsWith("{") && unwrapped.endsWith("}")) {
+    unwrapped = unwrapped.slice(1, -1).trim();
+  }
+  while (unwrapped.endsWith(";")) {
+    unwrapped = unwrapped.slice(0, -1).trimEnd();
+  }
+  return unwrapped.trim();
+}
+
+/**
  * Negates a single guard constraint into an array of equivalent non-linear inequality constraints.
  */
 function negateGuardConstraint(c: GuardConstraint): NonlinearConstraint[] {
   const eps = 1e-4;
   if (c.nonlinear) {
     const orig = c.nonlinear;
-    if (orig.rel === "<=") {
-      return [{ expr: orig.expr, rel: ">=", rhs: orig.rhs + eps }];
-    } else if (orig.rel === ">=") {
-      return [{ expr: orig.expr, rel: "<=", rhs: orig.rhs - eps }];
+    if (orig.rel === "<=" || orig.rel === "<") {
+      return [{ expr: orig.expr, rel: ">=", rhs: orig.rel === "<=" ? orig.rhs + eps : orig.rhs }];
+    } else if (orig.rel === ">=" || orig.rel === ">") {
+      return [{ expr: orig.expr, rel: "<=", rhs: orig.rel === ">=" ? orig.rhs - eps : orig.rhs }];
+    } else if (orig.rel === "!=") {
+      return [{ expr: orig.expr, rel: "==", rhs: orig.rhs }];
     } else {
       return [
         { expr: orig.expr, rel: "<=", rhs: orig.rhs - eps },
@@ -236,9 +290,11 @@ function negateGuardConstraint(c: GuardConstraint): NonlinearConstraint[] {
 
   const varExpr: ExprNode = { kind: "var", name: c.variable.includes(".") ? c.variable.split(".").pop()! : c.variable };
   if (c.operator === "<=" || c.operator === "<") {
-    return [{ expr: varExpr, rel: ">=", rhs: c.value + eps }];
+    return [{ expr: varExpr, rel: ">=", rhs: c.operator === "<=" ? c.value + eps : c.value }];
   } else if (c.operator === ">=" || c.operator === ">") {
-    return [{ expr: varExpr, rel: "<=", rhs: c.value - eps }];
+    return [{ expr: varExpr, rel: "<=", rhs: c.operator === ">=" ? c.value - eps : c.value }];
+  } else if (c.operator === "!=") {
+    return [{ expr: varExpr, rel: "==", rhs: c.value }];
   } else {
     return [
       { expr: varExpr, rel: "<=", rhs: c.value - eps },
@@ -264,15 +320,17 @@ export interface EntailmentResult {
  * Checks whether (Premises /\ ~Conclusion) is UNSAT via DPLL(T) + HC4 contractor.
  */
 export function checkSymbolicEntailment(premises: string[], conclusionStr: string): EntailmentResult {
-  const pConstraints = premises.flatMap((p) => parseGuardConstraints(p));
-  const cConstraints = parseGuardConstraints(conclusionStr);
+  const pConstraints = premises.flatMap((p) => parseGuardConstraints(unwrapContractConstraintText(p)));
+  const cConstraints = parseGuardConstraints(unwrapContractConstraintText(conclusionStr));
 
   if (cConstraints.length === 0) {
     return { entailed: true };
   }
 
-  // Fast-path: single-variable bounds
-  const isSimple = !pConstraints.some((c) => c.nonlinear) && !cConstraints.some((c) => c.nonlinear);
+  // Fast-path: single-variable bounds (without disequalities)
+  const isSimple =
+    !pConstraints.some((c) => c.nonlinear || c.operator === "!=") &&
+    !cConstraints.some((c) => c.nonlinear || c.operator === "!=");
 
   if (isSimple) {
     const gBounds = new Map<string, { lower: number; upper: number }>();
@@ -464,6 +522,57 @@ function remapSysmlPortIdentifiers(exprText: string, mapEntries: ReadonlyArray<r
   return formatSysmlExprTokens(remapped, "sysml");
 }
 
+function splitTopLevelConjunctStrings(expr: string): string[] {
+  let cleaned = expr.trim();
+  if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  if (cleaned.startsWith("(") && cleaned.endsWith(")")) {
+    let d = 0;
+    let outerBalanced = true;
+    for (let i = 0; i < cleaned.length; i++) {
+      if (cleaned[i] === "(") d++;
+      else if (cleaned[i] === ")") {
+        d--;
+        if (d === 0 && i < cleaned.length - 1) {
+          outerBalanced = false;
+          break;
+        }
+      }
+    }
+    if (outerBalanced && d === 0) {
+      cleaned = cleaned.slice(1, -1).trim();
+    }
+  }
+
+  const out: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i]!;
+    if (ch === "(" || ch === "[") depth++;
+    else if (ch === ")" || ch === "]") depth = Math.max(0, depth - 1);
+
+    if (depth === 0) {
+      if (cleaned.slice(i, i + 2) === "&&") {
+        if (cur.trim()) out.push(cur.trim());
+        cur = "";
+        i += 1;
+        continue;
+      }
+      if (cleaned.slice(i, i + 5).toLowerCase() === " and " && i > 0) {
+        if (cur.trim()) out.push(cur.trim());
+        cur = "";
+        i += 4;
+        continue;
+      }
+    }
+    cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
 /**
  * Verifies contract entailment (G_supplier => A_consumer) for an interface connection.
  * Given a supplier guaranteeing a range and a consumer assuming a range,
@@ -479,16 +588,35 @@ export function verifyAssumeGuaranteePair(
 ): ContractVerificationResult {
   const violations: ContractViolation[] = [];
 
-  let effectiveGuarantees = guarantees;
+  const unwrappedGuarantees = guarantees.map(unwrapContractConstraintText).filter(Boolean);
+  const unwrappedAssumptions = assumptions.map(unwrapContractConstraintText).filter(Boolean);
+
+  let effectiveGuarantees = unwrappedGuarantees;
   if (portMapping) {
     const mapEntries = portMapping instanceof Map ? Array.from(portMapping.entries()) : Object.entries(portMapping);
-    effectiveGuarantees = guarantees.map((g) => remapSysmlPortIdentifiers(g, mapEntries));
+    effectiveGuarantees = unwrappedGuarantees.map((g) => remapSysmlPortIdentifiers(g, mapEntries));
   }
 
   const gConstraints = effectiveGuarantees.flatMap((g) => parseGuardConstraints(g));
-  const aConstraints = assumptions.flatMap((a) => parseGuardConstraints(a));
 
-  if (gConstraints.length === 0 || aConstraints.length === 0) {
+  // Pair each flattened GuardConstraint 1-to-1 with its own atomic assumption clause
+  const aItems: { constraint: GuardConstraint; rawText: string }[] = [];
+  for (const aExpr of unwrappedAssumptions) {
+    const conjunctStrs = splitTopLevelConjunctStrings(aExpr);
+    if (conjunctStrs.length <= 1) {
+      for (const c of parseGuardConstraints(aExpr)) {
+        aItems.push({ constraint: c, rawText: aExpr });
+      }
+    } else {
+      for (const atomStr of conjunctStrs) {
+        for (const c of parseGuardConstraints(atomStr)) {
+          aItems.push({ constraint: c, rawText: atomStr });
+        }
+      }
+    }
+  }
+
+  if (gConstraints.length === 0 || aItems.length === 0) {
     return { isSatisfied: true, violations: [] };
   }
 
@@ -508,10 +636,8 @@ export function verifyAssumeGuaranteePair(
     gBounds.set(varName, b);
   }
 
-  // Check each consumer assumption
-  for (let i = 0; i < aConstraints.length; i++) {
-    const a = aConstraints[i]!;
-    const aRaw = assumptions[i] || `${a.variable} ${a.operator} ${a.value}`;
+  // Check each consumer assumption atom against supplier guarantees
+  for (const { constraint: a, rawText: aRaw } of aItems) {
     const ent = checkSymbolicEntailment(effectiveGuarantees, aRaw);
 
     if (!ent.entailed) {
@@ -556,77 +682,393 @@ export function verifyAssumeGuaranteePair(
   };
 }
 
+function classifyConstraintChild(
+  db: QueryDB,
+  child: SymbolEntry,
+): { kind: "assume" | "require" | "assert" | "constraint"; body: string } | null {
+  const rawText = (db.cstText(child.startOffset, child.endOffset, child) || "").trim();
+  if (!rawText) return null;
+
+  const rawMetaKind = child.metadata?.["constraintKind"];
+  const metaKind = typeof rawMetaKind === "string" ? rawMetaKind.trim().toLowerCase() : "";
+
+  // Inspect leading keyword tokens BEFORE checking ruleName / generic "constraint"
+  const leaves = collectCstLeaves(parseSysmlSource(rawText));
+  let idx = 0;
+  if (leaves[idx]?.text === "public" || leaves[idx]?.text === "private" || leaves[idx]?.text === "protected") {
+    idx++;
+  }
+  let firstTok = leaves[idx]?.text.toLowerCase() ?? "";
+
+  // In SysML v2 CST, `RequirementConstraintMember` places `assume` / `require` / `assert`
+  // immediately before the inner `ConstraintUsage` node's `startOffset`.
+  if (firstTok === "constraint" && !metaKind && child.parentId !== null && typeof db.symbol === "function") {
+    const parentSym = db.symbol(child.parentId);
+    if (parentSym && child.startOffset > parentSym.startOffset) {
+      const lookbackStart = Math.max(parentSym.startOffset, child.startOffset - 48);
+      const prefix = db.cstText(lookbackStart, child.startOffset, parentSym) || "";
+      const prefixMatch = /(?:^|[;{}])\s*(?:(?:public|private|protected)\s+)?(assume|require|assert)\s*$/i.exec(prefix);
+      if (prefixMatch?.[1]) {
+        firstTok = prefixMatch[1].toLowerCase();
+      }
+    }
+  }
+
+  let classified: "assume" | "require" | "assert" | "constraint" | null = null;
+  if (metaKind === "assume" || firstTok === "assume") {
+    classified = "assume";
+  } else if (metaKind === "require" || firstTok === "require") {
+    classified = "require";
+  } else if (metaKind === "assert" || firstTok === "assert" || child.ruleName === "AssertConstraintUsage") {
+    classified = "assert";
+  } else if (firstTok === "constraint" || child.ruleName === "ConstraintUsage") {
+    classified = "constraint";
+  } else if (child.ruleName === "RequirementConstraintUsage") {
+    classified = "require";
+  }
+
+  if (!classified) return null;
+  const body = unwrapContractConstraintText(rawText);
+  if (!body) return null;
+  return { kind: classified, body };
+}
+
+function extractConnectionEndpointsFromCst(
+  db: QueryDB,
+  conn: SymbolEntry,
+): { sourceName?: string | undefined; targetName?: string | undefined } {
+  const rawMetaSource = conn.metadata?.["source"];
+  const rawMetaTarget = conn.metadata?.["target"];
+  let sourceName = typeof rawMetaSource === "string" && rawMetaSource.trim() ? rawMetaSource.trim() : undefined;
+  let targetName = typeof rawMetaTarget === "string" && rawMetaTarget.trim() ? rawMetaTarget.trim() : undefined;
+
+  if (!sourceName || !targetName) {
+    const refs = db.childrenOf(conn.id).filter((c) => c.kind === "Reference");
+    if (refs.length >= 2) {
+      const r0 = refs[0]!;
+      const r1 = refs[1]!;
+      const r0Slice = (db.cstText(r0.startOffset, r0.endOffset, r0) || "").trim();
+      const r1Slice = (db.cstText(r1.startOffset, r1.endOffset, r1) || "").trim();
+      sourceName ||= stripLeadingTilde(r0Slice.includes(".") ? r0Slice : getAllocationEndpointName(db, r0) || r0Slice);
+      targetName ||= stripLeadingTilde(r1Slice.includes(".") ? r1Slice : getAllocationEndpointName(db, r1) || r1Slice);
+    }
+  }
+
+  if (!sourceName || !targetName) {
+    const connText = db.cstText(conn.startOffset, conn.endOffset, conn) || "";
+    if (connText) {
+      const leaves = collectCstLeaves(parseSysmlSource(connText));
+      for (let i = 0; i < leaves.length; i++) {
+        const tok = leaves[i]!.text;
+        if (tok === "connect") {
+          let p = i + 1;
+          if (leaves[p]?.text === "~") p++;
+          const src = readDottedChainFromLeaves(leaves, p);
+          if (src && leaves[src.nextIdx]?.text === "to") {
+            let q = src.nextIdx + 1;
+            if (leaves[q]?.text === "~") q++;
+            const tgt = readDottedChainFromLeaves(leaves, q);
+            if (tgt) {
+              sourceName ||= src.text;
+              targetName ||= tgt.text;
+              break;
+            }
+          }
+        } else if (tok === "bind") {
+          let p = i + 1;
+          if (leaves[p]?.text === "~") p++;
+          const src = readDottedChainFromLeaves(leaves, p);
+          if (src && leaves[src.nextIdx]?.text === "=") {
+            let q = src.nextIdx + 1;
+            if (leaves[q]?.text === "~") q++;
+            const tgt = readDottedChainFromLeaves(leaves, q);
+            if (tgt) {
+              sourceName ||= src.text;
+              targetName ||= tgt.text;
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return { sourceName, targetName };
+}
+
+function resolveSymbolAndTypeDefinitions(db: QueryDB, usageSym: SymbolEntry): SymbolEntry[] {
+  const result: SymbolEntry[] = [usageSym];
+  const visitedIds = new Set<number>([usageSym.id]);
+  const hasSymbolLookup = typeof db.symbol === "function";
+
+  const findDefinition = (sym: SymbolEntry): SymbolEntry | null => {
+    if (hasSymbolLookup) {
+      const resolved = resolveTypeOf(db, sym);
+      if (resolved) return resolved;
+    }
+
+    // Fallback: inspect OwnedFeatureTyping child (stripping conjugation `~`), metadata, or CST `: Type`
+    let typeName: string | undefined;
+    for (const ch of db.childrenOf(sym.id)) {
+      if (ch.ruleName === "OwnedFeatureTyping" && ch.name) {
+        typeName = stripLeadingTilde(ch.name);
+        break;
+      }
+    }
+    if (!typeName && typeof sym.metadata?.["typeSpecifier"] === "string") {
+      typeName = stripLeadingTilde(sym.metadata["typeSpecifier"]);
+    }
+    if (!typeName) {
+      const txt = db.cstText(sym.startOffset, sym.endOffset, sym) || "";
+      const header = txt.split("{")[0] || txt;
+      const leaves = collectCstLeaves(parseSysmlSource(header));
+      const colonIdx = leaves.findIndex((l) => l.text === ":");
+      if (colonIdx !== -1) {
+        let p = colonIdx + 1;
+        if (leaves[p]?.text === "~") p++;
+        const tc = readDottedChainFromLeaves(leaves, p);
+        if (tc) typeName = tc.text;
+      }
+    }
+    if (!typeName) return null;
+
+    if (hasSymbolLookup) {
+      const scoped = resolveFeatureInScope(db, sym.parentId, typeName);
+      if (scoped) return scoped;
+    }
+    const shortName = extractLastNameSegment(typeName);
+    return (
+      db.byName(typeName).find((s) => s.kind === "Definition") ??
+      db.byName(shortName).find((s) => s.kind === "Definition") ??
+      null
+    );
+  };
+
+  const defQueue: SymbolEntry[] = [];
+  const primaryDef = findDefinition(usageSym);
+  if (primaryDef && !visitedIds.has(primaryDef.id)) {
+    visitedIds.add(primaryDef.id);
+    result.push(primaryDef);
+    defQueue.push(primaryDef);
+  }
+
+  // Walk superclassification hierarchy (`:>`) on resolved definitions
+  while (defQueue.length > 0) {
+    const curDef = defQueue.shift()!;
+    for (const ch of db.childrenOf(curDef.id)) {
+      if (ch.ruleName === "OwnedSubclassification" && ch.name) {
+        const superName = stripLeadingTilde(ch.name);
+        const superSym =
+          (hasSymbolLookup ? resolveFeatureInScope(db, curDef.parentId, superName) : null) ??
+          db.byName(extractLastNameSegment(superName)).find((s) => s.kind === "Definition") ??
+          null;
+        if (superSym && !visitedIds.has(superSym.id)) {
+          visitedIds.add(superSym.id);
+          result.push(superSym);
+          defQueue.push(superSym);
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+function resolveEndpointChain(
+  db: QueryDB,
+  scopeId: number | null,
+  epName: string,
+): { leafSym?: SymbolEntry | undefined; ownerSym?: SymbolEntry | undefined } {
+  const cleanName = stripLeadingTilde(epName);
+  const hasSymbolLookup = typeof db.symbol === "function";
+
+  if (hasSymbolLookup) {
+    const leaf = resolveFeatureInScope(db, scopeId, cleanName) ?? undefined;
+    let owner: SymbolEntry | undefined;
+    if (cleanName.includes(".")) {
+      const ownerPath = cleanName.split(".").slice(0, -1).join(".");
+      owner = resolveFeatureInScope(db, scopeId, ownerPath) ?? undefined;
+    }
+    if (leaf || owner) {
+      return { leafSym: leaf, ownerSym: owner };
+    }
+  }
+
+  // Fallback for minimal mock DBs without parent symbol chain
+  const direct = db.byName(cleanName)[0];
+  if (direct) return { leafSym: direct };
+  if (cleanName.includes(".")) {
+    const parts = cleanName.split(".");
+    const owner = db.byName(parts[0]!)[0];
+    const leaf = db.byName(parts[parts.length - 1]!)[0];
+    return { leafSym: leaf ?? owner, ownerSym: leaf ? owner : undefined };
+  }
+  return {};
+}
+
+function normalizeEndpointExpr(
+  exprText: string,
+  fullEndpoint: string,
+  leafName: string,
+  canonicalScalarPort: string,
+): string {
+  const tokens = tokenizeSysmlExpressionCst(exprText);
+  if (tokens.length <= 1) return exprText;
+  const remapped = tokens.map((tok) => {
+    if (tok.type !== "ident") return tok;
+    const t = tok.text;
+    if (t.startsWith(`${fullEndpoint}.`)) {
+      return { ...tok, text: t.slice(fullEndpoint.length + 1) };
+    }
+    if (t.startsWith(`${leafName}.`)) {
+      return { ...tok, text: t.slice(leafName.length + 1) };
+    }
+    if (t === fullEndpoint || t === leafName) {
+      return { ...tok, text: canonicalScalarPort };
+    }
+    return tok;
+  });
+  return formatSysmlExprTokens(remapped, "sysml");
+}
+
+function exprReferencesPort(exprText: string, fullEndpoint: string, leafName: string): boolean {
+  const tokens = tokenizeSysmlExpressionCst(exprText);
+  for (const tok of tokens) {
+    if (tok.type !== "ident") continue;
+    const t = tok.text;
+    if (t === fullEndpoint || t.startsWith(`${fullEndpoint}.`) || t === leafName || t.startsWith(`${leafName}.`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isConnectionInScopeFilter(db: QueryDB, conn: SymbolEntry, scopeFilter: string): boolean {
+  if (conn.name === scopeFilter || conn.name?.includes(scopeFilter)) return true;
+  if (typeof db.symbol !== "function") return false;
+  let cur = conn.parentId;
+  while (cur !== null) {
+    const p = db.symbol(cur);
+    if (!p) break;
+    if (p.name === scopeFilter) return true;
+    cur = p.parentId;
+  }
+  return false;
+}
+
 /**
- * Scans a QueryDB for all connections and verifies their Assume-Guarantee contracts.
+ * Scans a QueryDB (or inspects a single connection / container symbol ID in O(1))
+ * and verifies Assume-Guarantee interface contracts.
  */
 export function verifyAllInterfaceContracts(db: QueryDB, scopeFilter?: string | number): ContractVerificationResult {
-  const allEntries = db.allEntries();
-  const connections = allEntries.filter(
-    (e) => e.ruleName === "ConnectionUsage" || e.ruleName === "BindingConnectorAsUsage",
-  );
+  let connections: SymbolEntry[];
+
+  if (typeof scopeFilter === "number") {
+    const sym = typeof db.symbol === "function" ? db.symbol(scopeFilter) : undefined;
+    if (!sym) {
+      return { isSatisfied: true, violations: [] };
+    }
+    if (sym.ruleName === "ConnectionUsage" || sym.ruleName === "BindingConnectorAsUsage") {
+      connections = [sym];
+    } else {
+      connections = db
+        .childrenOf(sym.id)
+        .filter((e) => e.ruleName === "ConnectionUsage" || e.ruleName === "BindingConnectorAsUsage");
+    }
+  } else {
+    connections = db
+      .allEntries()
+      .filter((e) => e.ruleName === "ConnectionUsage" || e.ruleName === "BindingConnectorAsUsage");
+  }
 
   const allViolations: ContractViolation[] = [];
 
   for (const conn of connections) {
-    if (typeof scopeFilter === "number") {
-      if (conn.id !== scopeFilter) continue;
-    } else if (scopeFilter && conn.name !== scopeFilter && !conn.name?.includes(scopeFilter)) {
-      continue;
-    }
-
-    // Determine connection endpoints from metadata or children
-    const rawMetaSource = conn.metadata?.["source"];
-    const rawMetaTarget = conn.metadata?.["target"];
-    const metaSource = typeof rawMetaSource === "string" ? rawMetaSource : undefined;
-    const metaTarget = typeof rawMetaTarget === "string" ? rawMetaTarget : undefined;
-
-    let sourceName = metaSource;
-    let targetName = metaTarget;
-
-    if (!sourceName || !targetName) {
-      const refs = db.childrenOf(conn.id).filter((c) => c.kind === "Reference");
-      if (refs.length >= 2) {
-        sourceName = (refs[0]?.name || db.cstText(refs[0]?.startOffset || 0, refs[0]?.endOffset || 0) || "").trim();
-        targetName = (refs[1]?.name || db.cstText(refs[1]?.startOffset || 0, refs[1]?.endOffset || 0) || "").trim();
+    if (typeof scopeFilter === "string" && scopeFilter.length > 0) {
+      if (!isConnectionInScopeFilter(db, conn, scopeFilter)) {
+        continue;
       }
     }
 
+    const { sourceName, targetName } = extractConnectionEndpointsFromCst(db, conn);
     if (!sourceName || !targetName) continue;
 
-    const resolveEndpointSym = (epName: string): SymbolEntry | undefined => {
-      const direct = db.byName(epName)[0];
-      if (direct) return direct;
-      if (epName.includes(".")) {
-        const parts = epName.split(".");
-        return db.byName(parts[0]!)[0] ?? db.byName(parts[parts.length - 1]!)[0];
-      }
-      return undefined;
-    };
+    const cleanSource = stripLeadingTilde(sourceName);
+    const cleanTarget = stripLeadingTilde(targetName);
+    const sourceLeaf = cleanSource.includes(".") ? cleanSource.split(".").pop()! : cleanSource;
+    const targetLeaf = cleanTarget.includes(".") ? cleanTarget.split(".").pop()! : cleanTarget;
 
-    const sourceSym = resolveEndpointSym(sourceName);
-    const targetSym = resolveEndpointSym(targetName);
+    const { leafSym: sourceSym, ownerSym: sourceOwnerSym } = resolveEndpointChain(db, conn.parentId, cleanSource);
+    const { leafSym: targetSym, ownerSym: targetOwnerSym } = resolveEndpointChain(db, conn.parentId, cleanTarget);
 
     const sourceGuarantees: string[] = [];
     const targetAssumptions: string[] = [];
 
-    const collectConstraints = (sym: SymbolEntry | undefined, isSource: boolean) => {
-      if (!sym) return;
-      const children = db.childrenOf(sym.id);
-      for (const child of children) {
-        const text = db.cstText(child.startOffset, child.endOffset, child);
-        if (!text) continue;
-        const rawKind = child.metadata?.["constraintKind"];
-        const kind = typeof rawKind === "string" ? rawKind : "";
-        if (isSource && (kind === "require" || text.includes("require") || text.includes("constraint"))) {
-          sourceGuarantees.push(text);
-        } else if (!isSource && (kind === "assume" || text.includes("assume"))) {
-          targetAssumptions.push(text);
+    const collectEndpointContracts = (
+      leafSym: SymbolEntry | undefined,
+      ownerSym: SymbolEntry | undefined,
+      fullEp: string,
+      leafEp: string,
+      isSource: boolean,
+    ) => {
+      const seenExprs = new Set<string>();
+      const pushContract = (expr: string) => {
+        const normalized = normalizeEndpointExpr(expr, fullEp, leafEp, targetLeaf);
+        if (!normalized || seenExprs.has(normalized)) return;
+        seenExprs.add(normalized);
+        if (isSource) sourceGuarantees.push(normalized);
+        else targetAssumptions.push(normalized);
+      };
+
+      // 1. Collect from the endpoint PortUsage/PartUsage AND its PortDefinition/PartDefinition (+ supertypes)
+      if (leafSym) {
+        for (const sym of resolveSymbolAndTypeDefinitions(db, leafSym)) {
+          const isPortSym = sym.ruleName === "PortUsage" || sym.ruleName === "PortDefinition";
+          for (const child of db.childrenOf(sym.id)) {
+            const classified = classifyConstraintChild(db, child);
+            if (!classified) continue;
+            if (isSource) {
+              // Source endpoint: `assume constraint` is NEVER a supplier guarantee
+              if (classified.kind !== "assume") {
+                pushContract(classified.body);
+              }
+            } else {
+              // Target endpoint: `assume` and `require` (plus plain `constraint` on a target port) are consumer demands
+              if (
+                classified.kind === "assume" ||
+                classified.kind === "require" ||
+                (isPortSym && classified.kind === "constraint")
+              ) {
+                pushContract(classified.body);
+              }
+            }
+          }
+        }
+      }
+
+      // 2. If dotted `part.port`, also collect contracts on owning PartUsage/PartDefinition referencing `port`
+      if (ownerSym && (!leafSym || ownerSym.id !== leafSym.id)) {
+        for (const sym of resolveSymbolAndTypeDefinitions(db, ownerSym)) {
+          for (const child of db.childrenOf(sym.id)) {
+            const classified = classifyConstraintChild(db, child);
+            if (!classified) continue;
+            if (!exprReferencesPort(classified.body, fullEp, leafEp)) continue;
+            if (isSource) {
+              if (classified.kind !== "assume") {
+                pushContract(classified.body);
+              }
+            } else {
+              if (classified.kind === "assume" || classified.kind === "require") {
+                pushContract(classified.body);
+              }
+            }
+          }
         }
       }
     };
 
-    collectConstraints(sourceSym, true);
-    collectConstraints(targetSym, false);
+    collectEndpointContracts(sourceSym, sourceOwnerSym, cleanSource, sourceLeaf, true);
+    collectEndpointContracts(targetSym, targetOwnerSym, cleanTarget, targetLeaf, false);
 
     if (sourceGuarantees.length > 0 && targetAssumptions.length > 0) {
       const connLabel = conn.name && conn.name !== "<anonymous>" ? conn.name : `${sourceName}->${targetName}`;

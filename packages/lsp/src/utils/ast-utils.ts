@@ -117,11 +117,20 @@ export function parseXmlFallbackTree(text: string): XmlFallbackTree {
 /**
  * Returns true when a cached CST tree is still live inside the active WASM parser facade.
  */
-export function isWasmTreeActiveInFacade(tree: unknown, facade?: { lastAstRoot?: number } | null | undefined): boolean {
+export function isWasmTreeActiveInFacade(
+  tree: unknown,
+  facade?: { lastAstRoot?: number; getDocumentRoot?: (uriOrFileId?: string | number) => number } | null | undefined,
+  uri?: string,
+): boolean {
   if (!tree || (tree as XmlFallbackTree).__isXmlCstFallback) return false;
   const t = tree as { rootPtr?: number; rootNode?: { id?: number } };
   const rootPtr = t.rootPtr ?? t.rootNode?.id ?? 0;
-  return Boolean(rootPtr && facade && facade.lastAstRoot === rootPtr);
+  if (!rootPtr || !facade) return false;
+  if (facade.lastAstRoot === rootPtr) return true;
+  if (uri && typeof facade.getDocumentRoot === "function" && facade.getDocumentRoot(uri) === rootPtr) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -168,7 +177,7 @@ export function parseTreeWithXmlGuard(opts: {
   if (oldCached && oldCached.text === text && isRealWasmTree) {
     return oldCached.tree ?? null;
   }
-  return parser.parse(text);
+  return (parser as CstParserLike).parse(text, null, 0, 0, 0, uri);
 }
 
 export function isClassInstance(obj: unknown): boolean {

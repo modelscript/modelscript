@@ -814,6 +814,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
           i++;
         }
 
+        const resolvedTargetClass = context.workspaceManager.resolveClassInstance(params.uri, cleanClassName);
+        const componentIconCoord = (resolvedTargetClass?.annotation?.("Icon") as any)?.coordinateSystem ?? null;
+
         return computeModelicaComponentDropEdits({
           docText,
           uri: params.uri,
@@ -824,6 +827,8 @@ export function registerClassQueryEndpoints(context: LspContext) {
           computeComponentInsert,
           unifiedIndex,
           instanceName: name,
+          componentIconCoord,
+          getResourceText: (u) => context.documents.get(u)?.getText(),
         });
       } catch (e) {
         console.error("[diagram] addComponent error:", e);

@@ -7,6 +7,7 @@ export * from "./modifications.js";
 
 export * from "./constants.js";
 export * from "./context.js";
+export * from "./diagnostic-reconciliation.js";
 export * from "./errors.js";
 export * from "./factory.js";
 export * from "./flattener.js";
@@ -18,6 +19,7 @@ export * from "./units.js";
 export * from "./extensions/index.js";
 
 // Formal Verification & Abstract Interpretation
+export * from "./formal/formal-verifier.js";
 export * from "./formal/modelica-abstract-evaluator.js";
 export * from "./formal/modelica-analyzer.js";
 export * from "./formal/modelica-cfg-lowerer.js";

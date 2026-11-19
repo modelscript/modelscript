@@ -10,26 +10,29 @@
 import { lintCSource } from "@modelscript/c";
 import { lintFortranSource, tokenizeFortran } from "@modelscript/fortran";
 import {
-  analyzeControlIntervals,
   analyzeControlZonotopes,
   isBounded,
   outputLimits,
+  type ControlZonotopeEntry,
 } from "../analysis/control-intervals.js";
+import { verifyControlOctagonRelations } from "../analysis/control-octagon.js";
+import { verifyPscadDimensionalUnits } from "../analysis/dimensional-check.js";
 import {
   verifyControlDelayStability,
   verifyConverterReachability,
   verifyProtectionRelayBmc,
 } from "../analysis/formal-emt-checks.js";
+import { lintUdmCfgStorage } from "../analysis/udm-cfg-analyzer.js";
 import { analyzeSimulationCoverage } from "../netlist/coverage.js";
 import { extractEmtNetlist } from "../netlist/emt-netlist.js";
 import { evalParamExpr } from "../netlist/param-eval.js";
 import { computePortWorldPosition } from "../parser/pscx-parser.js";
 import { evaluateCheckRules } from "../script/script-parser.js";
 import { checkRationalPassivity } from "../solver/vector-fitting.js";
-import type { Point2D, PscadDiagnostic, PscxProject } from "../types.js";
+import type { Point2D, PscadDiagnostic, PscadLintOptions, PscxProject } from "../types.js";
 
 /**
- * Catalog of PSCAD pre-flight electrical and control diagnostic error codes (`M6001`–`M6011`).
+ * Catalog of PSCAD pre-flight electrical, control, UDM, and formal diagnostic error codes (`M6001`–`M6083`).
  */
 export const PscadErrorCode = {
   /** `M6001`: Electrical bus or node has no connected branches, sources, or shunt elements. */
@@ -178,7 +181,7 @@ export const PscadErrorCode = {
     rule: "wire-near-miss",
     severity: "warning" as const,
     message: (wireId: string, dist: number, targetName: string) =>
-      `Wire '${wireId}' endpoint is ${dist.toFixed(1)} px from '${targetName}' (outside snap tolerance 4 px), leaving an unintentional open circuit.`,
+      `Wire '${wireId}' endpoint is ${dist.toFixed(1)} px from '${targetName}' (outside snap tolerance 15 px), leaving an unintentional open circuit.`,
   },
   /** `M6024`: Wireless signal tag (`datalabel`, `radiolink`, `import`, `export`) has no matching peer. */
   DANGLING_WIRELESS_SIGNAL: {
@@ -441,6 +444,22 @@ export const PscadErrorCode = {
     message: (defName: string, segmentName: string, reason: string) =>
       `Definition '${defName}' C segment '${segmentName}' hazard: ${reason}.`,
   },
+  /** `M6070`: Fortran/C UDM hardcodes an EMT simulation time-step literal instead of using `DELT` (CIGRE TB 825 time-step invariance). */
+  UDM_HARDCODED_TIMESTEP: {
+    code: "M6070",
+    rule: "udm-hardcoded-timestep",
+    severity: "warning" as const,
+    message: (defName: string, segmentName: string, literal: string) =>
+      `Definition '${defName}' ${segmentName} segment hardcodes EMT time-step literal '${literal}'; use 'DELT' for time-step invariance (CIGRE TB 825).`,
+  },
+  /** `M6071`: Parameter unit tag is incompatible with expected 7D SI physical dimension. */
+  DIMENSIONAL_UNIT_MISMATCH: {
+    code: "M6071",
+    rule: "dimensional-unit-mismatch",
+    severity: "error" as const,
+    message: (cmpName: string, paramName: string, unit: string, actualKind: string, expectedKind: string) =>
+      `Component '${cmpName}' parameter '${paramName}' has unit '[${unit}]' (${actualKind}), incompatible with expected physical dimension (${expectedKind}).`,
+  },
   /** `M6083`: IEEE 2800 / NERC PRC-029 STL quantitative robustness margin is negative or critical. */
   IEEE2800_STL_VIOLATION: {
     code: "M6083",
@@ -451,50 +470,77 @@ export const PscadErrorCode = {
   },
 };
 
+/** Detects hardcoded common EMT time-step literals (e.g. `50e-6`, `50.0D-6`, `0.00005`, `20e-6`, `10e-6`) used in place of `DELT`. */
+function findHardcodedEmtTimestep(raw: string): string | null {
+  const stripped = raw
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/[^\n]*/g, "")
+    .replace(/![^\n]*/g, "");
+  const m = /\b(?:(?:5|10|20|25|50|100)(?:\.0*)?[eEdD]-0*6|0\.0000(?:1|2|25|5)0*|0\.00010*)\b/.exec(stripped);
+  return m ? m[0] : null;
+}
+
 function analyzeFortranStorageSafety(raw: string): {
   hasCommon: boolean;
+  hasNonReentrantState: boolean;
   readsStorBeforeWrite: "STORF" | "STORI" | null;
 } {
   const toks = tokenizeFortran(raw);
   let hasCommon = false;
+  let hasSaveOrData = false;
   let hasTimeZeroGuard = false;
-  let wroteStorf = false;
-  let wroteStori = false;
+  const writtenStorfIdx = new Set<string>();
+  const writtenStoriIdx = new Set<string>();
   let readsStorBeforeWrite: "STORF" | "STORI" | null = null;
 
   for (let i = 0; i < toks.length; i++) {
     const up = toks[i]!.value.toUpperCase();
     if (up === "COMMON") {
       hasCommon = true;
-    } else if (up === "TIMEZERO" || up === "TZERO") {
+    } else if (up === "SAVE" || up === "DATA") {
+      hasSaveOrData = true;
+    } else if (up === "TIMEZERO" || up === "TZERO" || up === "FIRSTSTEP") {
       hasTimeZeroGuard = true;
     } else if (up === "STORF" || up === "STORI") {
-      // Check if LHS of assignment: skip balanced `(...)` after STORF/STORI and inspect next token `=`
+      // Extract normalized index expression inside `(...)` and inspect next token `=`
       let j = i + 1;
+      let idxKey = "*";
       if (toks[j]?.value === "(") {
         let depth = 1;
         j++;
+        const parts: string[] = [];
         while (j < toks.length && depth > 0) {
-          if (toks[j]!.value === "(") depth++;
-          else if (toks[j]!.value === ")") depth--;
+          const tv = toks[j]!.value;
+          if (tv === "(") depth++;
+          else if (tv === ")") depth--;
+          if (depth > 0) parts.push(tv.toUpperCase());
           j++;
         }
+        if (parts.length > 0) idxKey = parts.join("");
       }
       const isWrite = toks[j]?.value === "=";
       if (isWrite) {
-        if (up === "STORF") wroteStorf = true;
-        else wroteStori = true;
+        if (up === "STORF") writtenStorfIdx.add(idxKey);
+        else writtenStoriIdx.add(idxKey);
       } else if (!hasTimeZeroGuard && !readsStorBeforeWrite) {
-        if (up === "STORF" && !wroteStorf) readsStorBeforeWrite = "STORF";
-        else if (up === "STORI" && !wroteStori) readsStorBeforeWrite = "STORI";
+        if (up === "STORF" && !writtenStorfIdx.has(idxKey)) readsStorBeforeWrite = "STORF";
+        else if (up === "STORI" && !writtenStoriIdx.has(idxKey)) readsStorBeforeWrite = "STORI";
       }
     }
   }
-  return { hasCommon, readsStorBeforeWrite };
+  return { hasCommon, hasNonReentrantState: hasCommon || hasSaveOrData, readsStorBeforeWrite };
 }
 
-const WIRE_SNAP_TOLERANCE = 4;
-const WIRE_NEAR_MISS_RADIUS = 12;
+/** Detects mutable `static` variable declarations in C UDM segments (non-reentrant across multiple instances). */
+function analyzeCReentrancy(raw: string): boolean {
+  // Strip line and block comments first so comments don't trigger false positives
+  const stripped = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  return /\bstatic\s+(?!const\b)(?:double|float|int|long|short|char|unsigned|signed|bool|size_t)\b/.test(stripped);
+}
+
+/** Aligned with `SNAP_TOLERANCE = 15.0` in `pscx-parser.ts` so connected wires never false-positive. */
+const WIRE_SNAP_TOLERANCE = 15;
+const WIRE_NEAR_MISS_RADIUS = 22;
 
 function pointToSegDist(p: Point2D, a: Point2D, b: Point2D): number {
   const dx = b.x - a.x;
@@ -568,8 +614,19 @@ function extractNstorAdvances(raw: string): { nstorf: number; nstori: number } {
   return { nstorf, nstori };
 }
 
-/** Control block kinds whose output depends on internal state, which breaks algebraic loops. */
-const STATEFUL_BLOCK_KINDS = new Set(["pi", "lag", "leadlag", "integral", "fp_int", "upramp", "ratelimit"]);
+/** Control block kinds whose output depends on internal state or delay, which breaks algebraic loops. */
+const STATEFUL_BLOCK_KINDS = new Set([
+  "pi",
+  "lag",
+  "leadlag",
+  "integral",
+  "fp_int",
+  "upramp",
+  "ratelimit",
+  "tdelay",
+  "bin_delay",
+  "zminusone",
+]);
 
 /**
  * Tarjan strongly-connected-components over the control block graph (edge: input -> block).
@@ -618,11 +675,19 @@ function findControlCycles(blocks: { id: string; kind: string; inputs: string[] 
 }
 
 /**
- * Runs all PSCAD linter rules on a parsed project.
+ * Runs PSCAD linter rules on a parsed project.
+ * Supports tiered execution via `options.tier`: `"fast"` (<20ms keystroke checks), `"deep"` (default), or `"formal"`.
  */
-export function lintPscx(project: PscxProject): PscadDiagnostic[] {
+export function lintPscx(project: PscxProject, options?: PscadLintOptions): PscadDiagnostic[] {
+  const tier = options?.tier ?? "deep";
   const diagnostics: PscadDiagnostic[] = [];
-  const netlist = extractEmtNetlist(project);
+  const netlist = options?.netlist ?? extractEmtNetlist(project);
+
+  // Compute zonotope/interval control bounds ONCE (instead of 3x) when running deep/formal tiers
+  const controlZonotopes: Map<string, ControlZonotopeEntry> | null =
+    tier !== "fast" && netlist.controlBlocks && netlist.controlBlocks.length > 0
+      ? analyzeControlZonotopes(netlist.controlBlocks)
+      : null;
 
   const allModules = [project.rootModule, ...Array.from(project.subModules?.values() ?? [])];
 
@@ -729,9 +794,10 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
     }
   }
 
-  // 3. M6003: Check parameter bounds
+  // 3. M6003: Check parameter bounds (skip disabled components; parse unit-suffixed numeric strings like "-5.0 [ohm]")
   for (const mod of allModules) {
     for (const cmp of mod.components) {
+      if (cmp.disabled) continue;
       const defn = cmp.definitionName.toLowerCase();
       const isElectricalRlc =
         defn.includes("resistor") ||
@@ -747,8 +813,18 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
         defn.includes("breaker") ||
         defn.includes("fault") ||
         defn.includes("arrester");
-      for (const [paramName, val] of Object.entries(cmp.parameters)) {
-        if (typeof val === "number") {
+      for (const [paramName, rawVal] of Object.entries(cmp.parameters)) {
+        let val: number | undefined;
+        if (typeof rawVal === "number") {
+          val = rawVal;
+        } else if (typeof rawVal === "string") {
+          const unitMatch = /^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*(?:\[[^\]]+\])?\s*$/.exec(rawVal);
+          if (unitMatch) {
+            const parsed = Number(unitMatch[1]);
+            if (Number.isFinite(parsed)) val = parsed;
+          }
+        }
+        if (val !== undefined) {
           const lowerName = paramName.toLowerCase();
           const pLoc = cmp.paramLocations?.[paramName];
           const line = pLoc?.line ?? cmp.line;
@@ -1236,12 +1312,11 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
     });
   }
 
-  // 12. M6015: Permanently saturated limiters (interval abstract interpretation, Tier 2)
-  if (netlist.controlBlocks && netlist.controlBlocks.length > 0) {
-    const intervals = analyzeControlIntervals(netlist.controlBlocks);
+  // 12. M6015: Permanently saturated limiters (interval/zonotope abstract interpretation, deep/formal tier)
+  if (controlZonotopes && netlist.controlBlocks && netlist.controlBlocks.length > 0) {
     for (const b of netlist.controlBlocks) {
       if (b.kind !== "limit" || b.inputs.length !== 1) continue;
-      const input = intervals.get(b.inputs[0]!);
+      const input = controlZonotopes.get(b.inputs[0]!)?.interval;
       if (!input || !isBounded(input)) continue;
       const lim = outputLimits(b);
       if (input.hi < lim.lo || input.lo > lim.hi) {
@@ -1256,6 +1331,7 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
           column: loc?.column,
           endLine: loc?.line,
           endColumn: loc?.column !== undefined ? loc.column + b.id.length : undefined,
+          rigor: "float-sound",
         });
       }
     }
@@ -1281,7 +1357,6 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
           portDims[port.name] = port.dimension ?? 1;
         }
       }
-      if (Object.keys(portDims).length === 0) continue;
 
       const failures = evaluateCheckRules(def.checks, params, portDims);
       for (const fail of failures) {
@@ -1308,28 +1383,61 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
     }
   }
 
-  // 13. M6022: Near-miss unconnected wire endpoints (distance in (4, 12] px from port, bus, or other wire)
+  // 13. M6022: Near-miss unconnected wire endpoints (distance in (15, 22] px) using exact 32px spatial hash
   if (!isLibraryProject) {
+    const CELL = 32; // >= WIRE_NEAR_MISS_RADIUS (22), so 3x3 neighborhood query is exact
+    const cellKey = (cx: number, cy: number): string => `${cx},${cy}`;
     for (const mod of allModules) {
-      const targetPoints: Array<{ name: string; pos: Point2D }> = [];
+      if (mod.wires.length === 0) continue;
+
+      const ptGrid = new Map<string, Array<{ name: string; pos: Point2D }>>();
+      const segGrid = new Map<string, Array<{ name: string; wireIdx: number; a: Point2D; b: Point2D }>>();
+      const addSegToGrid = (a: Point2D, b: Point2D, name: string, wireIdx: number) => {
+        const minCx = Math.floor(Math.min(a.x, b.x) / CELL);
+        const maxCx = Math.floor(Math.max(a.x, b.x) / CELL);
+        const minCy = Math.floor(Math.min(a.y, b.y) / CELL);
+        const maxCy = Math.floor(Math.max(a.y, b.y) / CELL);
+        const item = { name, wireIdx, a, b };
+        for (let cx = minCx; cx <= maxCx; cx++) {
+          for (let cy = minCy; cy <= maxCy; cy++) {
+            const k = cellKey(cx, cy);
+            let bucket = segGrid.get(k);
+            if (!bucket) {
+              bucket = [];
+              segGrid.set(k, bucket);
+            }
+            bucket.push(item);
+          }
+        }
+      };
+
       for (const cmp of mod.components) {
         if (cmp.disabled) continue;
         const cname = cmp.instanceName || cmp.id;
         for (const port of cmp.ports) {
-          targetPoints.push({
-            name: `${cname}.${port.name}`,
-            pos: computePortWorldPosition(cmp.position, port.position, cmp.rotation ?? 0, Boolean(cmp.mirror)),
-          });
+          const pos = computePortWorldPosition(cmp.position, port.position, cmp.rotation ?? 0, Boolean(cmp.mirror));
+          const k = cellKey(Math.floor(pos.x / CELL), Math.floor(pos.y / CELL));
+          let bucket = ptGrid.get(k);
+          if (!bucket) {
+            bucket = [];
+            ptGrid.set(k, bucket);
+          }
+          bucket.push({ name: `${cname}.${port.name}`, pos });
         }
       }
-      const busSegments: Array<{ name: string; a: Point2D; b: Point2D }> = [];
       for (const bus of mod.buses) {
         const verts =
           bus.vertices && bus.vertices.length >= 2
             ? bus.vertices
             : [bus.position, { x: bus.position.x + (bus.length ?? 60), y: bus.position.y }];
         for (let k = 0; k < verts.length - 1; k++) {
-          busSegments.push({ name: bus.name || bus.id, a: verts[k]!, b: verts[k + 1]! });
+          addSegToGrid(verts[k]!, verts[k + 1]!, bus.name || bus.id, -1);
+        }
+      }
+      for (let wj = 0; wj < mod.wires.length; wj++) {
+        const w = mod.wires[wj]!;
+        for (let k = 0; k < w.vertices.length - 1; k++) {
+          addSegToGrid(w.vertices[k]!, w.vertices[k + 1]!, `wire ${w.id}`, wj);
         }
       }
 
@@ -1338,30 +1446,33 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
         if (wire.vertices.length < 2) continue;
         const endpoints = [wire.vertices[0]!, wire.vertices[wire.vertices.length - 1]!];
         for (const ep of endpoints) {
+          const ecx = Math.floor(ep.x / CELL);
+          const ecy = Math.floor(ep.y / CELL);
           let minDist = Infinity;
           let nearestTarget = "";
-          for (const tp of targetPoints) {
-            const d = Math.hypot(ep.x - tp.pos.x, ep.y - tp.pos.y);
-            if (d < minDist) {
-              minDist = d;
-              nearestTarget = tp.name;
-            }
-          }
-          for (const bs of busSegments) {
-            const d = pointToSegDist(ep, bs.a, bs.b);
-            if (d < minDist) {
-              minDist = d;
-              nearestTarget = bs.name;
-            }
-          }
-          for (let wj = 0; wj < mod.wires.length; wj++) {
-            if (wi === wj) continue;
-            const other = mod.wires[wj]!;
-            for (let k = 0; k < other.vertices.length - 1; k++) {
-              const d = pointToSegDist(ep, other.vertices[k]!, other.vertices[k + 1]!);
-              if (d < minDist) {
-                minDist = d;
-                nearestTarget = `wire ${other.id}`;
+          for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+              const k = cellKey(ecx + dx, ecy + dy);
+              const pts = ptGrid.get(k);
+              if (pts) {
+                for (const tp of pts) {
+                  const d = Math.hypot(ep.x - tp.pos.x, ep.y - tp.pos.y);
+                  if (d < minDist) {
+                    minDist = d;
+                    nearestTarget = tp.name;
+                  }
+                }
+              }
+              const segs = segGrid.get(k);
+              if (segs) {
+                for (const s of segs) {
+                  if (s.wireIdx === wi) continue;
+                  const d = pointToSegDist(ep, s.a, s.b);
+                  if (d < minDist) {
+                    minDist = d;
+                    nearestTarget = s.name;
+                  }
+                }
               }
             }
           }
@@ -1551,7 +1662,6 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
 
   // 17. M6041, M6061, M6062: CSMF time-constant underflow, interval domain hazards, & unbounded integrators
   if (netlist.controlBlocks && netlist.controlBlocks.length > 0) {
-    const intervals = analyzeControlIntervals(netlist.controlBlocks);
     const cmpDefById = new Map<string, string>();
     for (const mod of allModules) {
       for (const cmp of mod.components) cmpDefById.set(cmp.id, cmp.definitionName.toLowerCase());
@@ -1580,60 +1690,66 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
         }
       }
 
-      // M6061: Division by zero & negative sqrt hazards over bounded abstract intervals
-      if (b.kind === "div") {
-        const denom = b.inputs.length >= 2 && b.inputs[1] ? intervals.get(b.inputs[1]) : { lo: 0, hi: 0 };
-        if (denom && isBounded(denom) && denom.lo <= 0 && denom.hi >= 0) {
-          diagnostics.push({
-            code: PscadErrorCode.CSMF_DOMAIN_HAZARD.code,
-            rule: PscadErrorCode.CSMF_DOMAIN_HAZARD.rule,
-            severity: PscadErrorCode.CSMF_DOMAIN_HAZARD.severity,
-            message: PscadErrorCode.CSMF_DOMAIN_HAZARD.message(
-              b.id,
-              "div",
-              `denominator interval [${denom.lo}, ${denom.hi}] includes 0`,
-            ),
-            componentId: b.componentId ?? b.id,
-            line: loc?.line,
-            column: loc?.column,
-          });
-        }
-      } else if (b.kind === "inv") {
-        const invIn = b.inputs[0] ? intervals.get(b.inputs[0]) : { lo: 0, hi: 0 };
-        if (invIn && isBounded(invIn) && invIn.lo <= 0 && invIn.hi >= 0) {
-          diagnostics.push({
-            code: PscadErrorCode.CSMF_DOMAIN_HAZARD.code,
-            rule: PscadErrorCode.CSMF_DOMAIN_HAZARD.rule,
-            severity: PscadErrorCode.CSMF_DOMAIN_HAZARD.severity,
-            message: PscadErrorCode.CSMF_DOMAIN_HAZARD.message(
-              b.id,
-              "inv",
-              `input interval [${invIn.lo}, ${invIn.hi}] includes 0`,
-            ),
-            componentId: b.componentId ?? b.id,
-            line: loc?.line,
-            column: loc?.column,
-          });
-        }
-      } else if (b.kind === "x_power_y") {
-        const rawDef = b.componentId ? (cmpDefById.get(b.componentId) ?? "") : "";
-        const cleanDef = rawDef.includes(":") ? rawDef.split(":").pop()! : rawDef;
-        if (cleanDef === "sqrt") {
-          const radIn = b.inputs[0] ? intervals.get(b.inputs[0]) : undefined;
-          if (radIn && isBounded(radIn) && radIn.lo < 0) {
+      // M6061: Division by zero & negative sqrt hazards over bounded abstract intervals (deep/formal tier)
+      if (controlZonotopes) {
+        if (b.kind === "div") {
+          const denom =
+            b.inputs.length >= 2 && b.inputs[1] ? controlZonotopes.get(b.inputs[1])?.interval : { lo: 0, hi: 0 };
+          if (denom && isBounded(denom) && denom.lo <= 0 && denom.hi >= 0) {
             diagnostics.push({
               code: PscadErrorCode.CSMF_DOMAIN_HAZARD.code,
               rule: PscadErrorCode.CSMF_DOMAIN_HAZARD.rule,
               severity: PscadErrorCode.CSMF_DOMAIN_HAZARD.severity,
               message: PscadErrorCode.CSMF_DOMAIN_HAZARD.message(
                 b.id,
-                "sqrt",
-                `input interval [${radIn.lo}, ${radIn.hi}] reaches negative values`,
+                "div",
+                `denominator interval [${denom.lo}, ${denom.hi}] includes 0`,
               ),
               componentId: b.componentId ?? b.id,
               line: loc?.line,
               column: loc?.column,
+              rigor: "float-sound",
             });
+          }
+        } else if (b.kind === "inv") {
+          const invIn = b.inputs[0] ? controlZonotopes.get(b.inputs[0])?.interval : { lo: 0, hi: 0 };
+          if (invIn && isBounded(invIn) && invIn.lo <= 0 && invIn.hi >= 0) {
+            diagnostics.push({
+              code: PscadErrorCode.CSMF_DOMAIN_HAZARD.code,
+              rule: PscadErrorCode.CSMF_DOMAIN_HAZARD.rule,
+              severity: PscadErrorCode.CSMF_DOMAIN_HAZARD.severity,
+              message: PscadErrorCode.CSMF_DOMAIN_HAZARD.message(
+                b.id,
+                "inv",
+                `input interval [${invIn.lo}, ${invIn.hi}] includes 0`,
+              ),
+              componentId: b.componentId ?? b.id,
+              line: loc?.line,
+              column: loc?.column,
+              rigor: "float-sound",
+            });
+          }
+        } else if (b.kind === "x_power_y") {
+          const rawDef = b.componentId ? (cmpDefById.get(b.componentId) ?? "") : "";
+          const cleanDef = rawDef.includes(":") ? rawDef.split(":").pop()! : rawDef;
+          if (cleanDef === "sqrt") {
+            const radIn = b.inputs[0] ? controlZonotopes.get(b.inputs[0])?.interval : undefined;
+            if (radIn && isBounded(radIn) && radIn.lo < 0) {
+              diagnostics.push({
+                code: PscadErrorCode.CSMF_DOMAIN_HAZARD.code,
+                rule: PscadErrorCode.CSMF_DOMAIN_HAZARD.rule,
+                severity: PscadErrorCode.CSMF_DOMAIN_HAZARD.severity,
+                message: PscadErrorCode.CSMF_DOMAIN_HAZARD.message(
+                  b.id,
+                  "sqrt",
+                  `input interval [${radIn.lo}, ${radIn.hi}] reaches negative values`,
+                ),
+                componentId: b.componentId ?? b.id,
+                line: loc?.line,
+                column: loc?.column,
+                rigor: "float-sound",
+              });
+            }
           }
         }
       }
@@ -1656,8 +1772,19 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
     }
   }
 
-  // 18. M6065 & M6069: Fortran/C UDM static safety and STORF/NSTORF pointer integrity via @modelscript/fortran & @modelscript/c
+  // 18. M6065, M6066, M6067, & M6069: Fortran/C UDM static safety, re-entrancy & STORF/NSTORF pointer integrity
   if (project.definitions) {
+    const countDefInstances = (defName: string): number =>
+      allModules.reduce(
+        (acc, m) =>
+          acc +
+          m.components.filter((c) => {
+            const dn = c.definitionName.includes(":") ? c.definitionName.split(":").pop()! : c.definitionName;
+            return dn === defName || c.definitionName === defName;
+          }).length,
+        0,
+      );
+
     for (const [defName, def] of project.definitions) {
       if (!def.scriptSegments || def.scriptSegments.size === 0) continue;
       let dsdynAdv: { nstorf: number; nstori: number } | undefined;
@@ -1678,6 +1805,28 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
               message: PscadErrorCode.C_UDM_HAZARD.message(defName, seg.name, cd.message),
               line: baseLine + Math.max(0, (cd.line ?? 1) - 1),
               column: cd.col ?? 1,
+            });
+          }
+          if (analyzeCReentrancy(sanitizedC)) {
+            const instCount = countDefInstances(defName);
+            if (instCount >= 2) {
+              diagnostics.push({
+                code: PscadErrorCode.FORTRAN_COMMON_NON_REENTRANT.code,
+                rule: PscadErrorCode.FORTRAN_COMMON_NON_REENTRANT.rule,
+                severity: PscadErrorCode.FORTRAN_COMMON_NON_REENTRANT.severity,
+                message: PscadErrorCode.FORTRAN_COMMON_NON_REENTRANT.message(defName, instCount),
+                line: baseLine,
+              });
+            }
+          }
+          const cDtLit = findHardcodedEmtTimestep(seg.content);
+          if (cDtLit) {
+            diagnostics.push({
+              code: PscadErrorCode.UDM_HARDCODED_TIMESTEP.code,
+              rule: PscadErrorCode.UDM_HARDCODED_TIMESTEP.rule,
+              severity: PscadErrorCode.UDM_HARDCODED_TIMESTEP.severity,
+              message: PscadErrorCode.UDM_HARDCODED_TIMESTEP.message(defName, seg.name, cDtLit),
+              line: baseLine,
             });
           }
           continue;
@@ -1705,17 +1854,20 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
         if (lowerKey === "dsdyn") dsdynAdv = adv;
         else if (lowerKey === "dsout") dsoutAdv = adv;
 
+        const fDtLit = findHardcodedEmtTimestep(seg.content);
+        if (fDtLit) {
+          diagnostics.push({
+            code: PscadErrorCode.UDM_HARDCODED_TIMESTEP.code,
+            rule: PscadErrorCode.UDM_HARDCODED_TIMESTEP.rule,
+            severity: PscadErrorCode.UDM_HARDCODED_TIMESTEP.severity,
+            message: PscadErrorCode.UDM_HARDCODED_TIMESTEP.message(defName, seg.name, fDtLit),
+            line: baseLine,
+          });
+        }
+
         const storageSafety = analyzeFortranStorageSafety(wrapped);
-        if (storageSafety.hasCommon) {
-          const instCount = allModules.reduce(
-            (acc, m) =>
-              acc +
-              m.components.filter((c) => {
-                const dn = c.definitionName.includes(":") ? c.definitionName.split(":").pop()! : c.definitionName;
-                return dn === defName || c.definitionName === defName;
-              }).length,
-            0,
-          );
+        if (storageSafety.hasNonReentrantState) {
+          const instCount = countDefInstances(defName);
           if (instCount >= 2) {
             diagnostics.push({
               code: PscadErrorCode.FORTRAN_COMMON_NON_REENTRANT.code,
@@ -1755,59 +1907,89 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
     }
   }
 
-  // 19. M6023: Collinear overlapping wire segments within a module
+  // 19. M6023: Collinear overlapping wire segments within a module (exact O(S log S) sweep-line)
   if (!isLibraryProject) {
+    interface AxisSeg {
+      wireIdx: number;
+      wireId: string;
+      line?: number | undefined;
+      lo: number;
+      hi: number;
+    }
     for (const mod of allModules) {
+      if (mod.wires.length < 2) continue;
+      const horizBuckets = new Map<number, AxisSeg[]>();
+      const vertBuckets = new Map<number, AxisSeg[]>();
       for (let wi = 0; wi < mod.wires.length; wi++) {
-        const wa = mod.wires[wi]!;
-        let overlapped = false;
-        for (let si = 0; si < wa.vertices.length - 1 && !overlapped; si++) {
-          const a1 = wa.vertices[si]!;
-          const a2 = wa.vertices[si + 1]!;
-          const aHoriz = Math.abs(a1.y - a2.y) < 1e-3 && Math.abs(a1.x - a2.x) > 1e-3;
-          const aVert = Math.abs(a1.x - a2.x) < 1e-3 && Math.abs(a1.y - a2.y) > 1e-3;
-          if (!aHoriz && !aVert) continue;
+        const w = mod.wires[wi]!;
+        for (let si = 0; si < w.vertices.length - 1; si++) {
+          const p1 = w.vertices[si]!;
+          const p2 = w.vertices[si + 1]!;
+          if (Math.abs(p1.y - p2.y) < 1e-3 && Math.abs(p1.x - p2.x) > 1e-3) {
+            const key = Math.round(p1.y * 100);
+            let arr = horizBuckets.get(key);
+            if (!arr) {
+              arr = [];
+              horizBuckets.set(key, arr);
+            }
+            arr.push({
+              wireIdx: wi,
+              wireId: w.id,
+              line: w.line,
+              lo: Math.min(p1.x, p2.x),
+              hi: Math.max(p1.x, p2.x),
+            });
+          } else if (Math.abs(p1.x - p2.x) < 1e-3 && Math.abs(p1.y - p2.y) > 1e-3) {
+            const key = Math.round(p1.x * 100);
+            let arr = vertBuckets.get(key);
+            if (!arr) {
+              arr = [];
+              vertBuckets.set(key, arr);
+            }
+            arr.push({
+              wireIdx: wi,
+              wireId: w.id,
+              line: w.line,
+              lo: Math.min(p1.y, p2.y),
+              hi: Math.max(p1.y, p2.y),
+            });
+          }
+        }
+      }
 
-          for (let wj = wi + 1; wj < mod.wires.length && !overlapped; wj++) {
-            const wb = mod.wires[wj]!;
-            for (let sj = 0; sj < wb.vertices.length - 1; sj++) {
-              const b1 = wb.vertices[sj]!;
-              const b2 = wb.vertices[sj + 1]!;
-              if (aHoriz && Math.abs(b1.y - b2.y) < 1e-3 && Math.abs(b1.y - a1.y) < 1e-3) {
-                const lo = Math.max(Math.min(a1.x, a2.x), Math.min(b1.x, b2.x));
-                const hi = Math.min(Math.max(a1.x, a2.x), Math.max(b1.x, b2.x));
-                if (hi - lo > 1.0) {
+      const reportedWires = new Set<number>();
+      const scanBuckets = (buckets: Map<number, AxisSeg[]>) => {
+        for (const segs of buckets.values()) {
+          if (segs.length < 2) continue;
+          segs.sort((a, b) => a.lo - b.lo);
+          for (let i = 0; i < segs.length; i++) {
+            const a = segs[i]!;
+            for (let j = i + 1; j < segs.length; j++) {
+              const b = segs[j]!;
+              if (b.lo >= a.hi - 1.0) break; // sorted by lo -> no further overlap with a
+              if (a.wireIdx === b.wireIdx) continue;
+              const overlap = Math.min(a.hi, b.hi) - Math.max(a.lo, b.lo);
+              if (overlap > 1.0) {
+                const first = a.wireIdx < b.wireIdx ? a : b;
+                const second = a.wireIdx < b.wireIdx ? b : a;
+                if (!reportedWires.has(first.wireIdx)) {
+                  reportedWires.add(first.wireIdx);
                   diagnostics.push({
                     code: PscadErrorCode.WIRE_OVERLAP.code,
                     rule: PscadErrorCode.WIRE_OVERLAP.rule,
                     severity: PscadErrorCode.WIRE_OVERLAP.severity,
-                    message: PscadErrorCode.WIRE_OVERLAP.message(wa.id, wb.id),
-                    componentId: wa.id,
-                    line: wa.line,
+                    message: PscadErrorCode.WIRE_OVERLAP.message(first.wireId, second.wireId),
+                    componentId: first.wireId,
+                    line: first.line,
                   });
-                  overlapped = true;
-                  break;
-                }
-              } else if (aVert && Math.abs(b1.x - b2.x) < 1e-3 && Math.abs(b1.x - a1.x) < 1e-3) {
-                const lo = Math.max(Math.min(a1.y, a2.y), Math.min(b1.y, b2.y));
-                const hi = Math.min(Math.max(a1.y, a2.y), Math.max(b1.y, b2.y));
-                if (hi - lo > 1.0) {
-                  diagnostics.push({
-                    code: PscadErrorCode.WIRE_OVERLAP.code,
-                    rule: PscadErrorCode.WIRE_OVERLAP.rule,
-                    severity: PscadErrorCode.WIRE_OVERLAP.severity,
-                    message: PscadErrorCode.WIRE_OVERLAP.message(wa.id, wb.id),
-                    componentId: wa.id,
-                    line: wa.line,
-                  });
-                  overlapped = true;
-                  break;
                 }
               }
             }
           }
         }
-      }
+      };
+      scanBuckets(horizBuckets);
+      scanBuckets(vertBuckets);
     }
   }
 
@@ -1967,21 +2149,39 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
           }
           pgbSeen.add(chName);
         }
+        if (mod.wires.length > 0 && !wiredEntityIds.has(cmp.id)) {
+          diagnostics.push({
+            code: PscadErrorCode.PGB_CHANNEL_HAZARD.code,
+            rule: PscadErrorCode.PGB_CHANNEL_HAZARD.rule,
+            severity: PscadErrorCode.PGB_CHANNEL_HAZARD.severity,
+            message: PscadErrorCode.PGB_CHANNEL_HAZARD.message(chName || cmp.id, "is unwired and records no signal"),
+            componentId: cmp.id,
+            line: cmp.line,
+            column: cmp.column,
+          });
+        }
       }
     }
   }
 
-  // 22. M6044: Zero-impedance closed loops across branches / ideal switches
-  if (!isLibraryProject && netlist.branches.length >= 2) {
-    const zeroEdges = netlist.branches.filter(
-      (br) =>
-        br.fromBus !== br.toBus &&
-        br.fromBus !== "0" &&
-        br.toBus !== "0" &&
-        (br.kind === "switch"
-          ? br.status !== "open" && (br.rClosedOhm ?? br.resistanceOhm) <= 1e-3
-          : br.kind === "rlc" && br.resistanceOhm <= 1e-6 && br.inductanceH <= 1e-9),
-    );
+  // 22. M6044: Zero-impedance closed loops across branches / ideal switches / ideal voltage sources
+  if (!isLibraryProject && (netlist.branches.length >= 2 || netlist.sources.length >= 2)) {
+    const zeroEdges: Array<{ id: string; fromBus: string; toBus: string }> = [];
+    for (const br of netlist.branches) {
+      if (br.fromBus === br.toBus || br.fromBus === "0" || br.toBus === "0") continue;
+      const isClosedZeroSwitch =
+        br.kind === "switch" && br.status !== "open" && (br.rClosedOhm ?? br.resistanceOhm) <= 1e-3;
+      const isZeroRlc =
+        br.kind === "rlc" && br.resistanceOhm <= 1e-6 && br.inductanceH <= 1e-9 && (br.capacitanceF ?? 0) === 0;
+      if (isClosedZeroSwitch || isZeroRlc) {
+        zeroEdges.push({ id: br.id, fromBus: br.fromBus, toBus: br.toBus });
+      }
+    }
+    for (const src of netlist.sources) {
+      if (src.bus && src.bus !== "0" && src.rSourceOhm === 0 && src.lSourceH === 0 && src.rSourceSpecified) {
+        zeroEdges.push({ id: src.id, fromBus: src.bus, toBus: "0" });
+      }
+    }
     if (zeroEdges.length >= 2) {
       const parent = new Map<string, string>();
       const find = (x: string): string => {
@@ -1994,25 +2194,28 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
         const ra = find(ze.fromBus);
         const rb = find(ze.toBus);
         if (ra === rb) {
+          const loc = cmpLocationMap.get(ze.id);
           diagnostics.push({
             code: PscadErrorCode.ZERO_IMPEDANCE_LOOP.code,
             rule: PscadErrorCode.ZERO_IMPEDANCE_LOOP.rule,
             severity: PscadErrorCode.ZERO_IMPEDANCE_LOOP.severity,
             message: PscadErrorCode.ZERO_IMPEDANCE_LOOP.message(`${ze.fromBus} <-> ${ze.toBus} via '${ze.id}'`),
             componentId: ze.id,
+            line: loc?.line,
+            column: loc?.column,
+            rigor: "rigorous",
           });
-          break;
+        } else {
+          parent.set(ra, rb);
         }
-        parent.set(ra, rb);
       }
     }
   }
 
-  // 23. M6060 & M6063: Sound dead-limiter & affine/zonotope relational cancellation analysis
-  if (netlist.controlBlocks && netlist.controlBlocks.length > 0) {
-    const zonoMap = analyzeControlZonotopes(netlist.controlBlocks);
+  // 23. M6060 & M6063: Sound dead-limiter & affine/zonotope relational cancellation analysis (deep/formal tier)
+  if (controlZonotopes && netlist.controlBlocks && netlist.controlBlocks.length > 0) {
     for (const b of netlist.controlBlocks) {
-      const zEntry = zonoMap.get(b.id);
+      const zEntry = controlZonotopes.get(b.id);
       if (zEntry?.tightenedByZonotope && (b.kind === "sum" || b.kind === "limit")) {
         const loc = cmpLocationMap.get(b.componentId ?? b.id);
         diagnostics.push({
@@ -2029,10 +2232,11 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
           componentId: b.componentId ?? b.id,
           line: loc?.line,
           column: loc?.column,
+          rigor: "float-sound",
         });
       }
       if (b.kind !== "limit" || b.inputs.length !== 1) continue;
-      const input = zonoMap.get(b.inputs[0]!)?.interval;
+      const input = controlZonotopes.get(b.inputs[0]!)?.interval;
       if (!input || !isBounded(input)) continue;
       const lim = outputLimits(b);
       if (Number.isFinite(lim.lo) && Number.isFinite(lim.hi) && input.lo > lim.lo && input.hi < lim.hi) {
@@ -2045,6 +2249,7 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
           componentId: b.componentId ?? b.id,
           line: loc?.line,
           column: loc?.column,
+          rigor: "float-sound",
         });
       }
     }
@@ -2090,6 +2295,57 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
           }
         }
       }
+    }
+
+    // Circular submodule instantiation detection (SubA -> SubB -> SubA)
+    const subAdj = new Map<string, Array<{ target: string; cmp: (typeof allModules)[number]["components"][number] }>>();
+    for (const [modName, mod] of project.subModules) {
+      const edges: Array<{ target: string; cmp: (typeof mod)["components"][number] }> = [];
+      for (const cmp of mod.components) {
+        if (cmp.disabled) continue;
+        const shortDef = cmp.definitionName.includes(":") ? cmp.definitionName.split(":").pop()! : cmp.definitionName;
+        const targetKey = project.subModules.has(cmp.definitionName)
+          ? cmp.definitionName
+          : project.subModules.has(shortDef)
+            ? shortDef
+            : null;
+        if (targetKey) edges.push({ target: targetKey, cmp });
+      }
+      subAdj.set(modName, edges);
+    }
+    const color = new Map<string, 0 | 1 | 2>(); // 0=unvisited, 1=visiting, 2=done
+    const reportedCycles = new Set<string>();
+    const dfsSub = (u: string) => {
+      color.set(u, 1);
+      for (const edge of subAdj.get(u) ?? []) {
+        const cState = color.get(edge.target) ?? 0;
+        if (cState === 1) {
+          const cycKey = `${u}->${edge.target}`;
+          if (!reportedCycles.has(cycKey)) {
+            reportedCycles.add(cycKey);
+            diagnostics.push({
+              code: PscadErrorCode.SUBMODULE_INTERFACE_MISMATCH.code,
+              rule: PscadErrorCode.SUBMODULE_INTERFACE_MISMATCH.rule,
+              severity: PscadErrorCode.SUBMODULE_INTERFACE_MISMATCH.severity,
+              message: PscadErrorCode.SUBMODULE_INTERFACE_MISMATCH.message(
+                edge.cmp.instanceName || edge.cmp.id,
+                edge.target,
+                `creates circular submodule instantiation cycle '${u}' -> '${edge.target}'`,
+              ),
+              componentId: edge.cmp.id,
+              line: edge.cmp.line,
+              column: edge.cmp.column,
+              rigor: "rigorous",
+            });
+          }
+        } else if (cState === 0) {
+          dfsSub(edge.target);
+        }
+      }
+      color.set(u, 2);
+    };
+    for (const modName of project.subModules.keys()) {
+      if ((color.get(modName) ?? 0) === 0) dfsSub(modName);
     }
   }
 
@@ -2217,14 +2473,15 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
   }
 
   // 29. M6032: AC source L-L RMS vs peak/L-G voltage entry suspicion against explicit bus baseKv
-  if (!isLibraryProject) {
+  if (!isLibraryProject && netlist.sources.length > 0) {
+    const activeCmps = allModules.flatMap((m) => m.components).filter((c) => !c.disabled);
+    const activeCmpById = new Map<string, (typeof activeCmps)[number]>();
+    for (const c of activeCmps) activeCmpById.set(c.id, c);
     for (const src of netlist.sources) {
       if (src.dc || src.vPeakKv <= 0) continue;
       const bus = netlist.buses.get(src.bus);
       if (!bus || !bus.explicitBaseKv || bus.baseKv <= 0) continue;
-      const cmp = [...allModules.flatMap((m) => m.components)].find(
-        (c) => (c.id === src.id || src.id.endsWith(`_${c.id}`)) && !c.disabled,
-      );
+      const cmp = activeCmpById.get(src.id) ?? activeCmps.find((c) => src.id.endsWith(`_${c.id}`));
       const isLlRmsParam =
         cmp !== undefined &&
         (cmp.parameters["V"] !== undefined || cmp.parameters["Vbase"] !== undefined) &&
@@ -2470,16 +2727,121 @@ export function lintPscx(project: PscxProject): PscadDiagnostic[] {
     }
   }
 
-  // 36. M6080 & M6081: Formal BMC breaker/relay deadlock check & DDE delay feedback stability check
-  if (!isLibraryProject && netlist.controlBlocks && netlist.controlBlocks.length > 0) {
+  // 36. M6080 & M6081: Formal BMC breaker/relay deadlock check & DDE delay feedback stability check (deep/formal)
+  if (tier !== "fast" && !isLibraryProject && netlist.controlBlocks && netlist.controlBlocks.length > 0) {
     diagnostics.push(...verifyProtectionRelayBmc(netlist.controlBlocks));
     diagnostics.push(...verifyControlDelayStability(netlist.controlBlocks, (project.settings.timeStepUs || 50) * 1e-6));
   }
 
-  // 37. M6082: Certified Zonotope reachability envelope for grid-tied converters/IBRs
-  if (!isLibraryProject && ((netlist.converterBridges?.length ?? 0) > 0 || netlist.fmuInstances.length > 0)) {
+  // 37. M6082: Certified Zonotope reachability envelope for grid-tied converters/IBRs (deep/formal)
+  if (
+    tier !== "fast" &&
+    !isLibraryProject &&
+    ((netlist.converterBridges?.length ?? 0) > 0 || netlist.fmuInstances.length > 0)
+  ) {
     const reach = verifyConverterReachability(netlist);
     diagnostics.push(...reach.diagnostics);
+  }
+
+  // 38. Formal tier: Galvanic isolation / missing ground-reference check (detects floating electrical islands)
+  if (tier === "formal" && !isLibraryProject && netlist.buses.size >= 2 && netlist.branches.length > 0) {
+    const adj = new Map<string, Set<string>>();
+    const addEdge = (a: string, b: string) => {
+      if (!adj.has(a)) adj.set(a, new Set());
+      if (!adj.has(b)) adj.set(b, new Set());
+      adj.get(a)!.add(b);
+      adj.get(b)!.add(a);
+    };
+    const groundedNodes = new Set<string>(["0", "gnd", "ground"]);
+    for (const br of netlist.branches) {
+      if (br.kind === "switch" && br.status === "open") continue;
+      addEdge(br.fromBus, br.toBus);
+    }
+    for (const src of netlist.sources) {
+      if (src.bus) groundedNodes.add(src.bus);
+    }
+    for (const sm of netlist.synchronousMachines ?? []) {
+      if (sm.bus) groundedNodes.add(sm.bus);
+    }
+    for (const arr of netlist.surgeArresters ?? []) {
+      if (arr.fromBus && arr.toBus) addEdge(arr.fromBus, arr.toBus);
+    }
+    for (const tl of netlist.transmissionLines ?? []) {
+      if (tl.fromBus) groundedNodes.add(tl.fromBus);
+      if (tl.toBus) groundedNodes.add(tl.toBus);
+    }
+
+    const visited = new Set<string>();
+    for (const node of adj.keys()) {
+      if (visited.has(node) || groundedNodes.has(node.toLowerCase())) continue;
+      const comp: string[] = [];
+      const q: string[] = [node];
+      visited.add(node);
+      let head = 0;
+      let hasGround = false;
+      while (head < q.length) {
+        const u = q[head++]!;
+        comp.push(u);
+        if (groundedNodes.has(u) || groundedNodes.has(u.toLowerCase())) hasGround = true;
+        for (const v of adj.get(u) ?? []) {
+          if (!visited.has(v)) {
+            visited.add(v);
+            q.push(v);
+          }
+        }
+      }
+      if (!hasGround && comp.length >= 2) {
+        const rep = comp[0]!;
+        const loc = busLocationMap.get(rep) ?? cmpLocationMap.get(rep);
+        diagnostics.push({
+          code: PscadErrorCode.FLOATING_NODE.code,
+          rule: PscadErrorCode.FLOATING_NODE.rule,
+          severity: PscadErrorCode.FLOATING_NODE.severity,
+          message: `Galvanically isolated electrical sub-circuit (${comp.join(", ")}) has no ground reference; nodal conductance matrix will be singular.`,
+          busId: rep,
+          line: loc?.line,
+          column: loc?.column,
+          rigor: "rigorous",
+        });
+      }
+    }
+  }
+
+  // 39. M6071: 7D SI physical dimensional unit consistency check (deep/formal)
+  if (tier !== "fast" && !isLibraryProject) {
+    diagnostics.push(...verifyPscadDimensionalUnits(project));
+  }
+
+  // 40. Formal tier: OctagonDBM relational control bounds & CFG-based Fortran UDM storage bounds
+  if (tier === "formal" && !isLibraryProject) {
+    if (netlist.controlBlocks && netlist.controlBlocks.length > 0) {
+      diagnostics.push(...verifyControlOctagonRelations(netlist.controlBlocks));
+    }
+    if (project.definitions) {
+      for (const [defName, def] of project.definitions) {
+        if (!def.scriptSegments) continue;
+        for (const [segKey, seg] of def.scriptSegments) {
+          const lk = segKey.toLowerCase();
+          if ((lk === "fortran" || lk === "dsdyn" || lk === "dsout") && seg.content?.trim()) {
+            diagnostics.push(...lintUdmCfgStorage(defName, seg.name, seg.content, seg.startLine));
+          }
+        }
+      }
+    }
+  }
+
+  // Backfill exact source line/column spans for any diagnostic (e.g. M6046-M6049, M6068, M6080-M6082)
+  // that emitted a componentId/busId without explicit span coordinates.
+  for (const d of diagnostics) {
+    if (d.line === undefined) {
+      const loc =
+        (d.componentId ? cmpLocationMap.get(d.componentId) : undefined) ??
+        (d.busId ? busLocationMap.get(d.busId) : undefined);
+      if (loc) {
+        d.line = loc.line;
+        d.column = loc.column;
+      }
+    }
   }
 
   return diagnostics;

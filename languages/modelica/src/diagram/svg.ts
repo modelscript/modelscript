@@ -553,6 +553,13 @@ function formatPathCommands(cmds: PathCommand[]): string {
   return cmds.map((cmd) => cmd.join(" ")).join(" ");
 }
 
+function formatOriginRotationTransform(ox: number, oy: number, rot: number): string {
+  const parts: string[] = [];
+  if (ox !== 0 || oy !== 0) parts.push(`translate(${ox}, ${oy})`);
+  if (rot !== 0) parts.push(`rotate(${rot})`);
+  return parts.length > 0 ? ` transform="${parts.join(" ")}"` : "";
+}
+
 function renderGraphicItemString(
   ctx: SvgStringContext,
   graphicItem: IGraphicItem,
@@ -563,26 +570,24 @@ function renderGraphicItemString(
   const [ox, oy] = graphicItem.origin ? convertPoint(graphicItem.origin) : [0, 0];
   const rot = graphicItem.rotation != null && graphicItem.rotation !== 0 ? -graphicItem.rotation : 0;
   const visAttr = computeVisibilityAttrString(graphicItem);
+  const originRotAttr = formatOriginRotationTransform(ox, oy, rot);
 
   switch (graphicItem["@type"]) {
     case "Rectangle": {
       const rect = graphicItem as IRectangle;
       const extent = rect.extent;
-      const minX = Math.min(extent?.[0]?.[0] ?? 0, extent?.[1]?.[0] ?? 0) + ox;
-      const maxX = Math.max(extent?.[0]?.[0] ?? 0, extent?.[1]?.[0] ?? 0) + ox;
+      const minX = Math.min(extent?.[0]?.[0] ?? 0, extent?.[1]?.[0] ?? 0);
+      const maxX = Math.max(extent?.[0]?.[0] ?? 0, extent?.[1]?.[0] ?? 0);
       const minY = Math.min(extent?.[0]?.[1] ?? 0, extent?.[1]?.[1] ?? 0);
       const maxY = Math.max(extent?.[0]?.[1] ?? 0, extent?.[1]?.[1] ?? 0);
       const x = minX;
-      const y = -maxY + oy;
+      const y = -maxY;
       const width = maxX - minX;
       const height = maxY - minY;
       const radiusAttr = rect.radius != null ? ` rx="${rect.radius}" ry="${rect.radius}"` : "";
-      const cx = x + width / 2;
-      const cy = y + height / 2;
-      const transformAttr = rot !== 0 ? ` transform="rotate(${rot}, ${cx}, ${cy})"` : "";
       const fillAttr = computeFillAttrString(ctx, rect);
       const strokeAttr = computeStrokeAttrsString(rect);
-      return `<rect width="${width}" height="${height}" x="${x}" y="${y}"${radiusAttr}${fillAttr}${strokeAttr}${transformAttr}${visAttr}/>`;
+      return `<rect width="${width}" height="${height}" x="${x}" y="${y}"${radiusAttr}${fillAttr}${strokeAttr}${originRotAttr}${visAttr}/>`;
     }
     case "Ellipse": {
       const ell = graphicItem as IEllipse;
@@ -593,9 +598,8 @@ function renderGraphicItemString(
       const maxY = Math.max(extent?.[0]?.[1] ?? 0, extent?.[1]?.[1] ?? 0);
       const rx = (maxX - minX) / 2;
       const ry = (maxY - minY) / 2;
-      const cx = (minX + maxX) / 2 + ox;
-      const cy = -(minY + maxY) / 2 + oy;
-      const transformAttr = rot !== 0 ? ` transform="rotate(${rot}, ${cx}, ${cy})"` : "";
+      const cx = (minX + maxX) / 2;
+      const cy = -(minY + maxY) / 2;
       const fillAttr = computeFillAttrString(ctx, ell);
       const strokeAttr = computeStrokeAttrsString(ell);
       const startAngle = ell.startAngle ?? 0;
@@ -611,30 +615,29 @@ function renderGraphicItemString(
         const largeArc = Math.abs(deltaAngle) > 180 ? 1 : 0;
         const sweep = deltaAngle >= 0 ? 0 : 1;
         const closure = ell.closure ?? EllipseClosure.AUTOMATIC;
+        const hasFill = ell.fillPattern !== undefined && ell.fillPattern !== FillPattern.NONE;
+        const effectiveClosure =
+          closure === EllipseClosure.AUTOMATIC ? (hasFill ? EllipseClosure.RADIAL : EllipseClosure.NONE) : closure;
         let d: string;
-        if (closure === EllipseClosure.RADIAL || closure === EllipseClosure.AUTOMATIC) {
+        if (effectiveClosure === EllipseClosure.RADIAL) {
           d = `M ${cx} ${cy} L ${xStart} ${yStart} A ${rx} ${ry} 0 ${largeArc} ${sweep} ${xEnd} ${yEnd} Z`;
-        } else if (closure === EllipseClosure.CHORD) {
+        } else if (effectiveClosure === EllipseClosure.CHORD) {
           d = `M ${xStart} ${yStart} A ${rx} ${ry} 0 ${largeArc} ${sweep} ${xEnd} ${yEnd} Z`;
         } else {
           d = `M ${xStart} ${yStart} A ${rx} ${ry} 0 ${largeArc} ${sweep} ${xEnd} ${yEnd}`;
         }
-        return `<path d="${d}"${fillAttr}${strokeAttr}${transformAttr}${visAttr}/>`;
+        return `<path d="${d}"${fillAttr}${strokeAttr}${originRotAttr}${visAttr}/>`;
       }
-      return `<ellipse rx="${rx}" ry="${ry}" cx="${cx}" cy="${cy}"${fillAttr}${strokeAttr}${transformAttr}${visAttr}/>`;
+      return `<ellipse rx="${rx}" ry="${ry}" cx="${cx}" cy="${cy}"${fillAttr}${strokeAttr}${originRotAttr}${visAttr}/>`;
     }
     case "Line": {
       const line = graphicItem as ILine;
       const pts = line.points ?? [];
       const arrowAttr = computeLineArrowsAttrString(ctx, line);
       const strokeAttr = computeStrokeAttrsString(line);
-      const tParts: string[] = [];
-      if (ox !== 0 || oy !== 0) tParts.push(`translate(${ox}, ${oy})`);
-      if (rot !== 0) tParts.push(`rotate(${rot})`);
-      const transformAttr = tParts.length > 0 ? ` transform="${tParts.join(" ")}"` : "";
       if (line.smooth === Smooth.BEZIER) {
         const d = formatPathCommands(convertSmoothPath(pts));
-        return `<path d="${d}" fill="none"${arrowAttr}${strokeAttr}${transformAttr}${visAttr}/>`;
+        return `<path d="${d}" fill="none"${arrowAttr}${strokeAttr}${originRotAttr}${visAttr}/>`;
       }
       const pointsStr = pts
         .map((p) => {
@@ -642,22 +645,18 @@ function renderGraphicItemString(
           return `${px},${py}`;
         })
         .join(" ");
-      return `<polyline points="${pointsStr}" fill="none"${arrowAttr}${strokeAttr}${transformAttr}${visAttr}/>`;
+      return `<polyline points="${pointsStr}" fill="none"${arrowAttr}${strokeAttr}${originRotAttr}${visAttr}/>`;
     }
     case "Polygon": {
       const poly = graphicItem as IPolygon;
       const pts = poly.points ?? [];
       const fillAttr = computeFillAttrString(ctx, poly);
       const strokeAttr = computeStrokeAttrsString(poly);
-      const tParts: string[] = [];
-      if (ox !== 0 || oy !== 0) tParts.push(`translate(${ox}, ${oy})`);
-      if (rot !== 0) tParts.push(`rotate(${rot})`);
-      const transformAttr = tParts.length > 0 ? ` transform="${tParts.join(" ")}"` : "";
       if (poly.smooth === Smooth.BEZIER) {
         const pathArray = convertSmoothPath(pts);
         pathArray.push(["z"]);
         const d = formatPathCommands(pathArray);
-        return `<path d="${d}"${fillAttr}${strokeAttr}${transformAttr}${visAttr}/>`;
+        return `<path d="${d}"${fillAttr}${strokeAttr}${originRotAttr}${visAttr}/>`;
       }
       const pointsStr = pts
         .map((p) => {
@@ -665,7 +664,7 @@ function renderGraphicItemString(
           return `${px},${py}`;
         })
         .join(" ");
-      return `<polygon points="${pointsStr}"${fillAttr}${strokeAttr}${transformAttr}${visAttr}/>`;
+      return `<polygon points="${pointsStr}"${fillAttr}${strokeAttr}${originRotAttr}${visAttr}/>`;
     }
     case "Text": {
       const txt = graphicItem as IText;
@@ -681,9 +680,8 @@ function renderGraphicItemString(
       const height = maxY - minY;
       const align = txt.horizontalAlignment ?? TextAlignment.CENTER;
       const textAnchor = align === TextAlignment.LEFT ? "start" : align === TextAlignment.RIGHT ? "end" : "middle";
-      const textX =
-        (align === TextAlignment.LEFT ? minX : align === TextAlignment.RIGHT ? maxX : (minX + maxX) / 2) + ox;
-      const textY = -(minY + maxY) / 2 + oy;
+      const textX = align === TextAlignment.LEFT ? minX : align === TextAlignment.RIGHT ? maxX : (minX + maxX) / 2;
+      const textY = -(minY + maxY) / 2;
 
       let fontSize = txt.fontSize ?? 0;
       if (!fontSize || fontSize <= 0) {
@@ -717,28 +715,23 @@ function renderGraphicItemString(
         transformParts.push(`translate(${-textX}, ${-textY})`);
         unflippedAttr = ' data-unflipped="true"';
       }
-      if (rot !== 0) {
-        transformParts.push(`rotate(${rot}, ${textX}, ${textY})`);
-      }
-      const transformAttr = transformParts.length > 0 ? ` transform="${transformParts.join(" ")}"` : "";
+      const textTransformAttr = transformParts.length > 0 ? ` transform="${transformParts.join(" ")}"` : "";
       const compLabelAttr = isComponentLabel ? ' data-component-label="true"' : "";
 
-      return `<text x="${textX}" y="${textY}" dominant-baseline="central" text-anchor="${textAnchor}" font-size="${fontSize}" font-family="${escapeSvgXml(txt.fontName || "sans-serif")}"${compLabelAttr}${unflippedAttr} fill="${fill}" font-style="${fontStyle}" font-weight="${fontWeight}" text-decoration="${textDecoration}"${transformAttr}${visAttr}>${escapeSvgXml(str)}</text>`;
+      const textEl = `<text x="${textX}" y="${textY}" dominant-baseline="central" text-anchor="${textAnchor}" font-size="${fontSize}" font-family="${escapeSvgXml(txt.fontName || "sans-serif")}"${compLabelAttr}${unflippedAttr} fill="${fill}" font-style="${fontStyle}" font-weight="${fontWeight}" text-decoration="${textDecoration}"${textTransformAttr}${originRotAttr ? "" : visAttr}>${escapeSvgXml(str)}</text>`;
+      return originRotAttr ? `<g${originRotAttr}${visAttr}>${textEl}</g>` : textEl;
     }
     case "Bitmap": {
       const bmp = graphicItem as IBitmap;
       const extent = bmp.extent;
-      const minX = Math.min(extent?.[0]?.[0] ?? 0, extent?.[1]?.[0] ?? 0) + ox;
-      const maxX = Math.max(extent?.[0]?.[0] ?? 0, extent?.[1]?.[0] ?? 0) + ox;
+      const minX = Math.min(extent?.[0]?.[0] ?? 0, extent?.[1]?.[0] ?? 0);
+      const maxX = Math.max(extent?.[0]?.[0] ?? 0, extent?.[1]?.[0] ?? 0);
       const minY = Math.min(extent?.[0]?.[1] ?? 0, extent?.[1]?.[1] ?? 0);
       const maxY = Math.max(extent?.[0]?.[1] ?? 0, extent?.[1]?.[1] ?? 0);
       const x = minX;
-      const y = -maxY + oy;
+      const y = -maxY;
       const width = maxX - minX;
       const height = maxY - minY;
-      const cx = x + width / 2;
-      const cy = y + height / 2;
-      const transformAttr = rot !== 0 ? ` transform="rotate(${rot}, ${cx}, ${cy})"` : "";
       let href = bmp.imageSource ? `data:image/png;base64,${bmp.imageSource}` : "";
       if (!href && bmp.fileName) {
         const resolved = resolveModelicaBitmapUri(
@@ -748,7 +741,7 @@ function renderGraphicItemString(
         href = resolved || bmp.fileName;
       }
       const hrefAttr = href ? ` href="${escapeSvgXml(href)}"` : "";
-      return `<image width="${width}" height="${height}" x="${x}" y="${y}"${hrefAttr}${transformAttr}${visAttr}/>`;
+      return `<image width="${width}" height="${height}" x="${x}" y="${y}"${hrefAttr}${originRotAttr}${visAttr}/>`;
     }
     default:
       return "";

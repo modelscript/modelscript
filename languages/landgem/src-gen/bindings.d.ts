@@ -254,6 +254,8 @@ export declare class LspFacade {
   private _nextFileId;
   private _idleTimer;
   private _maxMemoryQuotaBytes;
+  private _lastInputBufferUri;
+  private _lastInputBufferLength;
   /**
    * Retrieves or assigns a stable numeric fileId for a given URI.
    */
@@ -302,13 +304,14 @@ export declare class LspFacade {
    * Schedules a generational sweep/compaction pass.
    * Trigger 1: Quiescence / Idle Timer (1500ms debounce).
    */
-  scheduleCompaction(_immediate?: boolean): void;
+  scheduleCompaction(immediate?: boolean): void;
   /**
    * Trigger 2: Checks if allocated memory exceeds high-water mark quota.
    */
   checkMemoryQuota(): void;
   /**
-   * Performs compaction protecting all live document roots if requested.
+   * Reclaims WASM slab arenas for closed/stale documents and resets parser
+   * generations cleanly once all open document roots have been closed.
    */
   gcCompact(): void;
   /** Resets the internal parser state and clears all cached data. */

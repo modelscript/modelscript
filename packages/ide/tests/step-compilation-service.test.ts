@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import * as vscode from "vscode";
 import { CadViewerPanel } from "../src/cad-viewer-panel.js";
-import { QifEditorProvider } from "../src/qif-editor-provider.js";
+import { pushQifOverlayToCadViewer } from "../src/services/qif-overlay-bridge.js";
 import {
   StepCompilationService,
   parseScadSourceDirectives,
@@ -444,35 +444,10 @@ describe("StepCompilationService + StepEditorProvider (Option A IDE Pipeline)", 
       assert.strictEqual(refreshedOverlays[0].modelicaTelemetry?.n1Rpm, 4650);
       assert.strictEqual(refreshedOverlays[0].modelicaTelemetry?.n2Rpm, 17100);
 
-      // 4. QifEditorProvider maps features to real STEP entityId + worldPosition on CadViewerPanel
-      const qifProvider = new QifEditorProvider(
-        { extensionUri: vscode.Uri.parse("file:///ext"), subscriptions: [] } as any,
-        service,
-      );
-      let qifMsgHandler: ((msg: any) => Promise<void> | void) | undefined;
-      const fakeQifPanel: any = {
-        webview: {
-          cspSource: "vscode-webview://test",
-          asWebviewUri: (u: any) => u,
-          options: {},
-          html: "",
-          postMessage: async () => true,
-          onDidReceiveMessage: (fn: any) => {
-            qifMsgHandler = fn;
-            return new vscode.Disposable(() => {});
-          },
-        },
-        onDidDispose: () => new vscode.Disposable(() => {}),
-      };
-      await qifProvider.resolveCustomTextEditor(
-        { uri: qifUri, getText: () => qifText } as any,
-        fakeQifPanel,
-        new vscode.CancellationTokenSource().token,
-      );
-      await qifMsgHandler?.({ type: "ready" });
-      await new Promise((r) => setTimeout(r, 15));
+      // 4. QIF overlay bridge maps features to real STEP entityId + worldPosition on CadViewerPanel
+      await pushQifOverlayToCadViewer(qifText, qifUri, service);
       const latestOverlay = postedToCadViewer[postedToCadViewer.length - 1];
-      assert.ok(latestOverlay, "Expected QifEditorProvider to push QIF_INSPECTION_OVERLAY");
+      assert.ok(latestOverlay, "Expected pushQifOverlayToCadViewer to push QIF_INSPECTION_OVERLAY");
       assert.strictEqual(latestOverlay.stepUri, stepUri.toString());
       const tipFeature = latestOverlay.features?.find((f: any) => f.name === "FanTipAcousticLiner");
       assert.ok(tipFeature?.entityId?.startsWith("#"), `Expected real STEP entityId, got ${tipFeature?.entityId}`);

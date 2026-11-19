@@ -110,14 +110,14 @@ const maturity = computed(() => {
           <span>Source</span>
         </a>
         <a
-          :href="`${ansatzOrigin}/morsel?lang=${lang.slug}`"
+          :href="`${ansatzOrigin}/editor?lang=${lang.slug}`"
           target="_blank"
           rel="noopener noreferrer"
           class="lang-action-btn lang-action-primary"
-          title="Open interactive WebAssembly Ansatz Morsel"
+          title="Open in interactive WebAssembly Ansatz editor"
         >
           <MsIcon name="play" :size="13" />
-          <span>Morsel</span>
+          <span>Ansatz</span>
         </a>
       </div>
     </div>

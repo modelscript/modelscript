@@ -981,7 +981,8 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                 {setTreeVisible &&
                   !(
                     typeof window !== "undefined" &&
-                    (window.location.pathname.startsWith("/playground") ||
+                    (window.location.pathname.startsWith("/editor") ||
+                      window.location.pathname.startsWith("/playground") ||
                       window.location.pathname.startsWith("/sketch") ||
                       window.location.pathname.startsWith("/morsel"))
                   ) && (

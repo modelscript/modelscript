@@ -21,6 +21,7 @@ export type DaeSingularityKind =
   | "sqrt_negative"
   | "log_nonpositive"
   | "tan_singularity"
+  | "inverse_trig_domain"
   | "pow_domain_violation"
   | "min_bound_violation"
   | "max_bound_violation"

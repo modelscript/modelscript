@@ -2,6 +2,7 @@
 
 import {
   CdclSatSolver,
+  Hc4Contractor,
   Interval,
   SosBarrierSynthesizer,
   StlMonitor,
@@ -11,8 +12,10 @@ import {
   type PropExpr,
   type TrajectoryTrace,
 } from "@modelscript/runtime";
+import { computeSteadyStateInit } from "../dae/init-steady-state.js";
 import { PsseErrorCode } from "../errors.js";
 import type { PsseTransientResult } from "../solver/ac-powerflow.js";
+import { solveContinuationPowerFlow } from "../solver/continuation-powerflow.js";
 import type { PsseCase, PsseDiagnostic } from "../types.js";
 
 export interface FormalRasSchemeInput {
@@ -27,9 +30,51 @@ export interface FormalRasSchemeInput {
   }>;
 }
 
+/** Parses simple numeric predicate tags such as "V<0.90", "f<=59.3", "V>=1.10". */
+function parseNumericTag(tag?: string): { variable: string; op: "<" | "<=" | ">" | ">="; value: number } | null {
+  if (!tag) return null;
+  const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(<=|>=|<|>)\s*(-?\d+(?:\.\d+)?)\s*$/.exec(tag);
+  if (!m) return null;
+  const val = Number.parseFloat(m[3]!);
+  if (!Number.isFinite(val)) return null;
+  return { variable: m[1]!.toUpperCase(), op: m[2]! as "<" | "<=" | ">" | ">=", value: val };
+}
+
+/** Soundly checks whether two numeric inequality predicates on the same variable are mutually exclusive. */
+function areNumericPredicatesDisjoint(aTag?: string, bTag?: string): boolean {
+  const a = parseNumericTag(aTag);
+  const b = parseNumericTag(bTag);
+  if (!a || !b || a.variable !== b.variable) return false;
+  let lo = -Infinity;
+  let loClosed = false;
+  let hi = Infinity;
+  let hiClosed = false;
+  for (const p of [a, b]) {
+    if (p.op === ">" && p.value >= lo) {
+      if (p.value > lo || !loClosed) {
+        lo = p.value;
+        loClosed = false;
+      }
+    } else if (p.op === ">=" && p.value > lo) {
+      lo = p.value;
+      loClosed = true;
+    } else if (p.op === "<" && p.value <= hi) {
+      if (p.value < hi || !hiClosed) {
+        hi = p.value;
+        hiClosed = false;
+      }
+    } else if (p.op === "<=" && p.value < hi) {
+      hi = p.value;
+      hiClosed = true;
+    }
+  }
+  return lo > hi || (lo === hi && !(loClosed && hiClosed));
+}
+
 /**
  * `P8001`: Encodes RAS/SPS trigger guards and discrete actions into CNF (`TseitinEncoder` + `CdclSatSolver`)
- * to formally witness contradictory or cyclic arming/tripping races on shared network elements.
+ * with numeric interval mutual-exclusion filtering to formally witness contradictory or cyclic
+ * arming/tripping races on shared network elements.
  */
 export function verifyRasSpsBmc(schemes: readonly FormalRasSchemeInput[]): PsseDiagnostic[] {
   const diagnostics: PsseDiagnostic[] = [];
@@ -51,20 +96,54 @@ export function verifyRasSpsBmc(schemes: readonly FormalRasSchemeInput[]): PsseD
           if (actA.target !== actB.target) continue;
           if (!isOppositePair(actA.kind, actB.kind)) continue;
 
+          // If numeric triggers or guards on the same variable are provably disjoint, UNSAT (safe)
+          if (
+            areNumericPredicatesDisjoint(sA.triggerTag, sB.triggerTag) ||
+            areNumericPredicatesDisjoint(sA.guardTag, sB.guardTag)
+          ) {
+            continue;
+          }
+
           // Build SAT instance proving whether both schemes can become armed on the same contingency step
           const enc = new TseitinEncoder();
           const armedA: PropExpr = { op: "var", name: `arm_${sA.id}` };
           const armedB: PropExpr = { op: "var", name: `arm_${sB.id}` };
 
           const constraints: PropExpr[] = [armedA, armedB];
-          if (sA.triggerTag && sB.triggerTag && sA.triggerTag === `!${sB.triggerTag}`) {
-            const trig: PropExpr = { op: "var", name: `trig_${sB.triggerTag}` };
-            constraints.push({ op: "implies", left: armedA, right: { op: "not", child: trig } });
-            constraints.push({ op: "implies", left: armedB, right: trig });
-          } else if (sA.guardTag && sB.guardTag && sA.guardTag === `!${sB.guardTag}`) {
-            const g: PropExpr = { op: "var", name: `guard_${sB.guardTag}` };
-            constraints.push({ op: "implies", left: armedA, right: { op: "not", child: g } });
-            constraints.push({ op: "implies", left: armedB, right: g });
+          if (
+            sA.triggerTag &&
+            sB.triggerTag &&
+            (sA.triggerTag === `!${sB.triggerTag}` || sB.triggerTag === `!${sA.triggerTag}`)
+          ) {
+            const base = sA.triggerTag.startsWith("!") ? sB.triggerTag : sA.triggerTag;
+            const trig: PropExpr = { op: "var", name: `trig_${base}` };
+            constraints.push({
+              op: "implies",
+              left: armedA,
+              right: sA.triggerTag.startsWith("!") ? { op: "not", child: trig } : trig,
+            });
+            constraints.push({
+              op: "implies",
+              left: armedB,
+              right: sB.triggerTag.startsWith("!") ? { op: "not", child: trig } : trig,
+            });
+          } else if (
+            sA.guardTag &&
+            sB.guardTag &&
+            (sA.guardTag === `!${sB.guardTag}` || sB.guardTag === `!${sA.guardTag}`)
+          ) {
+            const base = sA.guardTag.startsWith("!") ? sB.guardTag : sA.guardTag;
+            const g: PropExpr = { op: "var", name: `guard_${base}` };
+            constraints.push({
+              op: "implies",
+              left: armedA,
+              right: sA.guardTag.startsWith("!") ? { op: "not", child: g } : g,
+            });
+            constraints.push({
+              op: "implies",
+              left: armedB,
+              right: sB.guardTag.startsWith("!") ? { op: "not", child: g } : g,
+            });
           }
 
           const root = enc.encode({ op: "and", children: constraints });
@@ -81,9 +160,84 @@ export function verifyRasSpsBmc(schemes: readonly FormalRasSchemeInput[]): PsseD
               message: PsseErrorCode.RAS_SPS_RACE_CONDITION.message(actA.target, sA.id, sB.id),
               startOffset: 0,
               endOffset: 0,
+              rigor: "rigorous",
             });
           }
         }
+      }
+    }
+  }
+
+  return diagnostics;
+}
+
+/**
+ * `P8001` (auto-extracted): Verifies DYR UFLS/UVLS/frequency/voltage protection relay records
+ * (`LDSHBL`, `LSHED`, `UVLS`, `FRQTPAT`, `VTGTPAT`, `FRQDCAT`, `VTGDCAT`) for inverted or
+ * simultaneously overlapping under/over trip bands using exact interval satisfiability.
+ */
+export function verifyDyrProtectionCoordinationSmt(c: PsseCase): PsseDiagnostic[] {
+  const diagnostics: PsseDiagnostic[] = [];
+  if (!c.dyr || c.dyr.records.length === 0) return diagnostics;
+
+  for (const rec of c.dyr.records) {
+    const m = rec.model.toUpperCase();
+    // Under/over frequency or voltage trip relays: FL < FU or VL < VU must hold (otherwise overlap band is non-empty)
+    if (m.startsWith("FRQTP") || m.startsWith("FRQDC") || m.startsWith("VTGTP") || m.startsWith("VTGDC")) {
+      const lo = rec.namedParams["FL"] ?? rec.namedParams["VL"] ?? rec.con[0];
+      const hi = rec.namedParams["FU"] ?? rec.namedParams["VU"] ?? rec.con[1];
+      if (lo !== undefined && hi !== undefined && lo > 0 && hi > 0 && lo >= hi) {
+        diagnostics.push({
+          severity: PsseErrorCode.RAS_SPS_RACE_CONDITION.severity,
+          code: PsseErrorCode.RAS_SPS_RACE_CONDITION.code,
+          message: PsseErrorCode.RAS_SPS_RACE_CONDITION.message(
+            `Bus ${rec.ibus} (${rec.model})`,
+            `under-trip <= ${lo}`,
+            `over-trip >= ${hi}`,
+          ),
+          startOffset: rec.span?.startOffset ?? 0,
+          endOffset: rec.span?.endOffset ?? 0,
+          line: rec.span?.line,
+          column: rec.span?.column,
+          rigor: "rigorous",
+        });
+      }
+    } else if (m.startsWith("LDSH") || m.startsWith("LSHED") || m.startsWith("UVLS")) {
+      // Multi-stage load-shedding relays: F1 > F2 > F3 (or V1 > V2 > V3) must be strictly descending
+      const s1 = rec.namedParams["F1"] ?? rec.namedParams["V1"] ?? rec.con[0];
+      const s2 = rec.namedParams["F2"] ?? rec.namedParams["V2"] ?? rec.con[3];
+      const s3 = rec.namedParams["F3"] ?? rec.namedParams["V3"] ?? rec.con[6];
+      if (s1 !== undefined && s2 !== undefined && s1 > 0 && s2 > 0 && s1 <= s2) {
+        diagnostics.push({
+          severity: PsseErrorCode.RAS_SPS_RACE_CONDITION.severity,
+          code: PsseErrorCode.RAS_SPS_RACE_CONDITION.code,
+          message: PsseErrorCode.RAS_SPS_RACE_CONDITION.message(
+            `Bus ${rec.ibus} (${rec.model})`,
+            `Stage 1 (${s1})`,
+            `Stage 2 (${s2})`,
+          ),
+          startOffset: rec.span?.startOffset ?? 0,
+          endOffset: rec.span?.endOffset ?? 0,
+          line: rec.span?.line,
+          column: rec.span?.column,
+          rigor: "rigorous",
+        });
+      }
+      if (s2 !== undefined && s3 !== undefined && s2 > 0 && s3 > 0 && s2 <= s3) {
+        diagnostics.push({
+          severity: PsseErrorCode.RAS_SPS_RACE_CONDITION.severity,
+          code: PsseErrorCode.RAS_SPS_RACE_CONDITION.code,
+          message: PsseErrorCode.RAS_SPS_RACE_CONDITION.message(
+            `Bus ${rec.ibus} (${rec.model})`,
+            `Stage 2 (${s2})`,
+            `Stage 3 (${s3})`,
+          ),
+          startOffset: rec.span?.startOffset ?? 0,
+          endOffset: rec.span?.endOffset ?? 0,
+          line: rec.span?.line,
+          column: rec.span?.column,
+          rigor: "rigorous",
+        });
       }
     }
   }
@@ -467,4 +621,176 @@ export function verifyCriticalClearingBarrier(
     criticalMachine,
     diagnostics,
   };
+}
+
+/**
+ * `P7003` (HC4 Interval Certificate): Uses outward-rounded `@modelscript/runtime` `Hc4Contractor`
+ * to rigorously prove whether a PQ load pocket's apparent power demand exceeds the maximum
+ * possible power transfer over `V_i, V_j ∈ [0.85, 1.15]` pu (`rigor: "rigorous"`).
+ */
+export function verifyPocketInfeasibilityHc4(c: PsseCase): PsseDiagnostic[] {
+  const diagnostics: PsseDiagnostic[] = [];
+  if (c.buses.size < 2) return diagnostics;
+  const sbase = c.header.sbase > 0 ? c.header.sbase : 100.0;
+
+  const genBuses = new Set<number>();
+  for (const g of c.generators) {
+    if (g.stat === 1) genBuses.add(g.i);
+  }
+  const loadByBus = new Map<number, { p: number; q: number; span?: (typeof c.header)["span"] }>();
+  for (const l of c.loads) {
+    if (l.status !== 1) continue;
+    const prev = loadByBus.get(l.i);
+    loadByBus.set(l.i, {
+      p: (prev?.p ?? 0) + l.pl + l.ip,
+      q: (prev?.q ?? 0) + l.ql + l.iq,
+      span: prev?.span ?? l.span,
+    });
+  }
+  const yInc = new Map<number, number>();
+  const addY = (b: number, y: number) => {
+    if (y > 0 && Number.isFinite(y)) yInc.set(b, (yInc.get(b) ?? 0) + y);
+  };
+  for (const br of c.branches) {
+    if (br.st === 0) continue;
+    const z = Math.hypot(br.r, br.x);
+    if (z > 1e-6) {
+      addY(br.i, 1 / z);
+      addY(Math.abs(br.j), 1 / z);
+    }
+  }
+  for (const t of c.transformers) {
+    if (t.stat === 0) continue;
+    const z = Math.hypot(t.r12, t.x12);
+    if (z > 1e-6) {
+      addY(t.i, 1 / z);
+      addY(t.j, 1 / z);
+      if (t.k !== 0) addY(t.k, 1 / z);
+    }
+  }
+
+  const vBox = new Map<string, Interval>([
+    ["Vi", new Interval(0.85, 1.15)],
+    ["Vj", new Interval(0.85, 1.15)],
+  ]);
+
+  for (const [busId, load] of loadByBus) {
+    const b = c.buses.get(busId);
+    if (!b || b.ide !== 1 || genBuses.has(busId)) continue;
+    const yCap = yInc.get(busId) ?? 0;
+    const sDemandMva = Math.hypot(load.p, load.q);
+    if (sDemandMva <= 1.0 || yCap <= 0) continue;
+
+    // Evaluate outward-rounded upper bound on transfer S_max = Vi * Vj * sbase * yCap
+    const transferInterval = Hc4Contractor.evalInterval(
+      {
+        kind: "mul",
+        left: { kind: "mul", left: { kind: "var", name: "Vi" }, right: { kind: "var", name: "Vj" } },
+        right: { kind: "const", value: sbase * yCap },
+      },
+      vBox,
+    );
+    if (Number.isFinite(transferInterval.hi) && sDemandMva > 1.5 * transferInterval.hi) {
+      diagnostics.push({
+        severity: PsseErrorCode.UNSOLVABLE_LOAD_POCKET.severity,
+        code: PsseErrorCode.UNSOLVABLE_LOAD_POCKET.code,
+        message: PsseErrorCode.UNSOLVABLE_LOAD_POCKET.message(busId, sDemandMva, transferInterval.hi),
+        startOffset: (load.span ?? b.span)?.startOffset ?? 0,
+        endOffset: (load.span ?? b.span)?.endOffset ?? 0,
+        line: (load.span ?? b.span)?.line,
+        column: (load.span ?? b.span)?.column,
+        rigor: "rigorous",
+      });
+    }
+  }
+  return diagnostics;
+}
+
+/**
+ * `P7001` (True `STRT` Equilibrium Verification): Runs solved AC Newton-Raphson steady-state
+ * initialization (`computeSteadyStateInit`) to verify exact solved `Efd0` against exciter
+ * `[VRMIN, VRMAX]` ceilings and solved active power against `[PB, PT]` (`rigor: "float-sound"`).
+ */
+export function verifyTrueSteadyStateInit(c: PsseCase): PsseDiagnostic[] {
+  const diagnostics: PsseDiagnostic[] = [];
+  if (!c.dyr || c.dyr.records.length === 0 || c.buses.size === 0 || c.buses.size > 500) return diagnostics;
+  try {
+    const init = computeSteadyStateInit(c);
+    for (const g of c.generators) {
+      if (g.stat !== 1) continue;
+      const gId = g.id.trim() || "1";
+      const key = `${g.i}_${gId}`;
+      const gInit = init.gens.get(key);
+      if (!gInit) continue;
+      const exc = c.dyr.excitersByBusId.get(`${g.i}:${gId}`) ?? c.dyr.excitersByBusId.get(`${g.i}:*`);
+      if (exc) {
+        const vrMax = exc.namedParams["VRMAX"];
+        const vrMin = exc.namedParams["VRMIN"];
+        if (vrMax !== undefined && vrMax > 0 && gInit.efd0 > vrMax) {
+          diagnostics.push({
+            severity: PsseErrorCode.DYR_INITIAL_CONDITION_SUSPECT.severity,
+            code: PsseErrorCode.DYR_INITIAL_CONDITION_SUSPECT.code,
+            message: PsseErrorCode.DYR_INITIAL_CONDITION_SUSPECT.message(
+              gId,
+              g.i,
+              `solved STRT Efd0=${gInit.efd0.toFixed(3)} p.u. exceeds exciter '${exc.model}' VRMAX=${vrMax.toFixed(3)} p.u.`,
+            ),
+            startOffset: (exc.span ?? g.span)?.startOffset ?? 0,
+            endOffset: (exc.span ?? g.span)?.endOffset ?? 0,
+            line: (exc.span ?? g.span)?.line,
+            column: (exc.span ?? g.span)?.column,
+            rigor: "float-sound",
+          });
+        } else if (vrMin !== undefined && gInit.efd0 < vrMin) {
+          diagnostics.push({
+            severity: PsseErrorCode.DYR_INITIAL_CONDITION_SUSPECT.severity,
+            code: PsseErrorCode.DYR_INITIAL_CONDITION_SUSPECT.code,
+            message: PsseErrorCode.DYR_INITIAL_CONDITION_SUSPECT.message(
+              gId,
+              g.i,
+              `solved STRT Efd0=${gInit.efd0.toFixed(3)} p.u. is below exciter '${exc.model}' VRMIN=${vrMin.toFixed(3)} p.u.`,
+            ),
+            startOffset: (exc.span ?? g.span)?.startOffset ?? 0,
+            endOffset: (exc.span ?? g.span)?.endOffset ?? 0,
+            line: (exc.span ?? g.span)?.line,
+            column: (exc.span ?? g.span)?.column,
+            rigor: "float-sound",
+          });
+        }
+      }
+    }
+  } catch {
+    // Non-convergent base cases are reported by power-flow/pocket diagnostics
+  }
+  return diagnostics;
+}
+
+/**
+ * `P6004` (PALC Bifurcation Margin): Runs predictor-corrector Continuation Power Flow (`solveContinuationPowerFlow`)
+ * to compute the exact loading margin `lambdaMax` to Saddle-Node voltage collapse (`rigor: "heuristic"`).
+ */
+export function verifyVoltageCollapseMarginPalc(
+  c: PsseCase,
+  minLoadingMarginPu = 0.1,
+): { lambdaMax: number; diagnostics: PsseDiagnostic[] } {
+  const diagnostics: PsseDiagnostic[] = [];
+  if (c.buses.size < 2 || c.buses.size > 300) return { lambdaMax: 1.0, diagnostics };
+  try {
+    const cpf = solveContinuationPowerFlow(c, { maxSteps: 25, stepSize: 0.1, traceLowerBranch: false });
+    if (Number.isFinite(cpf.lambdaMax) && cpf.lambdaMax < minLoadingMarginPu) {
+      diagnostics.push({
+        severity: PsseErrorCode.JACOBIAN_VOLTAGE_COLLAPSE.severity,
+        code: PsseErrorCode.JACOBIAN_VOLTAGE_COLLAPSE.code,
+        message: `PALC continuation power flow indicates low voltage-collapse loading margin (λ_max=${cpf.lambdaMax.toFixed(3)} < ${minLoadingMarginPu.toFixed(2)}, margin=${cpf.marginMw.toFixed(1)} MW).`,
+        startOffset: c.header.span?.startOffset ?? 0,
+        endOffset: c.header.span?.endOffset ?? 0,
+        line: c.header.span?.line,
+        column: c.header.span?.column,
+        rigor: "heuristic",
+      });
+    }
+    return { lambdaMax: cpf.lambdaMax, diagnostics };
+  } catch {
+    return { lambdaMax: 1.0, diagnostics };
+  }
 }

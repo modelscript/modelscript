@@ -25,7 +25,10 @@ export interface LosslessnessReport {
  * Identifies unmapped source attributes and checks whether they are protected
  * by declared shadow complements (tggComplement).
  */
-export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?: string[]): LosslessnessReport {
+export function verifyRuleLosslessness(
+  rule: TGGRuleOptions,
+  sourceSchemaOrRegistry?: string[] | Record<string, string[]>,
+): LosslessnessReport {
   const ruleName = rule.name || "unnamed_rule";
 
   const $proxy = new Proxy(
@@ -77,8 +80,11 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
   const complementConstraint = constraints.find((c: { kind?: string; args?: unknown[] }) => c.kind === "complement");
   const complementAttributes: string[] = (complementConstraint?.args?.[0] as string[] | undefined) || [];
 
-  // Determine all source attributes under consideration
-  const knownSourceAttrs = new Set<string>([...Object.keys(srcBindings), ...(sourceSchemaAttrs || [])]);
+  // Determine all source attributes under consideration (pattern + schema registry)
+  const resolvedSchemaAttrs = Array.isArray(sourceSchemaOrRegistry)
+    ? sourceSchemaOrRegistry
+    : sourceSchemaOrRegistry?.[sourceType] || [];
+  const knownSourceAttrs = new Set<string>([...Object.keys(srcBindings), ...resolvedSchemaAttrs]);
 
   const mappedSourceAttributes: string[] = [];
   const unmappedSourceAttributes: string[] = [];
@@ -213,7 +219,7 @@ export function verifyRuleLosslessness(rule: TGGRuleOptions, sourceSchemaAttrs?:
  */
 export function verifySuiteLosslessness(
   rules: TGGRuleOptions[],
-  _schemaRegistry?: Record<string, string[]>,
+  schemaRegistry?: Record<string, string[]>,
 ): {
   isFullyLossless: boolean;
   reports: LosslessnessReport[];
@@ -223,7 +229,7 @@ export function verifySuiteLosslessness(
   let leakedRuleCount = 0;
 
   for (const rule of rules) {
-    const rep = verifyRuleLosslessness(rule);
+    const rep = verifyRuleLosslessness(rule, schemaRegistry);
     reports.push(rep);
     if (rep.status === "INFORMATION_LOSS") {
       leakedRuleCount++;

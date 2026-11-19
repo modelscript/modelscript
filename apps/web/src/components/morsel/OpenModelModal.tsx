@@ -2076,7 +2076,7 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                   gap: 8,
                 }}
               >
-                <div style={{ fontSize: 12.5, fontWeight: 600 }}>Open from Morsel Permalink or Share URL</div>
+                <div style={{ fontSize: 12.5, fontWeight: 600 }}>Open from Ansatz Permalink or Share URL</div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input
                     type="text"
@@ -2085,7 +2085,7 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                     onKeyDown={(e) => {
                       if (e.key === "Enter") void handleResolveShareLink();
                     }}
-                    placeholder="Paste https://modelscript.org/morsel#m=... or ?morsel=..."
+                    placeholder="Paste https://ansatz.social/editor#m=... or ?morsel=..."
                     style={{
                       flex: 1,
                       height: 34,

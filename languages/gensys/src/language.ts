@@ -21,6 +21,31 @@ export const gensysLanguage = language({
     folding: gensysDeckGrammar.lsp?.folding,
     outline: gensysDeckGrammar.lsp?.outline,
   },
+  ui: {
+    panels: [
+      {
+        id: "gensysEditor",
+        viewType: "modelscript.gensysEditor",
+        title: "GENSYS Railway Vehicle Dynamics Studio",
+        shortTitle: "GENSYS",
+        selector: ["*.calc", "*.run", "*.sub", "*.geom", "*.trax", "*.wheel"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/GensysPanel.tsx",
+        artifactViewTypes: ["gensys", "gensys-rail"],
+      },
+    ],
+    stencils: [
+      {
+        label: "Mass (mass)",
+        snippet: "mass m_body_new  0.0 0.0 -1.2   m=15000  Jx=22000 Jy=450000 Jz=450000\n",
+      },
+      {
+        label: "Spring/Damper (coupl)",
+        snippet: "coupl k_susp_new  body_1 body_2  0.0 1.0 -0.5  0.0 1.0 -0.8  k=350e3 c=18e3\n",
+      },
+    ],
+  },
   word: gensysDeckGrammar.word,
   extras: gensysDeckGrammar.extras,
   conflicts: gensysDeckGrammar.conflicts,

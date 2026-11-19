@@ -7,6 +7,7 @@ import {
   mergeCoincidentInsertEdits,
 } from "../cross-language-drop.js";
 import {
+  computeMinimalTextEdit,
   deduplicateAndSort,
   getUnifiedIndexFromDeps,
   type DiagramBackend,
@@ -79,7 +80,9 @@ export function createSpiceDiagramBackend(backends: DiagramDispatchDeps): Diagra
           for (const cell of rawDiagram.cells) {
             if (cell.shape === "edge") continue;
             const id = String(cell.id ?? "");
-            const clean = (id.startsWith("cmp_") ? id.slice(4) : id).toLowerCase();
+            const clean = (
+              id.startsWith("comp_") ? id.slice(5) : id.startsWith("cmp_") ? id.slice(4) : id
+            ).toLowerCase();
             const pos = posByComp.get(clean);
             if (pos) {
               cell.x = pos.x;
@@ -103,7 +106,11 @@ export function createSpiceDiagramBackend(backends: DiagramDispatchDeps): Diagra
         const { parseSpice, formatSpiceValue } = await import("@modelscript/spice");
         const circuit = parseSpice(text);
         const rawName = params.componentName;
-        const cleanName = rawName.startsWith("cmp_") ? rawName.slice(4) : rawName;
+        const cleanName = rawName.startsWith("comp_")
+          ? rawName.slice(5)
+          : rawName.startsWith("cmp_")
+            ? rawName.slice(4)
+            : rawName;
         const cmp = circuit.components.find(
           (c) => c.name.toLowerCase() === cleanName.toLowerCase() || c.name.toLowerCase() === rawName.toLowerCase(),
         );
@@ -182,12 +189,25 @@ export function createSpiceDiagramBackend(backends: DiagramDispatchDeps): Diagra
         if (!text) return { seq: params.seq, edits: [], renderHint: "none" };
         const unifiedIndex = getUnifiedIndexFromDeps(backends);
         const batchState = createDropBatchState();
+        const eol = text.includes("\r\n") ? "\r\n" : "\n";
         const addEdits: TextEdit[] = [];
         const lines = text.split(/\r?\n/);
         let hasStructural = false;
         let textMutated = false;
 
-        const stripCmp = (n: string): string => (n.startsWith("cmp_") ? n.slice(4) : n);
+        const stripCmp = (n: string): string =>
+          n.startsWith("comp_") ? n.slice(5) : n.startsWith("cmp_") ? n.slice(4) : n;
+        const stripPortRef = (rawRef: string): { comp: string; pin: number } => {
+          const parts = rawRef.split(":");
+          const comp = stripCmp(parts[0] ?? rawRef);
+          const m = /(\d+)/.exec(parts[1] ?? "");
+          return { comp, pin: m ? Number(m[1]) : 0 };
+        };
+        const parsePinIdx = (port?: string, fallbackPin = 0): number => {
+          if (!port) return fallbackPin;
+          const m = /(\d+)/.exec(port);
+          return m ? Number(m[1]) : fallbackPin;
+        };
         const findCompLineIdx = (compName: string): number => {
           const target = compName.toLowerCase();
           return lines.findIndex((l) => {
@@ -195,6 +215,64 @@ export function createSpiceDiagramBackend(backends: DiagramDispatchDeps): Diagra
             if (!t || t.startsWith("*") || t.startsWith(".")) return false;
             return t.split(/\s+/)[0]?.toLowerCase() === target;
           });
+        };
+        const splitBodyComment = (line: string): { body: string; comment: string } => {
+          const semiIdx = line.indexOf(";");
+          return {
+            body: semiIdx !== -1 ? line.slice(0, semiIdx).trimEnd() : line.trimEnd(),
+            comment: semiIdx !== -1 ? ` ${line.slice(semiIdx)}` : "",
+          };
+        };
+        let pinCountByComp: Map<string, number> | null = null;
+        const getPinCount = async (compName: string, tokens: string[]): Promise<number> => {
+          if (!pinCountByComp) {
+            pinCountByComp = new Map();
+            try {
+              const { parseSpice } = await import("@modelscript/spice");
+              const ckt = parseSpice(text);
+              for (const cmp of ckt.components) {
+                pinCountByComp.set(cmp.name.toLowerCase(), cmp.nodes.length);
+              }
+            } catch {
+              // ignore parse failure; use fallback
+            }
+          }
+          const known = pinCountByComp.get(compName.toLowerCase());
+          if (known !== undefined && known > 0) return known;
+          const prefix = compName[0]?.toUpperCase() ?? "";
+          if (prefix === "M") return Math.min(4, Math.max(2, tokens.length - 2));
+          if (prefix === "Q") return Math.min(3, Math.max(2, tokens.length - 2));
+          return Math.min(2, Math.max(1, tokens.length - 2));
+        };
+        const allocateNextNet = (): string => {
+          let maxN = 0;
+          for (const l of lines) {
+            const t = l.trim();
+            if (!t || t.startsWith("*") || t.startsWith(".")) continue;
+            const { body } = splitBodyComment(t);
+            for (const tok of body.split(/\s+/).slice(1)) {
+              const m = /^(\d+)$/.exec(tok) || /^n(\d+)$/i.exec(tok);
+              if (m) maxN = Math.max(maxN, Number(m[1]));
+            }
+          }
+          return `n${maxN + 1}`;
+        };
+        const setCompPinNet = async (compName: string, pinIdx: number, nextNet?: string): Promise<string | null> => {
+          const idx = findCompLineIdx(compName);
+          if (idx === -1) return null;
+          const { body, comment } = splitBodyComment(lines[idx]!);
+          const tokens = body.trim().split(/\s+/);
+          const pinCount = await getPinCount(compName, tokens);
+          const clampedPin = Math.max(0, Math.min(pinIdx, Math.max(0, pinCount - 1)));
+          const tokIdx = 1 + clampedPin;
+          if (tokIdx >= tokens.length) return null;
+          const prevNet = tokens[tokIdx]!;
+          if (nextNet !== undefined && nextNet !== prevNet) {
+            tokens[tokIdx] = nextNet;
+            lines[idx] = `${tokens.join(" ")}${comment}`;
+            textMutated = true;
+          }
+          return prevNet;
         };
         const upsertPosOnLine = (line: string, x: number, y: number): string => {
           const tag = `@pos(${Math.round(x)}, ${Math.round(y)})`;
@@ -239,6 +317,59 @@ export function createSpiceDiagramBackend(backends: DiagramDispatchDeps): Diagra
                 hasStructural = true;
               }
             }
+          } else if (action.type === "connect") {
+            const src = stripPortRef(action.source);
+            const tgt = stripPortRef(action.target);
+            const srcPin = parsePinIdx(action.sourcePort, src.pin);
+            const tgtPin = parsePinIdx(action.targetPort, tgt.pin);
+            const srcNet = await setCompPinNet(src.comp, srcPin);
+            const tgtNet = await setCompPinNet(tgt.comp, tgtPin);
+            if (srcNet !== null && tgtNet !== null) {
+              const isNamedNet = (n: string) => n !== "0" && !n.startsWith("nc_");
+              const sharedNet = isNamedNet(srcNet) ? srcNet : isNamedNet(tgtNet) ? tgtNet : allocateNextNet();
+              await setCompPinNet(src.comp, srcPin, sharedNet);
+              await setCompPinNet(tgt.comp, tgtPin, sharedNet);
+              hasStructural = true;
+            }
+          } else if (action.type === "disconnect") {
+            const src = stripPortRef(action.source);
+            const tgt = stripPortRef(action.target);
+            const srcPin = parsePinIdx(action.sourcePort, src.pin);
+            const tgtPin = parsePinIdx(action.targetPort, tgt.pin);
+            const srcNet = await setCompPinNet(src.comp, srcPin);
+            const tgtNet = await setCompPinNet(tgt.comp, tgtPin);
+            if (srcNet !== null && tgtNet !== null && srcNet === tgtNet) {
+              await setCompPinNet(tgt.comp, tgtPin, `nc_${tgt.comp}_${tgtPin + 1}`);
+              hasStructural = true;
+            }
+          } else if (action.type === "reconnect") {
+            const oldSrc = stripPortRef(action.oldSource);
+            const oldTgt = stripPortRef(action.oldTarget);
+            const oldSrcPin = parsePinIdx(action.oldSourcePort, oldSrc.pin);
+            const oldTgtPin = parsePinIdx(action.oldTargetPort, oldTgt.pin);
+            const oldSrcNet = await setCompPinNet(oldSrc.comp, oldSrcPin);
+            const oldTgtNet = await setCompPinNet(oldTgt.comp, oldTgtPin);
+            if (oldSrcNet !== null && oldTgtNet !== null && oldSrcNet === oldTgtNet) {
+              await setCompPinNet(oldTgt.comp, oldTgtPin, `nc_${oldTgt.comp}_${oldTgtPin + 1}`);
+              hasStructural = true;
+            }
+            const newSrc = stripPortRef(action.newSource);
+            const newTgt = stripPortRef(action.newTarget);
+            const newSrcPin = parsePinIdx(action.newSourcePort, newSrc.pin);
+            const newTgtPin = parsePinIdx(action.newTargetPort, newTgt.pin);
+            const newSrcNet = await setCompPinNet(newSrc.comp, newSrcPin);
+            const newTgtNet = await setCompPinNet(newTgt.comp, newTgtPin);
+            if (newSrcNet !== null && newTgtNet !== null) {
+              const isNamedNet = (n: string) => n !== "0" && !n.startsWith("nc_");
+              const sharedNet = isNamedNet(newSrcNet)
+                ? newSrcNet
+                : isNamedNet(newTgtNet)
+                  ? newTgtNet
+                  : allocateNextNet();
+              await setCompPinNet(newSrc.comp, newSrcPin, sharedNet);
+              await setCompPinNet(newTgt.comp, newTgtPin, sharedNet);
+              hasStructural = true;
+            }
           } else if (action.type === "updateName") {
             const oldN = stripCmp(action.oldName);
             const newN = stripCmp(action.newName);
@@ -257,10 +388,7 @@ export function createSpiceDiagramBackend(backends: DiagramDispatchDeps): Diagra
             const valStr = String(action.value ?? "").trim();
             const idx = findCompLineIdx(compName);
             if (idx !== -1 && valStr) {
-              const line = lines[idx]!;
-              const semiIdx = line.indexOf(";");
-              const body = semiIdx !== -1 ? line.slice(0, semiIdx).trimEnd() : line.trimEnd();
-              const comment = semiIdx !== -1 ? ` ${line.slice(semiIdx)}` : "";
+              const { body, comment } = splitBodyComment(lines[idx]!);
               const escKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
               const paramRe = new RegExp(`(\\b${escKey}\\s*=\\s*)([^\\s;]+)`, "i");
               if (paramRe.test(body)) {
@@ -286,13 +414,10 @@ export function createSpiceDiagramBackend(backends: DiagramDispatchDeps): Diagra
 
         const allEdits: TextEdit[] = [...addEdits];
         if (textMutated) {
-          const origLines = text.split(/\r?\n/);
-          const lastLine = Math.max(0, origLines.length - 1);
-          const lastChar = origLines[lastLine]?.length ?? 0;
-          allEdits.push({
-            range: { start: { line: 0, character: 0 }, end: { line: lastLine, character: lastChar } },
-            newText: lines.join("\n"),
-          });
+          const textEdit = computeMinimalTextEdit(text, lines.join(eol));
+          if (textEdit) {
+            allEdits.push(textEdit);
+          }
         }
 
         return {

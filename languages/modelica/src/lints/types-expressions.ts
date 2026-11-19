@@ -689,7 +689,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     nodes: ["expression"],
     severity: "error",
     code: 5005,
-    message: (target) => `Division by literal zero in '${target.text}'.`,
+    message: (lhs) => `Division by zero: ${lhs.text} / 0.`,
     query: (db: CodeGraph, node: u32) => {
       // Check binary operator code (3 = '/', 8 = './') and literal zero denominator
       const leftChild = db.ast.getChildByFieldId(node, "left");
@@ -698,7 +698,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
         const op = db.ast.getBinaryOp(leftChild, rightChild);
         if (op === 3 || op === 8) {
           if (db.ast.textEquals(rightChild, "0") || db.ast.textEquals(rightChild, "0.0")) {
-            db.diagnostic(rightChild);
+            db.diagnosticAt(rightChild, leftChild);
           }
         }
       }
@@ -1367,6 +1367,140 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
 
       if (minNode != 0 && maxNode != 0 && minVal > maxVal) {
         db.diagnostic(minNode, minNode, maxNode, node);
+      }
+    },
+  },
+
+  /**
+   * M3023: Comparing Real values with `==` or `<>` outside a function (MLS §3.5).
+   *
+   * Equality/inequality checks on floating-point Real expressions outside functions
+   * are unreliable and disallowed in Modelica 3.5+ relational equations.
+   */
+  realEqualityComparison: {
+    nodes: ["expression", "lhs_expression"],
+    severity: "warning",
+    code: 3023,
+    message: (target, opNode) =>
+      `Comparing Real expressions in '${target.text}' with '${opNode ? opNode.text : "=="}' outside a function is discouraged per Modelica specification §3.5.`,
+    query: (db: CodeGraph, node: u32, $: any) => {
+      let opTok: u32 = 0;
+      let left: u32 = db.ast.getChildByFieldId(node, "left");
+      let right: u32 = db.ast.getChildByFieldId(node, "right");
+
+      for (const tok of db.ast.getDescendants(node)) {
+        if (db.ast.getFirstChild(tok) == 0 && (db.ast.textEquals(tok, "==") || db.ast.textEquals(tok, "<>"))) {
+          let belongsToNode = true;
+          for (const anc of db.ast.getAncestors(tok)) {
+            if (anc == node) break;
+            const at = db.ast.getType(anc);
+            if (at == $.expression || at == $.lhs_expression || at == $.primary || at == $.lhs_primary) {
+              belongsToNode = false;
+              break;
+            }
+          }
+          if (belongsToNode) {
+            opTok = tok;
+            break;
+          }
+        }
+      }
+      if (opTok == 0) return;
+
+      if (left == 0 || right == 0) {
+        let cur: u32 = opTok;
+        for (const p of db.ast.getAncestors(opTok)) {
+          let sib = db.ast.getFirstChild(p);
+          let prevSib: u32 = 0;
+          while (sib != 0 && sib != cur) {
+            prevSib = sib;
+            sib = db.ast.getNextSibling(sib);
+          }
+          const nextSib = db.ast.getNextSibling(cur);
+          if (left == 0 && prevSib != 0) left = prevSib;
+          if (right == 0 && nextSib != 0) right = nextSib;
+          if ((left != 0 && right != 0) || p == node) break;
+          cur = p;
+        }
+      }
+      if (left == 0 || right == 0) return;
+
+      for (const anc of db.ast.getAncestors(node)) {
+        const at = db.ast.getType(anc);
+        if ($.annotation_clause != 0 && at == $.annotation_clause) return;
+        if (at == $.class_definition) break;
+      }
+
+      const cls = getEnclosingClass(db, node, $);
+      if (cls != 0 && isClassKind(db, cls, "function")) return;
+
+      const lt = inferExprType(db, left, $);
+      const rt = inferExprType(db, right, $);
+      if (lt == TYPE_REAL || rt == TYPE_REAL) {
+        db.diagnostic(node, opTok);
+      }
+    },
+  },
+
+  /**
+   * M5051: `der(...)` applied to non-Real expression (MLS §3.7.4).
+   *
+   * The time derivative operator `der(expr)` is only valid on continuous-time
+   * `Real` expressions and cannot be applied to `Integer`, `Boolean`, or `String` values.
+   */
+  derOfNonReal: {
+    nodes: ["primary", "lhs_primary"],
+    severity: "warning",
+    code: 5051,
+    message: (target) => `Argument '${target.text}' of 'der(...)' must have type Real.`,
+    query: (db: CodeGraph, node: u32, $: any) => {
+      if (!db.ast.startsWith(node, "der")) return;
+      let fc = db.ast.getFirstChild(node);
+      while (fc != 0 && db.ast.getFirstChild(fc) != 0) {
+        fc = db.ast.getFirstChild(fc);
+      }
+      if (fc == 0 || !db.ast.textEquals(fc, "der")) return;
+
+      for (const anc of db.ast.getAncestors(node)) {
+        const at = db.ast.getType(anc);
+        if ($.annotation_clause != 0 && at == $.annotation_clause) return;
+        if (at == $.class_definition) break;
+      }
+
+      let argList = db.ast.getChildByFieldId(node, "argument");
+      if (argList == 0 && $.expression_list != 0) {
+        for (const el of db.ast.getDescendants(node, $.expression_list)) {
+          let belongsToNode = true;
+          for (const anc of db.ast.getAncestors(el)) {
+            if (anc == node) break;
+            const at = db.ast.getType(anc);
+            if (at == $.primary || at == $.lhs_primary) {
+              belongsToNode = false;
+              break;
+            }
+          }
+          if (belongsToNode) {
+            argList = el;
+            break;
+          }
+        }
+      }
+      if (argList == 0) return;
+
+      let argExpr: u32 = 0;
+      for (const e of db.ast.getDescendants(argList, $.expression)) {
+        argExpr = e;
+        break;
+      }
+      if (argExpr == 0) return;
+
+      // Array/matrix constructors ([...] / {...}) can hold mixed or Integer elements that
+      // implicitly promote to Real when vectorized in `der(...)`.
+      if (db.ast.startsWith(argExpr, "[") || db.ast.startsWith(argExpr, "{")) return;
+
+      const t = inferExprType(db, argExpr, $);
+      if (t == TYPE_INTEGER || t == TYPE_BOOLEAN || t == TYPE_STRING) {
+        db.diagnostic(argExpr);
       }
     },
   },

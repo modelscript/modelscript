@@ -150,13 +150,13 @@ export const SimulationTelemetryHeader: React.FC<SimulationTelemetryHeaderProps>
 
         <Button
           as={Link}
-          to={`/morsel?source=${encodeURIComponent(sourceSnippet)}&title=${encodeURIComponent(className)}&view=simulation`}
+          to={`/editor?source=${encodeURIComponent(sourceSnippet)}&title=${encodeURIComponent(className)}&view=simulation`}
           size="small"
           leadingVisual={LinkExternalIcon}
           style={{ textDecoration: "none" }}
-          title="Open this model in the full Morsel visualizer and editor"
+          title="Open this model in the full Ansatz visualizer and editor"
         >
-          Open in Morsel
+          Open in Ansatz
         </Button>
 
         {hasCae && onOpenCloudStudies && (

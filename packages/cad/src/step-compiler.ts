@@ -527,7 +527,7 @@ function buildCylinderBrep(
 /**
  * Emits an exact analytical ISO-10303-21 `MANIFOLD_SOLID_BREP` for a coaxial annular hollow cylinder
  * (`rInner < rOuter`, `height`), with `FACE_OUTER_BOUND` + inner `FACE_BOUND` planar annular end caps
- * and inward-oriented `.F.` inner bore cylindrical walls.
+ * and inward-oriented `.F.` inner bore cylindrical walls. Supports blind coaxial bores terminating at `zFloorLocal`.
  */
 function buildHollowCylinderBrep(
   ctx: StepContext,
@@ -536,10 +536,13 @@ function buildHollowCylinderBrep(
   rInner: number,
   height: number,
   worldMatrix?: Mat4,
+  zFloorLocal?: number,
 ): string {
   const hh = height / 2;
   const rOut = Math.max(1e-5, rOuter);
   const rIn = Math.max(1e-6, Math.min(rInner, rOut - 1e-6));
+  const isThrough = zFloorLocal === undefined || zFloorLocal <= -hh + 1e-4;
+  const zBoreBot = isThrough ? -hh : Math.min(hh - 1e-4, Math.max(-hh + 1e-4, zFloorLocal));
   const s = matrixScale(worldMatrix);
   const effROut = rOut * s;
   const effRIn = rIn * s;
@@ -549,8 +552,8 @@ function buildHollowCylinderBrep(
     [rOut, 0, -hh], // 1: outer bottom +x
     [-rOut, 0, hh], // 2: outer top -x
     [rOut, 0, hh], // 3: outer top +x
-    [-rIn, 0, -hh], // 4: inner bottom -x
-    [rIn, 0, -hh], // 5: inner bottom +x
+    [-rIn, 0, zBoreBot], // 4: inner bottom -x
+    [rIn, 0, zBoreBot], // 5: inner bottom +x
     [-rIn, 0, hh], // 6: inner top -x
     [rIn, 0, hh], // 7: inner top +x
   ];
@@ -558,6 +561,7 @@ function buildHollowCylinderBrep(
   const vp = corners.map((c, i) => emit(ctx, allocId(ctx), `VERTEX_POINT('hcv${i}',${cartesianPoint(ctx, c)})`));
 
   const effBottomCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, -hh]) : [0, 0, -hh];
+  const effBoreFloorCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, zBoreBot]) : [0, 0, zBoreBot];
   const effTopCenter: Vec3 = worldMatrix ? transformPoint(worldMatrix, [0, 0, hh]) : [0, 0, hh];
   const effZAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 0, 1]) : [0, 0, 1];
   const effXAxis: Vec3 = worldMatrix ? transformDir(worldMatrix, [1, 0, 0]) : [1, 0, 0];
@@ -565,7 +569,7 @@ function buildHollowCylinderBrep(
 
   const botOuterCircle = circle(ctx, effBottomCenter, effROut, effZAxis, effXAxis);
   const topOuterCircle = circle(ctx, effTopCenter, effROut, effZAxis, effXAxis);
-  const botInnerCircle = circle(ctx, effBottomCenter, effRIn, effZAxis, effXAxis);
+  const botInnerCircle = circle(ctx, effBoreFloorCenter, effRIn, effZAxis, effXAxis);
   const topInnerCircle = circle(ctx, effTopCenter, effRIn, effZAxis, effXAxis);
 
   const ec_ob0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[0]},${vp[1]},${botOuterCircle},.T.)`);
@@ -599,17 +603,20 @@ function buildHollowCylinderBrep(
   const oe = (ec: string, forward: boolean) =>
     emit(ctx, allocId(ctx), `ORIENTED_EDGE('',*,*,${ec},${forward ? ".T." : ".F."})`);
 
-  // Bottom annular cap (normal -zAxis): outer CW around +Z, inner hole CCW around +Z
+  // Bottom cap: annular for through-hole, solid circular disk for blind top bore
   const botPlane = emit(
     ctx,
     allocId(ctx),
     `PLANE('',${axis2Placement3d(ctx, effBottomCenter, effOppZAxis, effXAxis)})`,
   );
   const botOuterLoop = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${[oe(ec_ob1, false), oe(ec_ob0, false)].join(",")}))`);
-  const botInnerLoop = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${[oe(ec_ib0, true), oe(ec_ib1, true)].join(",")}))`);
   const botOuterBound = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${botOuterLoop},.T.)`);
-  const botInnerBound = emit(ctx, allocId(ctx), `FACE_BOUND('',${botInnerLoop},.T.)`);
-  const botFace = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${botOuterBound},${botInnerBound}),${botPlane},.T.)`);
+  const botBounds: string[] = [botOuterBound];
+  if (isThrough) {
+    const botInnerLoop = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${[oe(ec_ib0, true), oe(ec_ib1, true)].join(",")}))`);
+    botBounds.push(emit(ctx, allocId(ctx), `FACE_BOUND('',${botInnerLoop},.T.)`));
+  }
+  const botFace = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${botBounds.join(",")}),${botPlane},.T.)`);
 
   // Top annular cap (normal +zAxis): outer CCW around +Z, inner hole CW around +Z
   const topPlane = emit(ctx, allocId(ctx), `PLANE('',${axis2Placement3d(ctx, effTopCenter, effZAxis, effXAxis)})`);
@@ -643,7 +650,7 @@ function buildHollowCylinderBrep(
   );
 
   // Inner cylindrical bore walls (.F. — reverses outward normal radially inward into bore)
-  const innerCylSurf = cylindricalSurface(ctx, effBottomCenter, effRIn, effZAxis, effXAxis);
+  const innerCylSurf = cylindricalSurface(ctx, effBoreFloorCenter, effRIn, effZAxis, effXAxis);
   const inLoop1 = emit(
     ctx,
     allocId(ctx),
@@ -665,11 +672,19 @@ function buildHollowCylinderBrep(
     `ADVANCED_FACE('',(${emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${inLoop2},.T.)`)}),${innerCylSurf},.F.)`,
   );
 
-  const shell = emit(
-    ctx,
-    allocId(ctx),
-    `CLOSED_SHELL('',(${[botFace, topFace, outFace1, outFace2, inFace1, inFace2].join(",")}))`,
-  );
+  const faces: string[] = [botFace, topFace, outFace1, outFace2, inFace1, inFace2];
+  if (!isThrough) {
+    const floorPlane = emit(
+      ctx,
+      allocId(ctx),
+      `PLANE('',${axis2Placement3d(ctx, effBoreFloorCenter, effZAxis, effXAxis)})`,
+    );
+    const floorLoop = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${[oe(ec_ib0, true), oe(ec_ib1, true)].join(",")}))`);
+    const floorBound = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${floorLoop},.T.)`);
+    faces.push(emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${floorBound}),${floorPlane},.T.)`));
+  }
+
+  const shell = emit(ctx, allocId(ctx), `CLOSED_SHELL('',(${faces.join(",")}))`);
   return emit(ctx, allocId(ctx), `MANIFOLD_SOLID_BREP('${escStepStr(name)}',${shell})`);
 }
 
@@ -690,9 +705,8 @@ function unwrapLeafWithTags(ctx: StepContext, solid: Solid, parentMatrix: Mat4):
 }
 
 /**
- * Recognizes `Subtract(Cylinder_outer, Cylinder_inner)` when both cylinders are right-circular,
- * coaxial, and the cutter completely clears the outer cylinder's axial ends, emitting an exact
- * analytical hollow cylinder B-Rep instead of faceted triangle CSG output.
+ * Recognizes `Subtract(Cylinder_outer, Cylinder_inner)` when both cylinders are right-circular
+ * and coaxial, emitting an exact analytical hollow or blind-bore cylinder B-Rep.
  */
 function tryBuildHollowCylinderBrep(
   ctx: StepContext,
@@ -743,10 +757,879 @@ function tryBuildHollowCylinderBrep(
   const hInWorld = Math.hypot(zTopIn[0] - zBotIn[0], zTopIn[1] - zBotIn[1], zTopIn[2] - zBotIn[2]);
 
   if (hOutWorld <= 1e-6) return null;
-  if (axialOffset - hInWorld / 2 > -hOutWorld / 2 + 1e-4) return null;
-  if (axialOffset + hInWorld / 2 < hOutWorld / 2 - 1e-4) return null;
+  const hhOut = outer.leaf.height / 2;
+  const minInLocal = (axialOffset - hInWorld / 2) / sOut;
+  const maxInLocal = (axialOffset + hInWorld / 2) / sOut;
+  const clearsTop = maxInLocal >= hhOut - 1e-4;
+  const clearsBot = minInLocal <= -hhOut + 1e-4;
 
-  return buildHollowCylinderBrep(ctx, brepName, rOutBot, rIn * (1 / sOut), outer.leaf.height, outer.worldMatrix);
+  if (clearsTop && clearsBot) {
+    return buildHollowCylinderBrep(ctx, brepName, rOutBot, rIn / sOut, outer.leaf.height, outer.worldMatrix);
+  }
+  if (clearsTop && minInLocal > -hhOut + 1e-4 && minInLocal < hhOut - 1e-4) {
+    return buildHollowCylinderBrep(
+      ctx,
+      brepName,
+      rOutBot,
+      rIn / sOut,
+      outer.leaf.height,
+      outer.worldMatrix,
+      minInLocal,
+    );
+  }
+  if (clearsBot && maxInLocal > -hhOut + 1e-4 && maxInLocal < hhOut - 1e-4) {
+    // Flip local Z by rotating 180 deg around local X so the bottom bore opens along +Z'
+    const flipX180: Mat4 = [1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1];
+    return buildHollowCylinderBrep(
+      ctx,
+      brepName,
+      rOutBot,
+      rIn / sOut,
+      outer.leaf.height,
+      mat4Multiply(outer.worldMatrix, flipX180),
+      -maxInLocal,
+    );
+  }
+  return null;
+}
+
+/**
+ * Emits an analytical `MANIFOLD_SOLID_BREP` for an axis-aligned rectangular plate (`width x height x depth`)
+ * with an analytical cylindrical Z through-hole at `(hx, hy)` of radius `holeRadius`, preserving `PLANE` caps
+ * with `FACE_BOUND` circular inner loops and `.F.` internal `CYLINDRICAL_SURFACE` bore walls.
+ */
+function buildBoxWithHoleBrep(
+  ctx: StepContext,
+  name: string,
+  width: number,
+  height: number,
+  depth: number,
+  hx: number,
+  hy: number,
+  holeRadius: number,
+  worldMatrix?: Mat4,
+  zFloorLocal?: number,
+): string {
+  const hw = width / 2;
+  const hh = height / 2;
+  const hd = depth / 2;
+  const isThrough = zFloorLocal === undefined || zFloorLocal <= -hd + 1e-4;
+  const zBoreBot = isThrough ? -hd : Math.min(hd - 1e-4, Math.max(-hd + 1e-4, zFloorLocal));
+  const s = matrixScale(worldMatrix);
+  const effR = holeRadius * s;
+
+  const localV: Vec3[] = [
+    [-hw, -hh, -hd], // 0
+    [hw, -hh, -hd], // 1
+    [hw, hh, -hd], // 2
+    [-hw, hh, -hd], // 3
+    [-hw, -hh, hd], // 4
+    [hw, -hh, hd], // 5
+    [hw, hh, hd], // 6
+    [-hw, hh, hd], // 7
+    [hx - holeRadius, hy, zBoreBot], // 8: bore bot -x
+    [hx + holeRadius, hy, zBoreBot], // 9: bore bot +x
+    [hx - holeRadius, hy, hd], // 10: bore top -x
+    [hx + holeRadius, hy, hd], // 11: bore top +x
+  ];
+  const pts = worldMatrix ? localV.map((v) => transformPoint(worldMatrix, v)) : localV;
+  const vp = pts.map((p, i) => emit(ctx, allocId(ctx), `VERTEX_POINT('bh${i}',${cartesianPoint(ctx, p)})`));
+
+  const lineEdge = (a: number, b: number): string => {
+    const p0 = pts[a]!;
+    const p1 = pts[b]!;
+    const dx = p1[0] - p0[0];
+    const dy = p1[1] - p0[1];
+    const dz = p1[2] - p0[2];
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
+    const dir = direction(ctx, [dx / len, dy / len, dz / len]);
+    const vec = emit(ctx, allocId(ctx), `VECTOR('',${dir},${fmt(len)})`);
+    const ln = emit(ctx, allocId(ctx), `LINE('',${cartesianPoint(ctx, p0)},${vec})`);
+    return emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[a]},${vp[b]},${ln},.T.)`);
+  };
+  const oe = (ec: string, fwd: boolean) =>
+    emit(ctx, allocId(ctx), `ORIENTED_EDGE('',*,*,${ec},${fwd ? ".T." : ".F."})`);
+
+  const effBotHole: Vec3 = worldMatrix ? transformPoint(worldMatrix, [hx, hy, zBoreBot]) : [hx, hy, zBoreBot];
+  const effTopHole: Vec3 = worldMatrix ? transformPoint(worldMatrix, [hx, hy, hd]) : [hx, hy, hd];
+  const effZ: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 0, 1]) : [0, 0, 1];
+  const effX: Vec3 = worldMatrix ? transformDir(worldMatrix, [1, 0, 0]) : [1, 0, 0];
+  const effY: Vec3 = worldMatrix ? transformDir(worldMatrix, [0, 1, 0]) : [0, 1, 0];
+  const effOppZ: Vec3 = [-effZ[0], -effZ[1], -effZ[2]];
+  const effOppX: Vec3 = [-effX[0], -effX[1], -effX[2]];
+  const effOppY: Vec3 = [-effY[0], -effY[1], -effY[2]];
+
+  const botCircle = circle(ctx, effBotHole, effR, effZ, effX);
+  const topCircle = circle(ctx, effTopHole, effR, effZ, effX);
+  const ec_ib0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[8]},${vp[9]},${botCircle},.T.)`);
+  const ec_ib1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[9]},${vp[8]},${botCircle},.T.)`);
+  const ec_it0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[10]},${vp[11]},${topCircle},.T.)`);
+  const ec_it1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[11]},${vp[10]},${topCircle},.T.)`);
+  const ec_is0 = lineEdge(8, 10);
+  const ec_is1 = lineEdge(9, 11);
+
+  const b01 = lineEdge(0, 1),
+    b12 = lineEdge(1, 2),
+    b23 = lineEdge(2, 3),
+    b30 = lineEdge(3, 0);
+  const t45 = lineEdge(4, 5),
+    t56 = lineEdge(5, 6),
+    t67 = lineEdge(6, 7),
+    t74 = lineEdge(7, 4);
+  const v04 = lineEdge(0, 4),
+    v15 = lineEdge(1, 5),
+    v26 = lineEdge(2, 6),
+    v37 = lineEdge(3, 7);
+
+  const planarFace = (originLocal: Vec3, normDir: Vec3, refDir: Vec3, edgeIds: string[]) => {
+    const oWorld = worldMatrix ? transformPoint(worldMatrix, originLocal) : originLocal;
+    const pl = emit(ctx, allocId(ctx), `PLANE('',${axis2Placement3d(ctx, oWorld, normDir, refDir)})`);
+    const lp = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${edgeIds.join(",")}))`);
+    const bnd = emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${lp},.T.)`);
+    return emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${bnd}),${pl},.T.)`);
+  };
+
+  const botPlane = emit(
+    ctx,
+    allocId(ctx),
+    `PLANE('',${axis2Placement3d(ctx, worldMatrix ? transformPoint(worldMatrix, [0, 0, -hd]) : [0, 0, -hd], effOppZ, effX)})`,
+  );
+  const botOuter = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[oe(b01, false), oe(b30, false), oe(b23, false), oe(b12, false)].join(",")}))`,
+  );
+  const botBounds = [emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${botOuter},.T.)`)];
+  if (isThrough) {
+    const botInner = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${[oe(ec_ib0, true), oe(ec_ib1, true)].join(",")}))`);
+    botBounds.push(emit(ctx, allocId(ctx), `FACE_BOUND('',${botInner},.T.)`));
+  }
+  const fBot = emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${botBounds.join(",")}),${botPlane},.T.)`);
+
+  const topPlane = emit(
+    ctx,
+    allocId(ctx),
+    `PLANE('',${axis2Placement3d(ctx, worldMatrix ? transformPoint(worldMatrix, [0, 0, hd]) : [0, 0, hd], effZ, effX)})`,
+  );
+  const topOuter = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[oe(t45, true), oe(t56, true), oe(t67, true), oe(t74, true)].join(",")}))`,
+  );
+  const topInner = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${[oe(ec_it1, false), oe(ec_it0, false)].join(",")}))`);
+  const fTop = emit(
+    ctx,
+    allocId(ctx),
+    `ADVANCED_FACE('',(${emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${topOuter},.T.)`)},${emit(ctx, allocId(ctx), `FACE_BOUND('',${topInner},.T.)`)}),${topPlane},.T.)`,
+  );
+
+  const fFront = planarFace([0, -hh, 0], effOppY, effX, [oe(b01, true), oe(v15, true), oe(t45, false), oe(v04, false)]);
+  const fBack = planarFace([0, hh, 0], effY, effOppX, [oe(b23, true), oe(v37, true), oe(t67, false), oe(v26, false)]);
+  const fRight = planarFace([hw, 0, 0], effX, effY, [oe(b12, true), oe(v26, true), oe(t56, false), oe(v15, false)]);
+  const fLeft = planarFace([-hw, 0, 0], effOppX, effOppY, [
+    oe(b30, true),
+    oe(v04, true),
+    oe(t74, false),
+    oe(v37, false),
+  ]);
+
+  const boreSurf = cylindricalSurface(ctx, effBotHole, effR, effZ, effX);
+  const boreLoop1 = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[oe(ec_it0, true), oe(ec_is1, false), oe(ec_ib0, false), oe(ec_is0, true)].join(",")}))`,
+  );
+  const boreLoop2 = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[oe(ec_it1, true), oe(ec_is0, false), oe(ec_ib1, false), oe(ec_is1, true)].join(",")}))`,
+  );
+  const fBore1 = emit(
+    ctx,
+    allocId(ctx),
+    `ADVANCED_FACE('',(${emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${boreLoop1},.T.)`)}),${boreSurf},.F.)`,
+  );
+  const fBore2 = emit(
+    ctx,
+    allocId(ctx),
+    `ADVANCED_FACE('',(${emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${boreLoop2},.T.)`)}),${boreSurf},.F.)`,
+  );
+
+  const shellFaces = [fBot, fTop, fFront, fBack, fRight, fLeft, fBore1, fBore2];
+  if (!isThrough) {
+    // Blind-hole flat bottom PLANE cap facing +Z inside pocket
+    shellFaces.push(planarFace([hx, hy, zBoreBot], effZ, effX, [oe(ec_ib0, true), oe(ec_ib1, true)]));
+  }
+  const shell = emit(ctx, allocId(ctx), `CLOSED_SHELL('',(${shellFaces.join(",")}))`);
+  return emit(ctx, allocId(ctx), `MANIFOLD_SOLID_BREP('${escStepStr(name)}',${shell})`);
+}
+
+/**
+ * Recognizes `Subtract(Box, Cylinder)` when a right-circular cylinder aligns with the Box's Z axis
+ * and forms either a through-hole or a top-entry blind hole inside the Box's XY footprint.
+ */
+function tryBuildBoxWithHoleBrep(
+  ctx: StepContext,
+  solid: Extract<Solid, { left: Solid; right: Solid }>,
+  parentMatrix: Mat4,
+  brepName: string,
+): string | null {
+  const outer = unwrapLeafWithTags(ctx, solid.left, parentMatrix);
+  const inner = unwrapLeafWithTags(ctx, solid.right, parentMatrix);
+  if (outer.leaf.kind !== SolidKind.Box || inner.leaf.kind !== SolidKind.Cylinder) return null;
+
+  const rBot = inner.leaf.radiusBottom ?? inner.leaf.radius;
+  const rTop = inner.leaf.radiusTop ?? inner.leaf.radius;
+  if (Math.abs(rBot - rTop) > 1e-6) return null;
+
+  const sOut = matrixScale(outer.worldMatrix);
+  const sIn = matrixScale(inner.worldMatrix);
+  const rLocal = (rBot * sIn) / sOut;
+  if (!(rLocal > 1e-6)) return null;
+
+  const cOut = transformPoint(outer.worldMatrix, [0, 0, 0]);
+  const cIn = transformPoint(inner.worldMatrix, [0, 0, 0]);
+  const uX = transformDir(outer.worldMatrix, [1, 0, 0]);
+  const uY = transformDir(outer.worldMatrix, [0, 1, 0]);
+  const uZ = transformDir(outer.worldMatrix, [0, 0, 1]);
+  const zIn = transformDir(inner.worldMatrix, [0, 0, 1]);
+
+  const zCross = Math.hypot(
+    uZ[1] * zIn[2] - uZ[2] * zIn[1],
+    uZ[2] * zIn[0] - uZ[0] * zIn[2],
+    uZ[0] * zIn[1] - uZ[1] * zIn[0],
+  );
+  if (zCross > 1e-4) return null;
+
+  const d = [cIn[0] - cOut[0], cIn[1] - cOut[1], cIn[2] - cOut[2]];
+  const hx = (d[0]! * uX[0] + d[1]! * uX[1] + d[2]! * uX[2]) / sOut;
+  const hy = (d[0]! * uY[0] + d[1]! * uY[1] + d[2]! * uY[2]) / sOut;
+  const hz = (d[0]! * uZ[0] + d[1]! * uZ[1] + d[2]! * uZ[2]) / sOut;
+
+  const zTopIn = transformPoint(inner.worldMatrix, [0, 0, inner.leaf.height / 2]);
+  const zBotIn = transformPoint(inner.worldMatrix, [0, 0, -inner.leaf.height / 2]);
+  const hInLocal = Math.hypot(zTopIn[0] - zBotIn[0], zTopIn[1] - zBotIn[1], zTopIn[2] - zBotIn[2]) / sOut;
+
+  if (Math.abs(hx) + rLocal >= outer.leaf.width / 2 - 1e-3) return null;
+  if (Math.abs(hy) + rLocal >= outer.leaf.height / 2 - 1e-3) return null;
+
+  const hd = outer.leaf.depth / 2;
+  const cylBot = hz - hInLocal / 2;
+  const cylTop = hz + hInLocal / 2;
+  if (cylTop < hd - 1e-4) return null;
+  if (cylBot >= hd - 1e-3) return null;
+
+  const isThrough = cylBot <= -hd + 1e-4;
+  return buildBoxWithHoleBrep(
+    ctx,
+    brepName,
+    outer.leaf.width,
+    outer.leaf.height,
+    outer.leaf.depth,
+    hx,
+    hy,
+    rLocal,
+    outer.worldMatrix,
+    isThrough ? undefined : cylBot,
+  );
+}
+
+/**
+ * Recognizes `Subtract(Box, Box)` when an aligned rectangular cutout clears the top & bottom Z faces
+ * strictly within the outer box's XY bounds, emitting a 10-face analytical `PLANE` B-Rep with `FACE_BOUND`.
+ */
+function tryBuildBoxSlotBrep(
+  ctx: StepContext,
+  solid: Extract<Solid, { left: Solid; right: Solid }>,
+  parentMatrix: Mat4,
+  brepName: string,
+): string | null {
+  const outer = unwrapLeafWithTags(ctx, solid.left, parentMatrix);
+  const inner = unwrapLeafWithTags(ctx, solid.right, parentMatrix);
+  if (outer.leaf.kind !== SolidKind.Box || inner.leaf.kind !== SolidKind.Box) return null;
+
+  const sOut = matrixScale(outer.worldMatrix);
+  const sIn = matrixScale(inner.worldMatrix);
+  const uX = transformDir(outer.worldMatrix, [1, 0, 0]);
+  const uY = transformDir(outer.worldMatrix, [0, 1, 0]);
+  const uZ = transformDir(outer.worldMatrix, [0, 0, 1]);
+  const vX = transformDir(inner.worldMatrix, [1, 0, 0]);
+  const vY = transformDir(inner.worldMatrix, [0, 1, 0]);
+  const vZ = transformDir(inner.worldMatrix, [0, 0, 1]);
+
+  const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  if (Math.abs(dot(uX, vX) - 1) > 1e-4 || Math.abs(dot(uY, vY) - 1) > 1e-4 || Math.abs(dot(uZ, vZ) - 1) > 1e-4) {
+    return null;
+  }
+
+  const cOut = transformPoint(outer.worldMatrix, [0, 0, 0]);
+  const cIn = transformPoint(inner.worldMatrix, [0, 0, 0]);
+  const d: Vec3 = [cIn[0] - cOut[0], cIn[1] - cOut[1], cIn[2] - cOut[2]];
+  const cx = dot(d, uX) / sOut;
+  const cy = dot(d, uY) / sOut;
+  const cz = dot(d, uZ) / sOut;
+
+  const ihw = (inner.leaf.width * sIn) / (2 * sOut);
+  const ihh = (inner.leaf.height * sIn) / (2 * sOut);
+  const ihd = (inner.leaf.depth * sIn) / (2 * sOut);
+  const hw = outer.leaf.width / 2;
+  const hh = outer.leaf.height / 2;
+  const hd = outer.leaf.depth / 2;
+
+  if (cz - ihd > -hd + 1e-4 || cz + ihd < hd - 1e-4) return null;
+  if (cx - ihw <= -hw + 1e-3 || cx + ihw >= hw - 1e-3) return null;
+  if (cy - ihh <= -hh + 1e-3 || cy + ihh >= hh - 1e-3) return null;
+
+  const localV: Vec3[] = [
+    [-hw, -hh, -hd],
+    [hw, -hh, -hd],
+    [hw, hh, -hd],
+    [-hw, hh, -hd],
+    [-hw, -hh, hd],
+    [hw, -hh, hd],
+    [hw, hh, hd],
+    [-hw, hh, hd],
+    [cx - ihw, cy - ihh, -hd],
+    [cx + ihw, cy - ihh, -hd],
+    [cx + ihw, cy + ihh, -hd],
+    [cx - ihw, cy + ihh, -hd],
+    [cx - ihw, cy - ihh, hd],
+    [cx + ihw, cy - ihh, hd],
+    [cx + ihw, cy + ihh, hd],
+    [cx - ihw, cy + ihh, hd],
+  ];
+  const pts = localV.map((v) => transformPoint(outer.worldMatrix, v));
+  const vp = pts.map((p, i) => emit(ctx, allocId(ctx), `VERTEX_POINT('bs${i}',${cartesianPoint(ctx, p)})`));
+  const lineEdge = (a: number, b: number): string => {
+    const p0 = pts[a]!;
+    const p1 = pts[b]!;
+    const dx = p1[0] - p0[0],
+      dy = p1[1] - p0[1],
+      dz = p1[2] - p0[2];
+    const len = Math.hypot(dx, dy, dz) || 1e-6;
+    const dir = direction(ctx, [dx / len, dy / len, dz / len]);
+    const vec = emit(ctx, allocId(ctx), `VECTOR('',${dir},${fmt(len)})`);
+    const ln = emit(ctx, allocId(ctx), `LINE('',${cartesianPoint(ctx, p0)},${vec})`);
+    return emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[a]},${vp[b]},${ln},.T.)`);
+  };
+  const oe = (ec: string, fwd: boolean) =>
+    emit(ctx, allocId(ctx), `ORIENTED_EDGE('',*,*,${ec},${fwd ? ".T." : ".F."})`);
+  const planeFace = (originLocal: Vec3, n: Vec3, ref: Vec3, loopEdges: string[], innerLoopEdges?: string[]) => {
+    const pl = emit(
+      ctx,
+      allocId(ctx),
+      `PLANE('',${axis2Placement3d(ctx, transformPoint(outer.worldMatrix, originLocal), n, ref)})`,
+    );
+    const outerLp = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${loopEdges.join(",")}))`);
+    const bounds = [emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${outerLp},.T.)`)];
+    if (innerLoopEdges) {
+      const innerLp = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${innerLoopEdges.join(",")}))`);
+      bounds.push(emit(ctx, allocId(ctx), `FACE_BOUND('',${innerLp},.T.)`));
+    }
+    return emit(ctx, allocId(ctx), `ADVANCED_FACE('',(${bounds.join(",")}),${pl},.T.)`);
+  };
+
+  const oppX: Vec3 = [-uX[0], -uX[1], -uX[2]];
+  const oppY: Vec3 = [-uY[0], -uY[1], -uY[2]];
+  const oppZ: Vec3 = [-uZ[0], -uZ[1], -uZ[2]];
+
+  const b01 = lineEdge(0, 1),
+    b12 = lineEdge(1, 2),
+    b23 = lineEdge(2, 3),
+    b30 = lineEdge(3, 0);
+  const t45 = lineEdge(4, 5),
+    t56 = lineEdge(5, 6),
+    t67 = lineEdge(6, 7),
+    t74 = lineEdge(7, 4);
+  const v04 = lineEdge(0, 4),
+    v15 = lineEdge(1, 5),
+    v26 = lineEdge(2, 6),
+    v37 = lineEdge(3, 7);
+  const ib01 = lineEdge(8, 9),
+    ib12 = lineEdge(9, 10),
+    ib23 = lineEdge(10, 11),
+    ib30 = lineEdge(11, 8);
+  const it01 = lineEdge(12, 13),
+    it12 = lineEdge(13, 14),
+    it23 = lineEdge(14, 15),
+    it30 = lineEdge(15, 12);
+  const iv0 = lineEdge(8, 12),
+    iv1 = lineEdge(9, 13),
+    iv2 = lineEdge(10, 14),
+    iv3 = lineEdge(11, 15);
+
+  const fBot = planeFace(
+    [0, 0, -hd],
+    oppZ,
+    uX,
+    [oe(b01, false), oe(b30, false), oe(b23, false), oe(b12, false)],
+    [oe(ib01, true), oe(ib12, true), oe(ib23, true), oe(ib30, true)],
+  );
+  const fTop = planeFace(
+    [0, 0, hd],
+    uZ,
+    uX,
+    [oe(t45, true), oe(t56, true), oe(t67, true), oe(t74, true)],
+    [oe(it01, false), oe(it30, false), oe(it23, false), oe(it12, false)],
+  );
+  const faces = [
+    fBot,
+    fTop,
+    planeFace([0, -hh, 0], oppY, uX, [oe(b01, true), oe(v15, true), oe(t45, false), oe(v04, false)]),
+    planeFace([0, hh, 0], uY, oppX, [oe(b23, true), oe(v37, true), oe(t67, false), oe(v26, false)]),
+    planeFace([hw, 0, 0], uX, uY, [oe(b12, true), oe(v26, true), oe(t56, false), oe(v15, false)]),
+    planeFace([-hw, 0, 0], oppX, oppY, [oe(b30, true), oe(v04, true), oe(t74, false), oe(v37, false)]),
+    // Inner window walls with inward normals
+    planeFace([cx, cy - ihh, 0], uY, oppX, [oe(ib01, false), oe(iv0, true), oe(it01, true), oe(iv1, false)]),
+    planeFace([cx, cy + ihh, 0], oppY, uX, [oe(ib23, false), oe(iv2, true), oe(it23, true), oe(iv3, false)]),
+    planeFace([cx + ihw, cy, 0], oppX, oppY, [oe(ib12, false), oe(iv1, true), oe(it12, true), oe(iv2, false)]),
+    planeFace([cx - ihw, cy, 0], uX, uY, [oe(ib30, false), oe(iv3, true), oe(it30, true), oe(iv0, false)]),
+  ];
+  const shell = emit(ctx, allocId(ctx), `CLOSED_SHELL('',(${faces.join(",")}))`);
+  return emit(ctx, allocId(ctx), `MANIFOLD_SOLID_BREP('${escStepStr(brepName)}',${shell})`);
+}
+
+/** Computes Cox-de Boor cubic B-spline basis values N_{0..n-1, 3}(u) on a clamped knot vector U. */
+function evalCubicBsplineBasis(u: number, n: number, knots: number[]): number[] {
+  const N = new Array<number>(n).fill(0);
+  if (u <= knots[0]!) {
+    N[0] = 1;
+    return N;
+  }
+  if (u >= knots[knots.length - 1]!) {
+    N[n - 1] = 1;
+    return N;
+  }
+  const vals = new Array<number>(knots.length - 1).fill(0);
+  for (let i = 0; i < knots.length - 1; i++) {
+    if (u >= knots[i]! && u < knots[i + 1]!) vals[i] = 1;
+  }
+  for (let deg = 1; deg <= 3; deg++) {
+    const next = new Array<number>(knots.length - 1 - deg).fill(0);
+    for (let i = 0; i < next.length; i++) {
+      const d1 = knots[i + deg]! - knots[i]!;
+      const d2 = knots[i + deg + 1]! - knots[i + 1]!;
+      const t1 = d1 > 1e-12 ? ((u - knots[i]!) / d1) * vals[i]! : 0;
+      const t2 = d2 > 1e-12 ? ((knots[i + deg + 1]! - u) / d2) * vals[i + 1]! : 0;
+      next[i] = t1 + t2;
+    }
+    for (let i = 0; i < next.length; i++) vals[i] = next[i]!;
+  }
+  for (let i = 0; i < n; i++) N[i] = vals[i]!;
+  return N;
+}
+
+/**
+ * Fits an exact clamped C² cubic `B_SPLINE_CURVE_WITH_KNOTS` interpolating `pts` (length 9)
+ * between endpoint vertices `vpStart` and `vpEnd`, and emits an `EDGE_CURVE`.
+ */
+function emitInterpolatingBsplineEdge(ctx: StepContext, vpStart: string, vpEnd: string, pts: Vec3[]): string {
+  const n = pts.length;
+  const distinctKnots = [0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1];
+  const multiplicities = [4, 1, 1, 1, 1, 1, 4];
+  const knots: number[] = [];
+  for (let k = 0; k < distinctKnots.length; k++) {
+    for (let m = 0; m < multiplicities[k]!; m++) knots.push(distinctKnots[k]!);
+  }
+  const A: number[][] = [];
+  const rhs: Vec3[] = pts.map((p) => [p[0], p[1], p[2]]);
+  for (let r = 0; r < n; r++) {
+    A.push(evalCubicBsplineBasis(r / (n - 1), n, knots));
+  }
+  for (let col = 0; col < n; col++) {
+    let pivotRow = col;
+    for (let r = col + 1; r < n; r++) {
+      if (Math.abs(A[r]![col]!) > Math.abs(A[pivotRow]![col]!)) pivotRow = r;
+    }
+    if (pivotRow !== col) {
+      [A[col], A[pivotRow]] = [A[pivotRow]!, A[col]!];
+      [rhs[col], rhs[pivotRow]] = [rhs[pivotRow]!, rhs[col]!];
+    }
+    const piv = A[col]![col]!;
+    for (let c = col; c < n; c++) A[col]![c] = A[col]![c]! / piv;
+    rhs[col] = [rhs[col]![0] / piv, rhs[col]![1] / piv, rhs[col]![2] / piv];
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const factor = A[r]![col]!;
+      if (Math.abs(factor) < 1e-15) continue;
+      for (let c = col; c < n; c++) A[r]![c] = A[r]![c]! - factor * A[col]![c]!;
+      rhs[r] = [
+        rhs[r]![0] - factor * rhs[col]![0],
+        rhs[r]![1] - factor * rhs[col]![1],
+        rhs[r]![2] - factor * rhs[col]![2],
+      ];
+    }
+  }
+  rhs[0] = pts[0]!;
+  rhs[n - 1] = pts[n - 1]!;
+  const ctrlRefs = rhs.map((cp) => cartesianPoint(ctx, cp));
+  const curve = emit(
+    ctx,
+    allocId(ctx),
+    `B_SPLINE_CURVE_WITH_KNOTS('',3,(${ctrlRefs.join(",")}),.UNSPECIFIED.,.F.,.F.,(${multiplicities.join(",")}),(${distinctKnots.map(fmt).join(",")}),.UNSPECIFIED.)`,
+  );
+  return emit(ctx, allocId(ctx), `EDGE_CURVE('',${vpStart},${vpEnd},${curve},.T.)`);
+}
+
+/**
+ * Recognizes perpendicular curved-on-curved `Subtract(Cyl_main, Cyl_cross)` where a smaller transverse
+ * cylinder passes completely through a vertical cylinder shaft, emitting exact CYLINDRICAL_SURFACEs
+ * trimmed by `B_SPLINE_CURVE_WITH_KNOTS` saddle intersection curves.
+ */
+function tryBuildCrossCylinderBrep(
+  ctx: StepContext,
+  solid: Extract<Solid, { left: Solid; right: Solid }>,
+  parentMatrix: Mat4,
+  brepName: string,
+): string | null {
+  const main = unwrapLeafWithTags(ctx, solid.left, parentMatrix);
+  const cross = unwrapLeafWithTags(ctx, solid.right, parentMatrix);
+  if (main.leaf.kind !== SolidKind.Cylinder || cross.leaf.kind !== SolidKind.Cylinder) return null;
+
+  const rMBot = main.leaf.radiusBottom ?? main.leaf.radius;
+  const rMTop = main.leaf.radiusTop ?? main.leaf.radius;
+  const rCBot = cross.leaf.radiusBottom ?? cross.leaf.radius;
+  const rCTop = cross.leaf.radiusTop ?? cross.leaf.radius;
+  if (Math.abs(rMBot - rMTop) > 1e-6 || Math.abs(rCBot - rCTop) > 1e-6) return null;
+
+  const sM = matrixScale(main.worldMatrix);
+  const sC = matrixScale(cross.worldMatrix);
+  const R = rMBot * sM;
+  const r = rCBot * sC;
+  const H = main.leaf.height * sM;
+  const L = cross.leaf.height * sC;
+  if (!(r > 1e-5 && R > r + 1e-3 && H > 1e-4)) return null;
+
+  const dot = (u: Vec3, v: Vec3) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+  const uZ = transformDir(main.worldMatrix, [0, 0, 1]);
+  const uX = transformDir(cross.worldMatrix, [0, 0, 1]);
+  if (Math.abs(dot(uZ, uX)) > 1e-4) return null;
+  const rawY: [number, number, number] = [
+    uZ[1] * uX[2] - uZ[2] * uX[1],
+    uZ[2] * uX[0] - uZ[0] * uX[2],
+    uZ[0] * uX[1] - uZ[1] * uX[0],
+  ];
+  const yLen = Math.hypot(rawY[0], rawY[1], rawY[2]);
+  if (yLen < 1e-6) return null;
+  const uY: Vec3 = [rawY[0] / yLen, rawY[1] / yLen, rawY[2] / yLen];
+
+  const cM = transformPoint(main.worldMatrix, [0, 0, 0]);
+  const cC = transformPoint(cross.worldMatrix, [0, 0, 0]);
+  const d: Vec3 = [cC[0] - cM[0], cC[1] - cM[1], cC[2] - cM[2]];
+  if (Math.abs(dot(d, uY)) > 1e-4) return null;
+  const zOff = dot(d, uZ);
+  if (Math.abs(zOff) + r > H / 2 - 1e-3) return null;
+  const xOff = dot(d, uX);
+  if (xOff - L / 2 > -R - 1e-4 || xOff + L / 2 < R + 1e-4) return null;
+
+  const framePt = (lx: number, ly: number, lz: number): Vec3 => [
+    cM[0] + lx * uX[0] + ly * uY[0] + lz * uZ[0],
+    cM[1] + lx * uX[1] + ly * uY[1] + lz * uZ[1],
+    cM[2] + lx * uX[2] + ly * uY[2] + lz * uZ[2],
+  ];
+
+  const hh = H / 2;
+  const corners: Vec3[] = [
+    framePt(0, -R, -hh),
+    framePt(0, R, -hh),
+    framePt(0, -R, hh),
+    framePt(0, R, hh),
+    framePt(R, 0, zOff + r),
+    framePt(R, 0, zOff - r),
+    framePt(-R, 0, zOff + r),
+    framePt(-R, 0, zOff - r),
+  ];
+  const vp = corners.map((c, i) => emit(ctx, allocId(ctx), `VERTEX_POINT('xbv${i}',${cartesianPoint(ctx, c)})`));
+
+  const botCenter = framePt(0, 0, -hh);
+  const topCenter = framePt(0, 0, hh);
+  const oppZ: Vec3 = [-uZ[0], -uZ[1], -uZ[2]];
+  const oppY: Vec3 = [-uY[0], -uY[1], -uY[2]];
+
+  const botCircle = circle(ctx, botCenter, R, uZ, oppY);
+  const topCircle = circle(ctx, topCenter, R, uZ, oppY);
+
+  const ec_ob0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[0]},${vp[1]},${botCircle},.T.)`);
+  const ec_ob1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[1]},${vp[0]},${botCircle},.T.)`);
+  const ec_ot0 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[2]},${vp[3]},${topCircle},.T.)`);
+  const ec_ot1 = emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[3]},${vp[2]},${topCircle},.T.)`);
+
+  const lineEdge = (v0: number, v1: number): string => {
+    const p0 = corners[v0]!;
+    const p1 = corners[v1]!;
+    const dx = p1[0] - p0[0],
+      dy = p1[1] - p0[1],
+      dz = p1[2] - p0[2];
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
+    const dir = direction(ctx, [dx / len, dy / len, dz / len]);
+    const vec = emit(ctx, allocId(ctx), `VECTOR('',${dir},${fmt(len)})`);
+    const line = emit(ctx, allocId(ctx), `LINE('',${cartesianPoint(ctx, p0)},${vec})`);
+    return emit(ctx, allocId(ctx), `EDGE_CURVE('',${vp[v0]},${vp[v1]},${line},.T.)`);
+  };
+
+  const ec_os0 = lineEdge(0, 2);
+  const ec_os1 = lineEdge(1, 3);
+  const ec_bsTop = lineEdge(6, 4);
+  const ec_bsBot = lineEdge(7, 5);
+
+  const sampleArc = (signX: 1 | -1, t0: number, t1: number): Vec3[] => {
+    const res: Vec3[] = [];
+    for (let i = 0; i < 9; i++) {
+      const t = t0 + (i / 8) * (t1 - t0);
+      const y = r * Math.sin(t);
+      const z = zOff + r * Math.cos(t);
+      const x = signX * Math.sqrt(Math.max(0, R * R - y * y));
+      res.push(framePt(x, y, z));
+    }
+    return res;
+  };
+
+  const ec_pos_yPos = emitInterpolatingBsplineEdge(ctx, vp[4]!, vp[5]!, sampleArc(1, 0, Math.PI));
+  const ec_pos_yNeg = emitInterpolatingBsplineEdge(ctx, vp[5]!, vp[4]!, sampleArc(1, Math.PI, Math.PI * 2));
+  const ec_neg_yPos = emitInterpolatingBsplineEdge(ctx, vp[6]!, vp[7]!, sampleArc(-1, 0, Math.PI));
+  const ec_neg_yNeg = emitInterpolatingBsplineEdge(ctx, vp[7]!, vp[6]!, sampleArc(-1, Math.PI, Math.PI * 2));
+
+  const oe = (ec: string, forward: boolean) =>
+    emit(ctx, allocId(ctx), `ORIENTED_EDGE('',*,*,${ec},${forward ? ".T." : ".F."})`);
+
+  const botPlane = emit(ctx, allocId(ctx), `PLANE('',${axis2Placement3d(ctx, botCenter, oppZ, uX)})`);
+  const botLoop = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${[oe(ec_ob1, false), oe(ec_ob0, false)].join(",")}))`);
+  const botFace = emit(
+    ctx,
+    allocId(ctx),
+    `ADVANCED_FACE('',(${emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${botLoop},.T.)`)}),${botPlane},.T.)`,
+  );
+
+  const topPlane = emit(ctx, allocId(ctx), `PLANE('',${axis2Placement3d(ctx, topCenter, uZ, uX)})`);
+  const topLoop = emit(ctx, allocId(ctx), `EDGE_LOOP('',(${[oe(ec_ot0, true), oe(ec_ot1, true)].join(",")}))`);
+  const topFace = emit(
+    ctx,
+    allocId(ctx),
+    `ADVANCED_FACE('',(${emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${topLoop},.T.)`)}),${topPlane},.T.)`,
+  );
+
+  const outerCylSurf = cylindricalSurface(ctx, botCenter, R, uZ, oppY);
+  const posXOuterLoop = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[oe(ec_ob0, true), oe(ec_os1, true), oe(ec_ot0, false), oe(ec_os0, false)].join(",")}))`,
+  );
+  const posXHoleLoop = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[oe(ec_pos_yPos, true), oe(ec_pos_yNeg, true)].join(",")}))`,
+  );
+  const posXFace = emit(
+    ctx,
+    allocId(ctx),
+    `ADVANCED_FACE('',(${emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${posXOuterLoop},.T.)`)},${emit(ctx, allocId(ctx), `FACE_BOUND('',${posXHoleLoop},.T.)`)}),${outerCylSurf},.T.)`,
+  );
+
+  const negXOuterLoop = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[oe(ec_ob1, true), oe(ec_os0, true), oe(ec_ot1, false), oe(ec_os1, false)].join(",")}))`,
+  );
+  const negXHoleLoop = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[oe(ec_neg_yNeg, false), oe(ec_neg_yPos, false)].join(",")}))`,
+  );
+  const negXFace = emit(
+    ctx,
+    allocId(ctx),
+    `ADVANCED_FACE('',(${emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${negXOuterLoop},.T.)`)},${emit(ctx, allocId(ctx), `FACE_BOUND('',${negXHoleLoop},.T.)`)}),${outerCylSurf},.T.)`,
+  );
+
+  const boreOrigin = framePt(-R, 0, zOff);
+  const innerCylSurf = cylindricalSurface(ctx, boreOrigin, r, uX, uZ);
+  const inTopLoop = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[oe(ec_bsTop, false), oe(ec_neg_yPos, true), oe(ec_bsBot, true), oe(ec_pos_yPos, false)].join(",")}))`,
+  );
+  const inTopFace = emit(
+    ctx,
+    allocId(ctx),
+    `ADVANCED_FACE('',(${emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${inTopLoop},.T.)`)}),${innerCylSurf},.F.)`,
+  );
+  const inBotLoop = emit(
+    ctx,
+    allocId(ctx),
+    `EDGE_LOOP('',(${[oe(ec_bsTop, true), oe(ec_pos_yNeg, false), oe(ec_bsBot, false), oe(ec_neg_yNeg, true)].join(",")}))`,
+  );
+  const inBotFace = emit(
+    ctx,
+    allocId(ctx),
+    `ADVANCED_FACE('',(${emit(ctx, allocId(ctx), `FACE_OUTER_BOUND('',${inBotLoop},.T.)`)}),${innerCylSurf},.F.)`,
+  );
+
+  const shell = emit(
+    ctx,
+    allocId(ctx),
+    `CLOSED_SHELL('',(${[botFace, topFace, posXFace, negXFace, inTopFace, inBotFace].join(",")}))`,
+  );
+  return emit(ctx, allocId(ctx), `MANIFOLD_SOLID_BREP('${escStepStr(brepName)}',${shell})`);
+}
+
+/**
+ * Recognizes exact analytical `Intersect` on aligned Box∩Box, coaxial Cylinder∩Cylinder,
+ * and contained Z-aligned Box∩Cylinder primitives.
+ */
+function tryBuildAnalyticalIntersectBrep(
+  ctx: StepContext,
+  solid: Extract<Solid, { left: Solid; right: Solid }>,
+  parentMatrix: Mat4,
+  brepName: string,
+): string | null {
+  const a = unwrapLeafWithTags(ctx, solid.left, parentMatrix);
+  const b = unwrapLeafWithTags(ctx, solid.right, parentMatrix);
+  const dot = (u: Vec3, v: Vec3) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+
+  if (a.leaf.kind === SolidKind.Box && b.leaf.kind === SolidKind.Box) {
+    const sA = matrixScale(a.worldMatrix);
+    const sB = matrixScale(b.worldMatrix);
+    const uX = transformDir(a.worldMatrix, [1, 0, 0]);
+    const uY = transformDir(a.worldMatrix, [0, 1, 0]);
+    const uZ = transformDir(a.worldMatrix, [0, 0, 1]);
+    const vX = transformDir(b.worldMatrix, [1, 0, 0]);
+    const vY = transformDir(b.worldMatrix, [0, 1, 0]);
+    const vZ = transformDir(b.worldMatrix, [0, 0, 1]);
+    if (Math.abs(dot(uX, vX) - 1) > 1e-4 || Math.abs(dot(uY, vY) - 1) > 1e-4 || Math.abs(dot(uZ, vZ) - 1) > 1e-4) {
+      return null;
+    }
+    const cA = transformPoint(a.worldMatrix, [0, 0, 0]);
+    const cB = transformPoint(b.worldMatrix, [0, 0, 0]);
+    const d: Vec3 = [cB[0] - cA[0], cB[1] - cA[1], cB[2] - cA[2]];
+    const cx = dot(d, uX) / sA;
+    const cy = dot(d, uY) / sA;
+    const cz = dot(d, uZ) / sA;
+    const x0 = Math.max(-a.leaf.width / 2, cx - (b.leaf.width * sB) / (2 * sA));
+    const x1 = Math.min(a.leaf.width / 2, cx + (b.leaf.width * sB) / (2 * sA));
+    const y0 = Math.max(-a.leaf.height / 2, cy - (b.leaf.height * sB) / (2 * sA));
+    const y1 = Math.min(a.leaf.height / 2, cy + (b.leaf.height * sB) / (2 * sA));
+    const z0 = Math.max(-a.leaf.depth / 2, cz - (b.leaf.depth * sB) / (2 * sA));
+    const z1 = Math.min(a.leaf.depth / 2, cz + (b.leaf.depth * sB) / (2 * sA));
+    if (x1 - x0 <= 1e-5 || y1 - y0 <= 1e-5 || z1 - z0 <= 1e-5) return null;
+    return buildBoxBrep(
+      ctx,
+      brepName,
+      (x0 + x1) / 2,
+      (y0 + y1) / 2,
+      (z0 + z1) / 2,
+      (x1 - x0) / 2,
+      (y1 - y0) / 2,
+      (z1 - z0) / 2,
+      a.worldMatrix,
+    );
+  }
+
+  if (a.leaf.kind === SolidKind.Cylinder && b.leaf.kind === SolidKind.Cylinder) {
+    const rABot = a.leaf.radiusBottom ?? a.leaf.radius;
+    const rATop = a.leaf.radiusTop ?? a.leaf.radius;
+    const rBBot = b.leaf.radiusBottom ?? b.leaf.radius;
+    const rBTop = b.leaf.radiusTop ?? b.leaf.radius;
+    if (Math.abs(rABot - rATop) > 1e-6 || Math.abs(rBBot - rBTop) > 1e-6) return null;
+    const sA = matrixScale(a.worldMatrix);
+    const sB = matrixScale(b.worldMatrix);
+    const zA = transformDir(a.worldMatrix, [0, 0, 1]);
+    const zB = transformDir(b.worldMatrix, [0, 0, 1]);
+    if (Math.abs(Math.abs(dot(zA, zB)) - 1) > 1e-4) return null;
+    const cA = transformPoint(a.worldMatrix, [0, 0, 0]);
+    const cB = transformPoint(b.worldMatrix, [0, 0, 0]);
+    const d: Vec3 = [cB[0] - cA[0], cB[1] - cA[1], cB[2] - cA[2]];
+    const axialOffset = dot(d, zA);
+    const radialOffset = Math.hypot(d[0] - axialOffset * zA[0], d[1] - axialOffset * zA[1], d[2] - axialOffset * zA[2]);
+    if (radialOffset > 1e-4) return null;
+    const rLocal = Math.min(rABot, (rBBot * sB) / sA);
+    const hbLocal = (b.leaf.height * sB) / (2 * sA);
+    const z0 = Math.max(-a.leaf.height / 2, axialOffset / sA - hbLocal);
+    const z1 = Math.min(a.leaf.height / 2, axialOffset / sA + hbLocal);
+    if (rLocal <= 1e-5 || z1 - z0 <= 1e-5) return null;
+    const xA = transformDir(a.worldMatrix, [1, 0, 0]);
+    const yA = transformDir(a.worldMatrix, [0, 1, 0]);
+    const midWorld = transformPoint(a.worldMatrix, [0, 0, (z0 + z1) / 2]);
+    const worldMat: Mat4 = [
+      xA[0] * sA,
+      xA[1] * sA,
+      xA[2] * sA,
+      0,
+      yA[0] * sA,
+      yA[1] * sA,
+      yA[2] * sA,
+      0,
+      zA[0] * sA,
+      zA[1] * sA,
+      zA[2] * sA,
+      0,
+      midWorld[0],
+      midWorld[1],
+      midWorld[2],
+      1,
+    ];
+    return buildCylinderBrep(ctx, brepName, rLocal, rLocal, z1 - z0, worldMat);
+  }
+
+  // Normalize (Box, Cyl) or (Cyl, Box)
+  const boxCyl =
+    a.leaf.kind === SolidKind.Box && b.leaf.kind === SolidKind.Cylinder
+      ? { boxRef: a, cylRef: b }
+      : b.leaf.kind === SolidKind.Box && a.leaf.kind === SolidKind.Cylinder
+        ? { boxRef: b, cylRef: a }
+        : null;
+  if (boxCyl) {
+    const bx = boxCyl.boxRef;
+    const cy = boxCyl.cylRef;
+    const bxLeaf = bx.leaf;
+    const cylLeaf = cy.leaf;
+    if (bxLeaf.kind !== SolidKind.Box || cylLeaf.kind !== SolidKind.Cylinder) return null;
+    const rBot = cylLeaf.radiusBottom ?? cylLeaf.radius;
+    const rTop = cylLeaf.radiusTop ?? cylLeaf.radius;
+    if (Math.abs(rBot - rTop) > 1e-6) return null;
+    const sB = matrixScale(bx.worldMatrix);
+    const sC = matrixScale(cy.worldMatrix);
+    const rLocal = (rBot * sC) / sB;
+    const uX = transformDir(bx.worldMatrix, [1, 0, 0]);
+    const uY = transformDir(bx.worldMatrix, [0, 1, 0]);
+    const uZ = transformDir(bx.worldMatrix, [0, 0, 1]);
+    const zC = transformDir(cy.worldMatrix, [0, 0, 1]);
+    if (Math.abs(Math.abs(dot(uZ, zC)) - 1) > 1e-4) return null;
+    const cB = transformPoint(bx.worldMatrix, [0, 0, 0]);
+    const cC = transformPoint(cy.worldMatrix, [0, 0, 0]);
+    const d: Vec3 = [cC[0] - cB[0], cC[1] - cB[1], cC[2] - cB[2]];
+    const ox = dot(d, uX) / sB;
+    const oy = dot(d, uY) / sB;
+    const oz = dot(d, uZ) / sB;
+    if (Math.abs(ox) + rLocal > bxLeaf.width / 2 + 1e-5 || Math.abs(oy) + rLocal > bxLeaf.height / 2 + 1e-5) {
+      return null;
+    }
+    const hcLocal = (cylLeaf.height * sC) / (2 * sB);
+    const z0 = Math.max(-bxLeaf.depth / 2, oz - hcLocal);
+    const z1 = Math.min(bxLeaf.depth / 2, oz + hcLocal);
+    if (z1 - z0 <= 1e-5) return null;
+    const shiftWorld = transformPoint(bx.worldMatrix, [ox, oy, (z0 + z1) / 2]);
+    const worldMat: Mat4 = [
+      uX[0] * sB,
+      uX[1] * sB,
+      uX[2] * sB,
+      0,
+      uY[0] * sB,
+      uY[1] * sB,
+      uY[2] * sB,
+      0,
+      uZ[0] * sB,
+      uZ[1] * sB,
+      uZ[2] * sB,
+      0,
+      shiftWorld[0],
+      shiftWorld[1],
+      shiftWorld[2],
+      1,
+    ];
+    return buildCylinderBrep(ctx, brepName, rLocal, rLocal, z1 - z0, worldMat);
+  }
+
+  return null;
 }
 
 // ── Sphere Analytical BREP ───────────────────────────────────────────────
@@ -1091,6 +1974,19 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4, partPr
     }
 
     case SolidKind.Union: {
+      const leftBox = computeSolidAABB(solid.left);
+      const rightBox = computeSolidAABB(solid.right);
+      const overlaps =
+        leftBox.min[0] <= rightBox.max[0] + 1e-4 &&
+        leftBox.max[0] >= rightBox.min[0] - 1e-4 &&
+        leftBox.min[1] <= rightBox.max[1] + 1e-4 &&
+        leftBox.max[1] >= rightBox.min[1] - 1e-4 &&
+        leftBox.min[2] <= rightBox.max[2] + 1e-4 &&
+        leftBox.max[2] >= rightBox.min[2] - 1e-4;
+      if (overlaps) {
+        const brepRef = buildEvaluatedSolidBrep(ctx, solid, parentMatrix, partPrefix);
+        if (brepRef) return [brepRef];
+      }
       return [
         ...flattenSolid(ctx, solid.left, parentMatrix, partPrefix),
         ...flattenSolid(ctx, solid.right, parentMatrix, partPrefix),
@@ -1100,12 +1996,20 @@ function flattenSolid(ctx: StepContext, solid: Solid, parentMatrix: Mat4, partPr
     case SolidKind.Subtract: {
       const hollowRef = tryBuildHollowCylinderBrep(ctx, solid, parentMatrix, brepName);
       if (hollowRef) return [hollowRef];
+      const crossCylRef = tryBuildCrossCylinderBrep(ctx, solid, parentMatrix, brepName);
+      if (crossCylRef) return [crossCylRef];
+      const plateHoleRef = tryBuildBoxWithHoleBrep(ctx, solid, parentMatrix, brepName);
+      if (plateHoleRef) return [plateHoleRef];
+      const slotRef = tryBuildBoxSlotBrep(ctx, solid, parentMatrix, brepName);
+      if (slotRef) return [slotRef];
       const brepRef = buildEvaluatedSolidBrep(ctx, solid, parentMatrix, partPrefix);
       if (brepRef) return [brepRef];
       return flattenSolid(ctx, solid.left, parentMatrix, partPrefix);
     }
 
     case SolidKind.Intersect: {
+      const analyticRef = tryBuildAnalyticalIntersectBrep(ctx, solid, parentMatrix, brepName);
+      if (analyticRef) return [analyticRef];
       const brepRef = buildEvaluatedSolidBrep(ctx, solid, parentMatrix, partPrefix);
       if (brepRef) return [brepRef];
       return [];

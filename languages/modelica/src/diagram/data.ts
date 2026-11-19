@@ -701,6 +701,8 @@ export async function buildDiagramData(
     }
 
     if (componentTransform.rotate !== 0) {
+      // unflipText() precedes unrotateText() on <text>, so outer S * inner S = I before R(rot) runs;
+      // pass componentTransform.rotate unnegated so R(theta) * R(-theta) = I even when flipped.
       unrotateText(componentMarkup, componentTransform.rotate);
     }
 
@@ -746,10 +748,26 @@ export async function buildDiagramData(
       };
     }
 
-    // Build ports
+    // Helper: synthesize interactive ports referenced in connect() for unresolved or expandable components
     const ports: DiagramPort[] = [];
-    if (isUnresolved) {
+    const appendSynthesizedConnectPorts = (existingIds?: Set<string>) => {
       const referencedPorts = new Map<string, { x?: number; y?: number }>();
+      const compName = component.name ?? "";
+      const extractPortSegment = (ref: string | undefined): string | null => {
+        if (!ref || !compName) return null;
+        let rawSeg: string | null = null;
+        if (ref.startsWith(`${compName}.`)) {
+          rawSeg = ref.substring(compName.length + 1).split(".")[0] ?? null;
+        } else if (ref.startsWith(`${compName}[`)) {
+          const closeIdx = ref.indexOf("].");
+          if (closeIdx > compName.length) {
+            rawSeg = ref.substring(closeIdx + 2).split(".")[0] ?? null;
+          }
+        }
+        if (!rawSeg) return null;
+        const brIdx = rawSeg.indexOf("[");
+        return brIdx >= 0 ? rawSeg.slice(0, brIdx).trim() : rawSeg.trim();
+      };
       for (const eq of connectEquations) {
         const p1 =
           eq.lhs ?? eq.componentReference1?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "").join(".");
@@ -757,39 +775,36 @@ export async function buildDiagramData(
           eq.rhs ?? eq.componentReference2?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "").join(".");
         const line: ILine | null = typeof eq.annotation === "function" ? (eq.annotation("Line") as ILine | null) : null;
         const linePoints = line?.points;
-        if (typeof p1 === "string" && p1.startsWith(`${component.name}.`)) {
-          const portName = p1.substring(component.name.length + 1).split(".")[0]!;
-          if (!referencedPorts.has(portName)) {
-            let hint: { x?: number; y?: number } = {};
-            if (linePoints && linePoints.length > 0) {
-              const [px, py] = convertPoint(linePoints[0]!);
-              hint = { x: px, y: py };
-            }
-            referencedPorts.set(portName, hint);
+        const port1 = extractPortSegment(typeof p1 === "string" ? p1 : undefined);
+        if (port1 && !existingIds?.has(port1) && !referencedPorts.has(port1)) {
+          let hint: { x?: number; y?: number } = {};
+          if (linePoints && linePoints.length > 0) {
+            const [px, py] = convertPoint(linePoints[0]!);
+            hint = { x: px, y: py };
           }
+          referencedPorts.set(port1, hint);
         }
-        if (typeof p2 === "string" && p2.startsWith(`${component.name}.`)) {
-          const portName = p2.substring(component.name.length + 1).split(".")[0]!;
-          if (!referencedPorts.has(portName)) {
-            let hint: { x?: number; y?: number } = {};
-            if (linePoints && linePoints.length > 0) {
-              const [px, py] = convertPoint(linePoints[linePoints.length - 1]!);
-              hint = { x: px, y: py };
-            }
-            referencedPorts.set(portName, hint);
+        const port2 = extractPortSegment(typeof p2 === "string" ? p2 : undefined);
+        if (port2 && !existingIds?.has(port2) && !referencedPorts.has(port2)) {
+          let hint: { x?: number; y?: number } = {};
+          if (linePoints && linePoints.length > 0) {
+            const [px, py] = convertPoint(linePoints[linePoints.length - 1]!);
+            hint = { x: px, y: py };
           }
+          referencedPorts.set(port2, hint);
         }
       }
-      if (referencedPorts.size === 0) {
+      if (isUnresolved && referencedPorts.size === 0 && (!existingIds || existingIds.size === 0)) {
         referencedPorts.set("p", {});
         referencedPorts.set("n", {});
       }
       const nodeX = componentTransform.translateX;
       const nodeY = componentTransform.translateY;
-      let idx = 0;
+      let idx = existingIds ? existingIds.size : 0;
+      const total = Math.max(1, referencedPorts.size);
       for (const [portName, hint] of referencedPorts.entries()) {
         let portX = idx % 2 === 0 ? 0 : absWidth;
-        let portY = absHeight / 2;
+        let portY = total > 1 ? ((idx + 1) * absHeight) / (total + 1) : absHeight / 2;
         if (typeof hint.x === "number" && typeof hint.y === "number") {
           const relX = hint.x - nodeX;
           const relY = hint.y - nodeY;
@@ -809,13 +824,18 @@ export async function buildDiagramData(
               height: 8,
               x: -4,
               y: -4,
-              fill: "#ef4444",
+              fill: isUnresolved ? "#ef4444" : "#3b82f6",
               magnet: "true",
             },
           },
         });
         idx++;
       }
+    };
+
+    // Build ports
+    if (isUnresolved) {
+      appendSynthesizedConnectPorts();
     } else if (componentClassInstance) {
       let portTemplates = staticPortTemplatesCache.get(componentClassInstance);
       if (!portTemplates) {
@@ -890,10 +910,25 @@ export async function buildDiagramData(
         const desiredCenterY =
           absHeight / 2 + (connCenterY - (componentTransform.csMidY ?? 0)) * componentTransform.scaleY;
 
+        const hasOddFlip = Boolean(flipX) !== Boolean(flipY);
+        const portAngle = hasOddFlip ? -connectorTransform.rotate : connectorTransform.rotate;
+        const portIconChildren =
+          flipX || flipY
+            ? [
+                {
+                  tagName: "g",
+                  attrs: {
+                    transform: `translate(${flipX ? portWidth : 0}, ${flipY ? portHeight : 0}) scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`,
+                  },
+                  children: [connectorMarkup],
+                },
+              ]
+            : [connectorMarkup];
+
         ports.push({
           id: connector.name ?? "",
           group: "absolute",
-          args: { x: desiredCenterX, y: desiredCenterY, angle: connectorTransform.rotate },
+          args: { x: desiredCenterX, y: desiredCenterY, angle: portAngle },
           markup: {
             tagName: "g",
             children: [
@@ -911,7 +946,7 @@ export async function buildDiagramData(
               },
               {
                 tagName: "svg",
-                children: [connectorMarkup],
+                children: portIconChildren,
                 attrs: {
                   x: -portWidth / 2,
                   y: -portHeight / 2,
@@ -931,6 +966,16 @@ export async function buildDiagramData(
             },
           },
         });
+      }
+
+      const compClassPrefixes = (componentClassInstance.entry?.metadata as any)?.classPrefixes as string[] | undefined;
+      const isExpandableConnector =
+        componentClassInstance.classKind === ModelicaClassKind.EXPANDABLE_CONNECTOR ||
+        Boolean(compClassPrefixes?.includes("expandable")) ||
+        Boolean((componentClassInstance as any).isExpandable);
+      if (isExpandableConnector) {
+        const declaredPortIds = new Set(ports.map((p) => p.id).filter(Boolean));
+        appendSynthesizedConnectPorts(declaredPortIds);
       }
     }
 
@@ -988,8 +1033,9 @@ export async function buildDiagramData(
     });
   }
 
-  // Precompute world port centers so vector-port subscripts (e.g. set1.u[1], u[2]) can preserve exact Line.points offsets
+  // Precompute world port centers and declared port sets so vector-port subscripts (e.g. set1.u[1], gain.y[1]) bind to X6 ports
   const portWorldMap = new Map<string, { x: number; y: number }>();
+  const nodePortIdsMap = new Map<string, Set<string>>();
   for (const node of nodes) {
     const nx = node.x ?? 0;
     const ny = node.y ?? 0;
@@ -998,7 +1044,9 @@ export async function buildDiagramData(
     const angleDeg = node.angle ?? 0;
     const portItems = Array.isArray(node.ports) ? node.ports : (node.ports as any)?.items;
     if (!portItems) continue;
+    const idSet = new Set<string>();
     for (const p of portItems) {
+      if (p?.id) idSet.add(p.id);
       if (!p.id || !p.args || typeof p.args.x !== "number" || typeof p.args.y !== "number") continue;
       let wx = nx + p.args.x;
       let wy = ny + p.args.y;
@@ -1015,6 +1063,7 @@ export async function buildDiagramData(
       }
       portWorldMap.set(`${node.id}.${p.id}`, { x: wx, y: wy });
     }
+    nodePortIdsMap.set(node.id, idSet);
   }
 
   const resolvePortAnchor = (
@@ -1032,6 +1081,18 @@ export async function buildDiagramData(
       return { name: "center", args: { dx, dy } };
     }
     return "center";
+  };
+
+  const resolveNodePortId = (cellId: string, rawPort: string): string => {
+    if (!cellId || !rawPort) return rawPort;
+    const idSet = nodePortIdsMap.get(cellId);
+    if (!idSet || idSet.has(rawPort)) return rawPort;
+    const brIdx = rawPort.indexOf("[");
+    if (brIdx >= 0) {
+      const basePort = rawPort.slice(0, brIdx).trim();
+      if (idSet.has(basePort)) return basePort;
+    }
+    return rawPort;
   };
 
   // Build edges from connect equations
@@ -1091,10 +1152,14 @@ export async function buildDiagramData(
         ? line.points.map((p: IPoint) => convertPoint(p)).map((p: [number, number]) => ({ x: p[0], y: p[1] }))
         : null;
 
-    const srcCell = c1.length > 1 ? baseC1 : "";
-    const srcPort = c1.length > 1 ? (c1[1] ?? "") : c1[0];
-    const tgtCell = c2.length > 1 ? baseC2 : "";
-    const tgtPort = c2.length > 1 ? (c2[1] ?? "") : c2[0];
+    const isC1TopLevelNode = c1.length === 1 && nodeIds.has(baseC1);
+    const isC2TopLevelNode = c2.length === 1 && nodeIds.has(baseC2);
+    const srcCell = c1.length > 1 ? baseC1 : isC1TopLevelNode ? baseC1 : "";
+    const rawSrcPort = c1.length > 1 ? (c1[1] ?? "") : isC1TopLevelNode ? "" : c1[0];
+    const srcPort = resolveNodePortId(srcCell, rawSrcPort);
+    const tgtCell = c2.length > 1 ? baseC2 : isC2TopLevelNode ? baseC2 : "";
+    const rawTgtPort = c2.length > 1 ? (c2[1] ?? "") : isC2TopLevelNode ? "" : c2[0];
+    const tgtPort = resolveNodePortId(tgtCell, rawTgtPort);
 
     edges.push({
       id: `${c1.join(".")}-${c2.join(".")}`,
@@ -1102,13 +1167,13 @@ export async function buildDiagramData(
       source: {
         cell: srcCell,
         port: srcPort,
-        anchor: resolvePortAnchor(srcCell, srcPort, explicitLinePoints?.[0]),
+        anchor: resolvePortAnchor(srcCell, rawSrcPort, explicitLinePoints?.[0]),
         connectionPoint: { name: "anchor" },
       },
       target: {
         cell: tgtCell,
         port: tgtPort,
-        anchor: resolvePortAnchor(tgtCell, tgtPort, explicitLinePoints?.[explicitLinePoints.length - 1]),
+        anchor: resolvePortAnchor(tgtCell, rawTgtPort, explicitLinePoints?.[explicitLinePoints.length - 1]),
         connectionPoint: { name: "anchor" },
       },
       vertices: line?.points

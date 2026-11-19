@@ -41,9 +41,111 @@ export function generateCodeGraphBridge(grammar: LanguageOptions): string {
   let switchCode = "";
   let customQueries = "";
 
+  // Compute transitive reachability closure of helper classes, constants, and functions
+  // actually referenced by WASM queries, CompilerLints, pipelines, or explicit classes/functions.
+  const reachableSymbols = new Set<string>();
+  if (ast) {
+    const worklist: Array<ts.Node | string> = [];
+    const collectIdentsFromNode = (n: ts.Node) => {
+      if (ts.isIdentifier(n)) {
+        if (!reachableSymbols.has(n.text)) {
+          reachableSymbols.add(n.text);
+          worklist.push(n.text);
+        }
+      }
+      ts.forEachChild(n, collectIdentsFromNode);
+    };
+    const collectIdentsFromUnknown = (val: unknown) => {
+      if (!val) return;
+      if (typeof val === "object" && "kind" in (val as object) && "forEachChild" in (val as object)) {
+        collectIdentsFromNode(val as ts.Node);
+        return;
+      }
+      const str = typeof val === "function" ? val.toString() : typeof val === "string" ? val : "";
+      if (!str) return;
+      const matches = str.matchAll(/\b[A-Za-z_$][A-Za-z0-9_$]*\b/g);
+      for (const m of matches) {
+        const id = m[0]!;
+        if (!reachableSymbols.has(id)) {
+          reachableSymbols.add(id);
+          worklist.push(id);
+        }
+      }
+    };
+
+    if (grammar.lints) {
+      for (const [lintName, lint] of Object.entries(grammar.lints)) {
+        collectIdentsFromUnknown(ast.lints.get(lintName));
+        const lintObj = (typeof lint === "object" && lint !== null ? lint : null) as { query?: unknown } | null;
+        collectIdentsFromUnknown(lintObj?.query ?? (typeof lint === "string" ? lint : null));
+      }
+    }
+    if (grammar.queries) {
+      for (const [queryName, rawQueryFn] of Object.entries(grammar.queries)) {
+        collectIdentsFromUnknown(ast.queries.get(queryName) ?? rawQueryFn);
+      }
+    }
+    if (grammar.pipelines) {
+      for (const [pipelineName, pipeline] of Object.entries(grammar.pipelines)) {
+        for (const p of ast.pipelines.get(pipelineName) ?? []) collectIdentsFromUnknown(p);
+        for (const p of (pipeline as { passes?: unknown[] }).passes ?? []) collectIdentsFromUnknown(p);
+      }
+    }
+    if (grammar.model) {
+      for (const [, attrs] of Object.entries(grammar.model)) {
+        for (const [, cfg] of Object.entries(attrs as Record<string, unknown>)) {
+          if (typeof cfg === "function") collectIdentsFromUnknown(cfg);
+          else if (cfg && typeof cfg === "object" && "compute" in cfg) {
+            collectIdentsFromUnknown((cfg as { compute?: unknown }).compute);
+          }
+        }
+      }
+    }
+    if (grammar.lsp?.definition) {
+      collectIdentsFromUnknown(ast.definition ?? grammar.lsp.definition);
+    }
+    const explicitExtras = grammarExt as unknown as {
+      classes?: unknown;
+      functions?: unknown;
+    };
+    for (const extra of [explicitExtras.classes, explicitExtras.functions]) {
+      if (Array.isArray(extra)) {
+        for (const item of extra) {
+          const nm = typeof item === "function" ? item.name : typeof item === "string" ? item : "";
+          if (nm && !reachableSymbols.has(nm)) {
+            reachableSymbols.add(nm);
+            worklist.push(nm);
+          }
+        }
+      } else if (extra && typeof extra === "object") {
+        for (const nm of Object.keys(extra)) {
+          if (!reachableSymbols.has(nm)) {
+            reachableSymbols.add(nm);
+            worklist.push(nm);
+          }
+        }
+      }
+    }
+
+    while (worklist.length > 0) {
+      const item = worklist.pop()!;
+      if (typeof item === "string") {
+        const fnDecl = ast.functions.get(item);
+        if (fnDecl) collectIdentsFromNode(fnDecl);
+        const clsDecl = ast.classes.get(item);
+        if (clsDecl) collectIdentsFromNode(clsDecl);
+        const constDecl = ast.constants.get(item);
+        if (constDecl) collectIdentsFromNode(constDecl);
+      } else {
+        collectIdentsFromNode(item);
+      }
+    }
+  }
+
   // 1.4. Emit Top-Level Helper Classes (e.g. SIUnit)
   if (ast && ast.classes) {
-    for (const [, clsDecl] of ast.classes.entries()) {
+    for (const [clsName, clsDecl] of ast.classes.entries()) {
+      if (!reachableSymbols.has(clsName)) continue;
       const clsStr = transpileClass(clsDecl);
       customQueries += clsStr + "\n\n";
     }
@@ -109,13 +211,16 @@ export function generateCodeGraphBridge(grammar: LanguageOptions): string {
 
   // 1. Emit Top-Level Constants (e.g. VARIABILITY_CONTINUOUS, TYPE_REAL, etc.)
   if (ast && ast.constants) {
+    let emittedConst = false;
     for (const [constName, decl] of ast.constants.entries()) {
+      if (!reachableSymbols.has(constName)) continue;
       const sf = getNodeSourceFile(decl);
       const typeStr = decl.type ? ": " + decl.type.getText(sf) : "";
       const initStr = decl.initializer ? decl.initializer.getText(sf) : "0";
       customQueries += `export const ${constName}${typeStr} = ${initStr};\n`;
+      emittedConst = true;
     }
-    if (ast.constants.size > 0) {
+    if (emittedConst) {
       customQueries += "\n";
     }
   }
@@ -124,6 +229,7 @@ export function generateCodeGraphBridge(grammar: LanguageOptions): string {
   if (ast && ast.functions) {
     for (const [fnName, fnDecl] of ast.functions.entries()) {
       if (fnName === "language" || fnName === "grammar" || fnName === "buildParser") continue;
+      if (!reachableSymbols.has(fnName)) continue;
       const fnSf = getNodeSourceFile(fnDecl);
       const fnInfo = transpileQuery(fnDecl);
       let fnStr = fnInfo.body;

@@ -16,23 +16,31 @@ import {
 import { checkRationalPassivity, enforceRationalPassivity } from "../src/solver/vector-fitting.js";
 
 describe("PSCAD Roadmap Completion (M6063 zonotopes, editing ergonomics, ULM passivity, AST->WASM & incremental cache)", () => {
-  it("cancels correlated signals across tdelay/limit/sum with zonotope tracking (M6063)", () => {
+  it("cancels instantaneously correlated signals with zonotope tracking (M6063) while staying sound across tdelay", () => {
     const zono = analyzeControlZonotopes([
-      { id: "c1", kind: "limit", inputs: [], params: { min: -5, max: 5 } }, // Wait - simulate non-const uncertainty:
-      { id: "lim", kind: "limit", inputs: ["src"], params: { min: -10, max: 10 } },
-      { id: "src", kind: "select", inputs: ["lo", "hi"], params: {} },
       { id: "lo", kind: "const", inputs: [], params: { value: -2 } },
       { id: "hi", kind: "const", inputs: [], params: { value: 4 } },
+      { id: "src", kind: "select", inputs: ["lo", "hi"], params: {} },
+      { id: "lim", kind: "limit", inputs: ["src"], params: { min: -10, max: 10 } },
+      { id: "g1", kind: "gain", inputs: ["lim"], params: { K: 1 } },
+      { id: "instDiff", kind: "sum", inputs: ["lim", "g1"], params: { s1: 1, s2: -1 } },
       { id: "dly", kind: "tdelay", inputs: ["lim"], params: {} },
-      { id: "diff", kind: "sum", inputs: ["lim", "dly"], params: { s1: 1, s2: -1 } },
+      { id: "dlyDiff", kind: "sum", inputs: ["lim", "dly"], params: { s1: 1, s2: -1 } },
     ]);
-    const diffEntry = zono.get("diff");
-    assert.ok(diffEntry, "Expected zonotope entry for sum block 'diff'");
-    assert.equal(diffEntry.interval.lo, 0);
-    assert.equal(diffEntry.interval.hi, 0);
-    assert.equal(diffEntry.plainInterval.lo, -6);
-    assert.equal(diffEntry.plainInterval.hi, 6);
-    assert.equal(diffEntry.tightenedByZonotope, true);
+    // Instantaneous correlated paths (lim - 1*lim) cancel soundly to [0, 0]
+    const instEntry = zono.get("instDiff");
+    assert.ok(instEntry, "Expected zonotope entry for instantaneous sum block 'instDiff'");
+    assert.equal(instEntry.interval.lo, 0);
+    assert.equal(instEntry.interval.hi, 0);
+    assert.equal(instEntry.plainInterval.lo, -6);
+    assert.equal(instEntry.plainInterval.hi, 6);
+    assert.equal(instEntry.tightenedByZonotope, true);
+
+    // Delayed path x(t) - x(t - tau) must NOT unsoundly cancel to [0, 0]
+    const dlyEntry = zono.get("dlyDiff");
+    assert.ok(dlyEntry, "Expected zonotope entry for delayed sum block 'dlyDiff'");
+    assert.equal(dlyEntry.interval.lo, -6);
+    assert.equal(dlyEntry.interval.hi, 6);
   });
 
   it("supports copySelection, syncSubmodulePorts, and rotate wire rerouting in edit engine", () => {

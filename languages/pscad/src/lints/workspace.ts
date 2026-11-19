@@ -16,7 +16,11 @@ import { lintPscx } from "./index.js";
  * Performs multi-file PSCAD/EMTDC workspace linting across `.pscx` projects,
  * `.pslx` library definitions, and external Fortran/C companion sources.
  */
-export function lintPscadWorkspace(workspace: WorkspaceDocumentInput, rootUri?: string): WorkspaceLintDiagnostic[] {
+export function lintPscadWorkspace(
+  workspace: WorkspaceDocumentInput,
+  rootUri?: string,
+  options?: { tier?: "fast" | "deep" | "formal" },
+): WorkspaceLintDiagnostic[] {
   const docs = collectWorkspaceDocuments(workspace);
   const diagnostics: WorkspaceLintDiagnostic[] = [];
   const entries = Array.from(docs.entries());
@@ -40,13 +44,15 @@ export function lintPscadWorkspace(workspace: WorkspaceDocumentInput, rootUri?: 
 
   for (const [uri, xml] of pscxEntries) {
     const project = parsePscx(xml);
-    for (const d of lintPscx(project)) {
+    for (const d of lintPscx(project, options)) {
       diagnostics.push({
         uri,
         code: d.code,
         rule: d.rule,
         severity: d.severity,
         message: d.message,
+        line: d.line,
+        column: d.column,
       });
     }
 

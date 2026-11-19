@@ -21,6 +21,35 @@ export const adamsLanguage = language({
   lsp: {
     fileExtensions: [".adm", ".cmd", ".acf"],
   },
+  diagram: {
+    placement: {
+      persistence: "sidecar",
+    },
+    mutations: {
+      createNode: (_className: string, name: string) => `PART/${name}, MASS = 1.0, IP = 0.1, 0.1, 0.1`,
+      createEdge: (source: string, target: string) =>
+        `JOINT/${source}_to_${target}, REVOLUTE, I = ${source}, J = ${target}`,
+    },
+  },
+  ui: {
+    panels: [
+      {
+        id: "adamsEditor",
+        viewType: "modelscript.adamsEditor",
+        title: "MSC Adams Multibody Dynamics Studio",
+        shortTitle: "Adams",
+        selector: ["*.adm", "*.cmd", "*.acf"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/AdamsPanel.tsx",
+        artifactViewTypes: ["adams", "adm"],
+      },
+    ],
+    stencils: [
+      { label: "Part", snippet: "PART/99, MASS = 12.5, CM = 9901, IP = 1.2, 1.2, 0.8\n" },
+      { label: "Joint", snippet: "JOINT/99, REVOLUTE, I = 101, J = 201\n" },
+    ],
+  },
 
   rules: {
     Deck: ($) => repeat($["CardStatement"]!),

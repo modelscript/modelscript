@@ -480,7 +480,20 @@ export class ParserService {
                 (this.workspaceManager?.unifiedWorkspace as any)?.extractExtension?.(uri) ??
                 (uri.includes(".") ? `.${uri.split(".").pop()}` : ".mo");
               const uriParser = this.getParserForUri(uri);
-              const tree = uriParser ? uriParser.parse(text) : this.sharedContext?.parse(ext, text);
+              const tree = uriParser
+                ? (
+                    uriParser as unknown as {
+                      parse(
+                        t: string,
+                        p?: unknown,
+                        a?: number,
+                        b?: number,
+                        c?: number,
+                        u?: string,
+                      ): ReturnType<typeof uriParser.parse>;
+                    }
+                  ).parse(text, null, 0, 0, 0, uri)
+                : this.sharedContext?.parse(ext, text);
               if (tree) {
                 lazyCache = { tree, text };
                 if (lazyLibTrees) {
@@ -533,7 +546,7 @@ export class ParserService {
 
     const cached = this.documentManager.documentTrees.get(uri);
     const cachedIsFallback = Boolean((cached?.tree as XmlFallbackTree | undefined)?.__isXmlCstFallback);
-    const isWasmTreeActive = isWasmTreeActiveInFacade(cached?.tree, facade);
+    const isWasmTreeActive = isWasmTreeActiveInFacade(cached?.tree, facade, uri);
     const isCachedTreeActive = cachedIsFallback || isWasmTreeActive;
 
     if (cached && cached.text === newText && isCachedTreeActive) {
@@ -574,7 +587,18 @@ export class ParserService {
         (parser as any).setTimeoutMicros(100000);
       }
       try {
-        tree = parser.parse(newText, cached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex);
+        tree = (
+          parser as unknown as {
+            parse(
+              t: string,
+              p?: unknown,
+              a?: number,
+              b?: number,
+              c?: number,
+              u?: string,
+            ): ReturnType<NonNullable<typeof parser>["parse"]>;
+          }
+        ).parse(newText, cached.tree, edit.startIndex, edit.oldEndIndex, edit.newEndIndex, uri);
       } finally {
         if (typeof (parser as any).setTimeoutMicros === "function") {
           (parser as any).setTimeoutMicros(0);
@@ -596,7 +620,18 @@ export class ParserService {
         (parser as any).setTimeoutMicros(1000000);
       }
       try {
-        tree = parser.parse(newText);
+        tree = (
+          parser as unknown as {
+            parse(
+              t: string,
+              p?: unknown,
+              a?: number,
+              b?: number,
+              c?: number,
+              u?: string,
+            ): ReturnType<NonNullable<typeof parser>["parse"]>;
+          }
+        ).parse(newText, null, 0, 0, 0, uri);
       } finally {
         if (typeof (parser as any).setTimeoutMicros === "function") {
           (parser as any).setTimeoutMicros(0);
@@ -625,7 +660,7 @@ export class ParserService {
 
     const cached = this.documentManager.documentTrees.get(uri);
     const cachedIsFallback = Boolean((cached?.tree as XmlFallbackTree | undefined)?.__isXmlCstFallback);
-    const isCachedTreeActive = cachedIsFallback || isWasmTreeActiveInFacade(cached?.tree, facade);
+    const isCachedTreeActive = cachedIsFallback || isWasmTreeActiveInFacade(cached?.tree, facade, uri);
     if (cached && isCachedTreeActive) return cached.tree;
 
     // No cached tree — parse from current document text

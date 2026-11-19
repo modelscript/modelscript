@@ -228,7 +228,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     nodes: ["component_declaration"],
     severity: "error",
     code: 4046,
-    message: (target) => `Constant declaration '${target.text}' must be fixed.`,
+    message: (target) => `Constant '${target.text}' must be fixed but has 'fixed = false'`,
     query: (db: CodeGraph, node: u32, $: any) => {
       // Check the parent component_clause for a `constant` prefix and disallow `fixed = false`
       for (const comp of db.ast.getAncestors(node, $.component_clause)) {

@@ -194,6 +194,63 @@ function findBalancedCall(
   return null;
 }
 
+function maskCommentsAndStringsSameLen(src: string): string {
+  const out = src.split("");
+  let inStr = false;
+  let inLine = false;
+  let inBlock = false;
+  for (let i = 0; i < out.length; i++) {
+    const ch = out[i]!;
+    const next = out[i + 1] ?? "";
+    if (inLine) {
+      if (ch !== "\n" && ch !== "\r") out[i] = " ";
+      if (ch === "\n") inLine = false;
+      continue;
+    }
+    if (inBlock) {
+      if (ch === "*" && next === "/") {
+        out[i] = " ";
+        out[i + 1] = " ";
+        inBlock = false;
+        i++;
+      } else if (ch !== "\n" && ch !== "\r") {
+        out[i] = " ";
+      }
+      continue;
+    }
+    if (inStr) {
+      if (ch === "\\") {
+        out[i] = " ";
+        if (i + 1 < out.length && out[i + 1] !== "\n" && out[i + 1] !== "\r") {
+          out[i + 1] = " ";
+          i++;
+        }
+      } else if (ch === '"') {
+        out[i] = " ";
+        inStr = false;
+      } else if (ch !== "\n" && ch !== "\r") {
+        out[i] = " ";
+      }
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      out[i] = " ";
+      out[i + 1] = " ";
+      inLine = true;
+      i++;
+    } else if (ch === "/" && next === "*") {
+      out[i] = " ";
+      out[i + 1] = " ";
+      inBlock = true;
+      i++;
+    } else if (ch === '"') {
+      out[i] = " ";
+      inStr = true;
+    }
+  }
+  return out.join("");
+}
+
 /**
  * Patch a Modelica source document to add or update CAD annotations and dynamic bindings
  * for a specific component declaration.
@@ -206,21 +263,23 @@ export function patchModelicaCadAnnotation(
     position?: [number, number, number] | undefined;
     rotation?: [number, number, number] | undefined;
     scale?: [number, number, number] | undefined;
-    bindings: DynamicBindingConfig[];
+    bindings?: DynamicBindingConfig[] | undefined;
   },
 ): { updatedSource: string; replacedRange?: { start: number; end: number } | undefined; newText?: string | undefined } {
-  // Regex to match component declaration: e.g. "BodyBox body(" or "BodyBox body;"
-  // Captures up to the semicolon or next declaration
-  const compRegex = new RegExp(`\\b${componentName}\\b([\\s\\S]*?)(;)`, "m");
-  const compMatch = compRegex.exec(source);
+  // Mask comments/strings first so identifier mentions in comments do not hijack the declaration match.
+  const masked = maskCommentsAndStringsSameLen(source);
+  const escapedName = componentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const compRegex = new RegExp(`\\b${escapedName}\\b([\\s\\S]*?)(;)`, "m");
+  const maskedMatch = compRegex.exec(masked);
 
-  if (!compMatch) {
+  if (!maskedMatch) {
     return { updatedSource: source };
   }
 
-  const compBody = compMatch[1]!;
-  const compStart = compMatch.index;
-  const compEnd = compStart + compMatch[0].length;
+  const compStart = maskedMatch.index;
+  const compEnd = compStart + maskedMatch[0].length;
+  const bodyRelStart = maskedMatch[0].indexOf(maskedMatch[1]!);
+  const compBody = source.slice(compStart + bodyRelStart, compEnd - 1);
 
   const annotCall = findBalancedCall(compBody, "annotation");
   if (annotCall) {
@@ -252,13 +311,14 @@ export function patchModelicaCadAnnotation(
       const dynRotMatch = existingCadInner.match(/dynamicRotation\s*=\s*"([^"]+)"/);
       const dynScaleMatch = existingCadInner.match(/dynamicScale\s*=\s*"([^"]+)"/);
       const dynDefMatch = existingCadInner.match(/dynamicDeformation\s*=\s*"([^"]+)"/);
+      const effectiveBindings = config.bindings !== undefined ? config.bindings : parseCadBindings(existingCadInner);
 
       const newCadStr = serializeCadAnnotation({
         uri: existingUri,
         position: existingPos,
         rotation: existingRot,
         scale: existingScale,
-        dynamicBindings: config.bindings,
+        dynamicBindings: effectiveBindings,
         dynamicPosition: dynPosMatch ? dynPosMatch[1] : undefined,
         dynamicRotation: dynRotMatch ? dynRotMatch[1] : undefined,
         dynamicScale: dynScaleMatch ? dynScaleMatch[1] : undefined,
@@ -269,15 +329,16 @@ export function patchModelicaCadAnnotation(
         annotCall.inner.slice(0, cadCall.callStart) + newCadStr + annotCall.inner.slice(cadCall.callEnd);
       const updatedCompBody =
         compBody.slice(0, annotCall.innerStart) + updatedAnnotInner + compBody.slice(annotCall.innerEnd);
-      const updatedSource =
-        source.slice(0, compStart + compMatch[0].indexOf(compBody)) + updatedCompBody + source.slice(compEnd - 1);
+      const bodyStart = compStart + bodyRelStart;
+      const bodyEnd = compEnd - 1;
+      const updatedSource = source.slice(0, bodyStart) + updatedCompBody + source.slice(bodyEnd);
 
       return {
         updatedSource,
         replacedRange: { start: compStart, end: compEnd },
         newText: updatedSource.slice(
           compStart,
-          compStart + compMatch[0].length - compBody.length + updatedCompBody.length,
+          compStart + maskedMatch[0].length - compBody.length + updatedCompBody.length,
         ),
       };
     }
@@ -294,7 +355,7 @@ export function patchModelicaCadAnnotation(
     const existingContent = annotCall.inner.trim();
     const updatedAnnot = `annotation(${existingContent ? existingContent + ",\n  " : ""}${newCadStr})`;
     const updatedCompBody = compBody.slice(0, annotCall.callStart) + updatedAnnot + compBody.slice(annotCall.callEnd);
-    const bodyStart = compStart + compMatch[0].indexOf(compBody);
+    const bodyStart = compStart + bodyRelStart;
     const bodyEnd = compEnd - 1;
     const updatedSource = source.slice(0, bodyStart) + updatedCompBody + source.slice(bodyEnd);
 

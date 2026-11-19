@@ -806,7 +806,7 @@ end DoublePendulum3D;
       const forceVec = cadComponents.find((c) => c.name === "forceVec");
       assert.ok(forceVec, "Must extract SignalArrow 'forceVec'");
       assert.strictEqual(forceVec.cad.uri, "procedural://msl/arrow");
-      assert.strictEqual(forceVec.defaults?.vectorCoordinates, true);
+      assert.ok(Array.isArray(forceVec.defaults?.vectorCoordinates), "vectorCoordinates default must be a Vec3 tuple");
       assert.ok(
         forceVec.dynamicBindings?.some((b) => b.property === "position" && b.variable === "forceVec.frame_a.r_0[1]"),
       );
@@ -831,7 +831,10 @@ end DoublePendulum3D;
       const spring = cadComponents.find((c) => c.name === "damperSpring");
       assert.ok(spring && spring.proceduralMesh, "Must extract Forces.Spring 'damperSpring'");
       assert.strictEqual(spring.cad.uri, "procedural://msl/spring");
-      assert.strictEqual(spring.defaults?.vectorCoordinates, true);
+      assert.ok(
+        Array.isArray(spring.defaults?.vectorCoordinates),
+        "Spring vectorCoordinates default must be a Vec3 tuple",
+      );
 
       const rev = cadComponents.find((c) => c.name === "rev");
       assert.ok(rev && rev.proceduralMesh, "Must extract Joints.Revolute 'rev'");

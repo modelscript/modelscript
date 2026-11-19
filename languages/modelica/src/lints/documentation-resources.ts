@@ -26,7 +26,7 @@ export const modelicaDocResourceLints: Record<string, CompilerLint> = {
    */
   classMissingDescription: {
     nodes: ["long_class_specifier"],
-    severity: "warning",
+    severity: "info",
     code: 4130,
     message: (target) => {
       const parts = target.text.split(" ");
@@ -153,10 +153,14 @@ export const modelicaDocResourceLints: Record<string, CompilerLint> = {
     },
     query: (db: CodeGraph, node: u32) => {
       if (
-        db.ast.startsWith(node, '"C:') ||
-        db.ast.startsWith(node, '"c:') ||
-        db.ast.startsWith(node, '"D:') ||
-        db.ast.startsWith(node, '"d:') ||
+        db.ast.startsWith(node, '"C:\\') ||
+        db.ast.startsWith(node, '"C:/') ||
+        db.ast.startsWith(node, '"c:\\') ||
+        db.ast.startsWith(node, '"c:/') ||
+        db.ast.startsWith(node, '"D:\\') ||
+        db.ast.startsWith(node, '"D:/') ||
+        db.ast.startsWith(node, '"d:\\') ||
+        db.ast.startsWith(node, '"d:/') ||
         db.ast.startsWith(node, '"/home/') ||
         db.ast.startsWith(node, '"/usr/') ||
         db.ast.startsWith(node, '"/opt/') ||
@@ -172,7 +176,7 @@ export const modelicaDocResourceLints: Record<string, CompilerLint> = {
    */
   brokenModelicaUri: {
     nodes: ["string_literal"],
-    severity: "error",
+    severity: "warning",
     code: 4134,
     message: (target) => {
       return "Broken 'modelica://' reference: '" + target.text + "' does not resolve to an existing class or model.";

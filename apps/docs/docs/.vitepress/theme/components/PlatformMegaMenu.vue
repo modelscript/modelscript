@@ -24,9 +24,9 @@ const columns = computed<MegaMenuColumn[]>(() => [
     label: "Workbenches & Surfaces",
     items: [
       {
-        name: "Morsel",
+        name: "Ansatz",
         tagline: "Zero-install drafting, schematics & live simulator",
-        href: `${ansatzOrigin.value}/morsel`,
+        href: `${ansatzOrigin.value}/editor`,
         icon: "play",
         accent: "#22d3ee",
         target: "_blank",

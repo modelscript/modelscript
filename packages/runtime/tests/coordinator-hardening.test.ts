@@ -628,6 +628,13 @@ describe("Semantic Theory Coordinator Hardening & Soundness", () => {
       const validItem = (transformer as any).conflicts.get("c_valid");
       assert.strictEqual(validItem.isResolved, true);
       assert.strictEqual(validItem.resolved, 70);
+
+      // Weighted reconciliation via PhysicsSimplexReconciler selects the higher-weight proposal inside bounds
+      transformer.recordConflict("c_weighted", 20, 80, "MassReconciliation");
+      transformer.resolveConflictPhysics("c_weighted", 0, 100, { sourceWeight: 5, targetWeight: 1 });
+      const weightedItem = (transformer as any).conflicts.get("c_weighted");
+      assert.strictEqual(weightedItem.isResolved, true);
+      assert.strictEqual(weightedItem.resolved, 20);
     });
   });
 

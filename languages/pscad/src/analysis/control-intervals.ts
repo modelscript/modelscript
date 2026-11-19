@@ -54,8 +54,8 @@ function param(p: Record<string, number>, keys: string[], dflt: number): number 
 
 /** Output limits of a limiter-like block (`limit`, `pi`, `integral`). */
 export function outputLimits(b: Pick<EmtControlBlock, "params">): { lo: number; hi: number } {
-  const lo = param(b.params, ["min", "LL", "Min"], -Infinity);
-  const hi = param(b.params, ["max", "UL", "Max"], Infinity);
+  const lo = param(b.params, ["min", "LL", "Min", "LLim"], -Infinity);
+  const hi = param(b.params, ["max", "UL", "Max", "ULim"], Infinity);
   return { lo, hi };
 }
 
@@ -245,7 +245,10 @@ export function analyzeControlZonotopes(blocks: readonly EmtControlBlock[]): Map
       } else if (b.kind === "sum") {
         nextAff = addWeightedAffines(inAff.map((a, idx) => ({ k: sumSign(b.params, idx), a })));
       } else if (b.kind === "tdelay" || b.kind === "zminusone" || b.kind === "trans_filt") {
-        nextAff = b.inputs.length === 0 ? ZERO_AFFINE : (inAff[0] ?? null);
+        // Soundness: x(t - tau) is NOT instantaneously identical to x(t), so propagating the
+        // same noise symbols would unsoundly prove x(t) - x(t - tau) = [0, 0]. Allocate a
+        // fresh independent noise symbol preserving the exact [lo, hi] range enclosure.
+        nextAff = b.inputs.length === 0 ? ZERO_AFFINE : intervalToAffine(fresh, b.id);
       } else if (b.kind === "limit") {
         const uAff = b.inputs.length === 0 ? ZERO_AFFINE : (inAff[0] ?? null);
         if (uAff) {

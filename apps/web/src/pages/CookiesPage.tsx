@@ -89,7 +89,7 @@ function classifyStorageKey(key: string): { essential: boolean; purpose: string 
     return { essential: false, purpose: "Tab-scoped post dwell-time view deduplication" };
   }
   if (key.startsWith("modelscript.sim_baseline")) {
-    return { essential: false, purpose: "Morsel simulation trajectory comparison baseline" };
+    return { essential: false, purpose: "Ansatz simulation trajectory comparison baseline" };
   }
   if (key === "modelscript.artifact_scratch" || key.startsWith("modelscript.pkg.")) {
     return { essential: false, purpose: "Local unsaved model/package scratchpad draft" };
@@ -378,7 +378,7 @@ export default function CookiesPage() {
               </td>
               <td>Local Drafts</td>
               <td>User Controlled</td>
-              <td>Preserves unsaved Modelica/SysML/ModelScript code drafts in Morsel and Studio.</td>
+              <td>Preserves unsaved Modelica/SysML/ModelScript code drafts in Ansatz and Studio.</td>
             </tr>
             <tr>
               <td>
@@ -426,8 +426,8 @@ export default function CookiesPage() {
               </td>
               <td>Current Tab Only</td>
               <td>
-                Holds reference simulation trajectories when overlaying and comparing parameter sweeps in the Morsel
-                plotter.
+                Holds reference simulation trajectories when overlaying and comparing parameter sweeps in the Ansatz
+                Editor plotter.
               </td>
             </tr>
             <tr>

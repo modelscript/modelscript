@@ -167,7 +167,7 @@ export function runPscadSimulationPipeline(options: PscadSimulationPipelineOptio
   const project = parsePscx(options.documentText);
   const netlist = extractEmtNetlist(project);
   const circuit = netlistToEmtCircuit(netlist);
-  const diagnostics = lintPscx(project);
+  const diagnostics = lintPscx(project, { netlist });
   const coverage = computeSimulationCoverage(project, netlist);
   const simulationReport: PscadSimulationReport = {
     solver: "none",
@@ -455,6 +455,42 @@ export const pscadLanguage = language({
       light: "./assets/pscad/icon-light.png",
       dark: "./assets/pscad/icon-dark.png",
     },
+  },
+  ui: {
+    panels: [
+      {
+        id: "pscadEditor",
+        viewType: "modelscript.pscadEditor",
+        title: "PSCAD EMT Schematic Studio",
+        shortTitle: "PSCAD",
+        selector: ["*.pscx", "*.pslx"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/PscadPanel.tsx",
+        artifactViewTypes: ["pscad", "pscx", "pslx"],
+      },
+    ],
+    stencils: [
+      { label: "AC Source", className: "master:source_3", snippet: "" },
+      { label: "Resistor", className: "master:resistor", snippet: "" },
+      { label: "Inductor", className: "master:inductor", snippet: "" },
+      { label: "Capacitor", className: "master:capacitor", snippet: "" },
+      { label: "Ground", className: "master:ground", snippet: "" },
+      { label: "Breaker", className: "master:breaker3", snippet: "" },
+      { label: "Fault", className: "master:tpflt", snippet: "" },
+      { label: "Transformer", className: "master:xfmr-3p2w", snippet: "" },
+      { label: "PI Line", className: "master:pi_line", snippet: "" },
+      { label: "Gain", className: "master:gain", snippet: "" },
+      { label: "PI Control", className: "master:pi_ctlr", snippet: "" },
+      { label: "PGB Output", className: "master:pgb", snippet: "" },
+    ],
+    simulationCards: [
+      {
+        id: "ieee2800",
+        title: "IEEE 2800-2022 IBR Verification",
+        entry: "./src/ui/Ieee2800Card.tsx",
+      },
+    ],
   },
   polyglot: pscadPolyglotConfig,
   rules: {

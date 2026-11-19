@@ -92,7 +92,7 @@ Large language models struggle with physical engineering when left to guess diff
 
 ## Ready to Get Started?
 
-- **[Installation](./installation.md)** — Explore zero-install Morsel and Studio, or set up the VS Code extension, `msx` CLI, or `@modelscript/mcp` AI agent server.
+- **[Installation](./installation.md)** — Explore zero-install Ansatz and Studio, or set up the VS Code extension, `msx` CLI, or `@modelscript/mcp` AI agent server.
 - **[Getting Started Tutorial](./getting-started.md)** — Build, verify, bind to 3D CAD, simulate, and export your first end-to-end computable digital thread.
 - **[AI Agents & MCP Workflows](./ai-agents.md)** — Connect Claude Code, Cursor, or custom LLM orchestrators to the deterministic compiler and solver loop.
 - **[CI/CD & GitHub Actions](./ci-cd.md)** — Gate pull requests with polyglot linting, SARIF formal verification reports, visual schematic diffs, and FDA/ISO compliance dossiers.

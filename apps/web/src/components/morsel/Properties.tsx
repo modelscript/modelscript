@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  applyLivePropertyIconSubstitutions,
+  buildPropertyContextValues,
   ConflictManager,
   evaluatePropertyPredicate,
+  getVisiblePropertyTabs,
+  resolveActivePropertyTabId,
   validatePropertyValue,
   type PropertyChoice,
   type PropertyConflict,
   type PropertyFieldConfig,
   type PropertyGroupConfig,
-  type PropertyTabConfig,
 } from "@modelscript/diagram";
 import {
   ChevronRightIcon,
@@ -323,6 +326,8 @@ function ParameterRow({
   const onParameterChangeRef = useRef(onParameterChange);
   onParameterChangeRef.current = onParameterChange;
 
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (value !== localValue && value !== lastCommittedRef.current) {
       setLocalValue(value);
@@ -340,12 +345,19 @@ function ParameterRow({
 
     setIsSaving(true);
     const timeoutId = setTimeout(() => {
+      debounceTimerRef.current = null;
       lastCommittedRef.current = localValue;
       onParameterChangeRef.current?.(parameter.name, localValue);
       setIsSaving(false);
     }, 200);
+    debounceTimerRef.current = timeoutId;
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+      if (debounceTimerRef.current === timeoutId) {
+        debounceTimerRef.current = null;
+      }
+    };
   }, [localValue, parameter.name, isBoolean]);
 
   const isNumeric = !isBoolean && !isNaN(parseFloat(localValue));
@@ -548,7 +560,13 @@ function ParameterRow({
                 }}
                 onKeyUp={(e) => e.stopPropagation()}
                 onBlur={() => {
-                  if (localValue !== value && localValue !== "-" && onParameterChange) {
+                  if (debounceTimerRef.current !== null) {
+                    clearTimeout(debounceTimerRef.current);
+                    debounceTimerRef.current = null;
+                  }
+                  if (localValue !== lastCommittedRef.current && localValue !== "-" && onParameterChange) {
+                    lastCommittedRef.current = localValue;
+                    setIsSaving(false);
                     onParameterChange(parameter.name, localValue);
                   }
                 }}
@@ -665,9 +683,11 @@ function SchemaFieldRow({
     }
   }, [currentValue, field.defaultValue]);
 
+  const validationErr = validatePropertyValue(field, localVal, contextValues);
+
   useEffect(() => {
     if (field.kind === "boolean") return;
-    if (localVal === "-" || localVal === lastCommittedRef.current) {
+    if (localVal === "-" || localVal === lastCommittedRef.current || validationErr) {
       setIsSaving(false);
       return;
     }
@@ -679,9 +699,7 @@ function SchemaFieldRow({
       setIsSaving(false);
     }, 200);
     return () => clearTimeout(timeout);
-  }, [localVal, field.key, field.kind]);
-
-  const validationErr = validatePropertyValue(field, localVal, contextValues);
+  }, [localVal, field.key, field.kind, validationErr]);
   const unitStr = field.unit ? formatUnit(field.unit) : undefined;
   const defaultValueStr =
     field.defaultValue !== undefined && field.defaultValue !== null ? String(field.defaultValue) : "";
@@ -1004,7 +1022,7 @@ function SchemaFieldRow({
                   }
                 }}
                 onBlur={() => {
-                  if (localVal !== "-" && localVal !== lastCommittedRef.current) {
+                  if (localVal !== "-" && localVal !== lastCommittedRef.current && !validationErr) {
                     lastCommittedRef.current = localVal;
                     onParameterChangeRef.current?.(field.key, localVal);
                     setIsSaving(false);
@@ -1190,28 +1208,6 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
     setDescriptionEditing(false);
   }, [properties?.name, properties?.description]);
 
-  useEffect(() => {
-    if (!localName || localName === lastCommittedNameRef.current) return;
-
-    const timeoutId = setTimeout(() => {
-      lastCommittedNameRef.current = localName;
-      onNameChangeRef.current?.(localName);
-    }, 60);
-
-    return () => clearTimeout(timeoutId);
-  }, [localName]);
-
-  useEffect(() => {
-    if (localDescription === lastCommittedDescRef.current) return;
-
-    const timeoutId = setTimeout(() => {
-      lastCommittedDescRef.current = localDescription;
-      onDescriptionChangeRef.current?.(localDescription);
-    }, 60);
-
-    return () => clearTimeout(timeoutId);
-  }, [localDescription]);
-
   // Optimistic local values map with 3-way bidirectional conflict management
   const conflictMgrRef = useRef<ConflictManager>(new ConflictManager());
   const [, setConflictVersion] = useState(0);
@@ -1264,34 +1260,29 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
   );
 
   // Live icon SVG that immediately updates matching parameter labels in the icon preview
-  const liveIconSvg = useMemo(() => {
-    const rawSvg = properties?.iconSvg;
-    const propName = properties?.name;
-    if (!rawSvg) return "";
-    let svg = rawSvg;
-    for (const [key, val] of Object.entries(localValues)) {
-      if (val !== undefined && val !== "") {
-        const regex = new RegExp(`(<text[^>]*>\\s*${key}\\s*=\\s*)([^<]+)(</text>)`, "gi");
-        svg = svg.replace(regex, `$1${val}$3`);
-      }
-    }
-    if (localName && propName) {
-      const nameRegex = new RegExp(`(<text[^>]*>\\s*)${propName}(\\s*</text>)`, "gi");
-      svg = svg.replace(nameRegex, `$1${localName}$2`);
-    }
-    return svg;
-  }, [properties?.iconSvg, properties?.name, localValues, localName]);
+  const liveIconSvg = useMemo(
+    () =>
+      applyLivePropertyIconSubstitutions(
+        properties?.iconSvg,
+        buildPropertyContextValues(properties, localValues),
+        localName,
+        properties?.name,
+      ),
+    [properties, localValues, localName],
+  );
 
   // Schema tabs management
   const schema = properties?.schema;
-  const visibleTabs = (schema?.tabs || []).filter((t: PropertyTabConfig) =>
-    evaluatePropertyPredicate(t.visibleIf, localValues),
+  const visibleTabs = useMemo(
+    () => getVisiblePropertyTabs(schema, buildPropertyContextValues(properties, localValues)),
+    [schema, properties, localValues],
   );
   const [activeTabId, setActiveTabId] = useState<string>(visibleTabs[0]?.id || "");
 
   useEffect(() => {
-    if (visibleTabs.length > 0 && !visibleTabs.some((t: PropertyTabConfig) => t.id === activeTabId)) {
-      setActiveTabId(visibleTabs[0]!.id);
+    const nextTabId = resolveActivePropertyTabId(visibleTabs, activeTabId);
+    if (nextTabId && nextTabId !== activeTabId) {
+      setActiveTabId(nextTabId);
     }
   }, [visibleTabs, activeTabId]);
 

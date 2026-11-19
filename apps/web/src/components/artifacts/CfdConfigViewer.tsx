@@ -383,10 +383,10 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
                 });
                 const resolvedId = artifactId ?? viewConfig.artifactId;
                 const fromArtifact = resolvedId ? `?fromArtifact=${resolvedId}` : "";
-                navigate(`/morsel${fromArtifact}#m=${hash}`);
+                navigate(`/editor${fromArtifact}#m=${hash}`);
               }}
             >
-              Open in Morsel
+              Open in Ansatz
             </Button>
           )}
         </Box>

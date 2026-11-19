@@ -12,6 +12,7 @@ import {
   type SymbolId,
   UnifiedWorkspace,
   Variability,
+  VarType,
 } from "@modelscript/runtime";
 import { Cst, FieldId, type SyntaxNode } from "../../../src-gen/bindings.js";
 import { ModelicaErrorCode } from "../../errors.js";
@@ -669,13 +670,18 @@ export function patchIncremental(
           if (isSignedAsciiNumberText(valStr)) {
             const numVal = parseFloat(valStr);
             const oldVal = dae.getVarStartValue(targetVarIdx);
-            const litId = dae.addRealLiteral(numVal);
+            const isIntVar = dae.getVarType(targetVarIdx) === VarType.Integer;
+            if (isIntVar && ((dae as any).namedArrayShapes?.size > 0 || (dae as any).arrayElementMap?.size > 0)) {
+              return false;
+            }
+            const nextVal = isIntVar ? Math.trunc(numVal) : numVal;
+            const litId = isIntVar ? dae.addIntLiteral(nextVal) : dae.addRealLiteral(nextVal);
             dae.setVarExpression(targetVarIdx, litId);
-            dae.setVarStartValue(targetVarIdx, numVal);
+            dae.setVarStartValue(targetVarIdx, nextVal);
             if (curDelta && curDelta !== 0) {
               dae.shiftSourceRanges(range.endOffset, curDelta);
             }
-            if (oldVal !== numVal) {
+            if (oldVal !== nextVal) {
               foldTargetedParamEquations(dae, baseName, db, rootClassId, flattener.options.omcCompatibility);
             }
             continue;
@@ -718,6 +724,12 @@ export function patchIncremental(
               continue;
             }
           }
+        }
+
+        if (modNode) {
+          // Modification present (e.g. min, max, fixed, nominal) without start= or value = edit:
+          // fall back to full structural elaboration so attribute changes are not swallowed.
+          return false;
         }
 
         if (newName && (baseName === newName || targetVarIdx >= 0)) {

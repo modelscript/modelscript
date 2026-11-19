@@ -312,9 +312,11 @@ end X;
         "attachArtifactToComposer must check if existingArtifactIds.size >= 4 for short posts",
       );
       assert.ok(
-        notebookStateSrc.includes("Short posts are limited to a maximum of 4 morsels") ||
+        notebookStateSrc.includes("Short posts are limited to a maximum of 4 models") ||
+          notebookStateSrc.includes("Short posts are limited to a maximum of 4 ansatzes") ||
+          notebookStateSrc.includes("Short posts are limited to a maximum of 4 morsels") ||
           notebookStateSrc.includes("Short posts are limited to a maximum of 4 artifacts"),
-        "attachArtifactToComposer must notify user when 4 morsel limit is reached",
+        "attachArtifactToComposer must notify user when 4 model limit is reached",
       );
     });
 

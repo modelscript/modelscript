@@ -42,6 +42,33 @@ export const psseLanguage = language({
       dark: "./assets/psse/icon-dark.png",
     },
   },
+  ui: {
+    panels: [
+      {
+        id: "rawEditor",
+        viewType: "modelscript.rawEditor",
+        title: "PSS/E Grid & Single-Line Diagram (SLD) Editor",
+        shortTitle: "Grid & SLD",
+        selector: ["*.raw"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/PssePanel.tsx",
+        artifactViewTypes: ["psse", "raw", "powerflow", "sld"],
+        openCommand: {
+          id: "modelscript.openRawWorkbench",
+          title: "Open PSS/E Grid Workbench",
+          icon: "$(circuit-board)",
+        },
+      },
+    ],
+    stencils: [
+      { label: "Bus Record", snippet: "   99, 'BUS_NEW     ', 138.0000,1,   1,   1,   1,1.00000,   0.0000\n" },
+      {
+        label: "Load Record",
+        snippet: "   99,'1 ',1,   1,   1,    50.000,    15.000,     0.000,     0.000,     0.000,     0.000,   1,1,0\n",
+      },
+    ],
+  },
 
   // Surgical writeback for cell and attribute mutations
   writeback: (ctx) => {
@@ -352,6 +379,21 @@ export const psseLanguage = language({
             return db.childrenOf(self.id).map((c) => c.id);
           },
           lint__psseGridValidity: (db: QueryDB, self: SymbolEntry) => {
+            const fileUri =
+              (self as unknown as { file?: string; uri?: string }).file ??
+              (self as unknown as { uri?: string }).uri ??
+              "";
+            const lowerUri = fileUri.toLowerCase();
+            if (
+              lowerUri.endsWith(".dyr") ||
+              lowerUri.endsWith(".seq") ||
+              lowerUri.endsWith(".con") ||
+              lowerUri.endsWith(".mon") ||
+              lowerUri.endsWith(".sub") ||
+              lowerUri.endsWith(".idv")
+            ) {
+              return null;
+            }
             const text = (
               db as unknown as {
                 cstText?: (start?: number, end?: number, entry?: SymbolEntry) => string | null;
@@ -359,7 +401,7 @@ export const psseLanguage = language({
             ).cstText?.(self.startOffset, self.endOffset, self);
             if (!text) return null;
             const parsed = parseRaw(text);
-            const diags = lintPsse(parsed);
+            const diags = lintPsse(parsed, { tier: "fast" });
             if (diags.length === 0) return null;
             return diags.map((d) => ({
               severity: d.severity,

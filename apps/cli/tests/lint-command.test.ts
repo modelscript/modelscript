@@ -13,6 +13,7 @@ async function runLintJson(args: {
   language?: string;
   profile?: "DL" | "EL";
   strict?: boolean;
+  formal?: boolean;
 }): Promise<{ diags: any[]; exitCode: number | undefined }> {
   const logs: string[] = [];
   const origLog = console.log;
@@ -411,5 +412,87 @@ TRIP_ERR,08:10:00,08:10:30,STOP_A,1
       gtfsDiags.some((d) => d.code === "M2002"),
       `Expected M2002 route not found in GTFS, got ${JSON.stringify(gtfsDiags)}`,
     );
+  });
+
+  it("runs deep formal verification (`msx lint --formal`) on SysML v2 models to detect reachable #unsafe states (S7001)", async () => {
+    const unsafeSmFile = path.join(scratchDir, "UnsafeLandingGear.sysml");
+    fs.writeFileSync(
+      unsafeSmFile,
+      `package LandingGearSafety {
+  metadata def Unsafe;
+  state def GearController {
+    entry; then retracted;
+    state retracted;
+    state deploying;
+    #unsafe state jammed;
+
+    transition t1 first retracted then deploying;
+    transition t2 first deploying then jammed;
+  }
+}`,
+      "utf-8",
+    );
+
+    const { diags: standardDiags } = await runLintJson({ path: unsafeSmFile, formal: false });
+    assert.ok(
+      !standardDiags.some((d) => d.code === "S7001"),
+      `Did not expect S7001 without --formal, got ${JSON.stringify(standardDiags)}`,
+    );
+
+    const { diags: formalDiags, exitCode } = await runLintJson({ path: unsafeSmFile, formal: true });
+    assert.strictEqual(exitCode, 1);
+    assert.ok(
+      formalDiags.some((d) => d.code === "S7001" && d.lintName === "hierarchical-pdr-unsafe-state"),
+      `Expected S7001 reachable #unsafe state with --formal, got ${JSON.stringify(formalDiags)}`,
+    );
+  });
+
+  it("checks multi-file SysML v2 + Modelica @twin correspondence and reports S4080, S4081, and S4083", async () => {
+    const twinDir = path.join(scratchDir, "tgg_twin_check");
+    fs.mkdirSync(twinDir, { recursive: true });
+
+    const sysmlTwinFile = path.join(twinDir, "PumpArchitecture.sysml");
+    fs.writeFileSync(
+      sysmlTwinFile,
+      `package PumpArchitecture {
+  private import ScalarValues::*;
+  metadata def twin {
+    attribute target : String;
+  }
+  port def FluidPort;
+
+  part def CentrifugalPump {
+    @twin { target = "Modelica::DriftedPump"; }
+    attribute flowRate : Real = 10.0;
+    attribute activeMode : Boolean = true;
+    port inlet : FluidPort;
+    port outlet : FluidPort;
+  }
+
+  part def OrphanActuator {
+    @twin { target = "Modelica::NonExistentActuator"; }
+    attribute force : Real = 50.0;
+  }
+}`,
+      "utf-8",
+    );
+
+    const moTwinFile = path.join(twinDir, "DriftedPump.mo");
+    fs.writeFileSync(
+      moTwinFile,
+      `model DriftedPump
+  parameter Real flowRate = 10.0;
+  parameter String activeMode = "auto";
+equation
+end DriftedPump;`,
+      "utf-8",
+    );
+
+    const { diags, exitCode } = await runLintJson({ path: sysmlTwinFile, paths: [moTwinFile] });
+    assert.strictEqual(exitCode, 1);
+    const codes = new Set(diags.map((d) => d.code));
+    assert.ok(codes.has("S4080"), `Expected S4080 missing counterpart port in ${JSON.stringify(diags)}`);
+    assert.ok(codes.has("S4081"), `Expected S4081 parameter/port type mismatch in ${JSON.stringify(diags)}`);
+    assert.ok(codes.has("S4083"), `Expected S4083 unresolved @twin target in ${JSON.stringify(diags)}`);
   });
 });

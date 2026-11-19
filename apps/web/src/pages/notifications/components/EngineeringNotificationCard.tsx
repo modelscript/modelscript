@@ -86,7 +86,7 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
     if (isSimulation || isSimFailed) {
       const targetModel = meta.name;
       if (targetModel) {
-        navigate(`/morsel?model=${encodeURIComponent(targetModel)}`);
+        navigate(`/editor?model=${encodeURIComponent(targetModel)}`);
       } else {
         navigate(meta.jobId || notif.job_id ? `/jobs/${meta.jobId || notif.job_id}` : "/jobs");
       }
@@ -445,10 +445,10 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                   onClick={(e) => {
                     e.stopPropagation();
                     if (!notif.read) onMarkRead?.(notif.id);
-                    navigate(meta.name ? `/morsel?model=${encodeURIComponent(meta.name)}` : "/morsel");
+                    navigate(meta.name ? `/editor?model=${encodeURIComponent(meta.name)}` : "/editor");
                   }}
                 >
-                  Open in Morsel
+                  Open in Ansatz
                 </Button>
                 {meta.jobId && (
                   <Button
@@ -487,10 +487,10 @@ export const EngineeringNotificationCard: React.FC<EngineeringNotificationCardPr
                   onClick={(e) => {
                     e.stopPropagation();
                     if (!notif.read) onMarkRead?.(notif.id);
-                    navigate(meta.name ? `/morsel?model=${encodeURIComponent(meta.name)}` : "/morsel");
+                    navigate(meta.name ? `/editor?model=${encodeURIComponent(meta.name)}` : "/editor");
                   }}
                 >
-                  Open in Morsel
+                  Open in Ansatz
                 </Button>
               </>
             )}

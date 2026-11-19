@@ -1,7 +1,6 @@
 // name: DimCyclic4
 // keywords:
 // status: incorrect
-// xfail:    true
 //
 //
 

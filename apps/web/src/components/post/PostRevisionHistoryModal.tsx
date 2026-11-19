@@ -364,7 +364,7 @@ export const PostRevisionHistoryModal: React.FC<PostRevisionHistoryModalProps> =
                   )}
                   {currentRev.artifact_view_id && (
                     <span>
-                      <strong>Attached Morsel:</strong> #{currentRev.artifact_view_id}
+                      <strong>Attached Model:</strong> #{currentRev.artifact_view_id}
                     </span>
                   )}
                 </Box>

@@ -59,8 +59,8 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
       "Sidebar.tsx must render MorselIcon or AnsatzSketchIcon in split button",
     );
     assert.ok(
-      sidebarSrc.includes('title="Morsel"') || sidebarSrc.includes('title="Ansatz Sketch"'),
-      "Sidebar.tsx split button must have title='Morsel'",
+      sidebarSrc.includes('title="Ansatz"') || sidebarSrc.includes('title="Morsel"'),
+      "Sidebar.tsx split button must have title='Ansatz'",
     );
   });
 
@@ -89,20 +89,21 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
       "PlaygroundNavbar.tsx must import MorselIcon, AnsatzSketchIcon or CodeSquareIcon",
     );
     assert.ok(
-      navbarSrc.includes("Morsel") ||
+      navbarSrc.includes("Ansatz") ||
+        navbarSrc.includes("Morsel") ||
         (navbarSrc.includes("AnsatzSketchIcon") && navbarSrc.includes("Sketch")) ||
         navbarSrc.includes("<CodeSquareIcon size={14} /> Playground"),
-      "PlaygroundNavbar.tsx must render blueprint / Morsel icon inside brand Badge",
+      "PlaygroundNavbar.tsx must render blueprint / Ansatz icon inside brand Badge",
     );
   });
 
-  it("rebrands /playground to ModelScript Morsel with authentic brand icon", () => {
+  it("rebrands /editor to Ansatz with authentic brand icon", () => {
     const navbarPath = path.resolve(import.meta.dirname, "../src/pages/playground/components/PlaygroundNavbar.tsx");
     const navbarSrc = fs.readFileSync(navbarPath, "utf-8");
     const pagePath = path.resolve(import.meta.dirname, "../src/pages/PlaygroundPage.tsx");
     const pageSrc = fs.readFileSync(pagePath, "utf-8");
 
-    // PlaygroundNavbar must render authentic Morsel brand icon
+    // PlaygroundNavbar must render authentic Ansatz brand icon
     assert.ok(
       (navbarSrc.includes("/brand-dark.png") && navbarSrc.includes("/brand.png")) ||
         (navbarSrc.includes("/ms-logo-light.png") && navbarSrc.includes("/ms-logo.png")),
@@ -110,19 +111,20 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
     );
     assert.ok(!navbarSrc.includes("AnsatzMark"), "PlaygroundNavbar.tsx must not render legacy AnsatzMark");
     assert.ok(
-      navbarSrc.includes('title="Morsel"') ||
+      navbarSrc.includes('title="Ansatz"') ||
+        navbarSrc.includes('title="Morsel"') ||
         navbarSrc.includes('title="ModelScript Playground') ||
         navbarSrc.includes("Ansatz Sketch"),
-      "PlaygroundNavbar.tsx BrandLink must have title='Morsel'",
+      "PlaygroundNavbar.tsx BrandLink must have title='Ansatz'",
     );
     assert.ok(
-      navbarSrc.includes("Morsel") || navbarSrc.includes("ModelScript"),
-      "PlaygroundNavbar.tsx must render Morsel brand text",
+      navbarSrc.includes("Ansatz") || navbarSrc.includes("Morsel") || navbarSrc.includes("ModelScript"),
+      "PlaygroundNavbar.tsx must render Ansatz brand text",
     );
 
-    // PlaygroundPage must use Morsel / Playground title
+    // PlaygroundPage must use Ansatz title
     assert.ok(
-      pageSrc.includes('"Morsel"') || pageSrc.includes("ModelScript Playground"),
+      pageSrc.includes('"Ansatz"') || pageSrc.includes('"Morsel"') || pageSrc.includes("ModelScript Playground"),
       "PlaygroundPage.tsx must set page title",
     );
   });
@@ -142,7 +144,7 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
     );
   });
 
-  it("renders authentic Morsel header brand icon in Morsel loading modal", () => {
+  it("renders authentic Ansatz header brand icon in loading modal", () => {
     const modalsPath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselModals.tsx");
     const modalsSrc = fs.readFileSync(modalsPath, "utf-8");
     const loaderPath = path.resolve(import.meta.dirname, "../src/components/morsel/MorselLoadingScreen.tsx");
@@ -158,7 +160,7 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
       loaderSrc.includes('data-testid="morsel-brand-icon"'),
       "MorselLoadingScreen.tsx loader must provide data-testid='morsel-brand-icon'",
     );
-    assert.ok(loaderSrc.includes('alt="Morsel"'), "MorselLoadingScreen.tsx loader must have alt='Morsel'");
+    assert.ok(loaderSrc.includes('alt="Ansatz"'), "MorselLoadingScreen.tsx loader must have alt='Ansatz'");
     assert.ok(
       !loaderSrc.includes('alt="ModelScript"'),
       "MorselLoadingScreen.tsx loader must not use ModelScript alt text",

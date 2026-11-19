@@ -2441,8 +2441,15 @@ function renderCurrentIconSvg(size: f32): u32 {
         let largeArc: i32 = Math.abs(deltaAngle) > 180.0 ? 1 : 0;
         let sweep: i32 = deltaAngle >= 0.0 ? 0 : 1;
 
+        const effectiveClosure: u8 =
+          slot.closure == CLOSURE_AUTOMATIC
+            ? slot.fillPattern != FILL_NONE
+              ? CLOSURE_RADIAL
+              : CLOSURE_NONE
+            : slot.closure;
+
         writeString('<path d="M ');
-        if (slot.closure == CLOSURE_RADIAL || slot.closure == CLOSURE_AUTOMATIC) {
+        if (effectiveClosure == CLOSURE_RADIAL) {
           writeFloat(cx, 2);
           writeByte(32);
           writeFloat(cy, 2);
@@ -2463,11 +2470,7 @@ function renderCurrentIconSvg(size: f32): u32 {
         writeFloat(xEnd, 2);
         writeByte(32);
         writeFloat(yEnd, 2);
-        if (
-          slot.closure == CLOSURE_RADIAL ||
-          slot.closure == CLOSURE_AUTOMATIC ||
-          slot.closure == CLOSURE_CHORD
-        ) {
+        if (effectiveClosure == CLOSURE_RADIAL || effectiveClosure == CLOSURE_CHORD) {
           writeString(" Z");
         }
         writeSlotFillAttr(slot, i, seq);

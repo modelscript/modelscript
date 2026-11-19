@@ -415,9 +415,9 @@ export const InboxReadingPane: React.FC<InboxReadingPaneProps> = ({
                     size="small"
                     variant="primary"
                     leadingVisual={PlayIcon}
-                    onClick={() => navigate(meta.name ? `/morsel?model=${encodeURIComponent(meta.name)}` : "/morsel")}
+                    onClick={() => navigate(meta.name ? `/editor?model=${encodeURIComponent(meta.name)}` : "/editor")}
                   >
-                    Open in Morsel
+                    Open in Ansatz
                   </Button>
                   {(meta.jobId || selectedItem.job_id) && (
                     <Button

@@ -1027,11 +1027,11 @@ export const SpacePage: React.FC = () => {
                     </Label>
                   </div>
                   <Link
-                    to={`/morsel?code=${encodeURIComponent(preset.sampleCodeSnippet.code)}`}
+                    to={`/editor?code=${encodeURIComponent(preset.sampleCodeSnippet.code)}`}
                     style={{ textDecoration: "none" }}
                   >
                     <Button size="small" variant="default" leadingVisual={PlayIcon}>
-                      Simulate in Morsel
+                      Simulate in Ansatz
                     </Button>
                   </Link>
                 </CockpitBoxHeader>
@@ -1889,7 +1889,7 @@ export const SpacePage: React.FC = () => {
                           🔍 Inspect in Split Drawer
                         </button>
                         <Link
-                          to={`/morsel?code=${encodeURIComponent(codeMatch[2] || "")}`}
+                          to={`/editor?code=${encodeURIComponent(codeMatch[2] || "")}`}
                           style={{
                             padding: "4px 10px",
                             borderRadius: "6px",
@@ -1900,7 +1900,7 @@ export const SpacePage: React.FC = () => {
                             fontWeight: 700,
                           }}
                         >
-                          ▶ Run in Morsel
+                          ▶ Run in Ansatz
                         </Link>
                       </div>
                     )}
@@ -2148,7 +2148,7 @@ export const SpacePage: React.FC = () => {
                     {inspectorTarget.code}
                   </pre>
                   <Link
-                    to={`/morsel?code=${encodeURIComponent(inspectorTarget.code)}`}
+                    to={`/editor?code=${encodeURIComponent(inspectorTarget.code)}`}
                     style={{
                       display: "inline-block",
                       marginTop: "8px",

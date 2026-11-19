@@ -129,13 +129,28 @@ class DependencyTracker {
   // Pre-allocated typed array buffer for direct symbol input tracking (zero object allocations)
   private inputBuffer: Int32Array = new Int32Array(32);
   private inputCount = 0;
+  private inputSet?: Set<SymbolId> | undefined;
 
   public queries?: QueryDependencyRecord[] | undefined;
   public byNames?: string[] | undefined;
   public domains?: LanguageDomainId[] | undefined;
 
-  /** Records a direct dependency on a symbol entry's input state without allocating any JS objects. */
+  /** Records a direct dependency on a symbol entry's input state without duplicate entries. */
   recordInput(symbolId: SymbolId): void {
+    if (this.inputSet) {
+      if (this.inputSet.has(symbolId)) return;
+      this.inputSet.add(symbolId);
+    } else {
+      for (let i = 0; i < this.inputCount; i++) {
+        if (this.inputBuffer[i] === symbolId) return;
+      }
+      if (this.inputCount >= 8) {
+        const set = new Set<SymbolId>();
+        for (let i = 0; i < this.inputCount; i++) set.add(this.inputBuffer[i]!);
+        set.add(symbolId);
+        this.inputSet = set;
+      }
+    }
     if (this.inputCount >= this.inputBuffer.length) {
       const next = new Int32Array(this.inputBuffer.length * 2);
       next.set(this.inputBuffer);
@@ -330,6 +345,11 @@ export class WasmQueryEngine {
   private byNameRevisions = new Map<string, Revision>();
   /** Snapshot of the last known name for each `SymbolId` to detect renames during `updateIndex`/`invalidate`. */
   private symbolNames = new Map<SymbolId, string>();
+  /** Structured failure records from any `lint__*` hooks that threw during `runLints`. */
+  private lintFailuresBySymbol = new Map<
+    SymbolId,
+    Array<{ symbolId: SymbolId; symbolName: string; lintName: string; message: string }>
+  >();
 
   /** Optional cross-language TGG correspondence index linking symbols across polyglot domains. */
   private correspondenceIndex?: any;
@@ -406,6 +426,38 @@ export class WasmQueryEngine {
     this.inputReverseDependencies.clear();
     this.byNameReverseDependencies.clear();
     this.queryReverseDependencies.clear();
+  }
+
+  private unlinkMemoReverseDeps(key: number, memo: Memo): void {
+    if (memo.inputs) {
+      for (let i = 0; i < memo.inputs.length; i++) {
+        const symId = memo.inputs[i]!;
+        const set = this.inputReverseDependencies.get(symId);
+        if (set) {
+          set.delete(key);
+          if (set.size === 0) this.inputReverseDependencies.delete(symId);
+        }
+      }
+    }
+    if (memo.byNames) {
+      for (const name of memo.byNames) {
+        const set = this.byNameReverseDependencies.get(name);
+        if (set) {
+          set.delete(key);
+          if (set.size === 0) this.byNameReverseDependencies.delete(name);
+        }
+      }
+    }
+    if (memo.queries) {
+      for (const q of memo.queries) {
+        const depKey = q.key ?? this.memoKey(q.queryName, q.symbolId, q.argsHash);
+        const set = this.queryReverseDependencies.get(depKey);
+        if (set) {
+          set.delete(key);
+          if (set.size === 0) this.queryReverseDependencies.delete(depKey);
+        }
+      }
+    }
   }
 
   /**
@@ -1045,8 +1097,27 @@ export class WasmQueryEngine {
     }
   }
 
+  /** Returns any structured failure records collected from throwing `lint__*` hooks. */
+  public getLintFailures(): Array<{ symbolId: SymbolId; symbolName: string; lintName: string; message: string }> {
+    const out: Array<{ symbolId: SymbolId; symbolName: string; lintName: string; message: string }> = [];
+    for (const items of this.lintFailuresBySymbol.values()) {
+      out.push(...items);
+    }
+    return out;
+  }
+
+  /** Clears recorded lint hook failure records (optionally for a specific symbol). */
+  public clearLintFailures(symbolId?: SymbolId): void {
+    if (symbolId !== undefined) {
+      this.lintFailuresBySymbol.delete(symbolId);
+    } else {
+      this.lintFailuresBySymbol.clear();
+    }
+  }
+
   /** Executes all `lint__*` query hooks registered for `symbolId`'s grammar rule and returns their raw `LintResult`s. */
   public runLints(symbolId: SymbolId): { lintName: string; result: LintResult }[] {
+    this.lintFailuresBySymbol.delete(symbolId);
     const entry = this.resolveEntry(symbolId);
     if (!entry) return [];
     const hooks = this.hooksByRule.get(entry.ruleName);
@@ -1066,6 +1137,18 @@ export class WasmQueryEngine {
           }
         }
       } catch (e: any) {
+        const errMsg = e?.message ? String(e.message) : String(e);
+        let list = this.lintFailuresBySymbol.get(symbolId);
+        if (!list) {
+          list = [];
+          this.lintFailuresBySymbol.set(symbolId, list);
+        }
+        list.push({
+          symbolId,
+          symbolName: entry.name,
+          lintName,
+          message: errMsg,
+        });
         console.warn(`[lint] ${lintName} failed for ${entry.name}: ${e?.stack ?? e}`);
       }
     }
@@ -1886,10 +1969,19 @@ export class WasmQueryEngine {
       domains: tracker.domains,
     };
 
-    // Enforce bounded memo table capacity via FIFO eviction before storing the new memo.
-    if (this.memos.size >= this.maxMemos) {
+    // Enforce bounded memo table capacity via FIFO eviction before storing the new memo,
+    // cleaning up reverse-dependency maps for replaced or evicted memos so they never leak.
+    const prevMemo = this.memos.get(key);
+    if (prevMemo) {
+      this.unlinkMemoReverseDeps(key, prevMemo);
+    }
+    if (!prevMemo && this.memos.size >= this.maxMemos) {
       const firstKey = this.memos.keys().next().value;
-      if (firstKey !== undefined) this.memos.delete(firstKey);
+      if (firstKey !== undefined) {
+        const evicted = this.memos.get(firstKey);
+        this.memos.delete(firstKey);
+        if (evicted) this.unlinkMemoReverseDeps(firstKey, evicted);
+      }
     }
     this.memos.set(key, memo);
 

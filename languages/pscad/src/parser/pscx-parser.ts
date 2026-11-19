@@ -334,7 +334,7 @@ export function parsePscxCst(
   let modelDefs: Map<string, ModelDefinition> | undefined;
   if (!isHeadless || xmlContent.includes("UserCmpDefn")) {
     try {
-      modelDefs = buildProjectModel(xmlContent, options?.external ?? registeredExternalDefinitions()).definitions;
+      modelDefs = buildProjectModel(xmlContent, options?.external ?? registeredExternalDefinitions(), doc).definitions;
     } catch {
       modelDefs = undefined;
     }
@@ -528,7 +528,7 @@ export function parsePscxCst(
             }
           }
         } else if (cname === "script") {
-          scriptSegments = parseScriptElement(c, xmlContent);
+          scriptSegments = parseScriptElement(c, xmlContent, lineStarts);
           if (!isHeadless) {
             const flyByText = scriptSegments.get("flyby")?.content;
             if (flyByText) {

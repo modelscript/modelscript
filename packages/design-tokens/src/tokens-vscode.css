@@ -1,0 +1,37 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/*
+ * Host adapter stylesheet for VS Code Webviews.
+ * Maps canonical --ms-* design tokens onto VS Code's native theme variables
+ * so language UI panels automatically match any VS Code light, dark, or high-contrast theme.
+ */
+
+:root {
+  --ms-bg: var(--vscode-editor-background, #1e1e1e);
+  --ms-bg-alt: var(--vscode-sideBar-background, #252526);
+  --ms-bg-elv: var(--vscode-editorWidget-background, #252526);
+  --ms-bg-soft: var(--vscode-input-background, #3c3c3c);
+  --ms-surface-hover: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+  --ms-surface-selected: var(--vscode-list-activeSelectionBackground, rgba(8, 145, 178, 0.2));
+  --ms-divider: var(--vscode-panel-border, rgba(255, 255, 255, 0.1));
+  --ms-border: var(--vscode-panel-border, rgba(255, 255, 255, 0.14));
+  --ms-border-strong: var(--vscode-focusBorder, rgba(255, 255, 255, 0.25));
+
+  --ms-text-1: var(--vscode-editor-foreground, #cccccc);
+  --ms-text-2: var(--vscode-descriptionForeground, #9d9d9d);
+  --ms-text-3: var(--vscode-disabledForeground, #7a7a7a);
+  --ms-text-heading: var(--vscode-foreground, #ffffff);
+
+  --ms-brand: var(--vscode-button-background, #0e7490);
+  --ms-brand-hover: var(--vscode-button-hoverBackground, #0891b2);
+  --ms-brand-contrast: var(--vscode-button-foreground, #ffffff);
+  --ms-link: var(--vscode-textLink-foreground, #3794ff);
+  --ms-link-hover: var(--vscode-textLink-activeForeground, #3794ff);
+
+  --ms-success: var(--vscode-testing-iconPassed, #22c55e);
+  --ms-warning: var(--vscode-editorWarning-foreground, #eab308);
+  --ms-danger: var(--vscode-editorError-foreground, #f43f5e);
+  --ms-info: var(--vscode-editorInfo-foreground, #38bdf8);
+
+  --ms-font-sans: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  --ms-font-mono: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+}

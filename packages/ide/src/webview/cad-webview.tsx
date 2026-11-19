@@ -34,6 +34,7 @@ function App() {
   const [feaPayload, setFeaPayload] = useState<FeaMeshPayload | null>(null);
   const [qifOverlay, setQifOverlay] = useState<QifOverlayPayload | null>(null);
   const [verificationOverlay, setVerificationOverlay] = useState<Verification3DOverlayPayload | null>(null);
+  const [lockNotice, setLockNotice] = useState<string | null>(null);
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
@@ -53,6 +54,7 @@ function App() {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
       if (message.type === "cadComponents") {
+        setLockNotice(null);
         const rawComponents = message.data || [];
         const parsed = extractCadComponents(rawComponents);
         setComponents(parsed);
@@ -88,8 +90,14 @@ function App() {
             })),
           );
         }
-      } else if (message.type === "selectComponent") {
-        setSelectedName(message.name);
+      } else if (message.type === "writebackLocked") {
+        setLockNotice(
+          typeof message.reason === "string" && message.reason.length > 0
+            ? message.reason
+            : "Expression is locked (multi-variable or non-affine constraint). Edit in source.",
+        );
+      } else if (message.type === "selectComponent" || message.type === "focusPart") {
+        setSelectedName(message.name ?? message.partName);
       } else if (message.type === "simulationData") {
         // Load simulation results into the animation controller
         const { t, y, states } = message.data;
@@ -221,8 +229,47 @@ function App() {
   return (
     <div
       className="cad-webview-container"
-      style={{ width: "100%", height: "100vh", margin: 0, padding: 0, overflow: "hidden" }}
+      style={{ position: "relative", width: "100%", height: "100vh", margin: 0, padding: 0, overflow: "hidden" }}
     >
+      {lockNotice && (
+        <div
+          role="status"
+          style={{
+            position: "absolute",
+            top: 12,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 50,
+            background: "rgba(180, 83, 9, 0.94)",
+            color: "#fef3c7",
+            border: "1px solid #f59e0b",
+            borderRadius: 6,
+            padding: "6px 12px",
+            fontSize: 12,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            maxWidth: "85%",
+            boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+          }}
+        >
+          <span>🔒 {lockNotice}</span>
+          <button
+            type="button"
+            onClick={() => setLockNotice(null)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#fef3c7",
+              cursor: "pointer",
+              fontWeight: 700,
+              fontSize: 13,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <CadViewer
         components={components}
         selectedName={selectedName}

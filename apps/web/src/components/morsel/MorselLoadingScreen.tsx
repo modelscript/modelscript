@@ -43,7 +43,7 @@ export const MorselLoadingScreen: React.FC<MorselLoadingScreenProps> = ({
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
       <img
         src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
-        alt="Morsel"
+        alt="Ansatz"
         height={36}
         style={{ height: "36px", width: "auto", display: "block" }}
         data-testid="morsel-brand-icon"

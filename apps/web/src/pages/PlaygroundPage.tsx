@@ -258,7 +258,7 @@ export const PlaygroundPage: React.FC = () => {
   } | null>(null);
   const baselineCodeRef = useRef<string>(defaultInitialCode);
 
-  usePageTitle(currentTitle ? `${currentTitle} — Morsel` : "Morsel", { includeBrand: false });
+  usePageTitle(currentTitle ? `${currentTitle} — Ansatz` : "Ansatz", { includeBrand: false });
   const [isShareModalOpen, setShareModalOpen] = useState(false);
   const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(isInitialLaunchWithoutTarget);
   const [isTemplateChoiceRequired, setIsTemplateChoiceRequired] = useState(isInitialLaunchWithoutTarget);
@@ -627,7 +627,7 @@ export const PlaygroundPage: React.FC = () => {
           if (cancelled) return;
           const art = res?.artifactView || res;
           if (!art) {
-            toast.error("Failed to load model into Morsel");
+            toast.error("Failed to load model into Ansatz");
             setCurrentCode((prev) => prev || HERO_EXAMPLES[0]!.code);
             setCurrentTitle((prev) => (prev === "Loading Artifact…" ? HERO_EXAMPLES[0]!.title : prev));
             return;
@@ -763,7 +763,7 @@ export const PlaygroundPage: React.FC = () => {
         } catch (err) {
           console.warn("[PlaygroundPage] Failed to load artifact from ?fromArtifact=", effectiveArtifactId, err);
           if (!cancelled) {
-            toast.error("Failed to load model into Morsel");
+            toast.error("Failed to load model into Ansatz");
             setCurrentCode((prev) => prev || HERO_EXAMPLES[0]!.code);
             setCurrentTitle((prev) => (prev === "Loading Artifact…" ? HERO_EXAMPLES[0]!.title : prev));
           }
@@ -982,7 +982,9 @@ export const PlaygroundPage: React.FC = () => {
       ? "/playground"
       : location.pathname.startsWith("/sketch")
         ? "/sketch"
-        : "/morsel";
+        : location.pathname.startsWith("/morsel")
+          ? "/morsel"
+          : "/editor";
     return `${window.location.origin}${basePath}#m=${hash}`;
   };
 
@@ -1010,7 +1012,9 @@ export const PlaygroundPage: React.FC = () => {
       ? "/embed/playground"
       : location.pathname.startsWith("/sketch")
         ? "/embed/sketch"
-        : "/embed/morsel";
+        : location.pathname.startsWith("/morsel")
+          ? "/embed/morsel"
+          : "/embed/editor";
     const embedSrc = `${window.location.origin}${embedBase}#m=${hash}`;
     if (format === "html-page") {
       return buildMorselEmbedHtmlPage({ embedSrc, title: currentTitle });
@@ -1027,7 +1031,7 @@ export const PlaygroundPage: React.FC = () => {
 
   const getMarkdownBadge = () => {
     const url = getShareUrl();
-    return `[![Open in Morsel](https://img.shields.io/badge/Morsel-0284c7?style=flat&logo=codefactor)](${url})`;
+    return `[![Open in Ansatz](https://img.shields.io/badge/Ansatz-0284c7?style=flat&logo=codefactor)](${url})`;
   };
 
   const handleCopy = async (text: string, label: string) => {
@@ -1122,10 +1126,10 @@ export const PlaygroundPage: React.FC = () => {
         toast.toast({
           type: "success",
           title: "Saved to Ansatz",
-          message: `Saved "${currentTitle}" as Ansatz Artifact #${created.id}.`,
+          message: `Saved "${currentTitle}" as Model #${created.id}.`,
           action: {
-            label: "Open Artifact",
-            onClick: () => navigate(`/morsel?fromArtifact=${created.id}`),
+            label: "Open Model",
+            onClick: () => navigate(`/editor?fromArtifact=${created.id}`),
           },
         });
       }
@@ -1674,11 +1678,11 @@ export const PlaygroundPage: React.FC = () => {
             }}
           >
             <Spinner size="large" />
-            <div style={{ fontSize: 13, fontWeight: 500 }}>Loading model into Morsel…</div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>Loading model into Ansatz…</div>
           </div>
         ) : (
           <ErrorBoundary
-            name="Morsel Editor"
+            name="Ansatz"
             fallback={
               <div
                 style={{
@@ -1709,7 +1713,7 @@ export const PlaygroundPage: React.FC = () => {
                 >
                   <AlertIcon size={28} />
                 </div>
-                <h2 style={{ fontSize: 20, margin: 0, fontWeight: 600 }}>Morsel Editor Encountered an Issue</h2>
+                <h2 style={{ fontSize: 20, margin: 0, fontWeight: 600 }}>Ansatz Encountered an Issue</h2>
                 <p style={{ color: "var(--color-fg-muted)", fontSize: 14, maxWidth: 480, margin: 0, lineHeight: 1.5 }}>
                   The editor component crashed during rendering. Your draft is preserved in local storage and can be
                   recovered safely.

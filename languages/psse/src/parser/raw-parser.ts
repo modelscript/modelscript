@@ -439,20 +439,28 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
             endOffset: lastLine.endOffset,
           };
 
+          // Standard PSS/E v30+ Line 1: I,J,K,CKT,CW,CZ,CM,MAG1,MAG2,NMETR,'NAME',STAT,O1,F1
+          // Also tolerate legacy 11-column fixtures that omit CZ (NAME at index 9).
+          const hasCzCol =
+            cstFields[10]?.tokenType === "QuotedString" ||
+            (cstFields[9]?.tokenType !== "QuotedString" && toks.length >= 12);
+          const czOff = hasCzCol ? 1 : 0;
+
           transformers.push({
             i: iBus,
             j: jBus,
             k: kBus,
             ckt: parseStr(toks[3], "1"),
             cw: parseNum(toks[4], 1),
-            cm: parseNum(toks[5], 1),
-            mag1: parseNum(toks[6], 0.0),
-            mag2: parseNum(toks[7], 0.0),
-            nmetr: parseNum(toks[8], 2),
-            name: parseStr(toks[9], ""),
-            stat: parseNum(toks[10], 1),
-            o1: toks[11] !== undefined ? parseNum(toks[11], 1) : undefined,
-            f1: toks[12] !== undefined ? parseNum(toks[12], 1.0) : undefined,
+            cz: hasCzCol ? parseNum(toks[5], 1) : 1,
+            cm: parseNum(toks[5 + czOff], 1),
+            mag1: parseNum(toks[6 + czOff], 0.0),
+            mag2: parseNum(toks[7 + czOff], 0.0),
+            nmetr: parseNum(toks[8 + czOff], 2),
+            name: parseStr(toks[9 + czOff], ""),
+            stat: parseNum(toks[10 + czOff], 1),
+            o1: toks[11 + czOff] !== undefined ? parseNum(toks[11 + czOff], 1) : undefined,
+            f1: toks[12 + czOff] !== undefined ? parseNum(toks[12 + czOff], 1.0) : undefined,
             r12: parseNum(toks2[0], 0.0),
             x12: parseNum(toks2[1], 0.0001),
             sbase12: parseNum(toks2[2], header.sbase),
@@ -521,6 +529,7 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
         const isQuotedName = cstFields[0]?.tokenType === "QuotedString";
         if (dcNum > 0 || isQuotedName) {
           const idNum = dcNum > 0 ? dcNum : twoTerminalDc.length + 1;
+          const dcName = isQuotedName ? parseStr(toks[0], "") : undefined;
           let ipr: number | undefined;
           let ipi: number | undefined;
           // Consume optional rectifier/inverter continuation lines if present in 3-line v33 format
@@ -544,6 +553,7 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
           }
           twoTerminalDc.push({
             i: idNum,
+            name: dcName,
             mdc: parseNum(toks[1], 0),
             rdc: parseNum(toks[2], 0.0),
             setvl: parseNum(toks[3], 0.0),

@@ -345,8 +345,20 @@ export async function flatten(
 // Library tree
 // ────────────────────────────────────────────────────────────────────
 
+const pendingLibraryTreeRequests = new Map<string, Promise<TreeNodeInfo[]>>();
+
 export async function getLibraryTree(uri: string, parentId?: string): Promise<TreeNodeInfo[]> {
-  return (await lsp()).sendRequest("modelscript/getLibraryTree", { uri, parentId });
+  const key = `${uri}::${parentId ?? "__root__"}`;
+  const existing = pendingLibraryTreeRequests.get(key);
+  if (existing) return existing;
+  const req = (async () =>
+    (await lsp()).sendRequest<TreeNodeInfo[]>("modelscript/getLibraryTree", { uri, parentId }))().finally(() => {
+    if (pendingLibraryTreeRequests.get(key) === req) {
+      pendingLibraryTreeRequests.delete(key);
+    }
+  });
+  pendingLibraryTreeRequests.set(key, req);
+  return req;
 }
 
 export async function getClassSource(
@@ -601,6 +613,11 @@ export interface MountedLibraryEntry {
   active?: boolean | undefined;
 }
 
+let pendingMountedLibrariesRequest: Promise<{
+  mounted: MountedLibraryEntry[];
+  loading: Array<{ name: string; version: string; status?: string; message?: string }>;
+}> | null = null;
+
 export async function getMountedLibraries(): Promise<{
   mounted: MountedLibraryEntry[];
   loading: Array<{ name: string; version: string; status?: string; message?: string }>;
@@ -608,11 +625,17 @@ export async function getMountedLibraries(): Promise<{
   if (!getLsp()) {
     return { mounted: [], loading: [] };
   }
-  try {
-    return await (await lsp()).sendRequest("modelscript/getMountedLibraries", {});
-  } catch {
-    return { mounted: [], loading: [] };
-  }
+  if (pendingMountedLibrariesRequest) return pendingMountedLibrariesRequest;
+  pendingMountedLibrariesRequest = (async () => {
+    try {
+      return await (await lsp()).sendRequest("modelscript/getMountedLibraries", {});
+    } catch {
+      return { mounted: [], loading: [] };
+    } finally {
+      pendingMountedLibrariesRequest = null;
+    }
+  })();
+  return pendingMountedLibrariesRequest;
 }
 
 export async function getActiveStandards(): Promise<MountedLibraryEntry[]> {
@@ -1185,4 +1208,42 @@ export async function runVerification(uri: string): Promise<{ ok: boolean; error
 export async function verifyAll(uri: string): Promise<MorselVerifyAllReport> {
   const c = await lsp();
   return c.sendRequest<MorselVerifyAllReport>("modelscript/verifyAll", { uri });
+}
+
+export type MorselOnDemandLintMode = "all" | "formal" | "compiler";
+
+export interface MorselOnDemandLintDiagnostic {
+  range: {
+    start: { line: number; character: number };
+    end: { line: number; character: number };
+  };
+  severity: 1 | 2 | 3 | 4;
+  code?: string | number | undefined;
+  source?: string | undefined;
+  message: string;
+}
+
+export interface MorselRunFormalLintsResult {
+  ok: boolean;
+  uri?: string | undefined;
+  diagnostics: MorselOnDemandLintDiagnostic[];
+  formalCount: number;
+  compilerCount: number;
+  durationMs?: number | undefined;
+  error?: string | undefined;
+}
+
+export async function runFormalLints(
+  uri: string,
+  options?: {
+    includeFormal?: boolean | undefined;
+    includeCompilerLints?: boolean | undefined;
+  },
+): Promise<MorselRunFormalLintsResult> {
+  const c = await lsp();
+  return c.sendRequest<MorselRunFormalLintsResult>("modelscript/runFormalLints", {
+    uri,
+    includeFormal: options?.includeFormal ?? true,
+    includeCompilerLints: options?.includeCompilerLints ?? true,
+  });
 }

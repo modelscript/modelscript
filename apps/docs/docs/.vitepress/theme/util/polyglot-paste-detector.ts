@@ -54,10 +54,10 @@ export async function buildMorselHandoffUrl(
       await writer.close();
       const buf = await new Response(cs.readable).arrayBuffer();
       const token = bytesToBase64Url(new Uint8Array(buf));
-      return `${ansatzOrigin}/morsel#m=${token}`;
+      return `${ansatzOrigin}/editor#m=${token}`;
     }
   } catch {
     // Fallback to raw dialect hash below
   }
-  return `${ansatzOrigin}/morsel#${encodeURIComponent(active.langSlug)}=${encodeURIComponent(active.code)}`;
+  return `${ansatzOrigin}/editor#${encodeURIComponent(active.langSlug)}=${encodeURIComponent(active.code)}`;
 }

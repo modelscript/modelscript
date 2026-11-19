@@ -23,6 +23,14 @@ export const simulinkLanguage = language({
   lsp: {
     fileExtensions: [".slx", ".mdl"],
   },
+  ui: {
+    stencils: [
+      { label: "Gain", snippet: 'Block { BlockType Gain Name "Gain_New" Gain "2.0" }\n' },
+      { label: "Integrator", snippet: 'Block { BlockType Integrator Name "Integ_New" InitialCondition "0" }\n' },
+      { label: "Sum", snippet: 'Block { BlockType Sum Name "Sum_New" Inputs "+-" }\n' },
+      { label: "Step", snippet: 'Block { BlockType Step Name "Step_New" After "1.0" }\n' },
+    ],
+  },
 
   rules: {
     Model: ($) => repeat(choice($["BlockStatement"]!, $["LineStatement"]!, $["SystemStatement"]!, $["Comment"]!)),

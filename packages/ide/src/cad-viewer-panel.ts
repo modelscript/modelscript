@@ -22,6 +22,8 @@ export class CadViewerPanel extends BaseWebviewPanel {
   private readonly _client: LanguageClient;
   /** Last known target CAD/modeling document URI (persisted when focus moves to webview/diagram tabs). */
   private _targetDocumentUri: string | undefined;
+  /** Suppresses self-induced doc-change / projectTreeChanged echo updates right after panel writebacks. */
+  private _suppressDocSyncUntil = 0;
   /** Optional pre-evaluated CAD components provided on panel creation. */
   private _initialComponents:
     | { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[]
@@ -118,6 +120,7 @@ export class CadViewerPanel extends BaseWebviewPanel {
             void this.update();
             break;
           case "select":
+            void this.handleSelectComponent((message as { name?: string | null }).name);
             break;
           case "commitGizmoDelta":
             void this.handleCommitGizmoDelta(message.payload);
@@ -163,9 +166,11 @@ export class CadViewerPanel extends BaseWebviewPanel {
 
     let cadUpdateTimer: ReturnType<typeof setTimeout> | null = null;
     const debouncedUpdate = () => {
+      if (Date.now() < this._suppressDocSyncUntil) return;
       if (cadUpdateTimer) clearTimeout(cadUpdateTimer);
       cadUpdateTimer = setTimeout(() => {
         cadUpdateTimer = null;
+        if (Date.now() < this._suppressDocSyncUntil) return;
         void this.update();
       }, 250);
     };
@@ -180,6 +185,7 @@ export class CadViewerPanel extends BaseWebviewPanel {
 
     vscode.workspace.onDidChangeTextDocument(
       (e) => {
+        if (Date.now() < this._suppressDocSyncUntil) return;
         const targetDoc = this._resolveTargetDocument();
         if (
           e.document === vscode.window.activeTextEditor?.document ||
@@ -194,6 +200,7 @@ export class CadViewerPanel extends BaseWebviewPanel {
 
     // Listen for LSP compilation complete so we update when the AST is ready
     const treeSub = this._client.onNotification("modelscript/projectTreeChanged", () => {
+      if (Date.now() < this._suppressDocSyncUntil) return;
       debouncedUpdate();
     });
     if (treeSub && typeof treeSub.dispose === "function") {
@@ -553,7 +560,20 @@ export class CadViewerPanel extends BaseWebviewPanel {
           }
         }
 
+        if (patchRes?.locked) {
+          const reason = patchRes.lockReason ?? "Transform expression is locked (multi-variable or non-affine).";
+          void this._panel.webview.postMessage({
+            type: "writebackLocked",
+            componentName,
+            reason,
+          });
+          void vscode.window.showWarningMessage(reason);
+          await this.update();
+          return;
+        }
+
         if (patchRes) {
+          this._suppressDocSyncUntil = Date.now() + 500;
           const edit = new vscode.WorkspaceEdit();
           const startPos = doc.positionAt(patchRes.replacedRange.startOffset);
           const endPos = doc.positionAt(patchRes.replacedRange.endOffset);
@@ -576,15 +596,16 @@ export class CadViewerPanel extends BaseWebviewPanel {
       const { patchModelicaCadAnnotation } = await import("@modelscript/cad");
       const patch = patchModelicaCadAnnotation(source, componentName, {
         [propName]: vec,
-        bindings: [],
       });
 
       if (patch.updatedSource !== source && patch.replacedRange) {
+        this._suppressDocSyncUntil = Date.now() + 500;
         const edit = new vscode.WorkspaceEdit();
         const startPos = doc.positionAt(patch.replacedRange.start);
         const endPos = doc.positionAt(patch.replacedRange.end);
         edit.replace(doc.uri, new vscode.Range(startPos, endPos), patch.newText ?? patch.updatedSource);
         await vscode.workspace.applyEdit(edit);
+        await this.update();
       }
     }
   }
@@ -646,7 +667,21 @@ export class CadViewerPanel extends BaseWebviewPanel {
           primitiveType,
         );
 
+        if (patchRes?.locked) {
+          const reason =
+            patchRes.lockReason ?? "Dimension expression is locked (multi-variable or non-affine). Edit in source.";
+          void this._panel.webview.postMessage({
+            type: "writebackLocked",
+            componentName: payload.componentName,
+            reason,
+          });
+          void vscode.window.showWarningMessage(reason);
+          await this.update();
+          return;
+        }
+
         if (patchRes) {
+          this._suppressDocSyncUntil = Date.now() + 500;
           const edit = new vscode.WorkspaceEdit();
           const startPos = doc.positionAt(patchRes.replacedRange.startOffset);
           const endPos = doc.positionAt(patchRes.replacedRange.endOffset);
@@ -701,6 +736,7 @@ export class CadViewerPanel extends BaseWebviewPanel {
             normal,
           );
 
+          this._suppressDocSyncUntil = Date.now() + 500;
           const edit = new vscode.WorkspaceEdit();
           const startPos = doc.positionAt(patchRes.replacedRange.startOffset);
           const endPos = doc.positionAt(patchRes.replacedRange.endOffset);
@@ -723,6 +759,7 @@ export class CadViewerPanel extends BaseWebviewPanel {
         });
 
         if (patch.updatedSource !== source && patch.replacedRange) {
+          this._suppressDocSyncUntil = Date.now() + 500;
           const edit = new vscode.WorkspaceEdit();
           const startPos = doc.positionAt(patch.replacedRange.start);
           const endPos = doc.positionAt(patch.replacedRange.end);
@@ -763,6 +800,7 @@ export class CadViewerPanel extends BaseWebviewPanel {
         const { patchModelicaAssemblyJoint } = await import("@modelscript/cad");
         const patch = patchModelicaAssemblyJoint(source, payload);
         if (patch.updatedSource !== source) {
+          this._suppressDocSyncUntil = Date.now() + 500;
           const edit = new vscode.WorkspaceEdit();
           if (patch.replacedRange) {
             const startPos = doc.positionAt(patch.replacedRange.start);
@@ -807,12 +845,39 @@ export class CadViewerPanel extends BaseWebviewPanel {
       });
 
       if (patch.updatedSource !== source && patch.replacedRange) {
+        this._suppressDocSyncUntil = Date.now() + 500;
         const edit = new vscode.WorkspaceEdit();
         const startPos = doc.positionAt(patch.replacedRange.start);
         const endPos = doc.positionAt(patch.replacedRange.end);
         edit.replace(doc.uri, new vscode.Range(startPos, endPos), patch.newText ?? patch.updatedSource);
         await vscode.workspace.applyEdit(edit);
+        await this.update();
       }
+    }
+  }
+
+  /**
+   * Reveals and highlights a component selected in the 3D CAD viewport inside its source editor.
+   */
+  private async handleSelectComponent(componentName?: string | null): Promise<void> {
+    if (!componentName) return;
+    const doc = this._resolveTargetDocument();
+    if (!doc) return;
+    const source = doc.getText();
+    const leaf = componentName.split(".").pop() || componentName;
+    const escaped = leaf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = new RegExp(`\\b${escaped}\\b`).exec(source);
+    if (!match) return;
+
+    const startPos = doc.positionAt(match.index);
+    const endPos = doc.positionAt(match.index + leaf.length);
+    const range = new vscode.Range(startPos, endPos);
+    const editor =
+      vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === doc.uri.toString()) ??
+      (await vscode.window.showTextDocument(doc, { preserveFocus: true, preview: false }));
+    if (editor) {
+      editor.selection = new vscode.Selection(startPos, endPos);
+      editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
     }
   }
 

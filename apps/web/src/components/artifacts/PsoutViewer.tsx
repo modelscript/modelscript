@@ -513,10 +513,10 @@ export const PsoutViewer: React.FC<PsoutViewerProps> = ({ viewConfig, isFullScre
                   title,
                 });
                 const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-                navigate(`/morsel${fromArtifact}#m=${hash}`);
+                navigate(`/editor${fromArtifact}#m=${hash}`);
               }}
             >
-              Open in Morsel
+              Open in Ansatz
             </Button>
           )}
         </Box>

@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./analysis/control-intervals.js";
+export * from "./analysis/control-octagon.js";
+export * from "./analysis/dimensional-check.js";
 export * from "./analysis/formal-emt-checks.js";
 export * from "./analysis/interval-report.js";
+export * from "./analysis/udm-cfg-analyzer.js";
 export * from "./benchmarking/cigre-b4-hvdc.js";
 export * from "./benchmarking/ehv-corridor.js";
 export * from "./benchmarking/pmr-benchmarker.js";

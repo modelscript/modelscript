@@ -22,6 +22,7 @@ import {
 import {
   autoLayoutDiagram as coreAutoLayoutDiagram,
   autoLayoutDiagramAsync as coreAutoLayoutDiagramAsync,
+  layoutWithElk as coreLayoutWithElk,
   type AutoLayoutOptions,
 } from "./auto-layout.js";
 import { adaptColorForDarkMode, adaptX6Markup } from "./color-inversion.js";
@@ -35,6 +36,8 @@ import {
   isEphemeralDiagramNode,
   type DropPlaceholderOptions,
 } from "./drop-placeholder.js";
+import { beginGraphRenderState, getGraphState, isGraphReadOnly, peekGraphState } from "./graph-state.js";
+import { groupSelectedNodesOnGraph, ungroupSelectedNodesOnGraph, type GroupableGraphLike } from "./group-actions.js";
 import { defaultInteractiveStateManager, type InteractiveBinding, type InteractiveWriteAction } from "./interactive.js";
 import { ensureMinimapHud, isMinimapOpen, toggleMinimapHud, updateMinimapHud } from "./minimap.js";
 import {
@@ -516,6 +519,8 @@ export interface DiagramRendererOptions {
   onAutoLayout?: (() => void) | undefined;
   /** Generic message callback for non-action messages (revealSource, navigateTo, etc.) */
   onMessage?: ((msg: DiagramHostMessage) => void) | undefined;
+  /** Disable built-in context menus when the host webview provides its own custom context menu. */
+  disableBuiltinContextMenu?: boolean | undefined;
   /** Optional viewport insets (in pixels) for floating overlays when fitting/centering. */
   fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
 }
@@ -549,10 +554,46 @@ function getOptionsForGraph(g?: Graph | null): DiagramRendererOptions | null {
 }
 
 function getMetadataForGraph(g?: Graph | null): Record<string, unknown> | null {
+  const gs = peekGraphState(g);
+  if (gs?.metadata !== undefined) {
+    return gs.metadata ?? null;
+  }
   if (g?.container && containerInstances.has(g.container)) {
     return containerInstances.get(g.container)!.metadata ?? null;
   }
   return activeDiagramMetadata ?? null;
+}
+
+function getReadOnlyForGraph(g?: Graph | null): boolean {
+  return isGraphReadOnly(g ?? graph, isCurrentDiagramReadOnly);
+}
+
+function getDefaultConnectorForGraph(g?: Graph | null): unknown {
+  const target = g ?? graph;
+  const gs = peekGraphState(target);
+  return gs?.defaultConnector ?? activeDefaultConnector ?? getOptionsForGraph(target)?.defaultConnector;
+}
+
+function getPropertyCacheForGraph(g?: Graph | null): Map<string, unknown> {
+  const target = g ?? graph;
+  return target ? getGraphState(target)!.propertyCache : propertyCache;
+}
+
+function getSelectedNodeIdForGraph(g?: Graph | null): string | null {
+  const target = g ?? graph;
+  const gs = peekGraphState(target);
+  return gs ? gs.selectedNodeId : selectedNodeId;
+}
+
+function setSelectedNodeIdForGraph(g: Graph | null | undefined, id: string | null): void {
+  const target = g ?? graph;
+  selectedNodeId = id;
+  if (target) {
+    getGraphState(target)!.selectedNodeId = id;
+    if (target.container && containerInstances.has(target.container)) {
+      containerInstances.get(target.container)!.selectedNodeId = id;
+    }
+  }
 }
 
 /**
@@ -609,10 +650,6 @@ let graph: Graph | null = null;
 let selectedNodeId: string | null = null;
 /** True while renderDiagram is programmatically mutating the X6 graph. */
 let isRenderingDiagram = false;
-/** Tracks currently rendered sub-module / class name to detect transitions. */
-let lastRenderedModule: string | null = null;
-/** True when the last rendered diagram was a loading placeholder. */
-let lastRenderWasLoading = false;
 /** Monotonic generation counter to cancel stale delayed recentering callbacks. */
 let renderFitGeneration = 0;
 
@@ -903,7 +940,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       if (isEphemeralDiagramNode(cellView.cell.id)) {
         return false;
       }
-      if (isCurrentDiagramReadOnly) {
+      if (getReadOnlyForGraph(g)) {
         return false;
       }
       return { nodeMovable: true, edgeMovable: true, edgeLabelMovable: true };
@@ -913,11 +950,11 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       connector: activeDefaultConnector ?? currentOptions?.defaultConnector ?? { name: "rounded", args: { radius: 8 } },
       snap: { radius: 24 },
       allowBlank: false,
-      allowMulti: () => !isCurrentDiagramReadOnly,
-      allowLoop: () => !isCurrentDiagramReadOnly,
-      allowNode: () => !isCurrentDiagramReadOnly && (currentOptions?.allowNodeConnection ?? true),
-      allowEdge: () => !isCurrentDiagramReadOnly && (currentOptions?.allowEdgeConnection ?? true),
-      allowPort: () => !isCurrentDiagramReadOnly,
+      allowMulti: () => !getReadOnlyForGraph(g),
+      allowLoop: () => !getReadOnlyForGraph(g),
+      allowNode: () => !getReadOnlyForGraph(g) && (getOptionsForGraph(g)?.allowNodeConnection ?? true),
+      allowEdge: () => !getReadOnlyForGraph(g) && (getOptionsForGraph(g)?.allowEdgeConnection ?? true),
+      allowPort: () => !getReadOnlyForGraph(g),
       highlight: true,
       highlighting: {
         magnetAvailable: {
@@ -942,7 +979,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         },
       },
       validateMagnet: ({ cell }: { cell?: { id: string } | null | undefined } = {}) => {
-        if (isCurrentDiagramReadOnly) return false;
+        if (getReadOnlyForGraph(g)) return false;
         if (cell && isEphemeralDiagramNode(cell.id)) return false;
         return true;
       },
@@ -971,8 +1008,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         return g.createEdge({
           zIndex: 1000,
           router: { name: "port-orthogonal-astar" },
-          connector: activeDefaultConnector ??
-            currentOptions?.defaultConnector ?? { name: "rounded", args: { radius: 8 } },
+          connector: getDefaultConnectorForGraph(g) ?? { name: "rounded", args: { radius: 8 } },
           attrs: {
             line: {
               stroke: isDark ? "#569cd6" : "#005fb8",
@@ -1127,7 +1163,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         }
       }
     }
-    const cached = propertyCache.get(node.id) as
+    const cached = getPropertyCacheForGraph(targetGraph).get(node.id) as
       | { parameters?: { name?: string; value?: string; defaultValue?: string }[] }
       | undefined;
     const firstParam = cached?.parameters?.find((p) => p.name && (p.value || p.defaultValue));
@@ -1264,37 +1300,79 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
   activeRotateSelectedNodes = rotateSelectedNodes;
   activeFlipSelectedNodes = flipSelectedNodes;
 
-  // ── Node Duplicate Helper (Ctrl+D / Floating Toolbar) ──
-  const duplicateSelectedNodes = (targetGraph: Graph = g) => {
-    if (isCurrentDiagramReadOnly) return;
-    const selectedNodes = targetGraph
+  interface ClipboardNodeItem {
+    className: string;
+    centerX: number;
+    screenCenterY: number;
+  }
+  let diagramClipboard: ClipboardNodeItem[] = [];
+  let diagramPasteCount = 1;
+
+  const getSelectedNonEphemeralNodes = (targetGraph: Graph = g): Node[] =>
+    targetGraph
       .getSelectedCells()
       .filter((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id)) as Node[];
-    if (selectedNodes.length === 0) return;
 
-    for (const node of selectedNodes) {
+  const snapshotNodesToClipboard = (nodes: Node[]): ClipboardNodeItem[] => {
+    const items: ClipboardNodeItem[] = [];
+    for (const node of nodes) {
       const data = node.getData?.() || {};
       const className = (data.properties?.className as string | undefined) || (data["className"] as string | undefined);
       if (!className) continue;
       const p = node.getPosition();
       const s = node.getSize();
-      const centerX = p.x + s.width / 2;
-      const centerY = -(p.y + s.height / 2);
+      items.push({
+        className,
+        centerX: p.x + s.width / 2,
+        screenCenterY: p.y + s.height / 2,
+      });
+    }
+    return items;
+  };
+
+  const emitOffsetComponentCopies = (items: ClipboardNodeItem[], offsetPx: number, targetGraph: Graph = g) => {
+    for (const item of items) {
       enqueueDiagramAction(
         {
           type: "addComponent",
-          className,
-          x: Math.round(centerX + 20),
-          y: Math.round(centerY - 20),
+          className: item.className,
+          x: Math.round(item.centerX + offsetPx),
+          y: toSchemaY(targetGraph, item.screenCenterY + offsetPx),
         },
         targetGraph,
       );
     }
   };
 
+  // ── Node Duplicate / Copy / Cut / Paste Helpers (Ctrl+D/C/X/V) ──
+  const duplicateSelectedNodes = (targetGraph: Graph = g) => {
+    if (getReadOnlyForGraph(targetGraph)) return;
+    const selectedNodes = getSelectedNonEphemeralNodes(targetGraph);
+    if (selectedNodes.length === 0) return;
+    const items = snapshotNodesToClipboard(selectedNodes);
+    if (items.length === 0) return;
+    emitOffsetComponentCopies(items, 20, targetGraph);
+  };
+
+  const copySelectedNodes = (targetGraph: Graph = g): boolean => {
+    const selectedNodes = getSelectedNonEphemeralNodes(targetGraph);
+    const items = snapshotNodesToClipboard(selectedNodes);
+    if (items.length === 0) return false;
+    diagramClipboard = items;
+    diagramPasteCount = 1;
+    return true;
+  };
+
+  const pasteSelectedNodes = (targetGraph: Graph = g): boolean => {
+    if (getReadOnlyForGraph(targetGraph) || diagramClipboard.length === 0) return false;
+    emitOffsetComponentCopies(diagramClipboard, 20 * diagramPasteCount, targetGraph);
+    diagramPasteCount++;
+    return true;
+  };
+
   // ── Delete Selected Cells Helper (Del/Backspace / Floating Toolbar) ──
   const deleteSelectedCells = (targetGraph: Graph = g) => {
-    if (isCurrentDiagramReadOnly) return;
+    if (getReadOnlyForGraph(targetGraph)) return;
     const cells = targetGraph.getSelectedCells();
     if (cells.length === 0) return;
 
@@ -1339,7 +1417,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
 
   // ── Quick Inline Parameter Value Editor in Floating Toolbar ──
   const startInlineParamEdit = (node: Node, targetGraph: Graph = g) => {
-    if (isCurrentDiagramReadOnly || isEphemeralDiagramNode(node.id)) return;
+    if (getReadOnlyForGraph(targetGraph) || isEphemeralDiagramNode(node.id)) return;
     const paramInfo = extractNodePrimaryParam(targetGraph, node);
     if (!paramInfo) {
       const nodeName = (node.getData?.()?.["name"] as string) || node.id;
@@ -1373,9 +1451,10 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         enqueueDiagramAction(
           {
             type: "updateProperty",
-            componentName: nodeName,
-            propKey: paramInfo.paramName,
-            propValue: newVal,
+            name: nodeName,
+            key: paramInfo.paramName,
+            value: newVal,
+            previousValue: paramInfo.paramValue,
           },
           targetGraph,
         );
@@ -1487,7 +1566,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     if (type === "properties") {
       const first = currentSelected[0]!;
       const nodeName = (first.getData?.()?.["name"] as string) || first.id;
-      const cachedProps = propertyCache.get(first.id);
+      const cachedProps = getPropertyCacheForGraph(g).get(first.id);
       if (cachedProps) {
         showProperties({ id: first.id, properties: cachedProps }, g);
       } else {
@@ -1538,9 +1617,12 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       {
         type: "move",
         items: updates.map((u) => {
-          const node = g.getCellById(u.id);
+          const node = g.getCellById(u.id) as Node | null;
           const name = (node?.getData?.()?.["name"] as string) || u.id;
-          return { name, x: u.x, y: u.y };
+          const sz = node?.getSize?.() ?? { width: 20, height: 20 };
+          const rotation = node?.getAngle?.() ?? 0;
+          const edges = node ? getConnectedEdges(g, node) : undefined;
+          return { name, x: u.x, y: u.y, width: sz.width, height: sz.height, rotation, edges };
         }),
       },
       g,
@@ -2271,11 +2353,12 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     updateNodeVisualOnResize(node, g, s.width, s.height);
     scheduleUpdateSolderDots(g);
     const edges = getConnectedEdges(g, node);
+    const nodeName = (node.getData?.()?.["name"] as string) || node.id;
     enqueueDiagramAction(
       {
         type: "resize",
         item: {
-          name: node.id,
+          name: nodeName,
           x: p.x,
           y: p.y,
           width: s.width,
@@ -2859,6 +2942,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
 
   // ── Desktop CAD Context Menus ──
   g.on("node:contextmenu", ({ node, e }: { node: Node; e: MouseEvent }) => {
+    if (getOptionsForGraph(g)?.disableBuiltinContextMenu) return;
     if (e && typeof e.preventDefault === "function") {
       e.preventDefault();
     }
@@ -2909,6 +2993,16 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           action: () => duplicateSelectedNodes(g),
         },
         {
+          label: "Group Selection",
+          shortcut: "Ctrl+G",
+          action: () => groupSelectedNodes(g),
+        },
+        {
+          label: "Ungroup",
+          shortcut: "Ctrl+Shift+G",
+          action: () => ungroupSelectedNodes(g),
+        },
+        {
           label: "Inspect Properties",
           shortcut: "Enter",
           action: () => {
@@ -2927,6 +3021,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
   });
 
   g.on("edge:contextmenu", ({ edge, e }: { edge: Edge; e: MouseEvent }) => {
+    if (getOptionsForGraph(g)?.disableBuiltinContextMenu) return;
     if (e && typeof e.preventDefault === "function") {
       e.preventDefault();
     }
@@ -2973,6 +3068,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
   });
 
   g.on("blank:contextmenu", ({ e }: { e: MouseEvent }) => {
+    if (getOptionsForGraph(g)?.disableBuiltinContextMenu) return;
     if (e && typeof e.preventDefault === "function") {
       e.preventDefault();
     }
@@ -3078,7 +3174,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         const selectedNodes = g
           .getSelectedCells()
           .filter((c: Cell) => typeof c.isNode === "function" && c.isNode() && !isEphemeralDiagramNode(c.id)) as Node[];
-        if (selectedNodes.length > 0 && !isCurrentDiagramReadOnly) {
+        if (selectedNodes.length > 0 && !getReadOnlyForGraph(g)) {
           e.preventDefault();
           const alignable: AlignableNode[] = selectedNodes.map((n: Node) => {
             const p = n.getPosition();
@@ -3162,6 +3258,24 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
       } else if (mod && e.key.toLowerCase() === "d") {
         e.preventDefault();
         duplicateSelectedNodes(g);
+      } else if (mod && e.key.toLowerCase() === "c") {
+        if (copySelectedNodes(g)) {
+          e.preventDefault();
+        }
+      } else if (mod && e.key.toLowerCase() === "x") {
+        if (copySelectedNodes(g)) {
+          e.preventDefault();
+          deleteSelectedCells(g);
+        }
+      } else if (mod && e.key.toLowerCase() === "v") {
+        if (pasteSelectedNodes(g)) {
+          e.preventDefault();
+        }
+      } else if (mod && e.key.toLowerCase() === "g") {
+        const handled = e.shiftKey ? ungroupSelectedNodes(g) : groupSelectedNodes(g);
+        if (handled) {
+          e.preventDefault();
+        }
       } else if (mod && (e.key === "=" || e.key === "+" || e.code === "Equal" || e.code === "NumpadAdd")) {
         e.preventDefault();
         const current = g.zoom();
@@ -3210,7 +3324,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           e.preventDefault();
           const first = selectedNodes[0]!;
           const nodeName = (first.getData?.()?.["name"] as string) || first.id;
-          const cachedProps = propertyCache.get(first.id);
+          const cachedProps = getPropertyCacheForGraph(g).get(first.id);
           if (cachedProps) {
             showProperties({ id: first.id, properties: cachedProps }, g);
           } else {
@@ -3388,15 +3502,11 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     if (g.disposed) return;
     const opts = getOptionsForGraph(g);
     if (isEphemeralDiagramNode(node.id)) {
-      selectedNodeId = null;
-      const inst = containerInstances.get(container);
-      if (inst) inst.selectedNodeId = null;
+      setSelectedNodeIdForGraph(g, null);
       if (opts?.onSelect) opts.onSelect(null);
       return;
     }
-    selectedNodeId = node.id;
-    const inst = containerInstances.get(container);
-    if (inst) inst.selectedNodeId = node.id;
+    setSelectedNodeIdForGraph(g, node.id);
     const data = node.getData();
 
     // Module link button single-click navigation (e.g. 'More on Passive Elements' in PSCAD library)
@@ -3439,7 +3549,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     }
 
     // Show properties panel immediately with lightweight data, then request full properties
-    const cachedProps = propertyCache.get(node.id);
+    const cachedProps = getPropertyCacheForGraph(g).get(node.id);
     if (cachedProps) {
       showProperties({ id: node.id, properties: cachedProps }, g);
     } else {
@@ -3504,7 +3614,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
   });
 
   const startInlineNodeEdit = (node: Node) => {
-    if (isCurrentDiagramReadOnly || isEphemeralDiagramNode(node.id)) return;
+    if (getReadOnlyForGraph(g) || isEphemeralDiagramNode(node.id)) return;
     const existingInput = document.getElementById("__diagram_inline_input__");
     if (existingInput) existingInput.remove();
 
@@ -3632,9 +3742,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
   });
 
   g.on("blank:click", () => {
-    selectedNodeId = null;
-    const inst = containerInstances.get(container);
-    if (inst) inst.selectedNodeId = null;
+    setSelectedNodeIdForGraph(g, null);
     const opts = getOptionsForGraph(g);
     if (opts?.onSelect) opts.onSelect(null);
   });
@@ -3921,18 +4029,26 @@ export function renderDiagram(data: RenderDiagramInput, isDark: boolean) {
 }
 
 export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark: boolean) {
-  isCurrentDiagramReadOnly = Boolean(data.readOnly || data.metadata?.readOnly);
-  activeDefaultConnector = data.metadata?.defaultConnector ?? currentOptions?.defaultConnector;
-  activeDiagramMetadata = data.metadata as Record<string, unknown> | undefined;
+  const gs = getGraphState(g)!;
+  const isReadOnly = Boolean(data.readOnly || data.metadata?.readOnly);
+  const opts = getOptionsForGraph(g);
+  const resolvedConnector = data.metadata?.defaultConnector ?? opts?.defaultConnector;
+  const resolvedMetadata = data.metadata as Record<string, unknown> | undefined;
+
+  gs.readOnly = isReadOnly;
+  gs.defaultConnector = resolvedConnector;
+  gs.metadata = resolvedMetadata;
+
+  isCurrentDiagramReadOnly = isReadOnly;
+  activeDefaultConnector = resolvedConnector;
+  activeDiagramMetadata = resolvedMetadata;
   if (g?.container && containerInstances.has(g.container)) {
-    containerInstances.get(g.container)!.metadata = activeDiagramMetadata;
+    containerInstances.get(g.container)!.metadata = resolvedMetadata;
   }
 
   // Resolve and apply language-adaptive edge selection style
-  const opts = getOptionsForGraph(g);
   const lang = (data.metadata?.["language"] as string | undefined) ?? (data.diagramType as string) ?? opts?.language;
-  const userEdgePref =
-    (activeDiagramMetadata?.["edgeSelectionStyle"] as EdgeSelectionStyle) ?? opts?.edgeSelectionStyle;
+  const userEdgePref = (resolvedMetadata?.["edgeSelectionStyle"] as EdgeSelectionStyle) ?? opts?.edgeSelectionStyle;
   const resolvedEdgeStyle = resolveEdgeSelectionStyle(lang, userEdgePref);
   if (g.container) {
     g.container.setAttribute("data-edge-selection", resolvedEdgeStyle);
@@ -4259,9 +4375,7 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
       source: resolvedSource,
       target: resolvedTarget,
       vertices: edge.vertices,
-      connector: edge.connector ??
-        activeDefaultConnector ??
-        currentOptions?.defaultConnector ?? { name: "rounded", args: { radius: 8 } },
+      connector: edge.connector ?? getDefaultConnectorForGraph(g) ?? { name: "rounded", args: { radius: 8 } },
       router: edge.router ?? (edge.connector === "smooth" ? { name: "normal" } : { name: "port-orthogonal-astar" }),
     };
     // Polyglot edges pass attrs as a full selector-keyed object;
@@ -4878,17 +4992,21 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
 
   const myRenderGeneration = ++renderFitGeneration;
   const isCurrentLoading = Boolean(data.isLoading);
-  const loadingCompleted = lastRenderWasLoading && !isCurrentLoading;
-  lastRenderWasLoading = isCurrentLoading;
-
   const rootNodeId = nodes.find((n) => !n.parent)?.id ?? null;
   const currentModule =
     data.metadata?.currentModule ??
     data.className ??
     (data.diagramType ? `${data.diagramType}:${rootNodeId ?? ""}` : null);
-  const moduleChanged = lastRenderedModule !== null && currentModule !== null && lastRenderedModule !== currentModule;
-  if (!isCurrentLoading) {
-    lastRenderedModule = currentModule;
+  const { moduleChanged, loadingCompleted } = beginGraphRenderState(g, {
+    readOnly: isReadOnly,
+    defaultConnector: resolvedConnector,
+    metadata: resolvedMetadata,
+    currentModule,
+    isLoading: isCurrentLoading,
+  });
+  if (moduleChanged) {
+    propertyCache.clear();
+    selectedNodeId = null;
   }
 
   // ── Diff-based incremental update ──
@@ -5101,10 +5219,11 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
     // Restore property panel for previously selected node after re-render only if cached properties exist.
     // In diff updates, existing DOM/cells are preserved in place; do not downgrade the property inspector
     // to a skeleton or emit isLoading: true which causes UI flickering.
-    if (selectedNodeId && !isEphemeralDiagramNode(selectedNodeId)) {
-      const restoredNode = g.getCellById(selectedNodeId);
+    const curSelectedId = getSelectedNodeIdForGraph(g);
+    if (curSelectedId && !isEphemeralDiagramNode(curSelectedId)) {
+      const restoredNode = g.getCellById(curSelectedId);
       if (restoredNode && restoredNode.isNode()) {
-        const cached = propertyCache.get(selectedNodeId);
+        const cached = getPropertyCacheForGraph(g).get(curSelectedId);
         if (cached) {
           showProperties({ id: restoredNode.id, properties: cached, isLoading: false }, g);
         }
@@ -5259,10 +5378,11 @@ export function renderDiagramInternal(g: Graph, data: RenderDiagramInput, isDark
   }
 
   // Restore property panel for previously selected node after re-render
-  if (selectedNodeId && !isEphemeralDiagramNode(selectedNodeId)) {
-    const restoredNode = g.getCellById(selectedNodeId);
+  const restoredSelectedId = getSelectedNodeIdForGraph(g);
+  if (restoredSelectedId && !isEphemeralDiagramNode(restoredSelectedId)) {
+    const restoredNode = g.getCellById(restoredSelectedId);
     if (restoredNode && restoredNode.isNode()) {
-      const cached = propertyCache.get(selectedNodeId);
+      const cached = getPropertyCacheForGraph(g).get(restoredSelectedId);
       if (cached) {
         showProperties({ id: restoredNode.id, properties: cached, isLoading: false }, g);
       } else {
@@ -5383,6 +5503,43 @@ export async function autoLayoutDiagramAsync(
     onAction: (act) => enqueueDiagramAction(act, g),
     updateSolderDots: (target) => updateSolderDots(target as unknown as Graph),
   });
+}
+
+/**
+ * Multi-pass Sugiyama layered orthogonal layout with port crossing minimization.
+ */
+export function layoutWithElk(targetGraph?: Graph | null, options?: AutoLayoutOptions): boolean {
+  const g = targetGraph ?? graph;
+  if (!g || g.disposed) return false;
+  return coreLayoutWithElk(g as unknown as Parameters<typeof coreLayoutWithElk>[0], {
+    ...options,
+    onAction: (act) => enqueueDiagramAction(act, g),
+    updateSolderDots: (target) => updateSolderDots(target as unknown as Graph),
+  });
+}
+
+/**
+ * Groups selected nodes inside a container group node while keeping drag-to-reparent off.
+ */
+export function groupSelectedNodes(targetGraph?: Graph | null): boolean {
+  const g = targetGraph ?? graph;
+  if (!g || g.disposed) return false;
+  const grp = groupSelectedNodesOnGraph(g as unknown as GroupableGraphLike, {
+    readOnly: getReadOnlyForGraph(g),
+  });
+  return grp !== null;
+}
+
+/**
+ * Ungroups any selected container group nodes while keeping component coordinates intact.
+ */
+export function ungroupSelectedNodes(targetGraph?: Graph | null): boolean {
+  const g = targetGraph ?? graph;
+  if (!g || g.disposed) return false;
+  const ungrouped = ungroupSelectedNodesOnGraph(g as unknown as GroupableGraphLike, {
+    readOnly: getReadOnlyForGraph(g),
+  });
+  return ungrouped.length > 0;
 }
 
 // Listen for messages from the extension host
@@ -5512,10 +5669,10 @@ if (typeof window !== "undefined") {
         // On-demand property response: update the properties panel with full data
         const { componentName, properties: fullProps } = message;
         if (fullProps) {
-          propertyCache.set(componentName, fullProps);
+          getPropertyCacheForGraph(graph).set(componentName, fullProps);
           // Only update if this component is still selected
-          if (selectedNodeId === componentName) {
-            showProperties({ id: componentName, properties: fullProps });
+          if (getSelectedNodeIdForGraph(graph) === componentName) {
+            showProperties({ id: componentName, properties: fullProps }, graph);
           }
         }
         break;
@@ -5611,7 +5768,7 @@ function showProperties(
   if (nodeData.id && nodeData.properties) {
     const p = nodeData.properties as { schema?: unknown; parameters?: unknown };
     if (p.schema || p.parameters) {
-      propertyCache.set(nodeData.id, nodeData.properties);
+      getPropertyCacheForGraph(g).set(nodeData.id, nodeData.properties);
     }
   }
   const opts = getOptionsForGraph(g);
@@ -5619,6 +5776,10 @@ function showProperties(
     opts.onShowProperties(nodeData.id, nodeData.properties, nodeData.isLoading);
   }
 }
+
+export { getDiagramWasmExports, hydrateDiagramWasm, setDiagramWasmExports } from "./wasm-hydration.js";
+
+export { getPropertyCacheForGraph, getReadOnlyForGraph, getSelectedNodeIdForGraph };
 
 export {
   performViewportCulling,
@@ -5952,7 +6113,7 @@ export function updateParameterText(
     name?: string;
     value?: string;
   }
-  const cached = propertyCache.get(nodeId) as { parameters?: ParameterEntry[] } | undefined;
+  const cached = getPropertyCacheForGraph(g).get(nodeId) as { parameters?: ParameterEntry[] } | undefined;
   if (cached?.parameters && Array.isArray(cached.parameters)) {
     const p = cached.parameters.find(
       (item: ParameterEntry) => item && (item.name === paramName || item.name === `${paramName}`),
@@ -6132,6 +6293,7 @@ export function triggerInteractiveInput(
   return action;
 }
 
+export * from "./action-dispatch.js";
 export * from "./affine-matrix.js";
 export * from "./alignment.js";
 export * from "./aspen-diagram-builder.js";
@@ -6163,7 +6325,6 @@ export * from "./port-ilp-solver.js";
 export * from "./port-router.js";
 export * from "./properties/index.js";
 export * from "./property-evaluator.js";
-export * from "./property-sheet-controller.js";
 export * from "./property-validator.js";
 export * from "./protocol.js";
 export type { ReactiveAnimationBinding, X6Markup } from "./protocol.js";

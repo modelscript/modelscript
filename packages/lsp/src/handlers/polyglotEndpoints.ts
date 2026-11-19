@@ -2,7 +2,7 @@
 
 import { compileDslToWasm, CstUnparser } from "@modelscript/dsl";
 import { createWasmParser } from "@modelscript/dsl/bindings";
-import { PolyglotNode, PolyglotTransformer } from "@modelscript/runtime";
+import { PolyglotNode, PolyglotTransformer, WasmPolyglotKernelBridge } from "@modelscript/runtime";
 import { GenericModelicaBridge } from "@modelscript/sysml2";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -779,22 +779,52 @@ export function registerPolyglotEndpoints(
     },
   );
 
+  const resolveCorrespondenceIndex = (uri?: string) => {
+    const uw = workspaceManager?.unifiedWorkspace;
+    if (!uw) return undefined;
+    const directQe = uw.queryEngine;
+    if (directQe && typeof directQe.getCorrespondenceIndex === "function") {
+      const idx = directQe.getCorrespondenceIndex();
+      if (idx) return idx;
+    }
+    if (typeof uw.getQueryEngine === "function") {
+      const preferredLangs = uri?.endsWith(".sysml")
+        ? ["sysml2", "modelica"]
+        : uri?.endsWith(".mo")
+          ? ["modelica", "sysml2"]
+          : ["modelica", "sysml2", "step", "scad"];
+      for (const lang of preferredLangs) {
+        const qe = uw.getQueryEngine(lang);
+        const idx = qe?.getCorrespondenceIndex?.();
+        if (idx) return idx;
+      }
+    }
+    return uw.tggCorrespondenceIndexer?.hypergraph ?? workspaceManager?.hypergraph;
+  };
+
   // ── 6. Propagate Stale Correspondence Links ──────────────────────────────
   connection.onRequest(
     "modelscript/propagateStale",
     async (params: { uri?: string | undefined; symbolIds?: number[] | undefined; parentSlot?: number | undefined }) => {
       try {
-        const qe = workspaceManager?.unifiedWorkspace?.queryEngine;
-        const corr = qe?.getCorrespondenceIndex();
+        const corr = resolveCorrespondenceIndex(params.uri);
         let updatedCount = 0;
         if (corr) {
+          const slotMap: Map<number, number> | undefined =
+            workspaceManager?.unifiedWorkspace?.tggCorrespondenceIndexer?.slotMap;
           if (params.parentSlot !== undefined && typeof corr.markStaleCascading === "function") {
             updatedCount += corr.markStaleCascading(params.parentSlot);
           } else if (params.symbolIds && params.symbolIds.length > 0) {
             for (const symId of params.symbolIds) {
-              if (typeof corr.markStale === "function") corr.markStale(symId);
-              updatedCount++;
+              if (typeof corr.markStale === "function") {
+                const slot = slotMap?.get(symId) ?? symId;
+                corr.markStale(slot);
+                updatedCount++;
+              }
             }
+          } else if (params.parentSlot !== undefined && typeof corr.markStale === "function") {
+            corr.markStale(params.parentSlot);
+            updatedCount++;
           }
           if (typeof corr.propagateAllStale === "function") {
             updatedCount += corr.propagateAllStale();
@@ -807,19 +837,118 @@ export function registerPolyglotEndpoints(
     },
   );
 
+  // ── 6b. Live DBSP Z-Set Symbol Delta Synchronization ─────────────────────
+  const pluginTggRules = globalLanguageRegistry.getAllPlugins().flatMap((p) => {
+    const rules = (
+      p as unknown as {
+        polyglot?: { rules?: NonNullable<ConstructorParameters<typeof PolyglotTransformer>[0]>["rules"] };
+      }
+    )?.polyglot?.rules;
+    return Array.isArray(rules) ? rules : [];
+  });
+  const liveDeltaTransformer = new PolyglotTransformer(
+    pluginTggRules.length > 0 ? { rules: pluginTggRules } : undefined,
+  );
+  const kernelBridge = new WasmPolyglotKernelBridge();
+  const activeDeltaKeys = new Map<string, string>();
+
+  connection.onRequest(
+    "modelscript/syncSymbolDeltas",
+    async (params: {
+      uri?: string | undefined;
+      targetLang: string;
+      deltas: {
+        added?: PolyglotNode[] | undefined;
+        updated?: PolyglotNode[] | undefined;
+        removed?: string[] | undefined;
+      };
+    }) => {
+      try {
+        const deltaPayload: { added?: PolyglotNode[]; updated?: PolyglotNode[]; removed?: string[] } = {};
+        if (params.deltas?.added) deltaPayload.added = params.deltas.added;
+        if (params.deltas?.updated) deltaPayload.updated = params.deltas.updated;
+        if (params.deltas?.removed) deltaPayload.removed = params.deltas.removed;
+
+        const { consolidated, syncResult: res } = kernelBridge.syncDeltas(
+          liveDeltaTransformer,
+          deltaPayload,
+          params.targetLang,
+        );
+        let applied = res.applied;
+        let retracted = res.retracted;
+        const targets: PolyglotNode[] = [...res.targets];
+
+        // Handle retractions tracked under composite thread keys or direct IDs
+        for (const id of consolidated.removed) {
+          const mappedKey = activeDeltaKeys.get(id);
+          if (mappedKey && mappedKey !== id && liveDeltaTransformer.retract(mappedKey)) {
+            retracted++;
+          }
+          activeDeltaKeys.delete(id);
+        }
+
+        // For symbol deltas without an explicit registered TGG rule match, maintain a direct Z-set correspondence thread
+        const incoming = [...consolidated.added, ...consolidated.updated];
+        if (targets.length < incoming.length) {
+          const matchedNames = new Set(targets.map((t) => t.name));
+          for (const node of incoming) {
+            if (matchedNames.has(node.name)) continue;
+            const symKey = String(node.id ?? node.name);
+            const threadKey = symKey;
+            liveDeltaTransformer.registerThread(threadKey, {
+              source: node,
+              [params.targetLang]: node,
+            });
+            activeDeltaKeys.set(symKey, threadKey);
+            targets.push(node);
+            applied++;
+          }
+        } else {
+          for (const node of incoming) {
+            const symKey = String(node.id ?? node.name);
+            activeDeltaKeys.set(symKey, `${node.kind}:${node.name}`);
+          }
+        }
+
+        const corr = resolveCorrespondenceIndex(params.uri);
+        if (corr && typeof corr.propagateAllStale === "function") {
+          corr.propagateAllStale();
+        }
+        const emitted = targets.map((tgt) => liveDeltaTransformer.transform(tgt, params.targetLang));
+        return {
+          success: true,
+          applied,
+          retracted,
+          cancelledCount: consolidated.cancelledCount,
+          usedWasmZSet: consolidated.usedWasmZSet,
+          targets,
+          targetSources: emitted,
+        };
+      } catch (err: any) {
+        return { success: false, applied: 0, retracted: 0, targets: [], error: err?.message || String(err) };
+      }
+    },
+  );
+
   // ── 7. Reconcile Correspondence Conflicts ────────────────────────────────
   connection.onRequest(
     "modelscript/reconcileConflicts",
     async (params: { strategy?: number | undefined; uri?: string | undefined }) => {
       try {
-        const qe = workspaceManager?.unifiedWorkspace?.queryEngine;
-        const corr = qe?.getCorrespondenceIndex();
+        const corr = resolveCorrespondenceIndex(params.uri);
         let resolvedCount = 0;
         if (corr && typeof corr.reconcileAll === "function") {
           resolvedCount = corr.reconcileAll(params.strategy ?? 0);
-          if (params.uri) {
-            connection.sendDiagnostics({ uri: params.uri, diagnostics: [] });
+        } else if (corr && typeof corr.getAllRecords === "function" && typeof corr.resolveConflict === "function") {
+          for (const rec of corr.getAllRecords()) {
+            if (rec?.isConflicted && !rec?.isRemoved) {
+              corr.resolveConflict(rec.slot);
+              resolvedCount++;
+            }
           }
+        }
+        if (corr && params.uri) {
+          connection.sendDiagnostics({ uri: params.uri, diagnostics: [] });
         }
         return { success: true, resolvedCount };
       } catch (err: any) {
@@ -831,38 +960,43 @@ export function registerPolyglotEndpoints(
   // ── 8. Check Correspondence Conflicts & Publish Diagnostics ─────────────
   connection.onRequest("modelscript/checkCorrespondenceConflicts", async (params: { uri?: string | undefined }) => {
     try {
-      const qe = workspaceManager?.unifiedWorkspace?.queryEngine;
-      const corr = qe?.getCorrespondenceIndex();
+      const corr = resolveCorrespondenceIndex(params.uri);
       const doc = params.uri ? documents.get(params.uri) : undefined;
       const symMap = workspaceManager?.unifiedWorkspace?.index?.symbols;
       const conflicts: { slot: number; source: number; target: number; rule: number }[] = [];
       if (corr) {
         const conflictDiags: Diagnostic[] = [];
-        for (let slot = 0; slot < corr.count; slot++) {
-          if (typeof corr.isConflicted === "function" && corr.isConflicted(slot) && !corr.isRemoved(slot)) {
-            const srcId = corr.getSource(slot);
-            const tgtId = corr.getTarget(slot);
-            conflicts.push({
-              slot,
-              source: srcId,
-              target: tgtId,
-              rule: corr.getRule(slot),
-            });
-            let range = { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } };
-            const symEntry = symMap?.get?.(srcId) ?? symMap?.get?.(tgtId);
-            if (doc && symEntry && typeof symEntry.startOffset === "number" && typeof symEntry.endOffset === "number") {
-              range = {
-                start: doc.positionAt(symEntry.startOffset),
-                end: doc.positionAt(symEntry.endOffset),
-              };
+        const pushConflict = (slot: number, srcId: number, tgtId: number, rule: number) => {
+          conflicts.push({ slot, source: srcId, target: tgtId, rule });
+          let range = { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } };
+          const symEntry = symMap?.get?.(srcId) ?? symMap?.get?.(tgtId);
+          if (doc && symEntry && typeof symEntry.startOffset === "number" && typeof symEntry.endOffset === "number") {
+            range = {
+              start: doc.positionAt(symEntry.startOffset),
+              end: doc.positionAt(symEntry.endOffset),
+            };
+          }
+          conflictDiags.push({
+            range,
+            severity: DiagnosticSeverity.Error,
+            code: "CORR_FLAG_CONFLICT",
+            source: "polyglot-tgg",
+            message: `Cross-domain physical/parametric constraint conflict in correspondence link slot #${slot} (source #${srcId} <-> target #${tgtId}).`,
+          });
+        };
+
+        if (typeof corr.getAllRecords === "function") {
+          for (const rec of corr.getAllRecords()) {
+            if (rec?.isConflicted && !rec?.isRemoved) {
+              const nodeIds = Object.values(rec.domainNodes ?? {}) as number[];
+              pushConflict(rec.slot, nodeIds[0] ?? 0, nodeIds[1] ?? 0, rec.relation ?? 0);
             }
-            conflictDiags.push({
-              range,
-              severity: DiagnosticSeverity.Error,
-              code: "CORR_FLAG_CONFLICT",
-              source: "polyglot-tgg",
-              message: `Cross-domain physical/parametric constraint conflict in correspondence link slot #${slot} (source #${srcId} <-> target #${tgtId}).`,
-            });
+          }
+        } else {
+          for (let slot = 0; slot < corr.count; slot++) {
+            if (typeof corr.isConflicted === "function" && corr.isConflicted(slot) && !corr.isRemoved(slot)) {
+              pushConflict(slot, corr.getSource(slot), corr.getTarget(slot), corr.getRule(slot));
+            }
           }
         }
         if (params.uri) {

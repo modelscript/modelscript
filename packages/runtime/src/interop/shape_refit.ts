@@ -49,6 +49,8 @@ export interface GeometricWritebackPatch {
     targetFile: string;
     originalLine: string;
     replacementLine: string;
+    lineNumber?: number | undefined;
+    isSyntheticFallback?: boolean | undefined;
   };
   sysml2Patch: {
     targetElement: string;
@@ -228,6 +230,7 @@ export class ShapeRefitEngine {
     optimizedValue: number,
     options: {
       targetFile?: string | undefined;
+      sourceText?: string | undefined;
       unit?: string | undefined;
       sourceDomain?: "CFD_Adjoint" | "FEA_TopologyOptimization" | undefined;
       meshHash?: string | undefined;
@@ -235,9 +238,44 @@ export class ShapeRefitEngine {
   ): GeometricWritebackPatch {
     const unit = options.unit || "mm";
     const delta = parseFloat((optimizedValue - nominalValue).toFixed(4));
-    const targetFile = options.targetFile || "models/bracket.scad";
     const domain = options.sourceDomain || "FEA_TopologyOptimization";
     const meshHash = options.meshHash || "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const targetFile = options.targetFile || "models/bracket.scad";
+    const escapedName = parameterName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const assignRe = new RegExp(
+      `^([ \\t]*(?:(?:const|let|var)\\s+)?${escapedName}\\s*=\\s*)([^;\\n]+)(;[ \\t]*)(?://.*)?$`,
+    );
+
+    let originalLine = `${parameterName} = ${nominalValue};`;
+    let replacementLine = `${parameterName} = ${optimizedValue.toFixed(4)}; // Optimized by ModelScript ${domain} (delta: ${delta > 0 ? "+" : ""}${delta} ${unit})`;
+    let lineNumber: number | undefined;
+    let matchedInSource = false;
+
+    if (typeof options.sourceText === "string") {
+      const lines = options.sourceText.split(/\r?\n/);
+      let inBlockComment = false;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]!;
+        const trimmed = line.trim();
+        if (inBlockComment) {
+          if (trimmed.includes("*/")) inBlockComment = false;
+          continue;
+        }
+        if (trimmed.startsWith("/*")) {
+          if (!trimmed.includes("*/")) inBlockComment = true;
+          continue;
+        }
+        if (trimmed.startsWith("//")) continue;
+        const m = assignRe.exec(line);
+        if (m) {
+          originalLine = line;
+          replacementLine = `${m[1]}${optimizedValue.toFixed(4)}${m[3]} // Optimized by ModelScript ${domain} (delta: ${delta > 0 ? "+" : ""}${delta} ${unit})`;
+          lineNumber = i + 1;
+          matchedInSource = true;
+          break;
+        }
+      }
+    }
 
     return {
       parameterName,
@@ -248,8 +286,10 @@ export class ShapeRefitEngine {
       sourceDomain: domain,
       openScadPatch: {
         targetFile,
-        originalLine: `${parameterName} = ${nominalValue};`,
-        replacementLine: `${parameterName} = ${optimizedValue.toFixed(4)}; // Optimized by ModelScript ${domain} (delta: ${delta > 0 ? "+" : ""}${delta} ${unit})`,
+        originalLine,
+        replacementLine,
+        ...(lineNumber !== undefined ? { lineNumber } : {}),
+        isSyntheticFallback: !options.targetFile && !matchedInSource,
       },
       sysml2Patch: {
         targetElement: `GeometricParameters::${parameterName}`,

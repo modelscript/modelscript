@@ -114,4 +114,29 @@ end Mechanism;`;
     assert.ok(result.updatedSource.includes('uri = "modelica://Mech/Resources/link.step"'));
     assert.ok(result.updatedSource.includes('property = "rotation", variable = "phi", unit = "rad"'));
   });
+
+  it("preserves existing dynamicBindings when config.bindings is omitted and ignores comment mentions", () => {
+    const modelicaCode = `model Robot
+  // body moves along x
+  Modelica.Mechanics.MultiBody.Parts.BodyBox body(
+    r={0.1, 0, 0},
+    annotation(CAD(
+      uri = "modelica://Lib/box.step",
+      position = {0, 0, 0},
+      dynamicBindings = {
+        CADBinding(property = "position", index = 1, variable = "r_0[1]", unit = "m")
+      }
+    ))
+  );
+equation
+end Robot;`;
+
+    const result = patchModelicaCadAnnotation(modelicaCode, "body", {
+      position: [1.5, 2.0, 0.5],
+    });
+
+    assert.ok(result.updatedSource.includes("position = {1.5, 2, 0.5}"));
+    assert.ok(result.updatedSource.includes('property = "position", index = 1, variable = "r_0[1]"'));
+    assert.ok(result.updatedSource.includes("// body moves along x"));
+  });
 });

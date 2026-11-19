@@ -7,36 +7,40 @@
 
 import { getDefaultWasmExports } from "../dae/wasm_dae.js";
 
-let cadScratch: {
-  wasm: any;
-  aabbAPtr: number;
-  aabbBPtr: number;
-  triAPtr: number;
-  triBPtr: number;
-  planeNormalPtr: number;
-  countsOutPtr: number;
-  rayOriginPtr: number;
-  rayDirPtr: number;
-  hitOutPtr: number;
-} | null = null;
+const scratchPools = new WeakMap<object, Map<string, { ptr: number; bytes: number }>>();
 
-function ensureCadScratch(wasm: any) {
-  if (!cadScratch || cadScratch.wasm !== wasm) {
-    const alloc = (bytes: number): number => wasm.__new(bytes, 0);
-    cadScratch = {
-      wasm,
-      aabbAPtr: alloc(6 * 8),
-      aabbBPtr: alloc(6 * 8),
-      triAPtr: alloc(9 * 8),
-      triBPtr: alloc(9 * 8),
-      planeNormalPtr: alloc(3 * 8),
-      countsOutPtr: alloc(2 * 4),
-      rayOriginPtr: alloc(3 * 8),
-      rayDirPtr: alloc(3 * 8),
-      hitOutPtr: alloc(4 * 8),
-    };
+/**
+ * Returns a pinned WASM linear-memory scratch pointer with at least `minBytes` capacity,
+ * reusing prior allocations on repeated calls and unpinning replaced blocks on growth.
+ */
+function ensureScratchBuffer(wasm: any, key: string, minBytes: number): number {
+  let pool = scratchPools.get(wasm);
+  if (!pool) {
+    pool = new Map();
+    scratchPools.set(wasm, pool);
   }
-  return cadScratch;
+  const existing = pool.get(key);
+  if (existing && existing.bytes >= minBytes) {
+    return existing.ptr;
+  }
+  if (existing && typeof wasm.__unpin === "function") {
+    try {
+      wasm.__unpin(existing.ptr);
+    } catch {
+      // ignore if runtime lacks pin tracking
+    }
+  }
+  const nextBytes = Math.max(minBytes, existing ? existing.bytes * 2 : 0);
+  const ptr: number = wasm.__new(nextBytes, 0);
+  if (typeof wasm.__pin === "function") {
+    try {
+      wasm.__pin(ptr);
+    } catch {
+      // ignore
+    }
+  }
+  pool.set(key, { ptr, bytes: nextBytes });
+  return ptr;
 }
 
 /**
@@ -53,9 +57,10 @@ export function computeAabbDistanceWasm(
   if (!wasm || typeof wasm.cad_aabb_distance !== "function") {
     throw new Error("WASM cad_aabb_distance kernel not available");
   }
-  const s = ensureCadScratch(wasm);
+  const aabbAPtr = ensureScratchBuffer(wasm, "aabbA", 6 * 8);
+  const aabbBPtr = ensureScratchBuffer(wasm, "aabbB", 6 * 8);
   const buf = wasm.memory.buffer;
-  const a = new Float64Array(buf, s.aabbAPtr, 6);
+  const a = new Float64Array(buf, aabbAPtr, 6);
   a[0] = minA[0];
   a[1] = minA[1];
   a[2] = minA[2];
@@ -63,7 +68,7 @@ export function computeAabbDistanceWasm(
   a[4] = maxA[1];
   a[5] = maxA[2];
 
-  const b = new Float64Array(buf, s.aabbBPtr, 6);
+  const b = new Float64Array(buf, aabbBPtr, 6);
   b[0] = minB[0];
   b[1] = minB[1];
   b[2] = minB[2];
@@ -71,7 +76,7 @@ export function computeAabbDistanceWasm(
   b[4] = maxB[1];
   b[5] = maxB[2];
 
-  return wasm.cad_aabb_distance(s.aabbAPtr, s.aabbBPtr);
+  return wasm.cad_aabb_distance(aabbAPtr, aabbBPtr);
 }
 
 /**
@@ -91,36 +96,30 @@ export function raycastBvhWasm(
   const numItems = ids.length;
   if (numItems === 0) return null;
 
-  const s = ensureCadScratch(wasm);
-  const aabbsPtr = wasm.__new(numItems * 6 * 8, 0);
-  const idsPtr = wasm.__new(numItems * 4, 0);
+  const aabbsPtr = ensureScratchBuffer(wasm, "bvhAabbs", numItems * 6 * 8);
+  const idsPtr = ensureScratchBuffer(wasm, "bvhIds", numItems * 4);
+  const rayOriginPtr = ensureScratchBuffer(wasm, "rayOrigin", 3 * 8);
+  const rayDirPtr = ensureScratchBuffer(wasm, "rayDir", 3 * 8);
+  const hitOutPtr = ensureScratchBuffer(wasm, "hitOut", 4 * 8);
 
   const buf = wasm.memory.buffer;
   new Float64Array(buf, aabbsPtr, numItems * 6).set(aabbs.subarray(0, numItems * 6));
   new Int32Array(buf, idsPtr, numItems).set(ids);
 
-  const o = new Float64Array(buf, s.rayOriginPtr, 3);
+  const o = new Float64Array(buf, rayOriginPtr, 3);
   o[0] = origin[0];
   o[1] = origin[1];
   o[2] = origin[2];
 
-  const d = new Float64Array(buf, s.rayDirPtr, 3);
+  const d = new Float64Array(buf, rayDirPtr, 3);
   d[0] = dir[0];
   d[1] = dir[1];
   d[2] = dir[2];
 
-  const hitId: number = wasm.cad_bvh_raycast(
-    numItems,
-    aabbsPtr,
-    idsPtr,
-    s.rayOriginPtr,
-    s.rayDirPtr,
-    maxDist,
-    s.hitOutPtr,
-  );
+  const hitId: number = wasm.cad_bvh_raycast(numItems, aabbsPtr, idsPtr, rayOriginPtr, rayDirPtr, maxDist, hitOutPtr);
   if (hitId < 0) return null;
 
-  const hitOut = new Float64Array(wasm.memory.buffer, s.hitOutPtr, 4);
+  const hitOut = new Float64Array(wasm.memory.buffer, hitOutPtr, 4);
   return {
     id: hitId,
     distance: hitOut[0]!,
@@ -144,33 +143,28 @@ export function raycastBvhTreeWasm(
   }
   if (numNodes === 0) return null;
 
-  const s = ensureCadScratch(wasm);
-  const nodesPtr = wasm.__new(numNodes * 64, 0);
+  const nodesPtr = ensureScratchBuffer(wasm, "bvhTreeNodes", numNodes * 64);
+  const rayOriginPtr = ensureScratchBuffer(wasm, "rayOrigin", 3 * 8);
+  const rayDirPtr = ensureScratchBuffer(wasm, "rayDir", 3 * 8);
+  const hitOutPtr = ensureScratchBuffer(wasm, "hitOut", 4 * 8);
 
   const buf = wasm.memory.buffer;
   new Float64Array(buf, nodesPtr, numNodes * 8).set(nodes.subarray(0, numNodes * 8));
 
-  const o = new Float64Array(buf, s.rayOriginPtr, 3);
+  const o = new Float64Array(buf, rayOriginPtr, 3);
   o[0] = origin[0];
   o[1] = origin[1];
   o[2] = origin[2];
 
-  const d = new Float64Array(buf, s.rayDirPtr, 3);
+  const d = new Float64Array(buf, rayDirPtr, 3);
   d[0] = dir[0];
   d[1] = dir[1];
   d[2] = dir[2];
 
-  const hitId: number = wasm.cad_bvh_tree_raycast(
-    numNodes,
-    nodesPtr,
-    s.rayOriginPtr,
-    s.rayDirPtr,
-    maxDist,
-    s.hitOutPtr,
-  );
+  const hitId: number = wasm.cad_bvh_tree_raycast(numNodes, nodesPtr, rayOriginPtr, rayDirPtr, maxDist, hitOutPtr);
   if (hitId < 0) return null;
 
-  const hitOut = new Float64Array(wasm.memory.buffer, s.hitOutPtr, 4);
+  const hitOut = new Float64Array(wasm.memory.buffer, hitOutPtr, 4);
   return {
     id: hitId,
     distance: hitOut[0]!,
@@ -186,11 +180,12 @@ export function computeTriTriMinDistanceSqWasm(triA: Float64Array, triB: Float64
   if (!wasm || typeof wasm.cad_tri_tri_min_distance_sq !== "function") {
     throw new Error("WASM cad_tri_tri_min_distance_sq kernel not available");
   }
-  const s = ensureCadScratch(wasm);
+  const triAPtr = ensureScratchBuffer(wasm, "triA", 9 * 8);
+  const triBPtr = ensureScratchBuffer(wasm, "triB", 9 * 8);
   const buf = wasm.memory.buffer;
-  new Float64Array(buf, s.triAPtr, 9).set(triA.subarray(0, 9));
-  new Float64Array(buf, s.triBPtr, 9).set(triB.subarray(0, 9));
-  return wasm.cad_tri_tri_min_distance_sq(s.triAPtr, s.triBPtr);
+  new Float64Array(buf, triAPtr, 9).set(triA.subarray(0, 9));
+  new Float64Array(buf, triBPtr, 9).set(triB.subarray(0, 9));
+  return wasm.cad_tri_tri_min_distance_sq(triAPtr, triBPtr);
 }
 
 /**
@@ -210,10 +205,11 @@ export function computeMeshPairMinClearanceWasm(
   const numTrisB = Math.floor(trisB.length / 9);
   if (numTrisA === 0 || numTrisB === 0) return Infinity;
 
-  const trisAPtr = wasm.__new(numTrisA * 9 * 8, 0);
-  const trisBPtr = wasm.__new(numTrisB * 9 * 8, 0);
-  new Float64Array(wasm.memory.buffer, trisAPtr, numTrisA * 9).set(trisA.subarray(0, numTrisA * 9));
-  new Float64Array(wasm.memory.buffer, trisBPtr, numTrisB * 9).set(trisB.subarray(0, numTrisB * 9));
+  const trisAPtr = ensureScratchBuffer(wasm, "meshTrisA", numTrisA * 9 * 8);
+  const trisBPtr = ensureScratchBuffer(wasm, "meshTrisB", numTrisB * 9 * 8);
+  const buf = wasm.memory.buffer;
+  new Float64Array(buf, trisAPtr, numTrisA * 9).set(trisA.subarray(0, numTrisA * 9));
+  new Float64Array(buf, trisBPtr, numTrisB * 9).set(trisB.subarray(0, numTrisB * 9));
 
   return wasm.cad_mesh_pair_min_clearance(numTrisA, trisAPtr, numTrisB, trisBPtr, earlyExitThreshold);
 }
@@ -233,14 +229,15 @@ export function bspSplitPolygonWasm(
   }
   const numVerts = Math.floor(vertices.length / 3);
   const maxOutVerts = numVerts + 4;
-  const vertsPtr = wasm.__new(numVerts * 3 * 8, 0);
-  const frontOutPtr = wasm.__new(maxOutVerts * 3 * 8, 0);
-  const backOutPtr = wasm.__new(maxOutVerts * 3 * 8, 0);
+  const vertsPtr = ensureScratchBuffer(wasm, "bspVerts", numVerts * 3 * 8);
+  const frontOutPtr = ensureScratchBuffer(wasm, "bspFrontOut", maxOutVerts * 3 * 8);
+  const backOutPtr = ensureScratchBuffer(wasm, "bspBackOut", maxOutVerts * 3 * 8);
+  const planeNormalPtr = ensureScratchBuffer(wasm, "planeNormal", 3 * 8);
+  const countsOutPtr = ensureScratchBuffer(wasm, "countsOut", 2 * 4);
 
-  const s = ensureCadScratch(wasm);
   const buf = wasm.memory.buffer;
   new Float64Array(buf, vertsPtr, numVerts * 3).set(vertices.subarray(0, numVerts * 3));
-  const nArr = new Float64Array(buf, s.planeNormalPtr, 3);
+  const nArr = new Float64Array(buf, planeNormalPtr, 3);
   nArr[0] = planeNormal[0];
   nArr[1] = planeNormal[1];
   nArr[2] = planeNormal[2];
@@ -248,11 +245,11 @@ export function bspSplitPolygonWasm(
   const classification: number = wasm.cad_bsp_split_polygon(
     numVerts,
     vertsPtr,
-    s.planeNormalPtr,
+    planeNormalPtr,
     planeW,
     frontOutPtr,
     backOutPtr,
-    s.countsOutPtr,
+    countsOutPtr,
   );
 
   if (classification !== 3) {
@@ -263,7 +260,7 @@ export function bspSplitPolygonWasm(
     };
   }
 
-  const counts = new Int32Array(wasm.memory.buffer, s.countsOutPtr, 2);
+  const counts = new Int32Array(wasm.memory.buffer, countsOutPtr, 2);
   const nFront = counts[0]!;
   const nBack = counts[1]!;
   const front = new Float64Array(nFront * 3);
@@ -276,7 +273,7 @@ export function bspSplitPolygonWasm(
 
 /**
  * Routes an orthogonal connection on a 2D grid (`cols x rows`) using the WebAssembly
- * binary-heap A* kernel with bend and wire-crossing penalties.
+ * binary-heap A* kernel with bend and wire-crossing penalties, reusing pinned scratch buffers.
  */
 export function routeOrthogonalAStarWasm(options: {
   cols: number;
@@ -299,14 +296,13 @@ export function routeOrthogonalAStarWasm(options: {
   const totalStates = totalCells * 4;
   const maxWaypoints = Math.min(totalCells, 1024);
 
-  const alloc = (bytes: number): number => wasm.__new(bytes, 0);
-  const gridPtr = alloc(totalCells);
-  const gScorePtr = alloc(totalStates * 8);
-  const parentPtr = alloc(totalStates * 4);
-  const closedPtr = alloc(totalStates);
-  const heapStatesPtr = alloc(totalStates * 4);
-  const heapPrioritiesPtr = alloc(totalStates * 8);
-  const outWaypointsPtr = alloc(maxWaypoints * 2 * 4);
+  const gridPtr = ensureScratchBuffer(wasm, "astarGrid", totalCells);
+  const gScorePtr = ensureScratchBuffer(wasm, "astarGScore", totalStates * 8);
+  const parentPtr = ensureScratchBuffer(wasm, "astarParent", totalStates * 4);
+  const closedPtr = ensureScratchBuffer(wasm, "astarClosed", totalStates);
+  const heapStatesPtr = ensureScratchBuffer(wasm, "astarHeapStates", totalStates * 4);
+  const heapPrioritiesPtr = ensureScratchBuffer(wasm, "astarHeapPriorities", totalStates * 8);
+  const outWaypointsPtr = ensureScratchBuffer(wasm, "astarOutWaypoints", maxWaypoints * 2 * 4);
 
   new Uint8Array(wasm.memory.buffer, gridPtr, totalCells).set(grid.subarray(0, totalCells));
 
@@ -356,10 +352,11 @@ export function computeEcadTracePairMinClearanceWasm(
   const nPts2 = Math.floor(pts2.length / 2);
   if (nPts1 < 2 || nPts2 < 2) return Infinity;
 
-  const pts1Ptr = wasm.__new(nPts1 * 2 * 8, 0);
-  const pts2Ptr = wasm.__new(nPts2 * 2 * 8, 0);
-  new Float64Array(wasm.memory.buffer, pts1Ptr, nPts1 * 2).set(pts1.subarray(0, nPts1 * 2));
-  new Float64Array(wasm.memory.buffer, pts2Ptr, nPts2 * 2).set(pts2.subarray(0, nPts2 * 2));
+  const pts1Ptr = ensureScratchBuffer(wasm, "drcPts1", nPts1 * 2 * 8);
+  const pts2Ptr = ensureScratchBuffer(wasm, "drcPts2", nPts2 * 2 * 8);
+  const buf = wasm.memory.buffer;
+  new Float64Array(buf, pts1Ptr, nPts1 * 2).set(pts1.subarray(0, nPts1 * 2));
+  new Float64Array(buf, pts2Ptr, nPts2 * 2).set(pts2.subarray(0, nPts2 * 2));
 
   return wasm.ecad_drc_trace_pair_min_clearance(nPts1, pts1Ptr, w1, nPts2, pts2Ptr, w2);
 }
@@ -376,7 +373,7 @@ export function computeEcadPointToPolygonDistWasm(px: number, py: number, poly: 
   const nVerts = Math.floor(poly.length / 2);
   if (nVerts < 3) return Infinity;
 
-  const polyPtr = wasm.__new(nVerts * 2 * 8, 0);
+  const polyPtr = ensureScratchBuffer(wasm, "drcPoly", nVerts * 2 * 8);
   new Float64Array(wasm.memory.buffer, polyPtr, nVerts * 2).set(poly.subarray(0, nVerts * 2));
   return wasm.ecad_drc_point_to_polygon_dist(px, py, nVerts, polyPtr);
 }
@@ -389,11 +386,12 @@ export function multiplyMat4Wasm(a: Float64Array, b: Float64Array): Float64Array
   if (!wasm || typeof wasm.scad_multiply_mat4 !== "function") {
     throw new Error("WASM scad_multiply_mat4 kernel not available");
   }
-  const aPtr = wasm.__new(16 * 8, 0);
-  const bPtr = wasm.__new(16 * 8, 0);
-  const outPtr = wasm.__new(16 * 8, 0);
-  new Float64Array(wasm.memory.buffer, aPtr, 16).set(a.subarray(0, 16));
-  new Float64Array(wasm.memory.buffer, bPtr, 16).set(b.subarray(0, 16));
+  const aPtr = ensureScratchBuffer(wasm, "mat4A", 16 * 8);
+  const bPtr = ensureScratchBuffer(wasm, "mat4B", 16 * 8);
+  const outPtr = ensureScratchBuffer(wasm, "mat4Out", 16 * 8);
+  const buf = wasm.memory.buffer;
+  new Float64Array(buf, aPtr, 16).set(a.subarray(0, 16));
+  new Float64Array(buf, bPtr, 16).set(b.subarray(0, 16));
   wasm.scad_multiply_mat4(aPtr, bPtr, outPtr);
   const res = new Float64Array(16);
   res.set(new Float64Array(wasm.memory.buffer, outPtr, 16));
@@ -411,8 +409,8 @@ export function compactTsm1DWasm(coords: Int32Array): { compacted: Int32Array; s
   }
   const n = coords.length;
   if (n === 0) return { compacted: new Int32Array(0), span: 0 };
-  const coordsPtr = wasm.__new(n * 4, 0);
-  const outPtr = wasm.__new(n * 4, 0);
+  const coordsPtr = ensureScratchBuffer(wasm, "tsmCoords", n * 4);
+  const outPtr = ensureScratchBuffer(wasm, "tsmOut", n * 4);
   new Int32Array(wasm.memory.buffer, coordsPtr, n).set(coords);
   const span: number = wasm.diagram_tsm_compact_1d(n, coordsPtr, outPtr);
   const compacted = new Int32Array(n);
@@ -436,8 +434,8 @@ export function alignPorts1DWasm(
   }
   const n = targets.length;
   if (n === 0) return new Float64Array(0);
-  const targetsPtr = wasm.__new(n * 8, 0);
-  const outPtr = wasm.__new(n * 8, 0);
+  const targetsPtr = ensureScratchBuffer(wasm, "portTargets", n * 8);
+  const outPtr = ensureScratchBuffer(wasm, "portOut", n * 8);
   new Float64Array(wasm.memory.buffer, targetsPtr, n).set(targets);
   wasm.diagram_port_align_1d(n, targetsPtr, minSpacing, minBound, maxBound, outPtr);
   const out = new Float64Array(n);

@@ -6,8 +6,11 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   InfoIcon,
+  ShieldCheckIcon,
+  TriangleDownIcon,
   XCircleFillIcon,
 } from "@primer/octicons-react";
+import { ActionList, ActionMenu } from "@primer/react";
 import type { editor } from "monaco-editor";
 import React, { useMemo, useRef, useState } from "react";
 import { MorselResizeHandle } from "./MorselResizeHandle";
@@ -33,6 +36,10 @@ export interface MorselDiagnosticsPanelProps {
   onSelectDiagnostic: (marker: editor.IMarkerData) => void;
   onSelectProjectDiagnostic?: ((fileName: string, marker: editor.IMarkerData) => void) | undefined;
   onFixWithAi?: ((marker: editor.IMarkerData, fileName?: string) => void) | undefined;
+  onRunOnDemandLints?: ((mode: "all" | "formal" | "compiler") => void) | undefined;
+  onClearOnDemandLints?: (() => void) | undefined;
+  isRunningOnDemandLints?: boolean | undefined;
+  hasOnDemandResults?: boolean | undefined;
 }
 
 type SeverityFilter = "all" | "error" | "warning";
@@ -67,6 +74,10 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
   onSelectDiagnostic,
   onSelectProjectDiagnostic,
   onFixWithAi,
+  onRunOnDemandLints,
+  onClearOnDemandLints,
+  isRunningOnDemandLints = false,
+  hasOnDemandResults = false,
 }) => {
   const [filter, setFilter] = useState<SeverityFilter>("all");
   const [scope, setScope] = useState<ScopeFilter>("project");
@@ -439,6 +450,86 @@ export const MorselDiagnosticsPanel: React.FC<MorselDiagnosticsPanelProps> = ({
                     </button>
                   );
                 })}
+              </div>
+            )}
+            {onRunOnDemandLints && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  borderRadius: 7,
+                  border: `1px solid ${isDark ? "rgba(56, 189, 248, 0.28)" : "rgba(8, 145, 178, 0.28)"}`,
+                  backgroundColor: isDark ? "rgba(56, 189, 248, 0.10)" : "rgba(8, 145, 178, 0.08)",
+                  overflow: "hidden",
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={isRunningOnDemandLints}
+                  title="Run on-demand formal verification (S7xxx / M7xxx) & WASM compiler lints"
+                  aria-label="Run on-demand formal verification and compiler lints"
+                  onClick={() => onRunOnDemandLints("all")}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    padding: "3px 8px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    border: "none",
+                    background: "transparent",
+                    color: isDark ? "#38bdf8" : "#0891b2",
+                    cursor: isRunningOnDemandLints ? "wait" : "pointer",
+                    opacity: isRunningOnDemandLints ? 0.65 : 1,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <ShieldCheckIcon size={12} />
+                  <span>{isRunningOnDemandLints ? "Verifying…" : "Verify Formal"}</span>
+                </button>
+                <ActionMenu>
+                  <ActionMenu.Anchor>
+                    <button
+                      type="button"
+                      disabled={isRunningOnDemandLints}
+                      aria-label="Choose on-demand lint verification mode"
+                      title="Choose on-demand verification mode"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "3px 5px",
+                        border: "none",
+                        borderLeft: `1px solid ${isDark ? "rgba(56, 189, 248, 0.22)" : "rgba(8, 145, 178, 0.22)"}`,
+                        background: "transparent",
+                        color: isDark ? "#38bdf8" : "#0891b2",
+                        cursor: isRunningOnDemandLints ? "wait" : "pointer",
+                      }}
+                    >
+                      <TriangleDownIcon size={11} />
+                    </button>
+                  </ActionMenu.Anchor>
+                  <ActionMenu.Overlay width="medium">
+                    <ActionList>
+                      <ActionList.Item onSelect={() => onRunOnDemandLints("all")}>
+                        Run All On-Demand Checks (Formal + Compiler)
+                      </ActionList.Item>
+                      <ActionList.Item onSelect={() => onRunOnDemandLints("formal")}>
+                        Run Formal Verification Only (S7xxx / M7xxx)
+                      </ActionList.Item>
+                      <ActionList.Item onSelect={() => onRunOnDemandLints("compiler")}>
+                        Run WASM Compiler Lints Only (Tier-1 CST)
+                      </ActionList.Item>
+                      {hasOnDemandResults && onClearOnDemandLints && (
+                        <>
+                          <ActionList.Divider />
+                          <ActionList.Item onSelect={onClearOnDemandLints}>Clear On-Demand Results</ActionList.Item>
+                        </>
+                      )}
+                    </ActionList>
+                  </ActionMenu.Overlay>
+                </ActionMenu>
               </div>
             )}
             <button

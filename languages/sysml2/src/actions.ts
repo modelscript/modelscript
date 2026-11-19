@@ -400,4 +400,41 @@ export const sysml2Actions: LanguageAction[] = [
       },
     },
   },
+  {
+    id: "run_formal_lints",
+    title: "Run Deep Formal Verification (S7xxx)",
+    description:
+      "Runs IC3/PDR hierarchical state safety, ISO 26262 ASIL fault-tree analysis, probabilistic UQ chance constraints, GD&T tolerance stack-ups, 2-safety hyperproperties, and Taylor-model flowpipe reachability.",
+    category: "verify" as const,
+    inputs: {
+      scopeName: { type: "string", description: "Optional package or definition name filter" },
+    },
+    execute: async (ctx: SysmlActionContext, params: { scopeName?: string | undefined }) => {
+      const queryDB = ctx.workspaceManager?.globalSysml2QueryEngine?.toQueryDB() || ctx.queryDB;
+      if (!queryDB) throw new Error("SysML v2 query database is not initialized.");
+      const { verifySysML2Formal } = await import("./formal-linter.js");
+      return verifySysML2Formal(queryDB, {
+        ...(ctx.uri ? { resourceUri: ctx.uri } : {}),
+        ...(params?.scopeName ? { scopeName: params.scopeName } : {}),
+      });
+    },
+    ui: {
+      editorTitle: {
+        icon: "$(shield)",
+        group: "navigation@1",
+      },
+      editorContextMenu: {
+        group: "1_run@6",
+      },
+      explorerContextMenu: {
+        group: "modelscript_run@2",
+      },
+      languageModelTool: {
+        name: "sysml2_run_formal_lints",
+        displayName: "Run SysML v2 Deep Formal Verification (S7xxx)",
+        modelDescription:
+          "Runs deep formal verification passes (PDR, ASIL FTA, UQ chance constraints, tolerance stacks, hyperproperties, continuous flowpipes) on a SysML v2 model.",
+      },
+    },
+  },
 ];

@@ -58,6 +58,26 @@ export const cfdLanguage = language({
       dark: "./assets/cfd/icon-dark.png",
     },
   },
+  ui: {
+    panels: [
+      {
+        id: "cfgEditor",
+        viewType: "modelscript.cfgEditor",
+        title: "CFD Config & Aerodynamics Studio",
+        shortTitle: "CFD",
+        selector: ["*.cfd", "*.cfg", "*.cfgt", "*.su2", "*.foam"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/CfdPanel.tsx",
+        artifactViewTypes: ["cfd", "su2", "cfg"],
+      },
+    ],
+    stencils: [
+      { label: "Farfield", snippet: "MARKER_FAR= ( farfield )\n" },
+      { label: "Euler Wall", snippet: "MARKER_EULER= ( wall_surface )\n" },
+      { label: "Pressure Outlet", snippet: "MARKER_OUTLET= ( outlet, 101325.0 )\n" },
+    ],
+  },
 
   // IDE and AI agent actions for 3D aerodynamics viewing, template materialization, and CFD evaluation
   actions: [

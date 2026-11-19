@@ -150,8 +150,8 @@ const activeExampleSvg = computed<string>(() => {
 });
 
 function morselHrefFor(ex: IndustryExampleItem | undefined): string {
-  if (!ex?.permalinkToken) return `${ansatzOrigin.value}/morsel`;
-  return `${ansatzOrigin.value}/morsel#m=${ex.permalinkToken}`;
+  if (!ex?.permalinkToken) return `${ansatzOrigin.value}/editor`;
+  return `${ansatzOrigin.value}/editor#m=${ex.permalinkToken}`;
 }
 
 const heroMorselHref = computed(() => morselHrefFor(industryExamples.value[0]));
@@ -292,7 +292,7 @@ async function copyText(text: string, which: "cli" | "example") {
               Get started <MsIcon name="arrowRight" :size="16" :stroke="2" />
             </a>
             <a class="ms-btn ms-btn-lg ms-btn-ghost" :href="heroMorselHref" target="_blank" rel="noopener noreferrer">
-              {{ industryExamples.length ? `Open ${industryExamples[0]?.name} in Morsel` : "Open Morsel" }}
+              {{ industryExamples.length ? `Open ${industryExamples[0]?.name} in Ansatz` : "Open Ansatz" }}
               <MsIcon name="arrow-up-right" :size="15" :stroke="2" />
             </a>
           </div>
@@ -327,7 +327,8 @@ async function copyText(text: string, which: "cli" | "example") {
           <span class="ms-eyebrow">Interactive Workbench</span>
           <h2 class="ms-h2">Inspect live {{ industry.name.toLowerCase() }} models &amp; schematics</h2>
           <p class="ms-lead">
-            Pre-rendered from the same parser, diagram layout engine, and Morsel WebAssembly studio used in production.
+            Pre-rendered from the same parser, diagram layout engine, and Ansatz WebAssembly runtime used in
+            production.
           </p>
         </header>
 
@@ -391,7 +392,7 @@ async function copyText(text: string, which: "cli" | "example") {
                 rel="noopener noreferrer"
                 class="wb-morsel-btn"
               >
-                <span>Open in Morsel</span>
+                <span>Open in Ansatz</span>
                 <MsIcon name="arrow-up-right" :size="13" />
               </a>
             </div>

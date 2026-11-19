@@ -31,6 +31,28 @@ export const epanetLanguage = language({
     folding: ["IniSectionHeader"],
     outline: ["IniSectionHeader"],
   },
+  ui: {
+    panels: [
+      {
+        id: "epanetEditor",
+        viewType: "modelscript.epanetEditor",
+        title: "EPANET Water Network Studio",
+        shortTitle: "EPANET",
+        selector: ["*.epanet", "*.epanet.inp", "*.net"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/EpanetPanel.tsx",
+        artifactViewTypes: ["epanet"],
+      },
+    ],
+    simulationCards: [
+      {
+        id: "water-compliance",
+        title: "Water Utility Compliance (AWIA / AWWA M36 / LCRI)",
+        entry: "./src/ui/WaterComplianceCard.tsx",
+      },
+    ],
+  },
   rules: iniSectionRules,
 
   actions: [

@@ -898,6 +898,278 @@ export function registerMiscEndpoints(context: LspContext) {
     return runVerificationForUri(params.uri);
   });
 
+  context.connection.onRequest(
+    "modelscript/runFormalLints",
+    async (params: {
+      uri: string;
+      includeFormal?: boolean | undefined;
+      includeCompilerLints?: boolean | undefined;
+    }) => {
+      const startedAt = Date.now();
+      const targetUri = params?.uri ?? "";
+      const includeFormal = params?.includeFormal !== false;
+      const includeCompilerLints = params?.includeCompilerLints !== false;
+
+      if (!targetUri) {
+        return {
+          ok: false,
+          diagnostics: [],
+          formalCount: 0,
+          compilerCount: 0,
+          error: "Missing target document URI.",
+        };
+      }
+
+      try {
+        const liveDoc = context.documents.get(targetUri);
+        const wm = context.workspaceManager as unknown as {
+          getFileContent?: (uri: string) => Promise<string | undefined>;
+        };
+        const docText =
+          liveDoc?.getText() ??
+          (await wm.getFileContent?.(targetUri)) ??
+          context.documentManager?.documents?.get(targetUri)?.getText() ??
+          "";
+        const lowerUri = targetUri.toLowerCase();
+        const isSysml =
+          liveDoc?.languageId === "sysml2" ||
+          lowerUri.endsWith(".sysml") ||
+          lowerUri.endsWith(".sysml2") ||
+          lowerUri.endsWith(".kerml");
+        const isModelica = liveDoc?.languageId === "modelica" || lowerUri.endsWith(".mo");
+        const langId = isSysml ? "sysml2" : isModelica ? "modelica" : (liveDoc?.languageId ?? "modelscript");
+        const textDoc = liveDoc ?? TextDocument.create(targetUri, langId, 1, docText);
+
+        type OutDiag = {
+          range: {
+            start: { line: number; character: number };
+            end: { line: number; character: number };
+          };
+          severity: 1 | 2 | 3 | 4;
+          code?: string | number | undefined;
+          source?: string | undefined;
+          message: string;
+        };
+
+        const outDiagnostics: OutDiag[] = [];
+        const seenKeys = new Set<string>();
+        let formalCount = 0;
+        let compilerCount = 0;
+
+        const pushDiag = (d: OutDiag, kind: "formal" | "compiler") => {
+          const key = `${d.range.start.line}:${d.range.start.character}:${d.code ?? ""}:${d.message}`;
+          if (seenKeys.has(key)) return;
+          seenKeys.add(key);
+          outDiagnostics.push(d);
+          if (kind === "formal") formalCount++;
+          else compilerCount++;
+        };
+
+        await (context.parserService as { ensureParserInitialized?: (id: string) => Promise<unknown> })
+          ?.ensureParserInitialized?.(langId)
+          ?.catch?.(() => {});
+        const parser = context.parserService?.getParser?.(langId) as
+          | { parse(src: string): { rootPtr?: number; rootNode?: unknown; delete?: () => void } | null }
+          | null
+          | undefined;
+        const facade = context.parserService?.getFacade?.(langId) as
+          | {
+              loadSource?: (src: string) => void;
+              getDiagnostics?: (
+                rootPtr: number,
+                start?: number,
+                end?: number,
+                src?: string,
+              ) => Array<{
+                startOffset?: number;
+                endOffset?: number;
+                severity?: number;
+                code?: string | number;
+                message?: string;
+              }>;
+            }
+          | null
+          | undefined;
+
+        const parsedTree = parser && docText ? parser.parse(docText) : null;
+        try {
+          if (includeCompilerLints && parsedTree && facade && typeof facade.getDiagnostics === "function") {
+            const rootNodeObj = parsedTree.rootNode as { id?: number; ptr?: number } | undefined;
+            const rootPtr = parsedTree.rootPtr ?? rootNodeObj?.id ?? rootNodeObj?.ptr ?? 0;
+            if (rootPtr) {
+              if (typeof facade.loadSource === "function") facade.loadSource(docText);
+              const wasmDiags = facade.getDiagnostics(rootPtr, 0, 0, docText) ?? [];
+              const sysmlMod = isSysml ? await import("@modelscript/sysml2") : null;
+              for (const wd of wasmDiags) {
+                const startOff = Math.max(0, wd.startOffset ?? 0);
+                const endOff = Math.max(startOff + 1, wd.endOffset ?? startOff + 1);
+                const codeNum = typeof wd.code === "number" ? wd.code : undefined;
+                const sysmlDef =
+                  isSysml && codeNum !== undefined ? sysmlMod?.getSysML2ErrorCodeDef(codeNum) : undefined;
+                const sev: 1 | 2 | 3 =
+                  wd.severity === 1
+                    ? 1
+                    : wd.severity === 2
+                      ? 2
+                      : sysmlDef?.severity === "warning"
+                        ? 2
+                        : sysmlDef?.severity === "info"
+                          ? 3
+                          : 1;
+                const codeStr =
+                  codeNum !== undefined
+                    ? `${isSysml ? "S" : isModelica ? "M" : ""}${codeNum}`
+                    : wd.code !== undefined
+                      ? String(wd.code)
+                      : undefined;
+                pushDiag(
+                  {
+                    range: {
+                      start: textDoc.positionAt(startOff),
+                      end: textDoc.positionAt(Math.min(docText.length, endOff)),
+                    },
+                    severity: sev,
+                    ...(codeStr !== undefined ? { code: codeStr } : {}),
+                    source: `${langId}-compiler`,
+                    message: wd.message || "Compiler diagnostic",
+                  },
+                  "compiler",
+                );
+              }
+            }
+          }
+
+          if (includeFormal && isSysml) {
+            const sysmlMod = await import("@modelscript/sysml2");
+            if (parser && typeof sysmlMod.registerSysmlWasmParser === "function") {
+              sysmlMod.registerSysmlWasmParser(
+                parser as unknown as Parameters<typeof sysmlMod.registerSysmlWasmParser>[0],
+              );
+            }
+            const wsIdx = createSysML2WorkspaceIndex();
+            if (parser && typeof sysmlMod.loadEmbeddedKerMLStdlib === "function") {
+              sysmlMod.loadEmbeddedKerMLStdlib(
+                wsIdx,
+                parser as unknown as Parameters<typeof sysmlMod.loadEmbeddedKerMLStdlib>[1],
+              );
+            }
+            if (parsedTree?.rootNode) {
+              wsIdx.register(targetUri, () => parsedTree.rootNode as any, docText);
+            }
+            const localUnified = await wsIdx.getIndexAsync();
+            const qe = createSysML2QueryEngine(
+              localUnified,
+              parsedTree as unknown as Parameters<typeof createSysML2QueryEngine>[1],
+            );
+            const formalDiags = await sysmlMod.verifySysML2Formal(qe.toQueryDB(), { resourceUri: targetUri });
+            for (const fd of formalDiags) {
+              const startOff = Math.max(0, fd.startOffset ?? 0);
+              const endOff = Math.max(startOff + 1, fd.endOffset ?? startOff + 1);
+              const sev: 1 | 2 | 3 = fd.severity === "error" ? 1 : fd.severity === "warning" ? 2 : 3;
+              pushDiag(
+                {
+                  range: {
+                    start: textDoc.positionAt(Math.min(docText.length, startOff)),
+                    end: textDoc.positionAt(Math.min(docText.length, endOff)),
+                  },
+                  severity: sev,
+                  code: `S${fd.code}`,
+                  source: `sysml2-formal (${fd.engine})`,
+                  message: fd.message,
+                },
+                "formal",
+              );
+            }
+          } else if (includeFormal && isModelica && docText) {
+            try {
+              const { Context } = await import("@modelscript/modelica/context");
+              if (parser) {
+                Context.registerParser(".mo", parser as unknown as Parameters<typeof Context.registerParser>[1]);
+              }
+              const memFiles = new Map<string, string>([[targetUri, docText]]);
+              const memFs = {
+                readFile: (p: string) => memFiles.get(p) ?? "",
+                exists: (p: string) => memFiles.has(p),
+                readDir: () => [] as string[],
+                isDir: () => false,
+              };
+              const ctx = new Context(
+                memFs as unknown as ConstructorParameters<typeof Context>[0],
+                undefined,
+                undefined,
+                {
+                  loadStdlib: false,
+                },
+              );
+              ctx.load(docText, targetUri);
+              const classMatches = Array.from(
+                docText.matchAll(/\b(?:model|block|class)\s+([A-Za-z_][A-Za-z0-9_]*)\b/g),
+              ) as RegExpExecArray[];
+              const targetClass = classMatches.length > 0 ? classMatches[classMatches.length - 1]![1]! : undefined;
+              if (targetClass && typeof (ctx as { verifyFormal?: unknown }).verifyFormal === "function") {
+                const formalDiags = (
+                  ctx as unknown as {
+                    verifyFormal(name: string): Array<{
+                      severity?: string;
+                      code?: number;
+                      message: string;
+                      range?: {
+                        startPosition: { row: number; column: number };
+                        endPosition: { row: number; column: number };
+                      };
+                    }>;
+                  }
+                ).verifyFormal(targetClass);
+                for (const fd of formalDiags) {
+                  const sev: 1 | 2 | 3 = fd.severity === "error" ? 1 : fd.severity === "warning" ? 2 : 3;
+                  const startPos = fd.range
+                    ? { line: fd.range.startPosition.row, character: fd.range.startPosition.column }
+                    : { line: 0, character: 0 };
+                  const endPos = fd.range
+                    ? {
+                        line: fd.range.endPosition.row,
+                        character: Math.max(fd.range.endPosition.column, fd.range.startPosition.column + 1),
+                      }
+                    : { line: 0, character: 1 };
+                  pushDiag(
+                    {
+                      range: { start: startPos, end: endPos },
+                      severity: sev,
+                      ...(fd.code !== undefined ? { code: `M${fd.code}` } : {}),
+                      source: "modelica-formal",
+                      message: fd.message,
+                    },
+                    "formal",
+                  );
+                }
+              }
+            } catch {}
+          }
+        } finally {
+          parsedTree?.delete?.();
+        }
+
+        return {
+          ok: true,
+          uri: targetUri,
+          diagnostics: outDiagnostics,
+          formalCount,
+          compilerCount,
+          durationMs: Date.now() - startedAt,
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          uri: targetUri,
+          diagnostics: [],
+          formalCount: 0,
+          compilerCount: 0,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    },
+  );
+
   // ── Digital Thread Hypergraph Explorer Endpoints ────────────────────
   const sharedHypergraph = context.workspaceManager.hypergraph;
   const sharedMetadataMap = context.workspaceManager.threadMetadataMap;

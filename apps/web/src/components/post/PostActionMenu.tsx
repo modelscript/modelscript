@@ -348,7 +348,7 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
                   );
                 }}
               >
-                <DraftingTriangleIcon size={16} /> Edit Morsel in Morsel / VS Code
+                <DraftingTriangleIcon size={16} /> Edit in Ansatz / VS Code
               </MenuButton>
             )}
           {canDeletePost && (

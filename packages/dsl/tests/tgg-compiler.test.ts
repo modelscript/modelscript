@@ -312,4 +312,21 @@ describe("AOT TGG Compiler", () => {
     expect(invShift.kind).toBe("affine");
     expect(invShift.invertedExpr).toBe("pAbs - 101325");
   });
+
+  it("checks schemaRegistry attributes in verifySuiteLosslessness", async () => {
+    const { verifySuiteLosslessness } = await import("@modelscript/dsl/codegen/compile_tgg.js");
+    const rule = tggRule({
+      name: "BlockToClass",
+      source: ($, v) => $.Block({ name: v("n") }),
+      target: ($, v) => $.Class({ name: v("n") }),
+    });
+    const clean = verifySuiteLosslessness([rule], { Block: ["name"] });
+    expect(clean.isFullyLossless).toBe(true);
+    expect(clean.leakedRuleCount).toBe(0);
+
+    const leaked = verifySuiteLosslessness([rule], { Block: ["name", "documentation"] });
+    expect(leaked.isFullyLossless).toBe(false);
+    expect(leaked.leakedRuleCount).toBe(1);
+    expect(leaked.reports[0]?.leakedAttributes.includes("documentation")).toBe(true);
+  });
 });

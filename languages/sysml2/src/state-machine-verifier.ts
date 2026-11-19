@@ -1,6 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { DpllTSolver, Interval, type ExprNode, type NonlinearConstraint, type QueryDB } from "@modelscript/runtime";
+import {
+  CdclSatSolver,
+  DpllTSolver,
+  Interval,
+  TseitinEncoder,
+  type ExprNode,
+  type LitId,
+  type NonlinearConstraint,
+  type PropExpr,
+  type QueryDB,
+  type SymbolEntry,
+} from "@modelscript/runtime";
+import {
+  collapseWhitespace,
+  collectCstLeaves,
+  parseSysmlSource,
+  readDottedChainFromLeaves,
+  sliceBetweenLeaves,
+  type CstLeaf,
+} from "./cst-utils.js";
+import { formatSysML2Expr, parseSysML2Expression, type SysML2ExprAst } from "./evaluator.js";
 import { findFirstDescendant, type SysmlCstNode } from "./flattener/cst-lowerer.js";
 import { getSysmlParser } from "./sysml2-dae-lowerer.js";
 
@@ -73,9 +93,68 @@ export function extractVariables(node: ExprNode, out: Set<string>): void {
     case "sub":
     case "mul":
     case "div":
+    case "pow":
       extractVariables(node.left, out);
       extractVariables(node.right, out);
       break;
+    case "call":
+      for (const arg of node.args) {
+        extractVariables(arg, out);
+      }
+      break;
+  }
+}
+
+function extractMaxAbsConstant(node: ExprNode): number {
+  switch (node.kind) {
+    case "const":
+      return Number.isFinite(node.value) ? Math.abs(node.value) : 0;
+    case "var":
+      return 0;
+    case "neg":
+    case "sqr":
+    case "sqrt":
+    case "sin":
+    case "cos":
+      return extractMaxAbsConstant(node.child);
+    case "add":
+    case "sub":
+    case "mul":
+    case "div":
+    case "pow":
+      return Math.max(extractMaxAbsConstant(node.left), extractMaxAbsConstant(node.right));
+    case "call": {
+      let m = 0;
+      for (const arg of node.args) m = Math.max(m, extractMaxAbsConstant(arg));
+      return m;
+    }
+  }
+}
+
+function serializeExprNode(node: ExprNode): string {
+  switch (node.kind) {
+    case "var":
+      return `v:${node.name}`;
+    case "const":
+      return `c:${node.value}`;
+    case "neg":
+    case "sqr":
+    case "sqrt":
+    case "sin":
+    case "cos":
+      return `${node.kind}(${serializeExprNode(node.child)})`;
+    case "add":
+    case "mul": {
+      const a = serializeExprNode(node.left);
+      const b = serializeExprNode(node.right);
+      return a <= b ? `${node.kind}(${a},${b})` : `${node.kind}(${b},${a})`;
+    }
+    case "sub":
+    case "div":
+    case "pow":
+      return `${node.kind}(${serializeExprNode(node.left)},${serializeExprNode(node.right)})`;
+    case "call":
+      return `call:${node.fn}(${node.args.map(serializeExprNode).join(",")})`;
   }
 }
 
@@ -432,6 +511,40 @@ function parseArithmeticExpression(str: string): ExprNode | undefined {
   return result;
 }
 
+function invertRelationalOp(op: GuardConstraint["operator"]): GuardConstraint["operator"] {
+  switch (op) {
+    case "<":
+      return ">";
+    case "<=":
+      return ">=";
+    case ">":
+      return "<";
+    case ">=":
+      return "<=";
+    case "==":
+      return "==";
+    case "!=":
+      return "!=";
+  }
+}
+
+function negateRelationalOp(op: GuardConstraint["operator"]): GuardConstraint["operator"] {
+  switch (op) {
+    case "<":
+      return ">=";
+    case "<=":
+      return ">";
+    case ">":
+      return "<=";
+    case ">=":
+      return "<";
+    case "==":
+      return "!=";
+    case "!=":
+      return "==";
+  }
+}
+
 /**
  * Attempts to parse a nonlinear comparison constraint (e.g., "x^2 + y^2 <= 1", "sin(x) > 0.8").
  */
@@ -448,7 +561,6 @@ export function parseNonlinearGuardConstraint(token: string): GuardConstraint | 
   }
   if (opIdx === -1 || !matchedOp) return undefined;
 
-  const op = matchedOp;
   const lhsStr = token.substring(0, opIdx).trim();
   const rhsStr = token.substring(opIdx + matchedOp.length).trim();
 
@@ -458,6 +570,7 @@ export function parseNonlinearGuardConstraint(token: string): GuardConstraint | 
 
   let expr: ExprNode;
   let rhsVal: number;
+  let effectiveOp: GuardConstraint["operator"] = matchedOp;
 
   if (rhsNode.kind === "const") {
     expr = lhsNode;
@@ -465,6 +578,7 @@ export function parseNonlinearGuardConstraint(token: string): GuardConstraint | 
   } else if (lhsNode.kind === "const") {
     expr = rhsNode;
     rhsVal = lhsNode.value;
+    effectiveOp = invertRelationalOp(matchedOp);
   } else {
     expr = { kind: "sub", left: lhsNode, right: rhsNode };
     rhsVal = 0;
@@ -474,15 +588,13 @@ export function parseNonlinearGuardConstraint(token: string): GuardConstraint | 
   extractVariables(expr, varNames);
   const primaryVar = Array.from(varNames)[0] || "$nl";
 
-  const rel: "<=" | ">=" | "==" = op === "<=" || op === "<" ? "<=" : op === ">=" || op === ">" ? ">=" : "==";
-
   return {
     variable: primaryVar,
-    operator: op,
+    operator: effectiveOp,
     value: rhsVal,
     nonlinear: {
       expr,
-      rel,
+      rel: effectiveOp,
       rhs: rhsVal,
     },
   };
@@ -500,7 +612,22 @@ export function parseGuardConstraints(guardText: string): GuardConstraint[] {
     cleaned = cleaned.substring(1, cleaned.length - 1).trim();
   }
   if (cleaned.startsWith("(") && cleaned.endsWith(")")) {
-    cleaned = cleaned.substring(1, cleaned.length - 1).trim();
+    // Only strip outer parens when balanced across the entire expression
+    let depth = 0;
+    let balancedOuter = true;
+    for (let i = 0; i < cleaned.length; i++) {
+      if (cleaned[i] === "(") depth++;
+      else if (cleaned[i] === ")") {
+        depth--;
+        if (depth === 0 && i < cleaned.length - 1) {
+          balancedOuter = false;
+          break;
+        }
+      }
+    }
+    if (balancedOuter && depth === 0) {
+      cleaned = cleaned.substring(1, cleaned.length - 1).trim();
+    }
   }
 
   // Split on "&&" or "and" at top-level
@@ -560,26 +687,9 @@ export function parseGuardConstraints(guardText: string): GuardConstraint[] {
         continue;
       } else if (isNumericLiteral(lhs) && isIdentifier(rhs)) {
         const val = parseFloat(lhs);
-        let invertedOp: GuardConstraint["operator"];
-        switch (matchedOp) {
-          case "<":
-            invertedOp = ">";
-            break;
-          case "<=":
-            invertedOp = ">=";
-            break;
-          case ">":
-            invertedOp = "<";
-            break;
-          case ">=":
-            invertedOp = "<=";
-            break;
-          default:
-            invertedOp = matchedOp;
-        }
         constraints.push({
           variable: rhs,
-          operator: invertedOp,
+          operator: invertRelationalOp(matchedOp),
           value: val,
         });
         continue;
@@ -656,8 +766,64 @@ export function parseGuardDNF(guardText: string): GuardDNF {
   return dnf;
 }
 
+interface RealBound {
+  lower: number;
+  lowerStrict: boolean;
+  upper: number;
+  upperStrict: boolean;
+  notEquals: Set<number>;
+}
+
+function applyBoundConstraint(b: RealBound, op: NonlinearConstraint["rel"], val: number): boolean {
+  switch (op) {
+    case "<=":
+      if (val < b.upper) {
+        b.upper = val;
+        b.upperStrict = false;
+      }
+      break;
+    case "<":
+      if (val < b.upper || (val === b.upper && !b.upperStrict)) {
+        b.upper = val;
+        b.upperStrict = true;
+      }
+      break;
+    case ">=":
+      if (val > b.lower) {
+        b.lower = val;
+        b.lowerStrict = false;
+      }
+      break;
+    case ">":
+      if (val > b.lower || (val === b.lower && !b.lowerStrict)) {
+        b.lower = val;
+        b.lowerStrict = true;
+      }
+      break;
+    case "==":
+      if (val > b.lower) {
+        b.lower = val;
+        b.lowerStrict = false;
+      }
+      if (val < b.upper) {
+        b.upper = val;
+        b.upperStrict = false;
+      }
+      break;
+    case "!=":
+      b.notEquals.add(val);
+      break;
+  }
+
+  return !(
+    b.lower > b.upper ||
+    (b.lower === b.upper && (b.lowerStrict || b.upperStrict)) ||
+    (b.lower === b.upper && b.notEquals.has(b.lower))
+  );
+}
+
 /**
- * Checks a single pair of conjunctive constraints for mutual exclusion using the Octagon DBM.
+ * Checks a single pair of conjunctive constraints for mutual exclusion using intervals / DPLL(T) + HC4.
  */
 function checkConjunctPairMutuallyExclusive(
   conjA: GuardConstraint[],
@@ -671,6 +837,8 @@ function checkConjunctPairMutuallyExclusive(
     const theoryLiterals = new Map<number, NonlinearConstraint>();
     const clauses: number[][] = [];
     const allVarNames = new Set<string>();
+    const exprBoundMap = new Map<string, RealBound>();
+    let maxAbsConst = 0;
 
     let litId = 1;
     for (const c of allConstraints) {
@@ -678,48 +846,66 @@ function checkConjunctPairMutuallyExclusive(
       if (c.nonlinear) {
         nl = c.nonlinear;
       } else {
-        const rel: "<=" | ">=" | "==" | "<" | ">" =
-          c.operator === "<"
-            ? "<"
-            : c.operator === "<="
-              ? "<="
-              : c.operator === ">"
-                ? ">"
-                : c.operator === ">="
-                  ? ">="
-                  : "==";
         nl = {
           expr: { kind: "var", name: c.variable },
-          rel,
+          rel: c.operator,
           rhs: c.value,
         };
       }
+      if (Number.isFinite(nl.rhs)) {
+        maxAbsConst = Math.max(maxAbsConst, Math.abs(nl.rhs));
+      }
+      maxAbsConst = Math.max(maxAbsConst, extractMaxAbsConstant(nl.expr));
+
+      // Structural contradiction check on identical expressions (handles == vs !=, <= vs >, etc. exactly)
+      const exprKey = serializeExprNode(nl.expr);
+      let eb = exprBoundMap.get(exprKey);
+      if (!eb) {
+        eb = { lower: -Infinity, lowerStrict: false, upper: Infinity, upperStrict: false, notEquals: new Set() };
+        exprBoundMap.set(exprKey, eb);
+      }
+      if (!applyBoundConstraint(eb, nl.rel, nl.rhs)) {
+        return { mutuallyExclusive: true };
+      }
+
       extractVariables(nl.expr, allVarNames);
       theoryLiterals.set(litId, nl);
       clauses.push([litId]); // Conjunction: all constraints must hold
       litId++;
     }
 
+    const boxRadius = Math.max(1000, 10 * maxAbsConst);
     const initialBox = new Map<string, Interval>();
     for (const vName of allVarNames) {
-      initialBox.set(vName, new Interval(-1000, 1000));
+      initialBox.set(vName, new Interval(-boxRadius, boxRadius));
     }
 
     // Direct bounds propagation from linear atomic constraints
     for (const c of allConstraints) {
       if (!c.nonlinear && initialBox.has(c.variable)) {
         const cur = initialBox.get(c.variable)!;
+        let nextLo = cur.lo;
+        let nextHi = cur.hi;
         if (c.operator === ">=") {
-          initialBox.set(c.variable, new Interval(Math.max(cur.lo, c.value), cur.hi));
+          nextLo = Math.max(cur.lo, c.value);
         } else if (c.operator === ">") {
-          initialBox.set(c.variable, new Interval(Math.max(cur.lo, c.value + 1e-9), cur.hi));
+          nextLo = Math.max(cur.lo, c.value + 1e-9);
         } else if (c.operator === "<=") {
-          initialBox.set(c.variable, new Interval(cur.lo, Math.min(cur.hi, c.value)));
+          nextHi = Math.min(cur.hi, c.value);
         } else if (c.operator === "<") {
-          initialBox.set(c.variable, new Interval(cur.lo, Math.min(cur.hi, c.value - 1e-9)));
+          nextHi = Math.min(cur.hi, c.value - 1e-9);
         } else if (c.operator === "==") {
-          initialBox.set(c.variable, new Interval(c.value, c.value));
+          nextLo = Math.max(cur.lo, c.value);
+          nextHi = Math.min(cur.hi, c.value);
+        } else if (c.operator === "!=") {
+          if (cur.lo === c.value && cur.hi === c.value) {
+            return { mutuallyExclusive: true };
+          }
         }
+        if (nextLo > nextHi) {
+          return { mutuallyExclusive: true };
+        }
+        initialBox.set(c.variable, new Interval(nextLo, nextHi));
       }
     }
 
@@ -751,14 +937,6 @@ function checkConjunctPairMutuallyExclusive(
   }
 
   // Fast-path for purely univariate linear comparisons: intersect strict/non-strict intervals per variable
-  interface RealBound {
-    lower: number;
-    lowerStrict: boolean;
-    upper: number;
-    upperStrict: boolean;
-    notEquals: Set<number>;
-  }
-
   const boundMap = new Map<string, RealBound>();
   const getBound = (v: string): RealBound => {
     let b = boundMap.get(v);
@@ -771,52 +949,7 @@ function checkConjunctPairMutuallyExclusive(
 
   for (const c of allConstraints) {
     const b = getBound(c.variable);
-    switch (c.operator) {
-      case "<=":
-        if (c.value < b.upper) {
-          b.upper = c.value;
-          b.upperStrict = false;
-        }
-        break;
-      case "<":
-        if (c.value < b.upper || (c.value === b.upper && !b.upperStrict)) {
-          b.upper = c.value;
-          b.upperStrict = true;
-        }
-        break;
-      case ">=":
-        if (c.value > b.lower) {
-          b.lower = c.value;
-          b.lowerStrict = false;
-        }
-        break;
-      case ">":
-        if (c.value > b.lower || (c.value === b.lower && !b.lowerStrict)) {
-          b.lower = c.value;
-          b.lowerStrict = true;
-        }
-        break;
-      case "==":
-        if (c.value > b.lower) {
-          b.lower = c.value;
-          b.lowerStrict = false;
-        }
-        if (c.value < b.upper) {
-          b.upper = c.value;
-          b.upperStrict = false;
-        }
-        break;
-      case "!=":
-        b.notEquals.add(c.value);
-        break;
-    }
-
-    // Empty intersection check: lower > upper, degenerate open interval (x < c && x > c), or point excluded by `!=`
-    if (
-      b.lower > b.upper ||
-      (b.lower === b.upper && (b.lowerStrict || b.upperStrict)) ||
-      (b.lower === b.upper && b.notEquals.has(b.lower))
-    ) {
+    if (!applyBoundConstraint(b, c.operator, c.value)) {
       return { mutuallyExclusive: true };
     }
   }
@@ -835,39 +968,394 @@ function checkConjunctPairMutuallyExclusive(
   };
 }
 
+function stripOuterGuardBrackets(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function isPureNumericGuardText(guardText: string, dnf: GuardDNF): boolean {
+  if (dnf.length === 0) return false;
+  const cleaned = stripOuterGuardBrackets(guardText);
+  if (!cleaned) return false;
+  if (cleaned.includes("::") || cleaned.includes('"') || cleaned.includes("'")) return false;
+
+  // Reject negation `!` (not `!=`) or logical keywords (`not`, `implies`, `xor`, `true`, `false`)
+  for (let i = 0; i < cleaned.length; i++) {
+    if (cleaned[i] === "!" && cleaned[i + 1] !== "=") return false;
+  }
+  const leaves = collectCstLeaves(parseSysmlSource(cleaned));
+  for (const lf of leaves) {
+    const low = lf.text.toLowerCase();
+    if (low === "not" || low === "implies" || low === "xor" || low === "true" || low === "false" || low === "if") {
+      return false;
+    }
+  }
+
+  // Verify every atomic conjunct across all disjuncts produced a numeric/nonlinear GuardConstraint
+  let depth = 0;
+  let expectedAtoms = 1;
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i]!;
+    if (ch === "(" || ch === "[") depth++;
+    else if (ch === ")" || ch === "]") depth = Math.max(0, depth - 1);
+    else if (depth === 0) {
+      if (cleaned.slice(i, i + 2) === "&&" || cleaned.slice(i, i + 2) === "||") {
+        expectedAtoms++;
+        i += 1;
+      } else if (cleaned.slice(i, i + 5).toLowerCase() === " and " && i > 0) {
+        expectedAtoms++;
+        i += 4;
+      } else if (cleaned.slice(i, i + 4).toLowerCase() === " or " && i > 0) {
+        expectedAtoms++;
+        i += 3;
+      }
+    }
+  }
+  let parsedAtoms = 0;
+  for (const conj of dnf) parsedAtoms += conj.length;
+  return parsedAtoms === expectedAtoms;
+}
+
+function getDistinctConstantTag(ast: SysML2ExprAst): string | null {
+  if (ast.kind === "NumberLiteral") return `num:${ast.value}`;
+  if (ast.kind === "UnaryExpr" && (ast.op === "-" || ast.op === "+") && ast.operand.kind === "NumberLiteral") {
+    return `num:${ast.op === "-" ? -ast.operand.value : ast.operand.value}`;
+  }
+  if (ast.kind === "BooleanLiteral") return `bool:${ast.value}`;
+  if (ast.kind === "StringLiteral") return `str:${ast.value}`;
+  if (ast.kind === "Identifier" && ast.name.includes("::")) return `enum:${ast.name}`;
+  return null;
+}
+
+function negateSingleGuardConstraint(c: GuardConstraint): GuardConstraint {
+  const negOp = negateRelationalOp(c.operator);
+  if (c.nonlinear) {
+    return {
+      variable: c.variable,
+      operator: negOp,
+      value: c.value,
+      nonlinear: {
+        expr: c.nonlinear.expr,
+        rel: negOp,
+        rhs: c.nonlinear.rhs,
+      },
+    };
+  }
+  return {
+    variable: c.variable,
+    operator: negOp,
+    value: c.value,
+  };
+}
+
+function checkGuardsMutuallyExclusiveSat(
+  guardA: string,
+  guardB: string,
+): { mutuallyExclusive: boolean; overlap?: string | undefined } {
+  const cleanA = stripOuterGuardBrackets(guardA);
+  const cleanB = stripOuterGuardBrackets(guardB);
+  if (!cleanA || !cleanB) {
+    return { mutuallyExclusive: false, overlap: "unguarded condition" };
+  }
+
+  const leavesA = collectCstLeaves(parseSysmlSource(cleanA));
+  const leavesB = collectCstLeaves(parseSysmlSource(cleanB));
+  if (leavesA.length === 0 || leavesB.length === 0) {
+    return { mutuallyExclusive: false, overlap: "non-numeric or complex condition" };
+  }
+
+  let astA: SysML2ExprAst;
+  let astB: SysML2ExprAst;
+  try {
+    astA = parseSysML2Expression(cleanA);
+    astB = parseSysML2Expression(cleanB);
+  } catch {
+    return { mutuallyExclusive: false, overlap: "non-numeric or complex condition" };
+  }
+
+  const encoder = new TseitinEncoder();
+  const theoryVarConstraints = new Map<number, { pos: GuardConstraint; neg: GuardConstraint }>();
+  const displayLabels = new Map<number, { posLabel: string; negLabel: string }>();
+  const constAssignmentsByTarget = new Map<string, Map<string, LitId>>();
+
+  const recordConstantAssignment = (targetCanon: string, constTag: string, lit: LitId) => {
+    let byConst = constAssignmentsByTarget.get(targetCanon);
+    if (!byConst) {
+      byConst = new Map();
+      constAssignmentsByTarget.set(targetCanon, byConst);
+    }
+    if (!byConst.has(constTag)) {
+      byConst.set(constTag, lit);
+    }
+  };
+
+  const astToProp = (node: SysML2ExprAst): PropExpr => {
+    switch (node.kind) {
+      case "BooleanLiteral":
+        return { op: "const", value: node.value };
+      case "NumberLiteral":
+        return { op: "const", value: node.value !== 0 };
+      case "StringLiteral": {
+        const v = encoder.getOrCreateVar(`str:${node.value}`);
+        displayLabels.set(v, { posLabel: `"${node.value}"`, negLabel: `not "${node.value}"` });
+        return { op: "var", id: v };
+      }
+      case "Identifier": {
+        const v = encoder.getOrCreateVar(`bool:${node.name}`);
+        displayLabels.set(v, { posLabel: `${node.name} = true`, negLabel: `${node.name} = false` });
+        return { op: "var", id: v };
+      }
+      case "UnaryExpr": {
+        if (node.op === "not") {
+          return { op: "not", child: astToProp(node.operand) };
+        }
+        const txt = formatSysML2Expr(node);
+        const v = encoder.getOrCreateVar(`expr:${txt}`);
+        displayLabels.set(v, { posLabel: txt, negLabel: `not (${txt})` });
+        return { op: "var", id: v };
+      }
+      case "ConditionalExpr": {
+        // if c then t else e  <=>  (c -> t) /\ (~c -> e)
+        const c = astToProp(node.condition);
+        const t = astToProp(node.thenExpr);
+        const e = astToProp(node.elseExpr);
+        return {
+          op: "and",
+          children: [
+            { op: "implies", left: c, right: t },
+            { op: "implies", left: { op: "not", child: c }, right: e },
+          ],
+        };
+      }
+      case "CallExpr": {
+        const txt = formatSysML2Expr(node);
+        const v = encoder.getOrCreateVar(`call:${txt}`);
+        displayLabels.set(v, { posLabel: txt, negLabel: `not ${txt}` });
+        return { op: "var", id: v };
+      }
+      case "BinaryExpr": {
+        if (node.op === "and") {
+          return { op: "and", children: [astToProp(node.left), astToProp(node.right)] };
+        }
+        if (node.op === "or") {
+          return { op: "or", children: [astToProp(node.left), astToProp(node.right)] };
+        }
+        if (node.op === "implies") {
+          return { op: "implies", left: astToProp(node.left), right: astToProp(node.right) };
+        }
+        if (node.op === "xor") {
+          return { op: "xor", left: astToProp(node.left), right: astToProp(node.right) };
+        }
+
+        if (
+          node.op === "==" ||
+          node.op === "!=" ||
+          node.op === "<=" ||
+          node.op === ">=" ||
+          node.op === "<" ||
+          node.op === ">"
+        ) {
+          // Normalize boolean comparisons: x == true, x == false, x != true, x != false
+          if ((node.op === "==" || node.op === "!=") && node.right.kind === "BooleanLiteral") {
+            const positive = (node.op === "==") === node.right.value;
+            return positive ? astToProp(node.left) : { op: "not", child: astToProp(node.left) };
+          }
+          if ((node.op === "==" || node.op === "!=") && node.left.kind === "BooleanLiteral") {
+            const positive = (node.op === "==") === node.left.value;
+            return positive ? astToProp(node.right) : { op: "not", child: astToProp(node.right) };
+          }
+
+          const atomText = `${formatSysML2Expr(node.left)} ${node.op} ${formatSysML2Expr(node.right)}`;
+          const parsedNum = parseGuardConstraints(atomText);
+          if (parsedNum.length === 1) {
+            const gc = parsedNum[0]!;
+            // Canonicalize `expr == k` vs `expr != k` to share the same propositional variable
+            const exprId = gc.nonlinear ? serializeExprNode(gc.nonlinear.expr) : `v:${gc.variable}`;
+            if (gc.operator === "==" || gc.operator === "!=") {
+              const eqVar = encoder.getOrCreateVar(`num_eq:${exprId}:${gc.value}`);
+              const posGc: GuardConstraint = gc.nonlinear
+                ? { ...gc, operator: "==", nonlinear: { ...gc.nonlinear, rel: "==" } }
+                : { ...gc, operator: "==" };
+              theoryVarConstraints.set(eqVar, { pos: posGc, neg: negateSingleGuardConstraint(posGc) });
+              displayLabels.set(eqVar, {
+                posLabel: `${gc.variable} == ${gc.value}`,
+                negLabel: `${gc.variable} != ${gc.value}`,
+              });
+              recordConstantAssignment(exprId, `num:${gc.value}`, eqVar);
+              return gc.operator === "==" ? { op: "var", id: eqVar } : { op: "not", child: { op: "var", id: eqVar } };
+            }
+
+            const relVar = encoder.getOrCreateVar(`num_rel:${exprId}:${gc.operator}:${gc.value}`);
+            theoryVarConstraints.set(relVar, { pos: gc, neg: negateSingleGuardConstraint(gc) });
+            displayLabels.set(relVar, {
+              posLabel: atomText,
+              negLabel: `${gc.variable} ${negateRelationalOp(gc.operator)} ${gc.value}`,
+            });
+            return { op: "var", id: relVar };
+          }
+
+          // Symbolic / enum / string equality & disequality (e.g. mode == Mode::Auto, a == b, a != b)
+          const leftCanon = formatSysML2Expr(node.left);
+          const rightCanon = formatSysML2Expr(node.right);
+          if (node.op === "==" || node.op === "!=") {
+            // Trivial syntactic identity: x == x is true, x != x is false
+            if (leftCanon === rightCanon) {
+              return { op: "const", value: node.op === "==" };
+            }
+            const leftConst = getDistinctConstantTag(node.left);
+            const rightConst = getDistinctConstantTag(node.right);
+            if (leftConst && rightConst) {
+              return { op: "const", value: node.op === "==" ? leftConst === rightConst : leftConst !== rightConst };
+            }
+
+            const pairKey = leftCanon <= rightCanon ? `${leftCanon}==${rightCanon}` : `${rightCanon}==${leftCanon}`;
+            const eqVar = encoder.getOrCreateVar(`sym_eq:${pairKey}`);
+            displayLabels.set(eqVar, {
+              posLabel: `${leftCanon} == ${rightCanon}`,
+              negLabel: `${leftCanon} != ${rightCanon}`,
+            });
+
+            if (rightConst && !leftConst) {
+              recordConstantAssignment(`sym:${leftCanon}`, rightConst, eqVar);
+            } else if (leftConst && !rightConst) {
+              recordConstantAssignment(`sym:${rightCanon}`, leftConst, eqVar);
+            }
+
+            return node.op === "==" ? { op: "var", id: eqVar } : { op: "not", child: { op: "var", id: eqVar } };
+          }
+
+          // Symbolic strict inequality: x < x or x > x is false
+          if ((node.op === "<" || node.op === ">") && leftCanon === rightCanon) {
+            return { op: "const", value: false };
+          }
+          if ((node.op === "<=" || node.op === ">=") && leftCanon === rightCanon) {
+            return { op: "const", value: true };
+          }
+
+          const symVar = encoder.getOrCreateVar(`sym_rel:${atomText}`);
+          displayLabels.set(symVar, { posLabel: atomText, negLabel: `not (${atomText})` });
+          return { op: "var", id: symVar };
+        }
+
+        const fallbackTxt = formatSysML2Expr(node);
+        const fbVar = encoder.getOrCreateVar(`expr:${fallbackTxt}`);
+        displayLabels.set(fbVar, { posLabel: fallbackTxt, negLabel: `not (${fallbackTxt})` });
+        return { op: "var", id: fbVar };
+      }
+    }
+  };
+
+  const rootLit = encoder.encode({
+    op: "and",
+    children: [astToProp(astA), astToProp(astB)],
+  });
+  encoder.clauses.push([rootLit]);
+
+  // Mutual exclusion of distinct constant / enum values assigned to the same expression
+  for (const [, byConst] of constAssignmentsByTarget) {
+    if (byConst.size >= 2) {
+      encoder.encodeAtMostK(Array.from(byConst.values()), 1);
+    }
+  }
+
+  const sat = new CdclSatSolver();
+  for (const clause of encoder.clauses) {
+    if (!sat.addClause(clause)) {
+      return { mutuallyExclusive: true };
+    }
+  }
+
+  for (let iter = 0; iter < 64; iter++) {
+    const satRes = sat.solve();
+    if (satRes.status === "UNSAT") {
+      return { mutuallyExclusive: true };
+    }
+    if (!satRes.model) {
+      return { mutuallyExclusive: false, overlap: "non-numeric or complex condition" };
+    }
+
+    const activeTheoryConstraints: GuardConstraint[] = [];
+    const activeTheoryLits: LitId[] = [];
+    for (const [varId, pair] of theoryVarConstraints) {
+      const val = satRes.model.get(varId);
+      if (val === true) {
+        activeTheoryConstraints.push(pair.pos);
+        activeTheoryLits.push(varId);
+      } else if (val === false) {
+        activeTheoryConstraints.push(pair.neg);
+        activeTheoryLits.push(-varId);
+      }
+    }
+
+    if (activeTheoryConstraints.length > 0) {
+      const tRes = checkConjunctPairMutuallyExclusive(activeTheoryConstraints, []);
+      if (tRes.mutuallyExclusive) {
+        if (!sat.addClause(activeTheoryLits.map((l) => -l))) {
+          return { mutuallyExclusive: true };
+        }
+        continue;
+      }
+      const boolParts: string[] = [];
+      for (const [varId, labels] of displayLabels) {
+        if (theoryVarConstraints.has(varId)) continue;
+        const val = satRes.model.get(varId);
+        if (val === true) boolParts.push(labels.posLabel);
+        else if (val === false) boolParts.push(labels.negLabel);
+      }
+      if (tRes.overlap) boolParts.push(tRes.overlap);
+      return {
+        mutuallyExclusive: false,
+        overlap: boolParts.join(", ") || "overlap",
+      };
+    }
+
+    const witnessParts: string[] = [];
+    for (const [varId, labels] of displayLabels) {
+      const val = satRes.model.get(varId);
+      if (val === true) witnessParts.push(labels.posLabel);
+      else if (val === false) witnessParts.push(labels.negLabel);
+    }
+    return {
+      mutuallyExclusive: false,
+      overlap: witnessParts.length > 0 ? witnessParts.join(", ") : "non-numeric or complex condition",
+    };
+  }
+
+  return { mutuallyExclusive: false, overlap: "non-numeric or complex condition" };
+}
+
 /**
  * Checks whether two guard conditions are mutually exclusive or can overlap.
- * Supports both simple conjunctive guards and DNF guards with disjunctions.
- * Uses an Octagon DBM to determine feasibility of guardA && guardB.
+ * Supports simple conjunctive guards, DNF guards with disjunctions, boolean logic
+ * with negation (`CdclSatSolver`), enum/identifier equality atoms, and nonlinear real constraints.
  */
 export function checkGuardsMutuallyExclusive(
   guardA: string,
   guardB: string,
 ): { mutuallyExclusive: boolean; overlap?: string | undefined } {
-  // Try DNF parsing first (handles both simple and disjunctive guards)
+  // Fast-path for purely numeric/nonlinear DNF guards
   const dnfA = parseGuardDNF(guardA);
   const dnfB = parseGuardDNF(guardB);
 
-  // If either guard cannot be parsed, fall back
-  if (dnfA.length === 0 || dnfB.length === 0) {
-    return { mutuallyExclusive: false, overlap: "non-numeric or complex condition" };
-  }
-
-  // Two DNF guards overlap iff ∃ a clause from A and a clause from B
-  // whose conjunction is satisfiable in the Octagon DBM
-  for (const conjA of dnfA) {
-    for (const conjB of dnfB) {
-      const res = checkConjunctPairMutuallyExclusive(conjA, conjB);
-      if (!res.mutuallyExclusive) {
-        return {
-          mutuallyExclusive: false,
-          overlap: res.overlap,
-        };
+  if (isPureNumericGuardText(guardA, dnfA) && isPureNumericGuardText(guardB, dnfB)) {
+    for (const conjA of dnfA) {
+      for (const conjB of dnfB) {
+        const res = checkConjunctPairMutuallyExclusive(conjA, conjB);
+        if (!res.mutuallyExclusive) {
+          return {
+            mutuallyExclusive: false,
+            overlap: res.overlap,
+          };
+        }
       }
     }
+    return { mutuallyExclusive: true };
   }
 
-  return { mutuallyExclusive: true };
+  return checkGuardsMutuallyExclusiveSat(guardA, guardB);
 }
 
 /**
@@ -950,65 +1438,100 @@ export interface TransitionDescriptor {
   source: string;
   /** Optional name of the destination target state. */
   target?: string | undefined;
+  /** Optional trigger event specification (`accept <trigger>`). */
+  trigger?: string | undefined;
+  /** Optional symbol ID of the enclosing state machine (`StateDefinition` or composite `StateUsage`). */
+  stateMachineId?: number | undefined;
   /** Optional guard expression string (`if <guardText>`) governing transition firing. */
   guardText?: string | undefined;
   /** Optional raw CST source slice for the transition declaration. */
   cstText?: string | undefined;
 }
 
-/**
- * Verifies all transitions leaving a specified state for determinism and completeness.
- */
-export function verifyStateTransitions(stateName: string, transitions: TransitionDescriptor[]): StateDeterminismResult {
+function normalizeTriggerKey(trigger: string | undefined): string {
+  if (!trigger) return "";
+  const collapsed = collapseWhitespace(trigger.trim());
+  if (!collapsed) return "";
+  // Normalize `accept payloadName : EventType` to `EventType` so differently-named payload bindings on the same event match
+  const leaves = collectCstLeaves(parseSysmlSource(collapsed));
+  if (leaves.length >= 3 && leaves[1]?.text === ":") {
+    const first = leaves[0]?.text;
+    const typeChain = readDottedChainFromLeaves(leaves, 2);
+    if (first && isIdentifier(first) && typeChain && typeChain.nextIdx === leaves.length) {
+      return typeChain.text;
+    }
+  }
+  return collapsed;
+}
+
+function verifyTransitionsInternal(
+  stateName: string,
+  transitions: TransitionDescriptor[],
+  minCompletionTransitionsForExhaustiveness: number,
+): StateDeterminismResult {
   const diagnostics: StateDeterminismDiagnostic[] = [];
   let isDeterministic = true;
   let isComplete = true;
 
-  const guarded = transitions.filter((t) => t.guardText && t.guardText.trim().length > 0);
+  // 1. Pairwise mutual exclusion check (Nondeterminism) grouped by normalized trigger
+  const byTrigger = new Map<string, TransitionDescriptor[]>();
+  for (const t of transitions) {
+    const trigKey = normalizeTriggerKey(t.trigger);
+    let group = byTrigger.get(trigKey);
+    if (!group) {
+      group = [];
+      byTrigger.set(trigKey, group);
+    }
+    group.push(t);
+  }
 
-  // 1. Pairwise mutual exclusion check (Nondeterminism)
-  for (let i = 0; i < guarded.length; i++) {
-    for (let j = i + 1; j < guarded.length; j++) {
-      const t1 = guarded[i]!;
-      const t2 = guarded[j]!;
-      const check = checkGuardsMutuallyExclusive(t1.guardText!, t2.guardText!);
+  for (const [, group] of byTrigger) {
+    const guarded = group.filter((t) => t.guardText && t.guardText.trim().length > 0);
+    for (let i = 0; i < guarded.length; i++) {
+      for (let j = i + 1; j < guarded.length; j++) {
+        const t1 = guarded[i]!;
+        const t2 = guarded[j]!;
+        const check = checkGuardsMutuallyExclusive(t1.guardText!, t2.guardText!);
 
-      if (!check.mutuallyExclusive) {
-        isDeterministic = false;
-        diagnostics.push({
-          type: "nondeterminism",
-          stateName,
-          transitionA: t1.name,
-          transitionB: t2.name,
-          guardA: t1.guardText,
-          guardB: t2.guardText,
-          message: `Non-deterministic transitions from state '${stateName}': guards '${t1.guardText}' and '${t2.guardText}' can both be satisfied simultaneously under input condition [${check.overlap || "overlap"}].`,
-        });
+        if (!check.mutuallyExclusive) {
+          isDeterministic = false;
+          diagnostics.push({
+            type: "nondeterminism",
+            stateName,
+            transitionA: t1.name,
+            transitionB: t2.name,
+            guardA: t1.guardText,
+            guardB: t2.guardText,
+            message: `Non-deterministic transitions from state '${stateName}': guards '${t1.guardText}' and '${t2.guardText}' can both be satisfied simultaneously under input condition [${check.overlap || "overlap"}].`,
+          });
+        }
       }
     }
   }
 
-  // 2. Completeness check (Deadlock freedom)
-  // If there is an unguarded transition, the state has a default fallback (always complete)
-  const hasUnguarded = transitions.some((t) => !t.guardText || t.guardText.trim().length === 0);
-  if (!hasUnguarded && guarded.length > 0) {
-    const parsedGuards = guarded.map((t) => parseGuardConstraints(t.guardText!));
-    // Find variables involved in guards
-    const vars = new Set<string>();
-    for (const clist of parsedGuards) {
-      for (const c of clist) vars.add(c.variable);
-    }
+  // 2. Completeness check (Deadlock freedom) on untriggered completion transitions
+  const completionTransitions = transitions.filter((t) => normalizeTriggerKey(t.trigger) === "");
+  if (completionTransitions.length >= minCompletionTransitionsForExhaustiveness) {
+    const hasUnguarded = completionTransitions.some((t) => !t.guardText || t.guardText.trim().length === 0);
+    const guardedCompletion = completionTransitions.filter((t) => t.guardText && t.guardText.trim().length > 0);
+    if (!hasUnguarded && guardedCompletion.length >= minCompletionTransitionsForExhaustiveness) {
+      const parsedGuards = guardedCompletion.map((t) => parseGuardConstraints(t.guardText!));
+      const vars = new Set<string>();
+      for (const clist of parsedGuards) {
+        for (const c of clist) vars.add(c.variable);
+      }
 
-    for (const v of vars) {
-      const exhaust = checkSingleVarExhaustive(v, parsedGuards);
-      if (!exhaust.exhaustive) {
-        isComplete = false;
-        diagnostics.push({
-          type: "deadlock",
-          stateName,
-          message: `Potential deadlock in state '${stateName}': transition guards do not cover all possible values of '${v}' (unhandled range: ${exhaust.unhandledRange}).`,
-          unhandledRange: exhaust.unhandledRange,
-        });
+      for (const v of vars) {
+        const exhaust = checkSingleVarExhaustive(v, parsedGuards);
+        if (!exhaust.exhaustive) {
+          isComplete = false;
+          diagnostics.push({
+            type: "deadlock",
+            stateName,
+            message: `Potential deadlock in state '${stateName}': transition guards do not cover all possible values of '${v}' (unhandled range: ${exhaust.unhandledRange}).`,
+            unhandledRange: exhaust.unhandledRange,
+          });
+        }
       }
     }
   }
@@ -1021,95 +1544,416 @@ export function verifyStateTransitions(stateName: string, transitions: Transitio
 }
 
 /**
- * Analyzes an entire QueryDB to find and verify all state definitions and their transitions.
+ * Verifies all transitions leaving a specified state for determinism and completeness.
  */
-export function verifyAllStateMachineTransitions(db: QueryDB, scopeFilter?: string): StateDeterminismResult {
-  const allEntries = db.allEntries();
+export function verifyStateTransitions(stateName: string, transitions: TransitionDescriptor[]): StateDeterminismResult {
+  return verifyTransitionsInternal(stateName, transitions, 1);
+}
+
+const TRANSITION_CLAUSE_KEYWORDS = new Set(["accept", "if", "do", "then", "via"]);
+
+function extractTransitionFromCst(
+  db: QueryDB,
+  trans: SymbolEntry,
+  siblingStateNames: ReadonlySet<string>,
+  enclosingStateMachineId: number,
+  implicitParentStateName?: string,
+): TransitionDescriptor | null {
+  const rawText = db.cstText(trans.startOffset, trans.endOffset, trans) || "";
+  const allLeaves: CstLeaf[] = rawText ? collectCstLeaves(parseSysmlSource(rawText)) : [];
+
+  // Restrict to header leaves before `{` or `;` at top level
+  const headerLeaves: CstLeaf[] = [];
+  let delimDepth = 0;
+  for (const lf of allLeaves) {
+    if (lf.text === "(" || lf.text === "[") delimDepth++;
+    else if (lf.text === ")" || lf.text === "]") delimDepth = Math.max(0, delimDepth - 1);
+    else if (delimDepth === 0 && (lf.text === "{" || lf.text === ";")) break;
+    headerLeaves.push(lf);
+  }
+
+  let source = "";
+  let trigger: string | undefined;
+  let guardText: string | undefined;
+  let target: string | undefined;
+
+  let idx = 0;
+  if (
+    headerLeaves[idx]?.text === "public" ||
+    headerLeaves[idx]?.text === "private" ||
+    headerLeaves[idx]?.text === "protected"
+  ) {
+    idx++;
+  }
+
+  if (headerLeaves[idx]?.text === "transition" || headerLeaves[idx]?.text === "succession") {
+    idx++;
+    if (headerLeaves[idx]?.text === "first") {
+      const src = readDottedChainFromLeaves(headerLeaves, idx + 1);
+      if (src) {
+        source = src.text;
+        idx = src.nextIdx;
+      }
+    } else if (idx < headerLeaves.length && !TRANSITION_CLAUSE_KEYWORDS.has(headerLeaves[idx]!.text)) {
+      const c1 = readDottedChainFromLeaves(headerLeaves, idx);
+      if (c1) {
+        const afterC1 = headerLeaves[c1.nextIdx]?.text;
+        if (afterC1 === "first") {
+          const src = readDottedChainFromLeaves(headerLeaves, c1.nextIdx + 1);
+          if (src) {
+            source = src.text;
+            idx = src.nextIdx;
+          } else {
+            idx = c1.nextIdx + 1;
+          }
+        } else if (afterC1 && TRANSITION_CLAUSE_KEYWORDS.has(afterC1)) {
+          const rootSeg = c1.text.split(".")[0]!;
+          if (
+            c1.text.includes(".") ||
+            siblingStateNames.has(c1.text) ||
+            siblingStateNames.has(rootSeg) ||
+            !implicitParentStateName
+          ) {
+            source = c1.text;
+          } else {
+            source = implicitParentStateName;
+          }
+          idx = c1.nextIdx;
+        }
+      }
+    }
+  } else if (headerLeaves[idx]?.text === "first") {
+    const src = readDottedChainFromLeaves(headerLeaves, idx + 1);
+    if (src) {
+      source = src.text;
+      idx = src.nextIdx;
+    }
+  } else if (idx < headerLeaves.length && !TRANSITION_CLAUSE_KEYWORDS.has(headerLeaves[idx]!.text)) {
+    const src = readDottedChainFromLeaves(headerLeaves, idx);
+    if (src && headerLeaves[src.nextIdx]?.text === "then") {
+      source = src.text;
+      idx = src.nextIdx;
+    }
+  }
+
+  // Scan top-level `accept`, `if`, and `then` clauses across headerLeaves
+  let depth = 0;
+  for (let i = idx; i < headerLeaves.length; i++) {
+    const tok = headerLeaves[i]!.text;
+    if (tok === "(" || tok === "[") {
+      depth++;
+      continue;
+    }
+    if (tok === ")" || tok === "]") {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth > 0) continue;
+
+    if (tok === "accept" && trigger === undefined) {
+      let endIdx = headerLeaves.length;
+      let innerDepth = 0;
+      for (let j = i + 1; j < headerLeaves.length; j++) {
+        const jt = headerLeaves[j]!.text;
+        if (jt === "(" || jt === "[") innerDepth++;
+        else if (jt === ")" || jt === "]") innerDepth = Math.max(0, innerDepth - 1);
+        else if (innerDepth === 0 && (jt === "if" || jt === "do" || jt === "then")) {
+          endIdx = j;
+          break;
+        }
+      }
+      if (endIdx > i + 1) {
+        const rawTrig =
+          endIdx < headerLeaves.length
+            ? sliceBetweenLeaves(rawText, headerLeaves[i]!, headerLeaves[endIdx]!)
+            : rawText.slice(headerLeaves[i]!.end, headerLeaves[headerLeaves.length - 1]!.end).trim();
+        if (rawTrig) trigger = collapseWhitespace(rawTrig);
+      }
+    } else if (tok === "if" && guardText === undefined) {
+      let endIdx = headerLeaves.length;
+      let innerDepth = 0;
+      for (let j = i + 1; j < headerLeaves.length; j++) {
+        const jt = headerLeaves[j]!.text;
+        if (jt === "(" || jt === "[") innerDepth++;
+        else if (jt === ")" || jt === "]") innerDepth = Math.max(0, innerDepth - 1);
+        else if (innerDepth === 0 && (jt === "do" || jt === "then")) {
+          endIdx = j;
+          break;
+        }
+      }
+      if (endIdx > i + 1) {
+        const rawGuard =
+          endIdx < headerLeaves.length
+            ? sliceBetweenLeaves(rawText, headerLeaves[i]!, headerLeaves[endIdx]!)
+            : rawText.slice(headerLeaves[i]!.end, headerLeaves[headerLeaves.length - 1]!.end).trim();
+        if (rawGuard) guardText = rawGuard;
+      }
+    } else if (tok === "then" && target === undefined) {
+      const tgt = readDottedChainFromLeaves(headerLeaves, i + 1);
+      if (tgt) target = tgt.text;
+    }
+  }
+
+  // Metadata fallbacks when CST slice is unavailable (e.g. unit-test mock DBs)
+  if (!source && typeof trans.metadata?.["source"] === "string") {
+    source = trans.metadata["source"].trim();
+  }
+  if (!source && implicitParentStateName) {
+    source = implicitParentStateName;
+  }
+  if (trigger === undefined && typeof trans.metadata?.["trigger"] === "string" && trans.metadata["trigger"].trim()) {
+    trigger = collapseWhitespace(trans.metadata["trigger"].trim());
+  }
+  if (guardText === undefined && typeof trans.metadata?.["guard"] === "string" && trans.metadata["guard"].trim()) {
+    guardText = trans.metadata["guard"].trim();
+  }
+  if (target === undefined && typeof trans.metadata?.["target"] === "string" && trans.metadata["target"].trim()) {
+    target = trans.metadata["target"].trim();
+  }
+
+  if (!source) return null;
+
+  return {
+    id: trans.id,
+    name: trans.name && trans.name !== "<anonymous>" ? trans.name : `transition_${trans.id}`,
+    source,
+    target,
+    trigger,
+    stateMachineId: enclosingStateMachineId,
+    guardText,
+    cstText: rawText || undefined,
+  };
+}
+
+function isStateEntry(e: SymbolEntry): boolean {
+  return (
+    (e.ruleName === "StateDefinition" || e.ruleName === "StateUsage" || e.ruleName === "ExhibitStateUsage") &&
+    Boolean(e.name)
+  );
+}
+
+function matchesScopeFilter(db: QueryDB, state: SymbolEntry, filter: string): boolean {
+  if (state.name === filter) return true;
+  if (filter.includes("::")) {
+    const segments: string[] = [state.name];
+    let cur = state.parentId;
+    while (cur !== null) {
+      const p = db.symbol(cur);
+      if (!p) break;
+      if (p.name) segments.unshift(p.name);
+      cur = p.parentId;
+    }
+    const fqn = segments.join("::");
+    if (fqn === filter || fqn.endsWith(`::${filter}`)) return true;
+  }
+  let curParentId = state.parentId;
+  while (curParentId !== null) {
+    const parentSym = db.symbol(curParentId);
+    if (!parentSym) break;
+    if (parentSym.name === filter) return true;
+    curParentId = parentSym.parentId;
+  }
+  return false;
+}
+
+function verifyMachineContainer(
+  db: QueryDB,
+  containerId: number,
+  children: readonly SymbolEntry[],
+  getChildren: (id: number) => readonly SymbolEntry[],
+  onlyStateId: number | undefined,
+  stringFilter: string | undefined,
+  outDiagnostics: StateDeterminismDiagnostic[],
+): { isDeterministic: boolean; isComplete: boolean } {
+  let isDeterministic = true;
+  let isComplete = true;
+
+  const childStates = children.filter(isStateEntry);
+  if (childStates.length === 0) {
+    return { isDeterministic, isComplete };
+  }
+
+  const siblingStateNames = new Set<string>(childStates.map((s) => s.name));
+  const descriptorsBySource = new Map<string, TransitionDescriptor[]>();
+
+  const pushDesc = (desc: TransitionDescriptor | null) => {
+    if (!desc) return;
+    let list = descriptorsBySource.get(desc.source);
+    if (!list) {
+      list = [];
+      descriptorsBySource.set(desc.source, list);
+    }
+    list.push(desc);
+  };
+
+  // 1. Direct TransitionUsage children of the enclosing state machine container
+  for (const c of children) {
+    if (c.ruleName === "TransitionUsage") {
+      pushDesc(extractTransitionFromCst(db, c, siblingStateNames, containerId));
+    }
+  }
+
+  // 2. Source-less outgoing TransitionUsages nested directly inside a leaf child state (`state S { transition accept E then T; }`)
+  for (const st of childStates) {
+    const grandChildren = getChildren(st.id);
+    const hasSubStates = grandChildren.some(isStateEntry);
+    if (!hasSubStates) {
+      for (const gc of grandChildren) {
+        if (gc.ruleName === "TransitionUsage") {
+          pushDesc(extractTransitionFromCst(db, gc, siblingStateNames, containerId, st.name));
+        }
+      }
+    }
+  }
+
+  for (const state of childStates) {
+    if (onlyStateId !== undefined && state.id !== onlyStateId) continue;
+    if (stringFilter && !matchesScopeFilter(db, state, stringFilter)) continue;
+
+    // Collect transitions matching `state.name` (or dotted sub-reference starting with `state.name.`)
+    const outgoing = descriptorsBySource.get(state.name) ?? [];
+    if (outgoing.length >= 1) {
+      // Only check guard exhaustiveness when a state has >= 2 untriggered completion transitions
+      const res = verifyTransitionsInternal(state.name, outgoing, 2);
+      if (!res.isDeterministic) isDeterministic = false;
+      if (!res.isComplete) isComplete = false;
+      outDiagnostics.push(...res.diagnostics);
+    }
+  }
+
+  return { isDeterministic, isComplete };
+}
+
+/**
+ * Analyzes a QueryDB (or specific state machine / state symbol ID or scope name) to verify
+ * state machine transitions for determinism and completeness.
+ */
+export function verifyAllStateMachineTransitions(
+  db: QueryDB,
+  stateOrMachineFilter?: string | number,
+): StateDeterminismResult {
   const allDiagnostics: StateDeterminismDiagnostic[] = [];
   let overallDeterministic = true;
   let overallComplete = true;
 
-  // Find all state symbols
-  const stateEntries = allEntries.filter(
-    (e) => (e.ruleName === "StateDefinition" || e.ruleName === "StateUsage") && e.name,
-  );
-
-  // Group transitions by source state
-  const transitionEntries = allEntries.filter((e) => e.ruleName === "TransitionUsage");
-
-  for (const state of stateEntries) {
-    if (scopeFilter) {
-      let inScope = state.name === scopeFilter || state.name.includes(scopeFilter);
-      if (!inScope) {
-        let curParentId = state.parentId;
-        while (curParentId !== null) {
-          const parentSym = db.symbol(curParentId);
-          if (!parentSym) break;
-          if (parentSym.name === scopeFilter) {
-            inScope = true;
-            break;
-          }
-          curParentId = parentSym.parentId;
-        }
-      }
-      if (!inScope) {
-        continue;
-      }
+  // Fast O(children) path when a numeric symbol ID is supplied (no db.allEntries() scan)
+  if (typeof stateOrMachineFilter === "number") {
+    const targetSym = db.symbol(stateOrMachineFilter);
+    if (!targetSym) {
+      return { isDeterministic: true, isComplete: true, diagnostics: [] };
     }
 
-    const stateName = state.name;
-    // Transitions whose source matches this state
-    const outgoing: TransitionDescriptor[] = [];
+    const directChildren = db.childrenOf(targetSym.id);
+    const hasSubStates = directChildren.some(isStateEntry);
+    const hasDirectTransitions = directChildren.some((c) => c.ruleName === "TransitionUsage");
 
-    for (const t of transitionEntries) {
-      const metaSource = t.metadata?.["source"];
-      let matches = metaSource === stateName;
-
-      // Also check CST text if metadata isn't fully resolved
-      if (!matches) {
-        const text = db.cstText(t.startOffset, t.endOffset, t);
-        if (text && (text.includes(`first ${stateName}`) || text.includes(`transition ${stateName}`))) {
-          matches = true;
-        }
-      }
-
-      if (matches) {
-        let guardText = t.metadata?.["guard"];
-        if (!guardText) {
-          // Extract "if <guard>" from CST
-          const cstText = db.cstText(t.startOffset, t.endOffset, t);
-          if (cstText) {
-            const ifIdx = cstText.indexOf("if ");
-            if (ifIdx !== -1) {
-              const afterIf = cstText.substring(ifIdx + 3).trim();
-              let endIdx = afterIf.length;
-              for (const term of [";", "{", " do", " then"]) {
-                const ti = afterIf.indexOf(term);
-                if (ti !== -1 && ti < endIdx) {
-                  endIdx = ti;
-                }
-              }
-              guardText = afterIf.substring(0, endIdx).trim();
-            }
-          }
-        }
-
-        outgoing.push({
-          id: t.id,
-          name: t.name || `transition_${t.id}`,
-          source: stateName,
-          target: typeof t.metadata?.["target"] === "string" ? t.metadata["target"] : undefined,
-          guardText: typeof guardText === "string" ? guardText : undefined,
-        });
-      }
+    // Leaf StateUsage with transitions declared on its parent state machine
+    if (!hasSubStates && isStateEntry(targetSym) && targetSym.parentId !== null) {
+      const parentChildren = db.childrenOf(targetSym.parentId);
+      const res = verifyMachineContainer(
+        db,
+        targetSym.parentId,
+        parentChildren,
+        (id) => (id === targetSym.id ? directChildren : db.childrenOf(id)),
+        targetSym.id,
+        undefined,
+        allDiagnostics,
+      );
+      return {
+        isDeterministic: res.isDeterministic,
+        isComplete: res.isComplete,
+        diagnostics: allDiagnostics,
+      };
     }
 
-    if (outgoing.length >= 1) {
-      const res = verifyStateTransitions(stateName, outgoing);
-      if (!res.isDeterministic) overallDeterministic = false;
-      if (!res.isComplete) overallComplete = false;
-      allDiagnostics.push(...res.diagnostics);
+    // Walk container subtree using db.childrenOf in O(subtree)
+    const visitedContainers = new Set<number>();
+    const visitSubtree = (symId: number, symChildren: readonly SymbolEntry[]) => {
+      if (visitedContainers.has(symId)) return;
+      visitedContainers.add(symId);
+
+      if (symChildren.some(isStateEntry) || symChildren.some((c) => c.ruleName === "TransitionUsage")) {
+        const res = verifyMachineContainer(
+          db,
+          symId,
+          symChildren,
+          (id) => db.childrenOf(id),
+          undefined,
+          undefined,
+          allDiagnostics,
+        );
+        if (!res.isDeterministic) overallDeterministic = false;
+        if (!res.isComplete) overallComplete = false;
+      }
+
+      for (const ch of symChildren) {
+        if (
+          ch.kind === "Definition" ||
+          ch.kind === "Package" ||
+          ch.ruleName === "StateUsage" ||
+          ch.ruleName === "ExhibitStateUsage" ||
+          ch.ruleName === "PartUsage"
+        ) {
+          const grand = db.childrenOf(ch.id);
+          if (grand.length > 0) visitSubtree(ch.id, grand);
+        }
+      }
+    };
+
+    if (hasSubStates || hasDirectTransitions || targetSym.kind === "Package" || targetSym.kind === "Definition") {
+      visitSubtree(targetSym.id, directChildren);
     }
+
+    return {
+      isDeterministic: overallDeterministic,
+      isComplete: overallComplete,
+      diagnostics: allDiagnostics,
+    };
+  }
+
+  // String or omitted filter: group strictly per enclosing state machine container (parentId)
+  const allEntries = db.allEntries();
+  const childrenByParent = new Map<number | null, SymbolEntry[]>();
+  for (const entry of allEntries) {
+    let list = childrenByParent.get(entry.parentId);
+    if (!list) {
+      list = [];
+      childrenByParent.set(entry.parentId, list);
+    }
+    list.push(entry);
+  }
+
+  for (const [parentId, children] of childrenByParent) {
+    if (parentId === null) continue;
+    if (!children.some(isStateEntry)) continue;
+
+    const res = verifyMachineContainer(
+      db,
+      parentId,
+      children,
+      (id) => childrenByParent.get(id) ?? [],
+      undefined,
+      stateOrMachineFilter,
+      allDiagnostics,
+    );
+    if (!res.isDeterministic) overallDeterministic = false;
+    if (!res.isComplete) overallComplete = false;
+  }
+
+  // Also check top-level states with parentId === null if any exist
+  const rootChildren = childrenByParent.get(null);
+  if (rootChildren && rootChildren.some(isStateEntry)) {
+    const res = verifyMachineContainer(
+      db,
+      -1,
+      rootChildren,
+      (id) => childrenByParent.get(id) ?? [],
+      undefined,
+      stateOrMachineFilter,
+      allDiagnostics,
+    );
+    if (!res.isDeterministic) overallDeterministic = false;
+    if (!res.isComplete) overallComplete = false;
   }
 
   return {

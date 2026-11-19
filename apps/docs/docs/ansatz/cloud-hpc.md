@@ -13,7 +13,7 @@ While interactive 1D DAE and multibody simulations execute directly in the brows
 
 ```mermaid
 flowchart LR
-    A["Studio / Morsel / msx cloud"] -->|"POST /api/v1/cloud/jobs"| B["Ansatz API Gateway & Credit Ledger"]
+    A["Studio / Ansatz / msx cloud"] -->|"POST /api/v1/cloud/jobs"| B["Ansatz API Gateway & Credit Ledger"]
     B -->|"Deterministic .zip Bundle"| C["Slurm Controller (slurmctld / sbatch)"]
     C -->|"MPI / CUDA Allocation"| D["Compute Nodes (CPU / A100 / H100)"]
     D -->|"Zero-Copy RingBuffer Logs"| B
@@ -40,7 +40,7 @@ Organizations and individual engineers allocate jobs against pre-configured hard
 
 ## 3. Containerized Slurm Job Dispatch & Sandboxing
 
-When a job is submitted via the **Cloud Simulation Modal** in `/morsel` or via `msx cloud dispatch`:
+When a job is submitted via the **Cloud Simulation Modal** in `/editor` or via `msx cloud dispatch`:
 
 1. **Deterministic Workspace Packaging**: The compiler resolves `msx.lock` dependencies, verifies SHA-256 digests, and packs the model, compiled `.wasm` arena snapshot, and solver configuration into a content-addressed bundle.
 2. **Rootless Apptainer / Singularity Execution**: The Slurm job script runs inside an immutable, network-isolated Apptainer image (`modelscript-hpc-runtime.sif`) containing SUNDIALS 7.x (KLU/SuperLU_MT sparse linear solvers), CalculiX, SU2, and OpenMPI.

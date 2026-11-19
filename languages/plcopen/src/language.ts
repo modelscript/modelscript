@@ -41,6 +41,26 @@ export const plcopenLanguage = language({
   lsp: {
     fileExtensions: [".xml", ".plcopen", ".plcopen.xml", ".st"],
   },
+  ui: {
+    panels: [
+      {
+        id: "plcopenEditor",
+        viewType: "modelscript.plcopenEditor",
+        title: "IEC 61131-3 PLCopen Studio",
+        shortTitle: "PLCopen",
+        selector: ["*.plcopen", "*.plcopen.xml", "*.st"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/PlcopenPanel.tsx",
+        artifactViewTypes: ["plcopen", "iec61131"],
+      },
+    ],
+    stencils: [
+      { label: "Contact / Coil", snippet: "IF Start_Cmd AND NOT Fault_Bit THEN\n  Drive_Enable := TRUE;\nEND_IF;\n" },
+      { label: "TON Timer", snippet: "TON_Delay(IN := Start_Cmd, PT := T#500ms, Q => Delay_Done);\n" },
+      { label: "CTU Counter", snippet: "CTU_Parts(CU := Part_Sensor, R := Reset_Cmd, PV := 25, Q => Batch_Full);\n" },
+    ],
+  },
   extras: () => [/[ \t\r\n]+/],
   rules: xmlRules,
 

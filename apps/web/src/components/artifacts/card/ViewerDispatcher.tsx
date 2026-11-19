@@ -3,6 +3,7 @@
 import React, { Suspense } from "react";
 import styledImport from "styled-components";
 import Box from "../../Box";
+import { DslArtifactPanelWrapper, hasArtifactLanguagePanel } from "../../morsel/util/LanguagePanelHost";
 import Spinner from "../../Spinner";
 import LazyHeavyViewer from "../LazyHeavyViewer";
 import type { AnySpatialPin } from "../spatial-pin";
@@ -54,25 +55,13 @@ const YoutubeVideoViewer = React.lazy(() => import("../YoutubeVideoViewer"));
 const FmuViewer = React.lazy(() => import("../FmuViewer"));
 const SysmlViewer = React.lazy(() => import("../SysmlViewer"));
 const ZeroCopyWebGPUViewer = React.lazy(() => import("../ZeroCopyWebGPUViewer"));
-const PscadViewer = React.lazy(() => import("../PscadViewer"));
 const PsoutViewer = React.lazy(() => import("../PsoutViewer"));
-const PsseSldViewer = React.lazy(() => import("../PsseSldViewer"));
-const OlgaFlowViewer = React.lazy(() => import("../OlgaFlowViewer"));
-const Easy5Viewer = React.lazy(() => import("../Easy5Viewer"));
-const RocetsViewer = React.lazy(() => import("../RocetsViewer"));
-const PipelineLpsViewer = React.lazy(() => import("../PipelineLpsViewer"));
-const SimaViewer = React.lazy(() => import("../SimaViewer"));
-const GtSuiteViewer = React.lazy(() => import("../GtSuiteViewer"));
 const SspViewer = React.lazy(() => import("../SspViewer"));
 const FeaDeckViewer = React.lazy(() => import("../FeaDeckViewer"));
 const CfdConfigViewer = React.lazy(() => import("../CfdConfigViewer"));
-const Owl2Viewer = React.lazy(() => import("../Owl2Viewer"));
 const GensysViewer = React.lazy(() => import("../GensysViewer"));
 const SimpackViewer = React.lazy(() => import("../SimpackViewer"));
 const SolutionViewCard = React.lazy(() => import("../SolutionViewCard"));
-const ReqifViewer = React.lazy(() => import("../ReqifViewer"));
-const QifViewer = React.lazy(() => import("../QifViewer"));
-const UrdfViewer = React.lazy(() => import("../UrdfViewer"));
 const WamRobotArtifactViewer = React.lazy(() => import("../WamRobotArtifactViewer"));
 const PolyglotArtifactViewer = React.lazy(() => import("../PolyglotArtifactViewer"));
 const OtdrTraceViewer = React.lazy(() => import("../OtdrTraceViewer"));
@@ -200,6 +189,11 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
   const expectedHeight = getViewerExpectedHeight(artifact?.view_type, viewConfig, isFullScreen);
   const renderViewer = () => {
     const normalizedViewType = String(artifact?.view_type || "").toLowerCase();
+    if (hasArtifactLanguagePanel(normalizedViewType)) {
+      return (
+        <DslArtifactPanelWrapper viewType={normalizedViewType} viewConfig={viewConfig} isFullScreen={isFullScreen} />
+      );
+    }
     switch (normalizedViewType) {
       case "cad":
       case "cad-step":
@@ -405,37 +399,11 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             <DigitalTwinDashboardViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
           </LazyHeavyViewer>
         );
-      case "pscad":
-      case "pscx":
-      case "pslx":
-        return <PscadViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "psout":
       case "waveform":
       case "comtrade":
       case "oscillography":
         return <PsoutViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
-      case "psse":
-      case "raw":
-      case "powerflow":
-      case "sld":
-        return <PsseSldViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
-      case "olga":
-      case "opi":
-        return <OlgaFlowViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
-      case "easy5":
-      case "ez5":
-        return <Easy5Viewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
-      case "rocets":
-      case "roc":
-        return <RocetsViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
-      case "lps":
-      case "pipelinestudio":
-        return <PipelineLpsViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
-      case "sima":
-        return <SimaViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
-      case "gtsuite":
-      case "gtm":
-        return <GtSuiteViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "otdr":
       case "sor":
       case "optical-trace":
@@ -546,23 +514,6 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             <SimpackViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
           </LazyHeavyViewer>
         );
-      case "urdf":
-      case "sdf":
-      case "xacro":
-        return (
-          <LazyHeavyViewer
-            artifactId={artifactId}
-            thumbnailUrl={resolvedThumbnailUrl}
-            thumbnailUrlLight={resolvedThumbnailUrlLight}
-            thumbnailUrlDark={resolvedThumbnailUrlDark}
-            title="URDF Robotics Mechanism"
-            placeholderType="cad"
-            height={expectedHeight}
-            isFullScreen={isFullScreen}
-          >
-            <UrdfViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
-          </LazyHeavyViewer>
-        );
       case "wam_robot_lab":
       case "wam_robot":
         return (
@@ -579,9 +530,6 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             <WamRobotArtifactViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
           </LazyHeavyViewer>
         );
-      case "owl":
-      case "owl2":
-        return <Owl2Viewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "package":
       case "library":
         return <PackageViewCard viewConfig={viewConfig} isFullScreen={isFullScreen} />;
@@ -592,64 +540,6 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "engineering-app":
       case "app":
         return <SolutionViewCard viewConfig={viewConfig} isFullScreen={isFullScreen} />;
-      case "reqif":
-      case "reqifz":
-        return <ReqifViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
-      case "qif":
-        return (
-          <LazyHeavyViewer
-            artifactId={artifactId}
-            thumbnailUrl={resolvedThumbnailUrl}
-            thumbnailUrlLight={resolvedThumbnailUrlLight}
-            thumbnailUrlDark={resolvedThumbnailUrlDark}
-            title="QIF 3D MBD & Metrology"
-            placeholderType="cad"
-            height={expectedHeight}
-            isFullScreen={isFullScreen}
-          >
-            <QifViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />
-          </LazyHeavyViewer>
-        );
-      case "fortran":
-      case "f90":
-      case "f95":
-      case "f08":
-      case "f18":
-      case "aspen":
-      case "swmm":
-      case "touchstone":
-      case "ibis":
-      case "opendss":
-      case "openscenario":
-      case "relap5":
-      case "eclipse":
-      case "sbml":
-      case "jsbsim":
-      case "scad":
-      case "csg":
-      case "c":
-      case "adams":
-      case "autosar":
-      case "ccsds":
-      case "energyplus":
-      case "epanet":
-      case "opendrive":
-      case "plcopen":
-      case "simulink":
-      case "spice":
-      case "verilog-a":
-      case "oscal":
-      case "automationml":
-      case "aml":
-      case "other":
-        return (
-          <PolyglotArtifactViewer
-            viewConfig={viewConfig}
-            viewType={artifact.view_type}
-            artifactId={artifactId}
-            isFullScreen={isFullScreen}
-          />
-        );
       default:
         return (
           <PolyglotArtifactViewer

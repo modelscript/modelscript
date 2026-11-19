@@ -30,6 +30,11 @@ import { ModelicaPoParser, ModelicaTranslation } from "./extensions/po.js";
 import { MODELSCRIPT_STUDIES_PACKAGE } from "./extensions/studies.js";
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex, injectPredefinedTypes } from "./factory.js";
 import { ModelicaFlattener, type FlattenOptions } from "./flattener.js";
+import {
+  verifyModelicaFormal,
+  type FormalVerificationOptions,
+  type FormalVerificationResult,
+} from "./formal/formal-verifier.js";
 import { extractFirstClassFromCstNode, extractWithinFromSource } from "./workspace-hooks.js";
 
 /** Preconditioner strategy used by the nonlinear initialization solver. */
@@ -1203,7 +1208,9 @@ export class Context {
       const dirty = resourceUri ? this.#workspaceIndex.getDirtyRanges(resourceUri) : undefined;
 
       if (dirty && dirty.length > 0) {
-        const delta = resourceUri ? this.#fileDeltas.get(resourceUri) : undefined;
+        const delta = resourceUri
+          ? (this.#fileDeltas.get(resourceUri) ?? (this.#workspaceIndex as any).getDirtyDelta?.(resourceUri))
+          : undefined;
         const patched = flattener.patch(firstId, cached.builder, dirty, delta);
         if (patched) {
           if (resourceUri) {
@@ -1675,5 +1682,14 @@ export class Context {
     );
 
     return null;
+  }
+
+  /**
+   * Executes the on-demand `M7xxx` formal verification suite (structural BLT/Pantelides,
+   * interval/octagon abstract interpretation, assert/guard satisfiability, and E-graph
+   * algebraic checks) across classes loaded in this context.
+   */
+  async verifyFormal(options?: FormalVerificationOptions): Promise<FormalVerificationResult> {
+    return verifyModelicaFormal(this, options);
   }
 }

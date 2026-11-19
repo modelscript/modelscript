@@ -41,17 +41,17 @@ describe("Title & SEO Infrastructure", () => {
     assert.ok(content.includes("/explore"), "Must list explore route");
   });
 
-  it("sets Morsel page title without Ansatz suffix on initial load and after mount", () => {
+  it("sets Ansatz page title without Ansatz suffix on initial load and after mount", () => {
     const indexHtml = fs.readFileSync(path.resolve(__dirname, "../index.html"), "utf-8");
     const playgroundPage = fs.readFileSync(path.resolve(__dirname, "../src/pages/PlaygroundPage.tsx"), "utf-8");
 
     assert.ok(
-      indexHtml.includes('document.title = "Morsel"'),
-      "index.html must set initial document.title to Morsel for /morsel routes",
+      indexHtml.includes('document.title = "Ansatz"'),
+      "index.html must set initial document.title to Ansatz for /editor routes",
     );
     assert.ok(
       playgroundPage.includes(
-        'usePageTitle(currentTitle ? `${currentTitle} — Morsel` : "Morsel", { includeBrand: false })',
+        'usePageTitle(currentTitle ? `${currentTitle} — Ansatz` : "Ansatz", { includeBrand: false })',
       ),
       "PlaygroundPage must call usePageTitle with includeBrand: false",
     );

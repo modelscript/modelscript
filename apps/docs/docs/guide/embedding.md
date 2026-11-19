@@ -39,7 +39,7 @@ end RLC;"
 | `anchor`      | `undefined`    | Target component element ID to visually highlight and auto-center (e.g. `"R1"` or `"chassis"`).                                                |
 | `controls`    | `"none"`       | Set to `"parameters"` to display an interactive live parameter slider ribbon below the model.                                                  |
 | `zoom-mode`   | `"ctrl-wheel"` | Scroll protection mode: `"ctrl-wheel"` (requires Ctrl/⌘ to zoom, preventing iframe page wheel-trapping), `"always"`, or `"click-to-interact"`. |
-| `multi-file`  | `false`        | If set, the watermark pill routes the user to **Studio** instead of Ansatz Morsel.                                                             |
+| `multi-file`  | `false`        | If set, the watermark pill routes the user to **Studio** instead of **Ansatz**.                                                                |
 | `artifact-id` | `undefined`    | Numerical ID of a published artifact on Ansatz.                                                                                                |
 
 ---

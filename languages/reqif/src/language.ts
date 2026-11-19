@@ -31,6 +31,21 @@ export const reqifLanguage = language({
   fileExtensions: [".reqif", ".reqifz"],
   maturity: "stable",
   indexing: reqifIndexing,
+  ui: {
+    panels: [
+      {
+        id: "reqifEditor",
+        viewType: "modelscript.reqifEditor",
+        title: "ReqIF Requirements Specification Studio",
+        shortTitle: "ReqIF",
+        selector: ["*.reqif", "*.reqifz"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/ReqifPanel.tsx",
+        artifactViewTypes: ["reqif"],
+      },
+    ],
+  },
   lsp: {
     fileExtensions: [".reqif", ".reqifz"],
     icons: {
@@ -82,15 +97,14 @@ export const reqifLanguage = language({
     requirementRules: ["SPEC-OBJECT"],
     matrixRules: ["SPEC-RELATION"],
   },
-  writeback: (req) => {
-    const r = req as unknown as Record<string, unknown>;
-    const res = updateReqIfRequirementCell(
-      String(r["source"] ?? r["sourceText"] ?? ""),
-      String(r["targetId"] ?? r["symbolPath"] ?? ""),
-      String(r["field"] ?? r["property"] ?? "text"),
-      r["newValue"] ?? r["value"],
-    );
-    return res.success ? res.edits : null;
+  writeback: (ctx) => {
+    const r = ctx as unknown as Record<string, unknown>;
+    const sourceText = ctx.fullText ?? String(r["source"] ?? r["sourceText"] ?? "");
+    const targetId = String(r["targetId"] ?? r["symbolPath"] ?? ctx.entry?.name ?? "");
+    const field = String(r["field"] ?? r["property"] ?? "text");
+    const nextVal = ctx.newValue ?? r["value"];
+    const res = updateReqIfRequirementCell(sourceText, targetId, field, nextVal);
+    return res.success && Array.isArray(res.edits) ? res.edits : null;
   },
 
   actions: [

@@ -23,6 +23,27 @@ export const easy5Language = language({
   lsp: {
     fileExtensions: [".ez5", ".ezm", ".ezd", ".eas"],
   },
+  ui: {
+    panels: [
+      {
+        id: "easy5Editor",
+        viewType: "modelscript.easy5Editor",
+        title: "EASY5 Schematic & Linear Control Editor",
+        shortTitle: "EASY5",
+        selector: ["*.ez5", "*.ezm", "*.ezd", "*.eas"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/Easy5Panel.tsx",
+        artifactViewTypes: ["easy5", "ez5"],
+      },
+    ],
+    stencils: [
+      { label: "Gain", snippet: 'Block { BlockType Gain Name "Gain_New" Gain "2.0" }\n' },
+      { label: "Integrator", snippet: 'Block { BlockType Integrator Name "Integ_New" InitialCondition "0" }\n' },
+      { label: "Sum", snippet: 'Block { BlockType Sum Name "Sum_New" Inputs "+-" }\n' },
+      { label: "Step", snippet: 'Block { BlockType Step Name "Step_New" After "1.0" }\n' },
+    ],
+  },
 
   errorCodes: Easy5ErrorCode,
 

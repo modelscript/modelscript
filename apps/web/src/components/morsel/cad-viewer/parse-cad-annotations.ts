@@ -18,6 +18,111 @@ import type { CadAnnotation, CadComponent, CadPortAnnotation, ProceduralMeshData
  *   `CAD(uri="modelica://Lib/part.glb", scale={1, 1, 1})`
  * into a structured CadAnnotation object.
  */
+function parseTopLevelCadKvArgs(inner: string): Record<string, string | number | boolean | number[]> {
+  const result: Record<string, string | number | boolean | number[]> = {};
+  let i = 0;
+  const n = inner.length;
+  const skipWs = () => {
+    while (i < n && /\s/.test(inner[i]!)) i++;
+  };
+  while (i < n) {
+    skipWs();
+    if (inner[i] === ",") {
+      i++;
+      continue;
+    }
+    const keyStart = i;
+    while (i < n && /\w/.test(inner[i]!)) i++;
+    const key = inner.slice(keyStart, i);
+    if (!key) {
+      i++;
+      continue;
+    }
+    skipWs();
+    if (inner[i] !== "=") {
+      while (i < n && inner[i] !== ",") i++;
+      continue;
+    }
+    i++;
+    skipWs();
+    if (inner[i] === '"') {
+      i++;
+      let strVal = "";
+      while (i < n && inner[i] !== '"') {
+        if (inner[i] === "\\" && i + 1 < n) i++;
+        strVal += inner[i]!;
+        i++;
+      }
+      if (inner[i] === '"') i++;
+      result[key] = strVal;
+    } else if (inner[i] === "{") {
+      const valStart = i + 1;
+      let braceDepth = 1;
+      let parenDepth = 0;
+      let inStr = false;
+      i++;
+      while (i < n && braceDepth > 0) {
+        const ch = inner[i]!;
+        if (inStr) {
+          if (ch === "\\" && i + 1 < n) i++;
+          else if (ch === '"') inStr = false;
+        } else if (ch === '"') {
+          inStr = true;
+        } else if (ch === "(") {
+          parenDepth++;
+        } else if (ch === ")") {
+          parenDepth = Math.max(0, parenDepth - 1);
+        } else if (ch === "{") {
+          braceDepth++;
+        } else if (ch === "}") {
+          braceDepth--;
+          if (braceDepth === 0) break;
+        }
+        i++;
+      }
+      const rawBraceInner = inner.slice(valStart, i);
+      if (inner[i] === "}") i++;
+      if (!/[a-zA-Z(]/.test(rawBraceInner) && key !== "dynamicBindings") {
+        const nums = rawBraceInner.split(",").map((s) => parseFloat(s.trim()));
+        if (nums.every(Number.isFinite)) {
+          result[key] = nums;
+        }
+      }
+    } else {
+      const valStart = i;
+      let parenDepth = 0;
+      let inStr = false;
+      while (i < n) {
+        const ch = inner[i]!;
+        if (inStr) {
+          if (ch === "\\" && i + 1 < n) i++;
+          else if (ch === '"') inStr = false;
+        } else if (ch === '"') {
+          inStr = true;
+        } else if (ch === "(") {
+          parenDepth++;
+        } else if (ch === ")") {
+          if (parenDepth === 0) break;
+          parenDepth--;
+        } else if (ch === "," && parenDepth === 0) {
+          break;
+        }
+        i++;
+      }
+      const rawVal = inner.slice(valStart, i).trim();
+      if (rawVal === "true" || rawVal === "false") {
+        result[key] = rawVal === "true";
+      } else {
+        const num = Number(rawVal);
+        if (rawVal.length > 0 && Number.isFinite(num)) {
+          result[key] = num;
+        }
+      }
+    }
+  }
+  return result;
+}
+
 export function parseCadAnnotationString(cadStr: string): CadAnnotation | CadPortAnnotation | null {
   // Determine type prefix
   const isCAD = cadStr.startsWith("CAD(");
@@ -27,27 +132,7 @@ export function parseCadAnnotationString(cadStr: string): CadAnnotation | CadPor
   const prefix = isCAD ? "CAD(" : "CADPort(";
   const inner = cadStr.slice(prefix.length, -1); // strip "CAD(" and ")"
 
-  const result: Record<string, string | number | boolean | number[]> = {};
-
-  // Parse key=value pairs (handles strings, numbers, booleans, arrays)
-  const regex = /(\w+)\s*=\s*(?:"([^"]*)"|\{([^}]*)\}|(true|false)|([0-9.eE+-]+))/g;
-  let match;
-  while ((match = regex.exec(inner)) !== null) {
-    const key = match[1]!;
-    if (match[2] !== undefined) {
-      // String value
-      result[key] = match[2];
-    } else if (match[3] !== undefined) {
-      // Array value
-      result[key] = match[3].split(",").map((s) => parseFloat(s.trim()));
-    } else if (match[4] !== undefined) {
-      // Boolean value
-      result[key] = match[4] === "true";
-    } else if (match[5] !== undefined) {
-      // Numeric value
-      result[key] = parseFloat(match[5]);
-    }
-  }
+  const result = parseTopLevelCadKvArgs(inner);
 
   if (isCAD) {
     return {
@@ -170,7 +255,7 @@ export function parseSourceCadVariables(source: string): RawCadVariableEntry[] {
     if (shortType === "Torus" || shortType === "VoluminousWheel") {
       const ri = parseModifierNum(modStr, "ri", 0.5);
       const ro = parseModifierNum(modStr, "ro", 0.1);
-      const mesh = createMslTorusMesh(ri, ro, 36, 18, rgba);
+      const mesh = createMslTorusMesh(ri, ro, 0, -Math.PI, Math.PI, 36, 18, rgba);
       results.push({
         name: varName,
         shapeType: "surface:torus",
@@ -210,7 +295,7 @@ export function parseSourceCadVariables(source: string): RawCadVariableEntry[] {
     } else if (shortType === "PipeWithScalarField") {
       const length = parseModifierNum(modStr, "length", 1.0);
       const rOuter = parseModifierNum(modStr, "r_outer", 0.1);
-      const mesh = createMslPipeSurfaceMesh(length, rOuter, 16, 24, rgba);
+      const mesh = createMslPipeSurfaceMesh(rOuter, length, 16, 24, rgba);
       results.push({
         name: varName,
         shapeType: "surface:pipeWithScalarField",
@@ -254,7 +339,15 @@ export function parseSourceCadVariables(source: string): RawCadVariableEntry[] {
           shapeOffset: rShape,
           lengthDirection: lengthDir,
           widthDirection: [0, 1, 0],
-          vectorCoordinates: shortType !== "FixedArrow",
+          ...(shortType !== "FixedArrow"
+            ? {
+                vectorCoordinates: [length * lengthDir[0], length * lengthDir[1], length * lengthDir[2]] as [
+                  number,
+                  number,
+                  number,
+                ],
+              }
+            : {}),
           color: [rgba[0], rgba[1], rgba[2]],
         },
         dynamicBindings: [
@@ -339,7 +432,7 @@ export function parseSourceCadVariables(source: string): RawCadVariableEntry[] {
             shapeOffset: rShape,
             lengthDirection: lengthDir,
             widthDirection: widthDir,
-            ...(shortType === "Spring" ? { vectorCoordinates: true } : {}),
+            ...(shortType === "Spring" ? { vectorCoordinates: rVec } : {}),
             color: [rgba[0], rgba[1], rgba[2]],
           },
           dynamicBindings: bindings,

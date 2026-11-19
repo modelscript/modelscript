@@ -506,7 +506,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
 
   const getForkUrl = () => {
     if (!viewConfig?.artifactId && !artifactId) {
-      return `/morsel#m=${encodeURIComponent(code)}`;
+      return `/editor#m=${encodeURIComponent(code)}`;
     }
     return buildEditorUrlForArtifact({
       artifactId: (viewConfig?.artifactId ?? artifactId) as string | number | undefined,
@@ -752,7 +752,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
             )}
             {Boolean(viewConfig?.standalone) && (
               <Button size="small" variant="primary" leadingVisual={DraftingTriangleIcon} onClick={handleFork}>
-                Morsel
+                Ansatz
               </Button>
             )}
           </ToolbarRight>

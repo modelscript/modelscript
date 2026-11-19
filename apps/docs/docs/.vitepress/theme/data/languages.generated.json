@@ -22,7 +22,7 @@
         "FMU"
       ]
     },
-    "ruleCount": 237
+    "ruleCount": 308
   },
   {
     "slug": "ampl",
@@ -88,7 +88,7 @@
         "ReqIF"
       ]
     },
-    "ruleCount": 63
+    "ruleCount": 108
   },
   {
     "slug": "reqif",

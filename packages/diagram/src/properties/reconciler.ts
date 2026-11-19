@@ -13,9 +13,9 @@ import type {
   PropertyChoiceOption,
   PropertyFieldConfig,
   PropertyGroupConfig,
-  PropertyTabConfig,
 } from "../protocol.js";
 import type { ConflictManager } from "./conflict-manager.js";
+import { getVisiblePropertyTabs, resolveActivePropertyTabId } from "./state.js";
 
 export interface PropertiesReconcilerState {
   nodeId: string;
@@ -40,6 +40,21 @@ export interface PropertiesReconcilerHandlers {
 // In-memory UI fold memory per component
 const componentFoldState = new Map<string, Record<string, boolean>>();
 
+interface ContainerReconcilerContext {
+  nodeId: string;
+  handlers: PropertiesReconcilerHandlers;
+}
+
+interface RowReconcilerContext {
+  handlers: PropertiesReconcilerHandlers;
+  fieldKey: string;
+  defaultVal: string;
+  lastCommittedVal?: string;
+}
+
+const containerContextMap = new WeakMap<HTMLElement, ContainerReconcilerContext>();
+const rowContextMap = new WeakMap<HTMLElement, RowReconcilerContext>();
+
 function escapeHtml(str: unknown): string {
   if (str === null || str === undefined) return "";
   return String(str)
@@ -62,6 +77,7 @@ export function reconcilePropertiesDOM(
   handlers: PropertiesReconcilerHandlers,
 ): void {
   const { nodeId, data, localValues } = state;
+  containerContextMap.set(container, { nodeId, handlers });
   const folds = componentFoldState.get(nodeId) ?? { info: true, parameters: true, doc: false, revisions: false };
   componentFoldState.set(nodeId, folds);
 
@@ -100,18 +116,22 @@ export function reconcilePropertiesDOM(
     const closeBtn = header.querySelector(".ms-prop-btn-close");
     closeBtn?.addEventListener("click", (e) => {
       e.stopPropagation();
-      handlers.onClose?.();
+      containerContextMap.get(container)?.handlers.onClose?.();
     });
 
     header.addEventListener("toggle", () => {
-      folds["info"] = (header as HTMLDetailsElement).open;
+      const ctx = containerContextMap.get(container);
+      const curFolds = ctx ? componentFoldState.get(ctx.nodeId) : undefined;
+      if (curFolds) curFolds["info"] = (header as HTMLDetailsElement).open;
     });
 
     const nameInput = header.querySelector<HTMLInputElement>(".ms-prop-input-name");
     nameInput?.addEventListener("change", (e) => {
+      const ctx = containerContextMap.get(container);
+      if (!ctx) return;
       const val = (e.target as HTMLInputElement).value.trim();
-      if (val && val !== nodeId) {
-        handlers.onNameChange?.(val);
+      if (val && val !== ctx.nodeId) {
+        ctx.handlers.onNameChange?.(val);
       }
     });
   }
@@ -144,7 +164,7 @@ export function reconcilePropertiesDOM(
         `;
         descArea = descContainer.querySelector<HTMLTextAreaElement>(".ms-prop-input-desc")!;
         descArea.addEventListener("change", (e) => {
-          handlers.onDescriptionChange?.((e.target as HTMLTextAreaElement).value);
+          containerContextMap.get(container)?.handlers.onDescriptionChange?.((e.target as HTMLTextAreaElement).value);
         });
       }
       if (document.activeElement !== descArea) {
@@ -167,7 +187,7 @@ export function reconcilePropertiesDOM(
           const area = descContainer.querySelector<HTMLTextAreaElement>(".ms-prop-input-desc")!;
           area.focus();
           area.addEventListener("change", (e) => {
-            handlers.onDescriptionChange?.((e.target as HTMLTextAreaElement).value);
+            containerContextMap.get(container)?.handlers.onDescriptionChange?.((e.target as HTMLTextAreaElement).value);
           });
         });
       }
@@ -175,9 +195,7 @@ export function reconcilePropertiesDOM(
   }
 
   // 2. Tabs or Flat Fallback Normalization
-  let availableTabs = (data.schema?.tabs || []).filter((t: PropertyTabConfig) =>
-    evaluatePropertyPredicate(t.visibleIf, localValues),
-  );
+  let availableTabs = getVisiblePropertyTabs(data.schema, localValues);
 
   // If no schema tabs, construct a synthetic tab from data.parameters
   if (availableTabs.length === 0 && data.parameters && data.parameters.length > 0) {
@@ -221,7 +239,7 @@ export function reconcilePropertiesDOM(
       `;
       const fi = filterBar.querySelector<HTMLInputElement>(".ms-prop-filter-input")!;
       fi.addEventListener("input", () => {
-        handlers.onFilterChange?.(fi.value);
+        containerContextMap.get(container)?.handlers.onFilterChange?.(fi.value);
       });
       container.appendChild(filterBar);
     }
@@ -234,10 +252,7 @@ export function reconcilePropertiesDOM(
   }
 
   // Tabs Bar
-  let activeTabId = state.activeTabId ?? availableTabs[0]?.id;
-  if (!availableTabs.some((t) => t.id === activeTabId)) {
-    activeTabId = availableTabs[0]?.id;
-  }
+  const activeTabId = resolveActivePropertyTabId(availableTabs, state.activeTabId);
 
   let tabsBar = container.querySelector<HTMLElement>(".ms-prop-tabs-bar");
   if (!tabsBar && availableTabs.length > 0) {
@@ -265,7 +280,7 @@ export function reconcilePropertiesDOM(
           btn.className = "ms-prop-tab-btn";
           btn.setAttribute("data-tab-id", tab.id);
           btn.addEventListener("click", () => {
-            handlers.onTabChange?.(tab.id);
+            containerContextMap.get(container)?.handlers.onTabChange?.(tab.id);
           });
           tabsBar.appendChild(btn);
         }
@@ -316,7 +331,9 @@ export function reconcilePropertiesDOM(
         groupEl.appendChild(summary);
         groupEl.appendChild(fields);
         groupEl.addEventListener("toggle", () => {
-          folds[group.id] = groupEl!.open;
+          const ctx = containerContextMap.get(container);
+          const curFolds = ctx ? componentFoldState.get(ctx.nodeId) : undefined;
+          if (curFolds) curFolds[group.id] = groupEl!.open;
         });
         groupsContainer.appendChild(groupEl);
       }
@@ -346,7 +363,9 @@ export function reconcilePropertiesDOM(
         <div class="ms-prop-doc-body" style="padding:8px 16px;font-size:12px;line-height:1.5;color:var(--ms-prop-fg);user-select:text;"></div>
       `;
       docSection.addEventListener("toggle", () => {
-        folds["doc"] = docSection!.open;
+        const ctx = containerContextMap.get(container);
+        const curFolds = ctx ? componentFoldState.get(ctx.nodeId) : undefined;
+        if (curFolds) curFolds["doc"] = docSection!.open;
       });
       container.appendChild(docSection);
     }
@@ -373,7 +392,9 @@ export function reconcilePropertiesDOM(
         <div class="ms-prop-rev-body" style="padding:8px 16px;font-size:12px;line-height:1.5;color:var(--ms-prop-fg);user-select:text;"></div>
       `;
       revSection.addEventListener("toggle", () => {
-        folds["revisions"] = revSection!.open;
+        const ctx = containerContextMap.get(container);
+        const curFolds = ctx ? componentFoldState.get(ctx.nodeId) : undefined;
+        if (curFolds) curFolds["revisions"] = revSection!.open;
       });
       container.appendChild(revSection);
     }
@@ -387,6 +408,14 @@ export function reconcilePropertiesDOM(
   } else if (revSection) {
     revSection.remove();
   }
+}
+
+function getFieldWidgetSignature(field: PropertyFieldConfig): string {
+  if (field.kind === "choice" && Array.isArray(field.choices)) {
+    const choiceKey = field.choices.map((c) => (typeof c === "string" ? c : `${c.value}:${c.label}`)).join("|");
+    return `${field.kind}:${choiceKey}`;
+  }
+  return `${field.kind}:${field.unit ?? ""}`;
 }
 
 function reconcileFieldRows(
@@ -422,12 +451,14 @@ function reconcileFieldRows(
     const isEnabled = evaluatePropertyPredicate(field.enabledIf, localValues) && !field.readOnly;
     const validationErr = validatePropertyValue(field, localVal, localValues);
     const conflict = conflictManager?.getConflict(field.key);
+    const widgetSig = getFieldWidgetSignature(field);
 
     let row = existingRows.get(field.key);
     if (!row) {
       row = document.createElement("div");
       row.className = "ms-prop-row";
       row.setAttribute("data-field-key", field.key);
+      row.setAttribute("data-widget-sig", widgetSig);
       row.innerHTML = `
         <div class="ms-prop-row-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
           <div style="display:flex;align-items:center;max-width:calc(100% - 130px);overflow:hidden;">
@@ -444,26 +475,43 @@ function reconcileFieldRows(
         <div class="ms-prop-desc-slot" style="font-size:11px;color:var(--ms-prop-fg-muted);opacity:0.75;margin-top:2px;line-height:1.35;word-break:break-word;"></div>
       `;
 
+      rowContextMap.set(row, {
+        handlers,
+        fieldKey: field.key,
+        defaultVal,
+        lastCommittedVal: localVal,
+      });
+
+      const targetRow = row;
       // Mount input widget
       const inputSlot = row.querySelector<HTMLElement>(".ms-prop-input-slot")!;
-      mountInputWidget(
-        inputSlot,
-        field,
-        localVal,
-        (newVal) => {
-          handlers.onFieldChange?.(field.key, newVal);
-        },
-        handlers.sanitize,
-      );
+      mountInputWidget(inputSlot, targetRow, field, localVal, handlers.sanitize);
 
       // Bind revert button
       const revertBtn = row.querySelector<HTMLButtonElement>(".ms-prop-btn-revert")!;
       revertBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        handlers.onFieldChange?.(field.key, defaultVal);
+        const ctx = rowContextMap.get(targetRow);
+        if (!ctx) return;
+        ctx.lastCommittedVal = ctx.defaultVal;
+        ctx.handlers.onFieldChange?.(ctx.fieldKey, ctx.defaultVal);
       });
 
       container.appendChild(row);
+    } else {
+      const prevCtx = rowContextMap.get(row);
+      rowContextMap.set(row, {
+        handlers,
+        fieldKey: field.key,
+        defaultVal,
+        lastCommittedVal: prevCtx?.lastCommittedVal ?? localVal,
+      });
+
+      if (row.getAttribute("data-widget-sig") !== widgetSig) {
+        row.setAttribute("data-widget-sig", widgetSig);
+        const inputSlot = row.querySelector<HTMLElement>(".ms-prop-input-slot")!;
+        mountInputWidget(inputSlot, row, field, localVal, handlers.sanitize);
+      }
     }
 
     // Update row state in place
@@ -473,6 +521,8 @@ function reconcileFieldRows(
     dot.style.display = isOverridden ? "inline-block" : "none";
 
     const label = row.querySelector<HTMLElement>(".ms-prop-label")!;
+    label.textContent = field.label || field.key;
+    label.setAttribute("title", field.description || "");
     label.classList.toggle("is-modified", isOverridden);
 
     const revertBtn = row.querySelector<HTMLButtonElement>(".ms-prop-btn-revert")!;
@@ -493,11 +543,14 @@ function reconcileFieldRows(
           </div>
         </div>
       `;
+      const targetRow = row;
       conflictSlot.querySelector('[data-action="keep"]')?.addEventListener("click", () => {
-        handlers.onResolveConflict?.(field.key, "keep_local");
+        const ctx = rowContextMap.get(targetRow);
+        ctx?.handlers.onResolveConflict?.(ctx.fieldKey, "keep_local");
       });
       conflictSlot.querySelector('[data-action="accept"]')?.addEventListener("click", () => {
-        handlers.onResolveConflict?.(field.key, "accept_remote");
+        const ctx = rowContextMap.get(targetRow);
+        ctx?.handlers.onResolveConflict?.(ctx.fieldKey, "accept_remote");
       });
       conflictSlot.style.display = "block";
     } else {
@@ -516,12 +569,18 @@ function reconcileFieldRows(
 
     // Update Description slot with formula formatting
     const descSlot = row.querySelector<HTMLElement>(".ms-prop-desc-slot")!;
-    if (field.description && !descSlot.hasChildNodes()) {
-      const formulaMatch = field.description.match(/^(.*?)\s*(\([a-zA-Z0-9_]+\s*=\s*[^)]+\))$/);
-      if (formulaMatch) {
-        descSlot.innerHTML = `${escapeHtml(formulaMatch[1])} <code style="font-size:10px;padding:1px 4px;border-radius:3px;background:rgba(128,128,128,0.15);font-family:var(--ms-prop-font-mono);">${escapeHtml(formulaMatch[2])}</code>`;
+    const rawDesc = field.description ?? "";
+    if (descSlot.dataset["rawDesc"] !== rawDesc) {
+      descSlot.dataset["rawDesc"] = rawDesc;
+      if (rawDesc) {
+        const formulaMatch = rawDesc.match(/^(.*?)\s*(\([a-zA-Z0-9_]+\s*=\s*[^)]+\))$/);
+        if (formulaMatch) {
+          descSlot.innerHTML = `${escapeHtml(formulaMatch[1])} <code style="font-size:10px;padding:1px 4px;border-radius:3px;background:rgba(128,128,128,0.15);font-family:var(--ms-prop-font-mono);">${escapeHtml(formulaMatch[2])}</code>`;
+        } else {
+          descSlot.textContent = rawDesc;
+        }
       } else {
-        descSlot.textContent = field.description;
+        descSlot.textContent = "";
       }
     }
 
@@ -533,11 +592,18 @@ function reconcileFieldRows(
   }
 }
 
+function emitRowChange(row: HTMLElement, newVal: string): void {
+  const ctx = rowContextMap.get(row);
+  if (!ctx) return;
+  ctx.lastCommittedVal = newVal;
+  ctx.handlers.onFieldChange?.(ctx.fieldKey, newVal);
+}
+
 function mountInputWidget(
   container: HTMLElement,
+  row: HTMLElement,
   field: PropertyFieldConfig,
   initialVal: string,
-  onChange: (val: string) => void,
   sanitize?: (html: string) => string,
 ): void {
   if (field.kind === "boolean") {
@@ -545,7 +611,7 @@ function mountInputWidget(
       <input type="checkbox" class="ms-prop-input" ${initialVal === "true" || initialVal === "1" ? "checked" : ""} style="cursor:pointer;" />
     `;
     const cb = container.querySelector<HTMLInputElement>("input")!;
-    cb.addEventListener("change", () => onChange(cb.checked ? "true" : "false"));
+    cb.addEventListener("change", () => emitRowChange(row, cb.checked ? "true" : "false"));
   } else if (field.kind === "choice" && Array.isArray(field.choices)) {
     container.innerHTML = `
       <select class="ms-prop-input" style="width:130px;height:24px;background:var(--ms-prop-dropdown-bg);color:var(--ms-prop-dropdown-fg);border:1px solid var(--ms-prop-dropdown-border);border-radius:4px;padding:2px 4px;font-size:12px;">
@@ -560,13 +626,13 @@ function mountInputWidget(
     `;
     const sel = container.querySelector<HTMLSelectElement>("select")!;
     sel.value = initialVal;
-    sel.addEventListener("change", () => onChange(sel.value));
+    sel.addEventListener("change", () => emitRowChange(row, sel.value));
   } else if (field.kind === "color") {
     container.innerHTML = `
       <input type="color" class="ms-prop-input" value="${escapeHtml(initialVal || "#000000")}" style="width:36px;height:22px;border:1px solid var(--ms-prop-input-border);background:transparent;cursor:pointer;border-radius:4px;padding:2px;" />
     `;
     const col = container.querySelector<HTMLInputElement>("input")!;
-    col.addEventListener("change", () => onChange(col.value));
+    col.addEventListener("change", () => emitRowChange(row, col.value));
   } else if (field.kind === "html" || field.kind === "codeBlock") {
     const raw = String(initialVal || "");
     const safe = sanitize ? sanitize(raw) : escapeHtml(raw);
@@ -582,12 +648,25 @@ function mountInputWidget(
       </div>
     `;
     const inp = container.querySelector<HTMLInputElement>("input")!;
-    let debounceTimer: ReturnType<typeof setTimeout>;
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
     inp.addEventListener("input", () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => onChange(inp.value), 120);
+      if (debounceTimer !== undefined) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = undefined;
+        emitRowChange(row, inp.value);
+      }, 120);
     });
-    inp.addEventListener("change", () => onChange(inp.value));
+    inp.addEventListener("change", () => {
+      const hadPending = debounceTimer !== undefined;
+      if (debounceTimer !== undefined) {
+        clearTimeout(debounceTimer);
+        debounceTimer = undefined;
+      }
+      const ctx = rowContextMap.get(row);
+      if (hadPending || !ctx || inp.value !== ctx.lastCommittedVal) {
+        emitRowChange(row, inp.value);
+      }
+    });
   }
 }
 
@@ -599,6 +678,11 @@ function updateInputWidget(row: HTMLElement, field: PropertyFieldConfig, current
 
   if (document.activeElement === input) {
     return; // Don't interrupt user typing
+  }
+
+  const ctx = rowContextMap.get(row);
+  if (ctx) {
+    ctx.lastCommittedVal = currentVal;
   }
 
   if (field.kind === "boolean") {

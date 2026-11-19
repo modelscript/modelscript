@@ -50,6 +50,21 @@ export const oscalLanguage = language({
   lsp: {
     fileExtensions: [".oscal", ".oscal.json", ".oscal.yaml", ".oscal.yml", ".oscal.xml"],
   },
+  ui: {
+    panels: [
+      {
+        id: "oscalEditor",
+        viewType: "modelscript.oscalEditor",
+        title: "OSCAL Security Assessment & FedRAMP Studio",
+        shortTitle: "OSCAL",
+        selector: ["*.oscal.json", "*.oscal.yaml", "*.oscal.yml", "*.oscal.xml"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/OscalPanel.tsx",
+        artifactViewTypes: ["oscal"],
+      },
+    ],
+  },
   rules: {
     Root: () => "oscal",
   },

@@ -817,7 +817,7 @@ export const SpacePackagesTab: React.FC<SpacePackagesTabProps> = ({ detail, view
               </ProtocolPills>
 
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Link to={`/morsel?space=@${space.owner_namespace}/${space.slug}`} style={{ textDecoration: "none" }}>
+                <Link to={`/editor?space=@${space.owner_namespace}/${space.slug}`} style={{ textDecoration: "none" }}>
                   <Button
                     size="small"
                     variant="invisible"

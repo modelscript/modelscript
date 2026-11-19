@@ -879,11 +879,16 @@ export class WorkspaceManager {
               componentClassInstance = null;
               return null;
             }
-            let typeSpec: string | null = (child.metadata as any)?.typeSpecifier ?? null;
-            if (!typeSpec && db.query) {
+            const metaTypeSpec: string | null =
+              (child.metadata as { typeSpecifier?: string } | undefined)?.typeSpecifier ?? null;
+            let typeSpec: string | null = null;
+            if (db.query) {
               try {
-                typeSpec = db.query("typeSpecifier", child.id);
+                typeSpec = db.query("typeSpecifier", child.id) ?? null;
               } catch {}
+            }
+            if (!typeSpec) {
+              typeSpec = metaTypeSpec;
             }
             if (
               typeSpec === "Real" ||
@@ -1093,7 +1098,76 @@ export class WorkspaceManager {
               baseInstance = createPredefinedPackageInstance(child.name.split(".").pop() || "Package");
             }
             if (baseInstance) {
-              extendsClassInstances.push({ name: child.name, classInstance: baseInstance });
+              type InstType = NonNullable<typeof baseInstance>;
+              type CompType = NonNullable<InstType["components"]>[number];
+              type ExtType = NonNullable<InstType["extendsClassInstances"]>[number];
+              let effectiveBaseInstance: InstType = baseInstance;
+              if (db.query && child.id != null) {
+                try {
+                  const extMods = db.query("extendsModificationParsed", child.id) as
+                    | {
+                        args?: Array<{
+                          name?: string;
+                          isRedeclaration?: boolean;
+                          redeclaredKind?: string;
+                          redeclaredTypeSpecifier?: string;
+                        }>;
+                      }
+                    | null
+                    | undefined;
+                  const redeclares = new Map<string, string>();
+                  for (const arg of extMods?.args ?? []) {
+                    if (
+                      arg?.isRedeclaration &&
+                      arg.name &&
+                      arg.redeclaredTypeSpecifier &&
+                      arg.redeclaredKind !== "class"
+                    ) {
+                      redeclares.set(arg.name, arg.redeclaredTypeSpecifier);
+                    }
+                  }
+                  if (redeclares.size > 0) {
+                    const wrapRedeclared = (inst: InstType, visited = new Set<object>()): InstType => {
+                      if (!inst || typeof inst !== "object" || visited.has(inst)) return inst;
+                      visited.add(inst);
+                      const wrappedComponents = (inst.components ?? []).map((comp: CompType) => {
+                        const overrideType = comp?.name ? redeclares.get(comp.name) : undefined;
+                        if (!overrideType) return comp;
+                        let resolvedOverride: InstType | null | undefined = undefined;
+                        const resolveOverrideInstance = () =>
+                          this.resolveModelicaClassInstance(entry.resourceId, overrideType, options);
+                        return {
+                          ...comp,
+                          typeSpecifier: overrideType,
+                          get classInstance() {
+                            if (resolvedOverride === undefined) {
+                              resolvedOverride = resolveOverrideInstance();
+                            }
+                            return resolvedOverride;
+                          },
+                          annotation: (annName: string) =>
+                            typeof comp.annotation === "function" ? comp.annotation(annName) : null,
+                        };
+                      });
+                      const wrappedExtends = (inst.extendsClassInstances ?? []).map((ext: ExtType) => ({
+                        ...ext,
+                        classInstance: ext?.classInstance
+                          ? wrapRedeclared(ext.classInstance, visited)
+                          : ext?.classInstance,
+                      }));
+                      return {
+                        ...inst,
+                        components: wrappedComponents,
+                        extendsClassInstances: wrappedExtends,
+                        annotation: (annName: string, compCtx?: string) =>
+                          typeof inst.annotation === "function" ? inst.annotation(annName, compCtx) : null,
+                      };
+                    };
+                    effectiveBaseInstance = wrapRedeclared(baseInstance);
+                  }
+                } catch {}
+              }
+              extendsClassInstances.push({ name: child.name, classInstance: effectiveBaseInstance });
             }
           }
         } else if (
@@ -1480,9 +1554,27 @@ export class WorkspaceManager {
       if (entry && entry.resourceId) {
         let engine =
           entry.resourceId.endsWith(".sysml") || entry.resourceId.endsWith(".sysml2")
-            ? this.globalSysML2QueryEngine
-            : this.globalModelicaQueryEngine;
-        if (!engine) engine = this.globalModelicaQueryEngine;
+            ? (this.globalSysML2QueryEngine ??
+              (
+                this.unifiedWorkspace as
+                  | { getQueryEngine?: (lang: string) => WorkspaceManager["globalModelicaQueryEngine"] }
+                  | undefined
+              )?.getQueryEngine?.("sysml2"))
+            : (this.globalModelicaQueryEngine ??
+              (
+                this.unifiedWorkspace as
+                  | { getQueryEngine?: (lang: string) => WorkspaceManager["globalModelicaQueryEngine"] }
+                  | undefined
+              )?.getQueryEngine?.("modelica"));
+        if (!engine) {
+          engine =
+            this.globalModelicaQueryEngine ??
+            (
+              this.unifiedWorkspace as
+                | { getQueryEngine?: (lang: string) => WorkspaceManager["globalModelicaQueryEngine"] }
+                | undefined
+            )?.getQueryEngine?.("modelica");
+        }
         const db = {
           childrenOf: (id: number) => {
             const res = engine ? engine.toQueryDB().childrenOf(id) : [];

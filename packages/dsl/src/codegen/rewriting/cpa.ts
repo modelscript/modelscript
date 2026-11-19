@@ -77,11 +77,19 @@ export const DEFAULT_NODE_DOMAIN_MAP: Record<string, string> = {
   SysMLPort: "sysml2",
   // Modelica 3.x
   ClassDefinition: "modelica",
+  class_definition: "modelica",
   ShortClassDefinition: "modelica",
+  short_class_definition: "modelica",
   ComponentClause: "modelica",
+  component_clause: "modelica",
   ComponentDeclaration: "modelica",
   ConnectClause: "modelica",
+  ConnectEquation: "modelica",
+  connect_equation: "modelica",
   EquationClause: "modelica",
+  SimpleEquation: "modelica",
+  simple_equation: "modelica",
+  AssertStatement: "modelica",
   AlgorithmSection: "modelica",
   ExtendsClause: "modelica",
   ModelicaClass: "modelica",
@@ -136,7 +144,12 @@ export const DEFAULT_NODE_DOMAIN_MAP: Record<string, string> = {
   CfdMesh: "cfd",
   Su2Config: "cfd",
   ScadModule: "scad",
+  ModuleDeclaration: "scad",
   ScadPrimitive: "scad",
+  // ReqIF / QIF / PSS/E
+  SpecObject: "reqif",
+  DimensionalCharacteristic: "qif",
+  PsseComponent: "psse",
 };
 
 export function inferRuleLanguages(

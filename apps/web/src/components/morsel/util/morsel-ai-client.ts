@@ -312,7 +312,7 @@ export async function runMorselAiTurn(
   if (effectiveMode === "local") {
     const localEngine = await ensureSharedLocalAiEngine(
       callbacks.onLocalProgress,
-      "You are Morsel AI, an engineering modeling assistant.",
+      "You are Ansatz AI, an engineering modeling assistant.",
     );
     if (!localEngine) {
       if (settings.mode === "local") {

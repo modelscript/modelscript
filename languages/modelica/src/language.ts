@@ -67,6 +67,58 @@ export const modelicaLanguage = language({
   // ── AST-to-Source Writeback Rules ───────────────────────────────────────
   writeback: modelicaWriteback,
 
+  ui: {
+    stencils: [
+      {
+        label: "Resistor",
+        className: "Modelica.Electrical.Analog.Basic.Resistor",
+        snippet: "  Modelica.Electrical.Analog.Basic.Resistor R_new(R=100);\n",
+      },
+      {
+        label: "Capacitor",
+        className: "Modelica.Electrical.Analog.Basic.Capacitor",
+        snippet: "  Modelica.Electrical.Analog.Basic.Capacitor C_new(C=1e-3);\n",
+      },
+      {
+        label: "Inductor",
+        className: "Modelica.Electrical.Analog.Basic.Inductor",
+        snippet: "  Modelica.Electrical.Analog.Basic.Inductor L_new(L=0.1);\n",
+      },
+      {
+        label: "Ground",
+        className: "Modelica.Electrical.Analog.Basic.Ground",
+        snippet: "  Modelica.Electrical.Analog.Basic.Ground G_new;\n",
+      },
+      {
+        label: "Constant",
+        className: "Modelica.Blocks.Sources.Constant",
+        snippet: "  Modelica.Blocks.Sources.Constant const_new(k=1.0);\n",
+      },
+      {
+        label: "Integrator",
+        className: "Modelica.Blocks.Continuous.Integrator",
+        snippet: "  Modelica.Blocks.Continuous.Integrator integ_new(k=1.0);\n",
+      },
+      {
+        label: "3D Shape",
+        className: "Modelica.Mechanics.MultiBody.Visualizers.FixedShape",
+        snippet:
+          '  Modelica.Mechanics.MultiBody.Visualizers.FixedShape shape_new(shapeType="box", length=1.0, width=0.2, height=0.2, color={0, 128, 255});\n',
+      },
+      {
+        label: "3D Arrow",
+        className: "Modelica.Mechanics.MultiBody.Visualizers.SignalArrow",
+        snippet:
+          "  Modelica.Mechanics.MultiBody.Visualizers.SignalArrow arrow_new(diameter=0.04, color={255, 80, 0});\n",
+      },
+      {
+        label: "3D Torus",
+        className: "Modelica.Mechanics.MultiBody.Visualizers.Torus",
+        snippet: "  Modelica.Mechanics.MultiBody.Visualizers.Torus torus_new(ri=0.5, ro=0.1, color={0, 180, 120});\n",
+      },
+    ],
+  },
+
   // ── IDE & CLI Actions ───────────────────────────────────────────────────
   actions: [
     {

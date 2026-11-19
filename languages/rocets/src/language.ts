@@ -18,6 +18,21 @@ export const rocetsLanguage = language({
   lsp: {
     fileExtensions: [".roc", ".rct", ".inp", ".dat", ".deck"],
   },
+  ui: {
+    panels: [
+      {
+        id: "rocetsEditor",
+        viewType: "modelscript.rocetsEditor",
+        title: "ROCETS Propulsion Schematic & Balance Editor",
+        shortTitle: "ROCETS",
+        selector: ["*.roc", "*.deck"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/RocetsPanel.tsx",
+        artifactViewTypes: ["rocets", "roc"],
+      },
+    ],
+  },
 
   errorCodes: RocetsErrorCode,
 

@@ -5,6 +5,7 @@
     "noEmit": true,
     "incremental": false,
     "allowJs": true,
+    "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
       "@modelscript/dsl": ["./packages/dsl/src/index.ts"],

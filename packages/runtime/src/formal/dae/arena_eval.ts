@@ -33,7 +33,7 @@ import {
   ivTan,
   ivTanh,
 } from "../../analysis/outward_rounding.js";
-import { Interval } from "../../analysis/wasm_interval.js";
+import { Interval, addMachineEps, subMachineEps } from "../../analysis/wasm_interval.js";
 import { BinOp, DAEBuilder, ExprKind, UnaryOp } from "../../dae/wasm_dae.js";
 import { NumericalInterval } from "../abstract_interpretation/interval_domain.js";
 import type { DaeSingularityIssue } from "./dae_interval_evaluator.js";
@@ -385,6 +385,113 @@ export function evalArenaExpr<T>(
       }
       case "atan":
         return domain.atan(a0);
+      case "asin": {
+        if (iv0.hi < -1 || iv0.lo > 1) {
+          report(
+            "inverse_trig_domain",
+            "definite",
+            id,
+            `Definite domain violation in asin(): argument [${iv0.lo}, ${iv0.hi}] is outside [-1, 1].`,
+            iv0,
+          );
+          return top();
+        }
+        if (iv0.lo < -1 || iv0.hi > 1) {
+          report(
+            "inverse_trig_domain",
+            "possible",
+            id,
+            `Possible domain violation in asin(): argument [${iv0.lo}, ${iv0.hi}] extends outside [-1, 1].`,
+            iv0,
+          );
+          return top();
+        }
+        return domain.fromInterval(
+          new Interval(
+            Math.max(-Math.PI / 2, subMachineEps(Math.asin(Math.max(-1, iv0.lo)))),
+            Math.min(Math.PI / 2, addMachineEps(Math.asin(Math.min(1, iv0.hi)))),
+          ),
+        );
+      }
+      case "acos": {
+        if (iv0.hi < -1 || iv0.lo > 1) {
+          report(
+            "inverse_trig_domain",
+            "definite",
+            id,
+            `Definite domain violation in acos(): argument [${iv0.lo}, ${iv0.hi}] is outside [-1, 1].`,
+            iv0,
+          );
+          return top();
+        }
+        if (iv0.lo < -1 || iv0.hi > 1) {
+          report(
+            "inverse_trig_domain",
+            "possible",
+            id,
+            `Possible domain violation in acos(): argument [${iv0.lo}, ${iv0.hi}] extends outside [-1, 1].`,
+            iv0,
+          );
+          return top();
+        }
+        return domain.fromInterval(
+          new Interval(
+            Math.max(0, subMachineEps(Math.acos(Math.min(1, iv0.hi)))),
+            Math.min(Math.PI, addMachineEps(Math.acos(Math.max(-1, iv0.lo)))),
+          ),
+        );
+      }
+      case "acosh": {
+        if (iv0.hi < 1) {
+          report(
+            "inverse_trig_domain",
+            "definite",
+            id,
+            `Definite domain violation in acosh(): argument [${iv0.lo}, ${iv0.hi}] is strictly below 1.`,
+            iv0,
+          );
+          return top();
+        }
+        if (iv0.lo < 1) {
+          report(
+            "inverse_trig_domain",
+            "possible",
+            id,
+            `Possible domain violation in acosh(): argument [${iv0.lo}, ${iv0.hi}] contains values < 1.`,
+            iv0,
+          );
+          return top();
+        }
+        return domain.fromInterval(
+          new Interval(
+            Math.max(0, subMachineEps(Math.acosh(iv0.lo))),
+            Number.isFinite(iv0.hi) ? addMachineEps(Math.acosh(iv0.hi)) : Infinity,
+          ),
+        );
+      }
+      case "atanh": {
+        if (iv0.hi <= -1 || iv0.lo >= 1) {
+          report(
+            "inverse_trig_domain",
+            "definite",
+            id,
+            `Definite domain violation in atanh(): argument [${iv0.lo}, ${iv0.hi}] is outside (-1, 1).`,
+            iv0,
+          );
+          return top();
+        }
+        if (iv0.lo <= -1 || iv0.hi >= 1) {
+          report(
+            "inverse_trig_domain",
+            "possible",
+            id,
+            `Possible domain violation in atanh(): argument [${iv0.lo}, ${iv0.hi}] extends outside (-1, 1).`,
+            iv0,
+          );
+          return top();
+        }
+        return domain.fromInterval(new Interval(subMachineEps(Math.atanh(iv0.lo)), addMachineEps(Math.atanh(iv0.hi))));
+      }
       case "tanh":
         return domain.tanh(a0);
       case "abs":

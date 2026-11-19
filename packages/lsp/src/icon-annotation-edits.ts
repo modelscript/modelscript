@@ -126,7 +126,67 @@ export function splitTopLevelCommaList(inner: string): string[] {
   return items;
 }
 
+function maskModelicaCommentsAndStringsLocal(src: string): string {
+  const chars = src.split("");
+  let inString = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i]!;
+    const next = chars[i + 1] ?? "";
+    if (inLineComment) {
+      if (ch !== "\n" && ch !== "\r") chars[i] = " ";
+      if (ch === "\n") inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        chars[i] = " ";
+        chars[i + 1] = " ";
+        inBlockComment = false;
+        i++;
+      } else if (ch !== "\n" && ch !== "\r") {
+        chars[i] = " ";
+      }
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") {
+        chars[i] = " ";
+        if (i + 1 < chars.length && chars[i + 1] !== "\n" && chars[i + 1] !== "\r") {
+          chars[i + 1] = " ";
+          i++;
+        }
+      } else if (ch === '"') {
+        chars[i] = " ";
+        inString = false;
+      } else if (ch !== "\n" && ch !== "\r") {
+        chars[i] = " ";
+      }
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      chars[i] = " ";
+      chars[i + 1] = " ";
+      inLineComment = true;
+      i++;
+    } else if (ch === "/" && next === "*") {
+      chars[i] = " ";
+      chars[i + 1] = " ";
+      inBlockComment = true;
+      i++;
+    } else if (ch === '"') {
+      chars[i] = " ";
+      inString = true;
+    }
+  }
+  return chars.join("");
+}
+
+const rawParametricArgsMap = new WeakMap<IconPrimitiveSpec, Record<string, string>>();
+
 function fmtNum(n: number): string {
+  if (!Number.isFinite(n)) return "0";
   const rounded = Math.round(n * 100) / 100;
   return Object.is(rounded, -0) ? "0" : String(rounded);
 }
@@ -149,15 +209,46 @@ function escapeMoString(s: string): string {
 
 export function serializeIconPrimitive(spec: IconPrimitiveSpec): string {
   const type = spec["@type"] || "Rectangle";
+  const rawExtras = rawParametricArgsMap.get(spec);
   const args: string[] = [];
   if (spec.visible === false) args.push("visible=false");
-  if (spec.origin) args.push(`origin={${fmtNum(spec.origin[0])},${fmtNum(spec.origin[1])}}`);
-  if (typeof spec.rotation === "number" && spec.rotation !== 0) args.push(`rotation=${fmtNum(spec.rotation)}`);
-  if (spec.extent) args.push(`extent=${fmtExtent(spec.extent)}`);
-  if (spec.points && spec.points.length > 0) args.push(`points=${fmtPoints(spec.points)}`);
-  if (spec.lineColor) args.push(`lineColor=${fmtRgb(spec.lineColor)}`);
-  if (spec.color) args.push(`color=${fmtRgb(spec.color)}`);
-  if (spec.fillColor) args.push(`fillColor=${fmtRgb(spec.fillColor)}`);
+  if (spec.origin && spec.origin.every(Number.isFinite)) {
+    args.push(`origin={${fmtNum(spec.origin[0])},${fmtNum(spec.origin[1])}}`);
+  } else if (rawExtras?.["origin"]) {
+    args.push(`origin=${rawExtras["origin"]}`);
+  }
+  if (typeof spec.rotation === "number" && Number.isFinite(spec.rotation) && spec.rotation !== 0) {
+    args.push(`rotation=${fmtNum(spec.rotation)}`);
+  } else if (rawExtras?.["rotation"]) {
+    args.push(`rotation=${rawExtras["rotation"]}`);
+  }
+  if (
+    spec.extent &&
+    spec.extent.length >= 2 &&
+    Number.isFinite(spec.extent[0][0]) &&
+    Number.isFinite(spec.extent[0][1]) &&
+    Number.isFinite(spec.extent[1][0]) &&
+    Number.isFinite(spec.extent[1][1])
+  ) {
+    args.push(`extent=${fmtExtent(spec.extent)}`);
+  } else if (rawExtras?.["extent"]) {
+    args.push(`extent=${rawExtras["extent"]}`);
+  }
+  if (
+    spec.points &&
+    spec.points.length > 0 &&
+    spec.points.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y))
+  ) {
+    args.push(`points=${fmtPoints(spec.points)}`);
+  } else if (rawExtras?.["points"]) {
+    args.push(`points=${rawExtras["points"]}`);
+  }
+  if (spec.lineColor && spec.lineColor.every(Number.isFinite)) args.push(`lineColor=${fmtRgb(spec.lineColor)}`);
+  else if (rawExtras?.["lineColor"]) args.push(`lineColor=${rawExtras["lineColor"]}`);
+  if (spec.color && spec.color.every(Number.isFinite)) args.push(`color=${fmtRgb(spec.color)}`);
+  else if (rawExtras?.["color"]) args.push(`color=${rawExtras["color"]}`);
+  if (spec.fillColor && spec.fillColor.every(Number.isFinite)) args.push(`fillColor=${fmtRgb(spec.fillColor)}`);
+  else if (rawExtras?.["fillColor"]) args.push(`fillColor=${rawExtras["fillColor"]}`);
   if (spec.fillPattern) {
     const val = spec.fillPattern.startsWith("FillPattern.") ? spec.fillPattern : `FillPattern.${spec.fillPattern}`;
     args.push(`fillPattern=${val}`);
@@ -172,23 +263,44 @@ export function serializeIconPrimitive(spec: IconPrimitiveSpec): string {
       : `BorderPattern.${spec.borderPattern}`;
     args.push(`borderPattern=${val}`);
   }
-  if (typeof spec.lineThickness === "number" && spec.lineThickness !== 0.25) {
+  if (typeof spec.lineThickness === "number" && Number.isFinite(spec.lineThickness) && spec.lineThickness !== 0.25) {
     args.push(`lineThickness=${fmtNum(spec.lineThickness)}`);
+  } else if (rawExtras?.["lineThickness"]) {
+    args.push(`lineThickness=${rawExtras["lineThickness"]}`);
   }
-  if (typeof spec.thickness === "number" && spec.thickness !== 0.25) {
+  if (typeof spec.thickness === "number" && Number.isFinite(spec.thickness) && spec.thickness !== 0.25) {
     args.push(`thickness=${fmtNum(spec.thickness)}`);
+  } else if (rawExtras?.["thickness"]) {
+    args.push(`thickness=${rawExtras["thickness"]}`);
   }
-  if (typeof spec.radius === "number" && spec.radius > 0) args.push(`radius=${fmtNum(spec.radius)}`);
-  if (typeof spec.startAngle === "number" && spec.startAngle !== 0) args.push(`startAngle=${fmtNum(spec.startAngle)}`);
-  if (typeof spec.endAngle === "number" && spec.endAngle !== 360) args.push(`endAngle=${fmtNum(spec.endAngle)}`);
+  if (typeof spec.radius === "number" && Number.isFinite(spec.radius) && spec.radius > 0) {
+    args.push(`radius=${fmtNum(spec.radius)}`);
+  } else if (rawExtras?.["radius"]) {
+    args.push(`radius=${rawExtras["radius"]}`);
+  }
+  if (typeof spec.startAngle === "number" && Number.isFinite(spec.startAngle) && spec.startAngle !== 0) {
+    args.push(`startAngle=${fmtNum(spec.startAngle)}`);
+  } else if (rawExtras?.["startAngle"]) {
+    args.push(`startAngle=${rawExtras["startAngle"]}`);
+  }
+  if (typeof spec.endAngle === "number" && Number.isFinite(spec.endAngle) && spec.endAngle !== 360) {
+    args.push(`endAngle=${fmtNum(spec.endAngle)}`);
+  } else if (rawExtras?.["endAngle"]) {
+    args.push(`endAngle=${rawExtras["endAngle"]}`);
+  }
   if (spec.smooth) {
     const val = spec.smooth.startsWith("Smooth.") ? spec.smooth : `Smooth.${spec.smooth}`;
     args.push(`smooth=${val}`);
   }
   if (spec.textString !== undefined) args.push(`textString="${escapeMoString(spec.textString)}"`);
-  if (typeof spec.fontSize === "number" && spec.fontSize > 0) args.push(`fontSize=${fmtNum(spec.fontSize)}`);
+  if (typeof spec.fontSize === "number" && Number.isFinite(spec.fontSize) && spec.fontSize > 0) {
+    args.push(`fontSize=${fmtNum(spec.fontSize)}`);
+  } else if (rawExtras?.["fontSize"]) {
+    args.push(`fontSize=${rawExtras["fontSize"]}`);
+  }
   if (spec.fontName) args.push(`fontName="${escapeMoString(spec.fontName)}"`);
-  if (spec.textColor) args.push(`textColor=${fmtRgb(spec.textColor)}`);
+  if (spec.textColor && spec.textColor.every(Number.isFinite)) args.push(`textColor=${fmtRgb(spec.textColor)}`);
+  else if (rawExtras?.["textColor"]) args.push(`textColor=${rawExtras["textColor"]}`);
   if (spec.horizontalAlignment) {
     const val = spec.horizontalAlignment.startsWith("TextAlignment.")
       ? spec.horizontalAlignment
@@ -208,6 +320,7 @@ export function parseIconPrimitive(raw: string): IconPrimitiveSpec | null {
   const typeName = trimmed.slice(0, parenIdx).trim();
   const inner = trimmed.slice(parenIdx + 1, -1).trim();
   const spec: IconPrimitiveSpec = { "@type": typeName };
+  const rawExtras: Record<string, string> = {};
 
   for (const arg of splitTopLevelCommaList(inner)) {
     const eqIdx = arg.indexOf("=");
@@ -218,24 +331,53 @@ export function parseIconPrimitive(raw: string): IconPrimitiveSpec | null {
     if (key === "extent") {
       const m = val.match(/\{\s*\{\s*([^,]+)\s*,\s*([^}]+)\s*\}\s*,\s*\{\s*([^,]+)\s*,\s*([^}]+)\s*\}\s*\}/);
       if (m) {
-        spec.extent = [
-          [Number(m[1]), Number(m[2])],
-          [Number(m[3]), Number(m[4])],
-        ];
+        const nums = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
+        if (nums.every(Number.isFinite)) {
+          spec.extent = [
+            [nums[0]!, nums[1]!],
+            [nums[2]!, nums[3]!],
+          ];
+        } else {
+          rawExtras[key] = val;
+        }
+      } else {
+        rawExtras[key] = val;
       }
     } else if (key === "points" && val.startsWith("{") && val.endsWith("}")) {
       const pts: Array<[number, number]> = [];
+      let allFinite = true;
       for (const p of splitTopLevelCommaList(val.slice(1, -1))) {
         const pm = p.match(/\{\s*([^,]+)\s*,\s*([^}]+)\s*\}/);
-        if (pm) pts.push([Number(pm[1]), Number(pm[2])]);
+        if (pm) {
+          const x = Number(pm[1]);
+          const y = Number(pm[2]);
+          if (Number.isFinite(x) && Number.isFinite(y)) pts.push([x, y]);
+          else allFinite = false;
+        } else {
+          allFinite = false;
+        }
       }
-      spec.points = pts;
+      if (allFinite && pts.length > 0) spec.points = pts;
+      else rawExtras[key] = val;
     } else if (key === "origin") {
       const om = val.match(/\{\s*([^,]+)\s*,\s*([^}]+)\s*\}/);
-      if (om) spec.origin = [Number(om[1]), Number(om[2])];
+      if (om) {
+        const x = Number(om[1]);
+        const y = Number(om[2]);
+        if (Number.isFinite(x) && Number.isFinite(y)) spec.origin = [x, y];
+        else rawExtras[key] = val;
+      } else {
+        rawExtras[key] = val;
+      }
     } else if (key === "lineColor" || key === "fillColor" || key === "color" || key === "textColor") {
       const cm = val.match(/\{\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^}]+)\s*\}/);
-      if (cm) spec[key] = [Number(cm[1]), Number(cm[2]), Number(cm[3])];
+      if (cm) {
+        const rgb = [Number(cm[1]), Number(cm[2]), Number(cm[3])];
+        if (rgb.every(Number.isFinite)) spec[key] = [rgb[0]!, rgb[1]!, rgb[2]!];
+        else rawExtras[key] = val;
+      } else {
+        rawExtras[key] = val;
+      }
     } else if (
       key === "rotation" ||
       key === "lineThickness" ||
@@ -247,6 +389,7 @@ export function parseIconPrimitive(raw: string): IconPrimitiveSpec | null {
     ) {
       const num = Number(val);
       if (Number.isFinite(num)) spec[key] = num;
+      else if (val.length > 0) rawExtras[key] = val;
     } else if (key === "visible") {
       spec.visible = val !== "false";
     } else if (key === "textString" || key === "fontName") {
@@ -263,6 +406,9 @@ export function parseIconPrimitive(raw: string): IconPrimitiveSpec | null {
       spec[key] = val;
     }
   }
+  if (Object.keys(rawExtras).length > 0) {
+    rawParametricArgsMap.set(spec, rawExtras);
+  }
   return spec;
 }
 
@@ -270,6 +416,8 @@ interface IconGraphicsSpan {
   /** Start/end of the `{ ... }` after `graphics=` if found */
   graphicsBraceStart: number;
   graphicsBraceEnd: number;
+  /** Start/end of `graphics={...}` argument including assignment, if found */
+  graphicsArgStart: number;
   /** Start/end of `Icon(...)` if found */
   iconOpenParen: number;
   iconCloseParen: number;
@@ -279,41 +427,70 @@ interface IconGraphicsSpan {
   items: string[];
 }
 
-function findIconGraphicsSpan(text: string, className: string): IconGraphicsSpan | null {
-  // Locate the class body (`end <className>;`) to bound our search
-  const endRe = new RegExp(`\\bend\\s+${className.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*;`, "m");
-  const endMatch = endRe.exec(text);
-  const classEndIdx = endMatch ? endMatch.index : text.length;
+function findClassBoundsInMasked(
+  masked: string,
+  className: string,
+): { start: number; end: number; endMatchIdx: number } | null {
+  const escaped = className.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const startRe = new RegExp(
+    `\\b(?:model|block|connector|class|record|type|function|package|operator)\\s+${escaped}\\b`,
+    "g",
+  );
+  const endRe = new RegExp(`\\bend\\s+${escaped}\\s*;`, "g");
+  const endMatch = endRe.exec(masked);
+  if (!endMatch) {
+    const startMatch = startRe.exec(masked);
+    if (!startMatch) return { start: 0, end: masked.length, endMatchIdx: -1 };
+    return { start: startMatch.index, end: masked.length, endMatchIdx: -1 };
+  }
+  let classStart = 0;
+  let sm: RegExpExecArray | null;
+  while ((sm = startRe.exec(masked)) !== null) {
+    if (sm.index < endMatch.index) classStart = sm.index;
+    else break;
+  }
+  return { start: classStart, end: endMatch.index, endMatchIdx: endMatch.index };
+}
 
-  // Search backwards from classEndIdx for `Icon(` inside an `annotation(`
-  const head = text.slice(0, classEndIdx);
+function findIconGraphicsSpan(text: string, className: string): IconGraphicsSpan | null {
+  const masked = maskModelicaCommentsAndStringsLocal(text);
+  const bounds = findClassBoundsInMasked(masked, className);
+  const classStartIdx = bounds ? bounds.start : 0;
+  const classEndIdx = bounds ? bounds.end : text.length;
+
+  // Search within masked target class bounds for `Icon(` (ignores strings/comments and other classes)
+  const head = masked.slice(classStartIdx, classEndIdx);
   const iconRe = /\bIcon\s*\(/g;
-  let lastIconMatch: RegExpExecArray | null = null;
+  let lastIconOffset = -1;
+  let lastIconOpenParen = -1;
   let m: RegExpExecArray | null;
   while ((m = iconRe.exec(head)) !== null) {
-    lastIconMatch = m;
+    lastIconOffset = classStartIdx + m.index;
+    lastIconOpenParen = classStartIdx + m.index + m[0].length - 1;
   }
-  if (!lastIconMatch) return null;
+  if (lastIconOffset < 0 || lastIconOpenParen < 0) return null;
 
-  const iconOpenParen = lastIconMatch.index + lastIconMatch[0].length - 1;
+  const iconOpenParen = lastIconOpenParen;
   const iconCloseParen = findMatchingDelimiter(text, iconOpenParen, "(", ")");
   if (iconCloseParen < 0) return null;
 
-  const iconInner = text.slice(iconOpenParen + 1, iconCloseParen);
-  const gfxMatch = /\bgraphics\s*=\s*\{/.exec(iconInner);
+  const maskedIconInner = masked.slice(iconOpenParen + 1, iconCloseParen);
+  const gfxMatch = /\bgraphics\s*=\s*\{/.exec(maskedIconInner);
   if (!gfxMatch) {
     return {
       graphicsBraceStart: -1,
       graphicsBraceEnd: -1,
+      graphicsArgStart: -1,
       iconOpenParen,
       iconCloseParen,
-      annStart: lastIconMatch.index,
+      annStart: lastIconOffset,
       annEnd: iconCloseParen + 1,
       items: [],
     };
   }
 
-  const graphicsBraceStart = iconOpenParen + 1 + gfxMatch.index + gfxMatch[0].length - 1;
+  const graphicsArgStart = iconOpenParen + 1 + gfxMatch.index;
+  const graphicsBraceStart = graphicsArgStart + gfxMatch[0].length - 1;
   const graphicsBraceEnd = findMatchingDelimiter(text, graphicsBraceStart, "{", "}");
   if (graphicsBraceEnd < 0) return null;
 
@@ -321,40 +498,96 @@ function findIconGraphicsSpan(text: string, className: string): IconGraphicsSpan
   return {
     graphicsBraceStart,
     graphicsBraceEnd,
+    graphicsArgStart,
     iconOpenParen,
     iconCloseParen,
-    annStart: lastIconMatch.index,
+    annStart: lastIconOffset,
     annEnd: iconCloseParen + 1,
     items,
   };
+}
+
+function removeGraphicsAssignmentInIcon(text: string, span: IconGraphicsSpan): string {
+  const innerStart = span.iconOpenParen + 1;
+  const innerEnd = span.iconCloseParen;
+  const beforeArg = text.slice(innerStart, span.graphicsArgStart);
+  const afterArg = text.slice(span.graphicsBraceEnd + 1, innerEnd);
+  if (beforeArg.trimEnd().endsWith(",")) {
+    const trimmedBefore = beforeArg.trimEnd().slice(0, -1).trimEnd();
+    return text.slice(0, innerStart) + trimmedBefore + afterArg + text.slice(innerEnd);
+  }
+  if (afterArg.trimStart().startsWith(",")) {
+    const trimmedAfter = afterArg.trimStart().slice(1).trimStart();
+    return text.slice(0, innerStart) + beforeArg + trimmedAfter + text.slice(innerEnd);
+  }
+  return text.slice(0, innerStart) + text.slice(innerEnd);
 }
 
 function replaceGraphicsItems(text: string, className: string, items: string[]): string {
   const span = findIconGraphicsSpan(text, className);
   const serializedList = items.join(",\n        ");
   if (span && span.graphicsBraceStart >= 0 && span.graphicsBraceEnd >= 0) {
-    const replacement = items.length > 0 ? `{\n        ${serializedList}\n      }` : `{}`;
+    if (items.length === 0) {
+      // Modelica forbids empty `{}` constructors ([M1003]); remove `graphics=...` instead
+      return removeGraphicsAssignmentInIcon(text, span);
+    }
+    const replacement = `{\n        ${serializedList}\n      }`;
     return text.slice(0, span.graphicsBraceStart) + replacement + text.slice(span.graphicsBraceEnd + 1);
   }
   if (span && span.iconOpenParen >= 0 && span.iconCloseParen >= 0) {
+    if (items.length === 0) return text;
     const existingInner = text.slice(span.iconOpenParen + 1, span.iconCloseParen).trim();
-    const gfxClause = items.length > 0 ? `graphics={\n        ${serializedList}\n      }` : `graphics={}`;
+    const gfxClause = `graphics={\n        ${serializedList}\n      }`;
     const nextInner = existingInner ? `${existingInner}, ${gfxClause}` : gfxClause;
     return text.slice(0, span.iconOpenParen + 1) + nextInner + text.slice(span.iconCloseParen);
   }
 
-  // No Icon(...) annotation exists yet — insert before `end <className>;`
-  const endRe = new RegExp(`([ \\t]*)\\bend\\s+${className.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*;`, "m");
-  const endMatch = endRe.exec(text);
-  const gfxBlock =
-    items.length > 0
-      ? `  annotation(\n    Icon(\n      coordinateSystem(extent={{-100,-100},{100,100}}),\n      graphics={\n        ${serializedList}\n      }\n    )\n  );\n`
-      : `  annotation(\n    Icon(\n      coordinateSystem(extent={{-100,-100},{100,100}}),\n      graphics={}\n    )\n  );\n`;
+  if (items.length === 0) return text;
 
-  if (endMatch) {
-    return text.slice(0, endMatch.index) + gfxBlock + text.slice(endMatch.index);
+  // No Icon(...) annotation exists yet — insert before `end <className>;`
+  const masked = maskModelicaCommentsAndStringsLocal(text);
+  const bounds = findClassBoundsInMasked(masked, className);
+  const gfxBlock = `  annotation(\n    Icon(\n      coordinateSystem(extent={{-100,-100},{100,100}}),\n      graphics={\n        ${serializedList}\n      }\n    )\n  );\n`;
+
+  if (bounds && bounds.endMatchIdx >= 0) {
+    // Back up to start of line containing `end <className>;`
+    let lineStart = bounds.endMatchIdx;
+    while (lineStart > 0 && (text[lineStart - 1] === " " || text[lineStart - 1] === "\t")) {
+      lineStart--;
+    }
+    return text.slice(0, lineStart) + gfxBlock + text.slice(lineStart);
   }
   return text + "\n" + gfxBlock;
+}
+
+function transformPointsForNewExtent(
+  oldPoints: Array<[number, number]>,
+  newExtent: [[number, number], [number, number]],
+): Array<[number, number]> {
+  let oldMinX = Infinity;
+  let oldMinY = Infinity;
+  let oldMaxX = -Infinity;
+  let oldMaxY = -Infinity;
+  for (const [px, py] of oldPoints) {
+    if (px < oldMinX) oldMinX = px;
+    if (py < oldMinY) oldMinY = py;
+    if (px > oldMaxX) oldMaxX = px;
+    if (py > oldMaxY) oldMaxY = py;
+  }
+  const newMinX = Math.min(newExtent[0][0], newExtent[1][0]);
+  const newMaxX = Math.max(newExtent[0][0], newExtent[1][0]);
+  const newMinY = Math.min(newExtent[0][1], newExtent[1][1]);
+  const newMaxY = Math.max(newExtent[0][1], newExtent[1][1]);
+  const oldW = oldMaxX - oldMinX;
+  const oldH = oldMaxY - oldMinY;
+  const newW = newMaxX - newMinX;
+  const newH = newMaxY - newMinY;
+
+  return oldPoints.map(([px, py]) => {
+    const nx = oldW > 1e-6 ? newMinX + ((px - oldMinX) / oldW) * newW : px + (newMinX - oldMinX);
+    const ny = oldH > 1e-6 ? newMinY + ((py - oldMinY) / oldH) * newH : py + (newMinY - oldMinY);
+    return [nx, ny];
+  });
 }
 
 export type IconEditAction =
@@ -376,7 +609,23 @@ export function applyIconEditActions(sourceText: string, className: string, acti
       if (act.index >= 0 && act.index < items.length) {
         const parsed = parseIconPrimitive(items[act.index]!);
         if (parsed) {
+          const prevExtras = rawParametricArgsMap.get(parsed);
           const merged: IconPrimitiveSpec = { ...parsed, ...act.patch };
+          // For Line/Polygon point primitives moved or resized via an extent patch,
+          // translate/scale `points` cleanly and never emit illegal `extent=...`.
+          if (
+            (merged["@type"] === "Line" || merged["@type"] === "Polygon") &&
+            parsed.points &&
+            parsed.points.length > 0 &&
+            act.patch.extent &&
+            !act.patch.points
+          ) {
+            merged.points = transformPointsForNewExtent(parsed.points, act.patch.extent);
+            delete merged.extent;
+          }
+          if (prevExtras) {
+            rawParametricArgsMap.set(merged, prevExtras);
+          }
           items[act.index] = serializeIconPrimitive(merged);
           text = replaceGraphicsItems(text, className, items);
         }

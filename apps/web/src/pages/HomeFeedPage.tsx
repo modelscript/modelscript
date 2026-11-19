@@ -217,9 +217,9 @@ const HomeFeedPage: React.FC = () => {
           <span>{brandName}</span>
         </button>
         <Link
-          to="/morsel"
-          title="Open Morsel"
-          aria-label="Open Morsel"
+          to="/editor"
+          title="Open Ansatz"
+          aria-label="Open Ansatz"
           style={{
             width: 30,
             height: 30,

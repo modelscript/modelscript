@@ -419,4 +419,61 @@ export default defineConfig([
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  // Phase 5 UI DSL Guardrails: keep language.ts & index.ts pure (no React/VS Code/UI imports)
+  {
+    files: ["languages/*/src/language.ts", "languages/*/src/index.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            { name: "react", message: "Core language modules must stay React-free; place UI code in src/ui/." },
+            { name: "react-dom", message: "Core language modules must stay DOM-free; place UI code in src/ui/." },
+            { name: "vscode", message: "Core language modules must stay host-agnostic; do not import vscode." },
+            { name: "@primer/react", message: "Core language modules must not import host UI libraries." },
+            { name: "styled-components", message: "Core language modules must not import CSS-in-JS runtimes." },
+          ],
+          patterns: [
+            {
+              group: ["./ui/*", "./ui/**"],
+              message:
+                "Do not re-export or import src/ui/* from language.ts or index.ts; expose panels via package.json#exports['./ui'].",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  // Phase 5 UI DSL Guardrails: keep languages/*/src/ui/** host-agnostic
+  {
+    files: ["languages/*/src/ui/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@primer/react",
+              message: "Language UI panels must use @modelscript/react/panel and --ms-* tokens, not @primer/react.",
+            },
+            {
+              name: "styled-components",
+              message: "Language UI panels must use CSS variables (--ms-*), not styled-components.",
+            },
+            {
+              name: "react-router-dom",
+              message:
+                "Language UI panels must be host-agnostic; use LanguagePanelHost callbacks instead of react-router-dom.",
+            },
+          ],
+          patterns: [
+            {
+              group: ["**/apps/web/**", "**/packages/ide/**"],
+              message: "Language UI panels must not depend on apps/web or packages/ide host internals.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 ]);

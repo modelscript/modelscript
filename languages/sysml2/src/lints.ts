@@ -4,7 +4,8 @@
  * @modelscript/sysml2 — Static and Formal Verification Lints.
  *
  * Implements multi-tier diagnostics for SysML v2 / KerML declarations:
- * - Structural and semantic lints (S1xxx - S5xxx)
+ * - Structural, semantic, and SOTA KerML/SysML v2 lints (S1xxx - S5xxx)
+ * - Live <10ms formal verification lints (S6xxx: Craig interpolation, abstract interpretation, Nyquist, RCC-8)
  * - Interprocedural control-flow analysis (CFA)
  * - State machine reachability and determinism verification
  * - Requirement satisfaction and contract verification
@@ -25,6 +26,7 @@ import {
   readDottedChainFromLeaves,
   sliceBetweenLeaves,
   stripNamespaceWildcard,
+  type CstLeaf,
 } from "./cst-utils.js";
 import { DecisionTableVerifier } from "./decision-table-verifier.js";
 import {
@@ -58,26 +60,114 @@ import {
 } from "./queries.js";
 import { emitAxioms } from "./reasoner-bridge.js";
 import {
+  sotaAliasLints,
+  sotaDefinitionLints,
+  sotaImportLints,
+  sotaPackageLints,
+  sotaUsageLints,
+} from "./sota-lints.js";
+import {
   checkBindingConnectorTypeMismatch,
   checkConnectionTypeCompatibility,
   checkFeatureAssignmentType,
   checkImportResolution,
   checkPortConjugationMismatch,
   checkSymbolResolution,
+  resolvePathInScope,
 } from "./type-checker.js";
+
+function getSymbolLeavesZeroReparse(
+  db: QueryDB,
+  entry: SymbolEntry,
+  fallbackText?: string,
+): { leaves: CstLeaf[]; baseOffset: number } {
+  const cst = db.cstNode(entry.id) as Parameters<typeof collectCstLeaves>[0];
+  if (cst) {
+    return { leaves: collectCstLeaves(cst), baseOffset: 0 };
+  }
+  const text = fallbackText ?? db.cstText(entry.startOffset, entry.endOffset, entry) ?? "";
+  if (!text) return { leaves: [], baseOffset: entry.startOffset };
+  return { leaves: collectCstLeaves(parseSysmlSource(text)), baseOffset: entry.startOffset };
+}
+
+function isNegatedAssertion(db: QueryDB, self: SymbolEntry): boolean {
+  const metaNeg = metaStr(self, "isNegated");
+  if (metaNeg === "true" || metaNeg === "not") return true;
+  const { leaves } = getSymbolLeavesZeroReparse(db, self);
+  for (let i = 0; i < leaves.length; i++) {
+    const t = leaves[i]!.text;
+    if (t === "{" || t === ";") break;
+    if (t === "assert" && leaves[i + 1]?.text === "not") return true;
+    if (t === "not" && (leaves[i + 1]?.text === "satisfy" || leaves[i + 1]?.text === "constraint")) return true;
+  }
+  return false;
+}
+
+function resolveTargetSymbolById(
+  db: QueryDB,
+  scopeId: number | null,
+  rawName: string,
+  expectedKind?: "Definition" | "Usage" | "Requirement",
+): SymbolEntry | null {
+  const clean = rawName.trim();
+  if (!clean) return null;
+  const matchesKind = (s: SymbolEntry): boolean => {
+    if (expectedKind === "Definition") return s.kind === "Definition";
+    if (expectedKind === "Usage") return s.kind === "Usage";
+    if (expectedKind === "Requirement") {
+      return s.ruleName === "RequirementDefinition" || s.ruleName === "RequirementUsage";
+    }
+    return true;
+  };
+
+  if (clean.includes("::") || clean.includes(".")) {
+    const viaPath = resolvePathInScope(db, scopeId, clean) ?? resolveFeatureInScope(db, scopeId, clean);
+    if (viaPath && matchesKind(viaPath)) return viaPath;
+    const segs = clean.split(/::|\./).filter(Boolean);
+    const tail = segs[segs.length - 1];
+    if (!tail) return null;
+    const cands = db.byName(tail).filter(matchesKind);
+    if (cands.length === 0) return null;
+    if (segs.length >= 2) {
+      const ownerName = segs[segs.length - 2]!;
+      const qualifiedMatch = cands.find((c) => {
+        const p = c.parentId !== null ? db.symbol(c.parentId) : undefined;
+        return p?.name === ownerName;
+      });
+      if (qualifiedMatch) return qualifiedMatch;
+      return null;
+    }
+    return cands[0]!;
+  }
+
+  // Unqualified name: walk lexical ancestor scopes first so same-package symbols shadow external homonyms
+  let curScope = scopeId;
+  const visitedScopes = new Set<number>();
+  while (curScope !== null && !visitedScopes.has(curScope)) {
+    visitedScopes.add(curScope);
+    for (const child of db.childrenOf(curScope)) {
+      if (child.name === clean && matchesKind(child)) return child;
+    }
+    curScope = db.symbol(curScope)?.parentId ?? null;
+  }
+
+  const viaScope = resolveFeatureInScope(db, scopeId, clean);
+  if (viaScope && matchesKind(viaScope)) return viaScope;
+  return db.byName(clean).find(matchesKind) ?? null;
+}
 
 function isAsciiWordCharCode(code: number): boolean {
   return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 95;
 }
 
 function startsWithLowerAscii(value: string): boolean {
-  if (value.length === 0) return false;
+  if (value.length === 0 || value.startsWith("'")) return false;
   const code = value.charCodeAt(0);
   return code >= 97 && code <= 122;
 }
 
 function startsWithUpperAscii(value: string): boolean {
-  if (value.length === 0) return false;
+  if (value.length === 0 || value.startsWith("'")) return false;
   const code = value.charCodeAt(0);
   return code >= 65 && code <= 90;
 }
@@ -97,12 +187,13 @@ function hasWordPrefixCaseInsensitive(text: string, prefix: string): boolean {
   return false;
 }
 
-function hasCriticalRequirementMarker(name: string, text: string): boolean {
+function hasCriticalRequirementMarker(db: QueryDB, self: SymbolEntry, text: string): boolean {
+  const name = self.name;
   if (name && hasWordPrefixCaseInsensitive(name, "critical")) {
     return true;
   }
   if (!text) return false;
-  const leaves = collectCstLeaves(parseSysmlSource(text));
+  const { leaves } = getSymbolLeavesZeroReparse(db, self, text);
   for (let i = 0; i < leaves.length; i++) {
     const tok = leaves[i]!.text;
     const lowerTok = tok.toLowerCase();
@@ -190,57 +281,68 @@ export const definitionLints = {
     }
     return null;
   },
-  /** Error when a definition's superclassifier chain creates a cycle. */
+  /** Error when a definition's superclassifier chain creates a cycle (tracked by SymbolId, not raw name). */
   circularSpecialization: (db: QueryDB, self: SymbolEntry) => {
     if (!self.name) return null;
-    const queue: string[] = [];
+    const queue: SymbolEntry[] = [];
     for (const child of db.childrenOf(self.id)) {
-      if (child.ruleName === "OwnedSubclassification" && child.name) {
-        queue.push(child.name);
+      if (child.ruleName === "OwnedSubclassification") {
+        const raw = (child.name || db.cstText(child.startOffset, child.endOffset, child) || "").trim();
+        if (!raw) continue;
+        if (!raw.includes("::") && !raw.includes(".") && raw === self.name) {
+          return error(SysML2ErrorCode.CIRCULAR_SPECIALIZATION.message(self.name), {
+            code: SysML2ErrorCode.CIRCULAR_SPECIALIZATION.code,
+            field: "declaredName",
+          });
+        }
+        const resolved = resolveTargetSymbolById(db, self.parentId, raw, "Definition");
+        if (resolved) queue.push(resolved);
       }
     }
-    const visited = new Set<string>();
+    const visited = new Set<number>();
     while (queue.length > 0) {
       const current = queue.shift()!;
-      if (current === self.name) {
+      if (current.id === self.id) {
         return error(SysML2ErrorCode.CIRCULAR_SPECIALIZATION.message(self.name), {
           code: SysML2ErrorCode.CIRCULAR_SPECIALIZATION.code,
           field: "declaredName",
         });
       }
-      if (visited.has(current)) continue;
-      visited.add(current);
-      const targets = db.byName(current);
-      const target = targets.find((t) => t.kind === "Definition");
-      if (!target) continue;
-      if (target.name === self.name) {
-        return error(SysML2ErrorCode.CIRCULAR_SPECIALIZATION.message(self.name), {
-          code: SysML2ErrorCode.CIRCULAR_SPECIALIZATION.code,
-          field: "declaredName",
-        });
-      }
-      for (const sc of db.childrenOf(target.id)) {
-        if (sc.ruleName === "OwnedSubclassification" && sc.name) {
-          queue.push(sc.name);
+      if (visited.has(current.id)) continue;
+      visited.add(current.id);
+      for (const sc of db.childrenOf(current.id)) {
+        if (sc.ruleName === "OwnedSubclassification") {
+          const raw = (sc.name || db.cstText(sc.startOffset, sc.endOffset, sc) || "").trim();
+          if (!raw) continue;
+          const next = resolveTargetSymbolById(db, current.parentId, raw, "Definition");
+          if (next) queue.push(next);
         }
       }
     }
     return null;
   },
   symbolNotFound: (db: QueryDB, self: SymbolEntry) => checkSymbolResolution(db, self),
+  ...sotaDefinitionLints,
 };
 
 /** Shared lint rules for all Usage rules */
 export const usageLints = {
-  usageNaming: (_db: QueryDB, self: SymbolEntry) => {
+  usageNaming: (db: QueryDB, self: SymbolEntry) => {
     if (
       self.ruleName === "SatisfyRequirementUsage" ||
       self.ruleName === "VerifyRequirementUsage" ||
       self.ruleName === "IncludeUseCaseUsage" ||
       self.ruleName === "AllocationUsage" ||
-      self.ruleName === "AllocateUsage"
+      self.ruleName === "AllocateUsage" ||
+      self.ruleName === "EnumeratedValue"
     ) {
       return null;
+    }
+    if (self.parentId !== null) {
+      const parentSym = db.symbol(self.parentId);
+      if (parentSym?.ruleName === "EnumerationDefinition" || parentSym?.ruleName === "EnumerationUsage") {
+        return null;
+      }
     }
     if (self.name && self.name !== self.ruleName && startsWithUpperAscii(self.name)) {
       return warning(SysML2ErrorCode.USAGE_NAMING.message(self.name), {
@@ -253,30 +355,48 @@ export const usageLints = {
   duplicateFeatureName: (db: QueryDB, self: SymbolEntry) => definitionLints.duplicateFeatureName(db, self),
   circularSpecialization: (db: QueryDB, self: SymbolEntry) => {
     if (!self.name || self.name === "<anonymous>") return null;
-    const queue: string[] = [];
+    const queue: SymbolEntry[] = [];
     for (const child of db.childrenOf(self.id)) {
-      if ((child.ruleName === "OwnedSubsetting" || child.ruleName === "OwnedRedefinition") && child.name) {
-        queue.push(child.name);
+      if (child.ruleName === "OwnedSubsetting" || child.ruleName === "OwnedRedefinition") {
+        const raw = (child.name || db.cstText(child.startOffset, child.endOffset, child) || "").trim();
+        if (!raw) continue;
+        // Note: `redefines x` (`:>> x`) inside a subtype legitimately redefines inherited feature `x` on a supertype!
+        // Only direct self-resolution (`resolved.id === self.id`) or an actual `SymbolId` cycle is circular.
+        if (child.ruleName === "OwnedSubsetting" && !raw.includes("::") && !raw.includes(".") && raw === self.name) {
+          return error(SysML2ErrorCode.CIRCULAR_SPECIALIZATION.message(self.name), {
+            code: SysML2ErrorCode.CIRCULAR_SPECIALIZATION.code,
+            field: "declaredName",
+          });
+        }
+        const resolved = resolveTargetSymbolById(db, self.parentId, raw, "Usage");
+        if (resolved && resolved.id !== self.id) {
+          queue.push(resolved);
+        } else if (resolved && resolved.id === self.id && child.ruleName === "OwnedSubsetting") {
+          return error(SysML2ErrorCode.CIRCULAR_SPECIALIZATION.message(self.name), {
+            code: SysML2ErrorCode.CIRCULAR_SPECIALIZATION.code,
+            field: "declaredName",
+          });
+        }
       }
     }
     if (queue.length === 0) return null;
-    const visited = new Set<string>();
+    const visited = new Set<number>();
     while (queue.length > 0) {
       const current = queue.shift()!;
-      if (current === self.name) {
+      if (current.id === self.id) {
         return error(SysML2ErrorCode.CIRCULAR_SPECIALIZATION.message(self.name), {
           code: SysML2ErrorCode.CIRCULAR_SPECIALIZATION.code,
           field: "declaredName",
         });
       }
-      if (visited.has(current)) continue;
-      visited.add(current);
-      const targets = db.byName(current);
-      const target = targets.find((t) => t.kind === "Usage");
-      if (!target) continue;
-      for (const sc of db.childrenOf(target.id)) {
-        if ((sc.ruleName === "OwnedSubsetting" || sc.ruleName === "OwnedRedefinition") && sc.name) {
-          queue.push(sc.name);
+      if (visited.has(current.id)) continue;
+      visited.add(current.id);
+      for (const sc of db.childrenOf(current.id)) {
+        if (sc.ruleName === "OwnedSubsetting" || sc.ruleName === "OwnedRedefinition") {
+          const raw = (sc.name || db.cstText(sc.startOffset, sc.endOffset, sc) || "").trim();
+          if (!raw) continue;
+          const next = resolveTargetSymbolById(db, current.parentId, raw, "Usage");
+          if (next && next.id !== current.id) queue.push(next);
         }
       }
     }
@@ -321,8 +441,9 @@ export const usageLints = {
       }
       return error(SysML2ErrorCode.MULTIPLICITY_LOWER_GT_UPPER.message(lowerStr, upperStr), {
         code: SysML2ErrorCode.MULTIPLICITY_LOWER_GT_UPPER.code,
-        startOffset: startOffset ?? self.startOffset,
-        endOffset: endOffset ?? self.endOffset,
+        ...(startOffset !== undefined && endOffset !== undefined
+          ? { startOffset, endOffset }
+          : { field: "declaredName" }),
       });
     }
 
@@ -342,7 +463,7 @@ export const usageLints = {
     if (!typeName) return null;
 
     const targetDim = resolveTypeDimension(db, typeName);
-    if (!targetDim || isDimensionless(targetDim)) return null;
+    if (!targetDim) return null;
 
     const cst = db.cstNode(self.id) as SysmlCstNode | null;
     if (!cst) return null;
@@ -367,12 +488,29 @@ export const usageLints = {
     if (inferRes.error) {
       return error(inferRes.error.message, {
         code: SysML2ErrorCode.DIMENSIONAL_MISMATCH.code,
-        startOffset: inferRes.error.startOffset ?? self.startOffset,
-        endOffset: inferRes.error.endOffset ?? self.endOffset,
+        ...(inferRes.error.startOffset !== undefined && inferRes.error.endOffset !== undefined
+          ? { startOffset: inferRes.error.startOffset, endOffset: inferRes.error.endOffset }
+          : { field: "declaredName" }),
       });
     }
 
+    // Dimensionless target types (`Real`, `ScalarValues::Real`, etc.) allow dimensionless or scalar values,
+    // while dimensional target types (`ISQ::LengthValue`, etc.) allow polymorphic zero (`0`, `0.0`) or matching dimensions.
+    if (isDimensionless(targetDim)) {
+      return null;
+    }
+
+    if (inferRes.isZeroLiteral) {
+      return null;
+    }
+
     if (inferRes.dimension && !areDimensionsEqual(targetDim, inferRes.dimension)) {
+      const exprStart =
+        (exprNode as { startIndex?: number; startOffset?: number }).startIndex ??
+        (exprNode as { startOffset?: number }).startOffset;
+      const exprEnd =
+        (exprNode as { endIndex?: number; endOffset?: number }).endIndex ??
+        (exprNode as { endOffset?: number }).endOffset;
       return error(
         SysML2ErrorCode.DIMENSIONAL_MISMATCH.message(
           self.name || "<anonymous>",
@@ -381,8 +519,9 @@ export const usageLints = {
         ),
         {
           code: SysML2ErrorCode.DIMENSIONAL_MISMATCH.code,
-          startOffset: self.startOffset,
-          endOffset: self.endOffset,
+          ...(typeof exprStart === "number" && typeof exprEnd === "number" && exprEnd > exprStart
+            ? { startOffset: exprStart, endOffset: exprEnd }
+            : { field: "declaredName" }),
         },
       );
     }
@@ -417,6 +556,7 @@ export const usageLints = {
 
     return diagnostics.length > 0 ? diagnostics : null;
   },
+  ...sotaUsageLints,
 };
 
 function formatStandardComplianceDiagnostic(
@@ -438,9 +578,13 @@ function formatStandardComplianceDiagnostic(
 export const constraintLints = {
   constraintViolated: (db: QueryDB, self: SymbolEntry) => {
     const result = evaluateConstraintBody(db, self);
-    if (result === false) {
+    if (typeof result !== "boolean") return null;
+    const negated = self.ruleName === "AssertConstraintUsage" && isNegatedAssertion(db, self);
+    const violated = negated ? result === true : result === false;
+    if (violated) {
       return error(SysML2ErrorCode.CONSTRAINT_VIOLATED.message(self.name || "<anonymous>"), {
         code: SysML2ErrorCode.CONSTRAINT_VIOLATED.code,
+        field: "declaredName",
       });
     }
     return null;
@@ -469,8 +613,9 @@ export const constraintLints = {
     if (inferRes.error) {
       return error(inferRes.error.message, {
         code: SysML2ErrorCode.DIMENSIONAL_MISMATCH.code,
-        startOffset: inferRes.error.startOffset ?? self.startOffset,
-        endOffset: inferRes.error.endOffset ?? self.endOffset,
+        ...(inferRes.error.startOffset !== undefined && inferRes.error.endOffset !== undefined
+          ? { startOffset: inferRes.error.startOffset, endOffset: inferRes.error.endOffset }
+          : { field: "declaredName" }),
       });
     }
     return null;
@@ -504,37 +649,31 @@ export const requirementLints = {
   cyclicSatisfaction: (db: QueryDB, self: SymbolEntry) => {
     if (!self.name) return null;
     const satisfyUsages = db.childrenOf(self.id).filter((c) => c.ruleName === "SatisfyRequirementUsage");
-    const queue: string[] = [];
+    const queue: SymbolEntry[] = [];
     for (const satisfy of satisfyUsages) {
       const targetName = getRelationshipTargetName(db, satisfy);
-      if (targetName) queue.push(targetName);
+      if (!targetName) continue;
+      const reqTarget = resolveTargetSymbolById(db, self.id, targetName, "Requirement");
+      if (reqTarget) queue.push(reqTarget);
     }
-    const visited = new Set<string>();
+    const visited = new Set<number>();
     while (queue.length > 0) {
       const current = queue.shift()!;
-      if (current === self.name) {
+      if (current.id === self.id) {
         return error(SysML2ErrorCode.CYCLIC_SATISFACTION.message(self.name), {
           code: SysML2ErrorCode.CYCLIC_SATISFACTION.code,
           field: "declaredName",
         });
       }
-      if (visited.has(current)) continue;
-      visited.add(current);
-      const targets = db.byName(current);
-      const reqTarget = targets.find(
-        (t) => t.ruleName === "RequirementDefinition" || t.ruleName === "RequirementUsage",
-      );
-      if (!reqTarget) continue;
-      if (reqTarget.name === self.name) {
-        return error(SysML2ErrorCode.CYCLIC_SATISFACTION.message(self.name), {
-          code: SysML2ErrorCode.CYCLIC_SATISFACTION.code,
-          field: "declaredName",
-        });
-      }
-      for (const nextSat of db.childrenOf(reqTarget.id)) {
+      if (visited.has(current.id)) continue;
+      visited.add(current.id);
+      for (const nextSat of db.childrenOf(current.id)) {
         if (nextSat.ruleName === "SatisfyRequirementUsage") {
-          const nextTarget = getRelationshipTargetName(db, nextSat);
-          if (nextTarget) queue.push(nextTarget);
+          const nextTargetName = getRelationshipTargetName(db, nextSat);
+          if (nextTargetName) {
+            const nextReq = resolveTargetSymbolById(db, current.id, nextTargetName, "Requirement");
+            if (nextReq) queue.push(nextReq);
+          }
         }
       }
     }
@@ -575,10 +714,24 @@ export const satisfyRequirementLints = {
     const targetName = reqTarget?.name || getRelationshipTargetName(db, self);
     if (!reqTarget || !targetName) return null;
 
+    const negated = isNegatedAssertion(db, self);
     const subjectSym = resolveSatisfyingSubject(db, self);
     const compliance = evaluateRequirementCompliance(db, reqTarget, subjectSym);
     const ref = db.childrenOf(self.id).find((c) => c.kind === "Reference" || c.kind === "Specialization");
     const range = ref ? { startOffset: ref.startOffset, endOffset: ref.endOffset } : { field: "declaredName" as const };
+
+    if (negated) {
+      if (compliance.status === "satisfied") {
+        return warning(
+          `Negated satisfaction 'assert not satisfy ${targetName}' failed because '${targetName}' is satisfied.`,
+          {
+            code: SysML2ErrorCode.SATISFYING_VIOLATED_REQUIREMENT.code,
+            ...range,
+          },
+        );
+      }
+      return null;
+    }
 
     if (compliance.status === "inapplicable") {
       return createSysML2Diagnostic(
@@ -824,9 +977,7 @@ export const connectionLints = {
       if (curr === sourceName) {
         return error(SysML2ErrorCode.CIRCULAR_PORT_DELEGATION.message(sourceName), {
           code: SysML2ErrorCode.CIRCULAR_PORT_DELEGATION.code,
-          field: "declaredName",
-          startOffset: self.startOffset,
-          endOffset: self.endOffset,
+          ...(refs[1] ? { startOffset: refs[1].startOffset, endOffset: refs[1].endOffset } : { field: "declaredName" }),
         });
       }
       if (visited.has(curr)) continue;
@@ -842,10 +993,14 @@ export const connectionLints = {
     if (!res.isSatisfied && res.violations.length > 0) {
       const v = res.violations[0]!;
       const connName = self.name && self.name !== "<anonymous>" ? self.name : v.connectionName || "<anonymous>";
+      const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference");
       return error(SysML2ErrorCode.INTERFACE_CONTRACT_BROKEN.message(connName, v.reason), {
         code: SysML2ErrorCode.INTERFACE_CONTRACT_BROKEN.code,
-        startOffset: self.startOffset,
-        endOffset: self.endOffset,
+        ...(self.fieldRanges?.["declaredName"]
+          ? { field: "declaredName" }
+          : refs.length > 0
+            ? { startOffset: refs[0]!.startOffset, endOffset: refs[refs.length - 1]!.endOffset }
+            : { startOffset: self.startOffset, endOffset: self.endOffset }),
       });
     }
     return null;
@@ -867,9 +1022,8 @@ export const checkFlowDimensionalCompatibility = (db: QueryDB, self: SymbolEntry
     sourceName = getAllocationEndpointName(db, refs[refs.length - 2]!);
     targetName = getAllocationEndpointName(db, refs[refs.length - 1]!);
   }
-  const text = db.cstText(self.startOffset, self.endOffset, self) || "";
   if (!sourceName || !targetName) {
-    const leaves = collectCstLeaves(parseSysmlSource(text));
+    const { leaves } = getSymbolLeavesZeroReparse(db, self);
     const fromIdx = leaves.findIndex((l) => l.text === "from");
     if (fromIdx !== -1) {
       const src = readDottedChainFromLeaves(leaves, fromIdx + 1);
@@ -940,8 +1094,11 @@ export const checkFlowDimensionalCompatibility = (db: QueryDB, self: SymbolEntry
   ) {
     return error(SysML2ErrorCode.INCOMPATIBLE_FLOW_DIMENSIONS.message(sourceName, targetName), {
       code: SysML2ErrorCode.INCOMPATIBLE_FLOW_DIMENSIONS.code,
-      startOffset: self.startOffset,
-      endOffset: self.endOffset,
+      ...(refs.length >= 2
+        ? { startOffset: refs[refs.length - 1]!.startOffset, endOffset: refs[refs.length - 1]!.endOffset }
+        : self.fieldRanges?.["declaredName"]
+          ? { field: "declaredName" }
+          : { startOffset: self.startOffset, endOffset: self.endOffset }),
     });
   }
   return null;
@@ -963,7 +1120,14 @@ export const checkCalculationReturn = (db: QueryDB, self: SymbolEntry): LintResu
   const bodyText = text.slice(openBrace + 1, closeBrace).trim();
   if (!bodyText) return null;
 
-  const bodyLeaves = collectCstLeaves(parseSysmlSource(bodyText));
+  const { leaves: allLeaves } = getSymbolLeavesZeroReparse(db, self, text);
+  const openBraceLeafIdx = allLeaves.findIndex((l) => l.text === "{");
+  const closeBraceLeafIdx = openBraceLeafIdx !== -1 ? findMatchingBraceLeaf(allLeaves, openBraceLeafIdx) : -1;
+  const bodyLeaves =
+    openBraceLeafIdx !== -1 && closeBraceLeafIdx > openBraceLeafIdx
+      ? allLeaves.slice(openBraceLeafIdx + 1, closeBraceLeafIdx)
+      : collectCstLeaves(parseSysmlSource(bodyText));
+  if (bodyLeaves.length === 0) return null;
 
   // Check for explicit `return` keyword or `out` parameter
   if (bodyLeaves.some((l) => l.text === "return")) return null;
@@ -979,15 +1143,12 @@ export const checkCalculationReturn = (db: QueryDB, self: SymbolEntry): LintResu
     };
     if (hasResultMember(cst)) return null;
   } else {
-    // Fallback when CST node is unavailable: WASM lexer drops comments, so check non-comment leaves end without ';'
     if (bodyLeaves.length > 0 && bodyLeaves[bodyLeaves.length - 1]!.text !== ";") return null;
   }
 
   return warning(SysML2ErrorCode.CALC_RETURN_MISSING.message(self.name || "<anonymous>"), {
     code: SysML2ErrorCode.CALC_RETURN_MISSING.code,
     field: "declaredName",
-    startOffset: self.fieldRanges?.["declaredName"]?.startOffset ?? self.startOffset,
-    endOffset: self.fieldRanges?.["declaredName"]?.endOffset ?? self.endOffset,
   });
 };
 
@@ -1014,12 +1175,11 @@ export const checkViewExposeTargets = (db: QueryDB, self: SymbolEntry): LintResu
     }
   }
 
-  const text = db.cstText(self.startOffset, self.endOffset, self) || "";
-  const openBrace = text.indexOf("{");
-  const closeBrace = text.lastIndexOf("}");
-  if (openBrace !== -1 && closeBrace > openBrace) {
-    const body = text.slice(openBrace + 1, closeBrace);
-    const bodyLeaves = collectCstLeaves(parseSysmlSource(body));
+  const { leaves: allLeaves } = getSymbolLeavesZeroReparse(db, self);
+  const openBraceLeafIdx = allLeaves.findIndex((l) => l.text === "{");
+  const closeBraceLeafIdx = openBraceLeafIdx !== -1 ? findMatchingBraceLeaf(allLeaves, openBraceLeafIdx) : -1;
+  if (openBraceLeafIdx !== -1 && closeBraceLeafIdx > openBraceLeafIdx) {
+    const bodyLeaves = allLeaves.slice(openBraceLeafIdx + 1, closeBraceLeafIdx);
     for (let i = 0; i < bodyLeaves.length; i++) {
       const kw = bodyLeaves[i]!.text;
       if (kw === "expose") {
@@ -1062,8 +1222,6 @@ export const checkViewExposeTargets = (db: QueryDB, self: SymbolEntry): LintResu
       return error(SysML2ErrorCode.EXPOSE_TARGET_INVALID.message(rawTarget, self.name || "<anonymous>"), {
         code: SysML2ErrorCode.EXPOSE_TARGET_INVALID.code,
         field: "declaredName",
-        startOffset: self.startOffset,
-        endOffset: self.endOffset,
       });
     }
   }
@@ -1139,11 +1297,18 @@ export const actionCommonLints = {
     return null;
   },
   interproceduralContracts: (db: QueryDB, self: SymbolEntry) => {
-    const text = db.cstText(self.startOffset, self.endOffset, self) || "";
-    const actionLeaves = collectCstLeaves(parseSysmlSource(text));
-    const hasInvocationSyntax = actionLeaves.some(
-      (l, idx) => l.text === "perform" || (l.text === ":" && isSysmlIdentLeaf(actionLeaves[idx + 1]?.text)),
-    );
+    const children = db.childrenOf(self.id);
+    const hasPerformChild = children.some((c) => c.ruleName === "PerformActionUsage");
+    const { leaves: actionLeaves } = hasPerformChild
+      ? { leaves: [] as CstLeaf[] }
+      : getSymbolLeavesZeroReparse(db, self);
+    const hasInvocationSyntax =
+      hasPerformChild ||
+      actionLeaves.some(
+        (l, idx) =>
+          l.text === "perform" ||
+          (l.text === "action" && idx > 0 && actionLeaves.slice(idx + 1, idx + 5).some((t) => t.text === ":")),
+      );
     if (hasInvocationSyntax) {
       const res = analyzeInterproceduralCfa(db, self.name);
       const localRules = new Set([
@@ -1153,12 +1318,7 @@ export const actionCommonLints = {
         "join-decide-deadlock",
         "unbound-action-input",
       ]);
-      const childNames = new Set(
-        db
-          .childrenOf(self.id)
-          .map((c) => c.name)
-          .filter(Boolean),
-      );
+      const childNames = new Set(children.map((c) => c.name).filter(Boolean));
       const myErr = res.diagnostics.find(
         (d) =>
           !localRules.has(d.rule) &&
@@ -1172,8 +1332,9 @@ export const actionCommonLints = {
         const emitFn = myErr.severity === "warning" ? warning : error;
         return emitFn(myErr.message, {
           code: SysML2ErrorCode.INTERPROCEDURAL_CONTRACT_VIOLATION.code,
-          startOffset: myErr.startOffset ?? self.startOffset,
-          endOffset: myErr.endOffset ?? self.endOffset,
+          ...(myErr.startOffset !== undefined && myErr.endOffset !== undefined
+            ? { startOffset: myErr.startOffset, endOffset: myErr.endOffset }
+            : { field: "declaredName" }),
         });
       }
     }
@@ -1181,37 +1342,76 @@ export const actionCommonLints = {
   },
   loopTermination: (db: QueryDB, self: SymbolEntry) => {
     const text = db.cstText(self.startOffset, self.endOffset, self) || "";
-    const leaves = collectCstLeaves(parseSysmlSource(text));
-    const whileIdx = leaves.findIndex((l) => l.text === "while");
-    if (whileIdx !== -1) {
-      const openIdx = leaves.findIndex((l, idx) => idx > whileIdx && l.text === "{");
-      if (openIdx > whileIdx + 1) {
-        const cond =
-          leaves[whileIdx + 1]!.text === "(" && leaves[openIdx - 1]!.text === ")"
-            ? sliceBetweenLeaves(text, leaves[whileIdx + 1]!, leaves[openIdx - 1]!)
-            : sliceBetweenLeaves(text, leaves[whileIdx]!, leaves[openIdx]!);
-        const closeIdx = findMatchingBraceLeaf(leaves, openIdx);
-        const body =
-          leaves[closeIdx]?.text === "}"
-            ? sliceBetweenLeaves(text, leaves[openIdx]!, leaves[closeIdx]!)
-            : text.slice(leaves[openIdx]!.end);
-        const loopRes = LoopInvariantAnalyzer.analyzeLoop({ condition: cond, body });
-        if (!loopRes.isTerminating && loopRes.diagnostics.length > 0) {
-          const firstErr = loopRes.diagnostics[0]!;
-          return warning(firstErr.message, {
-            code: SysML2ErrorCode.LOOP_NON_TERMINATING.code,
-            startOffset: self.startOffset + leaves[whileIdx]!.start,
-            endOffset: self.endOffset,
-          });
+    if (!text || (!text.includes("while") && !text.includes("loop"))) return null;
+    const { leaves, baseOffset } = getSymbolLeavesZeroReparse(db, self, text);
+    const fullDocBase = baseOffset === 0 ? 0 : self.startOffset;
+    const results: LintResult[] = [];
+
+    for (let i = 0; i < leaves.length; i++) {
+      const kw = leaves[i]!.text;
+      if (kw !== "while" && kw !== "loop") continue;
+      const openIdx = leaves.findIndex((l, idx) => idx > i && l.text === "{");
+      if (openIdx === -1) continue;
+
+      let cond = "true";
+      if (kw === "while" && openIdx > i + 1) {
+        const condStart =
+          leaves[i + 1]!.text === "(" && leaves[openIdx - 1]!.text === ")" ? leaves[i + 1]!.end : leaves[i]!.end;
+        const condEnd =
+          leaves[i + 1]!.text === "(" && leaves[openIdx - 1]!.text === ")"
+            ? leaves[openIdx - 1]!.start
+            : leaves[openIdx]!.start;
+        cond =
+          baseOffset === 0
+            ? (db.cstText(condStart, condEnd, self) || "").trim()
+            : text.slice(condStart, condEnd).trim();
+      }
+
+      const closeIdx = findMatchingBraceLeaf(leaves, openIdx);
+      const bodyStart = leaves[openIdx]!.end;
+      const bodyEnd =
+        leaves[closeIdx]?.text === "}" ? leaves[closeIdx]!.start : baseOffset === 0 ? self.endOffset : text.length;
+      const body = baseOffset === 0 ? db.cstText(bodyStart, bodyEnd, self) || "" : text.slice(bodyStart, bodyEnd);
+
+      // Check optional trailing `until <expr>;`
+      let untilCond: string | undefined;
+      if (closeIdx !== -1 && leaves[closeIdx + 1]?.text === "until") {
+        const semiIdx = leaves.findIndex((l, idx) => idx > closeIdx + 1 && l.text === ";");
+        if (semiIdx > closeIdx + 2) {
+          const uStart = leaves[closeIdx + 1]!.end;
+          const uEnd = leaves[semiIdx]!.start;
+          untilCond = (baseOffset === 0 ? db.cstText(uStart, uEnd, self) || "" : text.slice(uStart, uEnd)).trim();
         }
       }
+
+      const loopRes = LoopInvariantAnalyzer.analyzeLoop({
+        condition: cond,
+        body,
+        ...(untilCond ? { untilCondition: untilCond } : {}),
+      });
+      if (!loopRes.isTerminating && loopRes.diagnostics.length > 0) {
+        const firstErr = loopRes.diagnostics[0]!;
+        results.push(
+          warning(firstErr.message, {
+            code: SysML2ErrorCode.LOOP_NON_TERMINATING.code,
+            startOffset: fullDocBase + leaves[i]!.start,
+            endOffset: fullDocBase + leaves[openIdx]!.start,
+          }),
+        );
+      }
     }
-    return null;
+
+    if (results.length === 0) return null;
+    return results.length === 1 ? results[0]! : results;
   },
   decisionTableExhaustiveness: (db: QueryDB, self: SymbolEntry) => {
-    const hasDecisions = db.childrenOf(self.id).some((c) => c.ruleName === "DecisionNode");
+    const decisionChildren = db.childrenOf(self.id).filter((c) => c.ruleName === "DecisionNode");
+    const hasDecisions = decisionChildren.length > 0;
     const text = db.cstText(self.startOffset, self.endOffset, self) || "";
-    const hasDecideToken = text ? collectCstLeaves(parseSysmlSource(text)).some((l) => l.text === "decide") : false;
+    const hasDecideToken =
+      !hasDecisions && text.includes("decide")
+        ? getSymbolLeavesZeroReparse(db, self, text).leaves.some((l) => l.text === "decide")
+        : false;
     if (!hasDecisions && !hasDecideToken) return null;
 
     let dtMap = DecisionTableVerifier.verifyAllDecisionsInDb(db, self);
@@ -1220,13 +1420,22 @@ export const actionCommonLints = {
     }
     const results: LintResult[] = [];
     for (const [decideName, dtRes] of dtMap) {
+      const decideSym = decisionChildren.find((c) => c.name === decideName) ?? decisionChildren[0];
+      const rangeOpt = decideSym?.fieldRanges?.["declaredName"]
+        ? {
+            startOffset: decideSym.fieldRanges["declaredName"].startOffset,
+            endOffset: decideSym.fieldRanges["declaredName"].endOffset,
+          }
+        : decideSym
+          ? { startOffset: decideSym.startOffset, endOffset: decideSym.endOffset }
+          : { field: "declaredName" as const };
+
       if (!dtRes.isDeterministic && dtRes.overlappingBranches.length > 0) {
         const pairStr = dtRes.overlappingBranches.map((o) => `'${o.branchA}' and '${o.branchB}'`).join(", ");
         results.push(
           error(SysML2ErrorCode.DECISION_TABLE_NONDETERMINISTIC.message(decideName, pairStr), {
             code: SysML2ErrorCode.DECISION_TABLE_NONDETERMINISTIC.code,
-            startOffset: self.startOffset,
-            endOffset: self.endOffset,
+            ...rangeOpt,
           }),
         );
       }
@@ -1234,8 +1443,7 @@ export const actionCommonLints = {
         results.push(
           warning(SysML2ErrorCode.DECISION_TABLE_DEAD_BRANCH.message(decideName, dtRes.deadBranches.join(", ")), {
             code: SysML2ErrorCode.DECISION_TABLE_DEAD_BRANCH.code,
-            startOffset: self.startOffset,
-            endOffset: self.endOffset,
+            ...rangeOpt,
           }),
         );
       }
@@ -1248,8 +1456,7 @@ export const actionCommonLints = {
             ),
             {
               code: SysML2ErrorCode.DECISION_TABLE_NON_EXHAUSTIVE.code,
-              startOffset: self.startOffset,
-              endOffset: self.endOffset,
+              ...rangeOpt,
             },
           ),
         );
@@ -1271,8 +1478,7 @@ export const actionCommonLints = {
     if (!res.isCertified && res.bmcResult?.violation) {
       return error(res.summary, {
         code: SysML2ErrorCode.ACTIVITY_SAFETY_VIOLATION.code,
-        startOffset: self.startOffset,
-        endOffset: self.endOffset,
+        field: "declaredName",
       });
     }
     return null;
@@ -1314,7 +1520,7 @@ export const requirementStructuralLints = {
   unsatisfiedCriticalRequirement: (db: QueryDB, self: SymbolEntry) => {
     if (!self.name || metaStr(self, "isAbstract") === "true") return null;
     const text = db.cstText(self.startOffset, self.endOffset, self) || "";
-    if (!hasCriticalRequirementMarker(self.name, text)) return null;
+    if (!hasCriticalRequirementMarker(db, self, text)) return null;
 
     const hasSatisfy =
       findRelationshipsTargeting(db, self, self.name, ["SatisfyRequirementUsage"]).length > 0 ||
@@ -1326,8 +1532,6 @@ export const requirementStructuralLints = {
       return warning(SysML2ErrorCode.UNSATISFIED_CRITICAL_REQUIREMENT.message(self.name), {
         code: SysML2ErrorCode.UNSATISFIED_CRITICAL_REQUIREMENT.code,
         field: "declaredName",
-        startOffset: self.startOffset,
-        endOffset: self.endOffset,
       });
     }
     return null;
@@ -1379,7 +1583,16 @@ export const packageTraceabilityLints = {
   },
   unverifiedRequirement: (db: QueryDB, self: SymbolEntry) => {
     const verifies = collectDescendants(db, self.id, ["VerifyRequirementUsage"]);
-    const verifiedNames = new Set(verifies.map((v) => v.name).filter(Boolean));
+    const verifiedNames = new Set<string>();
+    for (const v of verifies) {
+      const targetName = getRelationshipTargetName(db, v) || v.name;
+      if (!targetName) continue;
+      verifiedNames.add(targetName);
+      const colonIdx = targetName.lastIndexOf("::");
+      if (colonIdx !== -1) verifiedNames.add(targetName.slice(colonIdx + 2));
+      const dotIdx = targetName.lastIndexOf(".");
+      if (dotIdx !== -1) verifiedNames.add(targetName.slice(dotIdx + 1));
+    }
     const unverified = collectDescendants(db, self.id, ["RequirementDefinition", "RequirementUsage"]).filter(
       (r) => r.name && !verifiedNames.has(r.name) && metaStr(r, "isAbstract") !== "true",
     );
@@ -1393,13 +1606,23 @@ export const packageTraceabilityLints = {
     return null;
   },
   ontologicalInconsistency: (db: QueryDB, self: SymbolEntry) => {
-    const axioms = emitAxioms(db, self);
-    if (!axioms || axioms.length === 0) return null;
-    const reasoner = new TableauReasoner();
-    reasoner.loadOntology(axioms);
-    reasoner.classify();
-    const consistency = reasoner.checkConsistency();
-    if (!consistency.isConsistent) {
+    let consistency:
+      | { isConsistent: boolean; minimalConflictCore?: readonly { type?: string | undefined }[] | undefined }
+      | undefined;
+    try {
+      consistency = db.query("ontologyConsistency", self.id);
+    } catch {
+      consistency = undefined;
+    }
+    if (!consistency) {
+      const axioms = emitAxioms(db, self);
+      if (!axioms || axioms.length === 0) return null;
+      const reasoner = new TableauReasoner();
+      reasoner.loadOntology(axioms);
+      reasoner.classify();
+      consistency = reasoner.checkConsistency();
+    }
+    if (consistency && !consistency.isConsistent) {
       const core = consistency.minimalConflictCore;
       const detail =
         core && core.length > 0
@@ -1428,7 +1651,11 @@ export const packageTraceabilityLints = {
     return null;
   },
   stateMachineDeterminism: (db: QueryDB, self: SymbolEntry) => {
-    const smResult = verifyAllStateMachineTransitions(db, self.name);
+    // Only inspect transitions owned directly by the package itself; nested StateDefinitions/StateUsages
+    // run `stateMachineCommonLints` directly with numeric `self.id` without duplicating diagnostics.
+    const hasDirectTransitions = db.childrenOf(self.id).some((c) => c.ruleName === "TransitionUsage");
+    if (!hasDirectTransitions) return null;
+    const smResult = verifyAllStateMachineTransitions(db, self.id);
     if (!smResult.isDeterministic && smResult.diagnostics.length > 0) {
       const diag = smResult.diagnostics.find((d) => d.type === "nondeterminism");
       if (diag) {
@@ -1449,11 +1676,18 @@ export const packageTraceabilityLints = {
     }
     return null;
   },
+  ...sotaPackageLints,
 };
 
 /** Lint rules for Import declarations */
 export const importLints = {
   unresolvedImport: (db: QueryDB, self: SymbolEntry) => checkImportResolution(db, self),
+  ...sotaImportLints,
+};
+
+/** Lint rules for Alias declarations */
+export const aliasLints = {
+  ...sotaAliasLints,
 };
 
 /** Lint rules for EnumeratedValue declarations */
@@ -1480,36 +1714,85 @@ export const parseTransitionComponents = (
   db: QueryDB,
   trans: SymbolEntry,
 ): { source: string; trigger: string; guard: string; target: string } => {
-  const text = db.cstText(trans.startOffset, trans.endOffset, trans) || "";
-  const leaves = collectCstLeaves(parseSysmlSource(text));
+  const cst = db.cstNode(trans.id);
+  const text = cst ? "" : db.cstText(trans.startOffset, trans.endOffset, trans) || "";
+  const { leaves, baseOffset } = getSymbolLeavesZeroReparse(db, trans, text);
+
+  const sliceLeavesText = (startLeaf: CstLeaf, endLeaf: CstLeaf): string => {
+    if (baseOffset === 0) {
+      return (db.cstText(startLeaf.end, endLeaf.start, trans) || "").trim();
+    }
+    return sliceBetweenLeaves(text, startLeaf, endLeaf);
+  };
 
   let source = "";
   let trigger = "";
   let guard = "";
   let target = "";
 
+  // Handle SysML v2 shorthand without `first`: `transition idle [accept ...] [if ...] [do ...] then active;`
+  if (leaves[0]?.text === "transition") {
+    let hasExplicitFirst = false;
+    for (let k = 1; k < leaves.length; k++) {
+      const kt = leaves[k]!.text;
+      if (kt === "first") {
+        hasExplicitFirst = true;
+        break;
+      }
+      if (kt === "accept" || kt === "if" || kt === "do" || kt === "then" || kt === "{" || kt === ";") {
+        break;
+      }
+    }
+    if (!hasExplicitFirst) {
+      const chain = readDottedChainFromLeaves(leaves, 1);
+      const nextTok = chain ? leaves[chain.nextIdx]?.text : undefined;
+      if (chain && (nextTok === "accept" || nextTok === "if" || nextTok === "do" || nextTok === "then")) {
+        source = chain.text;
+      }
+    }
+  }
+
+  let braceDepth = 0;
   for (let i = 0; i < leaves.length; i++) {
     const tok = leaves[i]!.text;
-    if (tok === "first" && !source && isSysmlIdentLeaf(leaves[i + 1]?.text)) {
-      source = leaves[i + 1]!.text;
+    if (tok === "{") {
+      braceDepth++;
+      continue;
+    }
+    if (tok === "}") {
+      braceDepth = Math.max(0, braceDepth - 1);
+      continue;
+    }
+    if (braceDepth > 0) continue;
+
+    if (tok === "first" && !source) {
+      const chain = readDottedChainFromLeaves(leaves, i + 1);
+      if (chain) source = chain.text;
     } else if (tok === "accept" && !trigger) {
+      let innerBrace = 0;
       for (let j = i + 1; j < leaves.length; j++) {
         const endTok = leaves[j]!.text;
-        if (endTok === "if" || endTok === "do" || endTok === "then") {
-          trigger = sliceBetweenLeaves(text, leaves[i]!, leaves[j]!);
+        if (endTok === "{") innerBrace++;
+        else if (endTok === "}") innerBrace = Math.max(0, innerBrace - 1);
+        else if (innerBrace === 0 && (endTok === "if" || endTok === "do" || endTok === "then")) {
+          trigger = sliceLeavesText(leaves[i]!, leaves[j]!);
           break;
         }
       }
     } else if (tok === "if" && !guard) {
+      let innerBrace = 0;
       for (let j = i + 1; j < leaves.length; j++) {
         const endTok = leaves[j]!.text;
-        if (endTok === "do" || endTok === "then") {
-          guard = sliceBetweenLeaves(text, leaves[i]!, leaves[j]!);
+        if (endTok === "{") innerBrace++;
+        else if (endTok === "}") innerBrace = Math.max(0, innerBrace - 1);
+        else if (innerBrace === 0 && (endTok === "do" || endTok === "then")) {
+          guard = sliceLeavesText(leaves[i]!, leaves[j]!);
           break;
         }
       }
-    } else if (tok === "then" && !target && isSysmlIdentLeaf(leaves[i + 1]?.text)) {
-      target = leaves[i + 1]!.text;
+    } else if (tok === "then" && !target) {
+      const chain = readDottedChainFromLeaves(leaves, i + 1);
+      if (chain) target = chain.text;
     }
   }
 
@@ -1631,12 +1914,90 @@ export const isGuardTautologicallyFalse = (db: QueryDB, self: SymbolEntry, guard
   return false;
 };
 
+const stateReachabilityCache = new WeakMap<object, Map<number, Set<string>>>();
+
+function getReachableStatesForParent(db: QueryDB, parentId: number): Set<string> | null {
+  let byParent = stateReachabilityCache.get(db as unknown as object);
+  if (!byParent) {
+    byParent = new Map<number, Set<string>>();
+    stateReachabilityCache.set(db as unknown as object, byParent);
+  }
+  const cached = byParent.get(parentId);
+  if (cached) return cached;
+
+  const children = db.childrenOf(parentId);
+  const stateSiblings = children.filter(
+    (c) => c.ruleName === "StateUsage" || c.ruleName === "ExhibitStateUsage" || c.ruleName === "StateDefinition",
+  );
+  const transSiblings = children.filter((c) => c.ruleName === "TransitionUsage");
+  if (stateSiblings.length < 2 || transSiblings.length === 0) return null;
+
+  const validStateNames = new Set(stateSiblings.map((s) => s.name).filter(Boolean));
+  const parentSym = db.symbol(parentId);
+  const parentLeaves = parentSym ? getSymbolLeavesZeroReparse(db, parentSym).leaves : [];
+  let entryTarget: string | undefined;
+  let braceDepth = 0;
+  for (let i = 0; i < parentLeaves.length; i++) {
+    const t = parentLeaves[i]!.text;
+    if (t === "{") {
+      braceDepth++;
+      continue;
+    }
+    if (t === "}") {
+      braceDepth = Math.max(0, braceDepth - 1);
+      continue;
+    }
+    if (braceDepth !== 1 || t !== "entry") continue;
+    let k = i + 1;
+    if (parentLeaves[k]?.text === ";") k++;
+    if (parentLeaves[k]?.text === "then" && isSysmlIdentLeaf(parentLeaves[k + 1]?.text)) {
+      entryTarget = parentLeaves[k + 1]!.text;
+      break;
+    }
+  }
+
+  const initialStates = new Set<string>();
+  if (entryTarget && validStateNames.has(entryTarget)) {
+    initialStates.add(entryTarget);
+  } else if (stateSiblings[0]?.name) {
+    initialStates.add(stateSiblings[0].name);
+  }
+
+  const adj = new Map<string, string[]>();
+  for (const tr of transSiblings) {
+    const c = parseTransitionComponents(db, tr);
+    if (!c.source || !c.target) continue;
+    if (c.guard && isGuardTautologicallyFalse(db, tr, c.guard)) continue;
+    let list = adj.get(c.source);
+    if (!list) {
+      list = [];
+      adj.set(c.source, list);
+    }
+    list.push(c.target);
+  }
+
+  const reachable = new Set<string>(initialStates);
+  const queue = Array.from(initialStates);
+  while (queue.length > 0) {
+    const curr = queue.shift()!;
+    for (const next of adj.get(curr) || []) {
+      if (!reachable.has(next)) {
+        reachable.add(next);
+        queue.push(next);
+      }
+    }
+  }
+
+  byParent.set(parentId, reachable);
+  return reachable;
+}
+
 /** Lint rules for StateDefinition and StateUsage */
 export const stateMachineCommonLints = {
   stateMachineDeterminism: (db: QueryDB, self: SymbolEntry) => {
     const hasTransitions = db.childrenOf(self.id).some((c) => c.ruleName === "TransitionUsage");
     if (!hasTransitions) return null;
-    const smResult = verifyAllStateMachineTransitions(db, self.name);
+    const smResult = verifyAllStateMachineTransitions(db, self.id);
     const results: LintResult[] = [];
     for (const diag of smResult.diagnostics) {
       if (diag.type === "nondeterminism") {
@@ -1644,8 +2005,6 @@ export const stateMachineCommonLints = {
           error(diag.message, {
             code: SysML2ErrorCode.STATEMACHINE_NONDETERMINISTIC.code,
             field: "declaredName",
-            startOffset: self.startOffset,
-            endOffset: self.endOffset,
           }),
         );
       } else if (diag.type === "deadlock") {
@@ -1653,8 +2012,6 @@ export const stateMachineCommonLints = {
           warning(diag.message, {
             code: SysML2ErrorCode.STATEMACHINE_DEADLOCK.code,
             field: "declaredName",
-            startOffset: self.startOffset,
-            endOffset: self.endOffset,
           }),
         );
       }
@@ -1666,14 +2023,12 @@ export const stateMachineCommonLints = {
     // Case 1: StateDefinition or composite StateUsage containing TransitionUsage children
     const childTransitions = db.childrenOf(self.id).filter((c) => c.ruleName === "TransitionUsage");
     if (childTransitions.length >= 2) {
-      const smResult = verifyAllStateMachineTransitions(db, self.name);
+      const smResult = verifyAllStateMachineTransitions(db, self.id);
       const nonDetDiag = smResult.diagnostics.find((d) => d.type === "nondeterminism");
       if (nonDetDiag) {
         return warning(SysML2ErrorCode.NON_DETERMINISTIC_TRANSITIONS.message(nonDetDiag.stateName || self.name), {
           code: SysML2ErrorCode.NON_DETERMINISTIC_TRANSITIONS.code,
           field: "declaredName",
-          startOffset: self.startOffset,
-          endOffset: self.endOffset,
         });
       }
       // Also check for multiple unguarded or identical-guard transitions from the same source state and trigger
@@ -1698,53 +2053,33 @@ export const stateMachineCommonLints = {
             return warning(SysML2ErrorCode.NON_DETERMINISTIC_TRANSITIONS.message(srcState), {
               code: SysML2ErrorCode.NON_DETERMINISTIC_TRANSITIONS.code,
               field: "declaredName",
-              startOffset: self.startOffset,
-              endOffset: self.endOffset,
             });
           }
         }
       }
     }
 
-    // Case 2: Leaf StateUsage inside an enclosing state machine with overlapping outgoing transitions
+    // Case 2: Leaf StateUsage inside a non-State container (e.g. PartDefinition owning states + transitions)
     if (self.parentId != null && self.name && childTransitions.length === 0) {
-      const siblingTransitions = db
-        .childrenOf(self.parentId)
-        .filter((c) => c.ruleName === "TransitionUsage")
-        .map((tr) => parseTransitionComponents(db, tr))
-        .filter((comp) => comp.source === self.name);
-      if (siblingTransitions.length >= 2) {
-        const parentSym = db.symbol(self.parentId);
-        const smResult = verifyAllStateMachineTransitions(db, parentSym?.name);
-        if (smResult.diagnostics.some((d) => d.type === "nondeterminism" && d.stateName === self.name)) {
-          return warning(SysML2ErrorCode.NON_DETERMINISTIC_TRANSITIONS.message(self.name), {
-            code: SysML2ErrorCode.NON_DETERMINISTIC_TRANSITIONS.code,
-            field: "declaredName",
-            startOffset: self.startOffset,
-            endOffset: self.endOffset,
-          });
-        }
-        const byTrigger = new Map<string, string[]>();
-        for (const comp of siblingTransitions) {
-          let guards = byTrigger.get(comp.trigger);
-          if (!guards) {
-            guards = [];
-            byTrigger.set(comp.trigger, guards);
-          }
-          guards.push(comp.guard);
-        }
-        for (const [, guards] of byTrigger) {
-          if (guards.length >= 2) {
-            const unguardedCount = guards.filter((g) => !g || g === "true").length;
-            const uniqueGuards = new Set(guards.filter(Boolean));
-            if (unguardedCount >= 2 || uniqueGuards.size < guards.filter(Boolean).length) {
-              return warning(SysML2ErrorCode.NON_DETERMINISTIC_TRANSITIONS.message(self.name), {
-                code: SysML2ErrorCode.NON_DETERMINISTIC_TRANSITIONS.code,
-                field: "declaredName",
-                startOffset: self.startOffset,
-                endOffset: self.endOffset,
-              });
-            }
+      const parentSym = db.symbol(self.parentId);
+      if (
+        parentSym &&
+        parentSym.ruleName !== "StateDefinition" &&
+        parentSym.ruleName !== "StateUsage" &&
+        parentSym.ruleName !== "ExhibitStateUsage"
+      ) {
+        const siblingTransitions = db
+          .childrenOf(self.parentId)
+          .filter((c) => c.ruleName === "TransitionUsage")
+          .map((tr) => parseTransitionComponents(db, tr))
+          .filter((comp) => comp.source === self.name);
+        if (siblingTransitions.length >= 2) {
+          const smResult = verifyAllStateMachineTransitions(db, self.parentId);
+          if (smResult.diagnostics.some((d) => d.type === "nondeterminism" && d.stateName === self.name)) {
+            return warning(SysML2ErrorCode.NON_DETERMINISTIC_TRANSITIONS.message(self.name), {
+              code: SysML2ErrorCode.NON_DETERMINISTIC_TRANSITIONS.code,
+              field: "declaredName",
+            });
           }
         }
       }
@@ -1780,10 +2115,14 @@ export const transitionUsageLints = {
     const comp = parseTransitionComponents(db, self);
     for (const stateName of [comp.source, comp.target]) {
       if (stateName && !validStateNames.has(stateName) && !resolveFeatureInScope(db, self.parentId, stateName)) {
+        const refs = db.childrenOf(self.id).filter((c) => c.kind === "Reference" && c.name === stateName);
         return error(SysML2ErrorCode.UNRESOLVED_TRANSITION_STATE.message(stateName), {
           code: SysML2ErrorCode.UNRESOLVED_TRANSITION_STATE.code,
-          startOffset: self.startOffset,
-          endOffset: self.endOffset,
+          ...(refs[0]
+            ? { startOffset: refs[0].startOffset, endOffset: refs[0].endOffset }
+            : self.fieldRanges?.["declaredName"]
+              ? { field: "declaredName" }
+              : { startOffset: self.startOffset, endOffset: self.endOffset }),
         });
       }
     }
@@ -1795,83 +2134,45 @@ export const transitionUsageLints = {
     if (isGuardTautologicallyFalse(db, self, comp.guard)) {
       const transName =
         self.name && self.name !== "<anonymous>" && self.name !== "TransitionUsage" ? self.name : "transition";
+      const cst = db.cstNode(self.id) as CSTNode | null;
+      const guardNode = cst?.childForFieldName?.("guard") as
+        | (CSTNode & { startIndex?: number; endIndex?: number; startOffset?: number; endOffset?: number })
+        | undefined;
+      const gStart = guardNode?.startIndex ?? guardNode?.startOffset;
+      const gEnd = guardNode?.endIndex ?? guardNode?.endOffset;
       return warning(SysML2ErrorCode.DEAD_STATE_TRANSITION.message(transName), {
         code: SysML2ErrorCode.DEAD_STATE_TRANSITION.code,
-        field: "declaredName",
-        startOffset: self.startOffset,
-        endOffset: self.endOffset,
+        ...(typeof gStart === "number" && typeof gEnd === "number" && gEnd > gStart
+          ? { startOffset: gStart, endOffset: gEnd }
+          : self.fieldRanges?.["declaredName"]
+            ? { field: "declaredName" }
+            : { startOffset: self.startOffset, endOffset: self.endOffset }),
       });
     }
     return null;
   },
   stateTransitionUnreachable: (db: QueryDB, self: SymbolEntry) => {
     if (self.parentId == null) return null;
-    const children = db.childrenOf(self.parentId);
-    const stateSiblings = children.filter(
-      (c) => c.ruleName === "StateUsage" || c.ruleName === "ExhibitStateUsage" || c.ruleName === "StateDefinition",
-    );
-    const transSiblings = children.filter((c) => c.ruleName === "TransitionUsage");
-    if (stateSiblings.length < 2 || transSiblings.length === 0) return null;
-
+    const stateSiblings = db
+      .childrenOf(self.parentId)
+      .filter(
+        (c) => c.ruleName === "StateUsage" || c.ruleName === "ExhibitStateUsage" || c.ruleName === "StateDefinition",
+      );
     const validStateNames = new Set(stateSiblings.map((s) => s.name).filter(Boolean));
     const myComp = parseTransitionComponents(db, self);
     if (!myComp.source || !validStateNames.has(myComp.source)) return null;
 
-    // Determine initial state(s): explicit `entry; then <state>;` in parent, or the first declared state
-    const parentSym = db.symbol(self.parentId);
-    const parentText = parentSym ? db.cstText(parentSym.startOffset, parentSym.endOffset, parentSym) || "" : "";
-    const parentLeaves = parentText ? collectCstLeaves(parseSysmlSource(parentText)) : [];
-    let entryTarget: string | undefined;
-    for (let i = 0; i < parentLeaves.length; i++) {
-      if (parentLeaves[i]!.text !== "entry") continue;
-      let k = i + 1;
-      if (parentLeaves[k]?.text === ";") k++;
-      if (parentLeaves[k]?.text === "then" && isSysmlIdentLeaf(parentLeaves[k + 1]?.text)) {
-        entryTarget = parentLeaves[k + 1]!.text;
-        break;
-      }
-    }
-    const initialStates = new Set<string>();
-    if (entryTarget && validStateNames.has(entryTarget)) {
-      initialStates.add(entryTarget);
-    } else if (stateSiblings[0]?.name) {
-      initialStates.add(stateSiblings[0].name);
-    }
-
-    // Build reachability graph over non-dead transitions
-    const adj = new Map<string, string[]>();
-    for (const tr of transSiblings) {
-      const c = parseTransitionComponents(db, tr);
-      if (!c.source || !c.target) continue;
-      if (c.guard && isGuardTautologicallyFalse(db, tr, c.guard)) continue;
-      let list = adj.get(c.source);
-      if (!list) {
-        list = [];
-        adj.set(c.source, list);
-      }
-      list.push(c.target);
-    }
-
-    const reachable = new Set<string>(initialStates);
-    const queue = Array.from(initialStates);
-    while (queue.length > 0) {
-      const curr = queue.shift()!;
-      for (const next of adj.get(curr) || []) {
-        if (!reachable.has(next)) {
-          reachable.add(next);
-          queue.push(next);
-        }
-      }
-    }
+    const reachable = getReachableStatesForParent(db, self.parentId);
+    if (!reachable) return null;
 
     if (!reachable.has(myComp.source)) {
       const transName =
         self.name && self.name !== "<anonymous>" && self.name !== "TransitionUsage" ? self.name : "transition";
       return warning(SysML2ErrorCode.STATE_TRANSITION_UNREACHABLE.message(transName, myComp.source), {
         code: SysML2ErrorCode.STATE_TRANSITION_UNREACHABLE.code,
-        field: "declaredName",
-        startOffset: self.startOffset,
-        endOffset: self.endOffset,
+        ...(self.fieldRanges?.["declaredName"]
+          ? { field: "declaredName" }
+          : { startOffset: self.startOffset, endOffset: self.endOffset }),
       });
     }
     return null;

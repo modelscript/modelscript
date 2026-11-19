@@ -830,4 +830,187 @@ end module ctrl_mod
     assert.strictEqual(resizeRes.edits[0]!.range.start.line, 1);
     assert.strictEqual(resizeRes.edits[0]!.newText, "@layout(x=50, y=60)");
   });
+
+  await t.test("should synthesize OpenSCAD structural edits using scadLanguage diagram mutations", async () => {
+    const { scadLanguage } = await import("@modelscript/scad");
+    const scadUri = "file:///test/bracket.scad";
+    const scadText = "cube([10, 10, 10], center = true);\n";
+
+    const backend = new GenericDSLDiagramBackend({
+      getDocumentText: (u) => (u === scadUri ? scadText : undefined),
+      getDiagramConfig: () => scadLanguage.diagram,
+      layoutStorage,
+    });
+
+    const addRes = await backend.applyEdits({
+      uri: scadUri,
+      seq: 10,
+      actions: [{ type: "addComponent", className: "Cylinder", name: "bore", x: 120, y: 80 }],
+    });
+    assert.ok(addRes.edits.length >= 1, "Expected synthesized SCAD edit");
+    assert.ok(
+      addRes.edits[0]!.newText.includes("translate([120, 80, 0]) cylinder("),
+      `Unexpected SCAD node text: ${addRes.edits[0]!.newText}`,
+    );
+    assert.ok(addRes.sidecarContent !== undefined, "Expected sidecar layout update");
+  });
+
+  await t.test("should insert URDF <link> and <joint> inside </robot> via urdfLanguage.diagram mutations", async () => {
+    const { urdfLanguage } = await import("@modelscript/urdf");
+    const urdfUri = "file:///test/arm.urdf";
+    const urdfText = `<robot name="arm">\n  <link name="base"/>\n</robot>\n`;
+
+    const backend = new GenericDSLDiagramBackend({
+      getDocumentText: (u) => (u === urdfUri ? urdfText : undefined),
+      getDiagramConfig: () => urdfLanguage.diagram,
+      layoutStorage,
+    });
+
+    const addRes = await backend.applyEdits({
+      uri: urdfUri,
+      seq: 11,
+      actions: [
+        { type: "addComponent", className: "Link", name: "wrist", x: 100, y: 120 },
+        { type: "connect", source: "base", target: "wrist" },
+      ],
+    });
+    assert.strictEqual(addRes.edits.length, 2, "Expected both link and joint XML edits");
+    assert.ok(addRes.edits[0]!.newText.includes('<link name="wrist">'));
+    assert.strictEqual(addRes.edits[0]!.range.start.line, 2, "Should insert right before </robot>");
+    assert.ok(addRes.edits[1]!.newText.includes('<joint name="base_to_wrist"'));
+  });
+
+  await t.test("should insert ReqIF <SPEC-OBJECT> and <SPEC-RELATION> inside XML container tags", async () => {
+    const { reqifLanguage } = await import("@modelscript/reqif");
+    const reqUri = "file:///test/reqs.reqif";
+    const reqText = [
+      "<REQ-IF>",
+      "  <CORE-CONTENT><REQ-IF-CONTENT>",
+      "    <SPEC-OBJECTS>",
+      '      <SPEC-OBJECT IDENTIFIER="R1" LONG-NAME="Req 1"/>',
+      "    </SPEC-OBJECTS>",
+      "    <SPEC-RELATIONS>",
+      "    </SPEC-RELATIONS>",
+      "  </REQ-IF-CONTENT></CORE-CONTENT>",
+      "</REQ-IF>",
+    ].join("\n");
+
+    const backend = new GenericDSLDiagramBackend({
+      getDocumentText: (u) => (u === reqUri ? reqText : undefined),
+      getDiagramConfig: () => reqifLanguage.diagram,
+      layoutStorage,
+    });
+
+    const editRes = await backend.applyEdits({
+      uri: reqUri,
+      seq: 12,
+      actions: [
+        { type: "addComponent", className: "Requirement", name: "R2", x: 200, y: 50 },
+        { type: "connect", source: "R1", target: "R2" },
+      ],
+    });
+    assert.strictEqual(editRes.edits.length, 2);
+    assert.ok(editRes.edits[0]!.newText.includes('<SPEC-OBJECT IDENTIFIER="R2"'));
+    assert.strictEqual(editRes.edits[0]!.range.start.line, 4, "Should insert inside </SPEC-OBJECTS>");
+    assert.ok(editRes.edits[1]!.newText.includes('<SPEC-RELATION IDENTIFIER="R1_to_R2"'));
+    assert.strictEqual(editRes.edits[1]!.range.start.line, 6, "Should insert inside </SPEC-RELATIONS>");
+  });
+
+  await t.test(
+    "should synthesize structural edits for autosar, opendrive, adams, and simpack via diagram.mutations",
+    async () => {
+      const { autosarLanguage } = await import("@modelscript/autosar");
+      const { opendriveLanguage } = await import("@modelscript/opendrive");
+      const { adamsLanguage } = await import("@modelscript/adams");
+      const { simpackLanguage } = await import("@modelscript/simpack");
+
+      // 1. AUTOSAR (.arxml)
+      const arUri = "file:///test/ecu.arxml";
+      const arText = [
+        "<AUTOSAR><AR-PACKAGES><AR-PACKAGE><SHORT-NAME>App</SHORT-NAME>",
+        "  <ELEMENTS>",
+        "  </ELEMENTS>",
+        "  <CONNECTORS>",
+        "  </CONNECTORS>",
+        "</AR-PACKAGE></AR-PACKAGES></AUTOSAR>",
+      ].join("\n");
+      const arBackend = new GenericDSLDiagramBackend({
+        getDocumentText: (u) => (u === arUri ? arText : undefined),
+        getDiagramConfig: () => autosarLanguage.diagram,
+        layoutStorage,
+      });
+      const arRes = await arBackend.applyEdits({
+        uri: arUri,
+        seq: 13,
+        actions: [
+          { type: "addComponent", className: "SWC", name: "Ctrl", x: 50, y: 50 },
+          { type: "connect", source: "Sensor", target: "Ctrl" },
+        ],
+      });
+      assert.strictEqual(arRes.edits.length, 2);
+      assert.ok(arRes.edits[0]!.newText.includes("<APPLICATION-SW-COMPONENT-TYPE><SHORT-NAME>Ctrl</SHORT-NAME>"));
+      assert.ok(arRes.edits[1]!.newText.includes("<ASSEMBLY-SW-CONNECTOR><SHORT-NAME>Sensor_to_Ctrl</SHORT-NAME>"));
+
+      // 2. OpenDRIVE (.xodr)
+      const xodrUri = "file:///test/road.xodr";
+      const xodrText = `<OpenDRIVE>\n  <header revMajor="1" revMinor="7"/>\n</OpenDRIVE>\n`;
+      const xodrBackend = new GenericDSLDiagramBackend({
+        getDocumentText: (u) => (u === xodrUri ? xodrText : undefined),
+        getDiagramConfig: () => opendriveLanguage.diagram,
+        layoutStorage,
+      });
+      const xodrRes = await xodrBackend.applyEdits({
+        uri: xodrUri,
+        seq: 14,
+        actions: [
+          { type: "addComponent", className: "Road", name: "R_2", x: 180, y: 40 },
+          { type: "connect", source: "R_1", target: "R_2" },
+        ],
+      });
+      assert.strictEqual(xodrRes.edits.length, 2);
+      assert.ok(xodrRes.edits[0]!.newText.includes('<road name="R_2"'));
+      assert.ok(xodrRes.edits[1]!.newText.includes('<junction id="R_1_to_R_2"'));
+
+      // 3. MSC Adams (.adm) — inserts before trailing END card
+      const admUri = "file:///test/pendulum.adm";
+      const admText = `PART/1, GROUND\nEND\n`;
+      const admBackend = new GenericDSLDiagramBackend({
+        getDocumentText: (u) => (u === admUri ? admText : undefined),
+        getDiagramConfig: () => adamsLanguage.diagram,
+        layoutStorage,
+      });
+      const admRes = await admBackend.applyEdits({
+        uri: admUri,
+        seq: 15,
+        actions: [
+          { type: "addComponent", className: "Part", name: "Body2", x: 100, y: 100 },
+          { type: "connect", source: "1", target: "Body2" },
+        ],
+      });
+      assert.strictEqual(admRes.edits.length, 2);
+      assert.ok(admRes.edits[0]!.newText.includes("PART/Body2, MASS = 1.0"));
+      assert.strictEqual(admRes.edits[0]!.range.start.line, 1, "Should insert Adams card before END");
+      assert.ok(admRes.edits[1]!.newText.includes("JOINT/1_to_Body2, REVOLUTE, I = 1, J = Body2"));
+
+      // 4. SIMPACK (.spck/.sim)
+      const simUri = "file:///test/bogie.sim";
+      const simText = `$# Bogie\nbody frame frame 100.0 1.0 1.0 1.0\n`;
+      const simBackend = new GenericDSLDiagramBackend({
+        getDocumentText: (u) => (u === simUri ? simText : undefined),
+        getDiagramConfig: () => simpackLanguage.diagram,
+        layoutStorage,
+      });
+      const simRes = await simBackend.applyEdits({
+        uri: simUri,
+        seq: 16,
+        actions: [
+          { type: "addComponent", className: "Body", name: "wheelset", x: 220, y: 60 },
+          { type: "connect", source: "frame", target: "wheelset" },
+        ],
+      });
+      assert.strictEqual(simRes.edits.length, 2);
+      assert.ok(simRes.edits[0]!.newText.includes("body wheelset wheelset 1.0"));
+      assert.ok(simRes.edits[1]!.newText.includes("joint frame_to_wheelset revolute frame wheelset"));
+    },
+  );
 });

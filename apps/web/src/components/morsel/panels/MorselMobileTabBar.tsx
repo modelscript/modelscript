@@ -173,7 +173,7 @@ export const MorselMobileTabBar: React.FC<MorselMobileTabBarProps> = ({
     <>
       <div
         role="tablist"
-        aria-label="Morsel view"
+        aria-label="Ansatz view"
         style={{
           display: "flex",
           alignItems: "center",

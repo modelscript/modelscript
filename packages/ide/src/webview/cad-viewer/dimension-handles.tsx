@@ -84,9 +84,9 @@ export function DimensionHandles({ component, onCommitDimension, visible = true 
         },
         {
           axisIndex: 1,
-          position: [0, h / 2, 0] as [number, number, number],
-          direction: new THREE.Vector3(0, 1, 0),
-          rotation: [0, 0, 0] as [number, number, number],
+          position: [0, 0, h / 2] as [number, number, number],
+          direction: new THREE.Vector3(0, 0, 1),
+          rotation: [Math.PI / 2, 0, 0] as [number, number, number],
           label: "Height",
           currentVal: h,
           primitiveType: "cylinder",

@@ -26,6 +26,21 @@ export const powerFactoryLanguage = language({
   lsp: {
     fileExtensions: [".dz", ".pfd", ".dsl"],
   },
+  ui: {
+    panels: [
+      {
+        id: "powerfactoryEditor",
+        viewType: "modelscript.powerfactoryEditor",
+        title: "DIgSILENT PowerFactory Grid Studio",
+        shortTitle: "PowerFactory",
+        selector: ["*.dz", "*.pfd", "*.dsl"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/PowerFactoryPanel.tsx",
+        artifactViewTypes: ["powerfactory", "pfd"],
+      },
+    ],
+  },
 
   actions: [
     {

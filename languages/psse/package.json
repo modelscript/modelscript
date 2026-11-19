@@ -40,6 +40,10 @@
     "./lsp": {
       "types": "./dist/src/lsp.d.ts",
       "default": "./dist/src/lsp.js"
+    },
+    "./ui": {
+      "types": "./dist/src/ui/PssePanel.d.ts",
+      "default": "./dist/src/ui/PssePanel.js"
     }
   },
   "files": [
@@ -55,6 +59,7 @@
     "build:wasm": "node scripts/build-wasm.js",
     "clean": "rimraf dist src-gen as-gen *.wasm",
     "lint": "eslint src tests --no-warn-ignored",
+    "playground": "npx tsx ../../scripts/language-playground.ts .",
     "sync:schemas": "tsx scripts/sync-dyr-schemas.ts",
     "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit"
@@ -66,8 +71,25 @@
     "@modelscript/simulate": "*"
   },
   "devDependencies": {
+    "@types/react": "^19.0.10",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@modelscript/design-tokens": "*",
+    "@modelscript/diagram": "*",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@modelscript/design-tokens": {
+      "optional": true
+    },
+    "@modelscript/diagram": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   },
   "modelscript": {
     "tier": "beta",

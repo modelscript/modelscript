@@ -1870,7 +1870,7 @@ export class ModelicaFlattener {
         }
       }
     }
-    this.bodySnapshot = dae;
+    this.bodySnapshot = typeof (dae as any).clone === "function" ? (dae as any).clone() : dae;
     return dae;
   }
 

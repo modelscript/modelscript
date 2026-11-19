@@ -27,6 +27,21 @@ export const nmodlLanguage = language({
     folding: nmodlGrammar.lsp?.folding,
     outline: nmodlGrammar.lsp?.outline,
   },
+  ui: {
+    panels: [
+      {
+        id: "nmodlEditor",
+        viewType: "modelscript.nmodlEditor",
+        title: "NMODL Ion Channel Electrophysiology Studio",
+        shortTitle: "NMODL",
+        selector: ["*.mod"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/NmodlPanel.tsx",
+        artifactViewTypes: ["nmodl"],
+      },
+    ],
+  },
   indexing: {
     canIndex: (uri, text) =>
       uri.toLowerCase().endsWith(".mod") ||

@@ -50,6 +50,10 @@
     "./wasm-parser": {
       "types": "./src-gen/bindings.d.ts",
       "default": "./src-gen/bindings.js"
+    },
+    "./ui": {
+      "types": "./dist/src/ui/Ieee2800Card.d.ts",
+      "default": "./dist/src/ui/Ieee2800Card.js"
     }
   },
   "files": [
@@ -66,6 +70,7 @@
     "build:wasm": "node scripts/build-wasm.js",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",
+    "playground": "npx tsx ../../scripts/language-playground.ts .",
     "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit"
   },
@@ -75,6 +80,21 @@
     "@modelscript/exchange": "*",
     "@modelscript/fortran": "*",
     "@modelscript/runtime": "*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.10"
+  },
+  "peerDependencies": {
+    "@modelscript/design-tokens": "*",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@modelscript/design-tokens": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   },
   "modelscript": {
     "tier": "beta",

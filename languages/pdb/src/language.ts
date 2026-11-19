@@ -34,6 +34,21 @@ export const pdbLanguage = language({
       dark: "./assets/pdb/icon-dark.png",
     },
   },
+  ui: {
+    panels: [
+      {
+        id: "pdbEditor",
+        viewType: "modelscript.pdbEditor",
+        title: "3D Molecular & Protein Structure Studio",
+        shortTitle: "PDB 3D",
+        selector: ["*.pdb", "*.ent", "*.cif", "*.mmcif"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/PdbPanel.tsx",
+        artifactViewTypes: ["pdb", "mmcif"],
+      },
+    ],
+  },
 
   writeback: (ctx) => {
     const { entry, newValue } = ctx;

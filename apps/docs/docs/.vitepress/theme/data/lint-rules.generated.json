@@ -78,7 +78,7 @@
         "code": "M2005",
         "rule": "identifier-mismatch",
         "severity": "error",
-        "message": "The identifier at start and end are different."
+        "message": "Parse error: The identifier at start and end are different"
       },
       {
         "code": "M2006",
@@ -91,6 +91,12 @@
         "rule": "modifier-class-not-found",
         "severity": "error",
         "message": "In modifier (<modText>), class or component <modName> not found in <<className>>."
+      },
+      {
+        "code": "M2008",
+        "rule": "reserved-builtin-time",
+        "severity": "error",
+        "message": "Identifier time is reserved for the built-in element with the same name."
       },
       {
         "code": "M2011",
@@ -127,6 +133,36 @@
         "rule": "base-class-found-in",
         "severity": "error",
         "message": "<partName> was found in base class <baseName>."
+      },
+      {
+        "code": "M2020",
+        "rule": "import-not-found",
+        "severity": "warning",
+        "message": "Import '<importPath>' in class '<className>' could not be resolved."
+      },
+      {
+        "code": "M2021",
+        "rule": "import-conflict",
+        "severity": "warning",
+        "message": "Conflicting import short name '<shortName>' in class '<className>' (Modelica specification §13.2.1.1)."
+      },
+      {
+        "code": "M2022",
+        "rule": "encapsulated-lookup-violation",
+        "severity": "warning",
+        "message": "Encapsulated lookup violation: '<targetName>' is referenced inside '<encapClassName>' without being imported or global-rooted (Modelica specification §5.3.1)."
+      },
+      {
+        "code": "M2023",
+        "rule": "within-mismatch",
+        "severity": "warning",
+        "message": "'within <withinPkg>;' in '<filePath>' does not match package structure (<reason>)."
+      },
+      {
+        "code": "M2024",
+        "rule": "unused-import",
+        "severity": "info",
+        "message": "Import '<shortName>' in class '<className>' is unused."
       },
       {
         "code": "M2038",
@@ -307,6 +343,24 @@
         "rule": "function-return-type-mismatch",
         "severity": "error",
         "message": "Function '<funcName>' returns type '<actualType>' but '<expectedType>' expected."
+      },
+      {
+        "code": "M3022",
+        "rule": "unit-mismatch-binding",
+        "severity": "warning",
+        "message": "Unit mismatch in component binding '<bindingText>'."
+      },
+      {
+        "code": "M3023",
+        "rule": "real-equality-comparison",
+        "severity": "warning",
+        "message": "Comparing Real expressions in '<expr>' with '<op>' outside a function is discouraged per Modelica specification §3.5."
+      },
+      {
+        "code": "M3024",
+        "rule": "incompatible-display-unit",
+        "severity": "warning",
+        "message": "<detail>."
       },
       {
         "code": "M4000",
@@ -549,12 +603,6 @@
         "message": "Following variable is discrete, but does not appear on the LHS of a when-statement: '<varName>'."
       },
       {
-        "code": "M4040",
-        "rule": "protected-element-modification",
-        "severity": "error",
-        "message": "Protected element '<varName>' may not be modified, got '<modText>'."
-      },
-      {
         "code": "M4041",
         "rule": "negative-dimension",
         "severity": "error",
@@ -767,7 +815,7 @@
       {
         "code": "M4077",
         "rule": "loop-termination-inconclusive",
-        "severity": "error",
+        "severity": "warning",
         "message": "Loop over '<loopVar>' with condition '<condition>' cannot be proven to terminate."
       },
       {
@@ -816,7 +864,7 @@
         "code": "M4091",
         "rule": "break-outside-loop",
         "severity": "error",
-        "message": "'break' must be inside a for or while loop, or enclose a connect equation."
+        "message": "'break' may only be used in a while- or for-loop."
       },
       {
         "code": "M4092",
@@ -831,22 +879,10 @@
         "message": "Unused input variable <varName> in function <funcName>."
       },
       {
-        "code": "M4094",
-        "rule": "cardinality-in-condition-only",
-        "severity": "error",
-        "message": "cardinality may only be used in the condition of an if-statement or if-equation."
-      },
-      {
         "code": "M4095",
         "rule": "conditional-expression-not-evaluated",
         "severity": "error",
         "message": "The conditional expression <condText> could not be evaluated."
-      },
-      {
-        "code": "M4096",
-        "rule": "dimensions-must-be-parameter",
-        "severity": "error",
-        "message": "Dimensions must be parameter or constant expression (in <callStr>)."
       },
       {
         "code": "M4097",
@@ -945,12 +981,6 @@
         "message": "External object <className> is missing a destructor."
       },
       {
-        "code": "M4114",
-        "rule": "invalid-connector-variability",
-        "severity": "error",
-        "message": "Invalid variability <variability> on connector '<compName>'."
-      },
-      {
         "code": "M4115",
         "rule": "external-object-not-replaceable",
         "severity": "error",
@@ -973,12 +1003,6 @@
         "rule": "operator-constructor-output-type",
         "severity": "error",
         "message": "Output '<outputName>' in operator <recordName>.'constructor' must be of type <recordName>, got type <actualType>."
-      },
-      {
-        "code": "M4119",
-        "rule": "variable-in-package-not-constant",
-        "severity": "error",
-        "message": "Variable <varName> in package <pkgName> is not constant."
       },
       {
         "code": "M4120",
@@ -1025,7 +1049,7 @@
       {
         "code": "M4130",
         "rule": "class-missing-description",
-        "severity": "warning",
+        "severity": "info",
         "message": "Class '<className>' is missing a description string."
       },
       {
@@ -1049,13 +1073,13 @@
       {
         "code": "M4134",
         "rule": "broken-modelica-uri",
-        "severity": "error",
+        "severity": "warning",
         "message": "Broken 'modelica://' reference: '<uri>' does not resolve to an existing class or model."
       },
       {
         "code": "M4135",
         "rule": "resource-missing",
-        "severity": "error",
+        "severity": "warning",
         "message": "Referenced resource file '<res>' does not exist on disk."
       },
       {
@@ -1087,6 +1111,60 @@
         "rule": "tgg-conformance-unresolved-target",
         "severity": "error",
         "message": "Counterpart element referenced by '<sourceName>' could not be resolved in '<targetLang>'."
+      },
+      {
+        "code": "M4146",
+        "rule": "parameter-no-value",
+        "severity": "warning",
+        "message": "Parameter '<paramName>' has no value and relies on default start value during initialization."
+      },
+      {
+        "code": "M4147",
+        "rule": "obsolete-class-usage",
+        "severity": "warning",
+        "message": "Class '<className>' is marked obsolete: '<reason>'."
+      },
+      {
+        "code": "M4148",
+        "rule": "connector-unbalanced",
+        "severity": "warning",
+        "message": "Connector '<className>' is unbalanced: <potCount> potential variable(s) vs <flowCount> flow variable(s) (Modelica specification §9.3.1)."
+      },
+      {
+        "code": "M4149",
+        "rule": "connect-two-outputs",
+        "severity": "warning",
+        "message": "Connected endpoints '<lhs>' and '<rhs>' are both declared with 'output' causality (Modelica specification §9.3)."
+      },
+      {
+        "code": "M4150",
+        "rule": "derivative-annotation-mismatch",
+        "severity": "warning",
+        "message": "Derivative function '<derivName>' referenced by annotation on '<fnName>' could not be resolved as a valid function."
+      },
+      {
+        "code": "M4151",
+        "rule": "unconnected-input",
+        "severity": "warning",
+        "message": "Input '<inputPath>' on component '<compName>' has no connection or modification binding."
+      },
+      {
+        "code": "M4152",
+        "rule": "experiment-annotation-missing",
+        "severity": "info",
+        "message": "Example class '<className>' is missing an 'experiment(...)' annotation."
+      },
+      {
+        "code": "M4153",
+        "rule": "missing-uses-annotation",
+        "severity": "warning",
+        "message": "Library package '<pkgName>' references external library '<externalLib>' without declaring 'uses(<externalLib>(...))' in its annotation."
+      },
+      {
+        "code": "M4154",
+        "rule": "locally-unbalanced-class",
+        "severity": "warning",
+        "message": "The <classKind> '<name>' is locally unbalanced: <localEqs> local equation(s) and <localVars> local unknown variable(s) (Modelica specification §4.8)."
       },
       {
         "code": "M5001",
@@ -1365,6 +1443,48 @@
         "message": "Operator 'cardinality()' is deprecated in Modelica 3.x; use conditional components instead."
       },
       {
+        "code": "M5051",
+        "rule": "der-of-non-real",
+        "severity": "warning",
+        "message": "Argument '<arg>' of 'der(...)' must have type Real."
+      },
+      {
+        "code": "M5052",
+        "rule": "stateselect-always-not-state",
+        "severity": "warning",
+        "message": "Variable '<varName>' declares 'stateSelect = StateSelect.always' but is not selected or differentiated as a continuous state."
+      },
+      {
+        "code": "M5101",
+        "rule": "formal-algorithm-proof",
+        "severity": "error",
+        "message": "<detail>."
+      },
+      {
+        "code": "M5102",
+        "rule": "sysml-constraint-violation",
+        "severity": "error",
+        "message": "<detail>."
+      },
+      {
+        "code": "M5103",
+        "rule": "dae-invariant-warning",
+        "severity": "warning",
+        "message": "<detail>."
+      },
+      {
+        "code": "M5104",
+        "rule": "S5020",
+        "severity": "error",
+        "message": "<detail>."
+      },
+      {
+        "code": "M5105",
+        "rule": "S5021",
+        "severity": "warning",
+        "message": "<detail>."
+      },
+      {
         "code": "M6001",
         "rule": "mixed-clock-domains",
         "severity": "error",
@@ -1374,7 +1494,7 @@
         "code": "M6002",
         "rule": "sample-factor-not-positive",
         "severity": "error",
-        "message": "Sub-clock factor must be a positive integer."
+        "message": "Sub-clock factor must be a non-negative integer (or 0 for inferred factor)."
       },
       {
         "code": "M6003",
@@ -1429,6 +1549,312 @@
         "rule": "interval-invalid-argument",
         "severity": "error",
         "message": "Operator 'interval(<argText>)' cannot be applied to continuous-time 'time' or non-clocked constant/parameter expressions."
+      },
+      {
+        "code": "M7101",
+        "rule": "formal-structurally-singular",
+        "severity": "error",
+        "message": "DAE system '<modelName>' is structurally singular: <detail>."
+      },
+      {
+        "code": "M7102",
+        "rule": "formal-over-determined-subsystem",
+        "severity": "error",
+        "message": "DAE system '<modelName>' has an over-determined subsystem with unmatched equation(s) '<unmatchedEqs>'."
+      },
+      {
+        "code": "M7103",
+        "rule": "formal-high-index-dae",
+        "severity": "warning",
+        "message": "DAE system '<modelName>' has high structural differential index '<indexVal>' (> 1) requiring Pantelides index reduction."
+      },
+      {
+        "code": "M7104",
+        "rule": "formal-state-selection-ambiguous",
+        "severity": "warning",
+        "message": "DAE system '<modelName>' has differential index > 1 with candidate state variables (<candidates>) lacking explicit 'stateSelect' priority."
+      },
+      {
+        "code": "M7105",
+        "rule": "formal-large-algebraic-loop",
+        "severity": "warning",
+        "message": "Coupled algebraic loop of size '<blockSize>' detected involving '<vars>'."
+      },
+      {
+        "code": "M7106",
+        "rule": "formal-numerically-singular-loop",
+        "severity": "error",
+        "message": "Equation block '<blockDesc>' is numerically singular: interval Jacobian '<jacInterval>' contains 0."
+      },
+      {
+        "code": "M7107",
+        "rule": "formal-array-equation-unbalanced",
+        "severity": "error",
+        "message": "Array variable '<arrayName>' has unbalanced equation coverage: <detail>."
+      },
+      {
+        "code": "M7108",
+        "rule": "formal-variable-without-equation",
+        "severity": "warning",
+        "message": "Variable '<varName>' has zero incidence in non-alias equations after alias elimination."
+      },
+      {
+        "code": "M7109",
+        "rule": "formal-alias-cycle-no-source",
+        "severity": "error",
+        "message": "Alias chain cycle in '<modelName>' involving (<cycleVars>) has no grounded source."
+      },
+      {
+        "code": "M7110",
+        "rule": "formal-under-determined-subsystem",
+        "severity": "error",
+        "message": "DAE system '<modelName>' has an under-determined subsystem with unconstrained variable(s) '<unmatchedVars>'."
+      },
+      {
+        "code": "M7111",
+        "rule": "formal-initialization-unbalanced",
+        "severity": "warning",
+        "message": "Initialization system of '<modelName>' is unbalanced: <detail>."
+      },
+      {
+        "code": "M7112",
+        "rule": "formal-iteration-variable-no-start",
+        "severity": "warning",
+        "message": "Tearing iteration variable '<varName>' has no explicit start attribute and defaults to 0.0."
+      },
+      {
+        "code": "M7201",
+        "rule": "formal-possible-division-by-zero",
+        "severity": "error",
+        "message": "Possible division by zero in '<expr>' (denominator interval '<intervalStr>' contains 0)."
+      },
+      {
+        "code": "M7202",
+        "rule": "formal-sqrt-of-negative",
+        "severity": "error",
+        "message": "Domain error in '<expr>': argument to 'sqrt' reaches negative values ('<intervalStr>')."
+      },
+      {
+        "code": "M7203",
+        "rule": "formal-log-of-nonpositive",
+        "severity": "error",
+        "message": "Domain error in '<expr>': argument to logarithm reaches non-positive values ('<intervalStr>')."
+      },
+      {
+        "code": "M7204",
+        "rule": "formal-inverse-trig-domain",
+        "severity": "error",
+        "message": "Domain error in '<expr>': argument to inverse trigonometric/hyperbolic function leaves its real domain ('<intervalStr>')."
+      },
+      {
+        "code": "M7205",
+        "rule": "formal-pow-domain-violation",
+        "severity": "error",
+        "message": "Domain error in '<expr>': power base reaches negative or zero values ('<intervalStr>')."
+      },
+      {
+        "code": "M7206",
+        "rule": "formal-array-index-out-of-bounds",
+        "severity": "error",
+        "message": "Array index in '<expr>' may be out of bounds (<detail>)."
+      },
+      {
+        "code": "M7207",
+        "rule": "formal-integer-overflow",
+        "severity": "error",
+        "message": "32-bit signed Integer overflow hazard in '<expr>' (reachable interval '<intervalStr>' exceeds [-2147483648, 2147483647])."
+      },
+      {
+        "code": "M7208",
+        "rule": "formal-binding-outside-min-max",
+        "severity": "error",
+        "message": "Binding value '<valueStr>' for '<varName>' lies outside declared bounds '<boundsStr>'."
+      },
+      {
+        "code": "M7209",
+        "rule": "formal-start-outside-min-max",
+        "severity": "warning",
+        "message": "Start attribute '<startStr>' for '<varName>' lies outside declared bounds '<boundsStr>'."
+      },
+      {
+        "code": "M7210",
+        "rule": "formal-parameter-bound-contradiction",
+        "severity": "error",
+        "message": "Relational parameter constraints in '<modelName>' are infeasible: <detail>."
+      },
+      {
+        "code": "M7211",
+        "rule": "formal-nominal-magnitude-mismatch",
+        "severity": "warning",
+        "message": "Reachable range '<intervalStr>' for '<varName>' differs by more than 10^3 from declared nominal '<nominalStr>'."
+      },
+      {
+        "code": "M7212",
+        "rule": "formal-loop-termination-unproven",
+        "severity": "warning",
+        "message": "Loop 'while <loopCond>' lacks a provably decreasing loop variant or explicit 'break' exit."
+      },
+      {
+        "code": "M7213",
+        "rule": "formal-variable-bound-violation-reachable",
+        "severity": "warning",
+        "message": "Reachable interval '<intervalStr>' for '<varName>' violates declared bounds '<boundsStr>'."
+      },
+      {
+        "code": "M7301",
+        "rule": "formal-assert-always-fails",
+        "severity": "error",
+        "message": "Assert condition '<cond>' is provably always false ('<assertMsg>')."
+      },
+      {
+        "code": "M7302",
+        "rule": "formal-assert-trivially-true",
+        "severity": "info",
+        "message": "Assert condition '<cond>' is provably always true over declared parameter and variable bounds."
+      },
+      {
+        "code": "M7303",
+        "rule": "formal-dead-if-branch",
+        "severity": "warning",
+        "message": "Conditional branch guard '<cond>' is unsatisfiable under declared bounds."
+      },
+      {
+        "code": "M7304",
+        "rule": "formal-when-condition-never-true",
+        "severity": "warning",
+        "message": "Event condition '<cond>' in 'when' clause is unsatisfiable under declared bounds."
+      },
+      {
+        "code": "M7305",
+        "rule": "formal-shadowed-elseif-guard",
+        "severity": "warning",
+        "message": "Branch guard '<cond>' is shadowed by earlier condition '<earlierCond>' and cannot execute."
+      },
+      {
+        "code": "M7306",
+        "rule": "formal-state-machine-guard-overlap",
+        "severity": "warning",
+        "message": "Transitions from state '<fromState>' to '<to1>' and '<to2>' with equal priority '<prio>' have potentially overlapping guards."
+      },
+      {
+        "code": "M7307",
+        "rule": "formal-state-machine-deadlock",
+        "severity": "warning",
+        "message": "State '<stateName>' has outgoing transition(s) whose guards are all unsatisfiable under declared bounds."
+      },
+      {
+        "code": "M7308",
+        "rule": "formal-branch-domain-without-noevent",
+        "severity": "warning",
+        "message": "Conditional expression '<expr>' relies on event-generating guard '<cond>' without 'noEvent(...)' to prevent domain violations during event iteration."
+      },
+      {
+        "code": "M7401",
+        "rule": "formal-zeno-chattering",
+        "severity": "error",
+        "message": "Hybrid Zeno chattering hazard: <detail>."
+      },
+      {
+        "code": "M7402",
+        "rule": "formal-nondeterministic-mode-switch",
+        "severity": "warning",
+        "message": "Nondeterministic hybrid mode switch: <detail>."
+      },
+      {
+        "code": "M7403",
+        "rule": "formal-reinit-discontinuity",
+        "severity": "warning",
+        "message": "Continuous state '<varName>' exhibits discrete jump '<jumpStr>' across hybrid when-event."
+      },
+      {
+        "code": "M7404",
+        "rule": "formal-sliding-mode-chattering",
+        "severity": "warning",
+        "message": "Sliding-mode chattering hazard near switching surface '<guardExpr>' with root crossing enclosed in '<windowStr>'."
+      },
+      {
+        "code": "M7501",
+        "rule": "formal-assert-violable-discrete",
+        "severity": "error",
+        "message": "Discrete assert '<cond>' is violable within <depth> step(s) (IC3 bounded counterexample)."
+      },
+      {
+        "code": "M7502",
+        "rule": "formal-clocked-invariant-proven",
+        "severity": "info",
+        "message": "Discrete invariant '<invExpr>' is inductively proven (<detail>)."
+      },
+      {
+        "code": "M7503",
+        "rule": "formal-unreachable-state-machine-state",
+        "severity": "warning",
+        "message": "State machine state '<stateName>' is provably unreachable from initial state '<initialState>' (IC3 inductive proof)."
+      },
+      {
+        "code": "M7504",
+        "rule": "formal-function-postcondition-violation",
+        "severity": "error",
+        "message": "Function '<fnName>' can violate postcondition '<ensuresClause>': <detail>."
+      },
+      {
+        "code": "M7505",
+        "rule": "formal-function-nondeterministic",
+        "severity": "error",
+        "message": "Function '<fnName>' violates relational property '<propertyName>': <detail>."
+      },
+      {
+        "code": "M7601",
+        "rule": "formal-physical-bound-flowpipe",
+        "severity": "error",
+        "message": "Validated continuous reachability tube proves physical bound breach for '<varName>': '<valueStr>' violates '<limitStr>' within t in '[0, <timeStr>]'."
+      },
+      {
+        "code": "M7602",
+        "rule": "formal-barrier-certificate-not-found",
+        "severity": "info",
+        "message": "Heuristic quadratic SOS barrier certificate not found for '<modelName>': <detail>."
+      },
+      {
+        "code": "M7603",
+        "rule": "formal-requirement-stl-violated",
+        "severity": "error",
+        "message": "STL requirement '<formulaText>' violated for '<varName>' (robustness = <rhoStr> at t = <timeStr>s)."
+      },
+      {
+        "code": "M7604",
+        "rule": "formal-sysml-requirement-unsatisfiable",
+        "severity": "error",
+        "message": "SysML requirement '<reqName>' is unsatisfiable under declared model parameter/variable bounds: <detail>."
+      },
+      {
+        "code": "M7605",
+        "rule": "formal-polyglot-parameter-drift",
+        "severity": "warning",
+        "message": "Polyglot parameter '<paramName>' on '<componentName>' drifted across models: <detail>."
+      },
+      {
+        "code": "M7701",
+        "rule": "formal-redundant-equation",
+        "severity": "warning",
+        "message": "Equation '<eqText>' is algebraically equivalent to '<otherEqText>' after E-graph normalization."
+      },
+      {
+        "code": "M7702",
+        "rule": "formal-equation-tautology",
+        "severity": "warning",
+        "message": "Equation '<eqText>' simplifies to the trivial identity '0 = 0' and adds no constraint."
+      },
+      {
+        "code": "M7703",
+        "rule": "formal-equation-contradiction",
+        "severity": "error",
+        "message": "Equation '<eqText>' simplifies to an inconsistent constant residual '<residual> = 0'."
+      },
+      {
+        "code": "M7704",
+        "rule": "formal-dimension-mismatch-inferred",
+        "severity": "warning",
+        "message": "Inferred physical dimension mismatch in '<contextExpr>': '<lhsDim>' vs '<rhsDim>'."
       }
     ]
   },
@@ -1591,6 +2017,36 @@
         "message": "Transition state '<stateName>' could not be resolved in enclosing state machine."
       },
       {
+        "code": "S2007",
+        "rule": "unresolved-redefinition-or-subsetting",
+        "severity": "error",
+        "message": "Unresolved <kind> target '<target>' in enclosing or inherited scope."
+      },
+      {
+        "code": "S2009",
+        "rule": "visibility-access-violation",
+        "severity": "error",
+        "message": "Cannot access <visibility> member '<name>' of '<owner>' from this scope."
+      },
+      {
+        "code": "S2010",
+        "rule": "top-level-import-not-private",
+        "severity": "warning",
+        "message": "Top-level import '<pkg>' should be declared 'private'."
+      },
+      {
+        "code": "S2011",
+        "rule": "inherited-member-shadowing",
+        "severity": "warning",
+        "message": "Member '<name>' shadows inherited feature from '<baseName>' without ':>>' ('redefines')."
+      },
+      {
+        "code": "S2012",
+        "rule": "unused-import-or-private-member",
+        "severity": "info",
+        "message": "Unused <kind> '<name>' is never referenced."
+      },
+      {
         "code": "S3001",
         "rule": "type-mismatch",
         "severity": "error",
@@ -1643,6 +2099,60 @@
         "rule": "binding-connector-type-mismatch",
         "severity": "error",
         "message": "Binding connector type mismatch between '<sourceName>' (<sourceType>) and '<targetName>' (<targetType>)."
+      },
+      {
+        "code": "S3010",
+        "rule": "usage-definition-kind-mismatch",
+        "severity": "error",
+        "message": "Usage '<usageName>' (<usageKind>) cannot be typed by '<actualType>'; expected <expectedKind>."
+      },
+      {
+        "code": "S3011",
+        "rule": "disjoint-classifier-specialization",
+        "severity": "error",
+        "message": "'<subName>' (<subKind>) cannot specialize disjoint classifier '<superName>' (<superKind>)."
+      },
+      {
+        "code": "S3012",
+        "rule": "redefinition-type-not-conforming",
+        "severity": "error",
+        "message": "Feature '<featureName>' type '<subType>' does not conform to specialized feature '<baseFeature>' type '<baseType>'."
+      },
+      {
+        "code": "S3013",
+        "rule": "subsetting-multiplicity-widening",
+        "severity": "warning",
+        "message": "Multiplicity [<subMult>] on '<featureName>' violates conformance with [<baseMult>] on '<baseFeature>'."
+      },
+      {
+        "code": "S3014",
+        "rule": "redefinition-modifier-conformance",
+        "severity": "error",
+        "message": "Specialization modifier conformance violation on '<featureName>': <detail>."
+      },
+      {
+        "code": "S3015",
+        "rule": "invocation-signature-mismatch",
+        "severity": "error",
+        "message": "Invalid invocation of '<callee>': <detail>."
+      },
+      {
+        "code": "S3016",
+        "rule": "trigger-expression-type-mismatch",
+        "severity": "error",
+        "message": "'<construct>' expression expects '<expectedType>', got '<actualType>'."
+      },
+      {
+        "code": "S3017",
+        "rule": "multiplicity-bound-not-natural",
+        "severity": "error",
+        "message": "Multiplicity bound '<boundText>' must evaluate to a non-negative integer ('Natural') or '*'."
+      },
+      {
+        "code": "S3018",
+        "rule": "invalid-cast-or-type-test",
+        "severity": "warning",
+        "message": "Invalid '<op>' expression: '<sourceType>' and '<targetType>' are mutually disjoint types."
       },
       {
         "code": "S4001",
@@ -1723,6 +2233,24 @@
         "message": "Exposed target '<target>' in view '<viewName>' could not be resolved."
       },
       {
+        "code": "S4014",
+        "rule": "variation-variant-misuse",
+        "severity": "error",
+        "message": "Invalid variation/variant usage on '<name>': <detail>."
+      },
+      {
+        "code": "S4015",
+        "rule": "abstract-or-composite-misuse",
+        "severity": "error",
+        "message": "Invalid modifier or composite ownership on '<name>': <detail>."
+      },
+      {
+        "code": "S4016",
+        "rule": "parallel-state-invalid-transition",
+        "severity": "error",
+        "message": "Parallel state '<stateName>' cannot directly own transitions or successions."
+      },
+      {
         "code": "S4017",
         "rule": "unsatisfied-critical-requirement",
         "severity": "warning",
@@ -1739,6 +2267,48 @@
         "rule": "incompatible-flow-dimensions",
         "severity": "error",
         "message": "Flow connection links incompatible physical dimensions ('<sourceFlow>' to '<targetFlow>')."
+      },
+      {
+        "code": "S4020",
+        "rule": "duplicate-singleton-member",
+        "severity": "error",
+        "message": "'<ownerName>' may have at most one '<memberKind>' member."
+      },
+      {
+        "code": "S4021",
+        "rule": "send-to-port-without-via",
+        "severity": "warning",
+        "message": "Sending to port '<portName>' should use 'via <portName>' instead of 'to <portName>'."
+      },
+      {
+        "code": "S4022",
+        "rule": "interface-end-not-port",
+        "severity": "error",
+        "message": "Interface end '<endName>' in '<ifaceName>' must be a port usage."
+      },
+      {
+        "code": "S4023",
+        "rule": "binding-connector-not-binary",
+        "severity": "error",
+        "message": "Binding connector '<name>' must connect exactly two features."
+      },
+      {
+        "code": "S4024",
+        "rule": "incose-requirement-quality",
+        "severity": "info",
+        "message": "Requirement '<reqName>' documentation contains ambiguous or unverified term '<term>' (INCOSE GtWR)."
+      },
+      {
+        "code": "S4025",
+        "rule": "individual-or-portion-misuse",
+        "severity": "error",
+        "message": "Invalid individual/portion usage on '<name>': <detail>."
+      },
+      {
+        "code": "S4026",
+        "rule": "metadata-annotation-invalid",
+        "severity": "error",
+        "message": "Invalid metadata annotation '<metaName>': <detail>."
       },
       {
         "code": "S4080",
@@ -1901,6 +2471,132 @@
         "rule": "standard-table-lookup-missing",
         "severity": "warning",
         "message": "Standard table/calculator lookup '<calcName>' could not be evaluated: <reason>"
+      },
+      {
+        "code": "S6001",
+        "rule": "contract-refinement-violation",
+        "severity": "error",
+        "message": "Behavioral Liskov substitution violated: '<subName>' does not refine contract of '<superName>' (<detail>)."
+      },
+      {
+        "code": "S6002",
+        "rule": "requirement-decomposition-gap",
+        "severity": "warning",
+        "message": "Requirement decomposition gap on '<parentReq>': sub-requirements do not entail parent (<detail>)."
+      },
+      {
+        "code": "S6003",
+        "rule": "vacuous-requirement-assumption",
+        "severity": "warning",
+        "message": "Requirement '<reqName>' is vacuously satisfied because its 'assume' constraints are unsatisfiable (<detail>)."
+      },
+      {
+        "code": "S6004",
+        "rule": "opaque-interface-incompatibility",
+        "severity": "error",
+        "message": "Incompatible port contract between '<sourcePort>' and '<targetPort>': <detail>."
+      },
+      {
+        "code": "S6011",
+        "rule": "zeno-chattering-transition-cycle",
+        "severity": "warning",
+        "message": "Zero-dwell Zeno chattering cycle detected across transitions: <cycleDesc>."
+      },
+      {
+        "code": "S6012",
+        "rule": "parallel-region-write-race",
+        "severity": "error",
+        "message": "Concurrent write race in parallel state '<stateName>': variable '<varName>' written simultaneously by regions '<regA>' and '<regB>'."
+      },
+      {
+        "code": "S6020",
+        "rule": "calc-domain-or-div-zero",
+        "severity": "error",
+        "message": "Abstract interpretation domain violation in '<ownerName>': <detail>."
+      },
+      {
+        "code": "S6021",
+        "rule": "sequence-index-out-of-bounds",
+        "severity": "error",
+        "message": "1-based sequence index <indexDesc> on '<seqName>' is out of bounds (<boundsDesc>)."
+      },
+      {
+        "code": "S6022",
+        "rule": "physical-domain-impossibility",
+        "severity": "error",
+        "message": "Physical domain impossibility on '<featureName>' ('<typeName>'): <detail>."
+      },
+      {
+        "code": "S6030",
+        "rule": "over-or-under-constrained-part",
+        "severity": "warning",
+        "message": "Structural equation imbalance in '<partName>': <detail>."
+      },
+      {
+        "code": "S6031",
+        "rule": "high-index-parametric-constraint",
+        "severity": "warning",
+        "message": "High-index parametric DAE (index <index>) in '<modelName>': <detail>."
+      },
+      {
+        "code": "S6032",
+        "rule": "flow-network-driver-conflict",
+        "severity": "error",
+        "message": "Multiple conflicting 'out' flow drivers (<drivers>) connected to '<targetPort>'."
+      },
+      {
+        "code": "S6033",
+        "rule": "cyber-physical-nyquist-violation",
+        "severity": "warning",
+        "message": "Cyber-physical Nyquist violation on '<controllerName>': sampling rate <fsHz> Hz is below required <minHz> Hz (<detail>)."
+      },
+      {
+        "code": "S6041",
+        "rule": "multiplicity-budget-rollup-violation",
+        "severity": "error",
+        "message": "Multiplicity roll-up violation in '<parentName>': child minimum '<attrName>' sum (<minRollup>) exceeds limit (<limit>)."
+      },
+      {
+        "code": "S6042",
+        "rule": "spatial-envelope-clash-or-protrusion",
+        "severity": "warning",
+        "message": "Spatial envelope violation on '<ownerOrPart>': <detail>."
+      },
+      {
+        "code": "S7001",
+        "rule": "hierarchical-pdr-unsafe-state",
+        "severity": "error",
+        "message": "[IC3/PDR] Unsafe state '<targetState>' in '<smName>' is reachable (<trace>)."
+      },
+      {
+        "code": "S7002",
+        "rule": "asil-single-point-of-failure",
+        "severity": "error",
+        "message": "[FTA/MCS] Safety violation for hazard '<hazardName>': <detail>."
+      },
+      {
+        "code": "S7003",
+        "rule": "probabilistic-requirement-violated",
+        "severity": "error",
+        "message": "[UQ/Chance] Probabilistic requirement '<reqName>' violated: <detail>."
+      },
+      {
+        "code": "S7004",
+        "rule": "mechanical-tolerance-stack-interference",
+        "severity": "warning",
+        "message": "[Tolerance Stack] Assembly chain '<chainName>' violates clearance bounds: <detail>."
+      },
+      {
+        "code": "S7005",
+        "rule": "relational-hyperproperty-violation",
+        "severity": "error",
+        "message": "[2-Safety] Relational hyperproperty violated in '<targetName>': <detail>."
+      },
+      {
+        "code": "S7006",
+        "rule": "continuous-flowpipe-or-barrier-violation",
+        "severity": "error",
+        "message": "[DAE/Barrier] Continuous safety reachability violation in '<modelName>': <detail>."
       }
     ]
   },

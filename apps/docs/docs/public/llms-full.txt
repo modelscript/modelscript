@@ -101,7 +101,7 @@ Large language models struggle with physical engineering when left to guess diff
 
 ## Ready to Get Started?
 
-- **[Installation](./installation.md)** — Explore zero-install Morsel and Studio, or set up the VS Code extension, `msx` CLI, or `@modelscript/mcp` AI agent server.
+- **[Installation](./installation.md)** — Explore zero-install Ansatz and Studio, or set up the VS Code extension, `msx` CLI, or `@modelscript/mcp` AI agent server.
 - **[Getting Started Tutorial](./getting-started.md)** — Build, verify, bind to 3D CAD, simulate, and export your first end-to-end computable digital thread.
 - **[AI Agents & MCP Workflows](./ai-agents.md)** — Connect Claude Code, Cursor, or custom LLM orchestrators to the deterministic compiler and solver loop.
 - **[CI/CD & GitHub Actions](./ci-cd.md)** — Gate pull requests with polyglot linting, SARIF formal verification reports, visual schematic diffs, and FDA/ISO compliance dossiers.
@@ -119,11 +119,11 @@ ModelScript runs from the same WebAssembly compiler core across browsers, deskto
 
 ## For Users & Engineers
 
-### 1. Zero-Install Morsel & Studio
+### 1. Zero-Install Ansatz & Studio
 
 To explore ModelScript without installing anything locally:
 
-- **[Morsel (`/morsel`)](https://ansatz.social/morsel)**: Try curated multi-domain examples, inspect live GLR syntax trees, run stiff DAE simulations, and view rendered schematics directly in your browser tab.
+- **[Ansatz (`/editor`)](https://ansatz.social/editor)**: Try curated multi-domain examples, inspect live GLR syntax trees, run stiff DAE simulations, and view rendered schematics directly in your browser tab.
 - **[Studio (`/studio`)](https://ansatz.social/studio)**: Multi-file workspace explorer, dockable 2D schematic and 3D OpenCASCADE CAD viewports, requirements traceability matrix, and in-browser WebWorker compilation.
 
 ### 2. Command-Line Interface (`msx`)
@@ -961,7 +961,7 @@ end RLC;"
 | `anchor`      | `undefined`    | Target component element ID to visually highlight and auto-center (e.g. `"R1"` or `"chassis"`).                                                |
 | `controls`    | `"none"`       | Set to `"parameters"` to display an interactive live parameter slider ribbon below the model.                                                  |
 | `zoom-mode`   | `"ctrl-wheel"` | Scroll protection mode: `"ctrl-wheel"` (requires Ctrl/⌘ to zoom, preventing iframe page wheel-trapping), `"always"`, or `"click-to-interact"`. |
-| `multi-file`  | `false`        | If set, the watermark pill routes the user to **Studio** instead of Ansatz Morsel.                                                             |
+| `multi-file`  | `false`        | If set, the watermark pill routes the user to **Studio** instead of **Ansatz**.                                                         |
 | `artifact-id` | `undefined`    | Numerical ID of a published artifact on Ansatz.                                                                                                |
 
 ---
@@ -1519,7 +1519,7 @@ For regulated utilities, civil aerospace manufacturers, medical device companies
 
 #### B.1 Single-Container Air-Gapped Intranet Appliance (Recommended for Isolated Enclaves / NERC CIP / Cleanrooms)
 
-Bundles the API server, `@modelscript/ee`, Web SPA (Morsel & Studio), Unified Documentation Portal (`/docs`), and Studio into a single hardened container on port `8080` with zero outbound network dependencies:
+Bundles the API server, `@modelscript/ee`, Web SPA (Ansatz & Studio), Unified Documentation Portal (`/docs`), and Studio into a single hardened container on port `8080` with zero outbound network dependencies:
 
 ```bash
 # 1. On an internet-connected bastion, pull and export the appliance image for offline transfer
@@ -1593,7 +1593,7 @@ curl -s http://localhost:8080/api/v1/compliance/airgap | jq .
 
 ### Scenario C: Official `modelscript.org` & `ansatz.social` Cloud Production Deployment
 
-`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile flagship` or `--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/ansatz/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/morsel`) on `ansatz.social`, alongside Studio (`/studio`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
+`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile flagship` or `--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/ansatz/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/editor`) on `ansatz.social`, alongside Studio (`/studio`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
 
 #### C.1 Initial Server Provisioning (`/opt/modelscript`)
 
@@ -1775,8 +1775,8 @@ CANONICAL URL: https://modelscript.org/ansatz/overview
 While **ModelScript** provides the core command-line toolchain (`msx`), WebAssembly GLR parsers, and linear-memory DAE simulation engine, **Ansatz** serves as the collaborative platform layer. It provides:
 
 1. **A Polyglot Package Registry:** A centralized and federated index for publishing and versioning Modelica, SysML v2, STEP, SBML, and ModelScript libraries with SPDX license auditing and polyglot standard library discovery (`msx stdlib`).
-2. **Federated Engineering Feeds ("Morsels"):** W3C ActivityPub-powered social collaboration where engineers share executable simulation runs across 92 languages, 3D CAD/FEA/CFD snapshots, and schematic diffs across independent nodes.
-3. **Scholarly Citations & Literature Graph (`/references`):** Integrated OpenAlex, Crossref, BibTeX, and RIS bibliographic hub linking peer-reviewed literature (`[@cite_key]`) directly to executable models, parameters, and verification morsels.
+2. **Federated Engineering Feeds:** W3C ActivityPub-powered social collaboration where engineers share reproducible models and simulation runs across 92 languages, 3D CAD/FEA/CFD snapshots, and schematic diffs across independent nodes.
+3. **Scholarly Citations & Literature Graph (`/references`):** Integrated OpenAlex, Crossref, BibTeX, and RIS bibliographic hub linking peer-reviewed literature (`[@cite_key]`) directly to executable models, parameters, and verification cases.
 4. **Personal Activity Git Vault:** Every user account is backed by a cryptographically signed, user-owned Git repository vault that versions posts, model snapshots, citations, and annotations for complete data sovereignty and offline Git portability.
 5. **Cloud HPC Simulation Dispatcher:** An orchestration gateway bridging browser-based design with remote Slurm HPC clusters and continuum CAE solvers.
 6. **Interactive Browser Runtime:** Monaco-powered code editing, WebAssembly client-side simulation, equation-level DAP debugging, SVG schematic layout, and Three.js 3D CAD visualization.
@@ -1791,7 +1791,7 @@ The monorepo maintains a clear boundary between the engine and the platform:
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        Ansatz Platform (apps/)                         │
-│   • apps/web: React 19 SPA (ansatz.social, /morsel, /references)       │
+│   • apps/web: React 19 SPA (ansatz.social, /editor, /references)       │
 │   • apps/api: Express, GraphQL, SPARQL, Git Smart HTTP, ActivityPub   │
 ├────────────────────────────────────────────────────────────────────────┤
 │             Enterprise Edition (ee/ — LicenseRef-Enterprise)           │
@@ -1811,15 +1811,15 @@ The ModelScript engine is designed to be completely headless and can run inside 
 
 ## Platform Surfaces
 
-| Surface                  | Route               | Description                                                                                   |
-| :----------------------- | :------------------ | :-------------------------------------------------------------------------------------------- |
-| **Home & Feeds**         | `/home`, `/explore` | ActivityPub engineering posts, executable simulation morsels, and discussion threads.         |
-| **Ansatz Morsel**        | `/morsel`           | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.        |
-| **Ansatz Studio**        | `/studio`           | Web-native engineering IDE workbench with LSP intelligence and DAP simulation debugger.       |
-| **Scholarly References** | `/references`       | OpenAlex / DOI / BibTeX citation manager and literature-to-model traceability graph.          |
-| **Package Registry**     | `/packages`         | Search, publish, and inspect versioned engineering libraries with dependency trees.           |
-| **Digital Thread**       | `/thread`           | Visual hypergraph explorer tracing requirements and Triple Graph Grammar correspondences.     |
-| **Personal Git Vault**   | `/settings`         | Cloneable, signed Git repository backing all personal morsels, models, and scholarly records. |
+| Surface                  | Route               | Description                                                                                    |
+| :----------------------- | :------------------ | :--------------------------------------------------------------------------------------------- |
+| **Home & Feeds**         | `/home`, `/explore` | ActivityPub engineering posts, reproducible simulation models, and discussion threads.         |
+| **Ansatz**               | `/editor`           | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.         |
+| **Ansatz Studio**        | `/studio`           | Web-native engineering IDE workbench with LSP intelligence and DAP simulation debugger.        |
+| **Scholarly References** | `/references`       | OpenAlex / DOI / BibTeX citation manager and literature-to-model traceability graph.           |
+| **Package Registry**     | `/packages`         | Search, publish, and inspect versioned engineering libraries with dependency trees.            |
+| **Digital Thread**       | `/thread`           | Visual hypergraph explorer tracing requirements and Triple Graph Grammar correspondences.      |
+| **Personal Git Vault**   | `/settings`         | Cloneable, signed Git repository backing all personal models, simulations, and scholarly records. |
 | **Administration**       | `/admin`            | Instance governance, moderation queues, S2S federation policies, and database backups.        |
 | **Setup Wizard**         | `/setup`            | First-boot guided configuration for initializing standalone or enterprise nodes.              |
 
@@ -1895,8 +1895,8 @@ flowchart TD
 
 - **The Problem:** Non-authoring stakeholders—project managers, systems certifiers, contracting officers, and downstream integration teams—are routinely locked out of inspecting engineering models because acquiring a dedicated desktop license seat cannot be justified for read-only evaluation.
 - **The Ansatz Workflow:**
-  1. An author opens or imports an existing model in **Ansatz Morsel** (`/morsel`).
-  2. The entire multi-domain model is encoded into a deterministic, compressed permalink or published as a versioned engineering morsel.
+  1. An author opens or imports an existing model in **Ansatz** (`/editor`).
+  2. The entire multi-domain model is encoded into a deterministic, compressed permalink or published as a versioned engineering model.
   3. The reviewer opens the URL in any standard web browser on Linux, macOS, Windows, or iPadOS.
   4. The model compiles and simulates directly on the client using WebAssembly, exposing interactive parameter sliders, schematic diagrams, 3D CAD viewports, and numerical time-series charts.
 - **Workflows Replaced:**
@@ -1970,7 +1970,7 @@ graph LR
 
     subgraph "Ansatz Platform Architecture"
         Studio["Ansatz Studio (/studio)"]
-        Morsel["Ansatz Morsel (/morsel)"]
+        Editor["Ansatz (/editor)"]
         Registry["Package Registry (/packages)"]
         Thread["Digital Thread (/thread)"]
     end
@@ -1978,7 +1978,7 @@ graph LR
     Dymola -->|WASM DAE & DAP Debugger| Studio
     Cameo -->|SysML v2 Native Engine| Thread
     PSCAD -->|IEEE 2800 CI Gates| Registry
-    Simulink -->|B2B Trajectory Parity| Morsel
+    Simulink -->|B2B Trajectory Parity| Editor
     OLGA -->|Flow Assurance Pre-Flight| Studio
 ```
 
@@ -2027,7 +2027,7 @@ graph LR
 
 To satisfy operational requirements in regulated and defense engineering environments, Ansatz provides specific architectural guarantees:
 
-1. **Client-Side Sandbox Execution:** In Ansatz Morsel, compilation, Salsa dependency resolution, and numerical integration execute inside the client's WebAssembly sandbox. Model source code and equations do not need to be transmitted to remote servers.
+1. **Client-Side Sandbox Execution:** In Ansatz, compilation, Salsa dependency resolution, and numerical integration execute inside the client's WebAssembly sandbox. Model source code and equations do not need to be transmitted to remote servers.
 2. **Cryptographic Data Sovereignty:** Every project repository is backed by standard Git Smart HTTP infrastructure with support for Ed25519 commit verification. Teams retain complete local data ownership and can clone or export full histories at any time.
 3. **Air-Gapped On-Premises Deployment:** Organizations can deploy standalone Ansatz nodes (`ansatz-ce` or `ansatz-ee`) inside sovereign VPCs, Kubernetes clusters, or air-gapped internal intranets with LDAP, SAML/SSO, and Slurm HPC cluster federation.
 
@@ -2036,15 +2036,15 @@ DOCUMENT: ActivityPub Federation
 CANONICAL URL: https://modelscript.org/ansatz/federation
 ================================================================================
 
-# ActivityPub Federation & Engineering Morsels
+# ActivityPub Federation & Engineering Models
 
-Ansatz implements the **W3C ActivityPub** standard (Server-to-Server and Client-to-Server) extended with an engineering namespace (`https://modelscript.org/ns/morsel#`) to enable decentralized collaboration across research labs, universities, and enterprise engineering hubs. Rather than confining models, simulations, and peer reviews to a single centralized silo, independent Ansatz instances federate, exchange executable artifacts, and verify cryptographic proofs across domains.
+Ansatz implements the **W3C ActivityPub** standard (Server-to-Server and Client-to-Server) extended with an engineering namespace (`https://modelscript.org/ns/morsel#` for wire compatibility) to enable decentralized collaboration across research labs, universities, and enterprise engineering hubs. Rather than confining models, simulations, and peer reviews to a single centralized silo, independent Ansatz instances federate, exchange reproducible artifacts, and verify cryptographic proofs across domains.
 
 ---
 
-## 1. What is an Engineering Morsel?
+## 1. What is a Reproducible Engineering Model?
 
-In conventional social networks, posts consist of plain text, raster images, or static video. In Ansatz, posts carry **Morsels**—compact, self-contained, executable engineering payloads embedded directly inside ActivityStreams 2.0 `Note` or `Article` objects:
+In conventional social networks, posts consist of plain text, raster images, or static video. In **Ansatz Network**, posts carry **reproducible models**—compact, self-contained model, simulation, and experiment payloads embedded directly inside ActivityStreams 2.0 `Note` or `Article` objects:
 
 1. **Executable Multi-Physics Models**: Deflate-compressed (`#m=...`) or content-addressed source bundles across any of the 92 supported languages (`Modelica`, `SysML v2`, `PSCAD`, `CIM/CGMES`, `OLGA`, `SPICE`, `URDF`, `OpenSCAD`, `DICOM-RT`).
 2. **Reproducible Simulation Trajectories**: Encapsulated DAE/ODE time-series datasets (`Vega-Lite` / Arrow binary attachments) paired with exact solver tolerances, Pantelides index metrics, and initial conditions.
@@ -2062,7 +2062,7 @@ sequenceDiagram
     participant NodeB as "Ansatz Node B (Inbox)"
     participant WorkerB as "Node B WASM Verification Worker"
 
-    Alice->>NodeA: Sign post via `msx sign` (eddsa-jcs-2022) & publish Morsel
+    Alice->>NodeA: Sign post via `msx sign` (eddsa-jcs-2022) & publish model
     NodeA->>NodeB: POST /api/v1/inbox (HTTP Signature + JSON-LD Create Activity)
     NodeB->>NodeA: GET /.well-known/webfinger & Fetch Actor Public Key
     NodeB->>WorkerB: Verify HTTP Signature, W3C Proof & SHA-256 Artifact Digest
@@ -2084,7 +2084,7 @@ The server returns a JSON Resource Descriptor (JRD) linking to the actor's Activ
 
 ### 2.2 ActivityStreams 2.0 Payload with Engineering Extensions
 
-When an engineer publishes a Morsel, the instance serializes an ActivityStreams 2.0 `Create` activity carrying both the human-readable Markdown/LaTeX commentary and the structured `morsel:artifact` attachment:
+When an engineer publishes an Ansatz, the instance serializes an ActivityStreams 2.0 `Create` activity carrying both the human-readable Markdown/LaTeX commentary and the structured engineering attachment:
 
 ```json
 {
@@ -2140,7 +2140,7 @@ Ansatz separates **transport authentication** from **author non-repudiation**:
 
 | Activity Type                  | Object             | Behavior                                                                                              |
 | :----------------------------- | :----------------- | :---------------------------------------------------------------------------------------------------- |
-| `Create`                       | `Note` / `Article` | Publishes a new engineering post, threaded reply, or interactive Morsel attachment.                   |
+| `Create`                       | `Note` / `Article` | Publishes a new engineering post, threaded reply, or interactive model attachment.                   |
 | `Update`                       | `Note` / `Person`  | Updates an existing post (accompanied by a fresh `eddsa-jcs-2022` proof) or refreshes actor metadata. |
 | `Follow` / `Accept` / `Reject` | `Actor`            | Establishes or revokes cross-instance follower subscriptions.                                         |
 | `Announce`                     | `Note`             | Boosts a verified engineering post or simulation benchmark to local followers.                        |
@@ -2267,7 +2267,7 @@ While interactive 1D DAE and multibody simulations execute directly in the brows
 
 ```mermaid
 flowchart LR
-    A["Studio / Morsel / msx cloud"] -->|"POST /api/v1/cloud/jobs"| B["Ansatz API Gateway & Credit Ledger"]
+    A["Studio / Ansatz / msx cloud"] -->|"POST /api/v1/cloud/jobs"| B["Ansatz API Gateway & Credit Ledger"]
     B -->|"Deterministic .zip Bundle"| C["Slurm Controller (slurmctld / sbatch)"]
     C -->|"MPI / CUDA Allocation"| D["Compute Nodes (CPU / A100 / H100)"]
     D -->|"Zero-Copy RingBuffer Logs"| B
@@ -2294,7 +2294,7 @@ Organizations and individual engineers allocate jobs against pre-configured hard
 
 ## 3. Containerized Slurm Job Dispatch & Sandboxing
 
-When a job is submitted via the **Cloud Simulation Modal** in `/morsel` or via `msx cloud dispatch`:
+When a job is submitted via the **Cloud Simulation Modal** in `/editor` or via `msx cloud dispatch`:
 
 1. **Deterministic Workspace Packaging**: The compiler resolves `msx.lock` dependencies, verifies SHA-256 digests, and packs the model, compiled `.wasm` arena snapshot, and solver configuration into a content-addressed bundle.
 2. **Rootless Apptainer / Singularity Execution**: The Slurm job script runs inside an immutable, network-isolated Apptainer image (`modelscript-hpc-runtime.sif`) containing SUNDIALS 7.x (KLU/SuperLU_MT sparse linear solvers), CalculiX, SU2, and OpenMPI.
@@ -2664,7 +2664,7 @@ Thirteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `@modelscript/examples`   | `packages/examples` | Curated multi-domain reference workspaces (CubeSat, EV Battery Pack, IEEE 39-Bus Grid, Robotic Arm, Aero-Structural Wing)                                                      |
 | `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (169 commands across `flatten`, `simulate`, `verify`, `dossier`, `gatekeeper`, `ampl`, `powerfactory`, `pslf`, `fmu`, `csg`, `surrogate`, etc.) |
 | `@modelscript/api`        | `apps/api`          | REST, GraphQL, SPARQL, Regulatory Dossier, Grid Gatekeeper, and WebSocket simulation backend server                                                                            |
-| `@modelscript/web`        | `apps/web`          | Ansatz Web application (Morsel, Studio, Package Registry, and social modeling platform)                                                                                        |
+| `@modelscript/web`        | `apps/web`          | Ansatz Web application (Ansatz browser editor, Studio, Package Registry, and social modeling platform)                                                                                 |
 | `@modelscript/ee`         | `ee`                | Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — Ed25519 license verification, SSO/SAML, RBAC, Slurm HPC dispatcher, Digital Twin Historian, HIL                     |
 
 ================================================================================
@@ -2858,7 +2858,7 @@ The parser compiler is implemented in `@modelscript/dsl` under `packages/dsl/src
 
 1. **Handling Complex Engineering Grammars**: Engineering modeling languages like Modelica and SysML v2 possess ambiguities that cannot be parsed by strict deterministic LR(1) or LALR parsers. The GLR algorithm handles non-deterministic grammar paths by branching parse stacks and pruning invalid branches dynamically.
 2. **Zero-Allocation Memory Footprint**: Rather than allocating JavaScript AST object wrappers for every identifier and operator, tokens and CST nodes are laid out in a flat WebAssembly linear memory arena.
-3. **Web-Native Performance**: The compiled `parser.wasm` executes at near-native speeds in both Node.js server environments and client-side browser contexts (such as the IDE and Ansatz Morsel).
+3. **Web-Native Performance**: The compiled `parser.wasm` executes at near-native speeds in both Node.js server environments and client-side browser contexts (such as Ansatz and Studio).
 
 ---
 
@@ -6484,6 +6484,7 @@ Options:
   - `--out, -o <string>`: File path to write diagnostic report to instead of stdout
   - `--profile <string>`: OWL 2 ontology profile to validate against (DL or EL) (default: "DL")
   - `--strict <boolean>`: Treat warnings as errors (default: false)
+  - `--formal <boolean>`: Run on-demand deep formal verification checks (Modelica M7xxx & SysML v2 S7xxx) (default: false)
 
 ```bash
 # Lint an entire polyglot workspace and emit JSON for CI processing
@@ -9026,7 +9027,7 @@ ModelScript enforces 306 OpenModelica-compatible diagnostic rules across six mod
 | `connections-streams.ts`           | `M3003`–`M3004`: Connector plug-compatibility, stream connector rules, cardinality checks                         |
 | `synchronous-clocks.ts` & `cfa.ts` | Clock partitioning rules, uninitialized discrete variables, structural singularity diagnostics                    |
 
-### Diagnostics for Modelica (237 rules)
+### Diagnostics for Modelica (308 rules)
 | Code | Severity | Identifier | Summary |
 | :--- | :--- | :--- | :--- |
 | `M1000` | error | `identity-arg-count` | Wrong number of arguments to identity. |
@@ -9040,15 +9041,21 @@ ModelScript enforces 306 OpenModelica-compatible diagnostic rules across six mod
 | `M2002` | error | `variable-not-found` | Variable <name> not found in scope <scope>. |
 | `M2003` | error | `class-not-found` | Class <className> not found in scope <scope> (looking for a function or record). |
 | `M2004` | error | `modifier-not-found` | In modifier of '<componentName>', class or component '<modName>' not found in '<className>'. |
-| `M2005` | error | `identifier-mismatch` | The identifier at start and end are different. |
+| `M2005` | error | `identifier-mismatch` | Parse error: The identifier at start and end are different |
 | `M2006` | error | `modified-element-not-found` | Modified element <modName> not found in class <className>. |
 | `M2007` | error | `modifier-class-not-found` | In modifier (<modText>), class or component <modName> not found in <<className>>. |
+| `M2008` | error | `reserved-builtin-time` | Identifier time is reserved for the built-in element with the same name. |
 | `M2011` | error | `same-name-type-shadowing` | Found a component with same name when looking for type <typeSpec>. |
 | `M2012` | error | `class-not-found-in-scope` | Class <className> not found in scope <scope>. |
 | `M2013` | error | `base-class-not-found-in-scope` | Base class <className> not found in scope <scope>. |
 | `M2014` | error | `partial-base-class` | Part <partName> of base class name <extName> is not a class. |
 | `M2015` | error | `base-class-ambiguous` | The base class name <partName> was found in one or more base classes: <candidateNames>. |
 | `M2016` | error | `base-class-found-in` | <partName> was found in base class <baseName>. |
+| `M2020` | warning | `import-not-found` | Import '<importPath>' in class '<className>' could not be resolved. |
+| `M2021` | warning | `import-conflict` | Conflicting import short name '<shortName>' in class '<className>' (Modelica specification §13.2.1.1). |
+| `M2022` | warning | `encapsulated-lookup-violation` | Encapsulated lookup violation: '<targetName>' is referenced inside '<encapClassName>' without being imported or global-rooted (Modelica specification §5.3.1). |
+| `M2023` | warning | `within-mismatch` | 'within <withinPkg>;' in '<filePath>' does not match package structure (<reason>). |
+| `M2024` | info | `unused-import` | Import '<shortName>' in class '<className>' is unused. |
 | `M2038` | error | `partial-lookup-disallowed` | <className> is partial, name lookup is not allowed in partial classes. |
 | `M2090` | notification | `from-here` | From here: |
 | `M2091` | info | `redeclare-final-component-notification` | From here: |
@@ -9079,6 +9086,9 @@ ModelScript enforces 306 OpenModelica-compatible diagnostic rules across six mod
 | `M3019` | error | `no-matching-function` | No matching function found for <callExpr> of type <callSig> candidates are <candidateSig> |
 | `M3020` | error | `type-mismatch-modifier-binding` | Type mismatch in modifier of component <compName>, expected type <expectedType>, got modifier <exprText> of type <actualType>. |
 | `M3021` | error | `function-return-type-mismatch` | Function '<funcName>' returns type '<actualType>' but '<expectedType>' expected. |
+| `M3022` | warning | `unit-mismatch-binding` | Unit mismatch in component binding '<bindingText>'. |
+| `M3023` | warning | `real-equality-comparison` | Comparing Real expressions in '<expr>' with '<op>' outside a function is discouraged per Modelica specification §3.5. |
+| `M3024` | warning | `incompatible-display-unit` | <detail>. |
 | `M4000` | error | `dimension-not-parameter` | Expression '<exprName>' that determines the size of dimension '<dim>' of '<callText>' is not an evaluable parameter expression. |
 | `M4001` | error | `extends-cycle` | extends <baseName> causes an instantiation loop. |
 | `M4002` | error | `duplicate-modification` | Duplicate modification of element <elementName> on <kind> <componentName>. |
@@ -9119,7 +9129,6 @@ ModelScript enforces 306 OpenModelica-compatible diagnostic rules across six mod
 | `M4037` | error | `connector-variability` | Invalid variability <variability> on connector '<connectorName>'. |
 | `M4038` | warning | `flow-outside-connector` | Prefix 'flow' used outside connector declaration. |
 | `M4039` | error | `discrete-not-on-lhs` | Following variable is discrete, but does not appear on the LHS of a when-statement: '<varName>'. |
-| `M4040` | error | `protected-element-modification` | Protected element '<varName>' may not be modified, got '<modText>'. |
 | `M4041` | error | `negative-dimension` | Negative dimension index (<dim>) for component <varName>. |
 | `M4042` | error | `constant-has-no-value` | Constant '<qualifiedName>' has no value. |
 | `M4043` | error | `constant-variability-violation` | Component <componentName> of variability constant has binding '<bindingText>' of higher variability <bindingVariability>. |
@@ -9155,7 +9164,7 @@ ModelScript enforces 306 OpenModelica-compatible diagnostic rules across six mod
 | `M4074` | error | `external-array-return-not-allowed` | The lhs (result) of the external function declaration has array type (<typeStr>), but this is not allowed in the specification. You need to pass it as an input to the function (preferably also with a size()-expression to avoid out-of-bounds errors in the external call). |
 | `M4075` | error | `invalid-type-prefix-flow-nested` | Invalid type prefix 'flow' on variable <varName>, due to existing type prefix 'flow'. |
 | `M4076` | error | `parameter-bound-contradiction` | Contradictory bounds for parameter '<paramName>': lower bound '<lower>' exceeds upper bound '<upper>'. |
-| `M4077` | error | `loop-termination-inconclusive` | Loop over '<loopVar>' with condition '<condition>' cannot be proven to terminate. |
+| `M4077` | warning | `loop-termination-inconclusive` | Loop over '<loopVar>' with condition '<condition>' cannot be proven to terminate. |
 | `M4078` | error | `terminate-in-function` | terminate is not allowed in a function. |
 | `M4079` | error | `return-outside-function` | 'return' may not be used outside function. |
 | `M4080` | error | `cyclic-constants-or-parameters` | Cyclically dependent constants or parameters found in scope <scopeName>: {<cycleList>} (ignore with -d=ignoreCycles). |
@@ -9163,12 +9172,10 @@ ModelScript enforces 306 OpenModelica-compatible diagnostic rules across six mod
 | `M4082` | error | `connector-non-parameter-subscript` | Connector '<connRef>' has non-parameter subscript '<subscriptText>'. |
 | `M4083` | error | `enum-duplicate-literal` | Enumeration has duplicate names: <dup> in list of names <list>. |
 | `M4084` | error | `enum-reserved-attribute-literal` | Invalid use of reserved attribute name <name> as enumeration literal. |
-| `M4091` | error | `break-outside-loop` | 'break' must be inside a for or while loop, or enclose a connect equation. |
+| `M4091` | error | `break-outside-loop` | 'break' may only be used in a while- or for-loop. |
 | `M4092` | error | `binding-dimension-mismatch` | Type mismatch in binding '<componentName> = <bindingText>', expected array dimensions [<expectedDims>], got [<actualDims>]. |
 | `M4093` | warning | `unused-input-variable` | Unused input variable <varName> in function <funcName>. |
-| `M4094` | error | `cardinality-in-condition-only` | cardinality may only be used in the condition of an if-statement or if-equation. |
 | `M4095` | error | `conditional-expression-not-evaluated` | The conditional expression <condText> could not be evaluated. |
-| `M4096` | error | `dimensions-must-be-parameter` | Dimensions must be parameter or constant expression (in <callStr>). |
 | `M4097` | error | `called-function-partial` | Called function '<fnName>' is partial. |
 | `M4098` | error | `class-specialization-violation` | Class specialization violation: <className> <errorDetail>. |
 | `M4099` | error | `cannot-connect-undeclared-expandable-connectors` | Cannot connect undeclared connectors <c1> with <c2>. At least one of them must be declared. |
@@ -9185,12 +9192,10 @@ ModelScript enforces 306 OpenModelica-compatible diagnostic rules across six mod
 | `M4111` | error | `invalid-redeclaration-basic-type-attribute` | Invalid redeclaration of <attrName>, attributes of basic types may not be redeclared. |
 | `M4112` | error | `extends-other-base-class` | Found other base class for extends <baseName> after instantiating extends. |
 | `M4113` | error | `external-object-missing-destructor` | External object <className> is missing a destructor. |
-| `M4114` | error | `invalid-connector-variability` | Invalid variability <variability> on connector '<compName>'. |
 | `M4115` | error | `external-object-not-replaceable` | '<elemName>' may not be replaceable. |
 | `M4116` | error | `operator-encapsulation` | Operator <recordName>.'<opName>' is not encapsulated. |
 | `M4117` | error | `operator-constructor-outputs` | Operator <recordName>.'constructor' must have exactly one output. |
 | `M4118` | error | `operator-constructor-output-type` | Output '<outputName>' in operator <recordName>.'constructor' must be of type <recordName>, got type <actualType>. |
-| `M4119` | error | `variable-in-package-not-constant` | Variable <varName> in package <pkgName> is not constant. |
 | `M4120` | error | `ambiguous-operator-overload` | Ambiguous matching overloaded operator functions found for <exprText>. Candidates are: <candidatesText> |
 | `M4121` | error | `no-matching-operator-function` | No matching function found for <callExprText>. Candidates are: <candidatesText> |
 | `M4122` | error | `cannot-resolve-operator-type` | Cannot resolve type of expression <exprText>. The operands have types <leftType>, <rightType> in component <NO_COMPONENT>. |
@@ -9198,17 +9203,26 @@ ModelScript enforces 306 OpenModelica-compatible diagnostic rules across six mod
 | `M4124` | error | `stream-missing-instream` | Stream variable '<varName>' accessed in connector equation without required inStream() operator. |
 | `M4125` | error | `stream-mixed-with-flow` | Variable '<varName>' cannot have both 'stream' and 'flow' prefixes. |
 | `M4126` | error | `inner-outer-causality-mismatch` | Outer component '<outerName>' causality conflicts with inner declaration '<innerName>'. |
-| `M4130` | warning | `class-missing-description` | Class '<className>' is missing a description string. |
+| `M4130` | info | `class-missing-description` | Class '<className>' is missing a description string. |
 | `M4131` | warning | `parameter-missing-description` | Public parameter '<paramName>' is missing a description string. |
 | `M4132` | info | `constant-missing-description` | Public constant '<constName>' is missing a description string. |
 | `M4133` | info | `class-missing-icon` | Class '<className>' is missing an icon annotation and does not inherit one. |
-| `M4134` | error | `broken-modelica-uri` | Broken 'modelica://' reference: '<uri>' does not resolve to an existing class or model. |
-| `M4135` | error | `resource-missing` | Referenced resource file '<res>' does not exist on disk. |
+| `M4134` | warning | `broken-modelica-uri` | Broken 'modelica://' reference: '<uri>' does not resolve to an existing class or model. |
+| `M4135` | warning | `resource-missing` | Referenced resource file '<res>' does not exist on disk. |
 | `M4136` | warning | `resource-absolute-path` | Resource reference '<pathStr>' uses an absolute filesystem path; use a relative path or 'modelica://' URI instead. |
 | `M4140` | warning | `tgg-conformance-missing-port` | TGG conformance warning: '<targetName>' (<targetLang>) is missing counterpart port '<portName>' (<portType>) expected by '<sourceName>'. |
 | `M4141` | warning | `tgg-conformance-param-mismatch` | TGG conformance warning: parameter or port '<paramName>' type '<actualType>' is incompatible with '<expectedType>'. |
 | `M4142` | warning | `tgg-conformance-missing-component` | TGG conformance warning: '<targetName>' (<targetLang>) is missing expected component '<compName>' : '<compType>'. |
 | `M4143` | error | `tgg-conformance-unresolved-target` | Counterpart element referenced by '<sourceName>' could not be resolved in '<targetLang>'. |
+| `M4146` | warning | `parameter-no-value` | Parameter '<paramName>' has no value and relies on default start value during initialization. |
+| `M4147` | warning | `obsolete-class-usage` | Class '<className>' is marked obsolete: '<reason>'. |
+| `M4148` | warning | `connector-unbalanced` | Connector '<className>' is unbalanced: <potCount> potential variable(s) vs <flowCount> flow variable(s) (Modelica specification §9.3.1). |
+| `M4149` | warning | `connect-two-outputs` | Connected endpoints '<lhs>' and '<rhs>' are both declared with 'output' causality (Modelica specification §9.3). |
+| `M4150` | warning | `derivative-annotation-mismatch` | Derivative function '<derivName>' referenced by annotation on '<fnName>' could not be resolved as a valid function. |
+| `M4151` | warning | `unconnected-input` | Input '<inputPath>' on component '<compName>' has no connection or modification binding. |
+| `M4152` | info | `experiment-annotation-missing` | Example class '<className>' is missing an 'experiment(...)' annotation. |
+| `M4153` | warning | `missing-uses-annotation` | Library package '<pkgName>' references external library '<externalLib>' without declaring 'uses(<externalLib>(...))' in its annotation. |
+| `M4154` | warning | `locally-unbalanced-class` | The <classKind> '<name>' is locally unbalanced: <localEqs> local equation(s) and <localVars> local unknown variable(s) (Modelica specification §4.8). |
 | `M5001` | error | `equation-type-mismatch` | Type mismatch in equation <lhsExpanded>=<rhsExpanded> of type <lhsType>=<rhsType>. |
 | `M5002` | error | `constrainedby-type-mismatch` | Replaceable '<componentName>': default type '<defaultType>' is not compatible with constraining type '<constrainingType>'. |
 | `M5003` | error | `if-branch-type-mismatch` | If-equation branch type mismatch: '<varName>' assigned type '<branchType>' but expected '<expectedType>'. |
@@ -9255,8 +9269,15 @@ ModelScript enforces 306 OpenModelica-compatible diagnostic rules across six mod
 | `M5044` | error | `reinit-arg2-type-mismatch` | Type mismatch for positional argument 2 in reinit(=<argText>). The argument has type: <actualType> expected type: <expectedType> |
 | `M5045` | error | `continuous-variable-in-when` | Direct assignment to continuous state '<varName>' inside when-clause is illegal; use reinit(). |
 | `M5046` | warning | `deprecated-cardinality-operator` | Operator 'cardinality()' is deprecated in Modelica 3.x; use conditional components instead. |
+| `M5051` | warning | `der-of-non-real` | Argument '<arg>' of 'der(...)' must have type Real. |
+| `M5052` | warning | `stateselect-always-not-state` | Variable '<varName>' declares 'stateSelect = StateSelect.always' but is not selected or differentiated as a continuous state. |
+| `M5101` | error | `formal-algorithm-proof` | <detail>. |
+| `M5102` | error | `sysml-constraint-violation` | <detail>. |
+| `M5103` | warning | `dae-invariant-warning` | <detail>. |
+| `M5104` | error | `S5020` | <detail>. |
+| `M5105` | warning | `S5021` | <detail>. |
 | `M6001` | error | `mixed-clock-domains` | Clocked expression '<exprText>' mixes signals from different clock domains. |
-| `M6002` | error | `sample-factor-not-positive` | Sub-clock factor must be a positive integer. |
+| `M6002` | error | `sample-factor-not-positive` | Sub-clock factor must be a non-negative integer (or 0 for inferred factor). |
 | `M6003` | error | `previous-outside-clocked` | Operator 'previous()' may only be applied to clocked discrete-time variables in '<exprText>'. |
 | `M6004` | error | `hold-in-continuous` | Operator 'hold()' converts a clocked signal to continuous-time and cannot be used inside a clocked partition: '<exprText>'. |
 | `M6010` | error | `duplicate-initial-state` | A state machine partition must have at most one initialState() call. |
@@ -9266,6 +9287,57 @@ ModelScript enforces 306 OpenModelica-compatible diagnostic rules across six mod
 | `M6050` | error | `transition-priority-invalid` | Transition priority '<priorityText>' must be a positive integer (>= 1) and unique among transitions exiting the same state. |
 | `M6051` | error | `first-tick-invalid-argument` | Operator 'firstTick(<argText>)' cannot be applied to continuous-time 'time' or non-clocked constant/parameter expressions. |
 | `M6052` | error | `interval-invalid-argument` | Operator 'interval(<argText>)' cannot be applied to continuous-time 'time' or non-clocked constant/parameter expressions. |
+| `M7101` | error | `formal-structurally-singular` | DAE system '<modelName>' is structurally singular: <detail>. |
+| `M7102` | error | `formal-over-determined-subsystem` | DAE system '<modelName>' has an over-determined subsystem with unmatched equation(s) '<unmatchedEqs>'. |
+| `M7103` | warning | `formal-high-index-dae` | DAE system '<modelName>' has high structural differential index '<indexVal>' (> 1) requiring Pantelides index reduction. |
+| `M7104` | warning | `formal-state-selection-ambiguous` | DAE system '<modelName>' has differential index > 1 with candidate state variables (<candidates>) lacking explicit 'stateSelect' priority. |
+| `M7105` | warning | `formal-large-algebraic-loop` | Coupled algebraic loop of size '<blockSize>' detected involving '<vars>'. |
+| `M7106` | error | `formal-numerically-singular-loop` | Equation block '<blockDesc>' is numerically singular: interval Jacobian '<jacInterval>' contains 0. |
+| `M7107` | error | `formal-array-equation-unbalanced` | Array variable '<arrayName>' has unbalanced equation coverage: <detail>. |
+| `M7108` | warning | `formal-variable-without-equation` | Variable '<varName>' has zero incidence in non-alias equations after alias elimination. |
+| `M7109` | error | `formal-alias-cycle-no-source` | Alias chain cycle in '<modelName>' involving (<cycleVars>) has no grounded source. |
+| `M7110` | error | `formal-under-determined-subsystem` | DAE system '<modelName>' has an under-determined subsystem with unconstrained variable(s) '<unmatchedVars>'. |
+| `M7111` | warning | `formal-initialization-unbalanced` | Initialization system of '<modelName>' is unbalanced: <detail>. |
+| `M7112` | warning | `formal-iteration-variable-no-start` | Tearing iteration variable '<varName>' has no explicit start attribute and defaults to 0.0. |
+| `M7201` | error | `formal-possible-division-by-zero` | Possible division by zero in '<expr>' (denominator interval '<intervalStr>' contains 0). |
+| `M7202` | error | `formal-sqrt-of-negative` | Domain error in '<expr>': argument to 'sqrt' reaches negative values ('<intervalStr>'). |
+| `M7203` | error | `formal-log-of-nonpositive` | Domain error in '<expr>': argument to logarithm reaches non-positive values ('<intervalStr>'). |
+| `M7204` | error | `formal-inverse-trig-domain` | Domain error in '<expr>': argument to inverse trigonometric/hyperbolic function leaves its real domain ('<intervalStr>'). |
+| `M7205` | error | `formal-pow-domain-violation` | Domain error in '<expr>': power base reaches negative or zero values ('<intervalStr>'). |
+| `M7206` | error | `formal-array-index-out-of-bounds` | Array index in '<expr>' may be out of bounds (<detail>). |
+| `M7207` | error | `formal-integer-overflow` | 32-bit signed Integer overflow hazard in '<expr>' (reachable interval '<intervalStr>' exceeds [-2147483648, 2147483647]). |
+| `M7208` | error | `formal-binding-outside-min-max` | Binding value '<valueStr>' for '<varName>' lies outside declared bounds '<boundsStr>'. |
+| `M7209` | warning | `formal-start-outside-min-max` | Start attribute '<startStr>' for '<varName>' lies outside declared bounds '<boundsStr>'. |
+| `M7210` | error | `formal-parameter-bound-contradiction` | Relational parameter constraints in '<modelName>' are infeasible: <detail>. |
+| `M7211` | warning | `formal-nominal-magnitude-mismatch` | Reachable range '<intervalStr>' for '<varName>' differs by more than 10^3 from declared nominal '<nominalStr>'. |
+| `M7212` | warning | `formal-loop-termination-unproven` | Loop 'while <loopCond>' lacks a provably decreasing loop variant or explicit 'break' exit. |
+| `M7213` | warning | `formal-variable-bound-violation-reachable` | Reachable interval '<intervalStr>' for '<varName>' violates declared bounds '<boundsStr>'. |
+| `M7301` | error | `formal-assert-always-fails` | Assert condition '<cond>' is provably always false ('<assertMsg>'). |
+| `M7302` | info | `formal-assert-trivially-true` | Assert condition '<cond>' is provably always true over declared parameter and variable bounds. |
+| `M7303` | warning | `formal-dead-if-branch` | Conditional branch guard '<cond>' is unsatisfiable under declared bounds. |
+| `M7304` | warning | `formal-when-condition-never-true` | Event condition '<cond>' in 'when' clause is unsatisfiable under declared bounds. |
+| `M7305` | warning | `formal-shadowed-elseif-guard` | Branch guard '<cond>' is shadowed by earlier condition '<earlierCond>' and cannot execute. |
+| `M7306` | warning | `formal-state-machine-guard-overlap` | Transitions from state '<fromState>' to '<to1>' and '<to2>' with equal priority '<prio>' have potentially overlapping guards. |
+| `M7307` | warning | `formal-state-machine-deadlock` | State '<stateName>' has outgoing transition(s) whose guards are all unsatisfiable under declared bounds. |
+| `M7308` | warning | `formal-branch-domain-without-noevent` | Conditional expression '<expr>' relies on event-generating guard '<cond>' without 'noEvent(...)' to prevent domain violations during event iteration. |
+| `M7401` | error | `formal-zeno-chattering` | Hybrid Zeno chattering hazard: <detail>. |
+| `M7402` | warning | `formal-nondeterministic-mode-switch` | Nondeterministic hybrid mode switch: <detail>. |
+| `M7403` | warning | `formal-reinit-discontinuity` | Continuous state '<varName>' exhibits discrete jump '<jumpStr>' across hybrid when-event. |
+| `M7404` | warning | `formal-sliding-mode-chattering` | Sliding-mode chattering hazard near switching surface '<guardExpr>' with root crossing enclosed in '<windowStr>'. |
+| `M7501` | error | `formal-assert-violable-discrete` | Discrete assert '<cond>' is violable within <depth> step(s) (IC3 bounded counterexample). |
+| `M7502` | info | `formal-clocked-invariant-proven` | Discrete invariant '<invExpr>' is inductively proven (<detail>). |
+| `M7503` | warning | `formal-unreachable-state-machine-state` | State machine state '<stateName>' is provably unreachable from initial state '<initialState>' (IC3 inductive proof). |
+| `M7504` | error | `formal-function-postcondition-violation` | Function '<fnName>' can violate postcondition '<ensuresClause>': <detail>. |
+| `M7505` | error | `formal-function-nondeterministic` | Function '<fnName>' violates relational property '<propertyName>': <detail>. |
+| `M7601` | error | `formal-physical-bound-flowpipe` | Validated continuous reachability tube proves physical bound breach for '<varName>': '<valueStr>' violates '<limitStr>' within t in '[0, <timeStr>]'. |
+| `M7602` | info | `formal-barrier-certificate-not-found` | Heuristic quadratic SOS barrier certificate not found for '<modelName>': <detail>. |
+| `M7603` | error | `formal-requirement-stl-violated` | STL requirement '<formulaText>' violated for '<varName>' (robustness = <rhoStr> at t = <timeStr>s). |
+| `M7604` | error | `formal-sysml-requirement-unsatisfiable` | SysML requirement '<reqName>' is unsatisfiable under declared model parameter/variable bounds: <detail>. |
+| `M7605` | warning | `formal-polyglot-parameter-drift` | Polyglot parameter '<paramName>' on '<componentName>' drifted across models: <detail>. |
+| `M7701` | warning | `formal-redundant-equation` | Equation '<eqText>' is algebraically equivalent to '<otherEqText>' after E-graph normalization. |
+| `M7702` | warning | `formal-equation-tautology` | Equation '<eqText>' simplifies to the trivial identity '0 = 0' and adds no constraint. |
+| `M7703` | error | `formal-equation-contradiction` | Equation '<eqText>' simplifies to an inconsistent constant residual '<residual> = 0'. |
+| `M7704` | warning | `formal-dimension-mismatch-inferred` | Inferred physical dimension mismatch in '<contextExpr>': '<lhsDim>' vs '<rhsDim>'. |
 
 ---
 
@@ -9643,7 +9715,7 @@ CANONICAL URL: https://modelscript.org/languages/sysml2
 
 ## Diagnostic Rules
 
-### Diagnostics for SysML v2 / KerML (63 rules)
+### Diagnostics for SysML v2 / KerML (108 rules)
 | Code | Severity | Identifier | Summary |
 | :--- | :--- | :--- | :--- |
 | `S1001` | error | `parse-error` | Parse error: <detail>. |
@@ -9657,6 +9729,11 @@ CANONICAL URL: https://modelscript.org/languages/sysml2
 | `S2004` | error | `unresolved-source` | Allocation source '<source>' could not be resolved |
 | `S2005` | error | `unresolved-import` | Import '<pkg>' could not be resolved. |
 | `S2006` | error | `unresolved-transition-state` | Transition state '<stateName>' could not be resolved in enclosing state machine. |
+| `S2007` | error | `unresolved-redefinition-or-subsetting` | Unresolved <kind> target '<target>' in enclosing or inherited scope. |
+| `S2009` | error | `visibility-access-violation` | Cannot access <visibility> member '<name>' of '<owner>' from this scope. |
+| `S2010` | warning | `top-level-import-not-private` | Top-level import '<pkg>' should be declared 'private'. |
+| `S2011` | warning | `inherited-member-shadowing` | Member '<name>' shadows inherited feature from '<baseName>' without ':>>' ('redefines'). |
+| `S2012` | info | `unused-import-or-private-member` | Unused <kind> '<name>' is never referenced. |
 | `S3001` | error | `type-mismatch` | Type mismatch: cannot assign value of type '<actualType>' to feature '<featureName>' with declared type '<declaredType>'. |
 | `S3002` | error | `incompatible-port-connection` | Incompatible port connection between '<p1>' (<t1>) and '<p2>' (<t2>). |
 | `S3003` | error | `dimensional-mismatch` | Dimensional mismatch: cannot assign value of dimension '<actualDim>' to feature '<featureName>' with declared dimension '<targetDim>'. |
@@ -9666,6 +9743,15 @@ CANONICAL URL: https://modelscript.org/languages/sysml2
 | `S3007` | error | `dimensional-connection-mismatch` | Dimensional mismatch in connection between '<sourceName>' (<sourceDim>) and '<targetName>' (<targetDim>). |
 | `S3008` | error | `port-conjugation-mismatch` | Port conjugation mismatch between '<sourceName>' and '<targetName>' of port type '<portType>'. |
 | `S3009` | error | `binding-connector-type-mismatch` | Binding connector type mismatch between '<sourceName>' (<sourceType>) and '<targetName>' (<targetType>). |
+| `S3010` | error | `usage-definition-kind-mismatch` | Usage '<usageName>' (<usageKind>) cannot be typed by '<actualType>'; expected <expectedKind>. |
+| `S3011` | error | `disjoint-classifier-specialization` | '<subName>' (<subKind>) cannot specialize disjoint classifier '<superName>' (<superKind>). |
+| `S3012` | error | `redefinition-type-not-conforming` | Feature '<featureName>' type '<subType>' does not conform to specialized feature '<baseFeature>' type '<baseType>'. |
+| `S3013` | warning | `subsetting-multiplicity-widening` | Multiplicity [<subMult>] on '<featureName>' violates conformance with [<baseMult>] on '<baseFeature>'. |
+| `S3014` | error | `redefinition-modifier-conformance` | Specialization modifier conformance violation on '<featureName>': <detail>. |
+| `S3015` | error | `invocation-signature-mismatch` | Invalid invocation of '<callee>': <detail>. |
+| `S3016` | error | `trigger-expression-type-mismatch` | '<construct>' expression expects '<expectedType>', got '<actualType>'. |
+| `S3017` | error | `multiplicity-bound-not-natural` | Multiplicity bound '<boundText>' must evaluate to a non-negative integer ('Natural') or '*'. |
+| `S3018` | warning | `invalid-cast-or-type-test` | Invalid '<op>' expression: '<sourceType>' and '<targetType>' are mutually disjoint types. |
 | `S4001` | error | `circular-specialization` | Circular specialization: '<name>' transitively specializes itself |
 | `S4002` | error | `circular-satisfaction` | Circular satisfaction: '<name>' transitively satisfies itself |
 | `S4003` | info | `empty-definition` | Definition '<name>' has no members |
@@ -9679,9 +9765,19 @@ CANONICAL URL: https://modelscript.org/languages/sysml2
 | `S4011` | warning | `unverified-requirement` | Requirement '<name>' is not verified by any verification case in package '<pkgName>' |
 | `S4012` | warning | `calc-return-missing` | Calculation '<name>' has a body without a return parameter or result expression. |
 | `S4013` | error | `expose-target-invalid` | Exposed target '<target>' in view '<viewName>' could not be resolved. |
+| `S4014` | error | `variation-variant-misuse` | Invalid variation/variant usage on '<name>': <detail>. |
+| `S4015` | error | `abstract-or-composite-misuse` | Invalid modifier or composite ownership on '<name>': <detail>. |
+| `S4016` | error | `parallel-state-invalid-transition` | Parallel state '<stateName>' cannot directly own transitions or successions. |
 | `S4017` | warning | `unsatisfied-critical-requirement` | Critical requirement '<reqName>' has no incoming satisfy or verify relationship. |
 | `S4018` | error | `circular-port-delegation` | Port '<portName>' delegation connection chain contains a cyclic dependency. |
 | `S4019` | error | `incompatible-flow-dimensions` | Flow connection links incompatible physical dimensions ('<sourceFlow>' to '<targetFlow>'). |
+| `S4020` | error | `duplicate-singleton-member` | '<ownerName>' may have at most one '<memberKind>' member. |
+| `S4021` | warning | `send-to-port-without-via` | Sending to port '<portName>' should use 'via <portName>' instead of 'to <portName>'. |
+| `S4022` | error | `interface-end-not-port` | Interface end '<endName>' in '<ifaceName>' must be a port usage. |
+| `S4023` | error | `binding-connector-not-binary` | Binding connector '<name>' must connect exactly two features. |
+| `S4024` | info | `incose-requirement-quality` | Requirement '<reqName>' documentation contains ambiguous or unverified term '<term>' (INCOSE GtWR). |
+| `S4025` | error | `individual-or-portion-misuse` | Invalid individual/portion usage on '<name>': <detail>. |
+| `S4026` | error | `metadata-annotation-invalid` | Invalid metadata annotation '<metaName>': <detail>. |
 | `S4080` | warning | `tgg-conformance-missing-port` | TGG conformance warning: '<targetName>' (<targetLang>) is missing counterpart port '<portName>' (<portType>) expected by '<sourceName>'. |
 | `S4081` | warning | `tgg-conformance-param-mismatch` | TGG conformance warning: parameter or port '<paramName>' type '<actualType>' is incompatible with '<expectedType>'. |
 | `S4082` | warning | `tgg-conformance-missing-component` | TGG conformance warning: '<targetName>' (<targetLang>) is missing expected component '<compName>' : '<compType>'. |
@@ -9709,6 +9805,27 @@ CANONICAL URL: https://modelscript.org/languages/sysml2
 | `S5021` | warning | `standard-compliance-warning` | [<clauseLabel>] '<subjectName>' triggers advisory requirement '<reqName>': <detail> |
 | `S5022` | warning | `requirement-not-applicable` | [<clauseLabel>] Requirement '<reqName>' is not applicable to '<subjectName>': assume constraint evaluates to false. |
 | `S5023` | warning | `standard-table-lookup-missing` | Standard table/calculator lookup '<calcName>' could not be evaluated: <reason> |
+| `S6001` | error | `contract-refinement-violation` | Behavioral Liskov substitution violated: '<subName>' does not refine contract of '<superName>' (<detail>). |
+| `S6002` | warning | `requirement-decomposition-gap` | Requirement decomposition gap on '<parentReq>': sub-requirements do not entail parent (<detail>). |
+| `S6003` | warning | `vacuous-requirement-assumption` | Requirement '<reqName>' is vacuously satisfied because its 'assume' constraints are unsatisfiable (<detail>). |
+| `S6004` | error | `opaque-interface-incompatibility` | Incompatible port contract between '<sourcePort>' and '<targetPort>': <detail>. |
+| `S6011` | warning | `zeno-chattering-transition-cycle` | Zero-dwell Zeno chattering cycle detected across transitions: <cycleDesc>. |
+| `S6012` | error | `parallel-region-write-race` | Concurrent write race in parallel state '<stateName>': variable '<varName>' written simultaneously by regions '<regA>' and '<regB>'. |
+| `S6020` | error | `calc-domain-or-div-zero` | Abstract interpretation domain violation in '<ownerName>': <detail>. |
+| `S6021` | error | `sequence-index-out-of-bounds` | 1-based sequence index <indexDesc> on '<seqName>' is out of bounds (<boundsDesc>). |
+| `S6022` | error | `physical-domain-impossibility` | Physical domain impossibility on '<featureName>' ('<typeName>'): <detail>. |
+| `S6030` | warning | `over-or-under-constrained-part` | Structural equation imbalance in '<partName>': <detail>. |
+| `S6031` | warning | `high-index-parametric-constraint` | High-index parametric DAE (index <index>) in '<modelName>': <detail>. |
+| `S6032` | error | `flow-network-driver-conflict` | Multiple conflicting 'out' flow drivers (<drivers>) connected to '<targetPort>'. |
+| `S6033` | warning | `cyber-physical-nyquist-violation` | Cyber-physical Nyquist violation on '<controllerName>': sampling rate <fsHz> Hz is below required <minHz> Hz (<detail>). |
+| `S6041` | error | `multiplicity-budget-rollup-violation` | Multiplicity roll-up violation in '<parentName>': child minimum '<attrName>' sum (<minRollup>) exceeds limit (<limit>). |
+| `S6042` | warning | `spatial-envelope-clash-or-protrusion` | Spatial envelope violation on '<ownerOrPart>': <detail>. |
+| `S7001` | error | `hierarchical-pdr-unsafe-state` | [IC3/PDR] Unsafe state '<targetState>' in '<smName>' is reachable (<trace>). |
+| `S7002` | error | `asil-single-point-of-failure` | [FTA/MCS] Safety violation for hazard '<hazardName>': <detail>. |
+| `S7003` | error | `probabilistic-requirement-violated` | [UQ/Chance] Probabilistic requirement '<reqName>' violated: <detail>. |
+| `S7004` | warning | `mechanical-tolerance-stack-interference` | [Tolerance Stack] Assembly chain '<chainName>' violates clearance bounds: <detail>. |
+| `S7005` | error | `relational-hyperproperty-violation` | [2-Safety] Relational hyperproperty violated in '<targetName>': <detail>. |
+| `S7006` | error | `continuous-flowpipe-or-barrier-violation` | [DAE/Barrier] Continuous safety reachability violation in '<modelName>': <detail>. |
 
 ---
 
@@ -17166,7 +17283,7 @@ On [Ansatz](https://ansatz.social), `.urdf`, `.sdf`, and `.xacro` artifacts rend
 - **Kinematic Tree View**: High-resolution vector schematic visualizing parent/child links and joint types with pan-and-zoom controls.
 - **3D Pose View**: Real-time WebGPU/Three.js multibody viewport with forward kinematics joint angle sliders ($q_i \in [q_{\text{min}}, q_{\text{max}}]$).
 - **Dynamics & Linter**: Pre-flight verification results (`M7501`–`M7508`) paired with an **RNEA Gravity Hold Torques** calculator reporting static equilibrium torques ($\tau_i \text{ [N}\cdot\text{m]}$).
-- **Polyglot Projections**: One-click translation to Modelica 3.x or SIMPACK JSON, with direct export to the Ansatz Morsel visual simulator.
+- **Polyglot Projections**: One-click translation to Modelica 3.x or SIMPACK JSON, with direct export to the Ansatz visual simulator.
 
 ---
 
@@ -21886,7 +22003,7 @@ CANONICAL URL: https://modelscript.org/reference/linter-rules
 
 # Linter Rules Reference
 
-ModelScript ships **1263 diagnostic rules** across **84 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **1379 diagnostic rules** across **84 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -21907,9 +22024,9 @@ The **CLI** column below shows which command reports each language's rules.
 
 | Language                                  | Package                     | Rules | CLI                     |
 | :---------------------------------------- | :-------------------------- | ----: | :---------------------- |
-| [Modelica](#modelica)                     | `@modelscript/modelica`     |   237 | `msx lint`              |
+| [Modelica](#modelica)                     | `@modelscript/modelica`     |   308 | `msx lint`              |
 | [AMPL](#ampl)                             | `@modelscript/ampl`         |    12 | `msx lint`              |
-| [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |    63 | `msx lint`              |
+| [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |   108 | `msx lint`              |
 | [ReqIF](#reqif)                           | `@modelscript/reqif`        |    13 | `msx reqif lint`        |
 | [NIST OSCAL](#oscal)                      | `@modelscript/oscal`        |    13 | Language server / API   |
 | [SSP](#ssp)                               | `@modelscript/ssp`          |    18 | `msx lint`              |
@@ -21993,12 +22110,12 @@ The **CLI** column below shows which command reports each language's rules.
 | [modelscript](#modelscript)               | `@modelscript/modelscript`  |    11 | Language server / API   |
 
 ::: info Not yet listed
-These languages have linters whose rules are not exported as a catalog yet, so they can't be listed here: [ASPEN OneLiner / CAPE](../languages/oneliner.md), [ATP-EMTP](../languages/atp.md), [IEC 61850 SCL](../languages/scl.md), [IEEE 1815 / DNP3](../languages/dnp3.md), [IEEE COMTRADE](../languages/comtrade.md), [IWA Activated Sludge Models](../languages/asm.md), [MATPOWER](../languages/matpower.md), [OGC WaterML 2.0](../languages/waterml.md), [SEL Relay Settings](../languages/sel.md), [USACE HEC-HMS](../languages/hec-hms.md). See each language guide for details.
+These languages have linters whose rules are not exported as a catalog yet, so they can't be listed here: [ASPEN OneLiner / CAPE](../languages/oneliner.md), [ATP-EMTP](../languages/atp.md), c37118, cyme, gridlabd, [IEC 61850 SCL](../languages/scl.md), iec104, [IEEE 1815 / DNP3](../languages/dnp3.md), [IEEE COMTRADE](../languages/comtrade.md), [IWA Activated Sludge Models](../languages/asm.md), [MATPOWER](../languages/matpower.md), [OGC WaterML 2.0](../languages/waterml.md), plscadd, powerworld, pypsa, rtds, [SEL Relay Settings](../languages/sel.md), [USACE HEC-HMS](../languages/hec-hms.md). See each language guide for details.
 :::
 
 ## Modelica {#modelica}
 
-Acausal multi-domain physics. **237 rules** · `@modelscript/modelica` · Source: `languages/modelica/src/errors.ts` · [Language guide](../languages/modelica.md)
+Acausal multi-domain physics. **308 rules** · `@modelscript/modelica` · Source: `languages/modelica/src/errors.ts` · [Language guide](../languages/modelica.md)
 
 **`M1xxx` — Syntax & parse**
 
@@ -22020,15 +22137,21 @@ Acausal multi-domain physics. **237 rules** · `@modelscript/modelica` · Source
 | <span id="modelica-m2002"></span>`M2002` | `variable-not-found`                        | [error]      | Variable <code>&lt;name&gt;</code> not found in scope <code>&lt;scope&gt;</code>.                                                                                                                                                                                                                                                                                                                                                   |
 | <span id="modelica-m2003"></span>`M2003` | `class-not-found`                           | [error]      | Class <code>&lt;className&gt;</code> not found in scope <code>&lt;scope&gt;</code> (looking for a function or record).                                                                                                                                                                                                                                                                                                              |
 | <span id="modelica-m2004"></span>`M2004` | `modifier-not-found`                        | [error]      | In modifier of '<code>&lt;componentName&gt;</code>', class or component '<code>&lt;modName&gt;</code>' not found in '<code>&lt;className&gt;</code>'.                                                                                                                                                                                                                                                                               |
-| <span id="modelica-m2005"></span>`M2005` | `identifier-mismatch`                       | [error]      | The identifier at start and end are different.                                                                                                                                                                                                                                                                                                                                                                                      |
+| <span id="modelica-m2005"></span>`M2005` | `identifier-mismatch`                       | [error]      | Parse error: The identifier at start and end are different                                                                                                                                                                                                                                                                                                                                                                          |
 | <span id="modelica-m2006"></span>`M2006` | `modified-element-not-found`                | [error]      | Modified element <code>&lt;modName&gt;</code> not found in class <code>&lt;className&gt;</code>.                                                                                                                                                                                                                                                                                                                                    |
 | <span id="modelica-m2007"></span>`M2007` | `modifier-class-not-found`                  | [error]      | In modifier (<code>&lt;modText&gt;</code>), class or component <code>&lt;modName&gt;</code> not found in &lt;<code>&lt;className&gt;</code>&gt;.                                                                                                                                                                                                                                                                                    |
+| <span id="modelica-m2008"></span>`M2008` | `reserved-builtin-time`                     | [error]      | Identifier time is reserved for the built-in element with the same name.                                                                                                                                                                                                                                                                                                                                                            |
 | <span id="modelica-m2011"></span>`M2011` | `same-name-type-shadowing`                  | [error]      | Found a component with same name when looking for type <code>&lt;typeSpec&gt;</code>.                                                                                                                                                                                                                                                                                                                                               |
 | <span id="modelica-m2012"></span>`M2012` | `class-not-found-in-scope`                  | [error]      | Class <code>&lt;className&gt;</code> not found in scope <code>&lt;scope&gt;</code>.                                                                                                                                                                                                                                                                                                                                                 |
 | <span id="modelica-m2013"></span>`M2013` | `base-class-not-found-in-scope`             | [error]      | Base class <code>&lt;className&gt;</code> not found in scope <code>&lt;scope&gt;</code>.                                                                                                                                                                                                                                                                                                                                            |
 | <span id="modelica-m2014"></span>`M2014` | `partial-base-class`                        | [error]      | Part <code>&lt;partName&gt;</code> of base class name <code>&lt;extName&gt;</code> is not a class.                                                                                                                                                                                                                                                                                                                                  |
 | <span id="modelica-m2015"></span>`M2015` | `base-class-ambiguous`                      | [error]      | The base class name <code>&lt;partName&gt;</code> was found in one or more base classes: <code>&lt;candidateNames&gt;</code>.                                                                                                                                                                                                                                                                                                       |
 | <span id="modelica-m2016"></span>`M2016` | `base-class-found-in`                       | [error]      | <code>&lt;partName&gt;</code> was found in base class <code>&lt;baseName&gt;</code>.                                                                                                                                                                                                                                                                                                                                                |
+| <span id="modelica-m2020"></span>`M2020` | `import-not-found`                          | [warning]   | Import '<code>&lt;importPath&gt;</code>' in class '<code>&lt;className&gt;</code>' could not be resolved.                                                                                                                                                                                                                                                                                                                           |
+| <span id="modelica-m2021"></span>`M2021` | `import-conflict`                           | [warning]   | Conflicting import short name '<code>&lt;shortName&gt;</code>' in class '<code>&lt;className&gt;</code>' (Modelica specification §13.2.1.1).                                                                                                                                                                                                                                                                                        |
+| <span id="modelica-m2022"></span>`M2022` | `encapsulated-lookup-violation`             | [warning]   | Encapsulated lookup violation: '<code>&lt;targetName&gt;</code>' is referenced inside '<code>&lt;encapClassName&gt;</code>' without being imported or global-rooted (Modelica specification §5.3.1).                                                                                                                                                                                                                                |
+| <span id="modelica-m2023"></span>`M2023` | `within-mismatch`                           | [warning]   | 'within <code>&lt;withinPkg&gt;</code>;' in '<code>&lt;filePath&gt;</code>' does not match package structure (<code>&lt;reason&gt;</code>).                                                                                                                                                                                                                                                                                         |
+| <span id="modelica-m2024"></span>`M2024` | `unused-import`                             | [info]         | Import '<code>&lt;shortName&gt;</code>' in class '<code>&lt;className&gt;</code>' is unused.                                                                                                                                                                                                                                                                                                                                        |
 | <span id="modelica-m2038"></span>`M2038` | `partial-lookup-disallowed`                 | [error]      | <code>&lt;className&gt;</code> is partial, name lookup is not allowed in partial classes.                                                                                                                                                                                                                                                                                                                                           |
 | <span id="modelica-m2090"></span>`M2090` | `from-here`                                 | [notification] | From here:                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | <span id="modelica-m2091"></span>`M2091` | `redeclare-final-component-notification`    | [info]         | From here:                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -22064,6 +22187,9 @@ Acausal multi-domain physics. **237 rules** · `@modelscript/modelica` · Source
 | <span id="modelica-m3019"></span>`M3019` | `no-matching-function`            | [error]    | No matching function found for <code>&lt;callExpr&gt;</code> of type <code>&lt;callSig&gt;</code> candidates are <code>&lt;candidateSig&gt;</code>                                                                              |
 | <span id="modelica-m3020"></span>`M3020` | `type-mismatch-modifier-binding`  | [error]    | Type mismatch in modifier of component <code>&lt;compName&gt;</code>, expected type <code>&lt;expectedType&gt;</code>, got modifier <code>&lt;exprText&gt;</code> of type <code>&lt;actualType&gt;</code>.                      |
 | <span id="modelica-m3021"></span>`M3021` | `function-return-type-mismatch`   | [error]    | Function '<code>&lt;funcName&gt;</code>' returns type '<code>&lt;actualType&gt;</code>' but '<code>&lt;expectedType&gt;</code>' expected.                                                                                       |
+| <span id="modelica-m3022"></span>`M3022` | `unit-mismatch-binding`           | [warning] | Unit mismatch in component binding '<code>&lt;bindingText&gt;</code>'.                                                                                                                                                          |
+| <span id="modelica-m3023"></span>`M3023` | `real-equality-comparison`        | [warning] | Comparing Real expressions in '<code>&lt;expr&gt;</code>' with '<code>&lt;op&gt;</code>' outside a function is discouraged per Modelica specification §3.5.                                                                     |
+| <span id="modelica-m3024"></span>`M3024` | `incompatible-display-unit`       | [warning] | <code>&lt;detail&gt;</code>.                                                                                                                                                                                                    |
 
 **`M4xxx` — Structural, inheritance, modification & connector semantics**
 
@@ -22109,7 +22235,6 @@ Acausal multi-domain physics. **237 rules** · `@modelscript/modelica` · Source
 | <span id="modelica-m4037"></span>`M4037` | `connector-variability`                           | [error]    | Invalid variability <code>&lt;variability&gt;</code> on connector '<code>&lt;connectorName&gt;</code>'.                                                                                                                                                                                           |
 | <span id="modelica-m4038"></span>`M4038` | `flow-outside-connector`                          | [warning] | Prefix 'flow' used outside connector declaration.                                                                                                                                                                                                                                                 |
 | <span id="modelica-m4039"></span>`M4039` | `discrete-not-on-lhs`                             | [error]    | Following variable is discrete, but does not appear on the LHS of a when-statement: '<code>&lt;varName&gt;</code>'.                                                                                                                                                                               |
-| <span id="modelica-m4040"></span>`M4040` | `protected-element-modification`                  | [error]    | Protected element '<code>&lt;varName&gt;</code>' may not be modified, got '<code>&lt;modText&gt;</code>'.                                                                                                                                                                                         |
 | <span id="modelica-m4041"></span>`M4041` | `negative-dimension`                              | [error]    | Negative dimension index (<code>&lt;dim&gt;</code>) for component <code>&lt;varName&gt;</code>.                                                                                                                                                                                                   |
 | <span id="modelica-m4042"></span>`M4042` | `constant-has-no-value`                           | [error]    | Constant '<code>&lt;qualifiedName&gt;</code>' has no value.                                                                                                                                                                                                                                       |
 | <span id="modelica-m4043"></span>`M4043` | `constant-variability-violation`                  | [error]    | Component <code>&lt;componentName&gt;</code> of variability constant has binding '<code>&lt;bindingText&gt;</code>' of higher variability <code>&lt;bindingVariability&gt;</code>.                                                                                                                |
@@ -22145,7 +22270,7 @@ Acausal multi-domain physics. **237 rules** · `@modelscript/modelica` · Source
 | <span id="modelica-m4074"></span>`M4074` | `external-array-return-not-allowed`               | [error]    | The lhs (result) of the external function declaration has array type (<code>&lt;typeStr&gt;</code>), but this is not allowed in the specification. You need to pass it as an input to the function (preferably also with a size()-expression to avoid out-of-bounds errors in the external call). |
 | <span id="modelica-m4075"></span>`M4075` | `invalid-type-prefix-flow-nested`                 | [error]    | Invalid type prefix 'flow' on variable <code>&lt;varName&gt;</code>, due to existing type prefix 'flow'.                                                                                                                                                                                          |
 | <span id="modelica-m4076"></span>`M4076` | `parameter-bound-contradiction`                   | [error]    | Contradictory bounds for parameter '<code>&lt;paramName&gt;</code>': lower bound '<code>&lt;lower&gt;</code>' exceeds upper bound '<code>&lt;upper&gt;</code>'.                                                                                                                                   |
-| <span id="modelica-m4077"></span>`M4077` | `loop-termination-inconclusive`                   | [error]    | Loop over '<code>&lt;loopVar&gt;</code>' with condition '<code>&lt;condition&gt;</code>' cannot be proven to terminate.                                                                                                                                                                           |
+| <span id="modelica-m4077"></span>`M4077` | `loop-termination-inconclusive`                   | [warning] | Loop over '<code>&lt;loopVar&gt;</code>' with condition '<code>&lt;condition&gt;</code>' cannot be proven to terminate.                                                                                                                                                                           |
 | <span id="modelica-m4078"></span>`M4078` | `terminate-in-function`                           | [error]    | terminate is not allowed in a function.                                                                                                                                                                                                                                                           |
 | <span id="modelica-m4079"></span>`M4079` | `return-outside-function`                         | [error]    | 'return' may not be used outside function.                                                                                                                                                                                                                                                        |
 | <span id="modelica-m4080"></span>`M4080` | `cyclic-constants-or-parameters`                  | [error]    | Cyclically dependent constants or parameters found in scope <code>&lt;scopeName&gt;</code>: &#123;<code>&lt;cycleList&gt;</code>&#125; (ignore with -d=ignoreCycles).                                                                                                                             |
@@ -22153,12 +22278,10 @@ Acausal multi-domain physics. **237 rules** · `@modelscript/modelica` · Source
 | <span id="modelica-m4082"></span>`M4082` | `connector-non-parameter-subscript`               | [error]    | Connector '<code>&lt;connRef&gt;</code>' has non-parameter subscript '<code>&lt;subscriptText&gt;</code>'.                                                                                                                                                                                        |
 | <span id="modelica-m4083"></span>`M4083` | `enum-duplicate-literal`                          | [error]    | Enumeration has duplicate names: <code>&lt;dup&gt;</code> in list of names <code>&lt;list&gt;</code>.                                                                                                                                                                                             |
 | <span id="modelica-m4084"></span>`M4084` | `enum-reserved-attribute-literal`                 | [error]    | Invalid use of reserved attribute name <code>&lt;name&gt;</code> as enumeration literal.                                                                                                                                                                                                          |
-| <span id="modelica-m4091"></span>`M4091` | `break-outside-loop`                              | [error]    | 'break' must be inside a for or while loop, or enclose a connect equation.                                                                                                                                                                                                                        |
+| <span id="modelica-m4091"></span>`M4091` | `break-outside-loop`                              | [error]    | 'break' may only be used in a while- or for-loop.                                                                                                                                                                                                                                                 |
 | <span id="modelica-m4092"></span>`M4092` | `binding-dimension-mismatch`                      | [error]    | Type mismatch in binding '<code>&lt;componentName&gt;</code> = <code>&lt;bindingText&gt;</code>', expected array dimensions &#91;<code>&lt;expectedDims&gt;</code>&#93;, got &#91;<code>&lt;actualDims&gt;</code>&#93;.                                                                           |
 | <span id="modelica-m4093"></span>`M4093` | `unused-input-variable`                           | [warning] | Unused input variable <code>&lt;varName&gt;</code> in function <code>&lt;funcName&gt;</code>.                                                                                                                                                                                                     |
-| <span id="modelica-m4094"></span>`M4094` | `cardinality-in-condition-only`                   | [error]    | cardinality may only be used in the condition of an if-statement or if-equation.                                                                                                                                                                                                                  |
 | <span id="modelica-m4095"></span>`M4095` | `conditional-expression-not-evaluated`            | [error]    | The conditional expression <code>&lt;condText&gt;</code> could not be evaluated.                                                                                                                                                                                                                  |
-| <span id="modelica-m4096"></span>`M4096` | `dimensions-must-be-parameter`                    | [error]    | Dimensions must be parameter or constant expression (in <code>&lt;callStr&gt;</code>).                                                                                                                                                                                                            |
 | <span id="modelica-m4097"></span>`M4097` | `called-function-partial`                         | [error]    | Called function '<code>&lt;fnName&gt;</code>' is partial.                                                                                                                                                                                                                                         |
 | <span id="modelica-m4098"></span>`M4098` | `class-specialization-violation`                  | [error]    | Class specialization violation: <code>&lt;className&gt;</code> <code>&lt;errorDetail&gt;</code>.                                                                                                                                                                                                  |
 | <span id="modelica-m4099"></span>`M4099` | `cannot-connect-undeclared-expandable-connectors` | [error]    | Cannot connect undeclared connectors <code>&lt;c1&gt;</code> with <code>&lt;c2&gt;</code>. At least one of them must be declared.                                                                                                                                                                 |
@@ -22175,12 +22298,10 @@ Acausal multi-domain physics. **237 rules** · `@modelscript/modelica` · Source
 | <span id="modelica-m4111"></span>`M4111` | `invalid-redeclaration-basic-type-attribute`      | [error]    | Invalid redeclaration of <code>&lt;attrName&gt;</code>, attributes of basic types may not be redeclared.                                                                                                                                                                                          |
 | <span id="modelica-m4112"></span>`M4112` | `extends-other-base-class`                        | [error]    | Found other base class for extends <code>&lt;baseName&gt;</code> after instantiating extends.                                                                                                                                                                                                     |
 | <span id="modelica-m4113"></span>`M4113` | `external-object-missing-destructor`              | [error]    | External object <code>&lt;className&gt;</code> is missing a destructor.                                                                                                                                                                                                                           |
-| <span id="modelica-m4114"></span>`M4114` | `invalid-connector-variability`                   | [error]    | Invalid variability <code>&lt;variability&gt;</code> on connector '<code>&lt;compName&gt;</code>'.                                                                                                                                                                                                |
 | <span id="modelica-m4115"></span>`M4115` | `external-object-not-replaceable`                 | [error]    | '<code>&lt;elemName&gt;</code>' may not be replaceable.                                                                                                                                                                                                                                           |
 | <span id="modelica-m4116"></span>`M4116` | `operator-encapsulation`                          | [error]    | Operator <code>&lt;recordName&gt;</code>.'<code>&lt;opName&gt;</code>' is not encapsulated.                                                                                                                                                                                                       |
 | <span id="modelica-m4117"></span>`M4117` | `operator-constructor-outputs`                    | [error]    | Operator <code>&lt;recordName&gt;</code>.'constructor' must have exactly one output.                                                                                                                                                                                                              |
 | <span id="modelica-m4118"></span>`M4118` | `operator-constructor-output-type`                | [error]    | Output '<code>&lt;outputName&gt;</code>' in operator <code>&lt;recordName&gt;</code>.'constructor' must be of type <code>&lt;recordName&gt;</code>, got type <code>&lt;actualType&gt;</code>.                                                                                                     |
-| <span id="modelica-m4119"></span>`M4119` | `variable-in-package-not-constant`                | [error]    | Variable <code>&lt;varName&gt;</code> in package <code>&lt;pkgName&gt;</code> is not constant.                                                                                                                                                                                                    |
 | <span id="modelica-m4120"></span>`M4120` | `ambiguous-operator-overload`                     | [error]    | Ambiguous matching overloaded operator functions found for <code>&lt;exprText&gt;</code>. Candidates are: <code>&lt;candidatesText&gt;</code>                                                                                                                                                     |
 | <span id="modelica-m4121"></span>`M4121` | `no-matching-operator-function`                   | [error]    | No matching function found for <code>&lt;callExprText&gt;</code>. Candidates are: <code>&lt;candidatesText&gt;</code>                                                                                                                                                                             |
 | <span id="modelica-m4122"></span>`M4122` | `cannot-resolve-operator-type`                    | [error]    | Cannot resolve type of expression <code>&lt;exprText&gt;</code>. The operands have types <code>&lt;leftType&gt;</code>, <code>&lt;rightType&gt;</code> in component &lt;NO_COMPONENT&gt;.                                                                                                         |
@@ -22188,17 +22309,26 @@ Acausal multi-domain physics. **237 rules** · `@modelscript/modelica` · Source
 | <span id="modelica-m4124"></span>`M4124` | `stream-missing-instream`                         | [error]    | Stream variable '<code>&lt;varName&gt;</code>' accessed in connector equation without required inStream() operator.                                                                                                                                                                               |
 | <span id="modelica-m4125"></span>`M4125` | `stream-mixed-with-flow`                          | [error]    | Variable '<code>&lt;varName&gt;</code>' cannot have both 'stream' and 'flow' prefixes.                                                                                                                                                                                                            |
 | <span id="modelica-m4126"></span>`M4126` | `inner-outer-causality-mismatch`                  | [error]    | Outer component '<code>&lt;outerName&gt;</code>' causality conflicts with inner declaration '<code>&lt;innerName&gt;</code>'.                                                                                                                                                                     |
-| <span id="modelica-m4130"></span>`M4130` | `class-missing-description`                       | [warning] | Class '<code>&lt;className&gt;</code>' is missing a description string.                                                                                                                                                                                                                           |
+| <span id="modelica-m4130"></span>`M4130` | `class-missing-description`                       | [info]       | Class '<code>&lt;className&gt;</code>' is missing a description string.                                                                                                                                                                                                                           |
 | <span id="modelica-m4131"></span>`M4131` | `parameter-missing-description`                   | [warning] | Public parameter '<code>&lt;paramName&gt;</code>' is missing a description string.                                                                                                                                                                                                                |
 | <span id="modelica-m4132"></span>`M4132` | `constant-missing-description`                    | [info]       | Public constant '<code>&lt;constName&gt;</code>' is missing a description string.                                                                                                                                                                                                                 |
 | <span id="modelica-m4133"></span>`M4133` | `class-missing-icon`                              | [info]       | Class '<code>&lt;className&gt;</code>' is missing an icon annotation and does not inherit one.                                                                                                                                                                                                    |
-| <span id="modelica-m4134"></span>`M4134` | `broken-modelica-uri`                             | [error]    | Broken 'modelica://' reference: '<code>&lt;uri&gt;</code>' does not resolve to an existing class or model.                                                                                                                                                                                        |
-| <span id="modelica-m4135"></span>`M4135` | `resource-missing`                                | [error]    | Referenced resource file '<code>&lt;res&gt;</code>' does not exist on disk.                                                                                                                                                                                                                       |
+| <span id="modelica-m4134"></span>`M4134` | `broken-modelica-uri`                             | [warning] | Broken 'modelica://' reference: '<code>&lt;uri&gt;</code>' does not resolve to an existing class or model.                                                                                                                                                                                        |
+| <span id="modelica-m4135"></span>`M4135` | `resource-missing`                                | [warning] | Referenced resource file '<code>&lt;res&gt;</code>' does not exist on disk.                                                                                                                                                                                                                       |
 | <span id="modelica-m4136"></span>`M4136` | `resource-absolute-path`                          | [warning] | Resource reference '<code>&lt;pathStr&gt;</code>' uses an absolute filesystem path; use a relative path or 'modelica://' URI instead.                                                                                                                                                             |
 | <span id="modelica-m4140"></span>`M4140` | `tgg-conformance-missing-port`                    | [warning] | TGG conformance warning: '<code>&lt;targetName&gt;</code>' (<code>&lt;targetLang&gt;</code>) is missing counterpart port '<code>&lt;portName&gt;</code>' (<code>&lt;portType&gt;</code>) expected by '<code>&lt;sourceName&gt;</code>'.                                                           |
 | <span id="modelica-m4141"></span>`M4141` | `tgg-conformance-param-mismatch`                  | [warning] | TGG conformance warning: parameter or port '<code>&lt;paramName&gt;</code>' type '<code>&lt;actualType&gt;</code>' is incompatible with '<code>&lt;expectedType&gt;</code>'.                                                                                                                      |
 | <span id="modelica-m4142"></span>`M4142` | `tgg-conformance-missing-component`               | [warning] | TGG conformance warning: '<code>&lt;targetName&gt;</code>' (<code>&lt;targetLang&gt;</code>) is missing expected component '<code>&lt;compName&gt;</code>' : '<code>&lt;compType&gt;</code>'.                                                                                                     |
 | <span id="modelica-m4143"></span>`M4143` | `tgg-conformance-unresolved-target`               | [error]    | Counterpart element referenced by '<code>&lt;sourceName&gt;</code>' could not be resolved in '<code>&lt;targetLang&gt;</code>'.                                                                                                                                                                   |
+| <span id="modelica-m4146"></span>`M4146` | `parameter-no-value`                              | [warning] | Parameter '<code>&lt;paramName&gt;</code>' has no value and relies on default start value during initialization.                                                                                                                                                                                  |
+| <span id="modelica-m4147"></span>`M4147` | `obsolete-class-usage`                            | [warning] | Class '<code>&lt;className&gt;</code>' is marked obsolete: '<code>&lt;reason&gt;</code>'.                                                                                                                                                                                                         |
+| <span id="modelica-m4148"></span>`M4148` | `connector-unbalanced`                            | [warning] | Connector '<code>&lt;className&gt;</code>' is unbalanced: <code>&lt;potCount&gt;</code> potential variable(s) vs <code>&lt;flowCount&gt;</code> flow variable(s) (Modelica specification §9.3.1).                                                                                                 |
+| <span id="modelica-m4149"></span>`M4149` | `connect-two-outputs`                             | [warning] | Connected endpoints '<code>&lt;lhs&gt;</code>' and '<code>&lt;rhs&gt;</code>' are both declared with 'output' causality (Modelica specification §9.3).                                                                                                                                            |
+| <span id="modelica-m4150"></span>`M4150` | `derivative-annotation-mismatch`                  | [warning] | Derivative function '<code>&lt;derivName&gt;</code>' referenced by annotation on '<code>&lt;fnName&gt;</code>' could not be resolved as a valid function.                                                                                                                                         |
+| <span id="modelica-m4151"></span>`M4151` | `unconnected-input`                               | [warning] | Input '<code>&lt;inputPath&gt;</code>' on component '<code>&lt;compName&gt;</code>' has no connection or modification binding.                                                                                                                                                                    |
+| <span id="modelica-m4152"></span>`M4152` | `experiment-annotation-missing`                   | [info]       | Example class '<code>&lt;className&gt;</code>' is missing an 'experiment(...)' annotation.                                                                                                                                                                                                        |
+| <span id="modelica-m4153"></span>`M4153` | `missing-uses-annotation`                         | [warning] | Library package '<code>&lt;pkgName&gt;</code>' references external library '<code>&lt;externalLib&gt;</code>' without declaring 'uses(<code>&lt;externalLib&gt;</code>(...))' in its annotation.                                                                                                  |
+| <span id="modelica-m4154"></span>`M4154` | `locally-unbalanced-class`                        | [warning] | The <code>&lt;classKind&gt;</code> '<code>&lt;name&gt;</code>' is locally unbalanced: <code>&lt;localEqs&gt;</code> local equation(s) and <code>&lt;localVars&gt;</code> local unknown variable(s) (Modelica specification §4.8).                                                                 |
 
 **`M5xxx` — Equations, algorithms & control-flow analysis**
 
@@ -22250,13 +22380,20 @@ Acausal multi-domain physics. **237 rules** · `@modelscript/modelica` · Source
 | <span id="modelica-m5044"></span>`M5044` | `reinit-arg2-type-mismatch`           | [error]    | Type mismatch for positional argument 2 in reinit(=<code>&lt;argText&gt;</code>). The argument has type: <code>&lt;actualType&gt;</code> expected type: <code>&lt;expectedType&gt;</code> |
 | <span id="modelica-m5045"></span>`M5045` | `continuous-variable-in-when`         | [error]    | Direct assignment to continuous state '<code>&lt;varName&gt;</code>' inside when-clause is illegal; use reinit().                                                                         |
 | <span id="modelica-m5046"></span>`M5046` | `deprecated-cardinality-operator`     | [warning] | Operator 'cardinality()' is deprecated in Modelica 3.x; use conditional components instead.                                                                                               |
+| <span id="modelica-m5051"></span>`M5051` | `der-of-non-real`                     | [warning] | Argument '<code>&lt;arg&gt;</code>' of 'der(...)' must have type Real.                                                                                                                    |
+| <span id="modelica-m5052"></span>`M5052` | `stateselect-always-not-state`        | [warning] | Variable '<code>&lt;varName&gt;</code>' declares 'stateSelect = StateSelect.always' but is not selected or differentiated as a continuous state.                                          |
+| <span id="modelica-m5101"></span>`M5101` | `formal-algorithm-proof`              | [error]    | <code>&lt;detail&gt;</code>.                                                                                                                                                              |
+| <span id="modelica-m5102"></span>`M5102` | `sysml-constraint-violation`          | [error]    | <code>&lt;detail&gt;</code>.                                                                                                                                                              |
+| <span id="modelica-m5103"></span>`M5103` | `dae-invariant-warning`               | [warning] | <code>&lt;detail&gt;</code>.                                                                                                                                                              |
+| <span id="modelica-m5104"></span>`M5104` | `S5020`                               | [error]    | <code>&lt;detail&gt;</code>.                                                                                                                                                              |
+| <span id="modelica-m5105"></span>`M5105` | `S5021`                               | [warning] | <code>&lt;detail&gt;</code>.                                                                                                                                                              |
 
 **`M6xxx` — Synchronous clocks, state machines & purity**
 
 | Code                                     | Rule                          | Severity                             | Message                                                                                                                                           |
 | :--------------------------------------- | :---------------------------- | :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------ |
 | <span id="modelica-m6001"></span>`M6001` | `mixed-clock-domains`         | [error] | Clocked expression '<code>&lt;exprText&gt;</code>' mixes signals from different clock domains.                                                    |
-| <span id="modelica-m6002"></span>`M6002` | `sample-factor-not-positive`  | [error] | Sub-clock factor must be a positive integer.                                                                                                      |
+| <span id="modelica-m6002"></span>`M6002` | `sample-factor-not-positive`  | [error] | Sub-clock factor must be a non-negative integer (or 0 for inferred factor).                                                                       |
 | <span id="modelica-m6003"></span>`M6003` | `previous-outside-clocked`    | [error] | Operator 'previous()' may only be applied to clocked discrete-time variables in '<code>&lt;exprText&gt;</code>'.                                  |
 | <span id="modelica-m6004"></span>`M6004` | `hold-in-continuous`          | [error] | Operator 'hold()' converts a clocked signal to continuous-time and cannot be used inside a clocked partition: '<code>&lt;exprText&gt;</code>'.    |
 | <span id="modelica-m6010"></span>`M6010` | `duplicate-initial-state`     | [error] | A state machine partition must have at most one initialState() call.                                                                              |
@@ -22266,6 +22403,62 @@ Acausal multi-domain physics. **237 rules** · `@modelscript/modelica` · Source
 | <span id="modelica-m6050"></span>`M6050` | `transition-priority-invalid` | [error] | Transition priority '<code>&lt;priorityText&gt;</code>' must be a positive integer (&gt;= 1) and unique among transitions exiting the same state. |
 | <span id="modelica-m6051"></span>`M6051` | `first-tick-invalid-argument` | [error] | Operator 'firstTick(<code>&lt;argText&gt;</code>)' cannot be applied to continuous-time 'time' or non-clocked constant/parameter expressions.     |
 | <span id="modelica-m6052"></span>`M6052` | `interval-invalid-argument`   | [error] | Operator 'interval(<code>&lt;argText&gt;</code>)' cannot be applied to continuous-time 'time' or non-clocked constant/parameter expressions.      |
+
+**`M7xxx` — Other**
+
+| Code                                     | Rule                                        | Severity                                | Message                                                                                                                                                                                                                                   |
+| :--------------------------------------- | :------------------------------------------ | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="modelica-m7101"></span>`M7101` | `formal-structurally-singular`              | [error]    | DAE system '<code>&lt;modelName&gt;</code>' is structurally singular: <code>&lt;detail&gt;</code>.                                                                                                                                        |
+| <span id="modelica-m7102"></span>`M7102` | `formal-over-determined-subsystem`          | [error]    | DAE system '<code>&lt;modelName&gt;</code>' has an over-determined subsystem with unmatched equation(s) '<code>&lt;unmatchedEqs&gt;</code>'.                                                                                              |
+| <span id="modelica-m7103"></span>`M7103` | `formal-high-index-dae`                     | [warning] | DAE system '<code>&lt;modelName&gt;</code>' has high structural differential index '<code>&lt;indexVal&gt;</code>' (&gt; 1) requiring Pantelides index reduction.                                                                         |
+| <span id="modelica-m7104"></span>`M7104` | `formal-state-selection-ambiguous`          | [warning] | DAE system '<code>&lt;modelName&gt;</code>' has differential index &gt; 1 with candidate state variables (<code>&lt;candidates&gt;</code>) lacking explicit 'stateSelect' priority.                                                       |
+| <span id="modelica-m7105"></span>`M7105` | `formal-large-algebraic-loop`               | [warning] | Coupled algebraic loop of size '<code>&lt;blockSize&gt;</code>' detected involving '<code>&lt;vars&gt;</code>'.                                                                                                                           |
+| <span id="modelica-m7106"></span>`M7106` | `formal-numerically-singular-loop`          | [error]    | Equation block '<code>&lt;blockDesc&gt;</code>' is numerically singular: interval Jacobian '<code>&lt;jacInterval&gt;</code>' contains 0.                                                                                                 |
+| <span id="modelica-m7107"></span>`M7107` | `formal-array-equation-unbalanced`          | [error]    | Array variable '<code>&lt;arrayName&gt;</code>' has unbalanced equation coverage: <code>&lt;detail&gt;</code>.                                                                                                                            |
+| <span id="modelica-m7108"></span>`M7108` | `formal-variable-without-equation`          | [warning] | Variable '<code>&lt;varName&gt;</code>' has zero incidence in non-alias equations after alias elimination.                                                                                                                                |
+| <span id="modelica-m7109"></span>`M7109` | `formal-alias-cycle-no-source`              | [error]    | Alias chain cycle in '<code>&lt;modelName&gt;</code>' involving (<code>&lt;cycleVars&gt;</code>) has no grounded source.                                                                                                                  |
+| <span id="modelica-m7110"></span>`M7110` | `formal-under-determined-subsystem`         | [error]    | DAE system '<code>&lt;modelName&gt;</code>' has an under-determined subsystem with unconstrained variable(s) '<code>&lt;unmatchedVars&gt;</code>'.                                                                                        |
+| <span id="modelica-m7111"></span>`M7111` | `formal-initialization-unbalanced`          | [warning] | Initialization system of '<code>&lt;modelName&gt;</code>' is unbalanced: <code>&lt;detail&gt;</code>.                                                                                                                                     |
+| <span id="modelica-m7112"></span>`M7112` | `formal-iteration-variable-no-start`        | [warning] | Tearing iteration variable '<code>&lt;varName&gt;</code>' has no explicit start attribute and defaults to 0.0.                                                                                                                            |
+| <span id="modelica-m7201"></span>`M7201` | `formal-possible-division-by-zero`          | [error]    | Possible division by zero in '<code>&lt;expr&gt;</code>' (denominator interval '<code>&lt;intervalStr&gt;</code>' contains 0).                                                                                                            |
+| <span id="modelica-m7202"></span>`M7202` | `formal-sqrt-of-negative`                   | [error]    | Domain error in '<code>&lt;expr&gt;</code>': argument to 'sqrt' reaches negative values ('<code>&lt;intervalStr&gt;</code>').                                                                                                             |
+| <span id="modelica-m7203"></span>`M7203` | `formal-log-of-nonpositive`                 | [error]    | Domain error in '<code>&lt;expr&gt;</code>': argument to logarithm reaches non-positive values ('<code>&lt;intervalStr&gt;</code>').                                                                                                      |
+| <span id="modelica-m7204"></span>`M7204` | `formal-inverse-trig-domain`                | [error]    | Domain error in '<code>&lt;expr&gt;</code>': argument to inverse trigonometric/hyperbolic function leaves its real domain ('<code>&lt;intervalStr&gt;</code>').                                                                           |
+| <span id="modelica-m7205"></span>`M7205` | `formal-pow-domain-violation`               | [error]    | Domain error in '<code>&lt;expr&gt;</code>': power base reaches negative or zero values ('<code>&lt;intervalStr&gt;</code>').                                                                                                             |
+| <span id="modelica-m7206"></span>`M7206` | `formal-array-index-out-of-bounds`          | [error]    | Array index in '<code>&lt;expr&gt;</code>' may be out of bounds (<code>&lt;detail&gt;</code>).                                                                                                                                            |
+| <span id="modelica-m7207"></span>`M7207` | `formal-integer-overflow`                   | [error]    | 32-bit signed Integer overflow hazard in '<code>&lt;expr&gt;</code>' (reachable interval '<code>&lt;intervalStr&gt;</code>' exceeds &#91;-2147483648, 2147483647&#93;).                                                                   |
+| <span id="modelica-m7208"></span>`M7208` | `formal-binding-outside-min-max`            | [error]    | Binding value '<code>&lt;valueStr&gt;</code>' for '<code>&lt;varName&gt;</code>' lies outside declared bounds '<code>&lt;boundsStr&gt;</code>'.                                                                                           |
+| <span id="modelica-m7209"></span>`M7209` | `formal-start-outside-min-max`              | [warning] | Start attribute '<code>&lt;startStr&gt;</code>' for '<code>&lt;varName&gt;</code>' lies outside declared bounds '<code>&lt;boundsStr&gt;</code>'.                                                                                         |
+| <span id="modelica-m7210"></span>`M7210` | `formal-parameter-bound-contradiction`      | [error]    | Relational parameter constraints in '<code>&lt;modelName&gt;</code>' are infeasible: <code>&lt;detail&gt;</code>.                                                                                                                         |
+| <span id="modelica-m7211"></span>`M7211` | `formal-nominal-magnitude-mismatch`         | [warning] | Reachable range '<code>&lt;intervalStr&gt;</code>' for '<code>&lt;varName&gt;</code>' differs by more than 10^3 from declared nominal '<code>&lt;nominalStr&gt;</code>'.                                                                  |
+| <span id="modelica-m7212"></span>`M7212` | `formal-loop-termination-unproven`          | [warning] | Loop 'while <code>&lt;loopCond&gt;</code>' lacks a provably decreasing loop variant or explicit 'break' exit.                                                                                                                             |
+| <span id="modelica-m7213"></span>`M7213` | `formal-variable-bound-violation-reachable` | [warning] | Reachable interval '<code>&lt;intervalStr&gt;</code>' for '<code>&lt;varName&gt;</code>' violates declared bounds '<code>&lt;boundsStr&gt;</code>'.                                                                                       |
+| <span id="modelica-m7301"></span>`M7301` | `formal-assert-always-fails`                | [error]    | Assert condition '<code>&lt;cond&gt;</code>' is provably always false ('<code>&lt;assertMsg&gt;</code>').                                                                                                                                 |
+| <span id="modelica-m7302"></span>`M7302` | `formal-assert-trivially-true`              | [info]       | Assert condition '<code>&lt;cond&gt;</code>' is provably always true over declared parameter and variable bounds.                                                                                                                         |
+| <span id="modelica-m7303"></span>`M7303` | `formal-dead-if-branch`                     | [warning] | Conditional branch guard '<code>&lt;cond&gt;</code>' is unsatisfiable under declared bounds.                                                                                                                                              |
+| <span id="modelica-m7304"></span>`M7304` | `formal-when-condition-never-true`          | [warning] | Event condition '<code>&lt;cond&gt;</code>' in 'when' clause is unsatisfiable under declared bounds.                                                                                                                                      |
+| <span id="modelica-m7305"></span>`M7305` | `formal-shadowed-elseif-guard`              | [warning] | Branch guard '<code>&lt;cond&gt;</code>' is shadowed by earlier condition '<code>&lt;earlierCond&gt;</code>' and cannot execute.                                                                                                          |
+| <span id="modelica-m7306"></span>`M7306` | `formal-state-machine-guard-overlap`        | [warning] | Transitions from state '<code>&lt;fromState&gt;</code>' to '<code>&lt;to1&gt;</code>' and '<code>&lt;to2&gt;</code>' with equal priority '<code>&lt;prio&gt;</code>' have potentially overlapping guards.                                 |
+| <span id="modelica-m7307"></span>`M7307` | `formal-state-machine-deadlock`             | [warning] | State '<code>&lt;stateName&gt;</code>' has outgoing transition(s) whose guards are all unsatisfiable under declared bounds.                                                                                                               |
+| <span id="modelica-m7308"></span>`M7308` | `formal-branch-domain-without-noevent`      | [warning] | Conditional expression '<code>&lt;expr&gt;</code>' relies on event-generating guard '<code>&lt;cond&gt;</code>' without 'noEvent(...)' to prevent domain violations during event iteration.                                               |
+| <span id="modelica-m7401"></span>`M7401` | `formal-zeno-chattering`                    | [error]    | Hybrid Zeno chattering hazard: <code>&lt;detail&gt;</code>.                                                                                                                                                                               |
+| <span id="modelica-m7402"></span>`M7402` | `formal-nondeterministic-mode-switch`       | [warning] | Nondeterministic hybrid mode switch: <code>&lt;detail&gt;</code>.                                                                                                                                                                         |
+| <span id="modelica-m7403"></span>`M7403` | `formal-reinit-discontinuity`               | [warning] | Continuous state '<code>&lt;varName&gt;</code>' exhibits discrete jump '<code>&lt;jumpStr&gt;</code>' across hybrid when-event.                                                                                                           |
+| <span id="modelica-m7404"></span>`M7404` | `formal-sliding-mode-chattering`            | [warning] | Sliding-mode chattering hazard near switching surface '<code>&lt;guardExpr&gt;</code>' with root crossing enclosed in '<code>&lt;windowStr&gt;</code>'.                                                                                   |
+| <span id="modelica-m7501"></span>`M7501` | `formal-assert-violable-discrete`           | [error]    | Discrete assert '<code>&lt;cond&gt;</code>' is violable within <code>&lt;depth&gt;</code> step(s) (IC3 bounded counterexample).                                                                                                           |
+| <span id="modelica-m7502"></span>`M7502` | `formal-clocked-invariant-proven`           | [info]       | Discrete invariant '<code>&lt;invExpr&gt;</code>' is inductively proven (<code>&lt;detail&gt;</code>).                                                                                                                                    |
+| <span id="modelica-m7503"></span>`M7503` | `formal-unreachable-state-machine-state`    | [warning] | State machine state '<code>&lt;stateName&gt;</code>' is provably unreachable from initial state '<code>&lt;initialState&gt;</code>' (IC3 inductive proof).                                                                                |
+| <span id="modelica-m7504"></span>`M7504` | `formal-function-postcondition-violation`   | [error]    | Function '<code>&lt;fnName&gt;</code>' can violate postcondition '<code>&lt;ensuresClause&gt;</code>': <code>&lt;detail&gt;</code>.                                                                                                       |
+| <span id="modelica-m7505"></span>`M7505` | `formal-function-nondeterministic`          | [error]    | Function '<code>&lt;fnName&gt;</code>' violates relational property '<code>&lt;propertyName&gt;</code>': <code>&lt;detail&gt;</code>.                                                                                                     |
+| <span id="modelica-m7601"></span>`M7601` | `formal-physical-bound-flowpipe`            | [error]    | Validated continuous reachability tube proves physical bound breach for '<code>&lt;varName&gt;</code>': '<code>&lt;valueStr&gt;</code>' violates '<code>&lt;limitStr&gt;</code>' within t in '&#91;0, <code>&lt;timeStr&gt;</code>&#93;'. |
+| <span id="modelica-m7602"></span>`M7602` | `formal-barrier-certificate-not-found`      | [info]       | Heuristic quadratic SOS barrier certificate not found for '<code>&lt;modelName&gt;</code>': <code>&lt;detail&gt;</code>.                                                                                                                  |
+| <span id="modelica-m7603"></span>`M7603` | `formal-requirement-stl-violated`           | [error]    | STL requirement '<code>&lt;formulaText&gt;</code>' violated for '<code>&lt;varName&gt;</code>' (robustness = <code>&lt;rhoStr&gt;</code> at t = <code>&lt;timeStr&gt;</code>s).                                                           |
+| <span id="modelica-m7604"></span>`M7604` | `formal-sysml-requirement-unsatisfiable`    | [error]    | SysML requirement '<code>&lt;reqName&gt;</code>' is unsatisfiable under declared model parameter/variable bounds: <code>&lt;detail&gt;</code>.                                                                                            |
+| <span id="modelica-m7605"></span>`M7605` | `formal-polyglot-parameter-drift`           | [warning] | Polyglot parameter '<code>&lt;paramName&gt;</code>' on '<code>&lt;componentName&gt;</code>' drifted across models: <code>&lt;detail&gt;</code>.                                                                                           |
+| <span id="modelica-m7701"></span>`M7701` | `formal-redundant-equation`                 | [warning] | Equation '<code>&lt;eqText&gt;</code>' is algebraically equivalent to '<code>&lt;otherEqText&gt;</code>' after E-graph normalization.                                                                                                     |
+| <span id="modelica-m7702"></span>`M7702` | `formal-equation-tautology`                 | [warning] | Equation '<code>&lt;eqText&gt;</code>' simplifies to the trivial identity '0 = 0' and adds no constraint.                                                                                                                                 |
+| <span id="modelica-m7703"></span>`M7703` | `formal-equation-contradiction`             | [error]    | Equation '<code>&lt;eqText&gt;</code>' simplifies to an inconsistent constant residual '<code>&lt;residual&gt;</code> = 0'.                                                                                                               |
+| <span id="modelica-m7704"></span>`M7704` | `formal-dimension-mismatch-inferred`        | [warning] | Inferred physical dimension mismatch in '<code>&lt;contextExpr&gt;</code>': '<code>&lt;lhsDim&gt;</code>' vs '<code>&lt;rhsDim&gt;</code>'.                                                                                               |
 
 ## AMPL {#ampl}
 
@@ -22288,7 +22481,7 @@ Mathematical programming & optimization (LP, MILP, NLP). **12 rules** · `@model
 
 ## SysML v2 / KerML {#sysml2}
 
-Systems architecture & requirements. **63 rules** · `@modelscript/sysml2` · Source: `languages/sysml2/src/errors.ts` · [Language guide](../languages/sysml2.md)
+Systems architecture & requirements. **108 rules** · `@modelscript/sysml2` · Source: `languages/sysml2/src/errors.ts` · [Language guide](../languages/sysml2.md)
 
 **`S1xxx` — Syntax, parsing & naming conventions**
 
@@ -22302,28 +22495,42 @@ Systems architecture & requirements. **63 rules** · `@modelscript/sysml2` · So
 
 **`S2xxx` — Scoping & name resolution**
 
-| Code                                   | Rule                          | Severity                                | Message                                                                                             |
-| :------------------------------------- | :---------------------------- | :-------------------------------------- | :-------------------------------------------------------------------------------------------------- |
-| <span id="sysml2-s2001"></span>`S2001` | `duplicate-member`            | [warning] | Duplicate member '<code>&lt;name&gt;</code>' in '<code>&lt;scope&gt;</code>'                        |
-| <span id="sysml2-s2002"></span>`S2002` | `symbol-not-found`            | [error]    | Symbol '<code>&lt;name&gt;</code>' not found in scope.                                              |
-| <span id="sysml2-s2003"></span>`S2003` | `unresolved-target`           | [error]    | Allocation target '<code>&lt;target&gt;</code>' could not be resolved                               |
-| <span id="sysml2-s2004"></span>`S2004` | `unresolved-source`           | [error]    | Allocation source '<code>&lt;source&gt;</code>' could not be resolved                               |
-| <span id="sysml2-s2005"></span>`S2005` | `unresolved-import`           | [error]    | Import '<code>&lt;pkg&gt;</code>' could not be resolved.                                            |
-| <span id="sysml2-s2006"></span>`S2006` | `unresolved-transition-state` | [error]    | Transition state '<code>&lt;stateName&gt;</code>' could not be resolved in enclosing state machine. |
+| Code                                   | Rule                                    | Severity                                | Message                                                                                                                              |
+| :------------------------------------- | :-------------------------------------- | :-------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="sysml2-s2001"></span>`S2001` | `duplicate-member`                      | [warning] | Duplicate member '<code>&lt;name&gt;</code>' in '<code>&lt;scope&gt;</code>'                                                         |
+| <span id="sysml2-s2002"></span>`S2002` | `symbol-not-found`                      | [error]    | Symbol '<code>&lt;name&gt;</code>' not found in scope.                                                                               |
+| <span id="sysml2-s2003"></span>`S2003` | `unresolved-target`                     | [error]    | Allocation target '<code>&lt;target&gt;</code>' could not be resolved                                                                |
+| <span id="sysml2-s2004"></span>`S2004` | `unresolved-source`                     | [error]    | Allocation source '<code>&lt;source&gt;</code>' could not be resolved                                                                |
+| <span id="sysml2-s2005"></span>`S2005` | `unresolved-import`                     | [error]    | Import '<code>&lt;pkg&gt;</code>' could not be resolved.                                                                             |
+| <span id="sysml2-s2006"></span>`S2006` | `unresolved-transition-state`           | [error]    | Transition state '<code>&lt;stateName&gt;</code>' could not be resolved in enclosing state machine.                                  |
+| <span id="sysml2-s2007"></span>`S2007` | `unresolved-redefinition-or-subsetting` | [error]    | Unresolved <code>&lt;kind&gt;</code> target '<code>&lt;target&gt;</code>' in enclosing or inherited scope.                           |
+| <span id="sysml2-s2009"></span>`S2009` | `visibility-access-violation`           | [error]    | Cannot access <code>&lt;visibility&gt;</code> member '<code>&lt;name&gt;</code>' of '<code>&lt;owner&gt;</code>' from this scope.    |
+| <span id="sysml2-s2010"></span>`S2010` | `top-level-import-not-private`          | [warning] | Top-level import '<code>&lt;pkg&gt;</code>' should be declared 'private'.                                                            |
+| <span id="sysml2-s2011"></span>`S2011` | `inherited-member-shadowing`            | [warning] | Member '<code>&lt;name&gt;</code>' shadows inherited feature from '<code>&lt;baseName&gt;</code>' without ':&gt;&gt;' ('redefines'). |
+| <span id="sysml2-s2012"></span>`S2012` | `unused-import-or-private-member`       | [info]       | Unused <code>&lt;kind&gt;</code> '<code>&lt;name&gt;</code>' is never referenced.                                                    |
 
 **`S3xxx` — Type system & static checking**
 
-| Code                                   | Rule                              | Severity                             | Message                                                                                                                                                                                         |
-| :------------------------------------- | :-------------------------------- | :----------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| <span id="sysml2-s3001"></span>`S3001` | `type-mismatch`                   | [error] | Type mismatch: cannot assign value of type '<code>&lt;actualType&gt;</code>' to feature '<code>&lt;featureName&gt;</code>' with declared type '<code>&lt;declaredType&gt;</code>'.              |
-| <span id="sysml2-s3002"></span>`S3002` | `incompatible-port-connection`    | [error] | Incompatible port connection between '<code>&lt;p1&gt;</code>' (<code>&lt;t1&gt;</code>) and '<code>&lt;p2&gt;</code>' (<code>&lt;t2&gt;</code>).                                               |
-| <span id="sysml2-s3003"></span>`S3003` | `dimensional-mismatch`            | [error] | Dimensional mismatch: cannot assign value of dimension '<code>&lt;actualDim&gt;</code>' to feature '<code>&lt;featureName&gt;</code>' with declared dimension '<code>&lt;targetDim&gt;</code>'. |
-| <span id="sysml2-s3004"></span>`S3004` | `invalid-multiplicity-bounds`     | [error] | Invalid multiplicity bounds: lower bound (<code>&lt;lower&gt;</code>) cannot be greater than upper bound (<code>&lt;upper&gt;</code>).                                                          |
-| <span id="sysml2-s3005"></span>`S3005` | `target-not-requirement`          | [error] | Target '<code>&lt;target&gt;</code>' is not a Requirement                                                                                                                                       |
-| <span id="sysml2-s3006"></span>`S3006` | `verify-target-not-a-requirement` | [error] | Verify target '<code>&lt;target&gt;</code>' is not a Requirement                                                                                                                                |
-| <span id="sysml2-s3007"></span>`S3007` | `dimensional-connection-mismatch` | [error] | Dimensional mismatch in connection between '<code>&lt;sourceName&gt;</code>' (<code>&lt;sourceDim&gt;</code>) and '<code>&lt;targetName&gt;</code>' (<code>&lt;targetDim&gt;</code>).           |
-| <span id="sysml2-s3008"></span>`S3008` | `port-conjugation-mismatch`       | [error] | Port conjugation mismatch between '<code>&lt;sourceName&gt;</code>' and '<code>&lt;targetName&gt;</code>' of port type '<code>&lt;portType&gt;</code>'.                                         |
-| <span id="sysml2-s3009"></span>`S3009` | `binding-connector-type-mismatch` | [error] | Binding connector type mismatch between '<code>&lt;sourceName&gt;</code>' (<code>&lt;sourceType&gt;</code>) and '<code>&lt;targetName&gt;</code>' (<code>&lt;targetType&gt;</code>).            |
+| Code                                   | Rule                                 | Severity                                | Message                                                                                                                                                                                            |
+| :------------------------------------- | :----------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="sysml2-s3001"></span>`S3001` | `type-mismatch`                      | [error]    | Type mismatch: cannot assign value of type '<code>&lt;actualType&gt;</code>' to feature '<code>&lt;featureName&gt;</code>' with declared type '<code>&lt;declaredType&gt;</code>'.                 |
+| <span id="sysml2-s3002"></span>`S3002` | `incompatible-port-connection`       | [error]    | Incompatible port connection between '<code>&lt;p1&gt;</code>' (<code>&lt;t1&gt;</code>) and '<code>&lt;p2&gt;</code>' (<code>&lt;t2&gt;</code>).                                                  |
+| <span id="sysml2-s3003"></span>`S3003` | `dimensional-mismatch`               | [error]    | Dimensional mismatch: cannot assign value of dimension '<code>&lt;actualDim&gt;</code>' to feature '<code>&lt;featureName&gt;</code>' with declared dimension '<code>&lt;targetDim&gt;</code>'.    |
+| <span id="sysml2-s3004"></span>`S3004` | `invalid-multiplicity-bounds`        | [error]    | Invalid multiplicity bounds: lower bound (<code>&lt;lower&gt;</code>) cannot be greater than upper bound (<code>&lt;upper&gt;</code>).                                                             |
+| <span id="sysml2-s3005"></span>`S3005` | `target-not-requirement`             | [error]    | Target '<code>&lt;target&gt;</code>' is not a Requirement                                                                                                                                          |
+| <span id="sysml2-s3006"></span>`S3006` | `verify-target-not-a-requirement`    | [error]    | Verify target '<code>&lt;target&gt;</code>' is not a Requirement                                                                                                                                   |
+| <span id="sysml2-s3007"></span>`S3007` | `dimensional-connection-mismatch`    | [error]    | Dimensional mismatch in connection between '<code>&lt;sourceName&gt;</code>' (<code>&lt;sourceDim&gt;</code>) and '<code>&lt;targetName&gt;</code>' (<code>&lt;targetDim&gt;</code>).              |
+| <span id="sysml2-s3008"></span>`S3008` | `port-conjugation-mismatch`          | [error]    | Port conjugation mismatch between '<code>&lt;sourceName&gt;</code>' and '<code>&lt;targetName&gt;</code>' of port type '<code>&lt;portType&gt;</code>'.                                            |
+| <span id="sysml2-s3009"></span>`S3009` | `binding-connector-type-mismatch`    | [error]    | Binding connector type mismatch between '<code>&lt;sourceName&gt;</code>' (<code>&lt;sourceType&gt;</code>) and '<code>&lt;targetName&gt;</code>' (<code>&lt;targetType&gt;</code>).               |
+| <span id="sysml2-s3010"></span>`S3010` | `usage-definition-kind-mismatch`     | [error]    | Usage '<code>&lt;usageName&gt;</code>' (<code>&lt;usageKind&gt;</code>) cannot be typed by '<code>&lt;actualType&gt;</code>'; expected <code>&lt;expectedKind&gt;</code>.                          |
+| <span id="sysml2-s3011"></span>`S3011` | `disjoint-classifier-specialization` | [error]    | '<code>&lt;subName&gt;</code>' (<code>&lt;subKind&gt;</code>) cannot specialize disjoint classifier '<code>&lt;superName&gt;</code>' (<code>&lt;superKind&gt;</code>).                             |
+| <span id="sysml2-s3012"></span>`S3012` | `redefinition-type-not-conforming`   | [error]    | Feature '<code>&lt;featureName&gt;</code>' type '<code>&lt;subType&gt;</code>' does not conform to specialized feature '<code>&lt;baseFeature&gt;</code>' type '<code>&lt;baseType&gt;</code>'.    |
+| <span id="sysml2-s3013"></span>`S3013` | `subsetting-multiplicity-widening`   | [warning] | Multiplicity &#91;<code>&lt;subMult&gt;</code>&#93; on '<code>&lt;featureName&gt;</code>' violates conformance with &#91;<code>&lt;baseMult&gt;</code>&#93; on '<code>&lt;baseFeature&gt;</code>'. |
+| <span id="sysml2-s3014"></span>`S3014` | `redefinition-modifier-conformance`  | [error]    | Specialization modifier conformance violation on '<code>&lt;featureName&gt;</code>': <code>&lt;detail&gt;</code>.                                                                                  |
+| <span id="sysml2-s3015"></span>`S3015` | `invocation-signature-mismatch`      | [error]    | Invalid invocation of '<code>&lt;callee&gt;</code>': <code>&lt;detail&gt;</code>.                                                                                                                  |
+| <span id="sysml2-s3016"></span>`S3016` | `trigger-expression-type-mismatch`   | [error]    | '<code>&lt;construct&gt;</code>' expression expects '<code>&lt;expectedType&gt;</code>', got '<code>&lt;actualType&gt;</code>'.                                                                    |
+| <span id="sysml2-s3017"></span>`S3017` | `multiplicity-bound-not-natural`     | [error]    | Multiplicity bound '<code>&lt;boundText&gt;</code>' must evaluate to a non-negative integer ('Natural') or '\*'.                                                                                   |
+| <span id="sysml2-s3018"></span>`S3018` | `invalid-cast-or-type-test`          | [warning] | Invalid '<code>&lt;op&gt;</code>' expression: '<code>&lt;sourceType&gt;</code>' and '<code>&lt;targetType&gt;</code>' are mutually disjoint types.                                                 |
 
 **`S4xxx` — Structural & metamodel semantics**
 
@@ -22342,9 +22549,19 @@ Systems architecture & requirements. **63 rules** · `@modelscript/sysml2` · So
 | <span id="sysml2-s4011"></span>`S4011` | `unverified-requirement`            | [warning] | Requirement '<code>&lt;name&gt;</code>' is not verified by any verification case in package '<code>&lt;pkgName&gt;</code>'                                                                                                              |
 | <span id="sysml2-s4012"></span>`S4012` | `calc-return-missing`               | [warning] | Calculation '<code>&lt;name&gt;</code>' has a body without a return parameter or result expression.                                                                                                                                     |
 | <span id="sysml2-s4013"></span>`S4013` | `expose-target-invalid`             | [error]    | Exposed target '<code>&lt;target&gt;</code>' in view '<code>&lt;viewName&gt;</code>' could not be resolved.                                                                                                                             |
+| <span id="sysml2-s4014"></span>`S4014` | `variation-variant-misuse`          | [error]    | Invalid variation/variant usage on '<code>&lt;name&gt;</code>': <code>&lt;detail&gt;</code>.                                                                                                                                            |
+| <span id="sysml2-s4015"></span>`S4015` | `abstract-or-composite-misuse`      | [error]    | Invalid modifier or composite ownership on '<code>&lt;name&gt;</code>': <code>&lt;detail&gt;</code>.                                                                                                                                    |
+| <span id="sysml2-s4016"></span>`S4016` | `parallel-state-invalid-transition` | [error]    | Parallel state '<code>&lt;stateName&gt;</code>' cannot directly own transitions or successions.                                                                                                                                         |
 | <span id="sysml2-s4017"></span>`S4017` | `unsatisfied-critical-requirement`  | [warning] | Critical requirement '<code>&lt;reqName&gt;</code>' has no incoming satisfy or verify relationship.                                                                                                                                     |
 | <span id="sysml2-s4018"></span>`S4018` | `circular-port-delegation`          | [error]    | Port '<code>&lt;portName&gt;</code>' delegation connection chain contains a cyclic dependency.                                                                                                                                          |
 | <span id="sysml2-s4019"></span>`S4019` | `incompatible-flow-dimensions`      | [error]    | Flow connection links incompatible physical dimensions ('<code>&lt;sourceFlow&gt;</code>' to '<code>&lt;targetFlow&gt;</code>').                                                                                                        |
+| <span id="sysml2-s4020"></span>`S4020` | `duplicate-singleton-member`        | [error]    | '<code>&lt;ownerName&gt;</code>' may have at most one '<code>&lt;memberKind&gt;</code>' member.                                                                                                                                         |
+| <span id="sysml2-s4021"></span>`S4021` | `send-to-port-without-via`          | [warning] | Sending to port '<code>&lt;portName&gt;</code>' should use 'via <code>&lt;portName&gt;</code>' instead of 'to <code>&lt;portName&gt;</code>'.                                                                                           |
+| <span id="sysml2-s4022"></span>`S4022` | `interface-end-not-port`            | [error]    | Interface end '<code>&lt;endName&gt;</code>' in '<code>&lt;ifaceName&gt;</code>' must be a port usage.                                                                                                                                  |
+| <span id="sysml2-s4023"></span>`S4023` | `binding-connector-not-binary`      | [error]    | Binding connector '<code>&lt;name&gt;</code>' must connect exactly two features.                                                                                                                                                        |
+| <span id="sysml2-s4024"></span>`S4024` | `incose-requirement-quality`        | [info]       | Requirement '<code>&lt;reqName&gt;</code>' documentation contains ambiguous or unverified term '<code>&lt;term&gt;</code>' (INCOSE GtWR).                                                                                               |
+| <span id="sysml2-s4025"></span>`S4025` | `individual-or-portion-misuse`      | [error]    | Invalid individual/portion usage on '<code>&lt;name&gt;</code>': <code>&lt;detail&gt;</code>.                                                                                                                                           |
+| <span id="sysml2-s4026"></span>`S4026` | `metadata-annotation-invalid`       | [error]    | Invalid metadata annotation '<code>&lt;metaName&gt;</code>': <code>&lt;detail&gt;</code>.                                                                                                                                               |
 | <span id="sysml2-s4080"></span>`S4080` | `tgg-conformance-missing-port`      | [warning] | TGG conformance warning: '<code>&lt;targetName&gt;</code>' (<code>&lt;targetLang&gt;</code>) is missing counterpart port '<code>&lt;portName&gt;</code>' (<code>&lt;portType&gt;</code>) expected by '<code>&lt;sourceName&gt;</code>'. |
 | <span id="sysml2-s4081"></span>`S4081` | `tgg-conformance-param-mismatch`    | [warning] | TGG conformance warning: parameter or port '<code>&lt;paramName&gt;</code>' type '<code>&lt;actualType&gt;</code>' is incompatible with '<code>&lt;expectedType&gt;</code>'.                                                            |
 | <span id="sysml2-s4082"></span>`S4082` | `tgg-conformance-missing-component` | [warning] | TGG conformance warning: '<code>&lt;targetName&gt;</code>' (<code>&lt;targetLang&gt;</code>) is missing expected component '<code>&lt;compName&gt;</code>' : '<code>&lt;compType&gt;</code>'.                                           |
@@ -22377,6 +22594,37 @@ Systems architecture & requirements. **63 rules** · `@modelscript/sysml2` · So
 | <span id="sysml2-s5021"></span>`S5021` | `standard-compliance-warning`        | [warning] | &#91;<code>&lt;clauseLabel&gt;</code>&#93; '<code>&lt;subjectName&gt;</code>' triggers advisory requirement '<code>&lt;reqName&gt;</code>': <code>&lt;detail&gt;</code>              |
 | <span id="sysml2-s5022"></span>`S5022` | `requirement-not-applicable`         | [warning] | &#91;<code>&lt;clauseLabel&gt;</code>&#93; Requirement '<code>&lt;reqName&gt;</code>' is not applicable to '<code>&lt;subjectName&gt;</code>': assume constraint evaluates to false. |
 | <span id="sysml2-s5023"></span>`S5023` | `standard-table-lookup-missing`      | [warning] | Standard table/calculator lookup '<code>&lt;calcName&gt;</code>' could not be evaluated: <code>&lt;reason&gt;</code>                                                                 |
+
+**`S6xxx` — Other**
+
+| Code                                   | Rule                                   | Severity                                | Message                                                                                                                                                                                                          |
+| :------------------------------------- | :------------------------------------- | :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="sysml2-s6001"></span>`S6001` | `contract-refinement-violation`        | [error]    | Behavioral Liskov substitution violated: '<code>&lt;subName&gt;</code>' does not refine contract of '<code>&lt;superName&gt;</code>' (<code>&lt;detail&gt;</code>).                                              |
+| <span id="sysml2-s6002"></span>`S6002` | `requirement-decomposition-gap`        | [warning] | Requirement decomposition gap on '<code>&lt;parentReq&gt;</code>': sub-requirements do not entail parent (<code>&lt;detail&gt;</code>).                                                                          |
+| <span id="sysml2-s6003"></span>`S6003` | `vacuous-requirement-assumption`       | [warning] | Requirement '<code>&lt;reqName&gt;</code>' is vacuously satisfied because its 'assume' constraints are unsatisfiable (<code>&lt;detail&gt;</code>).                                                              |
+| <span id="sysml2-s6004"></span>`S6004` | `opaque-interface-incompatibility`     | [error]    | Incompatible port contract between '<code>&lt;sourcePort&gt;</code>' and '<code>&lt;targetPort&gt;</code>': <code>&lt;detail&gt;</code>.                                                                         |
+| <span id="sysml2-s6011"></span>`S6011` | `zeno-chattering-transition-cycle`     | [warning] | Zero-dwell Zeno chattering cycle detected across transitions: <code>&lt;cycleDesc&gt;</code>.                                                                                                                    |
+| <span id="sysml2-s6012"></span>`S6012` | `parallel-region-write-race`           | [error]    | Concurrent write race in parallel state '<code>&lt;stateName&gt;</code>': variable '<code>&lt;varName&gt;</code>' written simultaneously by regions '<code>&lt;regA&gt;</code>' and '<code>&lt;regB&gt;</code>'. |
+| <span id="sysml2-s6020"></span>`S6020` | `calc-domain-or-div-zero`              | [error]    | Abstract interpretation domain violation in '<code>&lt;ownerName&gt;</code>': <code>&lt;detail&gt;</code>.                                                                                                       |
+| <span id="sysml2-s6021"></span>`S6021` | `sequence-index-out-of-bounds`         | [error]    | 1-based sequence index <code>&lt;indexDesc&gt;</code> on '<code>&lt;seqName&gt;</code>' is out of bounds (<code>&lt;boundsDesc&gt;</code>).                                                                      |
+| <span id="sysml2-s6022"></span>`S6022` | `physical-domain-impossibility`        | [error]    | Physical domain impossibility on '<code>&lt;featureName&gt;</code>' ('<code>&lt;typeName&gt;</code>'): <code>&lt;detail&gt;</code>.                                                                              |
+| <span id="sysml2-s6030"></span>`S6030` | `over-or-under-constrained-part`       | [warning] | Structural equation imbalance in '<code>&lt;partName&gt;</code>': <code>&lt;detail&gt;</code>.                                                                                                                   |
+| <span id="sysml2-s6031"></span>`S6031` | `high-index-parametric-constraint`     | [warning] | High-index parametric DAE (index <code>&lt;index&gt;</code>) in '<code>&lt;modelName&gt;</code>': <code>&lt;detail&gt;</code>.                                                                                   |
+| <span id="sysml2-s6032"></span>`S6032` | `flow-network-driver-conflict`         | [error]    | Multiple conflicting 'out' flow drivers (<code>&lt;drivers&gt;</code>) connected to '<code>&lt;targetPort&gt;</code>'.                                                                                           |
+| <span id="sysml2-s6033"></span>`S6033` | `cyber-physical-nyquist-violation`     | [warning] | Cyber-physical Nyquist violation on '<code>&lt;controllerName&gt;</code>': sampling rate <code>&lt;fsHz&gt;</code> Hz is below required <code>&lt;minHz&gt;</code> Hz (<code>&lt;detail&gt;</code>).             |
+| <span id="sysml2-s6041"></span>`S6041` | `multiplicity-budget-rollup-violation` | [error]    | Multiplicity roll-up violation in '<code>&lt;parentName&gt;</code>': child minimum '<code>&lt;attrName&gt;</code>' sum (<code>&lt;minRollup&gt;</code>) exceeds limit (<code>&lt;limit&gt;</code>).              |
+| <span id="sysml2-s6042"></span>`S6042` | `spatial-envelope-clash-or-protrusion` | [warning] | Spatial envelope violation on '<code>&lt;ownerOrPart&gt;</code>': <code>&lt;detail&gt;</code>.                                                                                                                   |
+
+**`S7xxx` — Other**
+
+| Code                                   | Rule                                       | Severity                                | Message                                                                                                                                       |
+| :------------------------------------- | :----------------------------------------- | :-------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------- |
+| <span id="sysml2-s7001"></span>`S7001` | `hierarchical-pdr-unsafe-state`            | [error]    | &#91;IC3/PDR&#93; Unsafe state '<code>&lt;targetState&gt;</code>' in '<code>&lt;smName&gt;</code>' is reachable (<code>&lt;trace&gt;</code>). |
+| <span id="sysml2-s7002"></span>`S7002` | `asil-single-point-of-failure`             | [error]    | &#91;FTA/MCS&#93; Safety violation for hazard '<code>&lt;hazardName&gt;</code>': <code>&lt;detail&gt;</code>.                                 |
+| <span id="sysml2-s7003"></span>`S7003` | `probabilistic-requirement-violated`       | [error]    | &#91;UQ/Chance&#93; Probabilistic requirement '<code>&lt;reqName&gt;</code>' violated: <code>&lt;detail&gt;</code>.                           |
+| <span id="sysml2-s7004"></span>`S7004` | `mechanical-tolerance-stack-interference`  | [warning] | &#91;Tolerance Stack&#93; Assembly chain '<code>&lt;chainName&gt;</code>' violates clearance bounds: <code>&lt;detail&gt;</code>.             |
+| <span id="sysml2-s7005"></span>`S7005` | `relational-hyperproperty-violation`       | [error]    | &#91;2-Safety&#93; Relational hyperproperty violated in '<code>&lt;targetName&gt;</code>': <code>&lt;detail&gt;</code>.                       |
+| <span id="sysml2-s7006"></span>`S7006` | `continuous-flowpipe-or-barrier-violation` | [error]    | &#91;DAE/Barrier&#93; Continuous safety reachability violation in '<code>&lt;modelName&gt;</code>': <code>&lt;detail&gt;</code>.              |
 
 ## ReqIF {#reqif}
 

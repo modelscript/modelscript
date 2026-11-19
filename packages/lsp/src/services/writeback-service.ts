@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { WritebackContext, WritebackEdit } from "@modelscript/dsl";
+import { CstUnparser, type SyntaxNode, type WritebackContext, type WritebackEdit } from "@modelscript/dsl";
 import { Range, TextEdit, type WorkspaceEdit } from "vscode-languageserver";
 import type { LspContext } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
@@ -73,10 +73,23 @@ function computeGenericWriteback(
   doc?: { positionAt: (offset: number) => { line: number; character: number } },
   operators: string[] = [":=", "="],
   customValueField?: string,
+  rootCst?: unknown,
 ): TextEdit[] {
   const sortedOps = [...operators].sort((a, b) => b.length - a.length);
 
-  // Tier 1: Check precomputed CST fieldRanges from AST indexing
+  // Tier 0: Canonical CstUnparser CST field/value replacement
+  const cstRoot = ((rootCst as { rootNode?: SyntaxNode } | undefined)?.rootNode ?? rootCst) as SyntaxNode | undefined;
+  const cstUnparse = CstUnparser.patchWritebackValue(fullText, cstRoot, entry, newValue, {
+    valueFields: customValueField ? [customValueField] : undefined,
+    operators: sortedOps,
+  });
+  if (cstUnparse) {
+    const startPos = doc ? doc.positionAt(cstUnparse.startIndex) : offsetToPosition(fullText, cstUnparse.startIndex);
+    const endPos = doc ? doc.positionAt(cstUnparse.endIndex) : offsetToPosition(fullText, cstUnparse.endIndex);
+    return [TextEdit.replace(Range.create(startPos, endPos), cstUnparse.text)];
+  }
+
+  // Tier 1: Check precomputed CST fieldRanges from AST indexing (without rootCst alignment)
   if (entry.fieldRanges) {
     const valField =
       (customValueField ? entry.fieldRanges[customValueField] : undefined) ??
@@ -172,51 +185,76 @@ export async function computeWritebackEdit(
   context: LspContext,
   params: ComputeWritebackEditParams,
 ): Promise<ComputeWritebackEditResult> {
-  const { target, newValue } = params;
+  const { target, newValue, documentUri } = params;
   if (!target || newValue === undefined) {
     return { success: false, error: "Missing target or newValue" };
   }
 
   const db = context.workspaceManager.unifiedWorkspace.getIndex();
-  let matchedEntry: any = null;
   const qualifiedTarget = target.trim();
 
-  // 1. Try exact match on getCompositeName
-  for (const entry of db.symbols.values()) {
-    if (!entry.name) continue;
-    const fqn = getCompositeName(entry, db);
-    if (fqn === qualifiedTarget) {
-      matchedEntry = entry;
-      break;
+  const matchesUri = (entry: any): boolean => {
+    if (!documentUri) return true;
+    if (!entry?.resourceId) return false;
+    if (entry.resourceId === documentUri) return true;
+    try {
+      return decodeURIComponent(entry.resourceId) === decodeURIComponent(documentUri);
+    } catch {
+      return false;
     }
-  }
+  };
 
-  // 2. If not found, match by suffix or simple name
-  if (!matchedEntry) {
-    for (const entry of db.symbols.values()) {
+  const findMatchInIndex = (idx: any, requireDocumentUri: boolean): any => {
+    if (!idx?.symbols) return null;
+    // 1. Exact FQN match
+    for (const entry of idx.symbols.values()) {
       if (!entry.name) continue;
-      const fqn = getCompositeName(entry, db);
+      if (requireDocumentUri && !matchesUri(entry)) continue;
+      const fqn = getCompositeName(entry, idx);
+      if (fqn === qualifiedTarget) {
+        return entry;
+      }
+    }
+    // 2. Suffix or simple name match
+    for (const entry of idx.symbols.values()) {
+      if (!entry.name) continue;
+      if (requireDocumentUri && !matchesUri(entry)) continue;
+      const fqn = getCompositeName(entry, idx);
       if (fqn.endsWith("." + qualifiedTarget) || entry.name === qualifiedTarget) {
-        matchedEntry = entry;
-        break;
+        return entry;
+      }
+    }
+    return null;
+  };
+
+  let matchedEntry: any = documentUri ? findMatchInIndex(db, true) : findMatchInIndex(db, false);
+
+  // Check language workspace indices in the target document before falling back globally
+  if (!matchedEntry) {
+    const allPlugins = globalLanguageRegistry.getAllPlugins();
+    if (documentUri) {
+      for (const plugin of allPlugins) {
+        const idx = plugin.workspaceIndex ?? context.workspaceManager.getWorkspaceIndex(plugin.id);
+        matchedEntry = findMatchInIndex(idx, true);
+        if (matchedEntry) break;
+      }
+    }
+    if (!matchedEntry && !documentUri) {
+      for (const plugin of allPlugins) {
+        const idx = plugin.workspaceIndex ?? context.workspaceManager.getWorkspaceIndex(plugin.id);
+        matchedEntry = findMatchInIndex(idx, false);
+        if (matchedEntry) break;
       }
     }
   }
 
-  // 3. Check language workspace indices if unified index did not find it
-  if (!matchedEntry) {
-    const allPlugins = globalLanguageRegistry.getAllPlugins();
-    for (const plugin of allPlugins) {
-      const idx = plugin.workspaceIndex ?? context.workspaceManager.getWorkspaceIndex(plugin.id);
-      if (idx?.symbols) {
-        for (const entry of idx.symbols.values()) {
-          if (!entry.name) continue;
-          const fqn = getCompositeName(entry, idx);
-          if (fqn === qualifiedTarget || fqn.endsWith("." + qualifiedTarget) || entry.name === qualifiedTarget) {
-            matchedEntry = entry;
-            break;
-          }
-        }
+  // Only allow cross-document fallback for qualified paths if documentUri did not contain it
+  if (!matchedEntry && documentUri && qualifiedTarget.includes(".")) {
+    matchedEntry = findMatchInIndex(db, false);
+    if (!matchedEntry) {
+      for (const plugin of globalLanguageRegistry.getAllPlugins()) {
+        const idx = plugin.workspaceIndex ?? context.workspaceManager.getWorkspaceIndex(plugin.id);
+        matchedEntry = findMatchInIndex(idx, false);
         if (matchedEntry) break;
       }
     }
@@ -265,12 +303,13 @@ export async function computeWritebackEdit(
     }
   }
 
-  // If no custom handler or handler returned nothing, fallback to universal generic strategy
+  // If no custom handler or handler returned nothing, fallback to universal CST/field strategy
   if (edits.length === 0) {
     const operators =
       typeof writebackDef === "object" && writebackDef?.operators ? writebackDef.operators : [":=", "="];
     const valueField = typeof writebackDef === "object" ? writebackDef.valueField : undefined;
-    edits = computeGenericWriteback(fullText, matchedEntry, newValue, doc, operators, valueField);
+    const rootCst = context.documentManager?.documentTrees?.get(uri)?.tree;
+    edits = computeGenericWriteback(fullText, matchedEntry, newValue, doc, operators, valueField, rootCst);
   }
 
   if (edits.length === 0) {

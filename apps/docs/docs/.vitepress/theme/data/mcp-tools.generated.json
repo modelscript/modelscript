@@ -1,5 +1,5 @@
 {
-  "toolCount": 106,
+  "toolCount": 107,
   "tools": [
     {
       "name": "modelica_load",
@@ -530,6 +530,11 @@
       "name": "workspace_lint",
       "description": "Run multi-file / workspace-graph linting across companion files for cross-file engineering languages (CGMES, PSS/E, PSLF, PSCAD, OpenDSS, SCL, SPICE, ATP, Verilog-A, SSP, OSCAL, AUTOSAR, AutomationML, PLCopen, Simulink, USD, URDF, OpenSCAD, C, Fortran, AMPL, MODFLOW, HEC-RAS, ECLIPSE, EnergyPlus, TOPAS, CellML, Antimony, SED-ML, SBOL).",
       "category": "OWL2 Ontology & Fault Diagnostics"
+    },
+    {
+      "name": "sysml2_verify_formal",
+      "description": "Run deep formal verification (S7001–S7006: IC3/PDR state reachability, ISO 26262 MOCUS/ASIL fault trees, analytical UQ chance constraints, mechanical GD&T tolerance stacks, 2-safety non-interference/Lipschitz, continuous DAE Taylor-model flowpipes & SOS barriers) and optional standard lints (S1xxx–S6xxx) on a SysML v2 / KerML model.",
+      "category": "SysML v2, AutomationML & Compliance (OSCAL)"
     }
   ]
 }

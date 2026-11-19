@@ -26,6 +26,21 @@ export const qifLanguage = language({
   lsp: {
     fileExtensions: [".qif", ".qif.xml"],
   },
+  ui: {
+    panels: [
+      {
+        id: "qifEditor",
+        viewType: "modelscript.qifEditor",
+        title: "QIF Quality Information Framework Metrology Studio",
+        shortTitle: "QIF Metrology",
+        selector: ["*.qif", "*.qif.json", "*.qif.xml"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/QifPanel.tsx",
+        artifactViewTypes: ["qif", "qif-metrology"],
+      },
+    ],
+  },
   extras: ($) => {
     const comment = $["COMMENT"];
     const pi = $["PROCESSING_INSTRUCTION"];

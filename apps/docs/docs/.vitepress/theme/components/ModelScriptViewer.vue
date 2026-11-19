@@ -48,7 +48,7 @@ const iframeSrc = computed(() => {
   if (props.artifactId) params.set("artifactId", props.artifactId);
   params.set("theme", isDark.value ? "dark" : "light");
   const qs = params.toString();
-  return `${origin}/embed/morsel${qs ? `?${qs}` : ""}#${hashPayload.value}`;
+  return `${origin}/embed/editor${qs ? `?${qs}` : ""}#${hashPayload.value}`;
 });
 
 const studioUrl = computed(() => {
@@ -73,7 +73,7 @@ watch(isDark, (dark) => {
     <div class="embed-header">
       <div class="embed-header-left">
         <span class="embed-dot" />
-        <span class="embed-title">{{ title || "Interactive ModelScript Morsel" }}</span>
+        <span class="embed-title">{{ title || "Interactive ModelScript Model" }}</span>
         <span class="embed-badge">{{ dialect.toUpperCase() }}</span>
         <span v-if="view" class="embed-badge subtle">{{ view }}</span>
       </div>
@@ -89,7 +89,7 @@ watch(isDark, (dark) => {
     <div class="embed-body" :style="{ height }">
       <div v-if="!loaded" class="embed-skeleton" aria-hidden="true">
         <div class="skeleton-shimmer" />
-        <span class="skeleton-label">Loading interactive WebAssembly morsel…</span>
+        <span class="skeleton-label">Loading interactive WebAssembly model…</span>
       </div>
       <iframe
         ref="iframeRef"

@@ -290,4 +290,59 @@ Ontology(
     const renameEdits = computeOWL2NameEdit(sampleDoc, ":Vehicle", ":AutomotiveUnit");
     assert.ok(renameEdits.length >= 1);
   });
+
+  it("supports OWL/XML insertions, connections, deletions, renames and refuses RDF/XML", () => {
+    const owxDoc = `<?xml version="1.0"?>
+<Ontology xmlns="http://www.w3.org/2002/07/owl#" ontologyIRI="http://example.org/ont">
+  <Declaration>
+    <Class IRI="#Vehicle"/>
+  </Declaration>
+</Ontology>
+`;
+    const ins = computeOWL2ElementInsert(owxDoc, "Class", "#Car");
+    assert.strictEqual(ins.length, 1);
+    assert.ok(ins[0]!.newText.includes("<Declaration>"));
+    assert.ok(ins[0]!.newText.includes('<Class IRI="#Car"/>'));
+
+    const connIns = computeOWL2ConnectionInsert(owxDoc, "#Car", "#Vehicle", "subClassOf");
+    assert.strictEqual(connIns.length, 1);
+    assert.ok(connIns[0]!.newText.includes("<SubClassOf>"));
+    assert.ok(connIns[0]!.newText.includes('<Class IRI="#Car"/>'));
+    assert.ok(connIns[0]!.newText.includes('<Class IRI="#Vehicle"/>'));
+
+    const owxWithEdge = `<?xml version="1.0"?>
+<Ontology xmlns="http://www.w3.org/2002/07/owl#" ontologyIRI="http://example.org/ont">
+  <Declaration>
+    <Class IRI="#Vehicle"/>
+  </Declaration>
+  <Declaration>
+    <Class IRI="#Car"/>
+  </Declaration>
+  <SubClassOf>
+    <Class IRI="#Car"/>
+    <Class IRI="#Vehicle"/>
+  </SubClassOf>
+</Ontology>
+`;
+    const connDel = computeOWL2ConnectionDelete(owxWithEdge, "#Car", "#Vehicle");
+    assert.strictEqual(connDel.length, 1);
+    assert.ok(!connDel[0]!.newText.includes("<SubClassOf>"));
+
+    const elemDel = computeOWL2ElementDelete(owxWithEdge, ["#Car"]);
+    assert.strictEqual(elemDel.length, 2);
+
+    const renEdits = computeOWL2NameEdit(owxWithEdge, "#Vehicle", "#Transport");
+    assert.strictEqual(renEdits.length, 2);
+    assert.ok(renEdits.every((e) => e.newText === "#Transport"));
+
+    const rdfXmlDoc = `<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Class rdf:about="#Vehicle"/>
+</rdf:RDF>
+`;
+    assert.deepStrictEqual(computeOWL2ElementInsert(rdfXmlDoc, "Class", "#Car"), []);
+    assert.deepStrictEqual(computeOWL2ConnectionInsert(rdfXmlDoc, "#Car", "#Vehicle", "subClassOf"), []);
+    assert.deepStrictEqual(computeOWL2ElementDelete(rdfXmlDoc, ["#Vehicle"]), []);
+    assert.deepStrictEqual(computeOWL2NameEdit(rdfXmlDoc, "#Vehicle", "#Transport"), []);
+  });
 });

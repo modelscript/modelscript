@@ -122,6 +122,16 @@ export const reqifDiagramConfig: DiagramConfig = {
       },
     ],
   },
+  placement: {
+    persistence: "sidecar",
+  },
+  mutations: {
+    sections: { node: "SPEC-OBJECTS", edge: "SPEC-RELATIONS" },
+    createNode: (className: string, name: string) =>
+      `<SPEC-OBJECT IDENTIFIER="${name}" LONG-NAME="${name}"><!-- ${className} --></SPEC-OBJECT>`,
+    createEdge: (source: string, target: string) =>
+      `<SPEC-RELATION IDENTIFIER="${source}_to_${target}"><SOURCE><SPEC-OBJECT-REF>${source}</SPEC-OBJECT-REF></SOURCE><TARGET><SPEC-OBJECT-REF>${target}</SPEC-OBJECT-REF></TARGET></SPEC-RELATION>`,
+  },
 };
 
 /**

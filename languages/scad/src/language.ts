@@ -167,12 +167,52 @@ export const scadLanguage = language({
       },
     },
   },
+  ui: {
+    panels: [
+      {
+        id: "scadEditor",
+        viewType: "modelscript.scadEditor",
+        title: "OpenSCAD Parametric CSG Inspector",
+        shortTitle: "OpenSCAD",
+        selector: ["*.scad"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/ScadPanel.tsx",
+        artifactViewTypes: ["scad", "openscad"],
+      },
+    ],
+  },
 
   // Bidirectional writeback handler for updating SCAD source dimensions and transforms from 3D gizmos
   writeback: scadWriteback,
 
   indexing: {
     indexFile: indexScadDocument,
+  },
+
+  diagram: {
+    placement: {
+      persistence: "sidecar",
+    },
+    mutations: {
+      createNode: (className: string, _name: string, x: number, y: number) => {
+        const px = Math.round(x);
+        const py = Math.round(y);
+        const low = className.toLowerCase();
+        if (low === "cylinder") return `translate([${px}, ${py}, 0]) cylinder(h = 20, r = 10, center = true);\n`;
+        if (low === "sphere") return `translate([${px}, ${py}, 0]) sphere(r = 10);\n`;
+        if (low === "difference" || low === "union" || low === "intersection") {
+          return `${low}() {\n  translate([${px}, ${py}, 0]) cube([20, 20, 20], center = true);\n}\n`;
+        }
+        return `translate([${px}, ${py}, 0]) cube([20, 20, 20], center = true);\n`;
+      },
+      nodeTemplate: (className: string) => {
+        const low = className.toLowerCase();
+        if (low === "cylinder") return `cylinder(h = 20, r = 10, center = true);\n`;
+        if (low === "sphere") return `sphere(r = 10);\n`;
+        return `cube([20, 20, 20], center = true);\n`;
+      },
+    },
   },
 
   // IDE and AI agent actions for 3D CSG evaluation and ISO 10303 STEP export
@@ -371,7 +411,7 @@ export const scadLanguage = language({
           const namedSolid = solid.name?.trim() ? solid : ({ ...solid, name } as Solid);
           step = compileAssemblyToAp242Step(assembly(name, [part(namedSolid)]), {
             schema: "AP242",
-            lengthUnit: "m",
+            lengthUnit: "mm",
             preservePartNames: true,
             provenance: {
               version: 1,

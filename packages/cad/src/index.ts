@@ -116,7 +116,8 @@ export {
   type UsdExportOptions,
 } from "./usd-compiler.js";
 
-// CSG OpenCascade Worker
+// CSG OpenCascade Worker & Async Background Evaluator
+export { evaluateSolidAsync, terminateCadWorker } from "./cad-worker-runner.js";
 export { CSGWorker, type CSGExecutionGraph, type CSGNode } from "./worker.js";
 
 // Manifold CSG Worker
@@ -125,6 +126,8 @@ export { ManifoldWorker, type ManifoldSurfaceMesh } from "./manifold-worker.js";
 // Parameter Inversion & ROM Load Pipeline
 export {
   ParameterInversionEngine,
+  invertAffineExpression,
+  type AffineInversionResult,
   type InversionResult as CadInversionResult,
   type CertifiedInversionResult,
   type ParameterConstraintRule,

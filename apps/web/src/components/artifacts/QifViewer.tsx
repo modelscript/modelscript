@@ -758,7 +758,7 @@ const QifViewerInner: React.FC<QifViewerProps & { parsedDoc?: QifDocument }> = (
                   leadingVisual={DraftingTriangleIcon}
                   onClick={handleOpenInPlayground}
                 >
-                  Open in Morsel
+                  Open in Ansatz
                 </Button>
               )}
             </Box>

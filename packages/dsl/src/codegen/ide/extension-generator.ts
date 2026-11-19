@@ -413,6 +413,7 @@ export function generatePackageJson(
     }
 
     const isSupportedDiagramLang =
+      Boolean(lang.options.diagram) ||
       DIAGRAM_EDITOR_SUPPORTED_LANGS.has(lang.id) ||
       (options?.features?.diagramEditor === true && !(lang.id in DEFAULT_LANGUAGE_MATURITY) && lang.id !== "smv");
     if (options?.features?.diagramEditor !== false && isSupportedDiagramLang) {
@@ -431,172 +432,6 @@ export function generatePackageJson(
       viewType: "modelscript.stepEditor",
       displayName: "3D CAD / STEP Viewer",
       selector: [{ filenamePattern: "*.step" }, { filenamePattern: "*.stp" }],
-      priority: "option",
-    });
-  }
-
-  // FEA / CalculiX Deck 3D Editor
-  if (languages.some((l) => l.id === "fea")) {
-    customEditors.push({
-      viewType: "modelscript.inpEditor",
-      displayName: "FEA Deck & 3D Simulation Viewer",
-      selector: [{ filenamePattern: "*.inp" }, { filenamePattern: "*.inpt" }],
-      priority: "option",
-    });
-  }
-
-  // CFD / SU2 Config 3D Editor
-  if (languages.some((l) => l.id === "cfd")) {
-    customEditors.push({
-      viewType: "modelscript.cfgEditor",
-      displayName: "CFD Config & 3D Aerodynamics Viewer",
-      selector: [{ filenamePattern: "*.cfg" }, { filenamePattern: "*.cfgt" }],
-      priority: "option",
-    });
-  }
-
-  // PSS/E RAW Power Flow Grid & SLD Editor
-  if (languages.some((l) => l.id === "psse")) {
-    customEditors.push({
-      viewType: "modelscript.rawEditor",
-      displayName: "PSS/E Grid & Single-Line Diagram (SLD) Editor",
-      selector: [{ filenamePattern: "*.raw" }],
-      priority: "option",
-    });
-  }
-
-  // OLGA Transient Multiphase Flow Assurance Editor
-  if (languages.some((l) => l.id === "olga")) {
-    customEditors.push({
-      viewType: "modelscript.olgaEditor",
-      displayName: "OLGA Multiphase Flow Assurance Editor",
-      selector: [
-        { filenamePattern: "*.opi" },
-        { filenamePattern: "*.key" },
-        { filenamePattern: "*.genkey" },
-        { filenamePattern: "*.tpl" },
-        { filenamePattern: "*.ppl" },
-      ],
-      priority: "option",
-    });
-  }
-
-  // EASY5 Dynamic Simulation & Linear Control Editor
-  if (languages.some((l) => l.id === "easy5")) {
-    customEditors.push({
-      viewType: "modelscript.easy5Editor",
-      displayName: "EASY5 Schematic & Linear Control Editor",
-      selector: [
-        { filenamePattern: "*.ez5" },
-        { filenamePattern: "*.ezm" },
-        { filenamePattern: "*.ezd" },
-        { filenamePattern: "*.eas" },
-      ],
-      priority: "option",
-    });
-  }
-
-  // NASA ROCETS Liquid Propulsion P&ID & Balance Editor
-  if (languages.some((l) => l.id === "rocets")) {
-    customEditors.push({
-      viewType: "modelscript.rocetsEditor",
-      displayName: "ROCETS Propulsion Schematic & Balance Editor",
-      selector: [{ filenamePattern: "*.roc" }, { filenamePattern: "*.deck" }],
-      priority: "option",
-    });
-  }
-
-  // LPS Pipeline Hydraulic Studio
-  if (languages.some((l) => l.id === "lps")) {
-    customEditors.push({
-      viewType: "modelscript.lpsEditor",
-      displayName: "LPS Pipeline Hydraulic Studio",
-      selector: [{ filenamePattern: "*.lps" }, { filenamePattern: "*.lpsx" }],
-      priority: "option",
-    });
-  }
-
-  // SIMA Offshore Marine Operations Studio
-  if (languages.some((l) => l.id === "sima")) {
-    customEditors.push({
-      viewType: "modelscript.simaEditor",
-      displayName: "SIMA Offshore Marine Operations Studio",
-      selector: [{ filenamePattern: "*.sima" }, { filenamePattern: "*.stask" }],
-      priority: "option",
-    });
-  }
-
-  // GT-SUITE Multi-Physics Powertrain & Thermal Studio
-  if (languages.some((l) => l.id === "gtsuite")) {
-    customEditors.push({
-      viewType: "modelscript.gtsuiteEditor",
-      displayName: "GT-SUITE Powertrain & Thermal Studio",
-      selector: [{ filenamePattern: "*.gtm" }, { filenamePattern: "*.gtp" }],
-      priority: "option",
-    });
-  }
-
-  // QIF Quality Information Framework Metrology Studio
-  if (languages.some((l) => l.id === "qif")) {
-    customEditors.push({
-      viewType: "modelscript.qifEditor",
-      displayName: "QIF Quality Information Framework Metrology Studio",
-      selector: [{ filenamePattern: "*.qif" }, { filenamePattern: "*.qif.json" }, { filenamePattern: "*.qif.xml" }],
-      priority: "option",
-    });
-  }
-
-  // OSCAL Security Assessment & FedRAMP Studio
-  if (languages.some((l) => l.id === "oscal")) {
-    customEditors.push({
-      viewType: "modelscript.oscalEditor",
-      displayName: "OSCAL Security Assessment & FedRAMP Studio",
-      selector: [
-        { filenamePattern: "*.oscal.json" },
-        { filenamePattern: "*.oscal.yaml" },
-        { filenamePattern: "*.oscal.yml" },
-        { filenamePattern: "*.oscal.xml" },
-      ],
-      priority: "option",
-    });
-  }
-
-  // AutomationML Engineering Workbench
-  if (languages.some((l) => l.id === "automationml")) {
-    customEditors.push({
-      viewType: "modelscript.amlEditor",
-      displayName: "AutomationML Engineering Workbench",
-      selector: [{ filenamePattern: "*.aml" }, { filenamePattern: "*.caex" }],
-      priority: "option",
-    });
-  }
-
-  // OpenSim Biomechanics & Musculoskeletal Studio
-  if (languages.some((l) => l.id === "opensim")) {
-    customEditors.push({
-      viewType: "modelscript.opensimEditor",
-      displayName: "OpenSim Biomechanics & Musculoskeletal Studio",
-      selector: [{ filenamePattern: "*.osim" }],
-      priority: "option",
-    });
-  }
-
-  // DICOM-RT Radiation Oncology & Dosimetry Studio
-  if (languages.some((l) => l.id === "dicom-rt")) {
-    customEditors.push({
-      viewType: "modelscript.dicomRtEditor",
-      displayName: "DICOM-RT Radiation Oncology & Dosimetry Studio",
-      selector: [{ filenamePattern: "*.dcm" }, { filenamePattern: "*.dcm.json" }],
-      priority: "option",
-    });
-  }
-
-  // OpenIGTLink & Surgical Robotics Studio
-  if (languages.some((l) => l.id === "igtl")) {
-    customEditors.push({
-      viewType: "modelscript.igtlEditor",
-      displayName: "OpenIGTLink & Surgical Robotics Studio",
-      selector: [{ filenamePattern: "*.igtl" }, { filenamePattern: "*.igtl.json" }],
       priority: "option",
     });
   }
@@ -674,8 +509,44 @@ export function generatePackageJson(
     priority: "option",
   });
 
+  // Declarative Language DSL UI panels (`language({ ui: { panels: [...] } })`)
+  const seenCustomEditorViewTypes = new Set<string>(
+    customEditors.map((ce) => String(ce["viewType"] ?? "")).filter(Boolean),
+  );
+  const dslPanelCommands: Record<string, unknown>[] = [];
+  for (const lang of languages) {
+    const panels = lang.options.ui?.panels;
+    if (!Array.isArray(panels)) continue;
+    for (const panel of panels) {
+      const targets = panel.targets ?? ["vscode", "morsel", "artifact"];
+      if (!targets.includes("vscode")) continue;
+      const viewType = panel.viewType ?? `modelscript.${lang.id}.${panel.id}`;
+      const selector = (
+        panel.selector && panel.selector.length > 0 ? panel.selector : lang.fileExtensions.map((ext) => `*${ext}`)
+      ).map((pattern) => ({ filenamePattern: pattern }));
+      if (!seenCustomEditorViewTypes.has(viewType)) {
+        seenCustomEditorViewTypes.add(viewType);
+        customEditors.push({
+          viewType,
+          displayName: panel.title,
+          selector,
+          priority: panel.priority ?? "option",
+        });
+      }
+      if (panel.openCommand) {
+        dslPanelCommands.push({
+          command: panel.openCommand.id,
+          title: panel.openCommand.title,
+          category: "ModelScript",
+          ...(panel.openCommand.icon ? { icon: panel.openCommand.icon } : {}),
+        });
+      }
+    }
+  }
+
   // Collect commands, menus, language model tools, and keybindings from language actions
   const commands: Record<string, unknown>[] = [
+    ...dslPanelCommands,
     {
       command: "modelscript.configureFeatures",
       title: "ModelScript: Configure Features & Release Channel...",
@@ -1031,6 +902,7 @@ export function generatePackageJson(
     const diagramLangIds = new Set<string>();
     for (const lang of languages) {
       const isSupportedDiagramLang =
+        Boolean(lang.options.diagram) ||
         DIAGRAM_EDITOR_SUPPORTED_LANGS.has(lang.id) ||
         (options?.features?.diagramEditor === true && !(lang.id in DEFAULT_LANGUAGE_MATURITY) && lang.id !== "smv");
       if (!isSupportedDiagramLang) continue;
@@ -1066,6 +938,7 @@ export function generatePackageJson(
       ...languages
         .filter(
           (l) =>
+            Boolean(l.options.diagram) ||
             DIAGRAM_EDITOR_SUPPORTED_LANGS.has(l.id) ||
             (options?.features?.diagramEditor === true && !(l.id in DEFAULT_LANGUAGE_MATURITY) && l.id !== "smv"),
         )
@@ -1654,20 +1527,29 @@ export function generatePackageJson(
       },
     ],
   };
+  const dynamicViewsByContainer: Record<string, Array<{ id: string; name: string; when?: string }>> = {};
+  for (const lang of languages) {
+    const tvs = lang.options.ui?.treeViews ?? [];
+    for (const tv of tvs) {
+      const container = tv.container ?? "modelscript-sidebar";
+      if (!dynamicViewsByContainer[container]) {
+        dynamicViewsByContainer[container] = [];
+      }
+      if (!dynamicViewsByContainer[container]!.some((v) => v.id === tv.id)) {
+        dynamicViewsByContainer[container]!.push({
+          id: tv.id,
+          name: tv.name,
+          ...(tv.when ? { when: tv.when } : {}),
+        });
+      }
+    }
+  }
+  const explorerViews = dynamicViewsByContainer["explorer"] ?? [];
+  const extraSidebarViews = dynamicViewsByContainer["modelscript-sidebar"] ?? [];
   contributes["views"] = {
-    explorer: [
-      {
-        id: "modelscript.owl2ClassHierarchy",
-        name: "OWL2 Class Hierarchy",
-        when: "modelscript.owl2Active && config.modelscript.languages.owl2.enabled",
-      },
-      {
-        id: "modelscript.owl2PropertyHierarchy",
-        name: "OWL2 Property Hierarchy",
-        when: "modelscript.owl2Active && config.modelscript.languages.owl2.enabled",
-      },
-    ],
+    ...(explorerViews.length > 0 ? { explorer: explorerViews } : {}),
     "modelscript-sidebar": [
+      ...extraSidebarViews,
       {
         id: "modelscript.libraryTree",
         name: "Libraries",
@@ -2902,6 +2784,172 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
       },
       plugins: [ignorePlugin],
     });
+  }
+
+  // Build declarative Language DSL UI panels (`languages/<lang>/src/ui/*`)
+  const vscodeUiPanels = discovered.ui.panels.filter((p) => p.targets.includes("vscode"));
+  const uiManifestPayload = {
+    panels: vscodeUiPanels.map((p) => ({
+      languageId: p.languageId,
+      id: p.id,
+      viewType: p.viewType,
+      title: p.title,
+      retainContextWhenHidden: p.retainContextWhenHidden,
+      supportsMultipleEditorsPerDocument: p.supportsMultipleEditorsPerDocument,
+      webviewScriptName: p.webviewScriptName,
+      openCommandId: p.openCommand?.id,
+    })),
+  };
+  fs.mkdirSync(path.join(outDir, "dist"), { recursive: true });
+  fs.writeFileSync(path.join(outDir, "dist", "ui-manifest.json"), JSON.stringify(uiManifestPayload, null, 2), "utf-8");
+
+  if (vscodeUiPanels.length > 0) {
+    fs.mkdirSync(path.join(outDir, "dist", "webviews"), { recursive: true });
+    for (const panel of vscodeUiPanels) {
+      const virtualEntryId = `ms-dsl-panel:${panel.languageId}:${panel.id}`;
+      const importExpr =
+        panel.exportName === "default"
+          ? `import PanelComponent from ${JSON.stringify(panel.resolvedEntryPath)};`
+          : `import { ${panel.exportName} as PanelComponent } from ${JSON.stringify(panel.resolvedEntryPath)};`;
+
+      const bootstrapSource = `
+import React, { useEffect, useMemo, useState } from "react";
+import { createRoot } from "react-dom/client";
+import "@modelscript/design-tokens/tokens.css";
+import "@modelscript/design-tokens/tokens-vscode.css";
+${importExpr}
+
+declare function acquireVsCodeApi(): {
+  postMessage(message: unknown): void;
+  getState(): unknown;
+  setState(state: unknown): void;
+};
+
+const vscode = acquireVsCodeApi();
+const pendingLsp = new Map<string, { resolve: (v: unknown) => void; reject: (e: unknown) => void }>();
+let lspSeq = 0;
+
+function DslPanelHostApp() {
+  const [state, setState] = useState({
+    code: "",
+    dialect: ${JSON.stringify(panel.languageId)},
+    colorMode: (document.body.classList.contains("vscode-light") ? "light" : "dark") as "dark" | "light",
+    documentUri: undefined as string | undefined,
+  });
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== "object") return;
+      if (msg.type === "syncDocument") {
+        setState((prev) => ({
+          code: typeof msg.code === "string" ? msg.code : prev.code,
+          dialect: typeof msg.dialect === "string" ? msg.dialect : prev.dialect,
+          colorMode: msg.colorMode === "light" || msg.colorMode === "dark" ? msg.colorMode : prev.colorMode,
+          documentUri: typeof msg.documentUri === "string" ? msg.documentUri : prev.documentUri,
+        }));
+      } else if (msg.type === "lspResponse" && typeof msg.requestId === "string") {
+        const entry = pendingLsp.get(msg.requestId);
+        if (entry) {
+          pendingLsp.delete(msg.requestId);
+          if (msg.error) entry.reject(new Error(String(msg.error)));
+          else entry.resolve(msg.result);
+        }
+      }
+    };
+    window.addEventListener("message", onMessage);
+    vscode.postMessage({ type: "ready" });
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  const host = useMemo(
+    () => ({
+      onCodeChange: (newCode: string) => vscode.postMessage({ type: "applyEdit", code: newCode }),
+      onRevealLine: (line: number, identifier?: string) =>
+        vscode.postMessage({ type: "revealLine", line, identifier }),
+      onUpdateProjectFile: (relativePath: string, content: string) =>
+        vscode.postMessage({ type: "updateProjectFile", relativePath, content }),
+      requestLsp: <R = unknown>(method: string, params?: unknown) =>
+        new Promise<R>((resolve, reject) => {
+          const requestId = "lsp_" + (++lspSeq);
+          pendingLsp.set(requestId, { resolve: resolve as (v: unknown) => void, reject });
+          vscode.postMessage({ type: "requestLsp", requestId, method, params });
+        }),
+      exportFile: (filename: string, content: string | Uint8Array, mimeType?: string) => {
+        const text = typeof content === "string" ? content : new TextDecoder().decode(content);
+        vscode.postMessage({ type: "exportFile", filename, content: text, mimeType });
+      },
+      notify: (level: "info" | "warning" | "error", message: string) =>
+        vscode.postMessage({ type: "notify", level, message }),
+      openExternal: (url: string) => vscode.postMessage({ type: "openExternal", url }),
+    }),
+    [],
+  );
+
+  return React.createElement(PanelComponent, {
+    code: state.code,
+    dialect: state.dialect,
+    colorMode: state.colorMode,
+    mode: "workbench",
+    documentUri: state.documentUri,
+    host,
+  });
+}
+
+const rootEl = document.getElementById("root");
+if (rootEl) {
+  createRoot(rootEl).render(React.createElement(DslPanelHostApp));
+}
+`;
+
+      const virtualPlugin = {
+        name: "ms-dsl-panel-bootstrap",
+        setup(build: {
+          onResolve: (
+            opts: { filter: RegExp },
+            cb: (args: { path: string }) => { path: string; namespace: string },
+          ) => void;
+          onLoad: (
+            opts: { filter: RegExp; namespace: string },
+            cb: () => { contents: string; loader: string; resolveDir: string },
+          ) => void;
+        }) {
+          build.onResolve({ filter: /^ms-dsl-panel:/ }, (args) => ({
+            path: args.path,
+            namespace: "ms-dsl-panel",
+          }));
+          build.onLoad({ filter: /.*/, namespace: "ms-dsl-panel" }, () => ({
+            contents: bootstrapSource,
+            loader: "tsx",
+            resolveDir: panel.packageDir,
+          }));
+        },
+      };
+
+      await esbuild.build({
+        entryPoints: [virtualEntryId],
+        outfile: path.join(outDir, "dist", panel.webviewScriptName),
+        bundle: true,
+        format: "iife",
+        platform: "browser",
+        target: "es2022",
+        minify: shouldMinify,
+        sourcemap: shouldSourcemap,
+        external: ["vscode", "@kitware/vtk.js", "@kitware/vtk.js/*"],
+        define: {
+          "process.env": JSON.stringify({}),
+          "process.browser": "true",
+        },
+        logOverride: {
+          "duplicate-object-key": "silent",
+          "empty-import-meta": "silent",
+        },
+        banner: {
+          js: BROWSER_BUFFER_BANNER,
+        },
+        plugins: [virtualPlugin, ignorePlugin],
+      });
+    }
   }
 
   // Build notebook renderer

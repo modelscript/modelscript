@@ -39,6 +39,31 @@ export const openDssLanguage = language({
     operators: ["="],
   },
 
+  ui: {
+    panels: [
+      {
+        id: "opendssEditor",
+        viewType: "modelscript.opendssEditor",
+        title: "OpenDSS Distribution Feeder Studio",
+        shortTitle: "OpenDSS",
+        selector: ["*.dss"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/OpenDssPanel.tsx",
+        artifactViewTypes: ["opendss", "dss"],
+      },
+    ],
+    stencils: [
+      { label: "Bus", snippet: "New Circuit.Bus_New basekv=13.8 pu=1.0\n" },
+      { label: "Line", snippet: "New Line.Line_New Bus1=SourceBus Bus2=LoadBus R1=0.05 X1=0.15\n" },
+      {
+        label: "Transformer",
+        snippet: "New Transformer.TR_New Buses=[SourceBus LoadBus] kVs=[13.8 0.48] kVAs=[1000 1000]\n",
+      },
+      { label: "Load", snippet: "New Load.Load_New Bus1=LoadBus kV=0.48 kW=250 kvar=100\n" },
+    ],
+  },
+
   actions: [
     {
       id: "lint_opendss",

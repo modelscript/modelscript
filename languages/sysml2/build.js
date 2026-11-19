@@ -10,6 +10,7 @@ runLanguageParserBuild({
   dir: import.meta.dirname,
   languageModule: "./src/language.js",
   languageExportName: "sysml2Language",
+  extraWatchFiles: ["src/compiler-lints.ts"],
   extraAscFlags: ["--disableWarning", "235"],
 });
 

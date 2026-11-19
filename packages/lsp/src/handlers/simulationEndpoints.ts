@@ -591,30 +591,32 @@ export function registerSimulationEndpoints(context: LspContext) {
         }
         const { arena, target } = flat;
 
+        const explicitPhysics =
+          params.physicsType === "FEA" || params.domain === "fea"
+            ? "FEA"
+            : params.physicsType === "CFD" || params.physicsType === "LBM" || params.domain === "cfd"
+              ? "CFD"
+              : null;
+        const lowerClassName = target.className.toLowerCase();
         const isFeaProcess =
-          params.physicsType === "FEA" ||
-          params.domain === "fea" ||
-          target.className.toLowerCase().includes("fea") ||
-          target.className.toLowerCase().includes("structural") ||
-          target.className.toLowerCase().includes("stress") ||
-          target.className.toLowerCase().includes("cantilever");
+          explicitPhysics === "FEA" ||
+          (explicitPhysics === null &&
+            target.classKind === "process" &&
+            (lowerClassName.includes("fea") ||
+              lowerClassName.includes("structural") ||
+              lowerClassName.includes("stress") ||
+              lowerClassName.includes("cantilever")));
 
         const isCfdProcess =
-          params.physicsType === "CFD" ||
-          params.physicsType === "LBM" ||
-          params.domain === "cfd" ||
-          target.className.toLowerCase().includes("cfd") ||
-          target.className.toLowerCase().includes("aero") ||
-          target.className.toLowerCase().includes("flow") ||
-          target.className.toLowerCase().includes("fluid");
+          explicitPhysics === "CFD" ||
+          (explicitPhysics === null &&
+            target.classKind === "process" &&
+            (lowerClassName.includes("cfd") ||
+              lowerClassName.includes("aero") ||
+              lowerClassName.includes("flow") ||
+              lowerClassName.includes("fluid")));
 
-        if (
-          target.classKind === "process" ||
-          params.physicsType === "FEA" ||
-          params.physicsType === "CFD" ||
-          params.physicsType === "LBM" ||
-          ((params.domain === "fea" || params.domain === "cfd") && target.classKind === "model")
-        ) {
+        if (target.classKind === "process" || explicitPhysics !== null) {
           context.connection.console.info(`[simulate] Launching Co-Simulation Orchestrator for ${target.className}...`);
           const exp = arena.experiment;
           const cosimStartTime = params.startTime ?? exp.startTime ?? 0;

@@ -1031,10 +1031,10 @@ function selectGdtRow(qifCharId: string): void {
         <button
           type="button"
           class="tls-mini-btn is-primary"
-          title="Export all 4 turbofan digital-thread files directly into Morsel IDE"
+          title="Export all 4 turbofan digital-thread files directly into Ansatz"
           @click="openInMorsel"
         >
-          <span>Morsel</span>
+          <span>Ansatz</span>
           <MsIcon name="arrow-up-right" :size="11" :stroke="2.1" />
         </button>
       </div>

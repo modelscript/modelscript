@@ -218,7 +218,7 @@ export function compileStepFromSources(params: CompileStepFromSourcesParams): Co
 
   const { stepText, featureAnchors } = compileAssemblyToAp242Step(asm, {
     schema: "AP242",
-    lengthUnit: "m",
+    lengthUnit: "mm",
     preservePartNames: true,
     timeStamp: params.timeStamp ?? "2026-11-15T12:00:00Z",
     pmi,

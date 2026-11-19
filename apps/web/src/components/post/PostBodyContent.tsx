@@ -239,7 +239,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
               <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
                 <NoteIcon size={13} /> Expand inline ({notebookData.cells.length} sections
                 {notebookData.artifactIds.length > 0
-                  ? ` · ${notebookData.artifactIds.length} ${notebookData.artifactIds.length === 1 ? "morsel" : "morsels"}`
+                  ? ` · ${notebookData.artifactIds.length} ${notebookData.artifactIds.length === 1 ? "model" : "models"}`
                   : ""}
                 )
               </span>
@@ -334,8 +334,8 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                 </span>
                 <span style={{ fontSize: "12.5px", color: "var(--color-text-secondary)" }}>
                   {notebookData.companionRepo
-                    ? `Full source available in ${notebookData.companionRepo} — or launch directly in Morsel.`
-                    : "All code snippets and equations in this article can be compiled and simulated directly in Morsel."}
+                    ? `Full source available in ${notebookData.companionRepo} — or launch directly in Ansatz.`
+                    : "All code snippets and equations in this article can be compiled and simulated directly in Ansatz."}
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -414,7 +414,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                   ) : (
                     <>
                       <DraftingTriangleIcon size={13} />
-                      Open in Morsel
+                      Open in Ansatz
                     </>
                   )}
                 </button>

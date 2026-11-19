@@ -1,17 +1,17 @@
 ---
-title: ActivityPub Federation & Engineering Morsels
-description: W3C ActivityPub decentralized federation protocol, executable Engineering Morsel JSON-LD payloads, HTTP Signatures, and W3C eddsa-jcs-2022 cryptographic proofs.
+title: ActivityPub Federation & Engineering Models
+description: W3C ActivityPub decentralized federation protocol, reproducible Engineering Model JSON-LD payloads, HTTP Signatures, and W3C eddsa-jcs-2022 cryptographic proofs.
 ---
 
-# ActivityPub Federation & Engineering Morsels
+# ActivityPub Federation & Engineering Models
 
-Ansatz implements the **W3C ActivityPub** standard (Server-to-Server and Client-to-Server) extended with an engineering namespace (`https://modelscript.org/ns/morsel#`) to enable decentralized collaboration across research labs, universities, and enterprise engineering hubs. Rather than confining models, simulations, and peer reviews to a single centralized silo, independent Ansatz instances federate, exchange executable artifacts, and verify cryptographic proofs across domains.
+Ansatz implements the **W3C ActivityPub** standard (Server-to-Server and Client-to-Server) extended with an engineering namespace (`https://modelscript.org/ns/morsel#` for wire compatibility) to enable decentralized collaboration across research labs, universities, and enterprise engineering hubs. Rather than confining models, simulations, and peer reviews to a single centralized silo, independent Ansatz instances federate, exchange reproducible artifacts, and verify cryptographic proofs across domains.
 
 ---
 
-## 1. What is an Engineering Morsel?
+## 1. What is a Reproducible Engineering Model?
 
-In conventional social networks, posts consist of plain text, raster images, or static video. In Ansatz, posts carry **Morsels**—compact, self-contained, executable engineering payloads embedded directly inside ActivityStreams 2.0 `Note` or `Article` objects:
+In conventional social networks, posts consist of plain text, raster images, or static video. In **Ansatz Network**, posts carry **reproducible models**—compact, self-contained model, simulation, and experiment payloads embedded directly inside ActivityStreams 2.0 `Note` or `Article` objects:
 
 1. **Executable Multi-Physics Models**: Deflate-compressed (`#m=...`) or content-addressed source bundles across any of the 92 supported languages (`Modelica`, `SysML v2`, `PSCAD`, `CIM/CGMES`, `OLGA`, `SPICE`, `URDF`, `OpenSCAD`, `DICOM-RT`).
 2. **Reproducible Simulation Trajectories**: Encapsulated DAE/ODE time-series datasets (`Vega-Lite` / Arrow binary attachments) paired with exact solver tolerances, Pantelides index metrics, and initial conditions.
@@ -29,7 +29,7 @@ sequenceDiagram
     participant NodeB as "Ansatz Node B (Inbox)"
     participant WorkerB as "Node B WASM Verification Worker"
 
-    Alice->>NodeA: Sign post via `msx sign` (eddsa-jcs-2022) & publish Morsel
+    Alice->>NodeA: Sign post via `msx sign` (eddsa-jcs-2022) & publish model
     NodeA->>NodeB: POST /api/v1/inbox (HTTP Signature + JSON-LD Create Activity)
     NodeB->>NodeA: GET /.well-known/webfinger & Fetch Actor Public Key
     NodeB->>WorkerB: Verify HTTP Signature, W3C Proof & SHA-256 Artifact Digest
@@ -51,7 +51,7 @@ The server returns a JSON Resource Descriptor (JRD) linking to the actor's Activ
 
 ### 2.2 ActivityStreams 2.0 Payload with Engineering Extensions
 
-When an engineer publishes a Morsel, the instance serializes an ActivityStreams 2.0 `Create` activity carrying both the human-readable Markdown/LaTeX commentary and the structured `morsel:artifact` attachment:
+When an engineer publishes an Ansatz, the instance serializes an ActivityStreams 2.0 `Create` activity carrying both the human-readable Markdown/LaTeX commentary and the structured engineering attachment:
 
 ```json
 {
@@ -107,7 +107,7 @@ Ansatz separates **transport authentication** from **author non-repudiation**:
 
 | Activity Type                  | Object             | Behavior                                                                                              |
 | :----------------------------- | :----------------- | :---------------------------------------------------------------------------------------------------- |
-| `Create`                       | `Note` / `Article` | Publishes a new engineering post, threaded reply, or interactive Morsel attachment.                   |
+| `Create`                       | `Note` / `Article` | Publishes a new engineering post, threaded reply, or interactive model attachment.                    |
 | `Update`                       | `Note` / `Person`  | Updates an existing post (accompanied by a fresh `eddsa-jcs-2022` proof) or refreshes actor metadata. |
 | `Follow` / `Accept` / `Reject` | `Actor`            | Establishes or revokes cross-instance follower subscriptions.                                         |
 | `Announce`                     | `Note`             | Boosts a verified engineering post or simulation benchmark to local followers.                        |

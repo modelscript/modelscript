@@ -311,7 +311,7 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
       title: modelName,
     });
     const fromArtifact = viewConfig.artifactId ? `?fromArtifact=${viewConfig.artifactId}` : "";
-    navigate(`/morsel${fromArtifact}#m=${hash}`);
+    navigate(`/editor${fromArtifact}#m=${hash}`);
   };
 
   const codeLines = rawDeck ? rawDeck.split(/\r?\n/) : [];
@@ -350,9 +350,9 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
               variant="primary"
               leadingVisual={DraftingTriangleIcon}
               onClick={handleOpenPlayground}
-              title="Open in Morsel"
+              title="Open in Ansatz"
             >
-              Open in Morsel
+              Open in Ansatz
             </Button>
           )}
         </Box>

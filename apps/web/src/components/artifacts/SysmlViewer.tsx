@@ -1423,10 +1423,10 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                     size="small"
                     variant="primary"
                     onClick={handleOpenPlayground}
-                    title="Open SysML v2 model in Morsel"
+                    title="Open SysML v2 model in Ansatz"
                   >
                     <DraftingTriangleIcon size={13} />
-                    <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Morsel</Text>
+                    <Text style={{ fontSize: "11px", marginLeft: "4px" }}>Open in Ansatz</Text>
                   </Button>
                 )}
               </Box>

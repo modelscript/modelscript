@@ -5,7 +5,7 @@
  */
 
 import type { Verification3DOverlayPayload } from "@modelscript/cad";
-import { error, info } from "@modelscript/dsl";
+import { error, info, warning } from "@modelscript/dsl";
 import {
   checkPortPlugCompatibility,
   extractPortSignature,
@@ -35,7 +35,8 @@ import { runModelicaCfaAnalysis } from "./lints/cfa.js";
 import { findNonlinearTermsInCst } from "./lints/homotopy-synthesis.js";
 import { isBroken, mergeModArgs, type ModelicaModArgs } from "./modifications.js";
 import type { OperatorOverload, OperatorOverloadParam } from "./types.js";
-import { collapseSpaceTokens } from "./workspace-hooks.js";
+import { parseUnit, unitsCompatible } from "./units.js";
+import { collapseSpaceTokens, extractWithinFromCstNode, extractWithinFromSource } from "./workspace-hooks.js";
 
 function isIdentStartCode(code: number): boolean {
   return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 95;
@@ -583,7 +584,7 @@ export function checkModifierNotFound(
         if (spec) {
           const typeSpec =
             Cst.ShortClassSpecifier.typeSpecifier(spec) ??
-            spec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+            spec.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier");
           let typeName = typeSpec?.text?.trim();
           if (typeName) {
             typeName = typeName.split("[")[0].trim();
@@ -756,7 +757,7 @@ export function checkModifierNotFound(
         const modText = `${arg.name}(${nested.name}${nestedVal}), class or component ${nested.name}`;
         msg = `Variable ${varPath}: In modifier (${modText}), class or component ${arg.name} not found in <${scopeTag}>.`;
         diagCode = ModelicaErrorCode.MODIFIER_CLASS_NOT_FOUND.code;
-        let curCst = db.cstNode(self.id) as any;
+        let curCst = db.cstNode(self.id) as SyntaxNode | null;
         while (curCst && curCst.type !== "component_clause" && curCst.parent) {
           curCst = curCst.parent;
         }
@@ -903,10 +904,10 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
     if (n.type === "ElementModification" || n.type === "element_modification") {
       const nameNode =
         Cst.ElementModification.name(n) ??
-        n.children?.find((c: any) => c.type === "name" || c.type === "Name" || c.type === "identifier");
+        n.children?.find((c: SyntaxNode) => c.type === "name" || c.type === "Name" || c.type === "identifier");
       const modNode =
         Cst.ElementModification.modification(n) ??
-        n.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
+        n.children?.find((c: SyntaxNode) => c.type === "modification" || c.type === "Modification");
       const parentNode = n.parent;
       const isParentModOrRepl =
         parentNode &&
@@ -915,13 +916,15 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           parentNode.type === "argument" ||
           parentNode.type === "Argument");
       const finalNode =
-        n.children?.find((c: any) => c.type === "final" || c.text === "final") ??
+        n.children?.find((c: SyntaxNode) => c.type === "final" || c.text === "final") ??
         (isParentModOrRepl
-          ? parentNode.children?.find((c: any) => c.type === "final" || c.text === "final")
+          ? parentNode.children?.find((c: SyntaxNode) => c.type === "final" || c.text === "final")
           : undefined);
       const eachNode =
-        n.children?.find((c: any) => c.type === "each" || c.text === "each") ??
-        (isParentModOrRepl ? parentNode.children?.find((c: any) => c.type === "each" || c.text === "each") : undefined);
+        n.children?.find((c: SyntaxNode) => c.type === "each" || c.text === "each") ??
+        (isParentModOrRepl
+          ? parentNode.children?.find((c: SyntaxNode) => c.type === "each" || c.text === "each")
+          : undefined);
 
       const name = nameNode ? nameNode.text : "";
       const modRange = n ? ([n.startIndex ?? n.startOffset, n.endIndex ?? n.endOffset] as const) : undefined;
@@ -1010,14 +1013,14 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           if (child.type !== "Subscript" && child.type !== "subscript") continue;
           const flexChild =
             Cst.Subscript.flexible(child) ??
-            child.children?.find((c: any) => c.text === ":" || c.type === ":" || c.type === '":"');
+            child.children?.find((c: SyntaxNode) => c.text === ":" || c.type === ":" || c.type === '":"');
           if (flexChild && flexChild.text?.trim() === ":") {
             subs.push({ kind: "flexible" });
             continue;
           }
           const exprChild =
             Cst.Subscript.expression(child) ??
-            child.children?.find((c: any) => c.type === "expression" || c.type === "Expression") ??
+            child.children?.find((c: SyntaxNode) => c.type === "expression" || c.type === "Expression") ??
             (child.childCount > 0 ? child.child(0) : null);
           if (exprChild) {
             if (exprChild.type === "UNSIGNED_INTEGER" || exprChild.type === "unsigned_integer") {
@@ -1039,46 +1042,48 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
       };
 
       const replaceableNode = n.children?.find(
-        (c: any) => c.type === "ElementReplaceable" || c.type === "element_replaceable",
+        (c: SyntaxNode) => c.type === "ElementReplaceable" || c.type === "element_replaceable",
       );
       const targetNode = replaceableNode ?? n;
 
       const clause =
         Cst.Element.componentClause(targetNode) ??
         targetNode.children?.find(
-          (c: any) => c.type === "component_clause" || c.type === "ComponentClause" || c.type === "component_clause1",
+          (c: SyntaxNode) =>
+            c.type === "component_clause" || c.type === "ComponentClause" || c.type === "component_clause1",
         ) ??
         Cst.Element.componentClause(n) ??
         n.children?.find(
-          (c: any) => c.type === "component_clause" || c.type === "ComponentClause" || c.type === "component_clause1",
+          (c: SyntaxNode) =>
+            c.type === "component_clause" || c.type === "ComponentClause" || c.type === "component_clause1",
         );
       if (clause) {
         const typePrefixNode =
-          clause.children?.find((c: any) => c.type === "type_prefix" || c.type === "TypePrefix") ??
+          clause.children?.find((c: SyntaxNode) => c.type === "type_prefix" || c.type === "TypePrefix") ??
           Cst.ComponentClause.typePrefix(clause);
         const redeclaredPrefix = typePrefixNode?.text?.trim() ?? "";
         const typeSpec =
-          clause.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier") ??
+          clause.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier") ??
           Cst.ComponentClause.typeSpecifier(clause);
         const compList = Cst.ComponentClause.componentList(clause);
         const decl1 =
           (compList ? Cst.ComponentList.componentDeclaration(compList) : null) ??
           clause.children?.find(
-            (c: any) =>
+            (c: SyntaxNode) =>
               c.type === "component_declaration" ||
               c.type === "ComponentDeclaration" ||
               c.type === "component_declaration1",
           );
         const decl =
           Cst.ComponentDeclaration.declaration(decl1) ??
-          decl1?.children?.find((c: any) => c.type === "declaration" || c.type === "Declaration") ??
+          decl1?.children?.find((c: SyntaxNode) => c.type === "declaration" || c.type === "Declaration") ??
           decl1;
         const ident =
           Cst.Declaration.name(decl) ??
-          decl?.children?.find((c: any) => c.type === "identifier" || c.type === "Identifier");
+          decl?.children?.find((c: SyntaxNode) => c.type === "identifier" || c.type === "Identifier");
         const modNode =
           Cst.Declaration.modification(decl) ??
-          decl?.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
+          decl?.children?.find((c: SyntaxNode) => c.type === "modification" || c.type === "Modification");
 
         const name = ident ? ident.text : "";
         const nameRange = ident ? ([ident.startIndex, ident.endIndex] as const) : undefined;
@@ -1086,11 +1091,12 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         const nested = parseModArgsFromCst(modNode, scopeId);
 
         const constrClause =
-          targetNode.children?.find((c: any) => c.type === "constraining_clause" || c.type === "ConstrainingClause") ??
-          n.children?.find((c: any) => c.type === "constraining_clause" || c.type === "ConstrainingClause");
+          targetNode.children?.find(
+            (c: SyntaxNode) => c.type === "constraining_clause" || c.type === "ConstrainingClause",
+          ) ?? n.children?.find((c: SyntaxNode) => c.type === "constraining_clause" || c.type === "ConstrainingClause");
         if (constrClause) {
           const constrMod = constrClause.children?.find(
-            (c: any) => c.type === "class_modification" || c.type === "ClassModification",
+            (c: SyntaxNode) => c.type === "class_modification" || c.type === "ClassModification",
           );
           if (constrMod) {
             const constrParsed = parseModArgsFromCst(constrMod, scopeId);
@@ -1123,7 +1129,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           redeclaredArrayDimensionsRaw: extractSubscripts(
             (decl ? Cst.Declaration.arraySubscripts(decl) : null) ??
               (decl1 ? Cst.Declaration.arraySubscripts(decl1) : null) ??
-              decl1?.children?.find((c: any) => c.type === "array_subscripts" || c.type === "arraySubscripts"),
+              decl1?.children?.find((c: SyntaxNode) => c.type === "array_subscripts" || c.type === "arraySubscripts"),
           ),
           nestedArgs: nested.args,
           value: nested.bindingExpression,
@@ -1133,7 +1139,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         const classDef =
           Cst.Element.classDefinition(targetNode) ??
           targetNode.children?.find(
-            (c: any) =>
+            (c: SyntaxNode) =>
               c.type === "class_definition" ||
               c.type === "ClassDefinition" ||
               c.type === "short_class_definition" ||
@@ -1141,7 +1147,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           ) ??
           Cst.Element.classDefinition(n) ??
           n.children?.find(
-            (c: any) =>
+            (c: SyntaxNode) =>
               c.type === "class_definition" ||
               c.type === "ClassDefinition" ||
               c.type === "short_class_definition" ||
@@ -1151,7 +1157,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           let shortClass =
             Cst.ClassDefinition.classSpecifier(classDef) ??
             classDef.children?.find(
-              (c: any) =>
+              (c: SyntaxNode) =>
                 c.type === "class_specifier" ||
                 c.type === "ClassSpecifier" ||
                 c.type === "short_class_specifier" ||
@@ -1161,16 +1167,16 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           if (shortClass) {
             if (shortClass.type === "class_specifier" || shortClass.type === "ClassSpecifier") {
               const innerShort = shortClass.children?.find(
-                (c: any) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
+                (c: SyntaxNode) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
               );
               if (innerShort) shortClass = innerShort;
             }
             const ident =
               Cst.ShortClassSpecifier.name(shortClass) ??
-              shortClass.children?.find((c: any) => c.type === "identifier" || c.type === "Identifier");
+              shortClass.children?.find((c: SyntaxNode) => c.type === "identifier" || c.type === "Identifier");
             const typeSpec =
               Cst.ShortClassSpecifier.typeSpecifier(shortClass) ??
-              shortClass.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+              shortClass.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier");
             const name = ident ? ident.text?.trim() : "";
             let typeName = typeSpec ? typeSpec.text?.trim() : "";
             if (!typeName && shortClass.text?.includes("enumeration")) {
@@ -1178,16 +1184,19 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
             }
             const modNode =
               Cst.ShortClassSpecifier.classModification(shortClass) ??
-              shortClass.children?.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");
+              shortClass.children?.find(
+                (c: SyntaxNode) => c.type === "class_modification" || c.type === "ClassModification",
+              );
             const nested = parseModArgsFromCst(modNode, scopeId);
 
             const constrClause =
               targetNode.children?.find(
-                (c: any) => c.type === "constraining_clause" || c.type === "ConstrainingClause",
-              ) ?? n.children?.find((c: any) => c.type === "constraining_clause" || c.type === "ConstrainingClause");
+                (c: SyntaxNode) => c.type === "constraining_clause" || c.type === "ConstrainingClause",
+              ) ??
+              n.children?.find((c: SyntaxNode) => c.type === "constraining_clause" || c.type === "ConstrainingClause");
             if (constrClause) {
               const constrMod = constrClause.children?.find(
-                (c: any) => c.type === "class_modification" || c.type === "ClassModification",
+                (c: SyntaxNode) => c.type === "class_modification" || c.type === "ClassModification",
               );
               if (constrMod) {
                 const constrParsed = parseModArgsFromCst(constrMod, scopeId);
@@ -1220,7 +1229,9 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
               redeclaredTypeSpecifier: typeName,
               redeclaredArrayDimensionsRaw: extractSubscripts(
                 Cst.ShortClassSpecifier.arraySubscripts(shortClass) ??
-                  shortClass.children?.find((c: any) => c.type === "array_subscripts" || c.type === "arraySubscripts"),
+                  shortClass.children?.find(
+                    (c: SyntaxNode) => c.type === "array_subscripts" || c.type === "arraySubscripts",
+                  ),
               ),
               nestedArgs: nested.args,
               value: nested.bindingExpression,
@@ -1234,12 +1245,12 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
       // Case 3: `inheritance_modification` (`break connect(a, b)` or `break ident`).
       const connectEq =
         (Cst.ConnectEquation.is(n) ? n : null) ??
-        (n.children || []).find((c: any) => c.type === "connect_equation" || c.type === "ConnectEquation");
+        (n.children || []).find((c: SyntaxNode) => c.type === "connect_equation" || c.type === "ConnectEquation");
       if (connectEq) {
         const source =
           Cst.ConnectEquation.lhs(connectEq) ??
           (connectEq.children || []).filter(
-            (c: any) =>
+            (c: SyntaxNode) =>
               c.type === "component_reference" ||
               c.type === "expression" ||
               c.type === "identifier" ||
@@ -1248,7 +1259,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
         const target =
           Cst.ConnectEquation.rhs(connectEq) ??
           (connectEq.children || []).filter(
-            (c: any) =>
+            (c: SyntaxNode) =>
               c.type === "component_reference" ||
               c.type === "expression" ||
               c.type === "identifier" ||
@@ -1268,7 +1279,7 @@ export function parseModArgsFromCst(node: any, scopeId: number | null = null): a
           });
         }
       }
-      const identifier = (n.children || []).find((c: any) => c.type === "identifier" || c.type === "Identifier");
+      const identifier = (n.children || []).find((c: SyntaxNode) => c.type === "identifier" || c.type === "Identifier");
       if (identifier) {
         args.push({
           name: identifier.text.trim(),
@@ -1514,7 +1525,7 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
 
       // For WASM GLR parser import_clause nodes, inspect the CST to determine the import kind
       if (importKind === undefined && (child.ruleName === "import_clause" || child.ruleName === "ImportClause")) {
-        const importCst = db.cstNode(child.id) as any;
+        const importCst = db.cstNode(child.id) as SyntaxNode | null;
         if (importCst) {
           const aliasNode = Cst.ImportClause.alias(importCst);
           const importListNode = Cst.ImportClause.importList(importCst);
@@ -1566,7 +1577,7 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
           .filter(Boolean);
         // Also try extracting import names from CST if childrenOfField returned nothing
         if (importNames.length === 0) {
-          const importCst = db.cstNode(child.id) as any;
+          const importCst = db.cstNode(child.id) as SyntaxNode | null;
           if (importCst) {
             const importListNode = Cst.ImportClause.importList(importCst);
             if (importListNode) {
@@ -1615,11 +1626,15 @@ export function getScopeData(db: QueryDB, self: SymbolEntry): ScopeData {
  */
 export function isSymbolEncapsulated(db: QueryDB, sym: SymbolEntry): boolean {
   if ((sym as any)._isEncapsulated !== undefined) return (sym as any)._isEncapsulated;
-  if ((sym.metadata as any)?.encapsulated) {
+  if ((sym.metadata as Record<string, unknown> | undefined)?.["encapsulated"]) {
     (sym as any)._isEncapsulated = true;
     return true;
   }
-  const rawKind = String((sym.metadata as any)?.classKind ?? (sym.metadata as any)?.classPrefixes ?? "");
+  const rawKind = String(
+    (sym.metadata as Record<string, unknown> | undefined)?.["classKind"] ??
+      (sym.metadata as Record<string, unknown> | undefined)?.["classPrefixes"] ??
+      "",
+  );
   if (collapseSpaceTokens(stripModelicaComments(rawKind)).includes("encapsulated")) {
     (sym as any)._isEncapsulated = true;
     return true;
@@ -1855,7 +1870,7 @@ export function resolveSimpleNameHelper(
         }
         const typeSpec =
           Cst.ShortClassSpecifier.typeSpecifier(classSpecifier) ??
-          classSpecifier.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+          classSpecifier.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier");
         const typeName = typeSpec?.text?.trim();
         if (typeName) {
           let resolved: { id: SymbolId } | null = null;
@@ -2075,7 +2090,8 @@ function getQualifiedTypeFailRange(
     const typeSpecChild =
       (Cst.ExtendsClause as any)?.typeSpecifier?.(targetNode) ??
       targetNode.children?.find(
-        (c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier" || c.type === "name" || c.type === "Name",
+        (c: SyntaxNode) =>
+          c.type === "type_specifier" || c.type === "TypeSpecifier" || c.type === "name" || c.type === "Name",
       );
     if (typeSpecChild) targetNode = typeSpecChild;
   }
@@ -2293,8 +2309,8 @@ function evaluateDimCSTNode(db: QueryDB, self: SymbolEntry, node: any): DimEvalR
   // Parenthesized expression — unwrap
   if (type === "ParenthesizedExpression" || (type === "primary" && node.child(0)?.text === "(")) {
     const inner =
-      node.namedChildren?.find((c: any) => c.type !== "(" && c.type !== ")") ??
-      node.children?.find((c: any) => c.type !== "(" && c.type !== ")");
+      node.namedChildren?.find((c: SyntaxNode) => c.type !== "(" && c.type !== ")") ??
+      node.children?.find((c: SyntaxNode) => c.type !== "(" && c.type !== ")");
     return evaluateDimCSTNode(db, self, inner);
   }
 
@@ -2675,7 +2691,7 @@ export function getShortClassSpecifierNode(cst: any): any {
     if (spec.type === "short_class_specifier" || spec.type === "ShortClassSpecifier") return spec;
     if (spec.type === "class_specifier" || spec.type === "ClassSpecifier") {
       const shortChild = spec.children?.find(
-        (c: any) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
+        (c: SyntaxNode) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
       );
       if (shortChild) return shortChild;
     }
@@ -2734,15 +2750,15 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
   const shortSpec = getShortClassSpecifierNode(cstNode);
   const cstText = cstNode?.text ?? "";
   const isEnum =
-    shortSpec?.children?.some((c: any) => c.text?.trim() === "enumeration" || c.type === '"enumeration"') ||
+    shortSpec?.children?.some((c: SyntaxNode) => c.text?.trim() === "enumeration" || c.type === '"enumeration"') ||
     Boolean(shortSpec && cstText.includes("enumeration(")) ||
-    (sym?.metadata as any)?.classPrefixes === "enumeration";
+    (sym?.metadata as any)?.["classPrefixes"] === "enumeration";
   if (!isEnum) return null;
 
   const literals: string[] = [];
   const literalRanges: { name: string; startOffset: number; endOffset: number }[] = [];
   const enumListNode = shortSpec
-    ? (shortSpec.children?.find((c: any) => c.type === "enum_list" || c.type === "EnumList") ??
+    ? (shortSpec.children?.find((c: SyntaxNode) => c.type === "enum_list" || c.type === "EnumList") ??
       (Cst?.ShortClassSpecifier ? Cst.ShortClassSpecifier.enumList(shortSpec) : null))
     : null;
 
@@ -2751,7 +2767,7 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
   if (enumListNode && enumListNode.children) {
     for (const c of enumListNode.children) {
       if (c.type === "enumeration_literal" || (Cst?.EnumerationLiteral && Cst.EnumerationLiteral.is(c))) {
-        const idNode = c.children?.find((ch: any) => ch.type === "identifier" || ch.type === "Identifier") ?? c;
+        const idNode = c.children?.find((ch: SyntaxNode) => ch.type === "identifier" || ch.type === "Identifier") ?? c;
         const litName = idNode?.text?.trim() ?? (c.text ? collapseSpaceTokens(c.text)[0] : undefined);
         if (litName) {
           literals.push(litName);
@@ -2865,7 +2881,7 @@ export function validateEnumeration(cstNode: any, sym?: SymbolEntry | null): Enu
  */
 function isRedeclareQuery(db: QueryDB, self: SymbolEntry): boolean {
   if ((self.metadata as any)?.redeclare) return true;
-  let current = db.cstNode(self.id) as any;
+  let current = db.cstNode(self.id) as SyntaxNode | null;
   if (current && (current.type === "class_definition" || current.type === "ClassDefinition")) {
     current = current.parent;
   }
@@ -2881,7 +2897,7 @@ function isRedeclareQuery(db: QueryDB, self: SymbolEntry): boolean {
     ) {
       if (
         current.children?.some(
-          (c: any) => c.text?.trim() === "redeclare" || c.type === "redeclare" || c.type === '"redeclare"',
+          (c: SyntaxNode) => c.text?.trim() === "redeclare" || c.type === "redeclare" || c.type === '"redeclare"',
         )
       ) {
         return true;
@@ -2928,11 +2944,11 @@ function stripDoubleQuotedStringsAndModTail(raw: string): string {
 function hasDynamicScopingPrefix(db: QueryDB, self: SymbolEntry, kw: "inner" | "outer"): boolean {
   if (!self) return false;
   const meta = self.metadata as any;
-  const rawPrefixes = meta?.classPrefixes ?? meta?.prefixes;
+  const rawPrefixes = meta?.["classPrefixes"] ?? meta?.prefixes;
   if (typeof rawPrefixes === "string" && containsWord(rawPrefixes, kw)) {
     return true;
   }
-  let current = db.cstNode(self.id) as any;
+  let current = db.cstNode(self.id) as SyntaxNode | null;
   if (current && (current.type === "class_definition" || current.type === "ClassDefinition")) {
     current = current.parent;
   }
@@ -3021,7 +3037,7 @@ export const classDefinitionQueries: Record<string, any> = {
   },
   /** Evaluates or derives the memoized 3D formal verification overlay payload for this class definition. */
   verification3DOverlay: (db: QueryDB, self: SymbolEntry): Verification3DOverlayPayload => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     const minClearance = findAnnotationClearanceMin(cst) ?? 10.0;
 
     const defaultPayload: Verification3DOverlayPayload = {
@@ -3048,7 +3064,7 @@ export const classDefinitionQueries: Record<string, any> = {
 
   /** Recommends homotopy operator for steep nonlinear equations. */
   lint__homotopyRecommended: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     if (!cst) return null;
     const nonlinear = findNonlinearTermsInCst(cst);
     if (!nonlinear || nonlinear.length === 0) return null;
@@ -3063,7 +3079,7 @@ export const classDefinitionQueries: Record<string, any> = {
 
   /** Control Flow Analysis (CFA): Definite assignment (M5020), uninitialized reads (M5021), unreachable statements (M5022). */
   lint__cfaAnalysis: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     if (!cst) return null;
     const diags = runModelicaCfaAnalysis(db, self, cst);
     return diags && diags.length > 0 ? diags : null;
@@ -3071,7 +3087,7 @@ export const classDefinitionQueries: Record<string, any> = {
 
   /** M4083, M4084: Validate enumeration literals for duplicates and reserved attribute names. */
   lint__validateEnumeration: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     const res = validateEnumeration(cst, self);
     if (!res) return null;
     return [
@@ -3097,7 +3113,7 @@ export const classDefinitionQueries: Record<string, any> = {
     const replaceableElements: SymbolEntry[] = [];
 
     for (const child of children) {
-      const cst = db.cstNode(child.id) as any;
+      const cst = db.cstNode(child.id) as SyntaxNode | null;
       const text = cst?.text?.trim() ?? "";
       const isReplaceable = Boolean(
         (child.metadata as any)?.isReplaceable ||
@@ -3112,7 +3128,7 @@ export const classDefinitionQueries: Record<string, any> = {
           invalidElements.push({ name: `extends ${child.name}`, entry: child });
         }
       } else if (child.kind === "Class") {
-        const classPrefixes = String((child.metadata as any)?.classPrefixes ?? "");
+        const classPrefixes = String((child.metadata as any)?.["classPrefixes"] ?? "");
         const isFunction =
           text.startsWith("function ") ||
           text.startsWith("pure function ") ||
@@ -3120,7 +3136,7 @@ export const classDefinitionQueries: Record<string, any> = {
           text.startsWith("encapsulated function ") ||
           text.startsWith("encapsulated pure function ") ||
           text.startsWith("encapsulated impure function ") ||
-          (child.metadata as any)?.classKind === "function" ||
+          (child.metadata as any)?.["classKind"] === "function" ||
           collapseSpaceTokens(classPrefixes).includes("function") ||
           child.ruleName === "function_definition";
 
@@ -3149,7 +3165,7 @@ export const classDefinitionQueries: Record<string, any> = {
         }),
       ];
     }
-    const selfCst = db.cstNode(self.id) as any;
+    const selfCst = db.cstNode(self.id) as SyntaxNode | null;
     const isOldInst = Boolean(
       selfCst?.tree?.rootNode?.text?.includes("-d=-newInst") || selfCst?.text?.includes("-d=-newInst"),
     );
@@ -3199,13 +3215,13 @@ export const classDefinitionQueries: Record<string, any> = {
 
   /** M4069: Non-constructors may not return an external object (Modelica §12.9.7). */
   lint__functionReturnsExternalObject: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     const text = cst?.text?.trim() ?? "";
     const isFunction =
       text.startsWith("function ") ||
       text.startsWith("pure function ") ||
       text.startsWith("impure function ") ||
-      (self.metadata as any)?.classKind === "function" ||
+      (self.metadata as any)?.["classKind"] === "function" ||
       self.ruleName === "function_definition";
     if (!isFunction) return null;
 
@@ -3253,7 +3269,7 @@ export const classDefinitionQueries: Record<string, any> = {
    * M2003: Type / class not found in scope for short class specifiers.
    */
   lint__typeNotFound: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     if (!cst) return null;
     if (
       self.parentId !== null &&
@@ -3290,7 +3306,7 @@ export const classDefinitionQueries: Record<string, any> = {
 
     const typeSpec =
       Cst.ShortClassSpecifier.typeSpecifier(spec) ??
-      spec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+      spec.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier");
     let typeName = typeSpec?.text?.trim();
     if (!typeName) return null;
     typeName = typeName.split("[")[0].trim();
@@ -3354,7 +3370,7 @@ export const classDefinitionQueries: Record<string, any> = {
 
   /** Returns `true` if this class definition is declared with a `replaceable` prefix. */
   isReplaceable: (db: QueryDB, self: SymbolEntry) => {
-    let current = db.cstNode(self.id) as any;
+    let current = db.cstNode(self.id) as SyntaxNode | null;
     if (current && (current.type === "class_definition" || current.type === "ClassDefinition")) {
       current = current.parent;
     }
@@ -3368,7 +3384,8 @@ export const classDefinitionQueries: Record<string, any> = {
       ) {
         if (
           current.children?.some(
-            (c: any) => c.text?.trim() === "replaceable" || c.type === "replaceable" || c.type === '"replaceable"',
+            (c: SyntaxNode) =>
+              c.text?.trim() === "replaceable" || c.type === "replaceable" || c.type === '"replaceable"',
           )
         )
           return true;
@@ -3380,13 +3397,13 @@ export const classDefinitionQueries: Record<string, any> = {
   },
   /** Extract array dimensions for ShortClassSpecifiers like type ArrayType = Real[3]; */
   arrayDimensions: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     if (!cst) return null;
     const classSpec = getShortClassSpecifierNode(cst);
     if (!classSpec) return null;
     const arraySubNode =
       Cst.ShortClassSpecifier.arraySubscripts(classSpec) ??
-      classSpec.children?.find((c: any) => c.type === "array_subscripts" || c.type === "ArraySubscripts");
+      classSpec.children?.find((c: SyntaxNode) => c.type === "array_subscripts" || c.type === "ArraySubscripts");
     if (!arraySubNode) return null;
 
     const subscripts: Array<
@@ -3399,14 +3416,14 @@ export const classDefinitionQueries: Record<string, any> = {
       if (child.type !== "Subscript" && child.type !== "subscript") continue;
       const flexChild =
         Cst.Subscript.flexible(child) ??
-        child.children?.find((c: any) => c.text === ":" || c.type === ":" || c.type === '":"');
+        child.children?.find((c: SyntaxNode) => c.text === ":" || c.type === ":" || c.type === '":"');
       if (flexChild && flexChild.text?.trim() === ":") {
         subscripts.push({ kind: "flexible" });
         continue;
       }
       const exprChild =
         Cst.Subscript.expression(child) ??
-        child.children?.find((c: any) => c.type === "expression" || c.type === "Expression") ??
+        child.children?.find((c: SyntaxNode) => c.type === "expression" || c.type === "Expression") ??
         (child.childCount > 0 ? child.child(0) : null);
       if (exprChild) {
         const num = parseInt(exprChild.text, 10);
@@ -3430,7 +3447,7 @@ export const classDefinitionQueries: Record<string, any> = {
    * Get the effective modification for this class (specifically for ShortClassSpecifier).
    */
   effectiveModification: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     if (!cst) return null;
     const classSpec = getShortClassSpecifierNode(cst);
     if (!classSpec) return null;
@@ -3440,21 +3457,21 @@ export const classDefinitionQueries: Record<string, any> = {
     }
     const modNode =
       Cst.ShortClassSpecifier.classModification(classSpec) ??
-      classSpec.children?.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");
+      classSpec.children?.find((c: SyntaxNode) => c.type === "class_modification" || c.type === "ClassModification");
     let parsed: any = modNode ? (parseModArgsFromCst(modNode, scopeParentId) as any) : null;
 
     let constrClause: any = null;
-    let curr = cst;
+    let curr: SyntaxNode | null = cst;
     while (curr && curr.type !== "Composition" && curr.type !== "composition") {
       constrClause = curr.children?.find(
-        (c: any) => c.type === "constraining_clause" || c.type === "ConstrainingClause",
+        (c: SyntaxNode) => c.type === "constraining_clause" || c.type === "ConstrainingClause",
       );
       if (constrClause) break;
       curr = curr.parent;
     }
     if (constrClause) {
       const constrMod = constrClause.children?.find(
-        (c: any) => c.type === "class_modification" || c.type === "ClassModification",
+        (c: SyntaxNode) => c.type === "class_modification" || c.type === "ClassModification",
       );
       if (constrMod) {
         const constrParsed = parseModArgsFromCst(constrMod, scopeParentId);
@@ -3492,13 +3509,13 @@ export const classDefinitionQueries: Record<string, any> = {
   },
   /** Resolves the base class symbol for a short class specifier or first `extends` clause. */
   resolvedBaseClass: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     if (!cst) return null;
     const classSpec = getShortClassSpecifierNode(cst);
     if (classSpec) {
       const typeSpec =
         Cst.ShortClassSpecifier.typeSpecifier(classSpec) ??
-        classSpec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+        classSpec.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier");
       const typeName = typeSpec?.text?.trim();
       if (typeName) {
         let scopeParentId = self.parentId;
@@ -3739,7 +3756,7 @@ export const classDefinitionQueries: Record<string, any> = {
     }
     let kind = String(meta?.["classPrefixes"] ?? meta?.["classKind"] ?? "");
     if (!kind) {
-      const cst = db.cstNode(self.id) as any;
+      const cst = db.cstNode(self.id) as SyntaxNode | null;
       if (cst) {
         const prefixes = Cst.ClassDefinition.classPrefixes(cst);
         if (prefixes?.text) kind = prefixes.text;
@@ -3769,7 +3786,7 @@ export const classDefinitionQueries: Record<string, any> = {
     );
     const words = collapseSpaceTokens(stripModelicaComments(rawKind));
     if (words.includes("expandable") && words.includes("connector")) return true;
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     if (cst) {
       const pfx = Cst.ClassDefinition.classPrefixes(cst);
       const pfxWords = collapseSpaceTokens(stripModelicaComments(pfx?.text ?? cst.text ?? ""));
@@ -4246,7 +4263,7 @@ export const classDefinitionQueries: Record<string, any> = {
       if (specShort) {
         const typeSpec =
           Cst.ShortClassSpecifier.typeSpecifier(specShort) ??
-          specShort.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+          specShort.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier");
         const typeName = typeSpec?.text?.trim();
         if (typeName) {
           let resolved: { id: SymbolId } | null = null;
@@ -4324,7 +4341,7 @@ export const classDefinitionQueries: Record<string, any> = {
       const seenNames = new Set<string>();
 
       // NEW: handle extends in long class specifier!
-      const selfCstExt = db.cstNode(self.id) as any;
+      const selfCstExt = db.cstNode(self.id) as SyntaxNode | null;
       const specExt = Cst.ClassDefinition.classSpecifier(selfCstExt);
       if (specExt?.type === "LongClassSpecifier") {
         let hasExtends = false;
@@ -4470,17 +4487,17 @@ export const classDefinitionQueries: Record<string, any> = {
    * target existing elements or predefined attributes of the base class.
    */
   lint__modifierNotFound: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     const spec = getShortClassSpecifierNode(cst);
     if (!spec) return null;
     const modNode =
       Cst.ShortClassSpecifier.classModification(spec) ??
-      spec.children?.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");
+      spec.children?.find((c: SyntaxNode) => c.type === "class_modification" || c.type === "ClassModification");
     const mod = parseModArgsFromCst(modNode, self.parentId);
     if (!mod || !mod.args || mod.args.length === 0) return null;
     const typeSpec =
       Cst.ShortClassSpecifier.typeSpecifier(spec) ??
-      spec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+      spec.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier");
     const typeName = typeSpec?.text?.trim();
     if (typeName) {
       let baseEntry: SymbolEntry | null = null;
@@ -4506,7 +4523,1216 @@ export const classDefinitionQueries: Record<string, any> = {
     }
     return null;
   },
+  /**
+   * M2021: Conflicting import short names within the same class definition (MLS §13.2.1.1).
+   */
+  lint__importConflict: (db: QueryDB, self: SymbolEntry) => {
+    const meta = self.metadata as Record<string, unknown> | undefined;
+    if (meta?.["isPredefined"]) return null;
+
+    const seenShortToTarget = new Map<string, string>();
+    const diags: ReturnType<typeof warning>[] = [];
+
+    for (const child of db.childrenOf(self.id)) {
+      if (child.kind !== "Import") continue;
+      const parsed = extractClassImportPairs(db, child);
+      if (!parsed || parsed.importKind === "unqualified") continue;
+
+      for (const [shortName, target] of parsed.pairs) {
+        const existing = seenShortToTarget.get(shortName);
+        if (existing !== undefined && existing !== target) {
+          diags.push(
+            warning(ModelicaErrorCode.IMPORT_CONFLICT.message(shortName, self.name), {
+              startOffset: parsed.startOffset,
+              endOffset: parsed.endOffset,
+              code: ModelicaErrorCode.IMPORT_CONFLICT.code,
+            }),
+          );
+        } else if (existing === undefined) {
+          seenShortToTarget.set(shortName, target);
+        }
+      }
+    }
+
+    return diags.length > 0 ? diags : null;
+  },
+  /**
+   * M2024: Unused qualified, renamed, or compound import in non-package classes (MLS §13.2).
+   */
+  lint__unusedImport: (db: QueryDB, self: SymbolEntry) => {
+    const meta = self.metadata as Record<string, unknown> | undefined;
+    if (meta?.["isPredefined"]) return null;
+    const prefix = ((meta?.["classPrefixes"] as string) ?? "").toLowerCase();
+    if (prefix.includes("package")) return null;
+
+    const classCst = db.cstNode(self.id) as SyntaxNode | null;
+    const fullText: string = classCst?.text ?? "";
+    if (!fullText) return null;
+
+    const classStart = classCst?.startIndex ?? classCst?.startOffset ?? self.startOffset;
+    // Build body text with direct import_clause spans blanked out so we never match the import itself
+    const chars = fullText.split("");
+    let hasImports = false;
+    const importEntries: Array<{ pairs: Array<[string, string]>; startOffset: number; endOffset: number }> = [];
+    for (const child of db.childrenOf(self.id)) {
+      if (child.kind !== "Import") continue;
+      hasImports = true;
+      const parsed = extractClassImportPairs(db, child);
+      if (parsed && parsed.importKind !== "unqualified") {
+        importEntries.push(parsed);
+      }
+      const relS = Math.max(0, (parsed?.startOffset ?? child.startOffset) - classStart);
+      const relE = Math.min(chars.length, (parsed?.endOffset ?? child.endOffset) - classStart);
+      for (let i = relS; i < relE; i++) chars[i] = " ";
+    }
+    if (!hasImports || importEntries.length === 0) return null;
+
+    const usedIdents = new Set<string>();
+    const scanText = chars.join("");
+    let cur = "";
+    for (let i = 0; i < scanText.length; i++) {
+      const ch = scanText.charCodeAt(i);
+      if (cur.length === 0 ? isIdentStartCode(ch) : isIdentCharCode(ch)) {
+        cur += scanText[i];
+      } else if (cur.length > 0) {
+        usedIdents.add(cur);
+        cur = "";
+      }
+    }
+    if (cur.length > 0) usedIdents.add(cur);
+
+    const diags: ReturnType<typeof info>[] = [];
+    for (const parsed of importEntries) {
+      for (const [shortName] of parsed.pairs) {
+        if (!usedIdents.has(shortName)) {
+          diags.push(
+            info(ModelicaErrorCode.UNUSED_IMPORT.message(shortName, self.name), {
+              startOffset: parsed.startOffset,
+              endOffset: parsed.endOffset,
+              code: ModelicaErrorCode.UNUSED_IMPORT.code,
+            }),
+          );
+        }
+      }
+    }
+    return diags.length > 0 ? diags : null;
+  },
+  /**
+   * M4148: Checks physical connector balance (#potential == #flow for connectors with flow variables, MLS §9.3.1).
+   */
+  lint__connectorUnbalanced: (db: QueryDB, self: SymbolEntry) => {
+    const meta = self.metadata as Record<string, unknown> | undefined;
+    if (meta?.["isPredefined"]) return null;
+    const prefix = ((meta?.["classPrefixes"] as string) ?? "").toLowerCase();
+    if (!prefix.includes("connector") || prefix.includes("partial") || prefix.includes("expandable")) {
+      return null;
+    }
+
+    const countBalance = (classId: SymbolId, visited: Set<SymbolId>): { potential: number; flow: number } | null => {
+      if (visited.has(classId)) return { potential: 0, flow: 0 };
+      visited.add(classId);
+      let potential = 0;
+      let flow = 0;
+
+      const elems = db.query<SymbolEntry[]>("allElements", classId) ?? [];
+      for (const elem of elems) {
+        if (elem.kind !== "Component") continue;
+        const variab = db.query<string | null>("variability", elem.id);
+        if (variab === "parameter" || variab === "constant") continue;
+
+        const fp = db.query<string | null>("flowPrefix", elem.id);
+        if (fp === "stream") continue;
+
+        const dims = db.query<number[] | null>("resolvedArrayDimensions", elem.id);
+        let scalarCount = 1;
+        if (Array.isArray(dims) && dims.length > 0) {
+          for (const d of dims) {
+            if (typeof d !== "number" || d < 0) return null; // dynamic/unknown size
+            scalarCount *= d;
+          }
+        }
+
+        const typeSpec = (db.query<string | null>("typeSpecifier", elem.id) ?? "").trim();
+        const typeClassId = db.query<SymbolId | null>("classInstance", elem.id);
+        const typeEntry = typeClassId ? db.symbol(typeClassId) : null;
+        const typeMeta = typeEntry?.metadata as Record<string, unknown> | undefined;
+        const typePrefixes = ((typeMeta?.["classPrefixes"] as string) ?? "").toLowerCase();
+
+        if (typePrefixes.includes("connector") && typeClassId && !typePrefixes.includes("expandable")) {
+          const sub = countBalance(typeClassId, visited);
+          if (!sub) return null;
+          potential += sub.potential * scalarCount;
+          flow += sub.flow * scalarCount;
+          continue;
+        }
+
+        // Only count Real-based physical variables (including short type aliases of Real)
+        const baseType = typeEntry ? db.query<string | null>("typeSpecifier", typeEntry.id) : null;
+        const isRealLike =
+          typeSpec === "Real" ||
+          baseType === "Real" ||
+          (!typeEntry && (typeSpec === "" || typeSpec === "Real")) ||
+          typePrefixes.includes("type");
+        if (!isRealLike) {
+          // Discrete Integer/Boolean/String/Enumeration signals or complex records are outside simple flow=potential check
+          if (typeSpec === "Integer" || typeSpec === "Boolean" || typeSpec === "String") continue;
+          return null;
+        }
+
+        if (fp === "flow") {
+          flow += scalarCount;
+        } else {
+          potential += scalarCount;
+        }
+      }
+      return { potential, flow };
+    };
+
+    const bal = countBalance(self.id, new Set());
+    if (!bal || bal.flow === 0 || bal.potential === bal.flow) return null;
+
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
+    return warning(ModelicaErrorCode.CONNECTOR_UNBALANCED.message(self.name, String(bal.potential), String(bal.flow)), {
+      startOffset: cst?.startIndex ?? cst?.startOffset ?? self.startOffset,
+      endOffset: cst?.endIndex ?? cst?.endOffset ?? self.endOffset,
+      code: ModelicaErrorCode.CONNECTOR_UNBALANCED.code,
+    });
+  },
+
+  /** M4150: Function derivative annotation target cannot be resolved or is not a function. */
+  lint__derivativeAnnotationMismatch: (db: QueryDB, self: SymbolEntry) => {
+    const getMetaKind = (sym: SymbolEntry): string =>
+      String(
+        (sym.metadata as Record<string, unknown> | undefined)?.["classKind"] ??
+          (sym.metadata as Record<string, unknown> | undefined)?.["classPrefixes"] ??
+          "",
+      ).toLowerCase();
+    const isFunctionLike = (sym: SymbolEntry): boolean =>
+      sym.kind === "Function" || /\bfunction\b/.test(getMetaKind(sym));
+    if (!isFunctionLike(self)) return null;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
+    if (!cst) return null;
+
+    const spec =
+      Cst.ClassDefinition?.classSpecifier?.(cst) ??
+      cst.children?.find(
+        (c: SyntaxNode) =>
+          c.type === "long_class_specifier" || c.type === "short_class_specifier" || c.type === "class_specifier",
+      );
+    const annContainers: SyntaxNode[] = [];
+    const collectOwnAnnotations = (n: SyntaxNode) => {
+      if (!n) return;
+      if (n.type === "class_definition" && n !== cst) return;
+      if (n.type === "annotation_clause") {
+        annContainers.push(n);
+        return;
+      }
+      for (const ch of n.children || []) collectOwnAnnotations(ch);
+    };
+    collectOwnAnnotations(spec ?? cst);
+    if (annContainers.length === 0) return null;
+
+    const derivTargets: Array<{ name: string; node: SyntaxNode }> = [];
+    const extractDerivatives = (n: SyntaxNode) => {
+      if (!n) return;
+      if (n.type === "element_modification") {
+        const nameNode = n.childForFieldName?.("name") ?? n.children?.find((c: SyntaxNode) => c.type === "name");
+        if (nameNode?.text?.trim() === "derivative") {
+          const modNode =
+            n.childForFieldName?.("modification") ?? n.children?.find((c: SyntaxNode) => c.type === "modification");
+          const modExpr = modNode?.children?.find((c: SyntaxNode) => c.type === "modification_expression");
+          const raw = modExpr?.text?.trim() ?? "";
+          if (/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(raw)) {
+            derivTargets.push({ name: raw, node: modExpr ?? n });
+          }
+          return;
+        }
+      }
+      for (const ch of n.children || []) extractDerivatives(ch);
+    };
+    for (const ann of annContainers) extractDerivatives(ann);
+    if (derivTargets.length === 0) return null;
+
+    const diags: ReturnType<typeof warning>[] = [];
+    const scopeId = self.parentId ?? self.id;
+    const resolver = db.query<(n: string) => SymbolEntry | null>("resolveName", scopeId);
+
+    for (const target of derivTargets) {
+      let resolved: SymbolEntry | null = null;
+      if (self.parentId !== null) {
+        resolved =
+          db
+            .childrenOf(self.parentId)
+            ?.find((c) => (c.kind === "Class" || c.kind === "Function") && c.name === target.name) ?? null;
+      }
+      if (!resolved && resolver) resolved = resolver(target.name);
+      if (!resolved && target.name.includes(".")) resolved = resolveQualified(db, target.name);
+      if (!resolved && !target.name.includes(".")) {
+        const matches = db.byName(target.name);
+        resolved = matches.find((m) => m.kind === "Class" || m.kind === "Function") ?? matches[0] ?? null;
+      }
+
+      if (!resolved) {
+        if (target.name.includes(".")) {
+          const rootPkg = target.name.split(".")[0]!;
+          const rootExists = Boolean(resolver?.(rootPkg)) || db.byName(rootPkg).length > 0;
+          if (!rootExists) continue;
+        }
+        diags.push(
+          warning(ModelicaErrorCode.DERIVATIVE_ANNOTATION_MISMATCH.message(self.name, target.name), {
+            startOffset: target.node.startIndex ?? target.node.startOffset ?? self.startOffset,
+            endOffset: target.node.endIndex ?? target.node.endOffset ?? self.endOffset,
+            code: ModelicaErrorCode.DERIVATIVE_ANNOTATION_MISMATCH.code,
+          }),
+        );
+        continue;
+      }
+
+      const targetKind = getMetaKind(resolved);
+      const isValidTarget = isFunctionLike(resolved) || (resolved.kind === "Class" && /\bclass\b/.test(targetKind));
+      if (!isValidTarget) {
+        diags.push(
+          warning(ModelicaErrorCode.DERIVATIVE_ANNOTATION_MISMATCH.message(self.name, target.name), {
+            startOffset: target.node.startIndex ?? target.node.startOffset ?? self.startOffset,
+            endOffset: target.node.endIndex ?? target.node.endOffset ?? self.endOffset,
+            code: ModelicaErrorCode.DERIVATIVE_ANNOTATION_MISMATCH.code,
+          }),
+        );
+      }
+    }
+
+    return diags.length > 0 ? diags : null;
+  },
+
+  /**
+   * M2020: Unresolved import target in Modelica class (MLS §13.2.1).
+   * Scoped to workspace-rooted packages or unqualified targets to avoid false positives on unmounted external libraries.
+   */
+  lint__importNotFound: (db: QueryDB, self: SymbolEntry) => {
+    const meta = self.metadata as Record<string, unknown> | undefined;
+    if (meta?.["isPredefined"]) return null;
+
+    const diags: ReturnType<typeof warning>[] = [];
+    const scopeId = self.parentId ?? self.id;
+    const resolver = db.query<(n: string) => SymbolEntry | null>("resolveName", scopeId);
+
+    const resolveNonImportTarget = (pathStr: string): SymbolEntry | null => {
+      if (pathStr.includes(".")) {
+        const q = resolveQualified(db, pathStr);
+        return q && q.kind !== "Import" ? q : null;
+      }
+      const fromScope = resolver?.(pathStr);
+      if (fromScope && fromScope.kind !== "Import") return fromScope;
+      return db.byName(pathStr).find((e) => e.kind !== "Import") ?? null;
+    };
+    const isRootKnown = (pathStr: string): boolean => {
+      if (!pathStr.includes(".")) return true;
+      const rootPkg = pathStr.split(".")[0]!;
+      const fromScope = resolver?.(rootPkg);
+      if (fromScope && fromScope.kind !== "Import") return true;
+      return db.byName(rootPkg).some((e) => e.kind !== "Import");
+    };
+
+    for (const child of db.childrenOf(self.id)) {
+      if (child.kind !== "Import") continue;
+      const parsed = extractClassImportPairs(db, child);
+      if (!parsed) continue;
+
+      if (parsed.importKind === "unqualified") {
+        const metaPkg = (child.metadata as Record<string, unknown> | undefined)?.["packageName"] as string | undefined;
+        const cstText = (db.cstNode(child.id) as SyntaxNode | null)?.text as string | undefined;
+        let pkgPath = metaPkg && metaPkg.trim().length > 0 ? metaPkg : "";
+        if (!pkgPath && cstText) {
+          pkgPath = cstText
+            .replace(/^\s*import\s+/, "")
+            .replace(/;$/, "")
+            .trim();
+        }
+        if (!pkgPath) pkgPath = child.name;
+        const cleanPkg = pkgPath.replace(/\.\*$/, "").trim();
+        if (!cleanPkg || cleanPkg === "*") continue;
+        if (!resolveNonImportTarget(cleanPkg) && isRootKnown(cleanPkg)) {
+          diags.push(
+            warning(ModelicaErrorCode.IMPORT_NOT_FOUND.message(cleanPkg, self.name), {
+              startOffset: parsed.startOffset,
+              endOffset: parsed.endOffset,
+              code: ModelicaErrorCode.IMPORT_NOT_FOUND.code,
+            }),
+          );
+        }
+        continue;
+      }
+
+      for (const [, target] of parsed.pairs) {
+        if (!target) continue;
+        if (!resolveNonImportTarget(target) && isRootKnown(target)) {
+          diags.push(
+            warning(ModelicaErrorCode.IMPORT_NOT_FOUND.message(target, self.name), {
+              startOffset: parsed.startOffset,
+              endOffset: parsed.endOffset,
+              code: ModelicaErrorCode.IMPORT_NOT_FOUND.code,
+            }),
+          );
+        }
+      }
+    }
+
+    return diags.length > 0 ? diags : null;
+  },
+
+  /**
+   * M4151: Unconnected required input on block/model component instances.
+   */
+  lint__unconnectedInput: (db: QueryDB, self: SymbolEntry) => {
+    const meta = self.metadata as Record<string, unknown> | undefined;
+    if (meta?.["isPredefined"]) return null;
+    const prefix = String(meta?.["classPrefixes"] ?? meta?.["classKind"] ?? "").toLowerCase();
+    if (prefix.includes("partial")) return null;
+    const isModelOrBlock = /\b(model|block)\b/.test(prefix);
+    if (!isModelOrBlock) return null;
+
+    // Collect referenced dotted paths in equations/algorithms across self and inherited base classes
+    const referencedPaths = new Set<string>();
+    const collectEqRefs = (clsId: SymbolId, visited: Set<SymbolId>) => {
+      if (visited.has(clsId)) return;
+      visited.add(clsId);
+      const clsCst = db.cstNode(clsId) as SyntaxNode | null;
+      if (clsCst) {
+        const walkEqSections = (node: SyntaxNode) => {
+          if (!node) return;
+          if (node !== clsCst && node.type === "class_definition") return;
+          if (node.type === "equation_section" || node.type === "algorithm_section") {
+            const txt = String(node.text ?? "");
+            for (const m of txt.matchAll(
+              /\b([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?)+)\b/g,
+            )) {
+              const normalized = m[1]!.replace(/\[[^\]]*\]/g, "");
+              referencedPaths.add(normalized);
+            }
+            return;
+          }
+          for (const ch of node.children ?? []) walkEqSections(ch);
+        };
+        walkEqSections(clsCst);
+      }
+      for (const ch of db.childrenOf(clsId)) {
+        if (ch.kind === "Connect") {
+          const cmeta = ch.metadata as Record<string, unknown> | undefined;
+          for (const side of [cmeta?.["lhs"], cmeta?.["rhs"]]) {
+            if (typeof side === "string") referencedPaths.add(side.replace(/\[[^\]]*\]/g, "").trim());
+          }
+        } else if (ch.kind === "Extends") {
+          const base = db.query<SymbolEntry | null>("resolvedBaseClass", ch.id);
+          if (base) collectEqRefs(base.id, visited);
+        }
+      }
+    };
+    collectEqRefs(self.id, new Set());
+
+    const hasDefaultBindingOrProtected = (elem: SymbolEntry): boolean => {
+      const em = elem.metadata as Record<string, unknown> | undefined;
+      if (em?.["visibility"] === "protected") return true;
+      const ecst = db.cstNode(elem.id) as SyntaxNode | null;
+      if (!ecst) return false;
+      // Check visibility prefix on enclosing element/component_clause
+      let cur: SyntaxNode | null = ecst;
+      while (cur && cur.type !== "element" && cur.type !== "component_clause") cur = cur.parent;
+      if (
+        cur?.parent?.type === "protected" ||
+        String(ecst.text ?? "")
+          .trimStart()
+          .startsWith("protected")
+      )
+        return true;
+      // Look for explicit '= expr' binding on declaration
+      const declText = String(ecst.text ?? "");
+      let depth = 0;
+      let inStr = false;
+      for (let i = 0; i < declText.length; i++) {
+        const c = declText[i]!;
+        if (inStr) {
+          if (c === "\\" && i + 1 < declText.length) i++;
+          else if (c === '"') inStr = false;
+          continue;
+        }
+        if (c === '"') inStr = true;
+        else if (c === "(" || c === "[") depth++;
+        else if (c === ")" || c === "]") depth = Math.max(0, depth - 1);
+        else if (depth === 0 && c === "=") return true;
+      }
+      return false;
+    };
+
+    const diags: ReturnType<typeof warning>[] = [];
+    for (const comp of db.childrenOf(self.id)) {
+      if (comp.kind !== "Component") continue;
+      const cCst = db.cstNode(comp.id) as SyntaxNode | null;
+      if (cCst) {
+        // Skip conditional components or outer components
+        let clauseNode: SyntaxNode | null = cCst;
+        while (clauseNode && clauseNode.type !== "component_clause") clauseNode = clauseNode.parent;
+        const clauseTxt = String(clauseNode?.text ?? "");
+        if (/\bouter\b/.test(clauseTxt.split(/\s+/)[0] ?? "")) continue;
+        if (cCst.children?.some((ch: SyntaxNode) => ch.type === "condition_attribute")) continue;
+      }
+
+      const compTypeId = db.query<SymbolId | null>("classInstance", comp.id);
+      if (!compTypeId) continue;
+      const compType = db.symbol(compTypeId);
+      if (!compType || compType.kind !== "Class") continue;
+      const typePrefix = String(
+        (compType.metadata as Record<string, unknown> | undefined)?.["classPrefixes"] ?? "",
+      ).toLowerCase();
+      if (!/\b(block|model)\b/.test(typePrefix) || /\bconnector\b/.test(typePrefix)) continue;
+
+      const compMod = db.query<ModelicaModArgs | null>("effectiveModification", comp.id);
+      const modifiedNames = new Set((compMod?.args ?? []).map((a) => a.name));
+
+      const subElems = (db.query<SymbolEntry[]>("allElements", compTypeId) ?? []).filter((e) => e.kind === "Component");
+      for (const elem of subElems) {
+        if (modifiedNames.has(elem.name)) continue;
+        let isInput = db.query<string | null>("causality", elem.id) === "input";
+        if (!isInput) {
+          const elemTypeId = db.query<SymbolId | null>("classInstance", elem.id);
+          if (elemTypeId) {
+            const elemTypeCst = db.cstNode(elemTypeId) as SyntaxNode | null;
+            const scs = getShortClassSpecifierNode(elemTypeCst);
+            const pfx = scs?.children?.find((c: SyntaxNode) => c.type === "base_prefix" || c.type === "type_prefix");
+            if (/\binput\b/.test(String(pfx?.text ?? scs?.text ?? ""))) isInput = true;
+          }
+        }
+        if (!isInput) continue;
+        if (hasDefaultBindingOrProtected(elem)) continue;
+
+        const targetPath = `${comp.name}.${elem.name}`;
+        let connected = referencedPaths.has(targetPath);
+        if (!connected) {
+          for (const ref of referencedPaths) {
+            if (ref.startsWith(`${targetPath}.`)) {
+              connected = true;
+              break;
+            }
+          }
+        }
+        if (!connected) {
+          diags.push(
+            warning(ModelicaErrorCode.UNCONNECTED_INPUT.message(targetPath, comp.name), {
+              startOffset: cCst?.startIndex ?? cCst?.startOffset ?? comp.startOffset,
+              endOffset: cCst?.endIndex ?? cCst?.endOffset ?? comp.endOffset,
+              code: ModelicaErrorCode.UNCONNECTED_INPUT.code,
+            }),
+          );
+        }
+      }
+    }
+
+    return diags.length > 0 ? diags : null;
+  },
+
+  /**
+   * M4152: Concrete example model/block inside an 'Examples' package missing an experiment(...) annotation.
+   */
+  lint__experimentAnnotationMissing: (db: QueryDB, self: SymbolEntry) => {
+    const meta = self.metadata as Record<string, unknown> | undefined;
+    if (meta?.["isPredefined"]) return null;
+    const prefix = String(meta?.["classPrefixes"] ?? meta?.["classKind"] ?? "").toLowerCase();
+    if (prefix.includes("partial") || !/\b(model|block)\b/.test(prefix)) return null;
+
+    let inExamplesPkg = false;
+    let pId = self.parentId;
+    while (pId !== null) {
+      const parent = db.symbol(pId);
+      if (!parent) break;
+      if (parent.name === "Examples") {
+        inExamplesPkg = true;
+        break;
+      }
+      pId = parent.parentId;
+    }
+    if (!inExamplesPkg) return null;
+
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
+    if (!cst) return null;
+    const spec =
+      Cst.ClassDefinition?.classSpecifier?.(cst) ??
+      cst.children?.find(
+        (c: SyntaxNode) =>
+          c.type === "long_class_specifier" || c.type === "short_class_specifier" || c.type === "class_specifier",
+      );
+    let hasExperiment = false;
+    const visitAnn = (n: SyntaxNode) => {
+      if (!n || hasExperiment) return;
+      if (n !== cst && n.type === "class_definition") return;
+      if (n.type === "annotation_clause") {
+        const checkMod = (an: SyntaxNode) => {
+          if (!an || hasExperiment) return;
+          if (an.type === "element_modification") {
+            const nameNode = an.childForFieldName?.("name") ?? an.children?.find((c: SyntaxNode) => c.type === "name");
+            if (nameNode?.text?.trim() === "experiment") {
+              hasExperiment = true;
+              return;
+            }
+          }
+          for (const ch of an.children ?? []) checkMod(ch);
+        };
+        checkMod(n);
+        return;
+      }
+      for (const ch of n.children ?? []) visitAnn(ch);
+    };
+    visitAnn(spec ?? cst);
+    if (hasExperiment) return null;
+
+    return info(ModelicaErrorCode.EXPERIMENT_ANNOTATION_MISSING.message(self.name), {
+      startOffset: cst.startIndex ?? cst.startOffset ?? self.startOffset,
+      endOffset: cst.endIndex ?? cst.endOffset ?? self.endOffset,
+      code: ModelicaErrorCode.EXPERIMENT_ANNOTATION_MISSING.code,
+    });
+  },
+
+  /**
+   * M2022: Encapsulated lookup violation — referencing an outer non-imported, non-global symbol inside an encapsulated scope (MLS §5.3.1).
+   */
+  lint__encapsulatedLookupViolation: (db: QueryDB, self: SymbolEntry) => {
+    const meta = self.metadata as Record<string, unknown> | undefined;
+    if (meta?.["isPredefined"]) return null;
+    if (!isScopeEncapsulated(db, self.id)) return null;
+
+    // Walk up to find the nearest encapsulated boundary ancestor (or self)
+    let encapBoundary: SymbolEntry = self;
+    {
+      let cur: SymbolEntry | null = self;
+      while (cur) {
+        const pfx = String(
+          (cur.metadata as Record<string, unknown> | undefined)?.["classPrefixes"] ?? "",
+        ).toLowerCase();
+        const curCst = db.cstNode(cur.id) as SyntaxNode | null;
+        const rawPfx = (curCst?.text?.slice(0, 64) ?? "").toLowerCase();
+        if (pfx.includes("encapsulated") || /^\s*encapsulated\b/.test(rawPfx)) {
+          encapBoundary = cur;
+          break;
+        }
+        cur = cur.parentId !== null ? (db.symbol(cur.parentId) ?? null) : null;
+      }
+    }
+
+    const PREDEFINED_TYPES = new Set([
+      "Real",
+      "Integer",
+      "Boolean",
+      "String",
+      "Clock",
+      "StateSelect",
+      "AssertionLevel",
+      "ExternalObject",
+      "ModelicaServices",
+      "Connections",
+    ]);
+
+    const allowedNames = new Set<string>(PREDEFINED_TYPES);
+    const encapSubtreeIds = new Set<SymbolId>();
+    const collectSubtreeClasses = (clsId: SymbolId) => {
+      if (encapSubtreeIds.has(clsId)) return;
+      encapSubtreeIds.add(clsId);
+      const sym = db.symbol(clsId);
+      if (sym && (sym.kind === "Class" || sym.kind === "Package" || sym.kind === "Function")) {
+        allowedNames.add(sym.name);
+      }
+      for (const ch of db.childrenOf(clsId)) {
+        if (ch.kind === "Class" || ch.kind === "Package" || ch.kind === "Function") {
+          collectSubtreeClasses(ch.id);
+        }
+      }
+    };
+    collectSubtreeClasses(encapBoundary.id);
+
+    // Collect imports only along self's enclosing ancestor chain up to encapBoundary (never siblings)
+    {
+      let anc: SymbolEntry | null = self;
+      while (anc) {
+        for (const ch of db.childrenOf(anc.id)) {
+          if (ch.kind !== "Import") continue;
+          const parsed = extractClassImportPairs(db, ch);
+          if (!parsed) continue;
+          if (parsed.importKind === "unqualified") {
+            const pkgStr =
+              ((ch.metadata as Record<string, unknown> | undefined)?.["packageName"] as string | undefined) ?? ch.name;
+            const targetPkg = resolveQualified(db, pkgStr.replace(/\.\*$/, "").trim());
+            if (targetPkg) {
+              for (const exported of db.childrenOf(targetPkg.id)) {
+                if (exported.kind === "Class" || exported.kind === "Package" || exported.kind === "Function") {
+                  allowedNames.add(exported.name);
+                }
+              }
+            }
+          } else {
+            for (const [shortName] of parsed.pairs) allowedNames.add(shortName);
+          }
+        }
+        if (anc.id === encapBoundary.id) break;
+        anc = anc.parentId !== null ? (db.symbol(anc.parentId) ?? null) : null;
+      }
+    }
+
+    const isInsideEncap = (sym: SymbolEntry): boolean => {
+      let cur: SymbolEntry | null = sym;
+      while (cur) {
+        if (encapSubtreeIds.has(cur.id)) return true;
+        cur = cur.parentId !== null ? (db.symbol(cur.parentId) ?? null) : null;
+      }
+      return false;
+    };
+
+    const diags: ReturnType<typeof warning>[] = [];
+    const seen = new Set<string>();
+    const checkTypeRef = (typeRef: string | null | undefined, startOffset: number, endOffset: number) => {
+      if (!typeRef) return;
+      const trimmed = typeRef.trim();
+      if (!trimmed || trimmed.startsWith(".")) return; // global-rooted .Foo is allowed in encapsulated
+      const rootName = trimmed.split(".")[0]!;
+      if (allowedNames.has(rootName)) return;
+      const externalMatches = db
+        .byName(rootName)
+        .filter((e) => (e.kind === "Class" || e.kind === "Package" || e.kind === "Function") && !isInsideEncap(e));
+      if (externalMatches.length > 0 && !seen.has(rootName)) {
+        seen.add(rootName);
+        diags.push(
+          warning(ModelicaErrorCode.ENCAPSULATED_LOOKUP_VIOLATION.message(trimmed, encapBoundary.name), {
+            startOffset,
+            endOffset,
+            code: ModelicaErrorCode.ENCAPSULATED_LOOKUP_VIOLATION.code,
+          }),
+        );
+      }
+    };
+
+    for (const ch of db.childrenOf(self.id)) {
+      if (ch.kind === "Component") {
+        const ts = db.query<string | null>("typeSpecifier", ch.id);
+        const cstNode = db.cstNode(ch.id) as SyntaxNode | null;
+        checkTypeRef(
+          ts,
+          cstNode?.startIndex ?? cstNode?.startOffset ?? ch.startOffset,
+          cstNode?.endIndex ?? cstNode?.endOffset ?? ch.endOffset,
+        );
+      } else if (ch.kind === "Extends") {
+        const cstNode = db.cstNode(ch.id) as SyntaxNode | null;
+        const typeNode = cstNode ? Cst.ExtendsClause.typeSpecifier(cstNode) : null;
+        checkTypeRef(
+          typeNode?.text?.trim() ?? ch.name,
+          cstNode?.startIndex ?? cstNode?.startOffset ?? ch.startOffset,
+          cstNode?.endIndex ?? cstNode?.endOffset ?? ch.endOffset,
+        );
+      }
+    }
+
+    return diags.length > 0 ? diags : null;
+  },
+
+  /**
+   * M4153: Library package references external libraries via imports/types without declaring annotation(uses(...)).
+   */
+  lint__missingUsesAnnotation: (db: QueryDB, self: SymbolEntry) => {
+    const meta = self.metadata as Record<string, unknown> | undefined;
+    if (meta?.["isPredefined"] || self.parentId !== null) return null;
+    const prefix = String(meta?.["classPrefixes"] ?? meta?.["classKind"] ?? "").toLowerCase();
+    if (!/\bpackage\b/.test(prefix)) return null;
+
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
+    if (!cst) return null;
+    const spec =
+      Cst.ClassDefinition?.classSpecifier?.(cst) ??
+      cst.children?.find(
+        (c: SyntaxNode) =>
+          c.type === "long_class_specifier" || c.type === "short_class_specifier" || c.type === "class_specifier",
+      );
+
+    // Only enforce library-profile `uses` check on packages carrying library metadata (version= or uses(...))
+    let isLibraryPkg = false;
+    const declaredUses = new Set<string>();
+    const scanTopAnn = (n: SyntaxNode) => {
+      if (!n) return;
+      if (n !== cst && n.type === "class_definition") return;
+      if (n.type === "annotation_clause") {
+        const inspectMods = (an: SyntaxNode) => {
+          if (!an) return;
+          if (an.type === "element_modification") {
+            const nm = (
+              an.childForFieldName?.("name") ?? an.children?.find((c: SyntaxNode) => c.type === "name")
+            )?.text?.trim();
+            if (nm === "version" || nm === "uses") isLibraryPkg = true;
+            if (nm === "uses") {
+              const modText = String(an.text ?? "");
+              for (const um of modText.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
+                if (um[1] && um[1] !== "uses") declaredUses.add(um[1]);
+              }
+              return;
+            }
+          }
+          for (const ch of an.children ?? []) inspectMods(ch);
+        };
+        inspectMods(n);
+        return;
+      }
+      for (const ch of n.children ?? []) scanTopAnn(ch);
+    };
+    scanTopAnn(spec ?? cst);
+    if (!isLibraryPkg) return null;
+
+    const IGNORED_ROOTS = new Set([
+      self.name,
+      "Real",
+      "Integer",
+      "Boolean",
+      "String",
+      "Complex",
+      "StateSelect",
+      "AssertionLevel",
+      "Clock",
+      "ExternalObject",
+      "ModelicaServices",
+      "Connections",
+    ]);
+    const referencedLibs = new Map<string, { startOffset: number; endOffset: number }>();
+    const collectSubtreeImports = (clsId: SymbolId, visited: Set<SymbolId>) => {
+      if (visited.has(clsId)) return;
+      visited.add(clsId);
+      for (const ch of db.childrenOf(clsId)) {
+        if (ch.kind === "Import") {
+          const parsed = extractClassImportPairs(db, ch);
+          if (!parsed) continue;
+          const targets: string[] = [];
+          if (parsed.importKind === "unqualified") {
+            const mp = (ch.metadata as Record<string, unknown> | undefined)?.["packageName"] as string | undefined;
+            const ct = (db.cstNode(ch.id) as SyntaxNode | null)?.text as string | undefined;
+            const raw =
+              mp?.trim() ||
+              ct
+                ?.replace(/^\s*import\s+/, "")
+                .replace(/;$/, "")
+                .trim() ||
+              ch.name;
+            targets.push(raw.replace(/\.\*$/, "").trim());
+          } else {
+            for (const [, t] of parsed.pairs) targets.push(t);
+          }
+          for (const t of targets) {
+            const rootLib = t.split(".")[0]!;
+            if (!rootLib || IGNORED_ROOTS.has(rootLib) || rootLib.startsWith(".")) continue;
+            // Flag when target looks like a library reference (qualified path or loaded external Package)
+            const isLoadedExternalPkg = db.byName(rootLib).some((s) => s.kind === "Package" && s.id !== self.id);
+            if ((t.includes(".") || isLoadedExternalPkg) && !referencedLibs.has(rootLib)) {
+              referencedLibs.set(rootLib, { startOffset: parsed.startOffset, endOffset: parsed.endOffset });
+            }
+          }
+        } else if (ch.kind === "Class" || ch.kind === "Package" || ch.kind === "Function") {
+          collectSubtreeImports(ch.id, visited);
+        }
+      }
+    };
+    collectSubtreeImports(self.id, new Set());
+
+    const diags: ReturnType<typeof warning>[] = [];
+    for (const [lib, span] of referencedLibs.entries()) {
+      if (!declaredUses.has(lib)) {
+        diags.push(
+          warning(ModelicaErrorCode.MISSING_USES_ANNOTATION.message(self.name, lib), {
+            startOffset: span.startOffset,
+            endOffset: span.endOffset,
+            code: ModelicaErrorCode.MISSING_USES_ANNOTATION.code,
+          }),
+        );
+      }
+    }
+    return diags.length > 0 ? diags : null;
+  },
+
+  /**
+   * M2023: Validates top-level `within <pkg>;` header against enclosing `package.mo` directory
+   * hierarchy and optional `package.order` file (MLS §13.4).
+   */
+  lint__withinMismatch: (db: QueryDB, self: SymbolEntry) => {
+    const meta = self.metadata as Record<string, unknown> | undefined;
+    if (meta?.["isPredefined"]) return null;
+
+    const normalizeRes = (u: string): string => {
+      let s = u.replace(/\\/g, "/");
+      if (s.startsWith("file:///")) s = s.slice(7);
+      else if (s.startsWith("file://")) s = s.slice(7);
+      return s;
+    };
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
+    const rawRes = self.documentUri ?? self.resourceId ?? (cst?.tree as { uri?: string } | undefined)?.uri;
+    if (!rawRes) return null;
+    const normPath = normalizeRes(rawRes);
+    const lastSlash = normPath.lastIndexOf("/");
+    if (lastSlash < 0) return null; // Single-file / virtual buffer without directory hierarchy
+
+    // Only validate file-top-level declarations (skip classes nested inside another class of the same file)
+    if (self.parentId !== null) {
+      const parentSym = db.parentOf(self.id);
+      const parentRawRes = parentSym?.documentUri ?? parentSym?.resourceId;
+      if (parentSym && parentRawRes && normalizeRes(parentRawRes) === normPath) return null;
+    }
+
+    const dirPath = normPath.slice(0, lastSlash);
+    const fileBase = normPath.slice(lastSlash + 1);
+    const isPackageMo = fileBase === "package.mo";
+    const parentDirOfScope = (() => {
+      if (!isPackageMo) return dirPath;
+      const s = dirPath.lastIndexOf("/");
+      return s >= 0 ? dirPath.slice(0, s) : "";
+    })();
+
+    // Index all loaded directory packages (`.../Dir/package.mo` -> top-level package symbol)
+    const packageByDir = new Map<string, SymbolEntry>();
+    for (const entry of db.allEntries()) {
+      const er = entry.documentUri ?? entry.resourceId;
+      if (!er) continue;
+      const en = normalizeRes(er);
+      if (!en.endsWith("/package.mo")) continue;
+      const ek = entry.kind;
+      const ePrefix = String(
+        (entry.metadata as Record<string, unknown> | undefined)?.["classPrefixes"] ?? "",
+      ).toLowerCase();
+      if (ek !== "Package" && !(ek === "Class" && /\bpackage\b/.test(ePrefix))) continue;
+      const ep = entry.parentId !== null ? db.parentOf(entry.id) : null;
+      const epRes = ep?.documentUri ?? ep?.resourceId;
+      if (ep && epRes && normalizeRes(epRes) === en) continue;
+      const eSlash = en.lastIndexOf("/");
+      if (eSlash >= 0) {
+        const eDir = en.slice(0, eSlash);
+        if (!packageByDir.has(eDir)) packageByDir.set(eDir, entry);
+      }
+    }
+
+    // Reconstruct expected `within` chain by walking enclosing directories that hold a loaded `package.mo`
+    const expectedSegments: string[] = [];
+    let curDir = parentDirOfScope;
+    const seenDirs = new Set<string>();
+    while (curDir.length > 0 && !seenDirs.has(curDir)) {
+      seenDirs.add(curDir);
+      const dirPkg = packageByDir.get(curDir);
+      if (!dirPkg) break;
+      expectedSegments.unshift(dirPkg.name);
+      const s = curDir.lastIndexOf("/");
+      curDir = s >= 0 ? curDir.slice(0, s) : "";
+    }
+
+    const src = cst?.tree?.sourceCode as string | undefined;
+    const withinPkg = extractWithinFromCstNode(cst?.tree?.rootNode) ?? (src ? extractWithinFromSource(src) : null);
+    const diags: ReturnType<typeof warning>[] = [];
+    const span = {
+      startOffset: self.startOffset,
+      endOffset: Math.max(self.startOffset + 1, self.endOffset),
+      code: ModelicaErrorCode.WITHIN_MISMATCH.code,
+    };
+
+    if (expectedSegments.length > 0) {
+      const expectedWithin = expectedSegments.join(".");
+      const actualWithin = withinPkg ?? "";
+      if (actualWithin !== expectedWithin) {
+        diags.push(
+          warning(
+            ModelicaErrorCode.WITHIN_MISMATCH.message(
+              actualWithin || "<empty>",
+              fileBase,
+              `expected 'within ${expectedWithin};'`,
+            ),
+            span,
+          ),
+        );
+      }
+    }
+
+    // Check `package.order` in `parentDirOfScope` when running on Node with local filesystem access
+    if (parentDirOfScope.length > 0 && !rawRes.startsWith("http")) {
+      try {
+        const proc = (globalThis as any).process;
+        const nodeFs = proc?.getBuiltinModule?.("node:fs");
+        if (nodeFs) {
+          const orderFile = `${parentDirOfScope}/package.order`;
+          if (nodeFs.existsSync(orderFile)) {
+            const rawOrder = String(nodeFs.readFileSync(orderFile, "utf8"));
+            const orderSet = new Set<string>();
+            for (const line of rawOrder.split(/\r?\n/)) {
+              const trimmed = line.replace(/\/\/.*$/, "").trim();
+              if (trimmed.length > 0) orderSet.add(trimmed);
+            }
+            if (orderSet.size > 0 && !orderSet.has(self.name)) {
+              diags.push(
+                warning(
+                  ModelicaErrorCode.WITHIN_MISMATCH.message(
+                    withinPkg ?? "<empty>",
+                    fileBase,
+                    `class '${self.name}' is omitted from 'package.order'`,
+                  ),
+                  span,
+                ),
+              );
+            }
+          }
+        }
+      } catch {
+        // Ignore filesystem access errors in virtual or sandboxed workspaces
+      }
+    }
+
+    return diags.length > 0 ? diags : null;
+  },
+
+  /**
+   * M4154: Locally unbalanced non-partial model/block check via `instantiate` (MLS §4.8).
+   */
+  lint__locallyUnbalancedClass: (db: QueryDB, self: SymbolEntry) => {
+    const meta = self.metadata as Record<string, unknown> | undefined;
+    if (meta?.["isPredefined"]) return null;
+    const prefix = String(meta?.["classPrefixes"] ?? meta?.["classKind"] ?? "").toLowerCase();
+    if (
+      /\bpartial\b/.test(prefix) ||
+      /\bfunction\b/.test(prefix) ||
+      /\brecord\b/.test(prefix) ||
+      /\btype\b/.test(prefix) ||
+      /\bconnector\b/.test(prefix) ||
+      /\bpackage\b/.test(prefix) ||
+      /\boperator\b/.test(prefix)
+    ) {
+      return null;
+    }
+    if (!/\b(model|block|class)\b/.test(prefix) && prefix !== "") return null;
+
+    // Collect self + transitive extends classes cleanly; bail if any extends target or compound equation construct is unresolved/non-trivial
+    const classChain: SymbolEntry[] = [];
+    const visitedCls = new Set<SymbolId>();
+    const collectHierarchy = (clsSym: SymbolEntry): boolean => {
+      if (visitedCls.has(clsSym.id)) return true;
+      visitedCls.add(clsSym.id);
+      classChain.push(clsSym);
+      for (const ch of db.childrenOf(clsSym.id)) {
+        if (ch.kind === "Extends") {
+          const baseName = String(
+            (ch.metadata as Record<string, unknown> | undefined)?.["typeSpecifier"] ?? ch.name ?? "",
+          ).trim();
+          if (!baseName) return false;
+          const resolver = db.query<(n: string) => SymbolEntry | null>("resolveName", clsSym.parentId ?? clsSym.id);
+          const resolved = baseName.includes(".") ? resolveQualified(db, baseName) : resolver?.(baseName);
+          if (!resolved) return false;
+          if (!collectHierarchy(resolved)) return false;
+        }
+      }
+      return true;
+    };
+    if (!collectHierarchy(self)) return null;
+
+    let localEqs = 0;
+    const bailTypes = new Set([
+      "algorithm_section",
+      "for_equation",
+      "if_equation",
+      "when_equation",
+      "connect_equation",
+    ]);
+    for (const clsSym of classChain) {
+      const cst = db.cstNode(clsSym.id) as SyntaxNode | null;
+      if (!cst) return null;
+      let unsafeStructure = false;
+      let sawSimpleEq = false;
+      const eqSizeByLhsText = new Map<string, number>();
+
+      const inspectTree = (n: SyntaxNode) => {
+        if (!n || unsafeStructure) return;
+        if (n !== cst && n.type === "class_definition") return;
+        if (bailTypes.has(n.type) || n.type === "external_function_call") {
+          unsafeStructure = true;
+          return;
+        }
+        if (
+          n.type === "equation_section" &&
+          String(n.text ?? "")
+            .trimStart()
+            .startsWith("initial")
+        ) {
+          // Initial equations do not contribute to continuous/local simulation equation balance
+          return;
+        }
+        if (n.type === "simple_equation") {
+          sawSimpleEq = true;
+          const children = n.children ?? [];
+          const eqIdx = children.findIndex((c: SyntaxNode) => c.type === "=");
+          const lhs = eqIdx > 0 ? children[0] : null;
+          const lhsTxt = String(lhs?.text ?? "").trim();
+          // Tuple / vector expressions on LHS can mask multi-equation counts
+          if (lhsTxt.startsWith("(") || lhsTxt.startsWith("{") || lhsTxt.startsWith("[")) {
+            unsafeStructure = true;
+            return;
+          }
+          eqSizeByLhsText.set(lhsTxt, (eqSizeByLhsText.get(lhsTxt) ?? 0) + 1);
+          localEqs += 1;
+          return;
+        }
+        if (n.type === "some_equation" || n.type === "equation_or_procedure") {
+          const t = String(n.text ?? "").trim();
+          if (
+            t &&
+            !t.startsWith("assert(") &&
+            !t.startsWith("terminate(") &&
+            !n.children?.some((c: SyntaxNode) => c.type === "simple_equation")
+          ) {
+            // Standalone procedure/annotation call inside equation section: bail out cleanly
+            const hasSimple = (node: any): boolean =>
+              Boolean(node && (node.type === "simple_equation" || (node.children ?? []).some(hasSimple)));
+            if (!hasSimple(n)) {
+              unsafeStructure = true;
+              return;
+            }
+          }
+        }
+        for (const ch of n.children ?? []) inspectTree(ch);
+      };
+      inspectTree(cst);
+      if (unsafeStructure) return null;
+      void sawSimpleEq;
+    }
+
+    if (localEqs === 0) return null;
+
+    const elementIds = db.query<SymbolId[]>("instantiate", self.id) ?? [];
+    let localVars = 0;
+    let arrayUnknowns = false;
+    for (const eid of elementIds) {
+      const el = typeof eid === "number" ? db.symbol(eid) : (eid as unknown as SymbolEntry);
+      if (!el || el.kind !== "Component") continue;
+      const elCst = db.cstNode(el.id) as any;
+      const elTxt = String(elCst?.text ?? "");
+      if (/\bif\b/.test(elTxt) && /\bif\s+[^;]/.test(elTxt)) return null; // Conditional component
+      const elMeta = el.metadata as Record<string, unknown> | undefined;
+      const varb = String(db.query<string>("variability", el.id) ?? elMeta?.["variability"] ?? "").toLowerCase();
+      const caus = String(db.query<string>("causality", el.id) ?? elMeta?.["causality"] ?? "").toLowerCase();
+      if (varb === "parameter" || varb === "constant") continue;
+      if (caus === "input") continue;
+
+      // Array subscripts require flattened/scalarized matching unless handled carefully
+      if (elTxt.includes("[") || String(elCst?.parent?.text ?? "").includes("[")) {
+        arrayUnknowns = true;
+        break;
+      }
+
+      const tSpec = String(elMeta?.["typeSpecifier"] ?? "").trim();
+      if (tSpec === "Real" || tSpec === "Integer" || tSpec === "Boolean" || tSpec === "String") {
+        localVars += 1;
+        continue;
+      }
+
+      const resolvedType = db.query<SymbolEntry | null>("classInstance", el.id);
+      if (!resolvedType) return null;
+      const tPrefix = String(
+        (resolvedType.metadata as Record<string, unknown> | undefined)?.["classPrefixes"] ?? "",
+      ).toLowerCase();
+      if (/\bconnector\b/.test(tPrefix)) {
+        // MLS §4.8: external connector contributes its flow variables to enclosing local unknown count
+        const connEids = db.query<SymbolId[]>("instantiate", resolvedType.id) ?? [];
+        for (const ceid of connEids) {
+          const ce = typeof ceid === "number" ? db.symbol(ceid) : (ceid as unknown as SymbolEntry);
+          if (!ce || ce.kind !== "Component") continue;
+          const ceCst = db.cstNode(ce.id) as any;
+          const ceParentTxt = String(ceCst?.parent?.text ?? ceCst?.text ?? "");
+          if (/\bflow\b/.test(ceParentTxt)) localVars += 1;
+        }
+        continue;
+      }
+      if (/\btype\b/.test(tPrefix)) {
+        localVars += 1;
+        continue;
+      }
+      // Subcomponent models/blocks carry coupled internal balance; defer to post-flattening M4004
+      return null;
+    }
+
+    if (arrayUnknowns || localVars === 0) return null;
+    if (localVars !== localEqs) {
+      const classKind = /\bblock\b/.test(prefix) ? "block" : "model";
+      return warning(
+        ModelicaErrorCode.LOCALLY_UNBALANCED_CLASS.message(classKind, self.name, String(localEqs), String(localVars)),
+        {
+          startOffset: self.startOffset,
+          endOffset: Math.max(self.startOffset + 1, self.endOffset),
+          code: ModelicaErrorCode.LOCALLY_UNBALANCED_CLASS.code,
+        },
+      );
+    }
+    return null;
+  },
 };
+
+function extractClassImportPairs(
+  db: QueryDB,
+  child: SymbolEntry,
+): { importKind: string; pairs: Array<[string, string]>; startOffset: number; endOffset: number } | null {
+  const cmeta = child.metadata as Record<string, unknown> | undefined;
+  let importKind =
+    (cmeta?.["importKind"] as string | undefined) ??
+    (child.ruleName === "UnqualifiedImportClause"
+      ? "unqualified"
+      : child.ruleName === "CompoundImportClause"
+        ? "compound"
+        : undefined);
+  let pkgName = ((cmeta?.["packageName"] ?? child.name) as string) ?? "";
+  let aliasName = cmeta?.["shortName"] as string | undefined;
+
+  const importCst = db.cstNode(child.id) as SyntaxNode | null;
+  if (importKind === undefined && importCst) {
+    const aliasNode = Cst.ImportClause.alias(importCst);
+    const importListNode = Cst.ImportClause.importList(importCst);
+    const cstText: string = importCst.text ?? "";
+    if (aliasNode) {
+      aliasName = aliasNode.text?.trim();
+      importKind = "simple";
+    } else if (importListNode) {
+      importKind = "compound";
+    } else if (
+      (importCst.children || []).some(
+        (c: CstNodeLike) => c.type === "*" || c.type === '"*"' || c.text?.trim() === "*",
+      ) ||
+      cstText.trimEnd().endsWith("*")
+    ) {
+      importKind = "unqualified";
+    } else {
+      importKind = "simple";
+    }
+  }
+  if (!importKind) return null;
+
+  const pairs: Array<[string, string]> = [];
+  if (importKind === "compound") {
+    let basePkg = pkgName;
+    if (basePkg.endsWith("}")) {
+      const braceIdx = basePkg.lastIndexOf(".{");
+      if (braceIdx >= 0) basePkg = basePkg.slice(0, braceIdx);
+    }
+    const names = importCst
+      ? (Cst.ImportClause.importList(importCst)?.text ?? "")
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean)
+      : db
+          .childrenOfField(child.id, "importName")
+          .map((c) => c.name)
+          .filter(Boolean);
+    for (const n of names) {
+      pairs.push([n, `${basePkg}.${n}`]);
+    }
+  } else if (importKind === "simple") {
+    const shortName = aliasName ?? splitQualifiedPath(pkgName).pop() ?? pkgName;
+    pairs.push([shortName, pkgName]);
+  }
+
+  return {
+    importKind,
+    pairs,
+    startOffset: importCst?.startIndex ?? importCst?.startOffset ?? child.startOffset,
+    endOffset: importCst?.endIndex ?? importCst?.endOffset ?? child.endOffset,
+  };
+}
 
 /**
  * Salsa semantic queries and lint hooks attached to `extends_clause` (`Extends`) symbols.
@@ -4518,7 +5744,7 @@ export const extendsClauseQueries: Record<string, any> = {
    * Raw source text of the `class_or_inheritance_modification` attached to this `extends` clause, or `null`.
    */
   modificationText: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     const modNode =
       cst?.type === "class_modification" ||
       cst?.type === "ClassModification" ||
@@ -4526,7 +5752,7 @@ export const extendsClauseQueries: Record<string, any> = {
       cst?.type === "class_or_inheritance_modification"
         ? cst
         : (cst?.children || []).find(
-            (c: any) =>
+            (c: SyntaxNode) =>
               c.type === "classOrInheritanceModification" ||
               c.type === "class_or_inheritance_modification" ||
               c.type === "ClassOrInheritanceModification" ||
@@ -4634,7 +5860,7 @@ export const extendsClauseQueries: Record<string, any> = {
    *   { args: [{name:"p", value:{kind:"expression",...}}, {name:"T", isRedeclaration:true, ...}], ... }
    */
   extendsModificationParsed: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     const modNode =
       cst?.type === "class_modification" ||
       cst?.type === "ClassModification" ||
@@ -4642,7 +5868,7 @@ export const extendsClauseQueries: Record<string, any> = {
       cst?.type === "class_or_inheritance_modification"
         ? cst
         : (cst?.children || []).find(
-            (c: any) =>
+            (c: SyntaxNode) =>
               c.type === "classOrInheritanceModification" ||
               c.type === "class_or_inheritance_modification" ||
               c.type === "ClassOrInheritanceModification" ||
@@ -4683,7 +5909,7 @@ export const extendsClauseQueries: Record<string, any> = {
               resolved = db.byName(part).find((e: any) => e.kind === "Class" || e.kind === "Component") ?? null;
             }
           } else if (currentScope) {
-            resolved = db.childrenOf(currentScope.id).find((c: any) => c.name === part) ?? null;
+            resolved = db.childrenOf(currentScope.id).find((c) => c.name === part) ?? null;
           }
           if (resolved) {
             if (resolved.kind === "Component") return null;
@@ -4702,7 +5928,7 @@ export const extendsClauseQueries: Record<string, any> = {
       if (entries?.some((e: any) => e.kind === "Class" || e.kind === "Package" || e.kind === "Component")) return null;
     }
 
-    const cstNode = db.cstNode(self.id) as any;
+    const cstNode = db.cstNode(self.id) as SyntaxNode | null;
     const failRange = getQualifiedTypeFailRange(db, self.parentId, baseName, cstNode, self.startOffset, self.endOffset);
 
     const msg = `Class or type '${baseName}' not found in scope.`;
@@ -4772,7 +5998,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     }
     const typeSpecNode =
       Cst.ComponentClause.typeSpecifier(current) ??
-      current?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+      current?.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier");
     return typeSpecNode?.text ?? null;
   },
 
@@ -4829,7 +6055,7 @@ export const componentDeclarationQueries: Record<string, any> = {
    * Returns null if no modification is present.
    */
   effectiveModification: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     if (!cst) {
       const meta = self.metadata as Record<string, unknown> | undefined;
       if (meta?.["modification"]) return meta["modification"];
@@ -4846,7 +6072,7 @@ export const componentDeclarationQueries: Record<string, any> = {
       }
       return null;
     }
-    let current = cst;
+    let current: SyntaxNode | null = cst;
     while (
       current &&
       current.type !== "ComponentDeclaration" &&
@@ -4860,10 +6086,10 @@ export const componentDeclarationQueries: Record<string, any> = {
       current?.type === "Declaration" || current?.type === "declaration"
         ? current
         : (Cst.ComponentDeclaration.declaration(current) ??
-          current?.children?.find((c: any) => c.type === "declaration" || c.type === "Declaration"));
+          current?.children?.find((c: SyntaxNode) => c.type === "declaration" || c.type === "Declaration"));
     const modNode =
       Cst.Declaration.modification(declNode) ??
-      declNode?.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
+      declNode?.children?.find((c: SyntaxNode) => c.type === "modification" || c.type === "Modification");
     if (!modNode) return null;
     return parseModArgsFromCst(modNode, self.parentId) as ModelicaModArgs;
   },
@@ -4881,7 +6107,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     }
     const typeSpecNode =
       Cst.ComponentClause.typeSpecifier(current) ??
-      current?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+      current?.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier");
     let typeName =
       typeSpecNode?.text ?? (typeof selfMeta?.["typeSpecifier"] === "string" ? selfMeta["typeSpecifier"] : undefined);
     if (!typeName || typeof typeName !== "string") return false;
@@ -4928,7 +6154,7 @@ export const componentDeclarationQueries: Record<string, any> = {
    * from the enclosing `ComponentClause` CST node.
    */
   variability: (db: QueryDB, self: SymbolEntry) => {
-    let current = db.cstNode(self.id) as any;
+    let current = db.cstNode(self.id) as SyntaxNode | null;
     if (!current) {
       const metaVar = (self.metadata as Record<string, unknown> | undefined)?.["variability"];
       if (metaVar === "parameter" || metaVar === "constant" || metaVar === "discrete") {
@@ -4945,7 +6171,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     )
       current = current.parent;
     const tp = Cst.ComponentClause.typePrefix(current);
-    const vNode = (tp?.children || current?.children || []).find((c: any) => c.type === "variability");
+    const vNode = (tp?.children || current?.children || []).find((c: SyntaxNode) => c.type === "variability");
     if (vNode?.text) return vNode.text;
     const tpText = tp?.text ?? "";
     if (tpText.includes("parameter")) return "parameter";
@@ -4959,7 +6185,7 @@ export const componentDeclarationQueries: Record<string, any> = {
    * from the enclosing `ComponentClause` CST node.
    */
   causality: (db: QueryDB, self: SymbolEntry) => {
-    let current = db.cstNode(self.id) as any;
+    let current = db.cstNode(self.id) as SyntaxNode | null;
     if (!current) {
       const metaCaus = (self.metadata as Record<string, unknown> | undefined)?.["causality"];
       if (metaCaus === "input" || metaCaus === "output") {
@@ -4976,7 +6202,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     )
       current = current.parent;
     const tp = Cst.ComponentClause.typePrefix(current);
-    const cNode = (tp?.children || current?.children || []).find((c: any) => c.type === "causality");
+    const cNode = (tp?.children || current?.children || []).find((c: SyntaxNode) => c.type === "causality");
     if (cNode?.text) return cNode.text;
     const tpText = tp?.text ?? "";
     if (tpText.includes("input")) return "input";
@@ -4989,7 +6215,7 @@ export const componentDeclarationQueries: Record<string, any> = {
    * `ComponentClause` or from the `base_prefix` of a referenced short class definition.
    */
   flowPrefix: (db: QueryDB, self: SymbolEntry) => {
-    let current = db.cstNode(self.id) as any;
+    let current = db.cstNode(self.id) as SyntaxNode | null;
     if (!current) {
       const metaFlow = (self.metadata as Record<string, unknown> | undefined)?.["flowPrefix"];
       if (metaFlow === "flow" || metaFlow === "stream") {
@@ -5011,7 +6237,8 @@ export const componentDeclarationQueries: Record<string, any> = {
       if (tpText.includes("stream")) return "stream";
       if (tpText.includes("flow")) return "flow";
     }
-    const direct = (current?.children || []).find((c: any) => c.type === "flow" || c.text === "flow")?.text ?? null;
+    const direct =
+      (current?.children || []).find((c: SyntaxNode) => c.type === "flow" || c.text === "flow")?.text ?? null;
     if (direct) return direct;
     const resType = db.query<any>("resolvedType", self.id);
     if (resType) {
@@ -5020,7 +6247,7 @@ export const componentDeclarationQueries: Record<string, any> = {
         let shortClass =
           Cst.ClassDefinition.classSpecifier(typeCst) ??
           typeCst.children?.find(
-            (c: any) =>
+            (c: SyntaxNode) =>
               c.type === "class_specifier" ||
               c.type === "ClassSpecifier" ||
               c.type === "short_class_specifier" ||
@@ -5030,13 +6257,13 @@ export const componentDeclarationQueries: Record<string, any> = {
         if (shortClass) {
           if (shortClass.type === "class_specifier" || shortClass.type === "ClassSpecifier") {
             const innerShort = shortClass.children?.find(
-              (c: any) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
+              (c: SyntaxNode) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
             );
             if (innerShort) shortClass = innerShort;
           }
           const bp =
             Cst.ShortClassSpecifier.basePrefix(shortClass) ??
-            shortClass.children?.find((c: any) => c.type === "base_prefix" || c.type === "BasePrefix");
+            shortClass.children?.find((c: SyntaxNode) => c.type === "base_prefix" || c.type === "BasePrefix");
           if (bp) {
             const bpText = bp.text?.trim() ?? "";
             if (bpText.includes("stream")) return "stream";
@@ -5052,7 +6279,7 @@ export const componentDeclarationQueries: Record<string, any> = {
    * Checks whether this component declaration is marked with the `final` prefix.
    */
   isFinal: (db: QueryDB, self: SymbolEntry) => {
-    let current = db.cstNode(self.id) as any;
+    let current = db.cstNode(self.id) as SyntaxNode | null;
     while (current) {
       if (
         current.type === "LongClassSpecifier" ||
@@ -5087,9 +6314,9 @@ export const componentDeclarationQueries: Record<string, any> = {
    * Per Modelica §18.3, this promotes a parameter to be evaluated at compile time.
    */
   isEvaluate: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     if (!cst) return false;
-    let current = cst;
+    let current: SyntaxNode | null = cst;
     while (current && current.type !== "ComponentDeclaration" && current.type !== "component_declaration")
       current = current.parent;
     const evaluator = new AnnotationEvaluator();
@@ -5110,7 +6337,7 @@ export const componentDeclarationQueries: Record<string, any> = {
 
   /** Checks whether this component is declared with the `replaceable` prefix. */
   isReplaceable: (db: QueryDB, self: SymbolEntry) => {
-    let current = db.cstNode(self.id) as any;
+    let current = db.cstNode(self.id) as SyntaxNode | null;
     if (current && (current.type === "class_definition" || current.type === "ClassDefinition")) {
       current = current.parent;
     }
@@ -5124,7 +6351,8 @@ export const componentDeclarationQueries: Record<string, any> = {
       ) {
         if (
           current.children?.some(
-            (c: any) => c.text?.trim() === "replaceable" || c.type === "replaceable" || c.type === '"replaceable"',
+            (c: SyntaxNode) =>
+              c.text?.trim() === "replaceable" || c.type === "replaceable" || c.type === '"replaceable"',
           )
         )
           return true;
@@ -5143,12 +6371,14 @@ export const componentDeclarationQueries: Record<string, any> = {
 
   /** Checks whether this component resides inside a `protected` element section of its enclosing class. */
   isProtected: (db: QueryDB, self: SymbolEntry) => {
-    const rawNode = db.cstNode(self.id) as any;
+    const rawNode = db.cstNode(self.id) as SyntaxNode | null;
     let current = rawNode;
     const nodeStart = rawNode?.startIndex ?? rawNode?.startOffset ?? 0;
     while (current) {
       if (current.type === "ElementSection" || current.type === "element_section") {
-        const vis = current.children?.find((c: any) => c.text === "protected" || c.text === "public")?.text?.trim();
+        const vis = current.children
+          ?.find((c: SyntaxNode) => c.text === "protected" || c.text === "public")
+          ?.text?.trim();
         if (vis === "protected" || current.text?.trim()?.startsWith("protected")) return true;
         if (vis === "public" || current.text?.trim()?.startsWith("public")) return false;
       }
@@ -5347,14 +6577,14 @@ export const componentDeclarationQueries: Record<string, any> = {
         if (child.type !== "Subscript" && child.type !== "subscript") continue;
         const flexChild =
           Cst.Subscript.flexible(child) ??
-          child.children?.find((c: any) => c.text === ":" || c.type === ":" || c.type === '":"');
+          child.children?.find((c: SyntaxNode) => c.text === ":" || c.type === ":" || c.type === '":"');
         if (flexChild && flexChild.text?.trim() === ":") {
           subs.push({ kind: "flexible" });
           continue;
         }
         const exprChild =
           Cst.Subscript.expression(child) ??
-          child.children?.find((c: any) => c.type === "expression" || c.type === "Expression") ??
+          child.children?.find((c: SyntaxNode) => c.type === "expression" || c.type === "Expression") ??
           (child.childCount > 0 ? child.child(0) : null);
         if (exprChild) {
           const num = parseInt(exprChild.text, 10);
@@ -5380,7 +6610,9 @@ export const componentDeclarationQueries: Record<string, any> = {
     // Navigate up to the Declaration node to get component-level subscripts (e.g. x[2])
     let declNode = cst as any;
     if (declNode && declNode.type !== "Declaration" && declNode.type !== "declaration") {
-      const childDecl = declNode.children?.find((c: any) => c.type === "Declaration" || c.type === "declaration");
+      const childDecl = declNode.children?.find(
+        (c: SyntaxNode) => c.type === "Declaration" || c.type === "declaration",
+      );
       if (childDecl) {
         declNode = childDecl;
       }
@@ -5439,7 +6671,7 @@ export const componentDeclarationQueries: Record<string, any> = {
         if (spec) {
           const typeSpec =
             Cst.ShortClassSpecifier.typeSpecifier(spec) ??
-            spec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+            spec.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier");
           if (typeSpec?.text) {
             const currentEntry = db.symbol(currentClassId);
             if (currentEntry) {
@@ -5639,7 +6871,7 @@ export const componentDeclarationQueries: Record<string, any> = {
    * (including constraining-clause defaults), and resolved array dimensions.
    */
   componentInstance: (db: QueryDB, self: SymbolEntry) => {
-    const cstNode = db.cstNode(self.id) as any;
+    const cstNode = db.cstNode(self.id) as SyntaxNode | null;
     if (!cstNode) {
       const meta = (self.metadata as Record<string, unknown> | undefined) ?? {};
       const typeSpec =
@@ -5693,7 +6925,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     }
 
     // 1. Walk up to the enclosing `ComponentClause` to extract type specifier and type prefixes
-    let clause = cstNode;
+    let clause: SyntaxNode | null = cstNode;
     while (
       clause &&
       clause.type !== "ComponentClause" &&
@@ -5706,7 +6938,7 @@ export const componentDeclarationQueries: Record<string, any> = {
 
     const typeSpecNode =
       Cst.ComponentClause.typeSpecifier(clause) ??
-      clause?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+      clause?.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier");
     const typeSpec = typeSpecNode?.text ?? null;
 
     const tp = Cst.ComponentClause.typePrefix(clause);
@@ -5732,7 +6964,7 @@ export const componentDeclarationQueries: Record<string, any> = {
           let shortClass =
             Cst.ClassDefinition.classSpecifier(typeCst) ??
             typeCst.children?.find(
-              (c: any) =>
+              (c: SyntaxNode) =>
                 c.type === "class_specifier" ||
                 c.type === "ClassSpecifier" ||
                 c.type === "short_class_specifier" ||
@@ -5742,13 +6974,13 @@ export const componentDeclarationQueries: Record<string, any> = {
           if (shortClass) {
             if (shortClass.type === "class_specifier" || shortClass.type === "ClassSpecifier") {
               const innerShort = shortClass.children?.find(
-                (c: any) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
+                (c: SyntaxNode) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
               );
               if (innerShort) shortClass = innerShort;
             }
             const bp =
               Cst.ShortClassSpecifier.basePrefix(shortClass) ??
-              shortClass.children?.find((c: any) => c.type === "base_prefix" || c.type === "BasePrefix");
+              shortClass.children?.find((c: SyntaxNode) => c.type === "base_prefix" || c.type === "BasePrefix");
             if (bp) {
               const bpText = bp.text?.trim() ?? "";
               if (bpText.includes("stream")) flowPrefix = "stream";
@@ -5809,24 +7041,24 @@ export const componentDeclarationQueries: Record<string, any> = {
     const prefixNode =
       elemParent && (elemParent.type === "Element" || elemParent.type === "element") ? elemParent : clause;
     const isFinal = Boolean(
-      prefixNode?.children?.some((c: any) => c.type === "final" || c.text === "final") ||
-      clause?.children?.some((c: any) => c.type === "final" || c.text === "final"),
+      prefixNode?.children?.some((c: SyntaxNode) => c.type === "final" || c.text === "final") ||
+      clause?.children?.some((c: SyntaxNode) => c.type === "final" || c.text === "final"),
     );
     const isInner = Boolean(
-      prefixNode?.children?.some((c: any) => c.type === "inner" || c.text === "inner") ||
-      clause?.children?.some((c: any) => c.type === "inner" || c.text === "inner"),
+      prefixNode?.children?.some((c: SyntaxNode) => c.type === "inner" || c.text === "inner") ||
+      clause?.children?.some((c: SyntaxNode) => c.type === "inner" || c.text === "inner"),
     );
     const isOuter = Boolean(
-      prefixNode?.children?.some((c: any) => c.type === "outer" || c.text === "outer") ||
-      clause?.children?.some((c: any) => c.type === "outer" || c.text === "outer"),
+      prefixNode?.children?.some((c: SyntaxNode) => c.type === "outer" || c.text === "outer") ||
+      clause?.children?.some((c: SyntaxNode) => c.type === "outer" || c.text === "outer"),
     );
     const isReplaceable = Boolean(
-      prefixNode?.children?.some((c: any) => c.type === "replaceable" || c.text === "replaceable") ||
-      clause?.children?.some((c: any) => c.type === "replaceable" || c.text === "replaceable"),
+      prefixNode?.children?.some((c: SyntaxNode) => c.type === "replaceable" || c.text === "replaceable") ||
+      clause?.children?.some((c: SyntaxNode) => c.type === "replaceable" || c.text === "replaceable"),
     );
     const isRedeclare = Boolean(
-      prefixNode?.children?.some((c: any) => c.type === "redeclare" || c.text === "redeclare") ||
-      clause?.children?.some((c: any) => c.type === "redeclare" || c.text === "redeclare"),
+      prefixNode?.children?.some((c: SyntaxNode) => c.type === "redeclare" || c.text === "redeclare") ||
+      clause?.children?.some((c: SyntaxNode) => c.type === "redeclare" || c.text === "redeclare"),
     );
 
     // 4. Parse declaration modifications and merge fallback arguments from local or inherited `constraining_clause`s
@@ -5834,27 +7066,27 @@ export const componentDeclarationQueries: Record<string, any> = {
     if (cstNode.type !== "Declaration" && cstNode.type !== "declaration") {
       declNode =
         Cst.ComponentDeclaration.declaration(cstNode) ??
-        cstNode.children?.find((c: any) => c.type === "declaration" || c.type === "Declaration") ??
+        cstNode.children?.find((c: SyntaxNode) => c.type === "declaration" || c.type === "Declaration") ??
         cstNode;
     }
 
     const modNode =
       Cst.Declaration.modification(declNode) ??
-      declNode?.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
+      declNode?.children?.find((c: SyntaxNode) => c.type === "modification" || c.type === "Modification");
     let modification = modNode ? (parseModArgsFromCst(modNode, self.parentId) as ModelicaModArgs) : null;
 
     let localConstrClause: any = null;
-    let currNode = cstNode;
+    let currNode: SyntaxNode | null = cstNode;
     while (currNode && currNode.type !== "Composition" && currNode.type !== "composition") {
       localConstrClause = currNode.children?.find(
-        (c: any) => c.type === "constraining_clause" || c.type === "ConstrainingClause",
+        (c: SyntaxNode) => c.type === "constraining_clause" || c.type === "ConstrainingClause",
       );
       if (localConstrClause) break;
       currNode = currNode.parent;
     }
     if (localConstrClause) {
       const constrMod = localConstrClause.children?.find(
-        (c: any) => c.type === "class_modification" || c.type === "ClassModification",
+        (c: SyntaxNode) => c.type === "class_modification" || c.type === "ClassModification",
       );
       if (constrMod) {
         const constrParsed = parseModArgsFromCst(constrMod, self.parentId);
@@ -5889,14 +7121,14 @@ export const componentDeclarationQueries: Record<string, any> = {
               let constrClause: any = null;
               while (curr && curr.type !== "Composition" && curr.type !== "composition") {
                 constrClause = curr.children?.find(
-                  (c: any) => c.type === "constraining_clause" || c.type === "ConstrainingClause",
+                  (c: SyntaxNode) => c.type === "constraining_clause" || c.type === "ConstrainingClause",
                 );
                 if (constrClause) break;
                 curr = curr.parent;
               }
               if (constrClause) {
                 const constrMod = constrClause.children?.find(
-                  (c: any) => c.type === "class_modification" || c.type === "ClassModification",
+                  (c: SyntaxNode) => c.type === "class_modification" || c.type === "ClassModification",
                 );
                 if (constrMod) {
                   const constrParsed = parseModArgsFromCst(constrMod, baseClass.id);
@@ -5927,10 +7159,10 @@ export const componentDeclarationQueries: Record<string, any> = {
     //    bypass `classInstance`, `resolvedArrayDimensions`, and `isConnectorType` Salsa queries.
     const arraySub =
       Cst.Declaration.arraySubscripts(declNode) ??
-      declNode?.children?.find((c: any) => c.type === "array_subscripts" || c.type === "ArraySubscripts");
+      declNode?.children?.find((c: SyntaxNode) => c.type === "array_subscripts" || c.type === "ArraySubscripts");
     const clauseArraySub =
       Cst.ComponentClause.arraySubscripts(clause) ??
-      clause?.children?.find((c: any) => c.type === "array_subscripts" || c.type === "ArraySubscripts");
+      clause?.children?.find((c: SyntaxNode) => c.type === "array_subscripts" || c.type === "ArraySubscripts");
 
     const isPrim = typeSpec === "Real" || typeSpec === "Integer" || typeSpec === "Boolean" || typeSpec === "String";
 
@@ -6041,14 +7273,14 @@ export const componentDeclarationQueries: Record<string, any> = {
       if (found) return null;
     }
 
-    const cstNode = db.cstNode(self.id) as any;
+    const cstNode = db.cstNode(self.id) as SyntaxNode | null;
     let current = cstNode;
     while (current && current.type !== "ComponentClause" && current.type !== "component_clause") {
       current = current.parent;
     }
     const typeSpecNode =
       Cst.ComponentClause.typeSpecifier(current) ??
-      current?.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+      current?.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier");
 
     const failRange = getQualifiedTypeFailRange(
       db,
@@ -6073,7 +7305,7 @@ export const componentDeclarationQueries: Record<string, any> = {
     const diags = db.query<Array<{ dimIndex: number; exprText: string }> | null>("cyclicDimensionInfo", self.id);
     if (diags && diags.length > 0) {
       const d = diags[0]!;
-      const cst = db.cstNode(self.id) as any;
+      const cst = db.cstNode(self.id) as SyntaxNode | null;
       let clauseNode = cst;
       while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.parent) {
         clauseNode = clauseNode.parent;
@@ -6091,11 +7323,138 @@ export const componentDeclarationQueries: Record<string, any> = {
     return null;
   },
   /**
+   * M4147: Reports instantiating a class annotated with `annotation(obsolete = "...")` (MLS §18.8).
+   */
+  lint__obsoleteClassUsage: (db: QueryDB, self: SymbolEntry) => {
+    const typeClassId = db.query<SymbolId | null>("classInstance", self.id);
+    if (!typeClassId) return null;
+    const typeEntry = db.symbol(typeClassId);
+    if (!typeEntry) return null;
+    if ((typeEntry.metadata as Record<string, unknown> | undefined)?.["isPredefined"]) return null;
+
+    const typeCst = db.cstNode(typeClassId) as any;
+    if (!typeCst) return null;
+
+    // Inspect direct annotation_clause(s) of the class specifier (not nested sub-classes)
+    let obsoleteReason: string | undefined;
+    let foundObsolete = false;
+    const spec =
+      Cst.ClassDefinition?.classSpecifier?.(typeCst) ??
+      typeCst.children?.find(
+        (c: SyntaxNode) =>
+          c.type === "long_class_specifier" || c.type === "short_class_specifier" || c.type === "class_specifier",
+      );
+    const annContainers: SyntaxNode[] = [];
+    const collectOwnAnnotations = (n: SyntaxNode) => {
+      if (!n) return;
+      if (n.type === "class_definition" && n !== typeCst) return;
+      if (n.type === "annotation_clause") {
+        annContainers.push(n);
+        return;
+      }
+      for (const ch of n.children || []) {
+        collectOwnAnnotations(ch);
+      }
+    };
+    if (spec) {
+      collectOwnAnnotations(spec);
+    } else {
+      collectOwnAnnotations(typeCst);
+    }
+
+    const extractObsolete = (n: any): boolean => {
+      if (!n) return false;
+      if (n.type === "element_modification") {
+        const nameNode = n.childForFieldName?.("name") ?? n.children?.find((c: SyntaxNode) => c.type === "name");
+        if (nameNode?.text?.trim() === "obsolete") {
+          const modNode =
+            n.childForFieldName?.("modification") ?? n.children?.find((c: SyntaxNode) => c.type === "modification");
+          const modExpr = modNode?.children?.find((c: SyntaxNode) => c.type === "modification_expression");
+          const raw = modExpr?.text?.trim() ?? "";
+          if (raw.startsWith('"') && raw.endsWith('"') && raw.length >= 2) {
+            obsoleteReason = raw.slice(1, -1);
+          } else if (raw) {
+            obsoleteReason = raw;
+          }
+          return true;
+        }
+      }
+      for (const ch of n.children || []) {
+        if (extractObsolete(ch)) return true;
+      }
+      return false;
+    };
+
+    for (const ann of annContainers) {
+      if (extractObsolete(ann)) {
+        foundObsolete = true;
+        break;
+      }
+    }
+    if (!foundObsolete) return null;
+
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
+    const msg = ModelicaErrorCode.OBSOLETE_CLASS_USAGE.message(typeEntry.name, obsoleteReason);
+    return warning(msg, {
+      startOffset: cst?.startIndex ?? cst?.startOffset ?? self.startOffset,
+      endOffset: cst?.endIndex ?? cst?.endOffset ?? self.endOffset,
+      code: ModelicaErrorCode.OBSOLETE_CLASS_USAGE.code,
+    });
+  },
+  /**
+   * M3024: Checks `displayUnit` SI dimensional compatibility against `unit` (MLS §19.1).
+   */
+  lint__incompatibleDisplayUnit: (db: QueryDB, self: SymbolEntry) => {
+    const extractStrAttr = (args: readonly any[] | undefined, attrName: string): string | null => {
+      if (!args) return null;
+      for (const a of args) {
+        if (a?.name !== attrName || !a.value) continue;
+        let raw = "";
+        if (a.value.kind === "literal") {
+          raw = String(a.value.value ?? "");
+        } else if (a.value.kind === "expression") {
+          raw = (a.value.text ?? "").trim();
+        }
+        if (raw.startsWith('"') && raw.endsWith('"') && raw.length >= 2) {
+          raw = raw.slice(1, -1);
+        }
+        return raw.trim();
+      }
+      return null;
+    };
+
+    const mod = db.query<ModelicaModArgs | null>("effectiveModification", self.id);
+    let unitStr = extractStrAttr(mod?.args, "unit");
+    let displayStr = extractStrAttr(mod?.args, "displayUnit");
+
+    if (unitStr == null || displayStr == null) {
+      const typeClassId = db.query<SymbolId | null>("classInstance", self.id);
+      if (typeClassId) {
+        const typeMod = db.query<ModelicaModArgs | null>("effectiveModification", typeClassId);
+        if (unitStr == null) unitStr = extractStrAttr(typeMod?.args, "unit");
+        if (displayStr == null) displayStr = extractStrAttr(typeMod?.args, "displayUnit");
+      }
+    }
+
+    if (!unitStr || !displayStr) return null;
+    const u = parseUnit(unitStr);
+    const du = parseUnit(displayStr);
+    if (!u || !du || unitsCompatible(u, du)) return null;
+
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
+    const detail = `Incompatible displayUnit '${displayStr}' for component '${self.name}' with unit '${unitStr}'`;
+    return warning(ModelicaErrorCode.INCOMPATIBLE_DISPLAY_UNIT.message(detail), {
+      startOffset: cst?.startIndex ?? cst?.startOffset ?? self.startOffset,
+      endOffset: cst?.endIndex ?? cst?.endOffset ?? self.endOffset,
+      code: ModelicaErrorCode.INCOMPATIBLE_DISPLAY_UNIT.code,
+    });
+  },
+  /**
    * M4076: Prohibits direct binding equations (`= expr`) on components whose resolved class is a
    * `model`, `block`, `package`, `function`, or non-primitive `connector`.
    */
   lint__componentBindingRestriction: (db: QueryDB, self: SymbolEntry) => {
-    const cstNode = db.cstNode(self.id) as any;
+    const cstNode = db.cstNode(self.id) as SyntaxNode | null;
     let current = cstNode;
     while (
       current &&
@@ -6110,16 +7469,16 @@ export const componentDeclarationQueries: Record<string, any> = {
       current?.type === "Declaration" || current?.type === "declaration"
         ? current
         : (Cst.ComponentDeclaration.declaration(current) ??
-          current?.children?.find((c: any) => c.type === "declaration" || c.type === "Declaration"));
+          current?.children?.find((c: SyntaxNode) => c.type === "declaration" || c.type === "Declaration"));
     const modNode =
       Cst.Declaration.modification(declNode) ??
-      declNode?.children?.find((c: any) => c.type === "modification" || c.type === "Modification");
+      declNode?.children?.find((c: SyntaxNode) => c.type === "modification" || c.type === "Modification");
 
     const mod = db.query<any | null>("effectiveModification", self.id);
     const hasBinding = Boolean(
       mod?.bindingExpression ||
       (modNode && Cst.Modification.modificationExpression(modNode) != null) ||
-      (modNode?.children && modNode.children.some((c: any) => c.text === "=" || c.type === "=")),
+      (modNode?.children && modNode.children.some((c: SyntaxNode) => c.text === "=" || c.type === "=")),
     );
     if (!hasBinding) return null;
 
@@ -6187,7 +7546,7 @@ export const componentDeclarationQueries: Record<string, any> = {
             resolvedCst.type === "short_class_specifier" || resolvedCst.type === "ShortClassSpecifier"
               ? resolvedCst
               : (resolvedCst.children?.find(
-                  (c: any) =>
+                  (c: SyntaxNode) =>
                     c.type === "short_class_specifier" ||
                     c.type === "ShortClassSpecifier" ||
                     c.type === "class_specifier",
@@ -6195,13 +7554,13 @@ export const componentDeclarationQueries: Record<string, any> = {
           const actualSpec =
             shortSpec?.type === "class_specifier"
               ? shortSpec.children?.find(
-                  (c: any) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
+                  (c: SyntaxNode) => c.type === "short_class_specifier" || c.type === "ShortClassSpecifier",
                 )
               : shortSpec;
           if (actualSpec) {
             const typeSpec =
               Cst.ShortClassSpecifier.typeSpecifier(actualSpec) ??
-              actualSpec.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+              actualSpec.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier");
             const typeText = typeSpec?.text?.trim() ?? "";
             if (["Real", "Integer", "Boolean", "String", "Clock"].includes(typeText)) {
               isPrimitiveAlias = true;
@@ -6240,13 +7599,13 @@ export const shortClassSpecifierQueries: Record<string, any> = {
   /** Parses the `class_modification` on this short class specifier into a `ModelicaModArgs` structure. */
   effectiveModification: {
     execute: (db: QueryDB, self: SymbolEntry) => {
-      const cst = db.cstNode(self.id) as any;
+      const cst = db.cstNode(self.id) as SyntaxNode | null;
       if (!cst) return null;
       const classSpec = getShortClassSpecifierNode(cst);
       if (!classSpec) return null;
       const modNode =
         Cst.ShortClassSpecifier.classModification(classSpec) ??
-        classSpec.children?.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");
+        classSpec.children?.find((c: SyntaxNode) => c.type === "class_modification" || c.type === "ClassModification");
       if (!modNode) return null;
       return parseModArgsFromCst(modNode, self.parentId);
     },
@@ -6255,12 +7614,12 @@ export const shortClassSpecifierQueries: Record<string, any> = {
   /** Resolves the target class referenced by the `type_specifier` of this short class definition. */
   resolvedBaseClass: {
     execute: (db: QueryDB, self: SymbolEntry) => {
-      const selfCstShort = db.cstNode(self.id) as any;
+      const selfCstShort = db.cstNode(self.id) as SyntaxNode | null;
       const specShort = getShortClassSpecifierNode(selfCstShort);
       if (specShort) {
         const typeSpec =
           Cst.ShortClassSpecifier.typeSpecifier(specShort) ??
-          specShort.children?.find((c: any) => c.type === "type_specifier" || c.type === "TypeSpecifier");
+          specShort.children?.find((c: SyntaxNode) => c.type === "type_specifier" || c.type === "TypeSpecifier");
         const typeName = typeSpec?.text?.trim();
         if (typeName && self.parentId !== null) {
           const parentResolver = db.query<(n: string) => { id: number } | null>("resolveName", self.parentId);
@@ -6422,7 +7781,7 @@ export const connectEquationQueries: Record<string, any> = {
    * connector-typed components, and that they are plug-compatible.
    */
   lint__validateConnect: (db: QueryDB, self: SymbolEntry) => {
-    const cst = db.cstNode(self.id) as any;
+    const cst = db.cstNode(self.id) as SyntaxNode | null;
     let p = cst?.parent;
     while (p) {
       if (p.type === "inheritance_modification" || p.type === "InheritanceModification") {
@@ -6434,10 +7793,10 @@ export const connectEquationQueries: Record<string, any> = {
     let rhsNode = cst ? Cst.ConnectEquation.rhs(cst) : null;
     if (!lhsNode || !rhsNode) {
       const children = (cst?.children || []).filter(
-        (c: any) => c.type === "component_reference" || c.type === "ComponentReference",
+        (c: SyntaxNode) => c.type === "component_reference" || c.type === "ComponentReference",
       );
-      if (!lhsNode && children.length > 0) lhsNode = children[0];
-      if (!rhsNode && children.length > 1) rhsNode = children[1];
+      if (!lhsNode && children.length > 0) lhsNode = children[0] ?? null;
+      if (!rhsNode && children.length > 1) rhsNode = children[1] ?? null;
     }
 
     const meta = (self.metadata as Record<string, unknown>) || {};
@@ -6820,6 +8179,42 @@ export const connectEquationQueries: Record<string, any> = {
         return diags;
       }
 
+      // Check M4149: connecting two outputs at the same component/class ownership level
+      if (lhsRes.entry && rhsRes.entry) {
+        const resolveEndpointCausality = (
+          entry: SymbolEntry,
+          typeClassId: SymbolId | null | undefined,
+        ): string | null => {
+          const direct = db.query<string | null>("causality", entry.id);
+          if (direct) return direct;
+          if (typeClassId) {
+            const typeCst = db.cstNode(typeClassId) as any;
+            const spec = getShortClassSpecifierNode(typeCst);
+            const basePfx = spec?.children?.find(
+              (c: SyntaxNode) => c.type === "base_prefix" || c.type === "type_prefix",
+            );
+            const txt = basePfx?.text ?? spec?.text ?? "";
+            if (/\boutput\b/.test(txt)) return "output";
+            if (/\binput\b/.test(txt)) return "input";
+          }
+          return null;
+        };
+        const lhsCaus = resolveEndpointCausality(lhsRes.entry, lhsRes.typeClassId);
+        const rhsCaus = resolveEndpointCausality(rhsRes.entry, rhsRes.typeClassId);
+        if (lhsCaus === "output" && rhsCaus === "output") {
+          const lhsIsOwn = lhsRes.entry.parentId === parentClassId;
+          const rhsIsOwn = rhsRes.entry.parentId === parentClassId;
+          if (lhsIsOwn === rhsIsOwn) {
+            diags.push(
+              warning(ModelicaErrorCode.CONNECT_TWO_OUTPUTS.message(lhsText, rhsText), {
+                ...getRange(cst),
+                code: ModelicaErrorCode.CONNECT_TWO_OUTPUTS.code,
+              }),
+            );
+          }
+        }
+      }
+
       if (!lhsRes.isConnector && !lhsRes.isExpandable && !lhsRes.isInsideExpandable) {
         diags.push(
           error(ModelicaErrorCode.NOT_A_CONNECTOR.message(lhsText), {
@@ -6858,12 +8253,12 @@ export const connectEquationQueries: Record<string, any> = {
       );
       return diags;
     } else if (lhsRes.isExpandable && rhsRes.isExpandable) {
-      return null;
+      return diags.length > 0 ? diags : null;
     }
 
     // 4. Standard connector plug-compatibility (M3003, M5004)
     if (lhsRes.isInsideExpandable || rhsRes.isInsideExpandable) {
-      return null;
+      return diags.length > 0 ? diags : null;
     }
 
     const lhsTypeEntry = (lhsRes.typeClassId ? db.symbol(lhsRes.typeClassId) : null) ?? null;
@@ -6907,7 +8302,7 @@ export const connectEquationQueries: Record<string, any> = {
               );
             };
             if (isElectricalBoundary(lhsPortEntry) && isElectricalBoundary(rhsPortEntry)) {
-              return null;
+              return diags.length > 0 ? diags : null;
             }
             diags.push(
               error(
@@ -6921,7 +8316,7 @@ export const connectEquationQueries: Record<string, any> = {
             );
             return diags;
           }
-          return null;
+          return diags.length > 0 ? diags : null;
         }
       }
     }
@@ -6934,7 +8329,7 @@ export const connectEquationQueries: Record<string, any> = {
       const rhsHasRedecl = Boolean(rhsMod?.args?.some((a: any) => a.isRedeclaration));
       const hasRedeclMod = lhsHasRedecl || rhsHasRedecl;
       if (lhsRes.typeClassId === rhsRes.typeClassId && !hasRedeclMod) {
-        return null;
+        return diags.length > 0 ? diags : null;
       }
       const lhsElems = (db.query<SymbolEntry[]>("allElements", lhsRes.typeClassId) ?? []).filter(
         (e) => e.kind === "Component",
@@ -7056,7 +8451,7 @@ export const connectEquationQueries: Record<string, any> = {
       }
     }
 
-    return null;
+    return diags.length > 0 ? diags : null;
   },
 };
 

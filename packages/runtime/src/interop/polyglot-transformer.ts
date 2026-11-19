@@ -29,6 +29,7 @@ import {
   isTypeLikeSymbol,
 } from "../util/symbol_roles.js";
 import { WorkspaceTypeRegistry } from "../util/type_registry.js";
+import { PhysicsSimplexReconciler } from "./simplex_reconciler.js";
 import {
   evaluateRuleDescriptor,
   extractComplementFields,
@@ -866,9 +867,14 @@ export class PolyglotTransformer {
   }
 
   /**
-   * Resolves a multi-master conflict using physical boundary constraints.
+   * Resolves a multi-master conflict using bounded L1 deviation minimization via PhysicsSimplexReconciler.
    */
-  resolveConflictPhysics(id: string, physMin: number, physMax: number): void {
+  resolveConflictPhysics(
+    id: string,
+    physMin: number,
+    physMax: number,
+    weights?: { sourceWeight?: number; targetWeight?: number },
+  ): void {
     const item = this.conflicts.get(id);
     if (!item) return;
     const srcVal = Number(item.sourceVal);
@@ -888,11 +894,33 @@ export class PolyglotTransformer {
       item.isResolved = false;
       return;
     }
-    const midpoint = (srcVal + tgtVal) * 0.5;
-    let candidate = midpoint;
-    if (candidate < physMin) candidate = physMin;
-    if (candidate > physMax) candidate = physMax;
-    item.resolved = candidate;
+
+    const paramKey = id;
+    const result = PhysicsSimplexReconciler.reconcile({
+      name: id,
+      parameters: {
+        [paramKey]: {
+          name: paramKey,
+          unit: "",
+          proposals: [
+            { domain: "source", value: srcVal, unit: "", weight: weights?.sourceWeight ?? 1.0 },
+            { domain: "target", value: tgtVal, unit: "", weight: weights?.targetWeight ?? 1.0 },
+          ],
+          bounds: { min: physMin, max: physMax },
+        },
+      },
+    });
+
+    const solvedVal = result.parameters[paramKey]?.optimalValue;
+    if (result.status !== "OPTIMAL" || typeof solvedVal !== "number" || !Number.isFinite(solvedVal)) {
+      item.resolved = undefined;
+      item.isResolved = false;
+      return;
+    }
+
+    // Round tiny floating-point simplex noise (< 1e-9 from exact integers/halves)
+    const rounded = Math.round(solvedVal * 1e9) / 1e9;
+    item.resolved = Math.max(physMin, Math.min(physMax, rounded));
     item.isResolved = true;
   }
 

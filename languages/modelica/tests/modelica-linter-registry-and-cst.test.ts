@@ -61,6 +61,11 @@ describe("Modelica Linter Error Code Registry & WASM CST Scope Lints", () => {
         if (lintRule.code !== undefined) {
           const resolved = getModelicaErrorCodeDef(lintRule.code);
           assert.ok(resolved, `CST lint '${lintKey}' uses unregistered numeric code ${lintRule.code}`);
+          assert.equal(
+            lintRule.severity,
+            resolved.severity,
+            `CST lint '${lintKey}' (code ${lintRule.code}) severity '${lintRule.severity}' differs from ModelicaErrorCode '${resolved.severity}'`,
+          );
         }
       }
     });
@@ -237,18 +242,31 @@ end M;
       );
     });
 
-    it("detects non-positive factor in subSample / superSample (M6002)", () => {
-      const diags = getCstDiagnostics(`
-model M
+    it("allows inferred factor 0 in subSample and rejects negative factor (M6002)", () => {
+      const okDiags = getCstDiagnostics(`
+model M_OK
   Real u;
   Real y;
 equation
   y = subSample(u, 0);
-end M;
+end M_OK;
 `);
       assert.ok(
-        diags.some((d) => d.code === ModelicaErrorCode.SAMPLE_FACTOR_NOT_POSITIVE.code),
-        `Expected M6002 in ${JSON.stringify(diags)}`,
+        !okDiags.some((d) => d.code === ModelicaErrorCode.SAMPLE_FACTOR_NOT_POSITIVE.code),
+        `Expected no M6002 for inferred factor 0 in ${JSON.stringify(okDiags)}`,
+      );
+
+      const errDiags = getCstDiagnostics(`
+model M_ERR
+  Real u;
+  Real y;
+equation
+  y = subSample(u, -2);
+end M_ERR;
+`);
+      assert.ok(
+        errDiags.some((d) => d.code === ModelicaErrorCode.SAMPLE_FACTOR_NOT_POSITIVE.code),
+        `Expected M6002 for negative factor -2 in ${JSON.stringify(errDiags)}`,
       );
     });
 
@@ -361,9 +379,9 @@ end M;
       );
     });
 
-    it("detects stream variable accessed on equation RHS without inStream() or actualStream() (M4124)", () => {
-      const diags = getCstDiagnostics(`
-package P
+    it("allows direct outside-connector stream read and flags inside subcomponent stream read without inStream() (M4124)", () => {
+      const okDiags = getCstDiagnostics(`
+package P_OK
   connector FluidPort
     flow Real m_flow;
     stream Real h_outflow;
@@ -375,11 +393,35 @@ package P
   equation
     h_internal = port.h_outflow;
   end Comp;
-end P;
+end P_OK;
 `);
       assert.ok(
-        diags.some((d) => d.code === ModelicaErrorCode.STREAM_MISSING_INSTREAM.code),
-        `Expected M4124 in ${JSON.stringify(diags)}`,
+        !okDiags.some((d) => d.code === ModelicaErrorCode.STREAM_MISSING_INSTREAM.code),
+        `Expected no M4124 for outside connector port.h_outflow in ${JSON.stringify(okDiags)}`,
+      );
+
+      const errDiags = getCstDiagnostics(`
+package P_ERR
+  connector FluidPort
+    flow Real m_flow;
+    stream Real h_outflow;
+  end FluidPort;
+
+  model Pipe
+    FluidPort port;
+  end Pipe;
+
+  model Comp
+    Pipe pipe;
+    Real h_internal;
+  equation
+    h_internal = pipe.port.h_outflow;
+  end Comp;
+end P_ERR;
+`);
+      assert.ok(
+        errDiags.some((d) => d.code === ModelicaErrorCode.STREAM_MISSING_INSTREAM.code),
+        `Expected M4124 for inside subcomponent stream access pipe.port.h_outflow in ${JSON.stringify(errDiags)}`,
       );
     });
 

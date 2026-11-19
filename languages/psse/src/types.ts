@@ -157,6 +157,7 @@ export interface TransformerRecord {
   k: number;
   ckt: string;
   cw: number;
+  cz?: number | undefined;
   cm: number;
   mag1: number;
   mag2: number;
@@ -377,6 +378,7 @@ export interface SeqGeneratorRecord {
   zx0: number;
   zrg: number;
   zxg: number;
+  span?: SourceSpan | undefined;
 }
 
 /**
@@ -393,6 +395,7 @@ export interface SeqBranchRecord {
   bi0: number;
   gj0: number;
   bj0: number;
+  span?: SourceSpan | undefined;
 }
 
 /**
@@ -426,6 +429,7 @@ export interface SeqTransformerRecord {
   xg2: number;
   r02: number;
   x02: number;
+  span?: SourceSpan | undefined;
 }
 
 /**
@@ -608,6 +612,18 @@ export interface PsseSubCase {
 /**
  * Diagnostic emitted by the PSS/E linter.
  */
+export type PsseLintTier = "fast" | "deep" | "formal";
+
+export interface PsseLintOptions {
+  /**
+   * Execution tier for PSS/E linting:
+   * - `"fast"`: `<20ms` keystroke-safe syntactic, schema, and topological checks (no sparse LU / NR / eigen solves).
+   * - `"deep"` (default): includes sparse Z_bus SCR (`P6003`), Q-V Jacobian (`P6004`), DAE structural balance (`P6005`), and small-signal modal checks (`P6006`).
+   * - `"formal"`: additionally runs full Pryce/Dulmage-Mendelsohn structural singularity & high-index verification (`P6005`) and SMT/SAT protection coordination (`P8001`).
+   */
+  tier?: PsseLintTier | undefined;
+}
+
 export interface PsseDiagnostic {
   severity: "error" | "warning" | "info";
   code: string;
@@ -616,4 +632,6 @@ export interface PsseDiagnostic {
   endOffset: number;
   line?: number | undefined;
   column?: number | undefined;
+  /** Verification rigor level when produced by a formal or abstract-interpretation check. */
+  rigor?: "rigorous" | "float-sound" | "heuristic" | undefined;
 }

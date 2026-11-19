@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "@modelscript/design-tokens/panel";
 export * from "./components/BlackboxInspector.js";
 export * from "./components/LintDiagnosticsTable.js";
 export * from "./components/ModelDropZone.js";

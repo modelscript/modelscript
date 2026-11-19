@@ -21,4 +21,5 @@ export * from "./shared-grammars.js";
 export * from "./tabular-types.js";
 export * from "./tgg-types.js";
 export * from "./types.js";
+export * from "./ui-types.js";
 export * from "./writeback-types.js";

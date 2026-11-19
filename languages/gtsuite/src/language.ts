@@ -16,6 +16,21 @@ export const gtsuiteLanguage = language({
   lsp: {
     fileExtensions: [".gtm", ".gtd", ".gtx", ".gt"],
   },
+  ui: {
+    panels: [
+      {
+        id: "gtsuiteEditor",
+        viewType: "modelscript.gtsuiteEditor",
+        title: "GT-SUITE Powertrain & Thermal Studio",
+        shortTitle: "GT-SUITE",
+        selector: ["*.gtm", "*.gtp"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/GtSuitePanel.tsx",
+        artifactViewTypes: ["gtsuite", "gtm"],
+      },
+    ],
+  },
   indexing: {
     indexFile(ctx) {
       const model = parseGtmModel(ctx.text);

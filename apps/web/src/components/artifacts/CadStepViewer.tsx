@@ -2054,7 +2054,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                   leadingVisual={DraftingTriangleIcon}
                   onClick={handleOpenInPlayground}
                 >
-                  Open in Morsel
+                  Open in Ansatz
                 </Button>
               )}
             </Box>
@@ -2123,7 +2123,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                     leadingVisual={DraftingTriangleIcon}
                     onClick={handleOpenInPlayground}
                   >
-                    Open in Morsel
+                    Open in Ansatz
                   </Button>
                 )}
               </Box>

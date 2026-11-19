@@ -19,6 +19,7 @@ export interface ViewportCullingGraph<TNode extends ViewportCullingGraphNode = V
 
 /** Pending RAF handle for coalescing viewport virtualization/culling passes. */
 let viewportCullRaf: number | null = null;
+const culledGraphs = new WeakSet<object>();
 
 /**
  * Schedules a debounced viewport culling pass for large diagrams (>250 nodes).
@@ -48,8 +49,22 @@ export function performViewportCulling<TNode extends ViewportCullingGraphNode>(g
 
   const nodes = g.getNodes();
   if (nodes.length <= 250) {
+    if (culledGraphs.has(g)) {
+      culledGraphs.delete(g);
+      for (const node of nodes) {
+        if (isEphemeralDiagramNode(node.id)) continue;
+        const view = g.findViewByCell?.(node);
+        const el =
+          (view?.container as HTMLElement | undefined) ??
+          (document.querySelector(`[data-cell-id="${node.id}"]`) as HTMLElement | null);
+        if (el && el.style.visibility === "hidden") {
+          el.style.visibility = "";
+        }
+      }
+    }
     return;
   }
+  culledGraphs.add(g);
 
   const width = (container as HTMLElement).clientWidth || 800;
   const height = (container as HTMLElement).clientHeight || 600;

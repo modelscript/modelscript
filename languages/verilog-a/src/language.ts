@@ -27,6 +27,14 @@ export const verilogALanguage = language({
   lsp: {
     fileExtensions: [".va", ".vams"],
   },
+  ui: {
+    stencils: [
+      { label: "Resistor", snippet: "R_new n1 n2 1k\n" },
+      { label: "Capacitor", snippet: "C_new n2 0 10n\n" },
+      { label: "Inductor", snippet: "L_new n1 n2 1m\n" },
+      { label: "Voltage Source", snippet: "V_new in 0 DC 5.0\n" },
+    ],
+  },
   rules: {
     Root: () => "verilog-a",
   },

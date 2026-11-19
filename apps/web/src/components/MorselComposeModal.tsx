@@ -151,14 +151,14 @@ end MySystem;`,
       code,
       title: modelTitle.trim() || "Model",
     });
-    window.open(`/morsel#m=${hash}`, "_blank", "noopener,noreferrer");
+    window.open(`/editor#m=${hash}`, "_blank", "noopener,noreferrer");
   };
 
   return (
     <Dialog
       title={
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <Badge>⚡ Morsel</Badge>
+          <Badge>⚡ Ansatz</Badge>
           <span>Interactive Model Workbench</span>
         </div>
       }
@@ -233,11 +233,11 @@ end MySystem;`,
 
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <IconButton
-              aria-label="Open in full Morsel workbench"
+              aria-label="Open in full Ansatz workbench"
               icon={LinkExternalIcon}
               size="small"
               onClick={handleOpenInFullMorsel}
-              title="Open in full Morsel workbench"
+              title="Open in full Ansatz workbench"
             />
             <IconButton
               aria-label={isFullScreen ? "Exit Full Screen" : "Full Screen"}

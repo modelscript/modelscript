@@ -74,6 +74,17 @@ export type SysmlWasmParser = NonNullable<ReturnType<typeof createWasmParserSync
 
 let cachedSysmlParser: SysmlWasmParser | null = null;
 
+const SYSML_PARSE_LRU_CAPACITY = 512;
+const sysmlParseLruCache = new Map<string, SysmlCstNode | null>();
+
+/**
+ * Injects an initialized WebAssembly GLR parser instance (e.g., in browser/web worker environments).
+ */
+export function registerSysmlWasmParser(parser: SysmlWasmParser): void {
+  cachedSysmlParser = parser;
+  sysmlParseLruCache.clear();
+}
+
 /**
  * Lazily loads and caches the synchronous WebAssembly GLR parser for SysML v2 (`parser.wasm`).
  */
@@ -99,13 +110,26 @@ export function getSysmlParser(): SysmlWasmParser | null {
 }
 
 /**
- * Parses SysML v2 source text using the native WASM GLR parser and returns the root CST node.
+ * Parses SysML v2 source text using the native WASM GLR parser with an O(1) bounded LRU cache.
  */
 export function parseSysmlSource(sourceText: string): SysmlCstNode | null {
+  if (sysmlParseLruCache.has(sourceText)) {
+    const cached = sysmlParseLruCache.get(sourceText) ?? null;
+    sysmlParseLruCache.delete(sourceText);
+    sysmlParseLruCache.set(sourceText, cached);
+    return cached;
+  }
   const parser = getSysmlParser();
   if (!parser) return null;
-  const tree = parser.parse(sourceText);
-  return tree?.rootNode ?? null;
+  const root = parser.parse(sourceText)?.rootNode ?? null;
+  if (sysmlParseLruCache.size >= SYSML_PARSE_LRU_CAPACITY) {
+    const oldestKey = sysmlParseLruCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      sysmlParseLruCache.delete(oldestKey);
+    }
+  }
+  sysmlParseLruCache.set(sourceText, root);
+  return root;
 }
 
 /**
@@ -416,33 +440,68 @@ export function collapseWhitespace(text: string): string {
 }
 
 /**
+ * Finds the matching closing `* /` index for a block comment starting with `/*` at `openPos`,
+ * properly counting nested block comment depth. Returns `-1` if unclosed.
+ */
+export function findMatchingBlockCommentEnd(source: string, openPos: number): number {
+  if (!source.startsWith("/*", openPos)) return -1;
+  let depth = 1;
+  let i = openPos + 2;
+  while (i + 1 < source.length) {
+    const c0 = source.charCodeAt(i);
+    const c1 = source.charCodeAt(i + 1);
+    if (c0 === 47 /* / */ && c1 === 42 /* * */) {
+      depth++;
+      i += 2;
+      continue;
+    }
+    if (c0 === 42 /* * */ && c1 === 47 /* / */) {
+      depth--;
+      if (depth === 0) return i;
+      i += 2;
+      continue;
+    }
+    i++;
+  }
+  return -1;
+}
+
+/**
  * Extracts documentation comment text from a `Documentation` CST node and backing source string.
  */
 export function getDocumentationCommentText(docNode: SysmlCstNode, fullSource: string): string | undefined {
   const leaves = collectCstLeaves(docNode);
-  for (const leaf of leaves) {
-    if (
-      (leaf.text.startsWith('"') && leaf.text.endsWith('"')) ||
-      (leaf.text.startsWith("'") && leaf.text.endsWith("'"))
-    ) {
+  for (let i = 0; i < leaves.length; i++) {
+    const leaf = leaves[i]!;
+    if (leaf.text.length >= 2 && leaf.text.startsWith('"') && leaf.text.endsWith('"')) {
+      const prev = i > 0 ? leaves[i - 1]?.text.toLowerCase() : "";
+      if (prev === "locale") continue;
       return collapseWhitespace(leaf.text.slice(1, -1));
     }
   }
-  const searchFrom = docNode.endIndex ?? -1;
-  if (searchFrom < 0 || searchFrom > fullSource.length) return undefined;
-  let pos = searchFrom;
-  while (pos < fullSource.length) {
-    const code = fullSource.charCodeAt(pos);
-    if (code === 32 || code === 9 || code === 10 || code === 13) {
-      pos++;
-      continue;
-    }
-    break;
+  const candidateStarts: number[] = [];
+  if (leaves.length > 0 && leaves[leaves.length - 1]!.end >= 0) {
+    candidateStarts.push(leaves[leaves.length - 1]!.end);
   }
-  if (fullSource.startsWith("/*", pos)) {
-    const closeIdx = fullSource.indexOf("*/", pos + 2);
-    if (closeIdx !== -1) {
-      return collapseWhitespace(fullSource.slice(pos + 2, closeIdx));
+  if ((docNode.endIndex ?? -1) >= 0) {
+    candidateStarts.push(docNode.endIndex!);
+  }
+  for (const searchFrom of candidateStarts) {
+    if (searchFrom < 0 || searchFrom > fullSource.length) continue;
+    let pos = searchFrom;
+    while (pos < fullSource.length) {
+      const code = fullSource.charCodeAt(pos);
+      if (code === 32 || code === 9 || code === 10 || code === 13) {
+        pos++;
+        continue;
+      }
+      break;
+    }
+    if (fullSource.startsWith("/*", pos)) {
+      const closeIdx = findMatchingBlockCommentEnd(fullSource, pos);
+      if (closeIdx !== -1) {
+        return collapseWhitespace(fullSource.slice(pos + 2, closeIdx));
+      }
     }
   }
   return undefined;
@@ -477,18 +536,27 @@ function isExponentDigitsToken(s: string): boolean {
   return i < s.length && isAsciiDigits(s.slice(i));
 }
 
-function isIdentLeaf(leaf: CstLeaf): boolean {
-  const t = leaf.text;
-  if (!t.length) return false;
-  const c = t.charCodeAt(0);
-  const isIdentStart = (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
-  if (!isIdentStart) return false;
-  for (let i = 1; i < t.length; i++) {
-    const cc = t.charCodeAt(i);
-    const ok = (cc >= 65 && cc <= 90) || (cc >= 97 && cc <= 122) || (cc >= 48 && cc <= 57) || cc === 95;
-    if (!ok) return false;
+function isIdentStartCode(c: number): boolean {
+  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
+}
+
+function isSuperscriptDigitCode(c: number): boolean {
+  return c === 0x00b2 || c === 0x00b3 || c === 0x00b9 || (c >= 0x2070 && c <= 0x2079);
+}
+
+function isIdentPartCode(c: number): boolean {
+  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95 || isSuperscriptDigitCode(c);
+}
+
+function stripSingleQuotes(raw: string): string {
+  if (raw.length >= 2 && raw.startsWith("'") && raw.endsWith("'")) {
+    return raw.slice(1, -1);
   }
-  return true;
+  return raw;
+}
+
+function isIdentLeaf(leaf: CstLeaf): boolean {
+  return isSysmlIdentLeaf(leaf.text);
 }
 
 const LOGICAL_OP_WORDS = new Set(["and", "or", "xor", "implies", "not"]);
@@ -506,23 +574,27 @@ export function cstLeavesToExprTokens(leaves: readonly CstLeaf[]): SysmlExprToke
     const leaf = leaves[i]!;
     const text = leaf.text;
 
-    // 1. Strip SI unit brackets immediately following a number token: `100 [kg]`
-    if (text === "[" && tokens.length > 0 && tokens[tokens.length - 1]!.type === "number") {
-      let depth = 1;
-      i++;
-      while (i < leaves.length && depth > 0) {
-        if (leaves[i]!.text === "[") depth++;
-        else if (leaves[i]!.text === "]") depth--;
+    // 1. Strip SI unit brackets following a primary value (`100 [kg]`, `mass [kg]`, `(a + b) [m/s^2]`)
+    if (text === "[" && tokens.length > 0) {
+      const prev = tokens[tokens.length - 1]!;
+      if (
+        prev.type === "number" ||
+        (prev.type === "ident" && !NON_IDENT_KEYWORDS.has(prev.text)) ||
+        (prev.type === "punct" && prev.text === ")")
+      ) {
+        let depth = 1;
         i++;
+        while (i < leaves.length && depth > 0) {
+          if (leaves[i]!.text === "[") depth++;
+          else if (leaves[i]!.text === "]") depth--;
+          i++;
+        }
+        continue;
       }
-      continue;
     }
 
-    // 2. Quoted string literals
-    if (
-      text.length >= 2 &&
-      ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'")))
-    ) {
+    // 2. Double-quoted string literals ONLY (single-quoted `'...'` are SysML v2 unrestricted names)
+    if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) {
       tokens.push({ type: "string", text: text.slice(1, -1) });
       i++;
       continue;
@@ -561,27 +633,30 @@ export function cstLeavesToExprTokens(leaves: readonly CstLeaf[]): SysmlExprToke
       continue;
     }
 
-    // 4. Identifiers, dotted chains (`a.b.c`), qualified names (`a::b`), and word operators
+    // 4. Identifiers (including `'...'` unrestricted names), dotted chains (`a.b.c`), qualified names (`a::b`), and word operators
     if (isIdentLeaf(leaf)) {
-      const lower = text.toLowerCase();
-      if (LOGICAL_OP_WORDS.has(lower)) {
-        tokens.push({ type: "op", text: lower });
-        i++;
-        continue;
-      }
-      if (NON_IDENT_KEYWORDS.has(lower)) {
-        tokens.push({ type: "ident", text: lower });
-        i++;
-        continue;
+      const isQuotedIdent = text.startsWith("'") && text.endsWith("'");
+      if (!isQuotedIdent) {
+        const lower = text.toLowerCase();
+        if (LOGICAL_OP_WORDS.has(lower)) {
+          tokens.push({ type: "op", text: lower });
+          i++;
+          continue;
+        }
+        if (NON_IDENT_KEYWORDS.has(lower)) {
+          tokens.push({ type: "ident", text: lower });
+          i++;
+          continue;
+        }
       }
 
-      let name = text;
+      let name = stripSingleQuotes(text);
       let j = i + 1;
       while (j + 1 < leaves.length) {
         const sep = leaves[j]!;
         const seg = leaves[j + 1]!;
         if ((sep.text === "." || sep.text === "::") && isIdentLeaf(seg)) {
-          name += `${sep.text}${seg.text}`;
+          name += `${sep.text}${stripSingleQuotes(seg.text)}`;
           j += 2;
         } else {
           break;
@@ -711,12 +786,8 @@ const EXPR_WRAP_SUFFIX = "\n);";
  * Tokenizes a SysML v2 expression string using the native WASM GLR parser (zero regexes).
  */
 export function tokenizeSysmlExpressionCst(exprText: string): SysmlExprToken[] {
-  const parser = getSysmlParser();
-  if (!parser) {
-    return [{ type: "eof", text: "" }];
-  }
   const wrapped = `${EXPR_WRAP_PREFIX}${exprText}${EXPR_WRAP_SUFFIX}`;
-  const root = parser.parse(wrapped)?.rootNode;
+  const root = parseSysmlSource(wrapped);
   if (!root) {
     return [{ type: "eof", text: "" }];
   }
@@ -728,8 +799,6 @@ export function tokenizeSysmlExpressionCst(exprText: string): SysmlExprToken[] {
 }
 
 const DECL_START_KEYWORDS = new Set([
-  "doc",
-  "comment",
   "attribute",
   "in",
   "out",
@@ -745,6 +814,195 @@ const DECL_START_KEYWORDS = new Set([
 
 const CONSTRAINT_HEADER_PREFIXES = new Set(["require", "assert", "assume"]);
 
+function hasBlockCommentInGap(source: string, fromOffset: number, toOffset: number): boolean {
+  if (fromOffset < 0 || toOffset <= fromOffset) return false;
+  const end = Math.min(toOffset, source.length);
+  let i = fromOffset;
+  while (i + 1 < end) {
+    const c0 = source.charCodeAt(i);
+    const c1 = source.charCodeAt(i + 1);
+    if (c0 === 47 /* / */ && c1 === 47 /* / */) {
+      i += 2;
+      while (i < end && source.charCodeAt(i) !== 10) i++;
+      continue;
+    }
+    if (c0 === 47 /* / */ && c1 === 42 /* * */) {
+      return true;
+    }
+    i++;
+  }
+  return false;
+}
+
+function skipLeadingAnnotatingLeaves(slice: readonly CstLeaf[], source: string): readonly CstLeaf[] {
+  let cur = slice;
+  while (cur.length > 0) {
+    const head = cur[0]!.text.toLowerCase();
+    if (head === "doc") {
+      let k = 1;
+      let prevEnd = cur[0]!.end;
+      if (!hasBlockCommentInGap(source, prevEnd, cur[k]?.start ?? source.length)) {
+        if (cur[k]?.text === "<" && cur[k + 2]?.text === ">") {
+          prevEnd = cur[k + 2]!.end;
+          k += 3;
+        }
+        if (
+          !hasBlockCommentInGap(source, prevEnd, cur[k]?.start ?? source.length) &&
+          cur[k] &&
+          isIdentLeaf(cur[k]!) &&
+          cur[k]!.text.toLowerCase() !== "locale"
+        ) {
+          const nextLeaf = cur[k + 1];
+          const followedByDocMeta =
+            !nextLeaf ||
+            hasBlockCommentInGap(source, cur[k]!.end, nextLeaf.start) ||
+            nextLeaf.text.toLowerCase() === "locale" ||
+            nextLeaf.text.startsWith('"') ||
+            nextLeaf.text.startsWith("/*") ||
+            nextLeaf.text === ";";
+          if (followedByDocMeta) {
+            prevEnd = cur[k]!.end;
+            k++;
+          }
+        }
+        if (
+          !hasBlockCommentInGap(source, prevEnd, cur[k]?.start ?? source.length) &&
+          cur[k]?.text.toLowerCase() === "locale" &&
+          cur[k + 1]?.text.startsWith('"')
+        ) {
+          prevEnd = cur[k + 1]!.end;
+          k += 2;
+        }
+        if (
+          !hasBlockCommentInGap(source, prevEnd, cur[k]?.start ?? source.length) &&
+          (cur[k]?.text.startsWith('"') || cur[k]?.text.startsWith("/*"))
+        ) {
+          prevEnd = cur[k]!.end;
+          k++;
+        }
+      }
+      if (cur[k]?.text.startsWith("/*")) k++;
+      if (cur[k]?.text === ";") k++;
+      cur = cur.slice(k);
+      continue;
+    }
+
+    if (head === "comment") {
+      let k = 1;
+      let prevEnd = cur[0]!.end;
+      if (!hasBlockCommentInGap(source, prevEnd, cur[k]?.start ?? source.length)) {
+        if (cur[k]?.text === "<" && cur[k + 2]?.text === ">") {
+          prevEnd = cur[k + 2]!.end;
+          k += 3;
+        }
+        if (
+          !hasBlockCommentInGap(source, prevEnd, cur[k]?.start ?? source.length) &&
+          cur[k] &&
+          isIdentLeaf(cur[k]!) &&
+          cur[k]!.text.toLowerCase() !== "about" &&
+          cur[k]!.text.toLowerCase() !== "locale"
+        ) {
+          const nextLeaf = cur[k + 1];
+          const followedByCommentMeta =
+            !nextLeaf ||
+            hasBlockCommentInGap(source, cur[k]!.end, nextLeaf.start) ||
+            nextLeaf.text.toLowerCase() === "about" ||
+            nextLeaf.text.toLowerCase() === "locale" ||
+            nextLeaf.text.startsWith('"') ||
+            nextLeaf.text.startsWith("/*") ||
+            nextLeaf.text === ";";
+          if (followedByCommentMeta) {
+            prevEnd = cur[k]!.end;
+            k++;
+          }
+        }
+        if (
+          !hasBlockCommentInGap(source, prevEnd, cur[k]?.start ?? source.length) &&
+          cur[k]?.text.toLowerCase() === "about"
+        ) {
+          prevEnd = cur[k]!.end;
+          k++;
+          while (k < cur.length && !hasBlockCommentInGap(source, prevEnd, cur[k]!.start)) {
+            if (!isIdentLeaf(cur[k]!)) break;
+            prevEnd = cur[k]!.end;
+            k++;
+            while (k + 1 < cur.length && (cur[k]!.text === "::" || cur[k]!.text === ".") && isIdentLeaf(cur[k + 1]!)) {
+              prevEnd = cur[k + 1]!.end;
+              k += 2;
+            }
+            if (cur[k]?.text === "," && !hasBlockCommentInGap(source, prevEnd, cur[k]!.start)) {
+              prevEnd = cur[k]!.end;
+              k++;
+            } else {
+              break;
+            }
+          }
+        }
+        if (
+          !hasBlockCommentInGap(source, prevEnd, cur[k]?.start ?? source.length) &&
+          cur[k]?.text.toLowerCase() === "locale" &&
+          cur[k + 1]?.text.startsWith('"')
+        ) {
+          prevEnd = cur[k + 1]!.end;
+          k += 2;
+        }
+        if (
+          !hasBlockCommentInGap(source, prevEnd, cur[k]?.start ?? source.length) &&
+          (cur[k]?.text.startsWith('"') || cur[k]?.text.startsWith("/*"))
+        ) {
+          prevEnd = cur[k]!.end;
+          k++;
+        }
+      }
+      if (cur[k]?.text.startsWith("/*")) k++;
+      if (cur[k]?.text === ";") k++;
+      cur = cur.slice(k);
+      continue;
+    }
+
+    if (head === "rep" || (head === "language" && cur[1]?.text.startsWith('"'))) {
+      let k = 0;
+      let prevEnd = cur[0]!.start;
+      if (cur[k]?.text.toLowerCase() === "rep") {
+        prevEnd = cur[k]!.end;
+        k++;
+        if (cur[k]?.text === "<" && cur[k + 2]?.text === ">") {
+          prevEnd = cur[k + 2]!.end;
+          k += 3;
+        }
+        if (cur[k] && isIdentLeaf(cur[k]!) && cur[k]!.text.toLowerCase() !== "language") {
+          prevEnd = cur[k]!.end;
+          k++;
+        }
+      }
+      if (cur[k]?.text.toLowerCase() === "language") {
+        prevEnd = cur[k]!.end;
+        k++;
+        if (cur[k]?.text.startsWith('"')) {
+          prevEnd = cur[k]!.end;
+          k++;
+        }
+        if (
+          !hasBlockCommentInGap(source, prevEnd, cur[k]?.start ?? source.length) &&
+          (cur[k]?.text.startsWith('"') || cur[k]?.text.startsWith("/*"))
+        ) {
+          prevEnd = cur[k]!.end;
+          k++;
+        }
+      }
+      if (k > 0) {
+        if (cur[k]?.text.startsWith("/*")) k++;
+        if (cur[k]?.text === ";") k++;
+        cur = cur.slice(k);
+        continue;
+      }
+    }
+
+    break;
+  }
+  return cur;
+}
+
 /**
  * Unwraps outer constraint blocks (`require constraint Name { ... }`) using WASM GLR CST leaves,
  * dropping declaration/documentation items and joining multiple statements with `and`.
@@ -753,7 +1011,17 @@ export function unwrapSysmlConstraintBodyCst(rawText: string): string {
   const trimmed = rawText.trim();
   if (!trimmed) return "";
 
-  const root = parseSysmlSource(trimmed);
+  const lowerTrimmed = trimmed.toLowerCase();
+  const hasOuterConstraintSyntax =
+    trimmed.startsWith("{") ||
+    lowerTrimmed.startsWith("require ") ||
+    lowerTrimmed.startsWith("assert ") ||
+    lowerTrimmed.startsWith("assume ") ||
+    lowerTrimmed.startsWith("constraint ") ||
+    lowerTrimmed.startsWith("constraint{");
+
+  const parseInput = hasOuterConstraintSyntax ? trimmed : `constraint {\n${trimmed}\n}`;
+  const root = parseSysmlSource(parseInput);
   if (!root) return trimmed;
 
   const leaves = collectCstLeaves(root);
@@ -800,12 +1068,23 @@ export function unwrapSysmlConstraintBodyCst(rawText: string): string {
   }
 
   const exprParts: string[] = [];
+  let skippedAny = false;
   for (const stmt of statements) {
-    const firstWord = stmt[0]?.text.toLowerCase() ?? "";
-    if (!firstWord || DECL_START_KEYWORDS.has(firstWord)) continue;
+    let slice: readonly CstLeaf[] = skipLeadingAnnotatingLeaves(stmt, parseInput);
+    if (slice.length < stmt.length) skippedAny = true;
+    while (slice.length > 0) {
+      const fw = slice[0]!.text.toLowerCase();
+      if (DECL_START_KEYWORDS.has(fw)) {
+        skippedAny = true;
+        slice = [];
+        break;
+      }
+      break;
+    }
+    if (slice.length === 0) continue;
 
     // Strip nested `(require | assert | assume)? constraint Name? { ... }` wrapper inside a statement
-    let slice = stmt;
+    const firstWord = slice[0]?.text.toLowerCase() ?? "";
     const isPrefixedConstraint =
       (CONSTRAINT_HEADER_PREFIXES.has(firstWord) && slice[1]?.text.toLowerCase() === "constraint") ||
       firstWord === "constraint";
@@ -817,20 +1096,22 @@ export function unwrapSysmlConstraintBodyCst(rawText: string): string {
       } else {
         slice = slice.slice(firstWord === "constraint" ? 1 : 2);
       }
+      slice = skipLeadingAnnotatingLeaves(slice, parseInput);
     }
 
     if (slice.length === 0) continue;
     const spanStart = slice[0]!.start;
     const spanEnd = slice[slice.length - 1]!.end;
-    const stmtText = trimmed.slice(spanStart, spanEnd).trim();
+    const stmtText = parseInput.slice(spanStart, spanEnd).trim();
     if (stmtText) exprParts.push(stmtText);
   }
 
   if (exprParts.length === 0) {
+    if (skippedAny) return "";
     if (innerEnd > innerStart) {
       const s = leaves[innerStart]!.start;
       const e = leaves[innerEnd - 1]!.end;
-      let fallback = trimmed.slice(s, e).trim();
+      let fallback = parseInput.slice(s, e).trim();
       while (fallback.endsWith(";")) fallback = fallback.slice(0, -1).trimEnd();
       return fallback.trim();
     }
@@ -860,15 +1141,16 @@ export function extractLastNameSegment(nodeOrText: SysmlCstNode | string | null 
 }
 
 /**
- * Returns true when `text` is a single SysML2 identifier leaf (`[A-Za-z_][A-Za-z0-9_]*`).
+ * Returns true when `text` is a single SysML2 identifier leaf (standard identifier with optional Unicode superscripts, or `'...'` unrestricted name).
  */
 export function isSysmlIdentLeaf(text: string | undefined): text is string {
   if (!text || text.length === 0) return false;
-  const c0 = text.charCodeAt(0);
-  if (!((c0 >= 65 && c0 <= 90) || (c0 >= 97 && c0 <= 122) || c0 === 95)) return false;
+  if (text.length > 2 && text.startsWith("'") && text.endsWith("'")) {
+    return true;
+  }
+  if (!isIdentStartCode(text.charCodeAt(0))) return false;
   for (let i = 1; i < text.length; i++) {
-    const c = text.charCodeAt(i);
-    if (!((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95)) {
+    if (!isIdentPartCode(text.charCodeAt(i))) {
       return false;
     }
   }
@@ -1004,9 +1286,9 @@ export function isDottedIdentText(text: string): boolean {
   for (let p = 1; p < parts.length; p++) {
     const seg = parts[p];
     if (!seg) return false;
+    if (seg.length > 2 && seg.startsWith("'") && seg.endsWith("'")) continue;
     for (let i = 0; i < seg.length; i++) {
-      const c = seg.charCodeAt(i);
-      if (!((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95)) {
+      if (!isIdentPartCode(seg.charCodeAt(i))) {
         return false;
       }
     }
@@ -1216,22 +1498,38 @@ export function extractDocCommentSpan(
   leaves?: readonly CstLeaf[],
 ): { commentBodyStart: number; commentBodyEnd: number; text: string } | null {
   const docLeaves = leaves ?? collectCstLeaves(parseSysmlSource(text));
-  for (const leaf of docLeaves) {
+  for (let idx = 0; idx < docLeaves.length; idx++) {
+    const leaf = docLeaves[idx]!;
     if (leaf.text !== "doc") continue;
     let pos = leaf.end;
-    while (pos < text.length && (text[pos] === " " || text[pos] === "\t" || text[pos] === "\n" || text[pos] === "\r")) {
-      pos++;
-    }
-    if (text.startsWith("/*", pos)) {
-      const bodyStart = pos + 2;
-      const bodyEnd = text.indexOf("*/", bodyStart);
-      if (bodyEnd !== -1) {
-        return {
-          commentBodyStart: bodyStart,
-          commentBodyEnd: bodyEnd,
-          text: text.slice(bodyStart, bodyEnd).trim(),
-        };
+    let lookIdx = idx + 1;
+    while (pos < text.length) {
+      while (
+        pos < text.length &&
+        (text[pos] === " " || text[pos] === "\t" || text[pos] === "\n" || text[pos] === "\r")
+      ) {
+        pos++;
       }
+      if (text.startsWith("/*", pos)) {
+        const bodyStart = pos + 2;
+        const bodyEnd = findMatchingBlockCommentEnd(text, pos);
+        if (bodyEnd !== -1) {
+          return {
+            commentBodyStart: bodyStart,
+            commentBodyEnd: bodyEnd,
+            text: text.slice(bodyStart, bodyEnd).trim(),
+          };
+        }
+        break;
+      }
+      // Advance past optional identification/locale leaves in `doc Name locale "en" /* ... */`
+      const nextLeaf = docLeaves[lookIdx];
+      if (nextLeaf && nextLeaf.start === pos && nextLeaf.text !== ";" && nextLeaf.text !== "}") {
+        pos = nextLeaf.end;
+        lookIdx++;
+        continue;
+      }
+      break;
     }
   }
   return null;

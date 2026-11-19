@@ -29,6 +29,21 @@ export const dicomRtLanguage = language({
   lsp: {
     fileExtensions: [".dcm.json", ".dcm.xml", ".rtplan", ".rtstruct", ".rtdose", ".dicom-rt"],
   },
+  ui: {
+    panels: [
+      {
+        id: "dicomRtEditor",
+        viewType: "modelscript.dicomRtEditor",
+        title: "DICOM-RT Radiation Oncology & Dosimetry Studio",
+        shortTitle: "DICOM-RT",
+        selector: ["*.dcm", "*.dcm.json", "*.rtplan"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/DicomRtPanel.tsx",
+        artifactViewTypes: ["dicom-rt", "dicomrt"],
+      },
+    ],
+  },
   rules: {
     Root: () => "dicom-rt",
   },

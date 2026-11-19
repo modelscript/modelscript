@@ -17,6 +17,21 @@ export const simaLanguage = language({
   lsp: {
     fileExtensions: [".inp", ".sima", ".sys", ".hyd"],
   },
+  ui: {
+    panels: [
+      {
+        id: "simaEditor",
+        viewType: "modelscript.simaEditor",
+        title: "SIMA Offshore Marine Operations Studio",
+        shortTitle: "SIMA",
+        selector: ["*.sima", "*.stask"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/SimaPanel.tsx",
+        artifactViewTypes: ["sima"],
+      },
+    ],
+  },
 
   errorCodes: SimaErrorCode,
 

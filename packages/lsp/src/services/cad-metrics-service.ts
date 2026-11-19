@@ -138,38 +138,27 @@ export class CadMetricsService {
   }
 
   /**
-   * Asynchronously evaluates the solid CSG tree on a microtask/background tick,
-   * yielding execution to the event loop so LSP request handlers remain responsive.
+   * Asynchronously evaluates the solid CSG tree on a background worker thread
+   * (when running in Node), keeping LSP request handlers responsive.
    */
-  public async evaluateAsync(
-    uri: string,
-    text: string,
-    hash: string,
-    rootNode: any,
-  ): Promise<CadCsgMetrics | null> {
+  public async evaluateAsync(uri: string, text: string, hash: string, rootNode: any): Promise<CadCsgMetrics | null> {
     if (!rootNode) return null;
-
-    // Yield to the event loop before performing CPU-bound CSG meshing
-    await new Promise<void>((resolve) => {
-      if (typeof setImmediate === "function") {
-        setImmediate(resolve);
-      } else {
-        setTimeout(resolve, 0);
-      }
-    });
-
-    return this.computeSynchronously(uri, text, hash, rootNode);
+    try {
+      const { evaluateSolidAsync } = await import("@modelscript/cad");
+      const evaluator = new ScadEvaluator();
+      const solid = evaluator.evaluate(rootNode);
+      if (!solid) return null;
+      const mesh = await evaluateSolidAsync(solid);
+      return this.finalizeMetrics(uri, text, hash, mesh);
+    } catch {
+      return null;
+    }
   }
 
   /**
    * Evaluates the solid CST node into a manifold mesh and extracts volume, frontal area, and mass.
    */
-  public computeSynchronously(
-    uri: string,
-    text: string,
-    hash: string,
-    rootNode: any,
-  ): CadCsgMetrics | null {
+  public computeSynchronously(uri: string, text: string, hash: string, rootNode: any): CadCsgMetrics | null {
     if (!rootNode) return null;
 
     try {
@@ -178,30 +167,33 @@ export class CadMetricsService {
       if (!solid) return null;
 
       const mesh = ManifoldWorker.evaluateSolid(solid);
-      const { volume } = computeMeshVolumeAndArea(mesh);
-      const frontalAreaMm2 = computeProjectedFrontalArea(mesh, [0, 0, 1]);
-      const frontalAreaM2 = frontalAreaMm2 * 1e-6;
-
-      const densityMatch = /\/\/\s*@density\s*:\s*([0-9.eE+-]+)/i.exec(text);
-      const densityKgM3 = densityMatch ? parseFloat(densityMatch[1]!) : 2700;
-      const massKg = volume * 1e-9 * densityKgM3;
-
-      const title = `📐 Frontal Area: A = ${frontalAreaM2.toFixed(4)} m² | Volume: ${volume.toFixed(1)} mm³ | Estimated Mass: ${massKg.toFixed(3)} kg`;
-
-      const result: CadCsgMetrics = {
-        frontalAreaM2,
-        volumeMm3: volume,
-        massKg,
-        title,
-        hash,
-        evaluatedAt: Date.now(),
-      };
-
-      this.cache.set(uri, result);
-      return result;
+      return this.finalizeMetrics(uri, text, hash, mesh);
     } catch {
       return null;
     }
+  }
+
+  private finalizeMetrics(uri: string, text: string, hash: string, mesh: any): CadCsgMetrics {
+    const { volume } = computeMeshVolumeAndArea(mesh);
+    const frontalAreaM2 = computeProjectedFrontalArea(mesh, [0, 0, 1]);
+
+    const densityMatch = /\/\/\s*@density\s*:\s*([0-9.eE+-]+)/i.exec(text);
+    const densityKgM3 = densityMatch ? parseFloat(densityMatch[1]!) : 2700;
+    const massKg = volume * 1e-9 * densityKgM3;
+
+    const title = `📐 Frontal Area: A = ${frontalAreaM2.toFixed(4)} m² | Volume: ${volume.toFixed(1)} mm³ | Estimated Mass: ${massKg.toFixed(3)} kg`;
+
+    const result: CadCsgMetrics = {
+      frontalAreaM2,
+      volumeMm3: volume,
+      massKg,
+      title,
+      hash,
+      evaluatedAt: Date.now(),
+    };
+
+    this.cache.set(uri, result);
+    return result;
   }
 
   /**

@@ -1962,6 +1962,8 @@ export class BinaryHeap<T> {
  */
 interface DiagramAStarWasmExports {
   __new: (size: number, id: number) => number;
+  __pin?: ((ptr: number) => number) | undefined;
+  __unpin?: ((ptr: number) => void) | undefined;
   memory: { buffer: ArrayBufferLike };
   diagram_route_orthogonal_astar: (
     cols: number,
@@ -2002,10 +2004,38 @@ function ensureDiagramAStarScratch(wasm: DiagramAStarWasmExports, totalCells: nu
   if (diagramAStarScratch && diagramAStarScratch.wasm === wasm && diagramAStarScratch.maxCells >= totalCells) {
     return diagramAStarScratch;
   }
+  if (diagramAStarScratch && diagramAStarScratch.wasm === wasm && typeof wasm.__unpin === "function") {
+    const old = diagramAStarScratch;
+    for (const ptr of [
+      old.gridPtr,
+      old.gScorePtr,
+      old.parentPtr,
+      old.closedPtr,
+      old.heapStatesPtr,
+      old.heapPrioritiesPtr,
+      old.outWaypointsPtr,
+    ]) {
+      try {
+        wasm.__unpin(ptr);
+      } catch {
+        // ignore if runtime lacks pin tracking
+      }
+    }
+  }
   const maxCells = Math.max(totalCells, 16384);
   const totalStates = maxCells * 4;
   const maxWaypoints = Math.min(maxCells, 1024);
-  const alloc = (bytes: number): number => wasm.__new(bytes, 0);
+  const alloc = (bytes: number): number => {
+    const ptr = wasm.__new(bytes, 0);
+    if (typeof wasm.__pin === "function") {
+      try {
+        wasm.__pin(ptr);
+      } catch {
+        // ignore
+      }
+    }
+    return ptr;
+  };
 
   diagramAStarScratch = {
     wasm,

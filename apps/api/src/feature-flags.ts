@@ -105,8 +105,8 @@ export const FEATURE_FLAGS: Record<string, FeatureFlagDefinition> = {
   },
   morsel_playground: {
     key: "morsel_playground",
-    name: "Morsel Playground",
-    description: "Fast interactive modeling playground with real-time trajectory visualization.",
+    name: "Ansatz",
+    description: "Fast interactive modeling editor with real-time trajectory visualization.",
     defaultValue: true,
     category: "core",
     maturity: "production",
@@ -460,9 +460,9 @@ export const FEATURE_FLAGS: Record<string, FeatureFlagDefinition> = {
   },
   morsel_ai: {
     key: "morsel_ai",
-    name: "Morsel AI Assistant",
+    name: "Ansatz AI Assistant",
     description:
-      "Enable hybrid AI copilot in Morsel (local WebGPU/Prompt API, local Ollama/vLLM, Ansatz cloud models, and 3rd-party BYOK providers with MCP tool calling).",
+      "Enable hybrid AI copilot in Ansatz (local WebGPU/Prompt API, local Ollama/vLLM, Ansatz cloud models, and 3rd-party BYOK providers with MCP tool calling).",
     defaultValue: false,
     category: "developer",
     maturity: "beta",

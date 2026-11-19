@@ -416,7 +416,10 @@ export function evaluateSysML2Expression(
       const vals = ast.args.map((a) => Number(evaluateSysML2Expression(a, env)));
       const x = vals[0] ?? 0;
       const y = vals[1] ?? 0;
-      switch (ast.callee.toLowerCase()) {
+      const rawCallee = ast.callee;
+      const calleeIdx = rawCallee.lastIndexOf("::");
+      const fnName = (calleeIdx !== -1 ? rawCallee.slice(calleeIdx + 2) : rawCallee).toLowerCase();
+      switch (fnName) {
         case "abs":
           return Math.abs(x);
         case "sqrt":
@@ -433,6 +436,14 @@ export function evaluateSysML2Expression(
           return Math.cos(x);
         case "tan":
           return Math.tan(x);
+        case "asin":
+          return Math.asin(x);
+        case "acos":
+          return Math.acos(x);
+        case "atan":
+          return Math.atan(x);
+        case "atan2":
+          return Math.atan2(x, y);
         case "exp":
           return Math.exp(x);
         case "ln":
@@ -444,6 +455,8 @@ export function evaluateSysML2Expression(
           return Math.ceil(x);
         case "round":
           return Math.round(x);
+        case "sign":
+          return Math.sign(x);
         default:
           return x;
       }

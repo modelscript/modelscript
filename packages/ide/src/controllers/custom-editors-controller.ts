@@ -3,37 +3,23 @@
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
 import { AcceleratorLatticeEditorProvider } from "../accelerator-lattice-panel.js";
-import { AmlEditorProvider } from "../aml-editor-provider.js";
-import { CfgEditorProvider } from "../cfg-editor-provider.js";
 import { ClimateRasterEditorProvider } from "../climate-raster-panel.js";
 import { CrystallographyEditorProvider } from "../crystallography-panel.js";
 import { DiagramEditorProvider } from "../diagram-editor-provider.js";
-import { Easy5EditorProvider } from "../easy5-editor-provider.js";
-import { NmodlEditorProvider } from "../electrophysiology-panel.js";
+import { registerDslUiPanels } from "../dsl-custom-editor-provider.js";
 import { ElementTableProvider } from "../element-table-provider.js";
 import { FitsImageViewerEditorProvider } from "../fits-image-panel.js";
 import { FMU_VIEW_SCHEME, FmuContentProvider, FmuEditorProvider } from "../fmu-document-provider.js";
 import { GCodeEditorProvider } from "../gcode-editor-provider.js";
-import { GtSuiteEditorProvider } from "../gtsuite-editor-provider.js";
 import { HepEventViewerEditorProvider } from "../hep-event-panel.js";
-import { InpEditorProvider } from "../inp-editor-provider.js";
-import { LpsEditorProvider } from "../lps-editor-provider.js";
-import { DicomRtEditorProvider, IgtlEditorProvider, OpenSimEditorProvider } from "../medical-editor-provider.js";
-import { PdbEditorProvider } from "../molstar-panel.js";
 import { NeuralSpikeViewerEditorProvider } from "../neural-spike-panel.js";
-import { OlgaEditorProvider } from "../olga-editor-provider.js";
 import { OpticalBenchEditorProvider } from "../optical-bench-panel.js";
-import { OscalEditorProvider } from "../oscal-editor-provider.js";
 import { PsoutEditorProvider } from "../psout-editor-provider.js";
-import { QifEditorProvider } from "../qif-editor-provider.js";
 import { QuantumChemistryEditorProvider } from "../quantum-chemistry-panel.js";
-import { RawEditorProvider } from "../raw-editor-provider.js";
 import { ReactionCoordinateEditorProvider } from "../reaction-coordinate-panel.js";
 import { RequirementsEditorProvider } from "../requirements-editor-provider.js";
-import { RocetsEditorProvider } from "../rocets-editor-provider.js";
 import { SeismicViewerEditorProvider } from "../seismic-viewer-panel.js";
 import type { StepCompilationService } from "../services/step-compilation-service.js";
-import { SimaEditorProvider } from "../sima-editor-provider.js";
 import { SSP_VIEW_SCHEME, SspContentProvider, SspEditorProvider } from "../ssp-document-provider.js";
 import { StepEditorProvider } from "../step-editor-provider.js";
 import { TabularPlotEditorProvider } from "../tabular-plot-editor-provider.js";
@@ -152,53 +138,6 @@ export function registerCustomEditors(
     }),
   );
 
-  const inpEditor = new InpEditorProvider(context, client);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(InpEditorProvider.viewType, inpEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const cfgEditor = new CfgEditorProvider(context, client);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(CfgEditorProvider.viewType, cfgEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const rawEditor = new RawEditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(RawEditorProvider.viewType, rawEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-      supportsMultipleEditorsPerDocument: true,
-    }),
-    vscode.commands.registerCommand("modelscript.openRawWorkbench", async (uriArg?: string | vscode.Uri) => {
-      const targetUri =
-        typeof uriArg === "string"
-          ? vscode.Uri.parse(uriArg)
-          : uriArg instanceof vscode.Uri
-            ? uriArg
-            : vscode.window.activeTextEditor?.document.uri;
-      if (!targetUri) {
-        vscode.window.showWarningMessage("No active PSS/E (.raw) document found to open in Grid Workbench.");
-        return;
-      }
-      await vscode.commands.executeCommand(
-        "vscode.openWith",
-        targetUri,
-        RawEditorProvider.viewType,
-        vscode.ViewColumn.Beside,
-      );
-    }),
-  );
-
-  const olgaEditor = new OlgaEditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(OlgaEditorProvider.viewType, olgaEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
   const psoutEditor = new PsoutEditorProvider(context);
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(PsoutEditorProvider.viewType, psoutEditor, {
@@ -209,97 +148,6 @@ export function registerCustomEditors(
   const tabularPlotEditor = new TabularPlotEditorProvider(context);
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(TabularPlotEditorProvider.viewType, tabularPlotEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const easy5Editor = new Easy5EditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(Easy5EditorProvider.viewType, easy5Editor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const rocetsEditor = new RocetsEditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(RocetsEditorProvider.viewType, rocetsEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const lpsEditor = new LpsEditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(LpsEditorProvider.viewType, lpsEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const simaEditor = new SimaEditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(SimaEditorProvider.viewType, simaEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const gtsuiteEditor = new GtSuiteEditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(GtSuiteEditorProvider.viewType, gtsuiteEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const qifEditor = new QifEditorProvider(context, stepCompilationService);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(QifEditorProvider.viewType, qifEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const oscalEditor = new OscalEditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(OscalEditorProvider.viewType, oscalEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const amlEditor = new AmlEditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(AmlEditorProvider.viewType, amlEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const opensimEditor = new OpenSimEditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(OpenSimEditorProvider.viewType, opensimEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const dicomRtEditor = new DicomRtEditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(DicomRtEditorProvider.viewType, dicomRtEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const igtlEditor = new IgtlEditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(IgtlEditorProvider.viewType, igtlEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const pdbEditor = new PdbEditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(PdbEditorProvider.viewType, pdbEditor, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-  );
-
-  const nmodlEditor = new NmodlEditorProvider(context);
-  context.subscriptions.push(
-    vscode.window.registerCustomEditorProvider(NmodlEditorProvider.viewType, nmodlEditor, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
   );
@@ -404,6 +252,11 @@ export function registerCustomEditors(
       webviewOptions: { retainContextWhenHidden: false },
     }),
   );
+
+  // 6. Declarative Language DSL UI Panels (`languages/<lang>/src/ui/*`)
+  void registerDslUiPanels(context, client).catch((err) => {
+    console.warn("[ide-client] Failed to register DSL UI panels:", err);
+  });
 
   return {
     fmuContentProvider,

@@ -104,6 +104,23 @@ const EQUIVALENT_NODE_TYPES: ReadonlyArray<ReadonlySet<string>> = [
   new Set(["qif_datum", "datum", "step_datum"]),
   new Set(["pscad_component", "usercmpdefn", "pscad_project", "pscad_library"]),
   new Set(["pscad_parameter", "psse_parameter"]),
+  new Set([
+    "connectclause",
+    "connect_clause",
+    "connectequation",
+    "connect_equation",
+    "connectionusage",
+    "connection_usage",
+  ]),
+  new Set([
+    "equationclause",
+    "equation_clause",
+    "simpleequation",
+    "simple_equation",
+    "equation",
+    "constraintusage",
+    "constraint_usage",
+  ]),
   new Set(["psse_model", "psse_case", "psse_dyr_case", "psse_dyr_record", "psse_component"]),
 ];
 

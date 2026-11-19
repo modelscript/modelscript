@@ -13,9 +13,20 @@
     "test": "node ../../scripts/test-runner.js --tsconfig tsconfig.json",
     "typecheck": "tsc --noEmit"
   },
+  "contributes": {
+    "commands": [
+      {
+        "command": "modelscript.runFormalLints",
+        "title": "ModelScript: Run Formal Verification Lints (IC3/PDR, FTA, UQ, Flowpipe)"
+      },
+      {
+        "command": "modelscript.runCompilerLints",
+        "title": "ModelScript: Run WASM Compiler Lints"
+      }
+    ]
+  },
   "dependencies": {
     "@mlc-ai/web-llm": "^0.2.85",
-    "@modelscript/automationml": "*",
     "@modelscript/c": "*",
     "@modelscript/cad": "*",
     "@modelscript/cantera": "*",
@@ -23,29 +34,18 @@
     "@modelscript/csv": "*",
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
-    "@modelscript/easy5": "*",
     "@modelscript/exchange": "*",
     "@modelscript/fea": "*",
-    "@modelscript/gensys": "*",
-    "@modelscript/gtsuite": "*",
     "@modelscript/las": "*",
-    "@modelscript/lps": "*",
     "@modelscript/lsp": "*",
     "@modelscript/nmodl": "*",
-    "@modelscript/olga": "*",
-    "@modelscript/oscal": "*",
-    "@modelscript/owl2": "*",
     "@modelscript/pdb": "*",
-    "@modelscript/psse": "*",
     "@modelscript/qif": "*",
-    "@modelscript/rocets": "*",
     "@modelscript/runtime": "*",
     "@modelscript/scad": "*",
     "@modelscript/sdk": "*",
-    "@modelscript/sima": "*",
     "@modelscript/simpack": "*",
     "@modelscript/simulate": "*",
-    "@modelscript/step": "*",
     "@modelscript/sysml2": "*",
     "@vscode/debugadapter": "^1.68.0",
     "vscode-languageclient": "^9.0.1"

@@ -88,6 +88,7 @@ export interface AutoLayoutGraphLike {
 }
 
 export interface AutoLayoutOptions {
+  algorithm?: "dagre" | "layered" | "elk";
   rankdir?: "LR" | "TB" | "RL" | "BT";
   align?: "UL" | "UR" | "DL" | "DR";
   ranksep?: number;
@@ -191,6 +192,182 @@ function applyPortOptimization(
   }
 }
 
+function computeLayeredLayout(
+  model: {
+    nodes: { id: string; width: number; height: number }[];
+    edges: { source: string; target: string; sourcePortFrac?: number; targetPortFrac?: number }[];
+  },
+  options?: AutoLayoutOptions,
+): { nodes: { id: string; x: number; y: number }[] } {
+  const rankdir = options?.rankdir ?? "LR";
+  const ranksep = Math.max(20, options?.ranksep ?? 80);
+  const nodesep = Math.max(16, options?.nodesep ?? 60);
+  const horizontal = rankdir === "LR" || rankdir === "RL";
+  const reversed = rankdir === "RL" || rankdir === "BT";
+
+  const nodeMap = new Map<string, { id: string; width: number; height: number }>();
+  for (const n of model.nodes) nodeMap.set(n.id, n);
+
+  const outAdj = new Map<string, { to: string; srcFrac: number; tgtFrac: number }[]>();
+  const inAdj = new Map<string, { from: string; srcFrac: number; tgtFrac: number }[]>();
+  for (const n of model.nodes) {
+    outAdj.set(n.id, []);
+    inAdj.set(n.id, []);
+  }
+  for (const e of model.edges) {
+    if (e.source === e.target || !nodeMap.has(e.source) || !nodeMap.has(e.target)) continue;
+    outAdj.get(e.source)!.push({
+      to: e.target,
+      srcFrac: e.sourcePortFrac ?? 0.5,
+      tgtFrac: e.targetPortFrac ?? 0.5,
+    });
+    inAdj.get(e.target)!.push({
+      from: e.source,
+      srcFrac: e.sourcePortFrac ?? 0.5,
+      tgtFrac: e.targetPortFrac ?? 0.5,
+    });
+  }
+
+  // 1. Cycle-breaking DFS + Longest-path topological layer assignment
+  const visitState = new Map<string, 0 | 1 | 2>();
+  const acyclicOut = new Map<string, string[]>();
+  for (const n of model.nodes) {
+    visitState.set(n.id, 0);
+    acyclicOut.set(n.id, []);
+  }
+  const dfsBreakCycles = (u: string) => {
+    visitState.set(u, 1);
+    for (const edge of outAdj.get(u) ?? []) {
+      const state = visitState.get(edge.to) ?? 0;
+      if (state === 0) {
+        acyclicOut.get(u)!.push(edge.to);
+        dfsBreakCycles(edge.to);
+      } else if (state === 2) {
+        acyclicOut.get(u)!.push(edge.to);
+      }
+    }
+    visitState.set(u, 2);
+  };
+  for (const n of model.nodes) {
+    if (visitState.get(n.id) === 0) dfsBreakCycles(n.id);
+  }
+
+  const rank = new Map<string, number>();
+  for (const n of model.nodes) rank.set(n.id, 0);
+  for (let pass = 0; pass < model.nodes.length; pass++) {
+    let changed = false;
+    for (const u of model.nodes) {
+      const rU = rank.get(u.id)!;
+      for (const v of acyclicOut.get(u.id) ?? []) {
+        if ((rank.get(v) ?? 0) < rU + 1) {
+          rank.set(v, rU + 1);
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
+
+  const maxRank = Math.max(0, ...Array.from(rank.values()));
+  const layers: string[][] = Array.from({ length: maxRank + 1 }, () => []);
+  for (const n of model.nodes) {
+    layers[rank.get(n.id)!]!.push(n.id);
+  }
+
+  // 2. Multi-pass Sugiyama barycenter crossing-minimization (forward + backward sweeps)
+  const indexInLayer = () => {
+    const idx = new Map<string, number>();
+    for (const layer of layers) {
+      layer.forEach((id, pos) => idx.set(id, pos));
+    }
+    return idx;
+  };
+
+  for (let sweep = 0; sweep < 8; sweep++) {
+    // Forward sweep: order layer r by upstream barycenter
+    let posMap = indexInLayer();
+    for (let r = 1; r < layers.length; r++) {
+      const layer = layers[r]!;
+      const scores = new Map<string, number>();
+      layer.forEach((id, origIdx) => {
+        const preds = inAdj.get(id) ?? [];
+        if (preds.length === 0) {
+          scores.set(id, origIdx);
+          return;
+        }
+        let sum = 0;
+        for (const p of preds) {
+          sum += (posMap.get(p.from) ?? origIdx) + (p.srcFrac - 0.5) * 0.4 - (p.tgtFrac - 0.5) * 0.15;
+        }
+        scores.set(id, sum / preds.length);
+      });
+      layer.sort((a, b) => scores.get(a)! - scores.get(b)!);
+    }
+
+    // Backward sweep: order layer r by downstream barycenter
+    posMap = indexInLayer();
+    for (let r = layers.length - 2; r >= 0; r--) {
+      const layer = layers[r]!;
+      const scores = new Map<string, number>();
+      layer.forEach((id, origIdx) => {
+        const succs = outAdj.get(id) ?? [];
+        if (succs.length === 0) {
+          scores.set(id, origIdx);
+          return;
+        }
+        let sum = 0;
+        for (const s of succs) {
+          sum += (posMap.get(s.to) ?? origIdx) + (s.tgtFrac - 0.5) * 0.4 - (s.srcFrac - 0.5) * 0.15;
+        }
+        scores.set(id, sum / succs.length);
+      });
+      layer.sort((a, b) => scores.get(a)! - scores.get(b)!);
+    }
+  }
+
+  // 3. Coordinate assignment respecting node sizes, ranksep, and nodesep
+  const primaryPos = new Map<number, number>();
+  let curPrimary = 0;
+  for (let rIdx = 0; rIdx < layers.length; rIdx++) {
+    const r = reversed ? layers.length - 1 - rIdx : rIdx;
+    const layer = layers[r]!;
+    let layerThickness = 0;
+    for (const id of layer) {
+      const n = nodeMap.get(id)!;
+      layerThickness = Math.max(layerThickness, horizontal ? n.width : n.height);
+    }
+    primaryPos.set(r, curPrimary + layerThickness / 2);
+    curPrimary += layerThickness + ranksep;
+  }
+
+  const outNodes: { id: string; x: number; y: number }[] = [];
+  let maxSpan = 0;
+  const layerSpans = layers.map((layer) => {
+    let total = 0;
+    layer.forEach((id, i) => {
+      const n = nodeMap.get(id)!;
+      total += (horizontal ? n.height : n.width) + (i > 0 ? nodesep : 0);
+    });
+    if (total > maxSpan) maxSpan = total;
+    return total;
+  });
+
+  layers.forEach((layer, r) => {
+    const pCenter = primaryPos.get(r)!;
+    const span = layerSpans[r]!;
+    let cursor = -span / 2;
+    for (const id of layer) {
+      const n = nodeMap.get(id)!;
+      const minorSize = horizontal ? n.height : n.width;
+      const sCenter = cursor + minorSize / 2;
+      cursor += minorSize + nodesep;
+      outNodes.push(horizontal ? { id, x: pCenter, y: sCenter } : { id, x: sCenter, y: pCenter });
+    }
+  });
+
+  return { nodes: outNodes };
+}
+
 /**
  * Automatically calculates and applies an optimal spatial layout for diagram components.
  * Preserves the background coordinate system, axes, and non-component annotations.
@@ -216,16 +393,33 @@ export function autoLayoutDiagram(g?: AutoLayoutGraphLike | null, options?: Auto
   const layoutableNodeIds = new Set(layoutableNodes.map((n) => n.id));
   const edges = g.getEdges();
 
+  const portOrderFraction = (node: AutoLayoutNodeLike, portId?: string): number => {
+    if (!portId) return 0.5;
+    const ports = typeof node.getPorts === "function" ? node.getPorts() : undefined;
+    if (!ports || ports.length <= 1) return 0.5;
+    const idx = ports.findIndex((p) => p.id === portId);
+    return idx >= 0 ? idx / (ports.length - 1) : 0.5;
+  };
+
+  const nodeById = new Map(layoutableNodes.map((n) => [n.id, n]));
   const modelEdges = edges
     .filter((e) => {
       const s = e.getSourceCellId();
       const t = e.getTargetCellId();
       return s && t && layoutableNodeIds.has(s) && layoutableNodeIds.has(t);
     })
-    .map((e) => ({
-      source: e.getSourceCellId()!,
-      target: e.getTargetCellId()!,
-    }));
+    .map((e) => {
+      const sId = e.getSourceCellId()!;
+      const tId = e.getTargetCellId()!;
+      const sPort = resolveEdgePortId(e.getSourcePortId?.bind(e), e.getSource?.bind(e));
+      const tPort = resolveEdgePortId(e.getTargetPortId?.bind(e), e.getTarget?.bind(e));
+      return {
+        source: sId,
+        target: tId,
+        sourcePortFrac: portOrderFraction(nodeById.get(sId)!, sPort),
+        targetPortFrac: portOrderFraction(nodeById.get(tId)!, tPort),
+      };
+    });
 
   // Compact packing for isolated components (e.g. ground, isolated parameters)
   const connectedNodes = new Set<string>();
@@ -237,19 +431,14 @@ export function autoLayoutDiagram(g?: AutoLayoutGraphLike | null, options?: Auto
   if (isolatedNodes.length > 2) {
     const cols = Math.ceil(Math.sqrt(isolatedNodes.length));
     for (let i = 0; i < isolatedNodes.length - cols; i++) {
-      modelEdges.push({ source: isolatedNodes[i]!, target: isolatedNodes[i + cols]! });
+      modelEdges.push({
+        source: isolatedNodes[i]!,
+        target: isolatedNodes[i + cols]!,
+        sourcePortFrac: 0.5,
+        targetPortFrac: 0.5,
+      });
     }
   }
-
-  const dagreLayout = new DagreLayout({
-    type: "dagre",
-    rankdir: options?.rankdir ?? "LR",
-    align: options?.align ?? "UL",
-    ranksep: options?.ranksep ?? 80,
-    nodesep: options?.nodesep ?? 60,
-    begin: [0, 0],
-    controlPoints: true,
-  });
 
   const model = {
     nodes: layoutableNodes.map((n) => {
@@ -267,7 +456,18 @@ export function autoLayoutDiagram(g?: AutoLayoutGraphLike | null, options?: Auto
     edges: modelEdges,
   };
 
-  const newModel = dagreLayout.layout(model);
+  const useLayered = options?.algorithm === "layered" || options?.algorithm === "elk";
+  const newModel = useLayered
+    ? computeLayeredLayout(model, options)
+    : new DagreLayout({
+        type: "dagre",
+        rankdir: options?.rankdir ?? "LR",
+        align: options?.align ?? "UL",
+        ranksep: options?.ranksep ?? 80,
+        nodesep: options?.nodesep ?? 60,
+        begin: [0, 0],
+        controlPoints: true,
+      }).layout(model);
   if (!newModel?.nodes || newModel.nodes.length === 0) return false;
 
   // Determine target center point from coordinate system / background if present
@@ -443,4 +643,16 @@ export async function autoLayoutDiagramAsync(
       Spinner.hide();
     }
   }
+}
+
+/**
+ * Multi-pass Sugiyama layered layout with barycenter port crossing minimization
+ * and Global Port ILP collinear alignment.
+ */
+export function layoutWithElk(g?: AutoLayoutGraphLike | null, options?: AutoLayoutOptions): boolean {
+  return autoLayoutDiagram(g, {
+    ...options,
+    algorithm: "elk",
+    optimizePorts: options?.optimizePorts ?? true,
+  });
 }

@@ -50,11 +50,11 @@ const pillars: { icon: IconName; title: string; body: string }[] = [
             </a>
             <a
               class="ms-btn ms-btn-lg ms-btn-ghost"
-              :href="`${ansatzOrigin}/morsel`"
+              :href="`${ansatzOrigin}/editor`"
               target="_blank"
               rel="noopener noreferrer"
             >
-              <MsIcon name="play" :size="16" /> Try Morsel
+              <MsIcon name="play" :size="16" /> Try Ansatz
             </a>
           </div>
           <nav class="cta-links" aria-label="More ways to get started">

@@ -16,8 +16,8 @@ hero:
       text: Get Started
       link: /guide/getting-started
     - theme: alt
-      text: Try Morsel
-      link: https://ansatz.social/morsel
+      text: Try Ansatz
+      link: https://ansatz.social/editor
       target: _blank
       rel: noopener noreferrer
     - theme: alt

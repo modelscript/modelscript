@@ -16,6 +16,42 @@ export const simpackLanguage = language({
   lsp: {
     fileExtensions: [".spck", ".sim", ".mbs"],
   },
+  ui: {
+    panels: [
+      {
+        id: "simpackEditor",
+        viewType: "modelscript.simpackEditor",
+        title: "SIMPACK Multibody Dynamics Studio",
+        shortTitle: "SIMPACK",
+        selector: ["*.spck", "*.sim", "*.mbs"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/SimpackPanel.tsx",
+        artifactViewTypes: ["simpack", "spck", "simpack-mbs"],
+      },
+    ],
+    stencils: [
+      {
+        label: "Body ($B)",
+        snippet:
+          "body.id            = '$B_NewBody'\nbody.mass          = 1200.0\nbody.inertia       = [450.0, 1800.0, 1850.0]\n",
+      },
+      {
+        label: "Force Element ($F)",
+        snippet:
+          "force.id           = '$F_PrimarySpring'\nforce.type         = 43\nforce.stiffness    = 1.2e6\nforce.damping      = 1.5e4\n",
+      },
+    ],
+  },
+  diagram: {
+    placement: {
+      persistence: "sidecar",
+    },
+    mutations: {
+      createNode: (_className: string, name: string) => `body ${name} ${name} 1.0 0.1 0.1 0.1`,
+      createEdge: (source: string, target: string) => `joint ${source}_to_${target} revolute ${source} ${target}`,
+    },
+  },
 
   rules: {
     Deck: ($) => repeat(choice($["CardStatement"]!, $["Comment"]!)),

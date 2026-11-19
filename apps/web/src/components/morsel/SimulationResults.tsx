@@ -16,6 +16,7 @@ import { SimulationToolbar } from "./simulation-results/components/SimulationToo
 import { StatisticsDrawer } from "./simulation-results/components/StatisticsDrawer";
 import { TrajectoryChart } from "./simulation-results/components/TrajectoryChart";
 import type { SimulationResultsProps, VariableStatEntry } from "./simulation-results/types";
+import { DslSimulationCardsStrip } from "./util/LanguagePanelHost";
 
 export type { SimulationResultsProps };
 
@@ -1124,6 +1125,10 @@ export function SimulationResults({
           colorMode={colorMode}
           onClose={() => setShowIeee2800(false)}
         />
+      )}
+
+      {complianceReport && !showIeee2800 && (
+        <DslSimulationCardsStrip colorMode={colorMode} result={{ complianceReport, data, variables: allVars }} />
       )}
 
       {/* Interactive Legend Bar */}

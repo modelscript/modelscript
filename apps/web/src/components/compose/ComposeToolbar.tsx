@@ -185,7 +185,7 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
               onClick={onAiDraft}
               disabled={isAiRunning}
               data-testid="composer-ai-draft-btn"
-              title="Automatically draft or regenerate a post summarizing the attached engineering morsel"
+              title="Automatically draft or regenerate a post summarizing the attached engineering model"
               style={{
                 borderColor: "var(--color-accent-blue-border)",
                 background: aiBusy === "drafting" ? "var(--ms-brand-soft)" : undefined,
@@ -195,7 +195,7 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
               <span className="pill-icon" style={{ color: "var(--color-accent-cyan, #06b6d4)" }}>
                 <SparklesFillIcon size={12} />
               </span>
-              <span>{aiBusy === "drafting" ? "Drafting..." : "Draft from morsel"}</span>
+              <span>{aiBusy === "drafting" ? "Drafting..." : "Draft from model"}</span>
             </CommandPill>
           )}
 
@@ -358,9 +358,9 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
                           fontSize: "12px",
                         }}
                       >
-                        <span style={{ fontWeight: 600 }}>📝 Draft from Morsel</span>
+                        <span style={{ fontWeight: 600 }}>📝 Draft from Model</span>
                         <span style={{ fontSize: "10.5px", color: "var(--color-text-muted, #8b949e)" }}>
-                          Synthesize post from attached morsel
+                          Synthesize post from attached model
                         </span>
                       </button>
                     </>
@@ -509,8 +509,8 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
           {hasHpc && (
             <ActionIconButton
               onClick={() => setShowHpcPicker(true)}
-              aria-label="Attach HPC Morsel"
-              title="Attach HPC Simulation Morsel (FEA, CFD, DOEs)"
+              aria-label="Attach HPC Model"
+              title="Attach HPC Simulation Model (FEA, CFD, DOEs)"
             >
               <ServerIcon size={20} />
             </ActionIconButton>

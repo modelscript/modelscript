@@ -747,7 +747,7 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
     const fromParam = viewConfig?.artifactId
       ? `?fromArtifact=${encodeURIComponent(String(viewConfig.artifactId))}`
       : "";
-    navigate(`/morsel${fromParam}#m=${encoded}`);
+    navigate(`/editor${fromParam}#m=${encoded}`);
   }, [xmlText, viewConfig, specTitle, navigate]);
 
   const renderCellContent = (row: TabularRow, col: SerializedTabularColumn) => {
@@ -1589,10 +1589,10 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
               <PillButton
                 $isDark={isDark}
                 onClick={handleOpenInPlayground}
-                title="Open in Ansatz Polyglot Morsel (powered by ModelScript)"
+                title="Open in Ansatz (powered by ModelScript)"
               >
                 <DraftingTriangleIcon size={12} style={{ verticalAlign: -1, marginRight: 4 }} />
-                Morsel
+                Ansatz
               </PillButton>
             )}
           </div>

@@ -240,17 +240,86 @@ function findFunctionalAxiomSpans(docText: string, cstRoot?: GenericSyntaxNode |
   return spans;
 }
 
+function isOwlXmlOntology(docText: string): boolean {
+  return /<\s*Ontology\b/i.test(docText) && !/<\s*rdf:RDF\b/i.test(docText);
+}
+
+function localIriFragment(name: string): string {
+  const clean = name.trim().replace(/^:/, "");
+  const hashIdx = clean.lastIndexOf("#");
+  if (hashIdx >= 0) return `#${clean.slice(hashIdx + 1)}`;
+  return `#${clean}`;
+}
+
+function removeXmlBlocksMatching(docText: string, tagNames: string[], predicates: RegExp[]): TextEdit[] {
+  const edits: TextEdit[] = [];
+  const lineStarts = [0];
+  for (let i = 0; i < docText.length; i++) {
+    if (docText.charCodeAt(i) === 10) lineStarts.push(i + 1);
+  }
+  const offsetToPos = (offset: number) => {
+    let lo = 0;
+    let hi = lineStarts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (lineStarts[mid]! <= offset) lo = mid;
+      else hi = mid - 1;
+    }
+    return { line: lo, character: offset - lineStarts[lo]! };
+  };
+
+  for (const tag of tagNames) {
+    const blockRe = new RegExp(`^[ \\t]*<${tag}\\b[\\s\\S]*?<\\/${tag}>[ \\t]*\\r?\\n?`, "gm");
+    let m: RegExpExecArray | null;
+    while ((m = blockRe.exec(docText)) !== null) {
+      if (predicates.every((re) => re.test(m![0]))) {
+        edits.push(TextEdit.del(Range.create(offsetToPos(m.index), offsetToPos(m.index + m[0].length))));
+      }
+    }
+  }
+  return deduplicateAndSort(edits);
+}
+
 /**
  * Inserts a new OWL 2 declaration into an ontology document.
- * Automatically adapts between Functional-Style Syntax and Turtle.
+ * Adapts between Functional-Style Syntax, Turtle, and OWL/XML while refusing to corrupt RDF/XML.
  */
 export function computeOWL2ElementInsert(docText: string, elementType: string, elementName: string): TextEdit[] {
   const format = detectOwl2Format(docText);
   const iri = formatIri(elementName);
 
+  if (format === "owx") {
+    if (!isOwlXmlOntology(docText)) return [];
+    const closeIdx = docText.lastIndexOf("</Ontology>");
+    if (closeIdx === -1) return [];
+    const linesBefore = docText.slice(0, closeIdx).split("\n");
+    const targetLine = Math.max(0, linesBefore.length - 1);
+    const col = linesBefore[linesBefore.length - 1]?.length ?? 0;
+    const frag = localIriFragment(elementName);
+    let tag = "Class";
+    switch (elementType) {
+      case "ObjectProperty":
+      case "ObjectPropertyDeclaration":
+        tag = "ObjectProperty";
+        break;
+      case "DataProperty":
+      case "DataPropertyDeclaration":
+        tag = "DataProperty";
+        break;
+      case "Individual":
+      case "NamedIndividual":
+      case "IndividualDeclaration":
+        tag = "NamedIndividual";
+        break;
+    }
+    return [
+      TextEdit.insert({ line: targetLine, character: col }, `  <Declaration><${tag} IRI="${frag}"/></Declaration>\n`),
+    ];
+  }
+
   if (format === "ttl") {
     const lines = docText.split("\n");
-    let targetLine = lines.length;
+    const targetLine = lines.length;
     let typeTriple = "owl:Class";
     switch (elementType) {
       case "ObjectProperty":
@@ -301,7 +370,7 @@ export function computeOWL2ElementInsert(docText: string, elementType: string, e
 
 /**
  * Deletes OWL 2 element declarations and all associated relationship axioms.
- * Uses exact balanced AST spans in Functional-Style Syntax to prevent syntax corruption.
+ * Uses exact balanced AST spans in Functional-Style Syntax and element-block matching in OWL/XML.
  */
 export function computeOWL2ElementDelete(
   docText: string,
@@ -311,6 +380,17 @@ export function computeOWL2ElementDelete(
   const format = detectOwl2Format(docText);
   const edits: TextEdit[] = [];
   const namePatterns = elementNames.map((n) => escapeRegex(n.replace(/^:/, "")));
+
+  if (format === "owx") {
+    if (!isOwlXmlOntology(docText)) return [];
+    const tags = ["Declaration", "SubClassOf", "EquivalentClasses", "DisjointClasses", "ClassAssertion"];
+    const collected: TextEdit[] = [];
+    for (const pat of namePatterns) {
+      const iriRe = new RegExp(`IRI=["']#?${pat}["']`);
+      collected.push(...removeXmlBlocksMatching(docText, tags, [iriRe]));
+    }
+    return deduplicateAndSort(collected);
+  }
 
   if (format === "ofn") {
     const spans = findFunctionalAxiomSpans(docText, cstRoot);
@@ -352,7 +432,7 @@ export function computeOWL2ElementDelete(
 
 /**
  * Inserts a relationship axiom (SubClassOf, EquivalentClasses, DisjointClasses, etc.) connecting source and target.
- * Automatically adapts between Functional-Style Syntax and Turtle.
+ * Adapts between Functional-Style Syntax, Turtle, and OWL/XML while refusing to corrupt RDF/XML.
  */
 export function computeOWL2ConnectionInsert(
   docText: string,
@@ -364,9 +444,29 @@ export function computeOWL2ConnectionInsert(
   const srcIri = formatIri(source);
   const tgtIri = formatIri(target);
 
+  if (format === "owx") {
+    if (!isOwlXmlOntology(docText)) return [];
+    const closeIdx = docText.lastIndexOf("</Ontology>");
+    if (closeIdx === -1) return [];
+    const linesBefore = docText.slice(0, closeIdx).split("\n");
+    const targetLine = Math.max(0, linesBefore.length - 1);
+    const col = linesBefore[linesBefore.length - 1]?.length ?? 0;
+    const sFrag = localIriFragment(source);
+    const tFrag = localIriFragment(target);
+    let snippet = "";
+    if (edgeType === "equivalentTo") {
+      snippet = `  <EquivalentClasses><Class IRI="${sFrag}"/><Class IRI="${tFrag}"/></EquivalentClasses>\n`;
+    } else if (edgeType === "disjointWith") {
+      snippet = `  <DisjointClasses><Class IRI="${sFrag}"/><Class IRI="${tFrag}"/></DisjointClasses>\n`;
+    } else {
+      snippet = `  <SubClassOf><Class IRI="${sFrag}"/><Class IRI="${tFrag}"/></SubClassOf>\n`;
+    }
+    return [TextEdit.insert({ line: targetLine, character: col }, snippet)];
+  }
+
   if (format === "ttl") {
     const lines = docText.split("\n");
-    let targetLine = lines.length;
+    const targetLine = lines.length;
     let snippet = "";
     if (edgeType === "equivalentTo") {
       snippet = `\n${srcIri} owl:equivalentClass ${tgtIri} .\n`;
@@ -399,7 +499,7 @@ export function computeOWL2ConnectionInsert(
 
 /**
  * Deletes a relationship axiom connecting source and target.
- * Uses exact balanced AST spans in Functional-Style Syntax to cleanly delete multi-line or single-line axioms.
+ * Uses exact balanced AST spans in Functional-Style Syntax and block matching in OWL/XML.
  */
 export function computeOWL2ConnectionDelete(
   docText: string,
@@ -414,6 +514,17 @@ export function computeOWL2ConnectionDelete(
   const tgtPat = escapeRegex(target.replace(/^:/, ""));
   const srcReg = new RegExp(`[:#<]?\\b${srcPat}\\b[>]?`);
   const tgtReg = new RegExp(`[:#<]?\\b${tgtPat}\\b[>]?`);
+
+  if (format === "owx") {
+    if (!isOwlXmlOntology(docText)) return [];
+    const srcIriRe = new RegExp(`IRI=["']#?${srcPat}["']`);
+    const tgtIriRe = new RegExp(`IRI=["']#?${tgtPat}["']`);
+    return removeXmlBlocksMatching(
+      docText,
+      ["SubClassOf", "EquivalentClasses", "DisjointClasses"],
+      [srcIriRe, tgtIriRe],
+    );
+  }
 
   if (format === "ofn") {
     const spans = findFunctionalAxiomSpans(docText, cstRoot);
@@ -449,10 +560,24 @@ export function computeOWL2ConnectionDelete(
  * Updates a class or property name/IRI throughout the document.
  */
 export function computeOWL2NameEdit(docText: string, oldName: string, newName: string): TextEdit[] {
+  const format = detectOwl2Format(docText);
   const lines = docText.split("\n");
   const edits: TextEdit[] = [];
   const cleanOld = oldName.replace(/^:/, "");
   const cleanNew = newName.replace(/^:/, "");
+
+  if (format === "owx") {
+    if (!isOwlXmlOntology(docText)) return [];
+    const iriAttrRe = new RegExp(`(\\bIRI=["']#?)(${escapeRegex(cleanOld)})(["'])`, "g");
+    lines.forEach((line, i) => {
+      let m: RegExpExecArray | null;
+      while ((m = iriAttrRe.exec(line)) !== null) {
+        const startCol = m.index + (m[1]?.length ?? 0);
+        edits.push(TextEdit.replace(Range.create(i, startCol, i, startCol + cleanOld.length), cleanNew));
+      }
+    });
+    return deduplicateAndSort(edits);
+  }
 
   const pattern = new RegExp(`([:#<]|^|\\s)(${escapeRegex(cleanOld)})(?=[>\\s\\)]|$)`, "g");
 

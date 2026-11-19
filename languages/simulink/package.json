@@ -60,6 +60,7 @@
     "build:parser": "node ../../scripts/build-language-parser.js --force",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",
+    "playground": "npx tsx ../../scripts/language-playground.ts .",
     "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit"
   },

@@ -58,6 +58,19 @@ export const stepLanguage = language({
   indexing: {
     indexFile: indexStepFileSync,
   },
+  ui: {
+    panels: [
+      {
+        id: "stepPanel",
+        title: "STEP Assembly & PMI",
+        shortTitle: "STEP",
+        selector: ["*.step", "*.stp", "*.p21"],
+        entry: "./src/ui/StepPanel.tsx",
+        exportName: "StepPanel",
+        artifactViewTypes: ["step", "step-assembly"],
+      },
+    ],
+  },
 
   // Bi-directional source writeback for updating quoted string parameters in STEP entity records
   writeback: (ctx) => {

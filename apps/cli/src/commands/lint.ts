@@ -3,7 +3,19 @@
 import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { createWasmParser } from "@modelscript/modelica/parser";
-import { UnifiedWorkspace, type SymbolEntry, type WorkspaceIndex } from "@modelscript/runtime";
+import {
+  extractCrossLanguageLinks,
+  isTypeLikeSymbol,
+  PolyglotDriftChecker,
+  PolyglotTransformer,
+  symbolEntryToPolyglotNode,
+  UnifiedWorkspace,
+  type CorrespondenceDiagnostic,
+  type PolyglotModelSource,
+  type SymbolEntry,
+  type SymbolIndex,
+  type WorkspaceIndex,
+} from "@modelscript/runtime";
 import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
@@ -37,6 +49,8 @@ interface LintArgs {
   profile?: "DL" | "EL" | undefined;
   /** Whether to treat warnings as fatal errors with non-zero exit code. */
   strict?: boolean | undefined;
+  /** Whether to run on-demand M7xxx formal verification checks for Modelica models. */
+  formal?: boolean | undefined;
 }
 
 interface LintDiagnosticItem {
@@ -487,6 +501,348 @@ function findPolyglotFiles(dir: string, fileList: string[] = [], recognizedExts:
   return fileList;
 }
 
+function mapCorrespondenceCodeAndRule(
+  diagCode: CorrespondenceDiagnostic["code"],
+  langId: "modelica" | "sysml2",
+): { code: number; rule: string } {
+  if (langId === "modelica") {
+    switch (diagCode) {
+      case "CONFORMANCE_MISSING_PORT":
+        return { code: 4140, rule: "tgg-conformance-missing-port" };
+      case "CONFORMANCE_PARAM_MISMATCH":
+        return { code: 4141, rule: "tgg-conformance-param-mismatch" };
+      case "CONFORMANCE_MISSING_COMPONENT":
+        return { code: 4142, rule: "tgg-conformance-missing-component" };
+      case "CONFORMANCE_UNRESOLVED_TARGET":
+        return { code: 4143, rule: "tgg-conformance-unresolved-target" };
+    }
+  }
+  switch (diagCode) {
+    case "CONFORMANCE_MISSING_PORT":
+      return { code: 4080, rule: "tgg-conformance-missing-port" };
+    case "CONFORMANCE_PARAM_MISMATCH":
+      return { code: 4081, rule: "tgg-conformance-param-mismatch" };
+    case "CONFORMANCE_MISSING_COMPONENT":
+      return { code: 4082, rule: "tgg-conformance-missing-component" };
+    case "CONFORMANCE_UNRESOLVED_TARGET":
+      return { code: 4083, rule: "tgg-conformance-unresolved-target" };
+  }
+}
+
+function enrichSysmlTwinMetadata(db: SymbolIndex, sysmlItems: readonly { uri: string; text: string }[]): void {
+  const textByUri = new Map<string, string>();
+  for (const item of sysmlItems) {
+    textByUri.set(item.uri, item.text);
+  }
+
+  for (const sym of db.symbols.values()) {
+    const uri = sym.resourceId ?? sym.documentUri ?? "";
+    const docText = textByUri.get(uri);
+    if (!docText) continue;
+
+    const existing = sym.metadata as Record<string, unknown> | undefined;
+    if (existing?.["twin"] || existing?.["implements"] || existing?.["counterpart"]) continue;
+
+    // 1. Check direct MetadataUsage / PrefixMetadataUsage children (`@twin { target = "..."; }`, `metadata twin { ... }`)
+    const childIds = db.childrenOf.get(sym.id) ?? [];
+    let discoveredTarget: string | undefined;
+    let relationField: "twin" | "implements" = "twin";
+
+    for (const cid of childIds) {
+      const child = db.symbols.get(cid);
+      if (!child || (child.ruleName !== "MetadataUsage" && child.ruleName !== "PrefixMetadataUsage")) continue;
+      const slice = docText.slice(child.startOffset, child.endOffset);
+      const typingGrandchild = (db.childrenOf.get(child.id) ?? [])
+        .map((gid) => db.symbols.get(gid))
+        .find((g) => g?.ruleName === "MetadataTyping");
+      const metaName = (typingGrandchild?.name || child.name || "").trim().toLowerCase();
+      const isTwinMeta =
+        metaName === "twin" ||
+        metaName === "counterpart" ||
+        metaName === "implements" ||
+        /^\s*(?:@|#|metadata\s+)(?:twin|counterpart|implements)\b/i.test(slice);
+      if (!isTwinMeta) continue;
+      if (metaName === "implements" || /^\s*(?:@|#|metadata\s+)implements\b/i.test(slice)) {
+        relationField = "implements";
+      }
+      const quoted = /"([^"]+)"/.exec(slice)?.[1]?.trim();
+      if (quoted) {
+        discoveredTarget = quoted;
+        break;
+      }
+    }
+
+    // 2. Fallback: header-only `@twin("...")` or `SysML(implements = "...")` before `{`
+    if (!discoveredTarget && (sym.kind === "Definition" || sym.kind === "Usage")) {
+      const fullSlice = docText.slice(sym.startOffset, sym.endOffset);
+      const braceIdx = fullSlice.indexOf("{");
+      const header = braceIdx === -1 ? fullSlice : fullSlice.slice(0, braceIdx);
+      const sysmlImpl = /\bSysML\s*\(\s*implements\s*=\s*"([^"]+)"\s*\)/.exec(header)?.[1]?.trim();
+      if (sysmlImpl) {
+        discoveredTarget = sysmlImpl;
+        relationField = "implements";
+      } else {
+        const inlineTwin = /@(?:twin|counterpart)\s*\(\s*"([^"]+)"\s*\)/i.exec(header)?.[1]?.trim();
+        if (inlineTwin) {
+          discoveredTarget = inlineTwin;
+        }
+      }
+    }
+
+    if (discoveredTarget) {
+      sym.metadata = { ...(existing ?? {}), [relationField]: discoveredTarget };
+    }
+  }
+}
+
+function collectCliTggAndDriftDiagnostics(params: {
+  u: UnifiedWorkspace;
+  db: SymbolIndex;
+  modelicaItems: readonly { uri: string; text: string }[];
+  sysmlItems: readonly { uri: string; text: string }[];
+  astMap: ReadonlyMap<string, CstRootLike | undefined>;
+  diagnostics: LintDiagnosticItem[];
+}): void {
+  const { u, db, modelicaItems, sysmlItems, astMap, diagnostics } = params;
+
+  if (sysmlItems.length > 0) {
+    enrichSysmlTwinMetadata(db, sysmlItems);
+  }
+
+  const dbView = {
+    symbol: (id: number) => db.symbols.get(id),
+    childrenOf: (id: number | null) =>
+      (db.childrenOf.get(id) ?? [])
+        .map((cid: number) => db.symbols.get(cid))
+        .filter((s): s is SymbolEntry => Boolean(s)),
+    byName: (name: string) =>
+      (db.byName.get(name) ?? []).map((id: number) => db.symbols.get(id)).filter((s): s is SymbolEntry => Boolean(s)),
+  };
+
+  const transformerCache = new Map<string, PolyglotTransformer>();
+  const getTransformer = (langId: string): PolyglotTransformer => {
+    const norm = langId.toLowerCase();
+    const cached = transformerCache.get(norm);
+    if (cached) return cached;
+    const uwWithFactory = u as UnifiedWorkspace & {
+      createPolyglotTransformer?: (lang: string) => PolyglotTransformer | null;
+    };
+    let tr: PolyglotTransformer | null = null;
+    if (typeof uwWithFactory.createPolyglotTransformer === "function") {
+      try {
+        tr = uwWithFactory.createPolyglotTransformer(norm) ?? null;
+      } catch {
+        tr = null;
+      }
+    }
+    if (!tr) {
+      const polyDef =
+        norm === "modelica"
+          ? (modelicaLangFallback as { polyglot?: unknown }).polyglot
+          : norm === "sysml2"
+            ? (sysml2LangFallback as { polyglot?: unknown }).polyglot
+            : undefined;
+      tr = polyDef
+        ? new PolyglotTransformer(polyDef as ConstructorParameters<typeof PolyglotTransformer>[0])
+        : new PolyglotTransformer();
+    }
+    transformerCache.set(norm, tr);
+    return tr;
+  };
+
+  const inferTargetLang = (targetPath: string, fallbackLang: "modelica" | "sysml2"): string => {
+    const lower = targetPath.toLowerCase();
+    if (lower.startsWith("sysml2::") || lower.startsWith("sysml::")) return "sysml2";
+    if (lower.startsWith("modelica::")) return "modelica";
+    if (targetPath.includes("::") && fallbackLang === "modelica") return "sysml2";
+    return fallbackLang === "modelica" ? "sysml2" : "modelica";
+  };
+
+  const allDocs: Array<{ uri: string; text: string; langId: "modelica" | "sysml2" }> = [
+    ...modelicaItems.map((i) => ({ ...i, langId: "modelica" as const })),
+    ...sysmlItems.map((i) => ({ ...i, langId: "sysml2" as const })),
+  ];
+
+  if (modelicaItems.length > 0 && sysmlItems.length > 0) {
+    u.syncTggCorrespondences?.(db);
+  }
+
+  for (const item of allDocs) {
+    const normLang = item.langId;
+    const rootNode = astMap.get(item.uri);
+    let links: ReturnType<typeof extractCrossLanguageLinks> = [];
+    try {
+      links = extractCrossLanguageLinks({
+        uri: item.uri,
+        language: normLang,
+        index: db,
+        text: item.text,
+        tree: rootNode
+          ? {
+              rootNode: rootNode as unknown as NonNullable<
+                NonNullable<Parameters<typeof extractCrossLanguageLinks>[0]["tree"]>["rootNode"]
+              >,
+            }
+          : undefined,
+      });
+    } catch {
+      continue;
+    }
+
+    const explicitLinks = links.filter((l) => l.relationKind === "twin" || l.relationKind === "implements");
+    const srcTransformer = getTransformer(normLang);
+    const validatedPairs = new Set<string>();
+
+    const validatePair = (
+      srcEntry: SymbolEntry,
+      tgtEntry: SymbolEntry | null,
+      targetNameHint: string,
+      fallbackLine: number,
+      fallbackCol: number,
+    ) => {
+      const pairKey = `${srcEntry.id}:${tgtEntry?.id ?? targetNameHint}`;
+      if (validatedPairs.has(pairKey)) return;
+      validatedPairs.add(pairKey);
+
+      const startOffset =
+        srcEntry.startOffset >= 0 ? srcEntry.startOffset : lineColToByte(item.text, fallbackLine, fallbackCol);
+      const endOffset = Math.min(item.text.length, startOffset + Math.max(1, srcEntry.name.length));
+
+      const srcNode = symbolEntryToPolyglotNode(dbView, srcEntry);
+      if (!tgtEntry) {
+        const expectedLang = inferTargetLang(targetNameHint, normLang);
+        const corrDiags = srcTransformer.validateCorrespondence(srcNode, null, normLang, expectedLang);
+        for (const cd of corrDiags) {
+          const mapped = mapCorrespondenceCodeAndRule(cd.code, normLang);
+          diagnostics.push({
+            severity: cd.severity === "error" ? "error" : "warning",
+            lintName: mapped.rule,
+            code: mapped.code,
+            domain: normLang,
+            message: cd.message,
+            symbolId: srcEntry.id,
+            resourceId: item.uri,
+            startOffset,
+            endOffset,
+          });
+        }
+        return;
+      }
+
+      const tgtLang = (tgtEntry.language ?? inferTargetLang(targetNameHint, normLang)).toLowerCase();
+      if (tgtLang === normLang) return;
+      if (!isTypeLikeSymbol(srcEntry)) return;
+
+      const tgtNode = symbolEntryToPolyglotNode(dbView, tgtEntry);
+      const seenCorr = new Set<string>();
+      const emitCorr = (cd: CorrespondenceDiagnostic) => {
+        const key = `${cd.code}:${cd.expectedName ?? cd.elementName}`;
+        if (seenCorr.has(key)) return;
+        seenCorr.add(key);
+        const mapped = mapCorrespondenceCodeAndRule(cd.code, normLang);
+        diagnostics.push({
+          severity: cd.severity === "error" ? "error" : "warning",
+          lintName: mapped.rule,
+          code: mapped.code,
+          domain: normLang,
+          message: cd.message,
+          symbolId: srcEntry.id,
+          resourceId: item.uri,
+          startOffset,
+          endOffset,
+        });
+      };
+
+      for (const cd of srcTransformer.validateCorrespondence(srcNode, tgtNode, normLang, tgtLang)) {
+        emitCorr(cd);
+      }
+
+      const tgtTransformer = getTransformer(tgtLang);
+      for (const cd of tgtTransformer.validateCorrespondence(tgtNode, srcNode, tgtLang, normLang)) {
+        emitCorr(cd);
+      }
+    };
+
+    for (const link of explicitLinks) {
+      const srcEntry = db.symbols.get(link.sourceSymbolId);
+      if (!srcEntry) continue;
+      validatePair(srcEntry, link.targetEntry ?? null, link.targetName, link.sourceLine, link.sourceColumn);
+    }
+
+    const tggIndexer = u.tggCorrespondenceIndexer;
+    if (tggIndexer && modelicaItems.length > 0 && sysmlItems.length > 0) {
+      for (const sym of db.symbols.values()) {
+        if ((sym.resourceId || sym.documentUri || "") !== item.uri) continue;
+        for (const slot of tggIndexer.getSlotsForSymbol(sym.id)) {
+          const rec = tggIndexer.hypergraph.getRecord(slot);
+          if (!rec || rec.isRemoved) continue;
+          for (const memberId of Object.values(rec.domainNodes)) {
+            if (typeof memberId === "number" && memberId !== sym.id) {
+              const peer = db.symbols.get(memberId);
+              if (peer) validatePair(sym, peer, peer.name, 1, 1);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Cross-language parameter value / unit drift check (`PolyglotDriftChecker`) when both domains are loaded
+  if (modelicaItems.length > 0 && sysmlItems.length > 0) {
+    const userUris = new Set(allDocs.map((d) => d.uri));
+    const driftSources: PolyglotModelSource[] = [];
+    for (const sym of db.symbols.values()) {
+      const fUri = sym.resourceId ?? sym.documentUri ?? "";
+      if (!userUris.has(fUri)) continue;
+      const meta = (sym.metadata ?? {}) as Record<string, unknown>;
+      const rawVal =
+        meta["value"] ??
+        meta["nominal"] ??
+        meta["defaultValue"] ??
+        (meta["variability"] === "parameter" && typeof meta["binding"] === "number" ? meta["binding"] : undefined);
+      if (typeof rawVal === "number" && Number.isFinite(rawVal)) {
+        const parent = sym.parentId !== null ? db.symbols.get(sym.parentId) : undefined;
+        const fileBase = path.basename(fUri.replace(/^file:\/\//, ""), path.extname(fUri));
+        const langId = fUri.toLowerCase().endsWith(".mo") ? "modelica" : "sysml2";
+        driftSources.push({
+          lang: langId,
+          uri: fUri,
+          component: parent?.name || fileBase || sym.name,
+          param: sym.name,
+          value: rawVal,
+          startOffset: sym.startOffset,
+          endOffset: sym.endOffset,
+        });
+      }
+    }
+
+    if (driftSources.length >= 2) {
+      const violations = PolyglotDriftChecker.checkDrift(driftSources, { tolerance: 0.001 });
+      for (const v of violations) {
+        for (const side of [
+          { mine: v.sourceA, other: v.sourceB },
+          { mine: v.sourceB, other: v.sourceA },
+        ]) {
+          const otherFile = path.basename(side.other.uri.replace(/^file:\/\//, ""));
+          const pct = (v.relativeDiscrepancy * 100).toFixed(1);
+          const domain = side.mine.lang === "sysml2" ? "sysml2" : "modelica";
+          diagnostics.push({
+            severity: v.relativeDiscrepancy > 0.2 ? "error" : "warning",
+            lintName: "cross-language-parameter-drift",
+            code: "M5104",
+            domain,
+            message: `Cross-language parameter drift: '${side.mine.param}' in ${side.mine.lang.toUpperCase()} (${side.mine.value}) diverges from ${side.other.lang.toUpperCase()} (${side.other.value}) in '${otherFile}' by ${pct}%.`,
+            symbolId: null,
+            resourceId: side.mine.uri,
+            startOffset: side.mine.startOffset ?? 0,
+            endOffset: side.mine.endOffset ?? (side.mine.startOffset ?? 0) + Math.max(1, side.mine.param.length),
+          });
+        }
+      }
+    }
+  }
+}
+
 /**
  * `msx lint <path> [paths...]` CLI command module that runs CST, Salsa semantic, abstract-interpretation,
  * and ontology/schema linters across all recognized ModelScript polyglot languages.
@@ -537,6 +893,11 @@ export const Lint: CommandModule<{}, LintArgs> = {
       })
       .option("strict", {
         description: "Treat warnings as errors",
+        type: "boolean",
+        default: false,
+      })
+      .option("formal", {
+        description: "Run on-demand deep formal verification checks (Modelica M7xxx & SysML v2 S7xxx)",
         type: "boolean",
         default: false,
       }) as unknown as Argv<LintArgs>;
@@ -666,7 +1027,9 @@ export const Lint: CommandModule<{}, LintArgs> = {
               for (const cd of sysmlFacade.getDiagnostics(rootPtr, 0, 0, item.text)) {
                 const codeNum = typeof cd.code === "number" ? cd.code : 1001;
                 const def = getSysML2ErrorCodeDef(codeNum);
-                const defMsg = (def?.message as ((arg: string) => string) | undefined)?.("Syntax error");
+                const defMsg = !cd.message
+                  ? (def?.message as ((...a: string[]) => string) | undefined)?.("Syntax error", "", "", "")
+                  : undefined;
                 sysmlCstDiagnostics.push({
                   severity: cd.severity === 1 ? "error" : cd.severity === 2 ? "warning" : (def?.severity ?? "error"),
                   lintName: def ? def.rule : `S${codeNum}`,
@@ -848,13 +1211,49 @@ export const Lint: CommandModule<{}, LintArgs> = {
           }
         } catch {}
       }
+
+      if (args.formal) {
+        try {
+          const { Context } = await import("@modelscript/modelica/context");
+          const { NodeFileSystem } = await import("../util/filesystem.js");
+          const { parser: formalParser } = await createWasmParser(modelicaWasmPath);
+          Context.registerParser(".mo", formalParser as unknown as Parameters<typeof Context.registerParser>[1]);
+          const formalCtx = Context.createBatch(new NodeFileSystem());
+          for (const item of modelicaItems) {
+            formalCtx.load(item.text, item.uri);
+          }
+          const formalRes = await formalCtx.verifyFormal();
+          const formalDb = formalCtx.queryEngine.toQueryDB();
+          for (const fd of formalRes.diagnostics) {
+            const simpleName = fd.className.split(".").pop() ?? fd.className;
+            const sym = formalDb.byName(simpleName)?.[0];
+            const resUri = sym?.resourceId ?? modelicaItems[0]?.uri;
+            const resText = modelicaItems.find((m) => m.uri === resUri)?.text ?? modelicaItems[0]?.text ?? "";
+            diagnostics.push({
+              severity: fd.severity,
+              lintName: fd.rule,
+              code: fd.code,
+              domain: "modelica",
+              message: `[M${fd.code}] ${fd.message}`,
+              symbolId: sym?.id ?? null,
+              resourceId: resUri,
+              startOffset: fd.range
+                ? lineColToByte(resText, fd.range.startPosition.row + 1, fd.range.startPosition.column + 1)
+                : 0,
+              endOffset: fd.range
+                ? lineColToByte(resText, fd.range.endPosition.row + 1, fd.range.endPosition.column + 1)
+                : 1,
+            });
+          }
+        } catch {}
+      }
     }
 
     if (hasSysML) {
       engineS = createSysML2QueryEngine(db, cstProvider);
       const diagsS: LintDiagnosticItem[] = [];
       for (const item of sysmlItems) {
-        const fileDiags = engineS.runAllLints(item.uri);
+        const fileDiags = await engineS.runAllLintsAsync(item.uri);
         for (const d of fileDiags) {
           diagsS.push({
             ...d,
@@ -877,7 +1276,44 @@ export const Lint: CommandModule<{}, LintArgs> = {
           diagnostics.push(cd);
         }
       }
+
+      if (args.formal) {
+        try {
+          const { verifySysML2Formal } = await import("@modelscript/sysml2");
+          const sysmlDb = engineS.toQueryDB();
+          for (const item of sysmlItems) {
+            const formalDiags = await verifySysML2Formal(sysmlDb, { resourceUri: item.uri });
+            for (const fd of formalDiags) {
+              diagnostics.push({
+                severity: fd.severity,
+                lintName: fd.rule,
+                code: fd.code,
+                domain: "sysml2",
+                message: fd.message,
+                symbolId: fd.symbolId,
+                resourceId: fd.resourceId ?? item.uri,
+                startOffset: fd.startOffset,
+                endOffset: fd.endOffset,
+              });
+            }
+          }
+        } catch {}
+      }
     }
+
+    if (hasModelica || hasSysML) {
+      collectCliTggAndDriftDiagnostics({
+        u,
+        db,
+        modelicaItems,
+        sysmlItems,
+        astMap,
+        diagnostics,
+      });
+    }
+
+    const parsedPsseCases: Array<{ filePath: string; parsed: import("@modelscript/psse").PsseCase }> = [];
+    const parsedPscadSnapshots: Array<{ filePath: string; frequencyHz: number; poiBaseKv?: number | undefined }> = [];
 
     for (const item of genericItems) {
       const filePath = item.uri.replace("file://", "");
@@ -962,7 +1398,12 @@ export const Lint: CommandModule<{}, LintArgs> = {
         if (langId === "pscad") {
           const { parsePscx, lintPscx } = await import("@modelscript/pscad");
           const project = parsePscx(item.text);
-          const pscadDiags = lintPscx(project);
+          parsedPscadSnapshots.push({
+            filePath,
+            frequencyHz: project.settings.frequencyHz,
+            poiBaseKv: project.rootModule.buses[0]?.voltageBaseKv,
+          });
+          const pscadDiags = lintPscx(project, { tier: args.formal ? "formal" : "deep" });
           for (const pd of pscadDiags) {
             const startOffset = lineColToByte(item.text, pd.line ?? 1, pd.column ?? 1);
             const endOffset = lineColToByte(
@@ -980,6 +1421,27 @@ export const Lint: CommandModule<{}, LintArgs> = {
               resourceId: filePath,
               startOffset,
               endOffset,
+            });
+          }
+          continue;
+        }
+
+        if (langId === "psse") {
+          const { parseRaw, lintPsse } = await import("@modelscript/psse");
+          const parsed = parseRaw(item.text);
+          parsedPsseCases.push({ filePath, parsed });
+          const psseDiags = lintPsse(parsed, { tier: args.formal ? "formal" : "deep" });
+          for (const pd of psseDiags) {
+            diagnostics.push({
+              severity: pd.severity,
+              lintName: pd.code.toLowerCase(),
+              code: pd.code,
+              domain: "psse",
+              message: pd.message,
+              symbolId: null,
+              resourceId: filePath,
+              startOffset: pd.startOffset ?? 0,
+              endOffset: pd.endOffset ?? 0,
             });
           }
           continue;
@@ -1570,6 +2032,35 @@ export const Lint: CommandModule<{}, LintArgs> = {
       }
     }
 
+    if (parsedPsseCases.length > 0 && parsedPscadSnapshots.length > 0) {
+      try {
+        const { verifyPssePscadEquivalence } = await import("@modelscript/psse");
+        for (const psseEntry of parsedPsseCases) {
+          for (const pscadEntry of parsedPscadSnapshots) {
+            const eqDiags = verifyPssePscadEquivalence(psseEntry.parsed, {
+              frequencyHz: pscadEntry.frequencyHz,
+              poiBaseKv: pscadEntry.poiBaseKv,
+            });
+            for (const ed of eqDiags) {
+              diagnostics.push({
+                severity: ed.severity,
+                lintName: ed.code.toLowerCase(),
+                code: ed.code,
+                domain: "psse",
+                message: `${ed.message} (compared with ${path.basename(pscadEntry.filePath)})`,
+                symbolId: null,
+                resourceId: psseEntry.filePath,
+                startOffset: ed.startOffset ?? 0,
+                endOffset: ed.endOffset ?? 0,
+              });
+            }
+          }
+        }
+      } catch {
+        // Cross-domain equivalence is best-effort
+      }
+    }
+
     if (genericItems.length > 0) {
       const { hasWorkspaceLinter, lintWorkspaceByLanguage } = await import("@modelscript/lsp");
       const cliWorkspaceDocs: Record<string, string> = {};
@@ -1694,10 +2185,12 @@ export const Lint: CommandModule<{}, LintArgs> = {
       }
 
       const errors = formattedDiags.filter((d) => d.severity === "error").length;
-      const warnings = formattedDiags.filter((d) => d.severity !== "error").length;
+      const warnings = formattedDiags.filter((d) => d.severity === "warning").length;
+      const infos = formattedDiags.filter((d) => d.severity !== "error" && d.severity !== "warning").length;
 
-      if (errors > 0 || warnings > 0) {
-        outputLines.push(`\n${errors} error(s), ${warnings} warning(s) found.`);
+      if (errors > 0 || warnings > 0 || infos > 0) {
+        const infoSuffix = infos > 0 ? `, ${infos} info(s)` : "";
+        outputLines.push(`\n${errors} error(s), ${warnings} warning(s)${infoSuffix} found.`);
       }
       writeOutput(outputLines.join("\n"));
     }

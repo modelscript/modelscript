@@ -4,6 +4,7 @@
 // Communicates with the LSP server via the LanguageClient to get diagram data,
 // and posts it to the webview for X6 rendering.
 
+import { isOptimisticDiagramActionBatch, SerializedDiagramEditRunner } from "@modelscript/diagram/action-dispatch";
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { getNonce } from "./utils/nonce.js";
@@ -111,7 +112,8 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       document.languageId && document.languageId !== "" ? document.languageId : uriString.split(".").pop() || "generic";
     let currentDiagramType = "All";
     let currentClassName: string | undefined = undefined;
-    let diagramEditQueue = Promise.resolve();
+    const diagramEditRunner = new SerializedDiagramEditRunner();
+    let isApplyingDiagramEdit = false;
     let isSpatialEditPending = false;
     let lastOptimisticEditTime = 0;
     let isAddComponentPending = false;
@@ -209,7 +211,12 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
         }
       }
 
-      await vscode.workspace.applyEdit(workspaceEdit);
+      isApplyingDiagramEdit = true;
+      try {
+        await vscode.workspace.applyEdit(workspaceEdit);
+      } finally {
+        isApplyingDiagramEdit = false;
+      }
     };
 
     /**
@@ -432,6 +439,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                 .sendRequest(DiagramMethods.getComponentProperties, {
                   uri: uriString,
                   componentName: message.componentName,
+                  className: currentClassName,
                 })
                 .then((props) => {
                   webviewPanel.webview.postMessage({
@@ -501,18 +509,10 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
             // model topology — only annotation coordinates or modification values
             // change. They can be applied optimistically without showing a spinner
             // or triggering a diagram re-render.
-            const isOptimisticOnly = actions.every(
-              (a) =>
-                a.type === "move" ||
-                a.type === "resize" ||
-                a.type === "rotate" ||
-                a.type === "toggleDisable" ||
-                a.type === "moveEdge" ||
-                a.type === "updateParameter" ||
-                a.type === "updateProperty",
-            );
+            const isOptimisticOnly = isOptimisticDiagramActionBatch(actions);
 
             interface ApplyEditsResponse {
+              seq?: number;
               sidecarUri?: string | undefined;
               sidecarContent?: string | undefined;
               edits?: vscode.TextEdit[] | undefined;
@@ -521,11 +521,13 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 
             if (isOptimisticOnly) {
               // ── Optimistic path: silent text update, no spinner, no re-render ──
-              diagramEditQueue = diagramEditQueue
-                .then(async () => {
+              diagramEditRunner.enqueue(
+                async (reqSeq) => {
                   const response = await this.client.sendRequest<ApplyEditsResponse | null>(DiagramMethods.applyEdits, {
                     uri: uriString,
-                    seq: 1,
+                    className: currentClassName,
+                    diagramType: currentDiagramType,
+                    seq: reqSeq,
                     actions,
                   });
 
@@ -552,22 +554,25 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                       lastOptimisticEditTime = Date.now();
                     }
                   }
-                })
-                .catch((e) => {
+                },
+                (e) => {
                   console.error("[diagram] Error applying optimistic edit:", e);
                   pendingRenderHint = null;
-                });
+                },
+              );
             } else {
               // ── Semantic path: full re-render cycle with spinner ──
               diagramRequestNonce++; // Cancel incoming stale diagramData
               if (actions.some((a) => a.type === "addComponent")) {
                 isAddComponentPending = true;
               }
-              diagramEditQueue = diagramEditQueue
-                .then(async () => {
+              diagramEditRunner.enqueue(
+                async (reqSeq) => {
                   const response = await this.client.sendRequest<ApplyEditsResponse | null>(DiagramMethods.applyEdits, {
                     uri: uriString,
-                    seq: 1,
+                    className: currentClassName,
+                    diagramType: currentDiagramType,
+                    seq: reqSeq,
                     actions,
                   });
 
@@ -607,12 +612,13 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                     else if (response?.renderHint === "debounced") debouncedUpdate();
                     else webviewPanel.webview.postMessage({ type: "stopLoading" });
                   }
-                })
-                .catch((e) => {
+                },
+                (e) => {
                   console.error("[diagram] Error applying diagram edit:", e);
                   pendingRenderHint = null;
                   webviewPanel.webview.postMessage({ type: "stopLoading" }); // Always recover
-                });
+                },
+              );
             }
           }
         } catch (e) {
@@ -628,11 +634,13 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.toString() !== document.uri.toString()) return;
 
-      const hint = pendingRenderHint;
-      pendingRenderHint = null; // Consume the flag
+      const hint = isApplyingDiagramEdit ? pendingRenderHint : null;
+      if (isApplyingDiagramEdit) {
+        pendingRenderHint = null; // Consume the flag only for our own edit
+      }
 
       // Signal the waitForDocumentChange() promise that the event has fired
-      if (pendingDocChangeResolve) {
+      if (isApplyingDiagramEdit && pendingDocChangeResolve) {
         const resolve = pendingDocChangeResolve;
         pendingDocChangeResolve = null;
         resolve();
@@ -766,6 +774,9 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     const scriptUri = webview
       .asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "dist", "diagram.js"))
       .with({ query: `v=${Date.now()}` });
+    const runtimeWasmUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, "server", "dist", "release.wasm"),
+    );
     const nonce = getNonce();
 
     return `<!DOCTYPE html>
@@ -773,7 +784,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; img-src data: ${webview.cspSource}; font-src ${webview.cspSource}; connect-src ${webview.cspSource};">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}' 'wasm-unsafe-eval'; img-src data: ${webview.cspSource}; font-src ${webview.cspSource}; connect-src ${webview.cspSource};">
   <title>Modelica Diagram</title>
   <style>
     body {
@@ -1536,7 +1547,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     </select>
   </div>
   <div id="breadcrumb-bar" style="display: none;"></div>
-  <div id="container"></div>
+  <div id="container" data-wasm-url="${runtimeWasmUri}"></div>
   <div id="placeholder">Loading diagram...</div>
   <div id="spinner"></div>
 

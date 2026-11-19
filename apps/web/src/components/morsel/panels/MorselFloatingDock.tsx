@@ -11,6 +11,7 @@ import {
   RowsIcon,
   ServerIcon,
   ShareAndroidIcon,
+  ShieldCheckIcon,
   SidebarCollapseIcon,
   SidebarExpandIcon,
   SparklesFillIcon,
@@ -60,6 +61,8 @@ export interface MorselFloatingDockProps {
   onSimulate: () => void;
   onOpenCloudModal: () => void;
   onFlatten: () => void;
+  onRunOnDemandLints?: ((mode: "all" | "formal" | "compiler") => void) | undefined;
+  isRunningOnDemandLints?: boolean | undefined;
   shareButtonRef: React.RefObject<HTMLButtonElement | null>;
   isShareDialogOpen: boolean;
   setShareDialogOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -91,6 +94,8 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
   onSimulate,
   onOpenCloudModal,
   onFlatten,
+  onRunOnDemandLints,
+  isRunningOnDemandLints = false,
   shareButtonRef,
   isShareDialogOpen,
   setShareDialogOpen,
@@ -139,7 +144,7 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
             rel="noopener noreferrer"
             style={{ display: "flex", alignItems: "center" }}
           >
-            <img src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"} alt="Morsel" style={{ height: 20 }} />
+            <img src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"} alt="Ansatz" style={{ height: 20 }} />
           </a>
           <div
             style={{ width: 1, height: 20, backgroundColor: "var(--color-border-default, var(--ms-divider, #30363d))" }}
@@ -354,6 +359,36 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
           />
         </>
       )}
+      {onRunOnDemandLints && (
+        <>
+          <div style={{ width: 1, height: 20, backgroundColor: "var(--ms-divider, rgba(255, 255, 255, 0.08))" }} />
+          <ActionMenu>
+            <ActionMenu.Anchor>
+              <IconButton
+                icon={ShieldCheckIcon}
+                size="small"
+                variant="invisible"
+                disabled={isRunningOnDemandLints}
+                aria-label="Run Formal & Compiler Lints"
+                title="Run Formal Verification & WASM Compiler Lints"
+              />
+            </ActionMenu.Anchor>
+            <ActionMenu.Overlay width="medium">
+              <ActionList>
+                <ActionList.Item onSelect={() => onRunOnDemandLints("all")}>
+                  Run All On-Demand Checks (Formal + Compiler)
+                </ActionList.Item>
+                <ActionList.Item onSelect={() => onRunOnDemandLints("formal")}>
+                  Run Formal Verification Only (S7xxx / M7xxx)
+                </ActionList.Item>
+                <ActionList.Item onSelect={() => onRunOnDemandLints("compiler")}>
+                  Run WASM Compiler Lints Only (Tier-1 CST)
+                </ActionList.Item>
+              </ActionList>
+            </ActionMenu.Overlay>
+          </ActionMenu>
+        </>
+      )}
       {!isPlaygroundRoute && (
         <>
           <div style={{ width: 1, height: 20, backgroundColor: "var(--ms-divider, rgba(255, 255, 255, 0.08))" }} />
@@ -427,8 +462,8 @@ export const MorselFloatingDock: React.FC<MorselFloatingDockProps> = ({
           icon={SparklesFillIcon}
           size="small"
           variant={isAiOpen ? "primary" : "invisible"}
-          aria-label="Toggle Morsel AI Assistant"
-          title="Morsel AI Assistant"
+          aria-label="Toggle Ansatz AI Assistant"
+          title="Ansatz AI Assistant"
           onClick={onToggleAi}
         />
       )}

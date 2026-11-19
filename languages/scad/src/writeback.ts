@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { WritebackContext, WritebackEdit, WritebackHandler } from "@modelscript/dsl";
+import {
+  CstUnparser,
+  type SyntaxNode,
+  type WritebackContext,
+  type WritebackEdit,
+  type WritebackHandler,
+} from "@modelscript/dsl";
 import { ScadPatcher } from "./patcher.js";
 
 function escapeRegex(str: string): string {
@@ -9,7 +15,7 @@ function escapeRegex(str: string): string {
 
 /**
  * First-class writeback handler for OpenSCAD.
- * Uses ScadPatcher and CST byte-ranges to update top-level variables and parameters.
+ * Uses ScadPatcher and CstUnparser byte-ranges to update top-level variables and parameters.
  */
 export const scadWriteback: WritebackHandler = (ctx: WritebackContext): WritebackEdit | WritebackEdit[] | null => {
   const { entry, fullText, newValue, rootCst } = ctx;
@@ -32,7 +38,21 @@ export const scadWriteback: WritebackHandler = (ctx: WritebackContext): Writebac
     }
   }
 
-  // 2. Exact CST node field range from AST indexing
+  // 2. Canonical CstUnparser CST field/value patching
+  const cstRoot = ((rootCst as { rootNode?: SyntaxNode } | undefined)?.rootNode ?? rootCst) as SyntaxNode | undefined;
+  const cstPatch = CstUnparser.patchWritebackValue(fullText, cstRoot, entry, newValue, {
+    valueFields: ["value", "expression", "val", "initializer"],
+    operators: ["="],
+  });
+  if (cstPatch) {
+    return {
+      startOffset: cstPatch.startIndex,
+      endOffset: cstPatch.endIndex,
+      newText: cstPatch.text,
+    };
+  }
+
+  // 3. Exact CST node field range from AST indexing
   if (entry.fieldRanges) {
     const valField =
       entry.fieldRanges["value"] ??

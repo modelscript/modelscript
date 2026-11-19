@@ -4,6 +4,7 @@
 import { extractEmtNetlist, parsePscx } from "@modelscript/pscad";
 import { parseUrdf } from "@modelscript/urdf";
 import React, { useEffect, useMemo, useState } from "react";
+import { DslLanguagePanelMount, hasMorselLanguagePanel, triggerBrowserFileDownload } from "../util/LanguagePanelHost";
 import { BltVisualizer } from "./BltVisualizer.js";
 import { PscadLineConstantsPanel } from "./PscadLineConstantsPanel.js";
 import { PscadScriptSegmentsPanel } from "./PscadScriptSegmentsPanel.js";
@@ -2573,7 +2574,38 @@ export function computeInspectorSubTabs(
   return tabs;
 }
 
-export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
+export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = (props) => {
+  const normalizedDialect = (props.dialect || "").toLowerCase();
+  const dslHost = useMemo(
+    () => ({
+      onCodeChange: props.onCodeChange,
+      onRevealLine: props.onRevealLine,
+      onUpdateProjectFile: props.onUpdateProjectFile,
+      exportFile: triggerBrowserFileDownload,
+    }),
+    [props.onCodeChange, props.onRevealLine, props.onUpdateProjectFile],
+  );
+
+  if (hasMorselLanguagePanel(normalizedDialect)) {
+    return (
+      <DslLanguagePanelMount
+        registry="morsel"
+        lookupKey={normalizedDialect}
+        code={props.code}
+        dialect={normalizedDialect}
+        colorMode={props.colorMode}
+        mode="inspector"
+        documentUri={props.documentUri}
+        projectFiles={props.projectFiles}
+        host={dslHost}
+      />
+    );
+  }
+
+  return <LegacyPolyglotDomainPanel {...props} />;
+};
+
+const LegacyPolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
   dialect,
   code,
   colorMode,

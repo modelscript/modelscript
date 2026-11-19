@@ -176,6 +176,7 @@ export class PolyglotLiveSyncManager implements vscode.Disposable {
             targetSource?: string | undefined;
           }>("modelscript/projectModel", {
             uri: fromUri,
+            targetUri: toUri,
             targetLang,
             options: { strict: false, includeInferredFeatures: true },
           });
@@ -198,10 +199,27 @@ export class PolyglotLiveSyncManager implements vscode.Disposable {
         targetSource = transformer.transform({ name: baseName }, targetLang);
       }
 
-      if (targetSource && targetSource !== targetDoc.getText()) {
+      const oldText = targetDoc.getText();
+      if (targetSource && targetSource !== oldText) {
+        // Apply a minimal prefix/suffix hunk instead of replacing 0..EOF so untouched comments and cursor state persist
+        let prefix = 0;
+        const minLen = Math.min(oldText.length, targetSource.length);
+        while (prefix < minLen && oldText.charCodeAt(prefix) === targetSource.charCodeAt(prefix)) {
+          prefix++;
+        }
+        let oldEnd = oldText.length;
+        let newEnd = targetSource.length;
+        while (
+          oldEnd > prefix &&
+          newEnd > prefix &&
+          oldText.charCodeAt(oldEnd - 1) === targetSource.charCodeAt(newEnd - 1)
+        ) {
+          oldEnd--;
+          newEnd--;
+        }
         const edit = new vscode.WorkspaceEdit();
-        const entireRange = new vscode.Range(targetDoc.positionAt(0), targetDoc.positionAt(targetDoc.getText().length));
-        edit.replace(targetDoc.uri, entireRange, targetSource);
+        const replaceRange = new vscode.Range(targetDoc.positionAt(prefix), targetDoc.positionAt(oldEnd));
+        edit.replace(targetDoc.uri, replaceRange, targetSource.slice(prefix, newEnd));
         await vscode.workspace.applyEdit(edit);
       }
     } catch (err) {
@@ -338,6 +356,123 @@ export function registerPolyglotActions(context: vscode.ExtensionContext, client
         `Polyglot Live Model Sync is now ${active ? "ENABLED (Automatic)" : "PAUSED"}.`,
       );
     }),
+  );
+
+  // 4. On-Demand Formal & WASM Compiler Lint Commands
+  const onDemandDiagnostics = vscode.languages.createDiagnosticCollection("modelscript-on-demand");
+  disposables.push(onDemandDiagnostics);
+
+  interface FormalLintRpcDiagnostic {
+    range: {
+      start: { line: number; character: number };
+      end: { line: number; character: number };
+    };
+    severity?: 1 | 2 | 3 | 4 | undefined;
+    code?: string | number | undefined;
+    source?: string | undefined;
+    message: string;
+  }
+
+  interface FormalLintRpcResponse {
+    ok?: boolean | undefined;
+    diagnostics?: FormalLintRpcDiagnostic[] | undefined;
+    formalCount?: number | undefined;
+    compilerCount?: number | undefined;
+    durationMs?: number | undefined;
+    error?: string | undefined;
+  }
+
+  const executeOnDemandLints = async (options: {
+    includeFormal: boolean;
+    includeCompilerLints: boolean;
+    label: string;
+  }): Promise<void> => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      vscode.window.showWarningMessage(`No active editor document to run ${options.label}.`);
+      return;
+    }
+    if (!client) {
+      vscode.window.showWarningMessage("ModelScript language server client is not connected.");
+      return;
+    }
+
+    const document = editor.document;
+    const uri = document.uri.toString();
+    const languageId = document.languageId || inferLanguageId(document.fileName);
+
+    try {
+      const response = await client.sendRequest<FormalLintRpcResponse>("modelscript/runFormalLints", {
+        uri,
+        languageId,
+        includeFormal: options.includeFormal,
+        includeCompilerLints: options.includeCompilerLints,
+      });
+
+      if (response && response.ok === false && response.error) {
+        vscode.window.showErrorMessage(`${options.label} failed: ${response.error}`);
+        return;
+      }
+
+      const rawDiags = response?.diagnostics ?? [];
+      const mappedDiags = rawDiags.map((d) => {
+        const range = new vscode.Range(
+          new vscode.Position(Math.max(0, d.range.start.line), Math.max(0, d.range.start.character)),
+          new vscode.Position(Math.max(0, d.range.end.line), Math.max(0, d.range.end.character)),
+        );
+        const severity =
+          d.severity === 2
+            ? vscode.DiagnosticSeverity.Warning
+            : d.severity === 3
+              ? vscode.DiagnosticSeverity.Information
+              : d.severity === 4
+                ? vscode.DiagnosticSeverity.Hint
+                : vscode.DiagnosticSeverity.Error;
+        const diag = new vscode.Diagnostic(range, d.message, severity);
+        if (d.code !== undefined) {
+          diag.code = d.code;
+        }
+        diag.source = d.source ?? (options.includeFormal ? "modelscript-formal" : "modelscript-compiler");
+        return diag;
+      });
+
+      onDemandDiagnostics.set(document.uri, mappedDiags);
+
+      if (mappedDiags.length > 0) {
+        await vscode.commands.executeCommand("workbench.actions.view.problems");
+        const errorCount = mappedDiags.filter((d) => d.severity === vscode.DiagnosticSeverity.Error).length;
+        const warnCount = mappedDiags.filter((d) => d.severity === vscode.DiagnosticSeverity.Warning).length;
+        const durationSuffix =
+          typeof response?.durationMs === "number" ? ` in ${response.durationMs.toFixed(0)} ms` : "";
+        vscode.window.showWarningMessage(
+          `${options.label}: ${mappedDiags.length} issue(s) found (${errorCount} error(s), ${warnCount} warning(s))${durationSuffix}.`,
+        );
+      } else {
+        const durationSuffix =
+          typeof response?.durationMs === "number" ? ` (${response.durationMs.toFixed(0)} ms)` : "";
+        vscode.window.showInformationMessage(`${options.label}: All checks passed with 0 issues${durationSuffix}.`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(`${options.label} failed: ${msg}`);
+    }
+  };
+
+  disposables.push(
+    vscode.commands.registerCommand("modelscript.runFormalLints", () =>
+      executeOnDemandLints({
+        includeFormal: true,
+        includeCompilerLints: false,
+        label: "Formal Verification Lints",
+      }),
+    ),
+    vscode.commands.registerCommand("modelscript.runCompilerLints", () =>
+      executeOnDemandLints({
+        includeFormal: false,
+        includeCompilerLints: true,
+        label: "WASM Compiler Lints",
+      }),
+    ),
   );
 
   return new vscode.Disposable(() => {

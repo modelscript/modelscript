@@ -546,6 +546,317 @@ export const SysML2ErrorCode = {
     message: (calcName: string, reason: string = "") =>
       `Standard table/calculator lookup '${calcName}' could not be evaluated${reason ? `: ${reason}` : "."}`,
   },
+
+  // ── 2xxx (Extended): SOTA Scoping, Visibility & Specialization Hygiene ─
+  UNRESOLVED_REDEFINITION_OR_SUBSETTING: {
+    code: 2007,
+    rule: "unresolved-redefinition-or-subsetting",
+    severity: "error" as DiagnosticSeverity,
+    message: (kind: string, target: string) => `Unresolved ${kind} target '${target}' in enclosing or inherited scope.`,
+  },
+  VISIBILITY_ACCESS_VIOLATION: {
+    code: 2009,
+    rule: "visibility-access-violation",
+    severity: "error" as DiagnosticSeverity,
+    message: (name: string, visibility: string, owner: string) =>
+      `Cannot access ${visibility} member '${name}' of '${owner}' from this scope.`,
+  },
+  TOP_LEVEL_IMPORT_NOT_PRIVATE: {
+    code: 2010,
+    rule: "top-level-import-not-private",
+    severity: "warning" as DiagnosticSeverity,
+    message: (pkg: string) => `Top-level import '${pkg}' should be declared 'private'.`,
+  },
+  INHERITED_MEMBER_SHADOWING: {
+    code: 2011,
+    rule: "inherited-member-shadowing",
+    severity: "warning" as DiagnosticSeverity,
+    message: (name: string, baseName: string) =>
+      `Member '${name}' shadows inherited feature from '${baseName}' without ':>>' ('redefines').`,
+  },
+  UNUSED_IMPORT_OR_PRIVATE_MEMBER: {
+    code: 2012,
+    rule: "unused-import-or-private-member",
+    severity: "info" as DiagnosticSeverity,
+    message: (kind: string, name: string) => `Unused ${kind} '${name}' is never referenced.`,
+  },
+
+  // ── 3xxx (Extended): SOTA KerML / SysML v2 Type & Specialization ───────
+  USAGE_DEFINITION_KIND_MISMATCH: {
+    code: 3010,
+    rule: "usage-definition-kind-mismatch",
+    severity: "error" as DiagnosticSeverity,
+    message: (usageName: string, usageKind: string, actualType: string, expectedKind: string) =>
+      `Usage '${usageName}' (${usageKind}) cannot be typed by '${actualType}'; expected ${expectedKind}.`,
+  },
+  DISJOINT_CLASSIFIER_SPECIALIZATION: {
+    code: 3011,
+    rule: "disjoint-classifier-specialization",
+    severity: "error" as DiagnosticSeverity,
+    message: (subName: string, subKind: string, superName: string, superKind: string) =>
+      `'${subName}' (${subKind}) cannot specialize disjoint classifier '${superName}' (${superKind}).`,
+  },
+  REDEFINITION_TYPE_NOT_CONFORMING: {
+    code: 3012,
+    rule: "redefinition-type-not-conforming",
+    severity: "error" as DiagnosticSeverity,
+    message: (featureName: string, subType: string, baseFeature: string, baseType: string) =>
+      `Feature '${featureName}' type '${subType}' does not conform to specialized feature '${baseFeature}' type '${baseType}'.`,
+  },
+  SUBSETTING_MULTIPLICITY_WIDENING: {
+    code: 3013,
+    rule: "subsetting-multiplicity-widening",
+    severity: "warning" as DiagnosticSeverity,
+    message: (featureName: string, subMult: string, baseFeature: string, baseMult: string) =>
+      `Multiplicity [${subMult}] on '${featureName}' violates conformance with [${baseMult}] on '${baseFeature}'.`,
+  },
+  REDEFINITION_MODIFIER_CONFORMANCE: {
+    code: 3014,
+    rule: "redefinition-modifier-conformance",
+    severity: "error" as DiagnosticSeverity,
+    message: (featureName: string, detail: string) =>
+      `Specialization modifier conformance violation on '${featureName}': ${detail}.`,
+  },
+  INVOCATION_SIGNATURE_MISMATCH: {
+    code: 3015,
+    rule: "invocation-signature-mismatch",
+    severity: "error" as DiagnosticSeverity,
+    message: (callee: string, detail: string) => `Invalid invocation of '${callee}': ${detail}.`,
+  },
+  TRIGGER_EXPRESSION_TYPE_MISMATCH: {
+    code: 3016,
+    rule: "trigger-expression-type-mismatch",
+    severity: "error" as DiagnosticSeverity,
+    message: (construct: string, expectedType: string, actualType: string) =>
+      `'${construct}' expression expects '${expectedType}', got '${actualType}'.`,
+  },
+  MULTIPLICITY_BOUND_NOT_NATURAL: {
+    code: 3017,
+    rule: "multiplicity-bound-not-natural",
+    severity: "error" as DiagnosticSeverity,
+    message: (boundText: string) =>
+      `Multiplicity bound '${boundText}' must evaluate to a non-negative integer ('Natural') or '*'.`,
+  },
+  INVALID_CAST_OR_TYPE_TEST: {
+    code: 3018,
+    rule: "invalid-cast-or-type-test",
+    severity: "warning" as DiagnosticSeverity,
+    message: (op: string, sourceType: string, targetType: string) =>
+      `Invalid '${op}' expression: '${sourceType}' and '${targetType}' are mutually disjoint types.`,
+  },
+
+  // ── 4xxx (Extended): SOTA Metamodel & INCOSE Requirement Rules ─────────
+  VARIATION_VARIANT_MISUSE: {
+    code: 4014,
+    rule: "variation-variant-misuse",
+    severity: "error" as DiagnosticSeverity,
+    message: (name: string, detail: string) => `Invalid variation/variant usage on '${name}': ${detail}.`,
+  },
+  ABSTRACT_OR_COMPOSITE_MISUSE: {
+    code: 4015,
+    rule: "abstract-or-composite-misuse",
+    severity: "error" as DiagnosticSeverity,
+    message: (name: string, detail: string) => `Invalid modifier or composite ownership on '${name}': ${detail}.`,
+  },
+  PARALLEL_STATE_INVALID_TRANSITION: {
+    code: 4016,
+    rule: "parallel-state-invalid-transition",
+    severity: "error" as DiagnosticSeverity,
+    message: (stateName: string) => `Parallel state '${stateName}' cannot directly own transitions or successions.`,
+  },
+  DUPLICATE_SINGLETON_MEMBER: {
+    code: 4020,
+    rule: "duplicate-singleton-member",
+    severity: "error" as DiagnosticSeverity,
+    message: (memberKind: string, ownerName: string) => `'${ownerName}' may have at most one '${memberKind}' member.`,
+  },
+  SEND_TO_PORT_WITHOUT_VIA: {
+    code: 4021,
+    rule: "send-to-port-without-via",
+    severity: "warning" as DiagnosticSeverity,
+    message: (portName: string) =>
+      `Sending to port '${portName}' should use 'via ${portName}' instead of 'to ${portName}'.`,
+  },
+  INTERFACE_END_NOT_PORT: {
+    code: 4022,
+    rule: "interface-end-not-port",
+    severity: "error" as DiagnosticSeverity,
+    message: (endName: string, ifaceName: string) =>
+      `Interface end '${endName}' in '${ifaceName}' must be a port usage.`,
+  },
+  BINDING_CONNECTOR_NOT_BINARY: {
+    code: 4023,
+    rule: "binding-connector-not-binary",
+    severity: "error" as DiagnosticSeverity,
+    message: (name: string) => `Binding connector '${name}' must connect exactly two features.`,
+  },
+  INCOSE_REQUIREMENT_QUALITY: {
+    code: 4024,
+    rule: "incose-requirement-quality",
+    severity: "info" as DiagnosticSeverity,
+    message: (reqName: string, term: string) =>
+      `Requirement '${reqName}' documentation contains ambiguous or unverified term '${term}' (INCOSE GtWR).`,
+  },
+  INDIVIDUAL_OR_PORTION_MISUSE: {
+    code: 4025,
+    rule: "individual-or-portion-misuse",
+    severity: "error" as DiagnosticSeverity,
+    message: (name: string, detail: string) => `Invalid individual/portion usage on '${name}': ${detail}.`,
+  },
+  METADATA_ANNOTATION_INVALID: {
+    code: 4026,
+    rule: "metadata-annotation-invalid",
+    severity: "error" as DiagnosticSeverity,
+    message: (metaName: string, detail: string) => `Invalid metadata annotation '${metaName}': ${detail}.`,
+  },
+
+  // ── 6xxx: Live Fast Formal Verification & Reasoner Lints (<10ms) ───────
+  CONTRACT_REFINEMENT_VIOLATION: {
+    code: 6001,
+    rule: "contract-refinement-violation",
+    severity: "error" as DiagnosticSeverity,
+    message: (subName: string, superName: string, detail: string) =>
+      `Behavioral Liskov substitution violated: '${subName}' does not refine contract of '${superName}' (${detail}).`,
+  },
+  REQUIREMENT_DECOMPOSITION_GAP: {
+    code: 6002,
+    rule: "requirement-decomposition-gap",
+    severity: "warning" as DiagnosticSeverity,
+    message: (parentReq: string, detail: string) =>
+      `Requirement decomposition gap on '${parentReq}': sub-requirements do not entail parent (${detail}).`,
+  },
+  VACUOUS_REQUIREMENT_ASSUMPTION: {
+    code: 6003,
+    rule: "vacuous-requirement-assumption",
+    severity: "warning" as DiagnosticSeverity,
+    message: (reqName: string, detail: string) =>
+      `Requirement '${reqName}' is vacuously satisfied because its 'assume' constraints are unsatisfiable (${detail}).`,
+  },
+  OPAQUE_INTERFACE_INCOMPATIBILITY: {
+    code: 6004,
+    rule: "opaque-interface-incompatibility",
+    severity: "error" as DiagnosticSeverity,
+    message: (sourcePort: string, targetPort: string, detail: string) =>
+      `Incompatible port contract between '${sourcePort}' and '${targetPort}': ${detail}.`,
+  },
+  ZENO_CHATTERING_TRANSITION_CYCLE: {
+    code: 6011,
+    rule: "zeno-chattering-transition-cycle",
+    severity: "warning" as DiagnosticSeverity,
+    message: (cycleDesc: string) => `Zero-dwell Zeno chattering cycle detected across transitions: ${cycleDesc}.`,
+  },
+  PARALLEL_REGION_WRITE_RACE: {
+    code: 6012,
+    rule: "parallel-region-write-race",
+    severity: "error" as DiagnosticSeverity,
+    message: (stateName: string, varName: string, regA: string, regB: string) =>
+      `Concurrent write race in parallel state '${stateName}': variable '${varName}' written simultaneously by regions '${regA}' and '${regB}'.`,
+  },
+  CALC_DOMAIN_OR_DIV_ZERO: {
+    code: 6020,
+    rule: "calc-domain-or-div-zero",
+    severity: "error" as DiagnosticSeverity,
+    message: (ownerName: string, detail: string) =>
+      `Abstract interpretation domain violation in '${ownerName}': ${detail}.`,
+  },
+  SEQUENCE_INDEX_OUT_OF_BOUNDS: {
+    code: 6021,
+    rule: "sequence-index-out-of-bounds",
+    severity: "error" as DiagnosticSeverity,
+    message: (seqName: string, indexDesc: string, boundsDesc: string) =>
+      `1-based sequence index ${indexDesc} on '${seqName}' is out of bounds (${boundsDesc}).`,
+  },
+  PHYSICAL_DOMAIN_IMPOSSIBILITY: {
+    code: 6022,
+    rule: "physical-domain-impossibility",
+    severity: "error" as DiagnosticSeverity,
+    message: (featureName: string, typeName: string, detail: string) =>
+      `Physical domain impossibility on '${featureName}' ('${typeName}'): ${detail}.`,
+  },
+  OVER_OR_UNDER_CONSTRAINED_PART: {
+    code: 6030,
+    rule: "over-or-under-constrained-part",
+    severity: "warning" as DiagnosticSeverity,
+    message: (partName: string, detail: string) => `Structural equation imbalance in '${partName}': ${detail}.`,
+  },
+  HIGH_INDEX_PARAMETRIC_CONSTRAINT: {
+    code: 6031,
+    rule: "high-index-parametric-constraint",
+    severity: "warning" as DiagnosticSeverity,
+    message: (modelName: string, index: number | string, detail: string) =>
+      `High-index parametric DAE (index ${index}) in '${modelName}': ${detail}.`,
+  },
+  FLOW_NETWORK_DRIVER_CONFLICT: {
+    code: 6032,
+    rule: "flow-network-driver-conflict",
+    severity: "error" as DiagnosticSeverity,
+    message: (targetPort: string, drivers: string) =>
+      `Multiple conflicting 'out' flow drivers (${drivers}) connected to '${targetPort}'.`,
+  },
+  CYBER_PHYSICAL_NYQUIST_VIOLATION: {
+    code: 6033,
+    rule: "cyber-physical-nyquist-violation",
+    severity: "warning" as DiagnosticSeverity,
+    message: (controllerName: string, fsHz: string, minHz: string, detail: string) =>
+      `Cyber-physical Nyquist violation on '${controllerName}': sampling rate ${fsHz} Hz is below required ${minHz} Hz (${detail}).`,
+  },
+  MULTIPLICITY_BUDGET_ROLLUP_VIOLATION: {
+    code: 6041,
+    rule: "multiplicity-budget-rollup-violation",
+    severity: "error" as DiagnosticSeverity,
+    message: (parentName: string, attrName: string, minRollup: string, limit: string) =>
+      `Multiplicity roll-up violation in '${parentName}': child minimum '${attrName}' sum (${minRollup}) exceeds limit (${limit}).`,
+  },
+  SPATIAL_ENVELOPE_CLASH_OR_PROTRUSION: {
+    code: 6042,
+    rule: "spatial-envelope-clash-or-protrusion",
+    severity: "warning" as DiagnosticSeverity,
+    message: (ownerOrPart: string, detail: string) => `Spatial envelope violation on '${ownerOrPart}': ${detail}.`,
+  },
+
+  // ── 7xxx: On-Demand Deep Formal Verification Lints (--formal / Morsel) ─
+  HIERARCHICAL_PDR_UNSAFE_STATE: {
+    code: 7001,
+    rule: "hierarchical-pdr-unsafe-state",
+    severity: "error" as DiagnosticSeverity,
+    message: (smName: string, targetState: string, trace: string) =>
+      `[IC3/PDR] Unsafe state '${targetState}' in '${smName}' is reachable (${trace}).`,
+  },
+  ASIL_SINGLE_POINT_OF_FAILURE: {
+    code: 7002,
+    rule: "asil-single-point-of-failure",
+    severity: "error" as DiagnosticSeverity,
+    message: (hazardName: string, detail: string) =>
+      `[FTA/MCS] Safety violation for hazard '${hazardName}': ${detail}.`,
+  },
+  PROBABILISTIC_REQUIREMENT_VIOLATED: {
+    code: 7003,
+    rule: "probabilistic-requirement-violated",
+    severity: "error" as DiagnosticSeverity,
+    message: (reqName: string, detail: string) =>
+      `[UQ/Chance] Probabilistic requirement '${reqName}' violated: ${detail}.`,
+  },
+  MECHANICAL_TOLERANCE_STACK_INTERFERENCE: {
+    code: 7004,
+    rule: "mechanical-tolerance-stack-interference",
+    severity: "warning" as DiagnosticSeverity,
+    message: (chainName: string, detail: string) =>
+      `[Tolerance Stack] Assembly chain '${chainName}' violates clearance bounds: ${detail}.`,
+  },
+  RELATIONAL_HYPERPROPERTY_VIOLATION: {
+    code: 7005,
+    rule: "relational-hyperproperty-violation",
+    severity: "error" as DiagnosticSeverity,
+    message: (targetName: string, detail: string) =>
+      `[2-Safety] Relational hyperproperty violated in '${targetName}': ${detail}.`,
+  },
+  CONTINUOUS_FLOWPIPE_OR_BARRIER_VIOLATION: {
+    code: 7006,
+    rule: "continuous-flowpipe-or-barrier-violation",
+    severity: "error" as DiagnosticSeverity,
+    message: (modelName: string, detail: string) =>
+      `[DAE/Barrier] Continuous safety reachability violation in '${modelName}': ${detail}.`,
+  },
 } as const;
 
 /**

@@ -29,9 +29,46 @@
  */
 
 interface TsmWasmExports {
+  memory: WebAssembly.Memory;
   __new: (size: number, id: number) => number;
-  memory: { buffer: ArrayBufferLike };
+  __pin?: ((ptr: number) => number) | undefined;
+  __unpin?: ((ptr: number) => void) | undefined;
   diagram_tsm_compact_1d: (n: number, coordsPtr: number, outPtr: number) => void;
+}
+
+let tsmScratch: { wasm: TsmWasmExports; capacity: number; coordsPtr: number; outPtr: number } | null = null;
+
+function ensureTsmScratch(wasm: TsmWasmExports, n: number) {
+  if (tsmScratch && tsmScratch.wasm === wasm && tsmScratch.capacity >= n) {
+    return tsmScratch;
+  }
+  if (tsmScratch && tsmScratch.wasm === wasm && typeof wasm.__unpin === "function") {
+    try {
+      wasm.__unpin(tsmScratch.coordsPtr);
+      wasm.__unpin(tsmScratch.outPtr);
+    } catch {
+      // ignore
+    }
+  }
+  const capacity = Math.max(n, tsmScratch?.wasm === wasm ? tsmScratch.capacity * 2 : 256);
+  const alloc = (bytes: number): number => {
+    const ptr = wasm.__new(bytes, 0);
+    if (typeof wasm.__pin === "function") {
+      try {
+        wasm.__pin(ptr);
+      } catch {
+        // ignore
+      }
+    }
+    return ptr;
+  };
+  tsmScratch = {
+    wasm,
+    capacity,
+    coordsPtr: alloc(capacity * 4),
+    outPtr: alloc(capacity * 4),
+  };
+  return tsmScratch;
 }
 
 function tryCompactTsm1DWasm(coords: Int32Array): Int32Array | null {
@@ -43,12 +80,12 @@ function tryCompactTsm1DWasm(coords: Int32Array): Int32Array | null {
   if (!wasm || typeof wasm.diagram_tsm_compact_1d !== "function" || !wasm.__new || !wasm.memory) return null;
   const n = coords.length;
   if (n === 0) return new Int32Array(0);
-  const coordsPtr = wasm.__new(n * 4, 0);
-  const outPtr = wasm.__new(n * 4, 0);
-  new Int32Array(wasm.memory.buffer, coordsPtr, n).set(coords);
-  wasm.diagram_tsm_compact_1d(n, coordsPtr, outPtr);
+  const validWasm = wasm as TsmWasmExports;
+  const sc = ensureTsmScratch(validWasm, n);
+  new Int32Array(validWasm.memory.buffer, sc.coordsPtr, n).set(coords);
+  validWasm.diagram_tsm_compact_1d(n, sc.coordsPtr, sc.outPtr);
   const compacted = new Int32Array(n);
-  compacted.set(new Int32Array(wasm.memory.buffer, outPtr, n));
+  compacted.set(new Int32Array(validWasm.memory.buffer, sc.outPtr, n));
   return compacted;
 }
 

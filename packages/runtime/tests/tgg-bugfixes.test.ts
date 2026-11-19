@@ -6,9 +6,11 @@ import { compileWcojMatcher, planWcojPattern } from "@modelscript/dsl/codegen/re
 import { registerNodeDomain, runCPA } from "@modelscript/dsl/codegen/rewriting/cpa";
 import assert from "node:assert";
 import { describe, it } from "node:test";
+import { getDefaultWasmExports, setCachedWasmExports } from "../src/dae/wasm_dae.js";
 import { PolyglotTransformer } from "../src/interop/polyglot-transformer.js";
 import { registerNodeNameKey, solveWhereConstraints } from "../src/interop/tgg-pattern-interpreter.js";
 import { ThreadDomain } from "../src/interop/thread_hypergraph.js";
+import { alignPorts1DWasm, compactTsm1DWasm, routeOrthogonalAStarWasm } from "../src/solvers/wasm_cad_diagram.js";
 
 describe("TGG Engine Bugfix Regressions", () => {
   it("should auto-invert omitted backwardExpr and evaluate scientific notation safely in solveWhereConstraints", () => {
@@ -326,5 +328,202 @@ describe("TGG Engine Bugfix Regressions", () => {
     const kCode = compileWcojMatcher(kPlan);
     assert.ok(kCode.includes("iter4Ptr"));
     assert.ok(kCode.includes("leapfrog_intersect_2(iter1Ptr, iter4Ptr, resultZSetPtr)"));
+  });
+
+  it("reuses and pins WASM scratch buffers across repeated A*, TSM compaction, and port alignment calls", () => {
+    const prevWasm = getDefaultWasmExports();
+    const memory = new WebAssembly.Memory({ initial: 2 });
+    let nextOffset = 64;
+    let newCount = 0;
+    const pinned = new Set<number>();
+    const unpinned: number[] = [];
+
+    const mockWasm = {
+      memory,
+      __new: (size: number) => {
+        newCount++;
+        const ptr = nextOffset;
+        nextOffset += (size + 7) & ~7 || 8;
+        return ptr;
+      },
+      __pin: (ptr: number) => {
+        pinned.add(ptr);
+        return ptr;
+      },
+      __unpin: (ptr: number) => {
+        pinned.delete(ptr);
+        unpinned.push(ptr);
+      },
+      diagram_route_orthogonal_astar: (
+        _c: number,
+        _r: number,
+        sx: number,
+        sy: number,
+        ex: number,
+        ey: number,
+        _sd: number,
+        _bp: number,
+        _cp: number,
+        _g: number,
+        _gs: number,
+        _p: number,
+        _cl: number,
+        _hs: number,
+        _hp: number,
+        outPtr: number,
+      ) => {
+        const view = new Int32Array(memory.buffer, outPtr, 4);
+        view[0] = sx;
+        view[1] = sy;
+        view[2] = ex;
+        view[3] = ey;
+        return 2;
+      },
+      diagram_tsm_compact_1d: (n: number, coordsPtr: number, outPtr: number) => {
+        const inp = new Int32Array(memory.buffer, coordsPtr, n);
+        const out = new Int32Array(memory.buffer, outPtr, n);
+        for (let i = 0; i < n; i++) out[i] = inp[i]!;
+        return n > 0 ? out[n - 1]! : 0;
+      },
+      diagram_port_align_1d: (
+        n: number,
+        targetsPtr: number,
+        _s: number,
+        _min: number,
+        _max: number,
+        outPtr: number,
+      ) => {
+        const inp = new Float64Array(memory.buffer, targetsPtr, n);
+        const out = new Float64Array(memory.buffer, outPtr, n);
+        out.set(inp);
+      },
+    };
+
+    try {
+      setCachedWasmExports(mockWasm);
+
+      const grid = new Uint8Array(16);
+      routeOrthogonalAStarWasm({ cols: 4, rows: 4, startX: 0, startY: 0, endX: 3, endY: 3, grid });
+      const allocsAfterFirstAStar = newCount;
+      assert.strictEqual(allocsAfterFirstAStar, 7);
+
+      // Same-size and smaller calls must trigger ZERO new allocations
+      routeOrthogonalAStarWasm({ cols: 4, rows: 4, startX: 1, startY: 1, endX: 2, endY: 2, grid });
+      routeOrthogonalAStarWasm({ cols: 2, rows: 2, startX: 0, startY: 0, endX: 1, endY: 1, grid: new Uint8Array(4) });
+      assert.strictEqual(newCount, allocsAfterFirstAStar, "Expected 0 allocations on same/smaller A* calls");
+
+      compactTsm1DWasm(new Int32Array([0, 20, 40]));
+      alignPorts1DWasm(new Float64Array([10, 20]), 5, 0, 100);
+      const afterWarmup = newCount;
+      compactTsm1DWasm(new Int32Array([5, 15, 25]));
+      alignPorts1DWasm(new Float64Array([15, 25]), 5, 0, 100);
+      assert.strictEqual(newCount, afterWarmup, "Expected 0 allocations on repeated TSM/port alignment calls");
+
+      // Growing grid must unpin replaced scratch pointers before re-allocating
+      routeOrthogonalAStarWasm({ cols: 6, rows: 6, startX: 0, startY: 0, endX: 5, endY: 5, grid: new Uint8Array(36) });
+      assert.ok(unpinned.length >= 6, `Expected replaced scratch buffers to be unpinned, got ${unpinned.length}`);
+      assert.ok(pinned.size >= 7, "Expected active scratch buffers to remain pinned");
+    } finally {
+      setCachedWasmExports(prevWasm);
+    }
+  });
+
+  it("WasmPolyglotKernelBridge consolidates DBSP Z-Set deltas via WASM exports and falls back to exact TS parity", async () => {
+    const { PolyglotTransformer, WasmPolyglotKernelBridge } = await import("../src/index.js");
+
+    // 1. Mock linear-memory WASM DBSP Z-Set exports
+    const heaps = new Map<number, Array<{ id: number; weight: number }>>();
+    const consolidated = new Map<number, Array<{ id: number; weight: number }>>();
+    let nextPtr = 1;
+    const mockWasm = {
+      createZSet: () => {
+        const ptr = nextPtr++;
+        heaps.set(ptr, []);
+        return ptr;
+      },
+      zset_add: (ptr: number, id: number, weight: number) => {
+        heaps.get(ptr)!.push({ id, weight });
+      },
+      zset_consolidate: (ptr: number) => {
+        const map = new Map<number, number>();
+        for (const item of heaps.get(ptr)!) {
+          map.set(item.id, (map.get(item.id) ?? 0) + item.weight);
+        }
+        const surviving = Array.from(map.entries())
+          .filter(([, w]) => w !== 0)
+          .map(([id, weight]) => ({ id, weight }));
+        consolidated.set(ptr, surviving);
+        return surviving.length;
+      },
+      zset_count: (ptr: number) => consolidated.get(ptr)?.length ?? 0,
+      zset_getElement: (ptr: number, idx: number) => consolidated.get(ptr)![idx]!.id,
+      zset_getWeight: (ptr: number, idx: number) => consolidated.get(ptr)![idx]!.weight,
+    };
+
+    const sampleDeltas = {
+      added: [
+        { id: "Motor", kind: "model", name: "Motor" },
+        { id: "TempSensor", kind: "model", name: "TempSensor" },
+      ],
+      removed: ["TempSensor", "LegacyValve"],
+    };
+
+    const wasmBridge = new WasmPolyglotKernelBridge(mockWasm);
+    const wasmRes = wasmBridge.consolidateDeltas(sampleDeltas);
+    assert.strictEqual(wasmRes.usedWasmZSet, true);
+    assert.strictEqual(wasmRes.cancelledCount, 2, "TempSensor (+1/-1) should cancel out inside Z-Set");
+    assert.deepStrictEqual(
+      wasmRes.added.map((n) => n.name),
+      ["Motor"],
+    );
+    assert.deepStrictEqual(wasmRes.removed, ["LegacyValve"]);
+
+    // 2. Compare against pure-TS fallback parity
+    const tsBridge = new WasmPolyglotKernelBridge(null);
+    const tsRes = tsBridge.consolidateDeltas(sampleDeltas);
+    assert.strictEqual(tsRes.usedWasmZSet, false);
+    assert.strictEqual(tsRes.cancelledCount, 2);
+    assert.deepStrictEqual(
+      tsRes.added.map((n) => n.name),
+      wasmRes.added.map((n) => n.name),
+    );
+    assert.deepStrictEqual(tsRes.removed, wasmRes.removed);
+    void PolyglotTransformer;
+  });
+
+  it("WasmPolyglotKernelBridge auto-hydrates real compiled AssemblyScript DBSP Z-Set exports by default", async () => {
+    const { WasmPolyglotKernelBridge, setCachedWasmExports } = await import("../src/index.js");
+    const prevGlobal = (globalThis as { __modelscript_wasm_exports__?: unknown }).__modelscript_wasm_exports__;
+    setCachedWasmExports(null);
+    delete (globalThis as { __modelscript_wasm_exports__?: unknown }).__modelscript_wasm_exports__;
+    try {
+      const bridge = new WasmPolyglotKernelBridge();
+      assert.strictEqual(
+        bridge.isWasmZSetAvailable(),
+        true,
+        "Expected compiled build/release.wasm to expose DBSP Z-Set exports via getDefaultWasmExports()",
+      );
+      const res = bridge.consolidateDeltas({
+        added: [
+          { id: "Pump", kind: "model", name: "Pump" },
+          { id: "Transient", kind: "model", name: "Transient" },
+        ],
+        updated: [{ id: "Valve", kind: "model", name: "Valve" }],
+        removed: ["Transient", "OldPipe"],
+      });
+      assert.strictEqual(res.usedWasmZSet, true);
+      assert.strictEqual(res.cancelledCount, 2);
+      assert.deepStrictEqual(
+        res.added.map((n) => n.name),
+        ["Pump"],
+      );
+      assert.deepStrictEqual(
+        res.updated.map((n) => n.name),
+        ["Valve"],
+      );
+      assert.deepStrictEqual(res.removed, ["OldPipe"]);
+    } finally {
+      setCachedWasmExports(prevGlobal ?? null);
+    }
   });
 });

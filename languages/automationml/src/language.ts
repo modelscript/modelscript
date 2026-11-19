@@ -29,6 +29,21 @@ export const automationMLLanguage = language({
     folding: ["Element", { rule: "COMMENT", kind: "comment", defaultCollapsed: true }],
     outline: ["Element"],
   },
+  ui: {
+    panels: [
+      {
+        id: "amlEditor",
+        viewType: "modelscript.amlEditor",
+        title: "AutomationML Engineering Workbench",
+        shortTitle: "AutomationML",
+        selector: ["*.aml", "*.caex"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/AmlPanel.tsx",
+        artifactViewTypes: ["automationml", "aml", "caex"],
+      },
+    ],
+  },
   extras: ($) => [/[ \t\r\n]+/, $["COMMENT"]!, $["PROCESSING_INSTRUCTION"]!],
   rules: xmlRules,
 

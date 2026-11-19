@@ -20,23 +20,198 @@ const readValueAfterEquals = (text: string, eqIdx: number): { valStart: number; 
   let i = eqIdx + 1;
   while (i < text.length && isAsciiWhitespaceCode(text.charCodeAt(i))) i++;
   const start = i;
+  let depth = 0;
+  let inString = false;
+  let inQuotedIdent = false;
+  let valueStartedWithQuote = text[start] === '"';
+  let sawValueToken = false;
+
   while (i < text.length) {
     const ch = text[i]!;
-    if (ch === ";" || ch === '"' || ch === "\r" || ch === "\n") break;
+    const next = i + 1 < text.length ? text[i + 1] : "";
+
+    if (inString) {
+      if (ch === "\\" && i + 1 < text.length) {
+        i += 2;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+        sawValueToken = true;
+      }
+      i++;
+      continue;
+    }
+
+    if (inQuotedIdent) {
+      if (ch === "\\" && i + 1 < text.length) {
+        i += 2;
+        continue;
+      }
+      if (ch === "'") {
+        inQuotedIdent = false;
+        sawValueToken = true;
+      }
+      i++;
+      continue;
+    }
+
+    if (ch === "/" && (next === "/" || next === "*")) {
+      if (depth === 0) break;
+      if (next === "/") {
+        i += 2;
+        while (i < text.length && text[i] !== "\n") i++;
+        continue;
+      }
+      i += 2;
+      while (i < text.length) {
+        if (text[i] === "*" && text[i + 1] === "/") {
+          i += 2;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      // Opening quote of a String value (e.g. parameter String s = "Pump") vs trailing description string
+      if (depth === 0 && !valueStartedWithQuote && sawValueToken) {
+        break;
+      }
+      if (depth === 0 && valueStartedWithQuote && sawValueToken) {
+        // Second string at depth 0 is a trailing description string
+        break;
+      }
+      inString = true;
+      i++;
+      continue;
+    }
+
+    if (ch === "'") {
+      inQuotedIdent = true;
+      i++;
+      continue;
+    }
+
+    if (ch === "(" || ch === "{" || ch === "[") {
+      depth++;
+      sawValueToken = true;
+      i++;
+      continue;
+    }
+
+    if (ch === ")" || ch === "}" || ch === "]") {
+      if (depth === 0) break;
+      depth--;
+      sawValueToken = true;
+      i++;
+      continue;
+    }
+
+    if (depth === 0) {
+      if (ch === ";" || ch === ",") break;
+      if (
+        text.startsWith("annotation", i) &&
+        (i === start || !isAsciiIdentContinue(text.charCodeAt(i - 1))) &&
+        (i + 10 >= text.length || !isAsciiIdentContinue(text.charCodeAt(i + 10)) || text[i + 10] === "(")
+      ) {
+        let k = i + 10;
+        while (k < text.length && isAsciiWhitespaceCode(text.charCodeAt(k))) k++;
+        if (text[k] === "(") break;
+      }
+      if (!isAsciiWhitespaceCode(text.charCodeAt(i))) {
+        sawValueToken = true;
+      }
+    }
+
     i++;
   }
+
   if (i === start) return null;
   const trimmed = text.slice(start, i).trimEnd();
+  if (trimmed.length === 0) return null;
   return { valStart: start, valEnd: start + trimmed.length };
 };
 
+const isBindingEqualsAt = (text: string, i: number): boolean => {
+  if (text[i] !== "=") return false;
+  if (text[i + 1] === "=") return false;
+  const prev = i > 0 ? text[i - 1] : "";
+  return prev !== ":" && prev !== "<" && prev !== ">" && prev !== "!";
+};
+
 const findFirstSingleEqualsValue = (text: string): { valStart: number; valEnd: number } | null => {
+  let inString = false;
+  let inQuoted = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let depth = 0;
+  let fallbackNestedEqIdx = -1;
+
   for (let i = 0; i < text.length; i++) {
-    if (text[i] === "=" && text[i + 1] !== "=") {
-      return readValueAfterEquals(text, i);
+    const ch = text[i]!;
+    const next = i + 1 < text.length ? text[i + 1] : "";
+
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (inQuoted) {
+      if (ch === "\\") i++;
+      else if (ch === "'") inQuoted = false;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "'") {
+      inQuoted = true;
+      continue;
+    }
+    if (ch === "(" || ch === "{" || ch === "[") {
+      depth++;
+      continue;
+    }
+    if (ch === ")" || ch === "}" || ch === "]") {
+      if (depth > 0) depth--;
+      continue;
+    }
+
+    if (isBindingEqualsAt(text, i)) {
+      if (depth === 0) {
+        return readValueAfterEquals(text, i);
+      }
+      if (fallbackNestedEqIdx === -1) {
+        fallbackNestedEqIdx = i;
+      }
     }
   }
-  return null;
+  return fallbackNestedEqIdx !== -1 ? readValueAfterEquals(text, fallbackNestedEqIdx) : null;
 };
 
 const findNamedAssignmentValue = (text: string, name: string): { valStart: number; valEnd: number } | null => {
@@ -50,7 +225,7 @@ const findNamedAssignmentValue = (text: string, name: string): { valStart: numbe
     if (prevOk && nextOk) {
       let i = afterName;
       while (i < text.length && isAsciiWhitespaceCode(text.charCodeAt(i))) i++;
-      if (i < text.length && text[i] === "=" && text[i + 1] !== "=") {
+      if (i < text.length && isBindingEqualsAt(text, i)) {
         const span = readValueAfterEquals(text, i);
         if (span) return span;
       }

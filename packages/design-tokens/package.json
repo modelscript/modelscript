@@ -24,13 +24,33 @@
   "type": "module",
   "exports": {
     "./tokens.css": "./src/tokens.css",
+    "./tokens-vscode.css": "./src/tokens-vscode.css",
+    "./tokens-web.css": "./src/tokens-web.css",
     "./components.css": "./src/components.css",
     "./runtime": "./src/runtime.ts",
+    "./panel": {
+      "types": "./dist/panel.d.ts",
+      "default": "./dist/panel.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
-    "src/**"
+    "src/**",
+    "dist/**"
   ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.10",
+    "react": "^19.2.7",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
   "modelscript": {
     "tier": "beta",
     "category": "core"

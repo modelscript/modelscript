@@ -28,6 +28,18 @@ export const opendriveLanguage = language({
   lsp: {
     fileExtensions: [".xodr", ".xml"],
   },
+  diagram: {
+    placement: {
+      persistence: "sidecar",
+    },
+    mutations: {
+      sections: { node: "OpenDRIVE", edge: "OpenDRIVE" },
+      createNode: (className: string, name: string, x: number, y: number) =>
+        `<road name="${name}" length="100.0" id="${name}" junction="-1"><planView><geometry s="0.0" x="${Math.round(x)}" y="${Math.round(y)}" hdg="0.0" length="100.0"><line/></geometry></planView><!-- ${className} --></road>`,
+      createEdge: (source: string, target: string) =>
+        `<junction id="${source}_to_${target}" name="${source}_to_${target}"><connection id="0" incomingRoad="${source}" connectingRoad="${target}" contactPoint="start"/></junction>`,
+    },
+  },
   extras: ($) => {
     const comment = $["COMMENT"];
     const pi = $["PROCESSING_INSTRUCTION"];

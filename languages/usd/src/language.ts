@@ -21,6 +21,21 @@ export const usdLanguage = language({
   lsp: {
     fileExtensions: [".usd", ".usda", ".usdc", ".usdz"],
   },
+  ui: {
+    panels: [
+      {
+        id: "usdEditor",
+        viewType: "modelscript.usdEditor",
+        title: "OpenUSD Stage & UsdPhysics Inspector",
+        shortTitle: "OpenUSD",
+        selector: ["*.usd", "*.usda", "*.usdc", "*.usdz"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/UsdPanel.tsx",
+        artifactViewTypes: ["usd", "usda", "usd-scene"],
+      },
+    ],
+  },
 
   actions: [
     {

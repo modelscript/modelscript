@@ -24,6 +24,21 @@ export const igtlLanguage = language({
   lsp: {
     fileExtensions: [".igtl.json", ".igtl", ".plus.xml"],
   },
+  ui: {
+    panels: [
+      {
+        id: "igtlEditor",
+        viewType: "modelscript.igtlEditor",
+        title: "OpenIGTLink & Surgical Robotics Studio",
+        shortTitle: "OpenIGTLink",
+        selector: ["*.igtl", "*.igtl.json", "*.plus.xml"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/IgtlPanel.tsx",
+        artifactViewTypes: ["igtl", "openigtlink"],
+      },
+    ],
+  },
   indexing: {
     canIndex: canIndexIgtl,
     indexFile: indexIgtlFile,

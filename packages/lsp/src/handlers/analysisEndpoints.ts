@@ -2632,6 +2632,10 @@ export function registerAnalysisEndpoints(context: LspContext) {
           propertyName: usedNumericalFallback ? "NumericalTrajectorySensitivityTube" : "ContinuousReachabilityEnvelope",
         });
 
+        const { verifyArenaFormal } = await import("@modelscript/modelica");
+        const formalCst = target.entry ? docContext.queryEngine.toQueryDB().cstNode(target.entry.id) : null;
+        const formalDiagnostics = await verifyArenaFormal(arena, target.name, formalCst, null);
+
         return {
           success: true,
           status: fpStage?.certified
@@ -2646,6 +2650,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
           stepSize: dt,
           numVariables: arena.varCount,
           canonicalTrace,
+          formalDiagnostics,
           summary:
             fpStage?.summary ??
             (usedNumericalFallback

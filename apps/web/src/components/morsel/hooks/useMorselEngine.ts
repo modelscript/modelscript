@@ -1,10 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  box,
+  cylinder,
+  intersect,
+  ManifoldWorker,
+  mirror,
   patchModelicaCadAnnotation,
+  rotate,
+  scale,
+  sphere,
+  subtract,
+  translate,
+  union,
   type DynamicBindingConfig,
   type GdtOverlayPayload,
   type ModelicaTelemetryParams,
+  type Solid,
   type SpoolKinematicsSpec,
 } from "@modelscript/cad";
 import { extractUsdCadComponents } from "@modelscript/usd/cad";
@@ -102,70 +114,6 @@ function pushTriangle(
   nz /= len;
   out.positions.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
   out.normals.push(nx, ny, nz, nx, ny, nz, nx, ny, nz);
-}
-
-function appendBoxTriangles(
-  out: TriangulatedMesh,
-  cx: number,
-  cy: number,
-  cz: number,
-  sx: number,
-  sy: number,
-  sz: number,
-): void {
-  const hx = sx / 2;
-  const hy = sy / 2;
-  const hz = sz / 2;
-  const v: [number, number, number][] = [
-    [cx - hx, cy - hy, cz - hz],
-    [cx + hx, cy - hy, cz - hz],
-    [cx + hx, cy + hy, cz - hz],
-    [cx - hx, cy + hy, cz - hz],
-    [cx - hx, cy - hy, cz + hz],
-    [cx + hx, cy - hy, cz + hz],
-    [cx + hx, cy + hy, cz + hz],
-    [cx - hx, cy + hy, cz + hz],
-  ];
-  const quads: [number, number, number, number][] = [
-    [4, 5, 6, 7],
-    [1, 0, 3, 2],
-    [5, 1, 2, 6],
-    [0, 4, 7, 3],
-    [3, 7, 6, 2],
-    [0, 1, 5, 4],
-  ];
-  for (const [i0, i1, i2, i3] of quads) {
-    pushTriangle(out, v[i0]!, v[i1]!, v[i2]!);
-    pushTriangle(out, v[i0]!, v[i2]!, v[i3]!);
-  }
-}
-
-function appendCylinderTriangles(
-  out: TriangulatedMesh,
-  cx: number,
-  cy: number,
-  cz: number,
-  radius: number,
-  height: number,
-  segments = 24,
-): void {
-  const y0 = cy - height / 2;
-  const y1 = cy + height / 2;
-  for (let i = 0; i < segments; i++) {
-    const a0 = (i / segments) * Math.PI * 2;
-    const a1 = ((i + 1) / segments) * Math.PI * 2;
-    const x0 = cx + Math.cos(a0) * radius;
-    const z0 = cz + Math.sin(a0) * radius;
-    const x1 = cx + Math.cos(a1) * radius;
-    const z1 = cz + Math.sin(a1) * radius;
-    // Side quad
-    pushTriangle(out, [x0, y0, z0], [x1, y0, z1], [x1, y1, z1]);
-    pushTriangle(out, [x0, y0, z0], [x1, y1, z1], [x0, y1, z0]);
-    // Top cap
-    pushTriangle(out, [cx, y1, cz], [x1, y1, z1], [x0, y1, z0]);
-    // Bottom cap
-    pushTriangle(out, [cx, y0, cz], [x0, y0, z0], [x1, y0, z1]);
-  }
 }
 
 function appendSphereTriangles(
@@ -426,13 +374,24 @@ export function tessellateStepSource(
   components: CadComponent[];
 } {
   const cartesianPoints = new Map<number, [number, number, number]>();
+  const directions = new Map<number, [number, number, number]>();
+  const axisPlacements = new Map<number, { ptId: number; zDirId?: number; xDirId?: number }>();
+  const cylSurfaces = new Map<number, { axisId: number; radius: number }>();
+  const coneSurfaces = new Map<number, { axisId: number; radius: number; semiAngle: number }>();
+  const sphSurfaces = new Map<number, { axisId: number; radius: number }>();
+  const torSurfaces = new Map<number, { axisId: number; major: number; minor: number }>();
   const vertexPoints = new Map<number, number>();
   const edgeCurves = new Map<number, [number, number]>();
   const orientedEdges = new Map<number, { edge: number; sense: boolean }>();
   const edgeLoops = new Map<number, number[]>();
   const polyLoops = new Map<number, number[]>();
-  const faceBounds = new Map<number, number>();
-  const advancedFaces: { id: number; name: string; bounds: number[] }[] = [];
+  const faceBounds = new Map<number, { loopId: number; isOuter: boolean }>();
+  const faceById = new Map<
+    number,
+    { id: number; name: string; bounds: number[]; surfaceId?: number; sameSense: boolean }
+  >();
+  const shells = new Map<number, number[]>();
+  const advancedFaces: { id: number; name: string; bounds: number[]; surfaceId?: number; sameSense: boolean }[] = [];
   const manifoldBreps: { id: number; name: string; shellId: number }[] = [];
   const products: { id: number; name: string }[] = [];
   const placements: { id: number; name: string; ptId: number }[] = [];
@@ -445,17 +404,22 @@ export function tessellateStepSource(
     const type = match[2]!.toUpperCase();
     const args = match[3]!;
 
-    if (type === "CARTESIAN_POINT") {
+    if (type === "CARTESIAN_POINT" || type === "DIRECTION") {
       const coordsMatch =
         /\(\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)\s*,\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)(?:\s*,\s*([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?))?\s*\)/.exec(
           args,
         );
       if (coordsMatch) {
-        cartesianPoints.set(id, [
+        const vec: [number, number, number] = [
           parseFloat(coordsMatch[1] || "0"),
           parseFloat(coordsMatch[2] || "0"),
           parseFloat(coordsMatch[3] || "0"),
-        ]);
+        ];
+        if (type === "CARTESIAN_POINT") {
+          cartesianPoints.set(id, vec);
+        } else {
+          directions.set(id, vec);
+        }
       }
     } else if (type === "VERTEX_POINT") {
       const refMatch = /#(\d+)/.exec(args);
@@ -479,14 +443,60 @@ export function tessellateStepSource(
       polyLoops.set(id, refs);
     } else if (type === "FACE_OUTER_BOUND" || type === "FACE_BOUND") {
       const refMatch = /#(\d+)/.exec(args);
-      if (refMatch) faceBounds.set(id, parseInt(refMatch[1]!, 10));
+      if (refMatch) faceBounds.set(id, { loopId: parseInt(refMatch[1]!, 10), isOuter: type === "FACE_OUTER_BOUND" });
+    } else if (type === "CYLINDRICAL_SURFACE" || type === "SPHERICAL_SURFACE") {
+      const axisMatch = /#(\d+)/.exec(args);
+      const nums = Array.from(args.replace(/#\d+/g, "").matchAll(/([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)/g)).map((m) =>
+        parseFloat(m[1]!),
+      );
+      const axisId = axisMatch ? parseInt(axisMatch[1]!, 10) : 0;
+      const radius = nums[nums.length - 1] ?? 1;
+      if (type === "CYLINDRICAL_SURFACE") {
+        cylSurfaces.set(id, { axisId, radius });
+      } else {
+        sphSurfaces.set(id, { axisId, radius });
+      }
+    } else if (type === "CONICAL_SURFACE") {
+      const axisMatch = /#(\d+)/.exec(args);
+      const nums = Array.from(args.replace(/#\d+/g, "").matchAll(/([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)/g)).map((m) =>
+        parseFloat(m[1]!),
+      );
+      const axisId = axisMatch ? parseInt(axisMatch[1]!, 10) : 0;
+      coneSurfaces.set(id, {
+        axisId,
+        radius: nums.length >= 2 ? nums[nums.length - 2]! : 1,
+        semiAngle: nums[nums.length - 1] ?? 0,
+      });
+    } else if (type === "TOROIDAL_SURFACE") {
+      const axisMatch = /#(\d+)/.exec(args);
+      const nums = Array.from(args.replace(/#\d+/g, "").matchAll(/([+-]?\d*\.?\d+(?:[eE][+-]?\d+)?)/g)).map((m) =>
+        parseFloat(m[1]!),
+      );
+      const axisId = axisMatch ? parseInt(axisMatch[1]!, 10) : 0;
+      torSurfaces.set(id, {
+        axisId,
+        major: nums.length >= 2 ? nums[nums.length - 2]! : 1,
+        minor: nums[nums.length - 1] ?? 0.25,
+      });
     } else if (type === "ADVANCED_FACE" || type === "FACE_SURFACE") {
       const nameMatch = /'([^']*)'/.exec(args);
       const boundListMatch = /\(([^)]*)\)/.exec(args);
       const bounds = boundListMatch
         ? Array.from(boundListMatch[1]!.matchAll(/#(\d+)/g)).map((m) => parseInt(m[1]!, 10))
         : [];
-      advancedFaces.push({ id, name: nameMatch?.[1] || `Face_${id}`, bounds });
+      const tailArgs = boundListMatch ? args.slice(boundListMatch.index + boundListMatch[0].length) : args;
+      const surfMatch = /#(\d+)/.exec(tailArgs);
+      const surfaceId = surfMatch ? parseInt(surfMatch[1]!, 10) : undefined;
+      const sameSense = !/\.\s*F\s*\./.test(tailArgs);
+      const faceObj = { id, name: nameMatch?.[1] || `Face_${id}`, bounds, surfaceId, sameSense };
+      advancedFaces.push(faceObj);
+      faceById.set(id, faceObj);
+    } else if (type === "CLOSED_SHELL" || type === "OPEN_SHELL") {
+      const faceListMatch = /\(([\s\S]*)\)/.exec(args);
+      const faceIds = faceListMatch
+        ? Array.from(faceListMatch[1]!.matchAll(/#(\d+)/g)).map((m) => parseInt(m[1]!, 10))
+        : [];
+      shells.set(id, faceIds);
     } else if (type === "MANIFOLD_SOLID_BREP") {
       const nameMatch = /'([^']*)'/.exec(args);
       const refMatch = /#(\d+)/.exec(args);
@@ -501,8 +511,10 @@ export function tessellateStepSource(
       products.push({ id, name });
     } else if (type === "AXIS2_PLACEMENT_3D") {
       const nameMatch = /'([^']*)'/.exec(args);
-      const refMatch = /#(\d+)/.exec(args);
-      placements.push({ id, name: nameMatch?.[1] || `Axis_${id}`, ptId: refMatch ? parseInt(refMatch[1]!, 10) : 0 });
+      const refs = Array.from(args.matchAll(/#(\d+)/g)).map((m) => parseInt(m[1]!, 10));
+      const ptId = refs[0] ?? 0;
+      placements.push({ id, name: nameMatch?.[1] || `Axis_${id}`, ptId });
+      axisPlacements.set(id, { ptId, zDirId: refs[1], xDirId: refs[2] });
     } else if (type === "NEXT_ASSEMBLY_USAGE_OCCURRENCE") {
       const strMatches = Array.from(args.matchAll(/'([^']*)'/g)).map((m) => m[1]!);
       const refs = Array.from(args.matchAll(/#(\d+)/g)).map((m) => parseInt(m[1]!, 10));
@@ -537,6 +549,50 @@ export function tessellateStepSource(
 
   const dist3 = (a: [number, number, number], b: [number, number, number]): number =>
     Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+
+  const norm3 = (v: [number, number, number]): [number, number, number] => {
+    const l = Math.hypot(v[0], v[1], v[2]) || 1;
+    return [v[0] / l, v[1] / l, v[2] / l];
+  };
+
+  const cross3 = (a: [number, number, number], b: [number, number, number]): [number, number, number] => [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+
+  const dot3 = (a: [number, number, number], b: [number, number, number]): number =>
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+  const resolveAxisFrame = (axisId: number) => {
+    const ax = axisPlacements.get(axisId);
+    const origin = (ax ? getPoint(ax.ptId) : null) ?? ([0, 0, 0] as [number, number, number]);
+    const rawZ = ax?.zDirId !== undefined ? directions.get(ax.zDirId) : undefined;
+    const zAxis = norm3(rawZ ?? [0, 0, 1]);
+    const rawX = ax?.xDirId !== undefined ? directions.get(ax.xDirId) : undefined;
+    let xCandidate: [number, number, number] = rawX ?? (Math.abs(zAxis[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0]);
+    const proj = dot3(xCandidate, zAxis);
+    xCandidate = [xCandidate[0] - proj * zAxis[0], xCandidate[1] - proj * zAxis[1], xCandidate[2] - proj * zAxis[2]];
+    const xAxis = norm3(xCandidate);
+    const yAxis = norm3(cross3(zAxis, xAxis));
+    return { origin, xAxis, yAxis, zAxis };
+  };
+
+  const emitTri = (
+    targetMesh: TriangulatedMesh,
+    a: [number, number, number],
+    b: [number, number, number],
+    c: [number, number, number],
+    flip = false,
+  ) => {
+    if (flip) {
+      pushTriangle(targetMesh, a, c, b);
+      pushTriangle(mesh, a, c, b);
+    } else {
+      pushTriangle(targetMesh, a, b, c);
+      pushTriangle(mesh, a, b, c);
+    }
+  };
 
   const pushUniquePt = (arr: [number, number, number][], p: [number, number, number]) => {
     if (arr.length > 0) {
@@ -584,29 +640,247 @@ export function tessellateStepSource(
     return pts;
   };
 
-  const triangulatedLoopIds = new Set<number>();
+  /** Ear-clipping planar polygon triangulator preserving concave L/U shapes. */
+  const triangulatePolygon3D = (pts: [number, number, number][], targetMesh: TriangulatedMesh) => {
+    if (pts.length < 3) return;
+    if (pts.length === 3) {
+      emitTri(targetMesh, pts[0]!, pts[1]!, pts[2]!);
+      return;
+    }
+    let nx = 0;
+    let ny = 0;
+    let nz = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i]!;
+      const b = pts[(i + 1) % pts.length]!;
+      nx += (a[1] - b[1]) * (a[2] + b[2]);
+      ny += (a[2] - b[2]) * (a[0] + b[0]);
+      nz += (a[0] - b[0]) * (a[1] + b[1]);
+    }
+    const n = norm3([nx, ny, nz]);
+    const ref: [number, number, number] = Math.abs(n[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+    const u = norm3(cross3(n, ref));
+    const v = norm3(cross3(n, u));
+    const proj2D = pts.map((p) => [dot3(p, u), dot3(p, v)] as [number, number]);
+    const indices = pts.map((_, idx) => idx);
+    let area2 = 0;
+    for (let i = 0; i < proj2D.length; i++) {
+      const a = proj2D[i]!;
+      const b = proj2D[(i + 1) % proj2D.length]!;
+      area2 += a[0] * b[1] - b[0] * a[1];
+    }
+    const ccw = area2 >= 0;
+    const cross2 = (a: [number, number], b: [number, number], c: [number, number]) =>
+      (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const pointInTri = (p: [number, number], a: [number, number], b: [number, number], c: [number, number]) => {
+      const s1 = cross2(a, b, p);
+      const s2 = cross2(b, c, p);
+      const s3 = cross2(c, a, p);
+      return ccw ? s1 >= -1e-7 && s2 >= -1e-7 && s3 >= -1e-7 : s1 <= 1e-7 && s2 <= 1e-7 && s3 <= 1e-7;
+    };
+    let guard = indices.length * indices.length + 10;
+    while (indices.length > 3 && guard-- > 0) {
+      let clipped = false;
+      for (let i = 0; i < indices.length; i++) {
+        const i0 = indices[(i - 1 + indices.length) % indices.length]!;
+        const i1 = indices[i]!;
+        const i2 = indices[(i + 1) % indices.length]!;
+        const cr = cross2(proj2D[i0]!, proj2D[i1]!, proj2D[i2]!);
+        if (ccw ? cr <= 1e-7 : cr >= -1e-7) continue;
+        let hasInside = false;
+        for (const other of indices) {
+          if (other === i0 || other === i1 || other === i2) continue;
+          if (pointInTri(proj2D[other]!, proj2D[i0]!, proj2D[i1]!, proj2D[i2]!)) {
+            hasInside = true;
+            break;
+          }
+        }
+        if (!hasInside) {
+          emitTri(targetMesh, pts[i0]!, pts[i1]!, pts[i2]!);
+          indices.splice(i, 1);
+          clipped = true;
+          break;
+        }
+      }
+      if (!clipped) break;
+    }
+    for (let i = 1; i + 1 < indices.length; i++) {
+      emitTri(targetMesh, pts[indices[0]!]!, pts[indices[i]!]!, pts[indices[i + 1]!]!);
+    }
+  };
 
-  // 1. Triangulate explicit ADVANCED_FACE / FACE_SURFACE loops if present
-  for (const face of advancedFaces) {
-    for (const boundId of face.bounds) {
-      const loopId = faceBounds.get(boundId) ?? boundId;
+  const collectFaceBoundVertices = (bounds: number[]): [number, number, number][] => {
+    const out: [number, number, number][] = [];
+    for (const bId of bounds) {
+      const entry = faceBounds.get(bId);
+      const loopId = entry?.loopId ?? bId;
       triangulatedLoopIds.add(loopId);
+      const polyPts = polyLoops.get(loopId);
+      if (polyPts) {
+        for (const vId of polyPts) {
+          const p = getPoint(vId);
+          if (p) out.push(p);
+        }
+      }
+      const oEdges = edgeLoops.get(loopId);
+      if (oEdges) {
+        for (const oeId of oEdges) {
+          const oe = orientedEdges.get(oeId);
+          const ec = edgeCurves.get(oe ? oe.edge : oeId);
+          if (ec) {
+            const p0 = getPoint(ec[0]);
+            const p1 = getPoint(ec[1]);
+            if (p0) out.push(p0);
+            if (p1) out.push(p1);
+          }
+        }
+      }
+    }
+    return out;
+  };
+
+  const triangulatedLoopIds = new Set<number>();
+  const tessellateFace = (
+    face: { id: number; name: string; bounds: number[]; surfaceId?: number; sameSense: boolean },
+    targetMesh: TriangulatedMesh,
+  ) => {
+    if (face.surfaceId !== undefined) {
+      const cyl = cylSurfaces.get(face.surfaceId) ?? coneSurfaces.get(face.surfaceId);
+      if (cyl) {
+        const boundPts = collectFaceBoundVertices(face.bounds);
+        const { origin, xAxis, yAxis, zAxis } = resolveAxisFrame(cyl.axisId);
+        let zMin = Infinity;
+        let zMax = -Infinity;
+        for (const p of boundPts) {
+          const z = dot3([p[0] - origin[0], p[1] - origin[1], p[2] - origin[2]], zAxis);
+          if (z < zMin) zMin = z;
+          if (z > zMax) zMax = z;
+        }
+        if (Number.isFinite(zMin) && Number.isFinite(zMax) && zMax - zMin > 1e-6) {
+          const semiAngle = "semiAngle" in cyl ? cyl.semiAngle : 0;
+          const rBase = cyl.radius * scaleFactor;
+          const r0 = Math.max(1e-4, rBase + zMin * Math.tan(semiAngle));
+          const r1 = Math.max(1e-4, rBase + zMax * Math.tan(semiAngle));
+          const segs = 24;
+          const flip = !face.sameSense;
+          for (let i = 0; i < segs; i++) {
+            const a0 = (i / segs) * Math.PI * 2;
+            const a1 = ((i + 1) / segs) * Math.PI * 2;
+            const c0 = Math.cos(a0);
+            const s0 = Math.sin(a0);
+            const c1 = Math.cos(a1);
+            const s1 = Math.sin(a1);
+            const pt = (r: number, c: number, s: number, z: number): [number, number, number] => [
+              origin[0] + r * (c * xAxis[0] + s * yAxis[0]) + z * zAxis[0],
+              origin[1] + r * (c * xAxis[1] + s * yAxis[1]) + z * zAxis[1],
+              origin[2] + r * (c * xAxis[2] + s * yAxis[2]) + z * zAxis[2],
+            ];
+            const p00 = pt(r0, c0, s0, zMin);
+            const p10 = pt(r0, c1, s1, zMin);
+            const p11 = pt(r1, c1, s1, zMax);
+            const p01 = pt(r1, c0, s0, zMax);
+            emitTri(targetMesh, p00, p10, p11, flip);
+            emitTri(targetMesh, p00, p11, p01, flip);
+          }
+          return;
+        }
+      }
+
+      const sph = sphSurfaces.get(face.surfaceId);
+      if (sph) {
+        collectFaceBoundVertices(face.bounds);
+        const { origin } = resolveAxisFrame(sph.axisId);
+        const r = Math.max(1e-4, sph.radius * scaleFactor);
+        appendSphereTriangles(targetMesh, origin[0], origin[1], origin[2], r, 14, 24);
+        appendSphereTriangles(mesh, origin[0], origin[1], origin[2], r, 14, 24);
+        return;
+      }
+
+      const tor = torSurfaces.get(face.surfaceId);
+      if (tor) {
+        collectFaceBoundVertices(face.bounds);
+        const { origin, xAxis, yAxis, zAxis } = resolveAxisFrame(tor.axisId);
+        const maj = Math.max(1e-4, tor.major * scaleFactor);
+        const minR = Math.max(1e-4, tor.minor * scaleFactor);
+        const majSegs = 24;
+        const minSegs = 14;
+        const flip = !face.sameSense;
+        const ptT = (uA: number, vA: number): [number, number, number] => {
+          const cu = Math.cos(uA);
+          const su = Math.sin(uA);
+          const cv = Math.cos(vA);
+          const sv = Math.sin(vA);
+          const ringR = maj + minR * cv;
+          return [
+            origin[0] + ringR * (cu * xAxis[0] + su * yAxis[0]) + minR * sv * zAxis[0],
+            origin[1] + ringR * (cu * xAxis[1] + su * yAxis[1]) + minR * sv * zAxis[1],
+            origin[2] + ringR * (cu * xAxis[2] + su * yAxis[2]) + minR * sv * zAxis[2],
+          ];
+        };
+        for (let i = 0; i < majSegs; i++) {
+          const u0 = (i / majSegs) * Math.PI * 2;
+          const u1 = ((i + 1) / majSegs) * Math.PI * 2;
+          for (let j = 0; j < minSegs; j++) {
+            const v0 = (j / minSegs) * Math.PI * 2;
+            const v1 = ((j + 1) / minSegs) * Math.PI * 2;
+            const p00 = ptT(u0, v0);
+            const p10 = ptT(u1, v0);
+            const p11 = ptT(u1, v1);
+            const p01 = ptT(u0, v1);
+            emitTri(targetMesh, p00, p10, p11, flip);
+            emitTri(targetMesh, p00, p11, p01, flip);
+          }
+        }
+        return;
+      }
+    }
+
+    const resolvedBounds = face.bounds.map((bId) => ({
+      bId,
+      entry: faceBounds.get(bId),
+    }));
+    const hasExplicitOuter = resolvedBounds.some((b) => b.entry?.isOuter);
+    for (const { bId, entry } of resolvedBounds) {
+      const loopId = entry?.loopId ?? bId;
+      triangulatedLoopIds.add(loopId);
+      // Skip inner hole bounds when an outer boundary is present so drill/pocket holes aren't filled solid
+      if (hasExplicitOuter && entry && !entry.isOuter) {
+        continue;
+      }
       const polyPts = polyLoops.get(loopId);
       if (polyPts && polyPts.length >= 3) {
         const pts = polyPts.map(getPoint).filter((p): p is [number, number, number] => p !== null);
-        for (let i = 1; i + 1 < pts.length; i++) {
-          pushTriangle(mesh, pts[0]!, pts[i]!, pts[i + 1]!);
-        }
+        triangulatePolygon3D(pts, targetMesh);
         continue;
       }
       const oEdges = edgeLoops.get(loopId);
       if (oEdges && oEdges.length >= 3) {
         const pts = resolveEdgeLoopPts(oEdges);
-        for (let i = 1; i + 1 < pts.length; i++) {
-          pushTriangle(mesh, pts[0]!, pts[i]!, pts[i + 1]!);
-        }
+        triangulatePolygon3D(pts, targetMesh);
       }
     }
+  };
+
+  // 1. Tessellate per-solid meshes when MANIFOLD_SOLID_BREP -> CLOSED_SHELL -> ADVANCED_FACE hierarchy is present
+  const attributedFaceIds = new Set<number>();
+  const solidMeshes: TriangulatedMesh[] = manifoldBreps.map((brep) => {
+    const partMesh: TriangulatedMesh = { positions: [], normals: [] };
+    const shellFaces = shells.get(brep.shellId) ?? [];
+    for (const fId of shellFaces) {
+      const face = faceById.get(fId);
+      if (face && !attributedFaceIds.has(fId)) {
+        attributedFaceIds.add(fId);
+        tessellateFace(face, partMesh);
+      }
+    }
+    return partMesh;
+  });
+
+  // 1a. Tessellate any remaining ADVANCED_FACE / FACE_SURFACE not owned by a shell
+  for (const face of advancedFaces) {
+    if (attributedFaceIds.has(face.id)) continue;
+    const discardMesh: TriangulatedMesh = { positions: [], normals: [] };
+    tessellateFace(face, discardMesh);
   }
 
   // 1b. Also triangulate any remaining POLY_LOOP / EDGE_LOOP entities not referenced by ADVANCED_FACE
@@ -646,6 +920,7 @@ export function tessellateStepSource(
           ? products.map((p) => p.name)
           : [extractStepFilename(stepCode)?.replace(/\.(step|stp|p21)$/i, "") || "STEP_Solid"];
 
+  const hasExactSolidMeshes = solidMeshes.some((m) => m.positions.length > 0);
   const totalTriangles = Math.floor(mesh.positions.length / 9);
   const entityCount = Math.max(1, namedEntities.length);
 
@@ -653,7 +928,10 @@ export function tessellateStepSource(
     const cleanName = rawName.replace(/[^A-Za-z0-9_.-]/g, "_") || `Part_${idx + 1}`;
     const partColor = palette[idx % palette.length]!;
     let partMesh: TriangulatedMesh;
-    if (entityCount === 1) {
+    const exactSolidMesh = hasExactSolidMeshes ? solidMeshes[idx] : undefined;
+    if (exactSolidMesh && exactSolidMesh.positions.length > 0) {
+      partMesh = exactSolidMesh;
+    } else if (entityCount === 1) {
       partMesh = mesh;
     } else if (totalTriangles >= entityCount) {
       const startTri = Math.floor((idx * totalTriangles) / entityCount);
@@ -795,114 +1073,266 @@ export function tessellateScadSource(scadCode: string): {
     }
   }
 
-  const resolveActiveTranslation = (matchIndex: number): [number, number, number] => {
-    const prefix = cleanCode.slice(Math.max(0, matchIndex - 260), matchIndex);
-    const transMatches = Array.from(
-      prefix.matchAll(/translate\s*\(\s*(?:v\s*=\s*)?\[\s*([^\]]+)\s*\]\s*\)\s*(?:\{\s*[^{}]*)?$/gi),
-    );
-    const lastMatch = transMatches[transMatches.length - 1];
-    if (!lastMatch?.[1]) return [0, 0, 0];
-    const coords = splitTopLevelArgs(lastMatch[1]);
-    const tx = evalScadExpr(coords[0], vars, 0) / 25;
-    const tz = evalScadExpr(coords[1], vars, 0) / 25;
-    const ty = evalScadExpr(coords[2], vars, 0) / 25;
-    return [tx, ty, tz];
+  const parseNamedArgs = (argsStr: string): { named: Record<string, string>; positional: string[] } => {
+    const parts = splitTopLevelArgs(argsStr);
+    const named: Record<string, string> = {};
+    const positional: string[] = [];
+    for (const p of parts) {
+      const kv = /^([A-Za-z_$]\w*)\s*=\s*(.+)$/.exec(p);
+      if (kv) {
+        named[kv[1]!] = kv[2]!.trim();
+      } else if (p.trim()) {
+        positional.push(p.trim());
+      }
+    }
+    return { named, positional };
   };
 
+  const parseVec3 = (expr: string | undefined, def: [number, number, number]): [number, number, number] => {
+    if (!expr) return def;
+    const inner = /\[\s*([\s\S]*)\s*\]/.exec(expr)?.[1];
+    if (!inner) {
+      const s = evalScadExpr(expr, vars, def[0]);
+      return [s, s, s];
+    }
+    const items = splitTopLevelArgs(inner);
+    return [
+      evalScadExpr(items[0], vars, def[0]),
+      evalScadExpr(items[1], vars, def[1]),
+      evalScadExpr(items[2], vars, def[2]),
+    ];
+  };
+
+  let cursor = 0;
+  const skipWs = () => {
+    while (cursor < cleanCode.length && /\s/.test(cleanCode[cursor]!)) cursor++;
+  };
+
+  const readBalanced = (openCh: string, closeCh: string): string => {
+    if (cleanCode[cursor] !== openCh) return "";
+    cursor++;
+    const start = cursor;
+    let depth = 1;
+    while (cursor < cleanCode.length && depth > 0) {
+      const ch = cleanCode[cursor]!;
+      if (ch === openCh) depth++;
+      else if (ch === closeCh) depth--;
+      cursor++;
+    }
+    return cleanCode.slice(start, Math.max(start, cursor - 1));
+  };
+
+  const foldSolids = (items: Solid[], op: "union" | "difference" | "intersection"): Solid | null => {
+    if (items.length === 0) return null;
+    let acc = items[0]!;
+    for (let i = 1; i < items.length; i++) {
+      const next = items[i]!;
+      if (op === "difference") acc = subtract(acc, next);
+      else if (op === "intersection") acc = intersect(acc, next);
+      else acc = union(acc, next);
+    }
+    return acc;
+  };
+
+  const parseBlockStatements = (): Solid[] => {
+    const solids: Solid[] = [];
+    while (cursor < cleanCode.length) {
+      skipWs();
+      if (cursor >= cleanCode.length || cleanCode[cursor] === "}") {
+        if (cleanCode[cursor] === "}") cursor++;
+        break;
+      }
+      if (cleanCode[cursor] === ";") {
+        cursor++;
+        continue;
+      }
+      const node = parseStatement();
+      if (node) solids.push(node);
+    }
+    return solids;
+  };
+
+  const parseStatement = (): Solid | null => {
+    skipWs();
+    if (cursor >= cleanCode.length) return null;
+    if (cleanCode[cursor] === "{") {
+      const saved = cursor + 1;
+      cursor = saved;
+      return foldSolids(parseBlockStatements(), "union");
+    }
+    // Optional modifier prefix (*, !, #, %)
+    if ("*!#%".includes(cleanCode[cursor]!)) {
+      const mod = cleanCode[cursor]!;
+      cursor++;
+      const inner = parseStatement();
+      return mod === "*" ? null : inner;
+    }
+    const identMatch = /^([A-Za-z_$]\w*)/.exec(cleanCode.slice(cursor));
+    if (!identMatch) {
+      // Advance to next semicolon or closing brace
+      while (cursor < cleanCode.length && cleanCode[cursor] !== ";" && cleanCode[cursor] !== "}") cursor++;
+      if (cleanCode[cursor] === ";") cursor++;
+      return null;
+    }
+    const ident = identMatch[1]!;
+    cursor += ident.length;
+    skipWs();
+    // Skip assignments `name = expr;`
+    if (cleanCode[cursor] === "=") {
+      cursor++;
+      const eqStart = cursor;
+      while (cursor < cleanCode.length && cleanCode[cursor] !== ";" && cleanCode[cursor] !== "}") cursor++;
+      const rhs = cleanCode.slice(eqStart, cursor).trim();
+      const val = evalScadExpr(rhs, vars, NaN);
+      if (Number.isFinite(val)) vars[ident] = val;
+      if (cleanCode[cursor] === ";") cursor++;
+      return null;
+    }
+    if (cleanCode[cursor] !== "(") {
+      while (cursor < cleanCode.length && cleanCode[cursor] !== ";" && cleanCode[cursor] !== "}") cursor++;
+      if (cleanCode[cursor] === ";") cursor++;
+      return null;
+    }
+    const argsStr = readBalanced("(", ")");
+    skipWs();
+    if (cleanCode[cursor] === ";") {
+      cursor++;
+      return buildPrimitiveSolid(ident, argsStr);
+    }
+    const children =
+      cleanCode[cursor] === "{"
+        ? (() => {
+            cursor++;
+            return parseBlockStatements();
+          })()
+        : (() => {
+            const single = parseStatement();
+            return single ? [single] : [];
+          })();
+    return applyOperatorOrCsg(ident, argsStr, children);
+  };
+
+  const buildPrimitiveSolid = (name: string, argsStr: string): Solid | null => {
+    const low = name.toLowerCase();
+    const { named, positional } = parseNamedArgs(argsStr);
+    if (low === "cube") {
+      const sizeArg = named.size ?? positional[0];
+      const [wxRaw, wyRaw, wzRaw] = parseVec3(sizeArg, [10, 10, 10]);
+      const centered = (named.center ?? positional[1] ?? "false").trim().toLowerCase() === "true";
+      const w = Math.max(0.08, Math.abs(wxRaw) / 25);
+      const h = Math.max(0.08, Math.abs(wyRaw) / 25);
+      const d = Math.max(0.08, Math.abs(wzRaw) / 25);
+      const b = box({ width: w, height: h, depth: d });
+      return centered ? b : translate(b, [w / 2, h / 2, d / 2]);
+    }
+    if (low === "cylinder") {
+      const hRaw =
+        named.h !== undefined
+          ? evalScadExpr(named.h, vars, 12)
+          : positional[0] !== undefined
+            ? evalScadExpr(positional[0], vars, 12)
+            : 12;
+      let r1Raw = 6;
+      let r2Raw = 6;
+      if (named.r !== undefined) {
+        r1Raw = r2Raw = evalScadExpr(named.r, vars, 6);
+      } else if (named.r1 !== undefined || named.r2 !== undefined) {
+        r1Raw = evalScadExpr(named.r1, vars, evalScadExpr(named.r2, vars, 6));
+        r2Raw = evalScadExpr(named.r2, vars, r1Raw);
+      } else if (named.d !== undefined) {
+        r1Raw = r2Raw = evalScadExpr(named.d, vars, 12) / 2;
+      } else if (named.d1 !== undefined || named.d2 !== undefined) {
+        r1Raw = evalScadExpr(named.d1, vars, evalScadExpr(named.d2, vars, 12)) / 2;
+        r2Raw = evalScadExpr(named.d2, vars, r1Raw * 2) / 2;
+      } else if (positional[1] !== undefined) {
+        r1Raw = r2Raw = evalScadExpr(positional[1], vars, 6);
+      }
+      const centered = (named.center ?? "false").trim().toLowerCase() === "true";
+      const segs = Math.min(48, Math.max(12, Math.round(evalScadExpr(named.$fn, vars, 24))));
+      const h = Math.max(0.08, Math.abs(hRaw) / 25);
+      const r1 = Math.max(0.02, Math.abs(r1Raw) / 25);
+      const r2 = Math.max(0.02, Math.abs(r2Raw) / 25);
+      const cyl = cylinder({ height: h, radiusBottom: r1, radiusTop: r2, segments: segs });
+      return centered ? cyl : translate(cyl, [0, 0, h / 2]);
+    }
+    if (low === "sphere") {
+      const rRaw =
+        named.r !== undefined
+          ? evalScadExpr(named.r, vars, 8)
+          : named.d !== undefined
+            ? evalScadExpr(named.d, vars, 16) / 2
+            : positional[0] !== undefined
+              ? evalScadExpr(positional[0], vars, 8)
+              : 8;
+      const segs = Math.min(40, Math.max(12, Math.round(evalScadExpr(named.$fn, vars, 20))));
+      const r = Math.max(0.05, Math.abs(rRaw) / 25);
+      return sphere({ radius: r, widthSegments: segs, heightSegments: Math.max(10, Math.round(segs * 0.75)) });
+    }
+    return null;
+  };
+
+  const applyOperatorOrCsg = (name: string, argsStr: string, children: Solid[]): Solid | null => {
+    const low = name.toLowerCase();
+    if (low === "difference") return foldSolids(children, "difference");
+    if (low === "intersection") return foldSolids(children, "intersection");
+    if (low === "union" || low === "color" || low === "render") return foldSolids(children, "union");
+    const child = foldSolids(children, "union");
+    if (!child) return null;
+    const { named, positional } = parseNamedArgs(argsStr);
+    if (low === "translate") {
+      const [dx, dy, dz] = parseVec3(named.v ?? positional[0], [0, 0, 0]);
+      return translate(child, [dx / 25, dy / 25, dz / 25]);
+    }
+    if (low === "scale") {
+      const [sx, sy, sz] = parseVec3(named.v ?? positional[0], [1, 1, 1]);
+      return scale(child, [sx, sy, sz]);
+    }
+    if (low === "mirror") {
+      const [mx, my, mz] = parseVec3(named.v ?? positional[0], [0, 0, 0]);
+      return mirror(child, [mx, my, mz]);
+    }
+    if (low === "rotate") {
+      const aArg = named.a ?? positional[0];
+      if (named.v !== undefined || positional[1] !== undefined) {
+        const deg = evalScadExpr(aArg, vars, 0);
+        const [ax, ay, az] = parseVec3(named.v ?? positional[1], [0, 0, 1]);
+        return rotate(child, [ax, ay, az], deg);
+      }
+      if (aArg && aArg.includes("[")) {
+        const [rx, ry, rz] = parseVec3(aArg, [0, 0, 0]);
+        let res = child;
+        if (Math.abs(rx) > 1e-6) res = rotate(res, [1, 0, 0], rx);
+        if (Math.abs(ry) > 1e-6) res = rotate(res, [0, 1, 0], ry);
+        if (Math.abs(rz) > 1e-6) res = rotate(res, [0, 0, 1], rz);
+        return res;
+      }
+      const rz = evalScadExpr(aArg, vars, 0);
+      return rotate(child, [0, 0, 1], rz);
+    }
+    return child;
+  };
+
+  const scadRoot = foldSolids(parseBlockStatements(), "union");
+  const rootSolid = scadRoot ? rotate(scadRoot, [1, 0, 0], -90) : null;
   const mesh: TriangulatedMesh = { positions: [], normals: [] };
-  let m: RegExpExecArray | null;
-
-  const cubeRegex = /\bcube\s*\(([^;]*?)\)/gi;
-  while ((m = cubeRegex.exec(cleanCode)) !== null) {
-    const argsStr = m[1]!;
-    const [tx, ty, tz] = resolveActiveTranslation(m.index);
-    const vecMatch = /\[\s*([^\]]+)\s*\]/.exec(argsStr);
-    let sx: number;
-    let sy: number;
-    let sz: number;
-    if (vecMatch?.[1]) {
-      const dims = splitTopLevelArgs(vecMatch[1]);
-      sx = Math.max(0.2, Math.abs(evalScadExpr(dims[0], vars, 10)) / 25);
-      sz = Math.max(0.2, Math.abs(evalScadExpr(dims[1], vars, 10)) / 25);
-      sy = Math.max(0.1, Math.abs(evalScadExpr(dims[2], vars, 10)) / 25);
-    } else {
-      const parts = splitTopLevelArgs(argsStr);
-      const firstPart = parts[0]?.replace(/^size\s*=\s*/i, "");
-      const s = Math.max(0.2, Math.abs(evalScadExpr(firstPart, vars, 10)) / 25);
-      sx = s;
-      sy = s;
-      sz = s;
-    }
-    appendBoxTriangles(mesh, tx, ty + sy / 2, tz, sx, sy, sz);
-  }
-
-  const cylRegex = /\bcylinder\s*\(([^;]*?)\)/gi;
-  while ((m = cylRegex.exec(cleanCode)) !== null) {
-    const argsStr = m[1]!;
-    const [tx, ty, tz] = resolveActiveTranslation(m.index);
-    const parts = splitTopLevelArgs(argsStr);
-    const named: Record<string, string> = {};
-    const positional: string[] = [];
-    for (const p of parts) {
-      const kv = /^([A-Za-z_]\w*)\s*=\s*(.+)$/.exec(p);
-      if (kv) {
-        named[kv[1]!] = kv[2]!;
-      } else {
-        positional.push(p);
+  if (rootSolid) {
+    try {
+      const evaluated = ManifoldWorker.evaluateSolid(rootSolid);
+      const { vertices, indices } = evaluated;
+      for (let t = 0; t + 2 < indices.length; t += 3) {
+        const i0 = indices[t]! * 3;
+        const i1 = indices[t + 1]! * 3;
+        const i2 = indices[t + 2]! * 3;
+        pushTriangle(
+          mesh,
+          [vertices[i0]!, vertices[i0 + 1]!, vertices[i0 + 2]!],
+          [vertices[i1]!, vertices[i1 + 1]!, vertices[i1 + 2]!],
+          [vertices[i2]!, vertices[i2 + 1]!, vertices[i2 + 2]!],
+        );
       }
+    } catch {
+      // Leave mesh empty if manifold CSG fails on malformed user input
     }
-    const hVal =
-      named.h !== undefined
-        ? evalScadExpr(named.h, vars, 12)
-        : positional[0] !== undefined
-          ? evalScadExpr(positional[0], vars, 12)
-          : 12;
-    let rVal = 6;
-    if (named.r !== undefined) {
-      rVal = evalScadExpr(named.r, vars, 6);
-    } else if (named.r1 !== undefined || named.r2 !== undefined) {
-      const r1 = named.r1 !== undefined ? evalScadExpr(named.r1, vars, 6) : evalScadExpr(named.r2, vars, 6);
-      const r2 = named.r2 !== undefined ? evalScadExpr(named.r2, vars, 6) : r1;
-      rVal = (r1 + r2) / 2;
-    } else if (named.d !== undefined) {
-      rVal = evalScadExpr(named.d, vars, 12) / 2;
-    } else if (named.d1 !== undefined || named.d2 !== undefined) {
-      const d1 = named.d1 !== undefined ? evalScadExpr(named.d1, vars, 12) : evalScadExpr(named.d2, vars, 12);
-      const d2 = named.d2 !== undefined ? evalScadExpr(named.d2, vars, 12) : d1;
-      rVal = (d1 + d2) / 4;
-    } else if (positional[1] !== undefined) {
-      rVal = evalScadExpr(positional[1], vars, 6);
-    }
-    const h = Math.max(0.2, Math.abs(hVal) / 25);
-    const r = Math.max(0.1, Math.abs(rVal) / 25);
-    appendCylinderTriangles(mesh, tx, ty + h / 2, tz, r, h, 24);
-  }
-
-  const sphereRegex = /\bsphere\s*\(([^;]*?)\)/gi;
-  while ((m = sphereRegex.exec(cleanCode)) !== null) {
-    const argsStr = m[1]!;
-    const [tx, ty, tz] = resolveActiveTranslation(m.index);
-    const parts = splitTopLevelArgs(argsStr);
-    const named: Record<string, string> = {};
-    const positional: string[] = [];
-    for (const p of parts) {
-      const kv = /^([A-Za-z_]\w*)\s*=\s*(.+)$/.exec(p);
-      if (kv) {
-        named[kv[1]!] = kv[2]!;
-      } else {
-        positional.push(p);
-      }
-    }
-    let rVal = 8;
-    if (named.r !== undefined) {
-      rVal = evalScadExpr(named.r, vars, 8);
-    } else if (named.d !== undefined) {
-      rVal = evalScadExpr(named.d, vars, 16) / 2;
-    } else if (positional[0] !== undefined) {
-      rVal = evalScadExpr(positional[0], vars, 8);
-    }
-    const r = Math.max(0.1, Math.abs(rVal) / 25);
-    appendSphereTriangles(mesh, tx, ty + r, tz, r, 16, 24);
   }
 
   const vtkBuffer = buildVtkXmlBuffer(mesh);

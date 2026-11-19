@@ -1957,6 +1957,50 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         return urdfToAdams(parseUrdf(text));
       },
     },
+    handlers: {
+      "modelscript/getCadComponents": async (context, params) => {
+        const text =
+          params?.documentText ??
+          params?.text ??
+          context?.documentManager?.documents?.get(params?.uri)?.getText() ??
+          "";
+        if (typeof text !== "string" || !text.trim()) return [];
+        const [{ parseUrdf, urdfToCadShapes }, cad] = await Promise.all([
+          import("@modelscript/urdf"),
+          import("@modelscript/cad"),
+        ]);
+        const shapes = urdfToCadShapes(parseUrdf(text));
+        return shapes.map((s) => {
+          const solid =
+            s.type === "cylinder"
+              ? cad.cylinder({ radius: Math.max(1e-4, s.dimensions.x / 2), height: Math.max(1e-4, s.dimensions.z) })
+              : s.type === "sphere"
+                ? cad.sphere({ radius: Math.max(1e-4, s.dimensions.x / 2) })
+                : cad.box({
+                    width: Math.max(1e-4, s.dimensions.x),
+                    height: Math.max(1e-4, s.dimensions.y),
+                    depth: Math.max(1e-4, s.dimensions.z),
+                  });
+          const mesh = cad.ManifoldWorker.evaluateSolid(solid);
+          return {
+            name: s.linkName,
+            shapeType: s.type,
+            cad: {
+              uri: params?.uri ?? "urdf://robot",
+              position: [s.origin.x, s.origin.y, s.origin.z] as [number, number, number],
+            },
+            proceduralMesh: {
+              vertices: Array.from(mesh.vertices),
+              indices: Array.from(mesh.indices),
+              normals: Array.from(mesh.normals),
+              ...(s.color
+                ? { color: [s.color.r, s.color.g, s.color.b, s.color.a] as [number, number, number, number] }
+                : {}),
+            },
+          };
+        });
+      },
+    },
     disposables: [],
   });
 

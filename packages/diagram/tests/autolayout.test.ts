@@ -2,7 +2,9 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { autoLayoutDiagram, autoLayoutDiagramAsync } from "../src/auto-layout.js";
+import { autoLayoutDiagram, autoLayoutDiagramAsync, layoutWithElk } from "../src/auto-layout.js";
+import { groupSelectedNodesOnGraph, ungroupSelectedNodesOnGraph } from "../src/group-actions.js";
+import { solvePortPlacements } from "../src/port-ilp-solver.js";
 
 describe("Diagram Auto-layout Engine & Coordinate Preservation", () => {
   it("should NOT move or perturb the square box (__diagram_background__) when no components exist", () => {
@@ -274,5 +276,215 @@ describe("Diagram Auto-layout Engine & Coordinate Preservation", () => {
     const res = autoLayoutDiagram(mockGraph, { optimizePorts: true });
     assert.strictEqual(res, true);
     assert.strictEqual(portPropCalled, true, "Port ILP optimization should configure portProp coordinates");
+  });
+
+  it("should untangle crossed edges with layoutWithElk multi-pass Sugiyama layered layout", () => {
+    const pos = {
+      Src: { x: 0, y: 0 },
+      T1: { x: 0, y: 200 },
+      T2: { x: 0, y: 50 },
+    };
+    const mkNode = (id: "Src" | "T1" | "T2", ports: { id: string; group: string }[]) => ({
+      id,
+      isNode: () => true,
+      getParent: () => null,
+      getPosition: () => ({ ...pos[id] }),
+      getSize: () => ({ width: 80, height: 60 }),
+      getPorts: () => ports,
+      portProp: () => {},
+      setPosition: (x: number, y: number) => {
+        pos[id].x = x;
+        pos[id].y = y;
+      },
+    });
+
+    const srcNode = mkNode("Src", [
+      { id: "topOut", group: "right" },
+      { id: "botOut", group: "right" },
+    ]);
+    // Put T2 above T1 in input array while Src.topOut -> T1 and Src.botOut -> T2
+    const t2Node = mkNode("T2", [{ id: "in", group: "left" }]);
+    const t1Node = mkNode("T1", [{ id: "in", group: "left" }]);
+
+    const edges = [
+      {
+        id: "e_top",
+        getSourceCellId: () => "Src",
+        getTargetCellId: () => "T1",
+        getSourcePortId: () => "topOut",
+        getTargetPortId: () => "in",
+        setVertices: () => {},
+      },
+      {
+        id: "e_bot",
+        getSourceCellId: () => "Src",
+        getTargetCellId: () => "T2",
+        getSourcePortId: () => "botOut",
+        getTargetPortId: () => "in",
+        setVertices: () => {},
+      },
+    ];
+
+    const mockGraph: any = {
+      disposed: false,
+      getNodes: () => [srcNode, t2Node, t1Node],
+      getEdges: () => edges,
+      getCellById: (id: string) => (id === "Src" ? srcNode : id === "T1" ? t1Node : id === "T2" ? t2Node : null),
+      batchUpdate: (_name: string, fn: () => void) => fn(),
+    };
+
+    const ok = layoutWithElk(mockGraph, { rankdir: "LR" });
+    assert.strictEqual(ok, true);
+    assert.ok(pos.T1.x > pos.Src.x && pos.T2.x > pos.Src.x, "Target layer must be placed right of source layer");
+    assert.ok(
+      pos.T1.y < pos.T2.y,
+      `Sugiyama barycenter port ordering should place T1 (topOut target) above T2 (botOut target): T1=${pos.T1.y}, T2=${pos.T2.y}`,
+    );
+  });
+
+  it("should group and ungroup selected nodes cleanly via groupSelectedNodesOnGraph / ungroupSelectedNodesOnGraph", () => {
+    const mkNode = (id: string, x: number, y: number, w = 60, h = 40) => {
+      const children: any[] = [];
+      let parent: any = null;
+      return {
+        id,
+        isNode: () => true,
+        getPosition: () => ({ x, y }),
+        getSize: () => ({ width: w, height: h }),
+        getChildren: () => children,
+        addChild: (c: any) => {
+          children.push(c);
+        },
+        removeChild: (c: any) => {
+          const i = children.indexOf(c);
+          if (i >= 0) children.splice(i, 1);
+          c.setParent?.(null);
+        },
+        setParent: (p: any) => {
+          parent = p;
+        },
+        getParent: () => parent,
+        setZIndex: () => {},
+        getData: () => ({}),
+      };
+    };
+
+    const n1 = mkNode("R1", 100, 100);
+    const n2 = mkNode("C1", 240, 140);
+    const nodes: any[] = [n1, n2];
+    let selected: any[] = [n1, n2];
+
+    const mockGraph: any = {
+      disposed: false,
+      getSelectedCells: () => selected,
+      addNode: (spec: any) => {
+        const gChildren: any[] = [];
+        const gNode = {
+          id: spec.id,
+          isNode: () => true,
+          getPosition: () => ({ x: spec.x, y: spec.y }),
+          getSize: () => ({ width: spec.width, height: spec.height }),
+          getChildren: () => gChildren,
+          addChild: (c: any) => {
+            gChildren.push(c);
+            c.setParent(gNode);
+          },
+          removeChild: (c: any) => {
+            const idx = gChildren.indexOf(c);
+            if (idx >= 0) gChildren.splice(idx, 1);
+            c.setParent(null);
+          },
+          getData: () => spec.data,
+        };
+        nodes.push(gNode);
+        return gNode;
+      },
+      removeCell: (cell: any) => {
+        const idx = nodes.indexOf(cell);
+        if (idx >= 0) nodes.splice(idx, 1);
+      },
+      batchUpdate: (_name: string, fn: () => void) => fn(),
+      cleanSelection: () => {
+        selected = [];
+      },
+      select: (c: any) => {
+        selected = Array.isArray(c) ? c : [c];
+      },
+    };
+
+    const grp = groupSelectedNodesOnGraph(mockGraph);
+    assert.ok(grp, "groupSelectedNodesOnGraph must return newly created group node");
+    assert.strictEqual(n1.getParent(), grp);
+    assert.strictEqual(n2.getParent(), grp);
+    assert.deepStrictEqual(selected, [grp]);
+
+    const detached = ungroupSelectedNodesOnGraph(mockGraph);
+    assert.strictEqual(detached.length, 2);
+    assert.strictEqual(n1.getParent(), null);
+    assert.strictEqual(n2.getParent(), null);
+    assert.strictEqual(nodes.includes(grp), false, "Removed group cell must be purged from graph");
+  });
+
+  it("GlobalPortIlpSolver eliminates multi-port crossings and snaps multi-hop chains without sibling overlap", () => {
+    const solved = solvePortPlacements(
+      [
+        {
+          id: "A",
+          x: 0,
+          y: 0,
+          width: 80,
+          height: 100,
+          ports: [
+            { id: "a_p1", nodeId: "A", fixedSide: "right", y: 80 },
+            { id: "a_p2", nodeId: "A", fixedSide: "right", y: 20 },
+          ],
+        },
+        {
+          id: "B_top",
+          x: 200,
+          y: 0,
+          width: 80,
+          height: 40,
+          ports: [
+            { id: "b1_in", nodeId: "B_top", fixedSide: "left" },
+            { id: "b1_out", nodeId: "B_top", fixedSide: "right" },
+          ],
+        },
+        {
+          id: "B_bot",
+          x: 200,
+          y: 80,
+          width: 80,
+          height: 40,
+          ports: [{ id: "b2_in", nodeId: "B_bot", fixedSide: "left" }],
+        },
+        {
+          id: "C",
+          x: 400,
+          y: 4,
+          width: 80,
+          height: 40,
+          ports: [{ id: "c_in", nodeId: "C", fixedSide: "left" }],
+        },
+      ],
+      [
+        { sourceNodeId: "A", sourcePortId: "a_p1", targetNodeId: "B_top", targetPortId: "b1_in" },
+        { sourceNodeId: "A", sourcePortId: "a_p2", targetNodeId: "B_bot", targetPortId: "b2_in" },
+        { sourceNodeId: "B_top", sourcePortId: "b1_out", targetNodeId: "C", targetPortId: "c_in" },
+      ],
+      { minSpacing: 16, straightTolerance: 10 },
+    );
+
+    const p1 = solved.get("a_p1")!;
+    const p2 = solved.get("a_p2")!;
+    const b1Out = solved.get("b1_out")!;
+    const cIn = solved.get("c_in")!;
+    assert.ok(p1.y < p2.y, `Expected a_p1 (going to B_top) above a_p2 (going to B_bot): ${p1.y} vs ${p2.y}`);
+    assert.ok(Math.abs(p2.y - p1.y) >= 16, "Ports on same face must obey minSpacing=16");
+    assert.strictEqual(
+      b1Out.y,
+      cIn.y,
+      "3-hop chain segment B_top.b1_out -> C.c_in must snap collinearly within straightTolerance",
+    );
   });
 });

@@ -132,33 +132,34 @@ export class GlobalPortIlpSolver {
       }
     }
 
-    // ── Stage 2: Crossing Elimination & 1D Continuous Coordinate Alignment ──
+    // ── Stage 2: Exact Crossing-Minimizing Permutation + 1D Coordinates ───
+    // Run 3 coordinated Gauss-Seidel sweeps so peer port coordinates mutually converge
     const results = new Map<string, SolvedPortPlacement>();
+    const faceOrder: SolverPortSide[] = ["left", "right", "top", "bottom"];
 
-    for (const node of nodes) {
-      // Group ports by assigned face
+    const nodeFaceGroups = nodes.map((node) => {
       const faceGroups: Record<SolverPortSide, SolverPort[]> = {
         top: [],
         bottom: [],
         left: [],
         right: [],
       };
-
       for (const port of node.ports) {
         const side = port.assignedSide || "right";
         faceGroups[side].push(port);
       }
+      return { node, faceGroups };
+    });
 
-      // Solve vertical faces (left and right)
-      this.solveVerticalFacePorts(node, "left", faceGroups.left, nodeMap, portMap, portConnections, results);
-      this.solveVerticalFacePorts(node, "right", faceGroups.right, nodeMap, portMap, portConnections, results);
-
-      // Solve horizontal faces (top and bottom)
-      this.solveHorizontalFacePorts(node, "top", faceGroups.top, nodeMap, portMap, portConnections, results);
-      this.solveHorizontalFacePorts(node, "bottom", faceGroups.bottom, nodeMap, portMap, portConnections, results);
+    for (let sweep = 0; sweep < 3; sweep++) {
+      for (const { node, faceGroups } of nodeFaceGroups) {
+        for (const side of faceOrder) {
+          this.solveFacePorts(node, side, faceGroups[side], nodeMap, portConnections, results, sweep > 0);
+        }
+      }
     }
 
-    // ── Stage 3: Collinear 0-Bend Snapping ──────────────────────────────────
+    // ── Stage 3: Multi-Pass Collinear 0-Bend Chain Snapping ───────────────
     this.snapCollinearConnections(edges, nodeMap, results);
 
     return results;
@@ -187,215 +188,247 @@ export class GlobalPortIlpSolver {
       return "right";
     }
 
-    // If port has a single peer, evaluate geometric sector to peer node centroid
-    const peerNode = nodeMap.get(connections[0]!.peerNodeId);
-    if (!peerNode) {
+    // Aggregate average peer vector across all connections (handles fan-out cleanly)
+    const nodeCenterX = node.x + node.width / 2;
+    const nodeCenterY = node.y + node.height / 2;
+    let sumDx = 0;
+    let sumDy = 0;
+    let peerCount = 0;
+    for (const c of connections) {
+      const peerNode = nodeMap.get(c.peerNodeId);
+      if (peerNode) {
+        sumDx += peerNode.x + peerNode.width / 2 - nodeCenterX;
+        sumDy += peerNode.y + peerNode.height / 2 - nodeCenterY;
+        peerCount++;
+      }
+    }
+    if (peerCount === 0) {
       if (port.direction === "in") return "left";
       if (port.direction === "out") return "right";
       return "right";
     }
 
-    const nodeCenterX = node.x + node.width / 2;
-    const nodeCenterY = node.y + node.height / 2;
-    const peerCenterX = peerNode.x + peerNode.width / 2;
-    const peerCenterY = peerNode.y + peerNode.height / 2;
-
-    const dx = peerCenterX - nodeCenterX;
-    const dy = peerCenterY - nodeCenterY;
+    const dx = sumDx / peerCount;
+    const dy = sumDy / peerCount;
 
     // Strict direction constraints take precedence if opposing direction
     if (port.direction === "in" && dx > 0 && Math.abs(dx) > Math.abs(dy)) {
-      // Inbound port connecting to something to the right: prefer top or bottom instead of wrong face
       return dy >= 0 ? "bottom" : "top";
     }
     if (port.direction === "out" && dx < 0 && Math.abs(dx) > Math.abs(dy)) {
-      // Outbound port connecting to something to the left: prefer top or bottom
       return dy >= 0 ? "bottom" : "top";
     }
 
     // Geometric sector preference
     if (Math.abs(dx) >= Math.abs(dy)) {
       return dx >= 0 ? "right" : "left";
-    } else {
-      return dy >= 0 ? "bottom" : "top";
     }
+    return dy >= 0 ? "bottom" : "top";
   }
 
   /**
-   * Stage 2 Helper: Solves port placement along a vertical face (left or right).
-   * Minimizes wire crossings by ordering ports according to peer target Y coordinates,
-   * then aligns Y coordinates to targets within boundary bounds.
+   * Resolves a port's ideal target coordinate along the face axis using already-solved
+   * peer port coordinates when available (weighted by all edges), falling back to peer centroid
+   * and original port offset.
    */
-  private solveVerticalFacePorts(
-    node: SolverNode,
-    side: "left" | "right",
-    ports: SolverPort[],
+  private computePortTargets(
+    port: SolverPort,
+    isVerticalFace: boolean,
+    fallbackCenter: number,
     nodeMap: Map<string, SolverNode>,
-    _portMap: Map<string, SolverPort>,
     portConnections: Map<string, { peerPortId: string; peerNodeId: string }[]>,
     results: Map<string, SolvedPortPlacement>,
-  ): void {
-    if (ports.length === 0) return;
-
-    const height = node.height;
-    const margin = this.options.margin;
-    const minSpacing = this.options.minSpacing;
-    const usableHeight = Math.max(height - margin * 2, 0);
-
-    // Compute ideal target Y for each port to sort without crossings
-    const portTargets = ports.map((p) => {
-      const conns = portConnections.get(p.id) ?? [];
-      let targetY = node.y + height / 2;
-      if (conns.length > 0) {
-        const peerNode = nodeMap.get(conns[0]!.peerNodeId);
-        if (peerNode) {
-          targetY = peerNode.y + peerNode.height / 2;
-        }
+    useSolvedPeers: boolean,
+  ): { targets: number[]; idealMean: number } {
+    const conns = portConnections.get(port.id) ?? [];
+    const targets: number[] = [];
+    for (const conn of conns) {
+      const solvedPeer = useSolvedPeers ? results.get(conn.peerPortId) : undefined;
+      if (solvedPeer) {
+        targets.push(isVerticalFace ? solvedPeer.y : solvedPeer.x);
+        continue;
       }
-      return { port: p, targetY };
-    });
+      const peerNode = nodeMap.get(conn.peerNodeId);
+      if (peerNode) {
+        targets.push(isVerticalFace ? peerNode.y + peerNode.height / 2 : peerNode.x + peerNode.width / 2);
+      }
+    }
+    if (targets.length === 0) {
+      const origCoord = isVerticalFace ? port.y : port.x;
+      const val = typeof origCoord === "number" && Number.isFinite(origCoord) ? origCoord : fallbackCenter;
+      return { targets: [val], idealMean: val };
+    }
+    const idealMean = targets.reduce((s, v) => s + v, 0) / targets.length;
+    return { targets, idealMean };
+  }
 
-    // Sort ports by targetY to eliminate crossings
-    portTargets.sort((a, b) => a.targetY - b.targetY);
+  /**
+   * Exact Branch-and-Bound Port Ordering minimizing total pairwise wire crossings plus
+   * normalized deviation penalty for small-to-medium faces (`n <= 8`), falling back cleanly
+   * to target-mean sorting on dense bus faces.
+   */
+  private orderFacePortsExact<T extends { idealMean: number; targets: number[] }>(items: T[]): T[] {
+    if (items.length <= 1) return items;
+    const sorted = [...items].sort((a, b) => a.idealMean - b.idealMean);
+    if (items.length > 8) return sorted;
 
-    const count = portTargets.length;
-    let yCoords: number[] = [];
-
-    if (count === 1) {
-      const idealY = portTargets[0]!.targetY;
-      const clampedY = Math.min(Math.max(idealY, node.y + margin), node.y + height - margin);
-      yCoords = [clampedY];
-    } else {
-      // Check if minimum spacing fits
-      const requiredSpan = (count - 1) * minSpacing;
-      if (requiredSpan <= usableHeight) {
-        // Ideal placement: center the span around the average target Y
-        const avgTargetY = portTargets.reduce((s, pt) => s + pt.targetY, 0) / count;
-        let startY = avgTargetY - requiredSpan / 2;
-
-        if (startY < node.y + margin) {
-          startY = node.y + margin;
-        } else if (startY + requiredSpan > node.y + height - margin) {
-          startY = node.y + height - margin - requiredSpan;
+    const n = items.length;
+    const invMatrix: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue;
+        let crossingsIfIBeforeJ = 0;
+        for (const ti of sorted[i]!.targets) {
+          for (const tj of sorted[j]!.targets) {
+            if (ti > tj + 1e-6) crossingsIfIBeforeJ++;
+          }
         }
-
-        yCoords = portTargets.map((_, idx) => startY + idx * minSpacing);
-      } else {
-        // Uniform distribution if compact
-        const step = usableHeight / (count - 1);
-        yCoords = portTargets.map((_, idx) => node.y + margin + idx * step);
+        invMatrix[i]![j] = crossingsIfIBeforeJ;
       }
     }
 
-    const faceX = side === "left" ? node.x : node.x + node.width;
+    // Upper bound from mean-sorted greedy baseline
+    const evalPermCost = (perm: number[]): number => {
+      let inv = 0;
+      let dev = 0;
+      for (let a = 0; a < perm.length; a++) {
+        const ia = perm[a]!;
+        dev += Math.abs(ia - a) * 0.01;
+        for (let b = a + 1; b < perm.length; b++) {
+          inv += invMatrix[ia]![perm[b]!]!;
+        }
+      }
+      return inv * 1000 + dev;
+    };
+
+    const identityPerm = Array.from({ length: n }, (_, k) => k);
+    let bestPerm = identityPerm;
+    let bestCost = evalPermCost(identityPerm);
+    if (bestCost < 1e-3) return sorted;
+
+    const used = new Array<boolean>(n).fill(false);
+    const cur: number[] = [];
+    const dfs = (accCost: number) => {
+      if (accCost >= bestCost) return;
+      if (cur.length === n) {
+        bestCost = accCost;
+        bestPerm = [...cur];
+        return;
+      }
+      const pos = cur.length;
+      for (let i = 0; i < n; i++) {
+        if (used[i]) continue;
+        let delta = Math.abs(i - pos) * 0.01;
+        for (const prev of cur) {
+          delta += invMatrix[prev]![i]! * 1000;
+        }
+        if (accCost + delta >= bestCost) continue;
+        used[i] = true;
+        cur.push(i);
+        dfs(accCost + delta);
+        cur.pop();
+        used[i] = false;
+      }
+    };
+    dfs(0);
+
+    return bestPerm.map((idx) => sorted[idx]!);
+  }
+
+  /**
+   * Shared Stage 2 solver for vertical ("left" / "right") and horizontal ("top" / "bottom") faces.
+   */
+  private solveFacePorts(
+    node: SolverNode,
+    side: SolverPortSide,
+    ports: SolverPort[],
+    nodeMap: Map<string, SolverNode>,
+    portConnections: Map<string, { peerPortId: string; peerNodeId: string }[]>,
+    results: Map<string, SolvedPortPlacement>,
+    useSolvedPeers: boolean,
+  ): void {
+    if (ports.length === 0) return;
+
+    const isVerticalFace = side === "left" || side === "right";
+    const axisOrigin = isVerticalFace ? node.y : node.x;
+    const axisSpan = isVerticalFace ? node.height : node.width;
+    const margin = Math.min(this.options.margin, axisSpan / 4);
+    const minSpacing = this.options.minSpacing;
+    const usableSpan = Math.max(axisSpan - margin * 2, 0);
+    const fallbackCenter = axisOrigin + axisSpan / 2;
+
+    const weighted = ports.map((port) => {
+      const { targets, idealMean } = this.computePortTargets(
+        port,
+        isVerticalFace,
+        fallbackCenter,
+        nodeMap,
+        portConnections,
+        results,
+        useSolvedPeers,
+      );
+      return { port, targets, idealMean };
+    });
+
+    const ordered = this.orderFacePortsExact(weighted);
+    const count = ordered.length;
+    let coords: number[];
+
+    if (count === 1) {
+      const clamped = Math.min(Math.max(ordered[0]!.idealMean, axisOrigin + margin), axisOrigin + axisSpan - margin);
+      coords = [clamped];
+    } else {
+      const requiredSpan = (count - 1) * minSpacing;
+      if (requiredSpan <= usableSpan) {
+        const avgTarget = ordered.reduce((s, item) => s + item.idealMean, 0) / count;
+        let start = avgTarget - requiredSpan / 2;
+        const minStart = axisOrigin + margin;
+        const maxStart = axisOrigin + axisSpan - margin - requiredSpan;
+        if (start < minStart) start = minStart;
+        else if (start > maxStart) start = maxStart;
+        coords = ordered.map((_, idx) => start + idx * minSpacing);
+      } else {
+        const step = usableSpan / (count - 1);
+        coords = ordered.map((_, idx) => axisOrigin + margin + idx * step);
+      }
+    }
+
+    const fixedCoord =
+      side === "left"
+        ? node.x
+        : side === "right"
+          ? node.x + node.width
+          : side === "top"
+            ? node.y
+            : node.y + node.height;
 
     for (let i = 0; i < count; i++) {
-      const p = portTargets[i]!.port;
-      const absY = Math.round(yCoords[i]!);
-      const relY = height > 0 ? (absY - node.y) / height : 0.5;
+      const p = ordered[i]!.port;
+      const alongCoord = Math.round(coords[i]!);
+      const absX = isVerticalFace ? fixedCoord : alongCoord;
+      const absY = isVerticalFace ? alongCoord : fixedCoord;
+      const relX = node.width > 0 ? (absX - node.x) / node.width : 0.5;
+      const relY = node.height > 0 ? (absY - node.y) / node.height : 0.5;
 
-      p.x = faceX;
+      p.x = absX;
       p.y = absY;
 
       results.set(p.id, {
         portId: p.id,
         nodeId: node.id,
         side,
-        x: faceX,
-        y: absY,
-        relativeX: side === "left" ? 0 : 1,
-        relativeY: Number(relY.toFixed(3)),
-      });
-    }
-  }
-
-  /**
-   * Stage 2 Helper: Solves port placement along a horizontal face (top or bottom).
-   * Minimizes wire crossings by ordering ports according to peer target X coordinates,
-   * then aligns X coordinates to targets within boundary bounds.
-   */
-  private solveHorizontalFacePorts(
-    node: SolverNode,
-    side: "top" | "bottom",
-    ports: SolverPort[],
-    nodeMap: Map<string, SolverNode>,
-    _portMap: Map<string, SolverPort>,
-    portConnections: Map<string, { peerPortId: string; peerNodeId: string }[]>,
-    results: Map<string, SolvedPortPlacement>,
-  ): void {
-    if (ports.length === 0) return;
-
-    const width = node.width;
-    const margin = this.options.margin;
-    const minSpacing = this.options.minSpacing;
-    const usableWidth = Math.max(width - margin * 2, 0);
-
-    const portTargets = ports.map((p) => {
-      const conns = portConnections.get(p.id) ?? [];
-      let targetX = node.x + width / 2;
-      if (conns.length > 0) {
-        const peerNode = nodeMap.get(conns[0]!.peerNodeId);
-        if (peerNode) {
-          targetX = peerNode.x + peerNode.width / 2;
-        }
-      }
-      return { port: p, targetX };
-    });
-
-    portTargets.sort((a, b) => a.targetX - b.targetX);
-
-    const count = portTargets.length;
-    let xCoords: number[] = [];
-
-    if (count === 1) {
-      const idealX = portTargets[0]!.targetX;
-      const clampedX = Math.min(Math.max(idealX, node.x + margin), node.x + width - margin);
-      xCoords = [clampedX];
-    } else {
-      const requiredSpan = (count - 1) * minSpacing;
-      if (requiredSpan <= usableWidth) {
-        const avgTargetX = portTargets.reduce((s, pt) => s + pt.targetX, 0) / count;
-        let startX = avgTargetX - requiredSpan / 2;
-
-        if (startX < node.x + margin) {
-          startX = node.x + margin;
-        } else if (startX + requiredSpan > node.x + width - margin) {
-          startX = node.x + width - margin - requiredSpan;
-        }
-
-        xCoords = portTargets.map((_, idx) => startX + idx * minSpacing);
-      } else {
-        const step = usableWidth / (count - 1);
-        xCoords = portTargets.map((_, idx) => node.x + margin + idx * step);
-      }
-    }
-
-    const faceY = side === "top" ? node.y : node.y + node.height;
-
-    for (let i = 0; i < count; i++) {
-      const p = portTargets[i]!.port;
-      const absX = Math.round(xCoords[i]!);
-      const relX = width > 0 ? (absX - node.x) / width : 0.5;
-
-      p.x = absX;
-      p.y = faceY;
-
-      results.set(p.id, {
-        portId: p.id,
-        nodeId: node.id,
-        side,
         x: absX,
-        y: faceY,
-        relativeX: Number(relX.toFixed(3)),
-        relativeY: side === "top" ? 0 : 1,
+        y: absY,
+        relativeX: side === "left" ? 0 : side === "right" ? 1 : Number(relX.toFixed(3)),
+        relativeY: side === "top" ? 0 : side === "bottom" ? 1 : Number(relY.toFixed(3)),
       });
     }
   }
 
   /**
-   * Stage 3: Collinear 0-Bend Snapping.
-   * Snaps nearly-aligned ports to exact matching coordinates if within tolerance
-   * and within both node boundary limits.
+   * Stage 3: Multi-Pass Collinear 0-Bend Chain Snapping.
+   * Iteratively aligns nearly-collinear ports across multi-hop chains within node bounds
+   * and sibling spacing limits.
    */
   private snapCollinearConnections(
     edges: SolverEdge[],
@@ -403,50 +436,78 @@ export class GlobalPortIlpSolver {
     results: Map<string, SolvedPortPlacement>,
   ): void {
     const tol = this.options.straightTolerance;
-    const margin = this.options.margin;
+    const minSpacing = this.options.minSpacing;
 
-    for (const e of edges) {
-      const p1 = results.get(e.sourcePortId);
-      const p2 = results.get(e.targetPortId);
-      if (!p1 || !p2) continue;
+    // Collect sibling port placements per (nodeId, side) to enforce non-overlap when snapping
+    const faceBuckets = new Map<string, SolvedPortPlacement[]>();
+    for (const pl of results.values()) {
+      const key = `${pl.nodeId}:${pl.side}`;
+      const list = faceBuckets.get(key) ?? [];
+      list.push(pl);
+      faceBuckets.set(key, list);
+    }
 
-      const n1 = nodeMap.get(e.sourceNodeId);
-      const n2 = nodeMap.get(e.targetNodeId);
-      if (!n1 || !n2) continue;
+    const canPlaceSafely = (
+      pl: SolvedPortPlacement,
+      candidate: number,
+      isVertical: boolean,
+      node: SolverNode,
+    ): boolean => {
+      const margin = Math.min(this.options.margin, (isVertical ? node.height : node.width) / 4);
+      const minBound = (isVertical ? node.y : node.x) + margin;
+      const maxBound = (isVertical ? node.y + node.height : node.x + node.width) - margin;
+      if (candidate < minBound || candidate > maxBound) return false;
+      const siblings = faceBuckets.get(`${pl.nodeId}:${pl.side}`) ?? [];
+      for (const sib of siblings) {
+        if (sib.portId === pl.portId) continue;
+        const sibCoord = isVertical ? sib.y : sib.x;
+        if (Math.abs(sibCoord - candidate) < minSpacing - 1) return false;
+      }
+      return true;
+    };
 
-      // 1. Horizontal straight connection: p1 on right, p2 on left (or vice-versa)
-      if ((p1.side === "right" && p2.side === "left") || (p1.side === "left" && p2.side === "right")) {
-        const diffY = Math.abs(p1.y - p2.y);
-        if (diffY > 0 && diffY <= tol) {
-          const sharedY = Math.round((p1.y + p2.y) / 2);
-          const fitsInN1 = sharedY >= n1.y + margin && sharedY <= n1.y + n1.height - margin;
-          const fitsInN2 = sharedY >= n2.y + margin && sharedY <= n2.y + n2.height - margin;
+    for (let pass = 0; pass < 3; pass++) {
+      let moved = false;
+      for (const e of edges) {
+        const p1 = results.get(e.sourcePortId);
+        const p2 = results.get(e.targetPortId);
+        if (!p1 || !p2) continue;
 
-          if (fitsInN1 && fitsInN2) {
-            p1.y = sharedY;
-            p2.y = sharedY;
-            p1.relativeY = Number(((sharedY - n1.y) / n1.height).toFixed(3));
-            p2.relativeY = Number(((sharedY - n2.y) / n2.height).toFixed(3));
+        const n1 = nodeMap.get(e.sourceNodeId);
+        const n2 = nodeMap.get(e.targetNodeId);
+        if (!n1 || !n2) continue;
+
+        const isHorizLink = (p1.side === "right" && p2.side === "left") || (p1.side === "left" && p2.side === "right");
+        const isVertLink = (p1.side === "bottom" && p2.side === "top") || (p1.side === "top" && p2.side === "bottom");
+        if (!isHorizLink && !isVertLink) continue;
+
+        const c1 = isHorizLink ? p1.y : p1.x;
+        const c2 = isHorizLink ? p2.y : p2.x;
+        const diff = Math.abs(c1 - c2);
+        if (diff === 0 || diff > tol) continue;
+
+        // Try midpoint first, then snapping one end to the other if one node is constrained
+        const mid = Math.round((c1 + c2) / 2);
+        const candidates = [mid, c1, c2];
+        for (const shared of candidates) {
+          if (canPlaceSafely(p1, shared, isHorizLink, n1) && canPlaceSafely(p2, shared, isHorizLink, n2)) {
+            if (isHorizLink) {
+              p1.y = shared;
+              p2.y = shared;
+              p1.relativeY = Number(((shared - n1.y) / n1.height).toFixed(3));
+              p2.relativeY = Number(((shared - n2.y) / n2.height).toFixed(3));
+            } else {
+              p1.x = shared;
+              p2.x = shared;
+              p1.relativeX = Number(((shared - n1.x) / n1.width).toFixed(3));
+              p2.relativeX = Number(((shared - n2.x) / n2.width).toFixed(3));
+            }
+            moved = true;
+            break;
           }
         }
       }
-
-      // 2. Vertical straight connection: p1 on bottom, p2 on top (or vice-versa)
-      if ((p1.side === "bottom" && p2.side === "top") || (p1.side === "top" && p2.side === "bottom")) {
-        const diffX = Math.abs(p1.x - p2.x);
-        if (diffX > 0 && diffX <= tol) {
-          const sharedX = Math.round((p1.x + p2.x) / 2);
-          const fitsInN1 = sharedX >= n1.x + margin && sharedX <= n1.x + n1.width - margin;
-          const fitsInN2 = sharedX >= n2.x + margin && sharedX <= n2.x + n2.width - margin;
-
-          if (fitsInN1 && fitsInN2) {
-            p1.x = sharedX;
-            p2.x = sharedX;
-            p1.relativeX = Number(((sharedX - n1.x) / n1.width).toFixed(3));
-            p2.relativeX = Number(((sharedX - n2.x) / n2.width).toFixed(3));
-          }
-        }
-      }
+      if (!moved) break;
     }
   }
 }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import path, { basename, dirname, join, normalize, resolve } from "node:path";
@@ -67,10 +68,78 @@ function bundleDsl(entryPath: string): string {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 export const Playground: CommandModule = {
-  command: "playground",
-  describe: "Launch the dual-editor DSL workbench",
-  handler: async () => {
-    let currentPort = 3002;
+  command: "playground [lang]",
+  describe: "Launch a lightweight single-language UI playground (or dual-editor grammar workbench when omitted)",
+  builder: (yargs) =>
+    yargs
+      .positional("lang", {
+        type: "string",
+        describe: "Language ID or directory (e.g. olga, psse, fea, epanet) to open in lightweight UI playground mode",
+      })
+      .option("grammar", {
+        type: "boolean",
+        default: false,
+        describe: "Launch the legacy dual-editor grammar-DSL workbench",
+      })
+      .option("port", {
+        alias: "p",
+        type: "number",
+        describe: "Dev server port (default: 5179 for language playground, 3002 for grammar workbench)",
+      })
+      .option("file", {
+        alias: "f",
+        type: "string",
+        describe: "Initial source file to load in language playground mode",
+      })
+      .option("mode", {
+        alias: "m",
+        type: "string",
+        choices: ["workbench", "inspector", "artifact"] as const,
+        describe: "Initial host mode (workbench | inspector | artifact)",
+      })
+      .option("theme", {
+        alias: "t",
+        type: "string",
+        choices: ["dark", "light"] as const,
+        describe: "Initial color theme (dark | light)",
+      })
+      .option("open", {
+        type: "boolean",
+        default: false,
+        describe: "Open browser automatically",
+      }),
+  handler: async (argv) => {
+    const langArg = typeof argv["lang"] === "string" ? argv["lang"] : null;
+    const forceGrammar = Boolean(argv["grammar"]);
+
+    if (langArg && !forceGrammar) {
+      const repoRootCandidates = [join(__dirname, "../../../.."), join(__dirname, "../../../../..")];
+      const scriptPath = repoRootCandidates
+        .map((r) => join(r, "scripts", "language-playground.ts"))
+        .find((p) => existsSync(p));
+      if (!scriptPath) {
+        console.error("Error: Could not locate scripts/language-playground.ts in workspace.");
+        process.exit(1);
+      }
+      const forwardArgs = ["tsx", scriptPath, langArg];
+      if (typeof argv["port"] === "number") forwardArgs.push("--port", String(argv["port"]));
+      if (typeof argv["file"] === "string") forwardArgs.push("--file", argv["file"]);
+      if (typeof argv["mode"] === "string") forwardArgs.push("--mode", argv["mode"]);
+      if (typeof argv["theme"] === "string") forwardArgs.push("--theme", argv["theme"]);
+      if (argv["open"]) forwardArgs.push("--open");
+
+      await new Promise<void>((resolvePromise, rejectPromise) => {
+        const child = spawn("npx", forwardArgs, { stdio: "inherit", cwd: process.cwd() });
+        child.on("error", rejectPromise);
+        child.on("exit", (code) => {
+          if (code && code !== 0) process.exitCode = code;
+          resolvePromise();
+        });
+      });
+      return;
+    }
+
+    let currentPort = typeof argv["port"] === "number" ? argv["port"] : 3002;
 
     const server = createServer(async (req, res) => {
       const urlPath = req.url?.split("?")[0] || "/";

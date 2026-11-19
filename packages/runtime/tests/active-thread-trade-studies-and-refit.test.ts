@@ -183,6 +183,26 @@ describe("Phase 5: Active Digital Thread (Optimization Writeback, Branching, Tra
       assert.ok(patch.openScadPatch.replacementLine.includes("Optimized by ModelScript"));
       assert.ok(patch.sysml2Patch.attributeDef.includes("attribute def pin_hole_radius"));
       assert.ok(patch.provenanceActivity.activityId.startsWith("act_refit_"));
+      assert.strictEqual(patch.openScadPatch.isSyntheticFallback, false);
+
+      // 4. Resolve real line in sourceText while ignoring commented examples
+      const sourceText = [
+        "// pin_hole_radius = 999;",
+        "/* pin_hole_radius = 888; */",
+        "  pin_hole_radius = 8.0;",
+        "cylinder(r = pin_hole_radius, h = 10);",
+      ].join("\n");
+      const srcPatch = ShapeRefitEngine.generateWritebackPatch("pin_hole_radius", 8.0, 9.25, {
+        sourceText,
+        unit: "mm",
+      });
+      assert.strictEqual(srcPatch.openScadPatch.lineNumber, 3);
+      assert.strictEqual(srcPatch.openScadPatch.originalLine, "  pin_hole_radius = 8.0;");
+      assert.ok(srcPatch.openScadPatch.replacementLine.startsWith("  pin_hole_radius = 9.2500;"));
+      assert.strictEqual(srcPatch.openScadPatch.isSyntheticFallback, false);
+
+      const syntheticPatch = ShapeRefitEngine.generateWritebackPatch("pin_hole_radius", 8.0, 9.25);
+      assert.strictEqual(syntheticPatch.openScadPatch.isSyntheticFallback, true);
     });
   });
 

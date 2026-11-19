@@ -118,13 +118,13 @@ const SpacePage = lazyWithRetry(() => import("./pages/SpacePage"));
 const SpacesExplorePage = lazyWithRetry(() => import("./pages/SpacesExplorePage"));
 
 function isMorselRoute(pathname: string): boolean {
-  return /^\/(?:embed\/)?(?:morsel|sketch|playground)(?:\/|$)/.test(pathname);
+  return /^\/(?:embed\/)?(?:editor|morsel|sketch|playground)(?:\/|$)/.test(pathname);
 }
 
 /**
  * Skeleton loading placeholder rendered while lazy-loaded route bundles are fetched.
- * Renders the Morsel loading screen directly on Morsel routes so the Ansatz skeleton
- * never flashes before Morsel mounts.
+ * Renders the Ansatz loading screen directly on editor routes so the Ansatz skeleton
+ * never flashes before the editor mounts.
  */
 function PageLoadingFallback() {
   const location = useLocation();
@@ -245,7 +245,7 @@ function GlobalModals() {
           }
         } else if (k === "p" || k === "m") {
           e.preventDefault();
-          navWithScroll("/morsel");
+          navWithScroll("/editor");
         } else if (k === "k") {
           e.preventDefault();
           navWithScroll("/packages");
@@ -328,7 +328,7 @@ function IdeFallbackNavigate() {
     searchParams.set("repo", `${params.provider}/${params.namespace}/${params.project}`);
   }
   const qs = searchParams.toString();
-  return <Navigate to={`/morsel${qs ? `?${qs}` : ""}${location.hash}`} replace />;
+  return <Navigate to={`/editor${qs ? `?${qs}` : ""}${location.hash}`} replace />;
 }
 
 function LegacyUserRedirect() {
@@ -628,19 +628,22 @@ function App() {
                   <Route path="/verify-email" element={<VerifyEmailPage />} />
                   <Route path="/reset-password" element={<ResetPasswordPage />} />
                   <Route path="/render-artifact/:id" element={<RenderArtifactPage />} />
-                  <Route path="/embed/morsel" element={<EmbedPlaygroundPage />} />
-                  <Route path="/embed/sketch" element={<PreserveParamsNavigate to="/embed/morsel" />} />
-                  <Route path="/embed/playground" element={<PreserveParamsNavigate to="/embed/morsel" />} />
-                  <Route path="/morsel" element={<PlaygroundPage />} />
-                  <Route path="/sketch" element={<PreserveParamsNavigate to="/morsel" />} />
-                  <Route path="/playground" element={<PreserveParamsNavigate to="/morsel" />} />
+                  <Route path="/embed/editor" element={<EmbedPlaygroundPage />} />
+                  <Route path="/embed/morsel" element={<PreserveParamsNavigate to="/embed/editor" />} />
+                  <Route path="/embed/sketch" element={<PreserveParamsNavigate to="/embed/editor" />} />
+                  <Route path="/embed/playground" element={<PreserveParamsNavigate to="/embed/editor" />} />
+                  <Route path="/editor" element={<PlaygroundPage />} />
+                  <Route path="/morsel" element={<PreserveParamsNavigate to="/editor" />} />
+                  <Route path="/sketch" element={<PreserveParamsNavigate to="/editor" />} />
+                  <Route path="/playground" element={<PreserveParamsNavigate to="/editor" />} />
                   <Route path="/solutions/:username/:slug" element={<SolutionPage />} />
 
                   {/* Social shell routes */}
                   <Route element={<AppShell />}>
-                    <Route path="/morsel" element={<PlaygroundPage />} />
-                    <Route path="/sketch" element={<PreserveParamsNavigate to="/morsel" />} />
-                    <Route path="/playground" element={<PreserveParamsNavigate to="/morsel" />} />
+                    <Route path="/editor" element={<PlaygroundPage />} />
+                    <Route path="/morsel" element={<PreserveParamsNavigate to="/editor" />} />
+                    <Route path="/sketch" element={<PreserveParamsNavigate to="/editor" />} />
+                    <Route path="/playground" element={<PreserveParamsNavigate to="/editor" />} />
                     <Route
                       path="/home"
                       element={

@@ -319,37 +319,61 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
     };
   }
 
-  // 4. When statement: when <cond> then <body> end when;
+  // 4. When statement: when <cond> then <body> [elsewhen <cond> then <body>]* end when;
   const whenNode =
     normType(stmtNode.type) === "whenstatement"
       ? stmtNode
       : stmtNode.children?.find((c: any) => normType(c.type) === "whenstatement");
 
   if (whenNode) {
-    let condExpr: string | undefined;
-    let condStartByte: number | undefined;
-    const whenBody: ParsedStatement[] = [];
+    const whenBranches: ParsedBranch[] = [];
+    let curBranch: ParsedBranch = { condExpr: "", stmts: [] };
+    let mode: "when_cond" | "when_body" | "elsewhen_cond" | "elsewhen_body" = "when_cond";
 
-    const exprNode = whenNode.children?.find((c: any) => normType(c.type) === "expression");
-    if (exprNode) {
-      condExpr = exprNode.text || "";
-      condStartByte = exprNode.startIndex ?? sStart;
-    }
-
-    for (const ch of whenNode.children || []) {
-      if (normType(ch.type) === "statement") {
-        whenBody.push(extractStatementFromNode(ch));
+    const walkWhen = (n: any) => {
+      if (!n) return;
+      const t = normType(n.type);
+      const txt = n.text?.trim() ?? "";
+      if (txt === "when" || txt === "end when") {
+        if (txt === "when" && n !== whenNode) {
+          mode = "when_cond";
+        }
+        return;
       }
-    }
+      if (txt === "elsewhen") {
+        whenBranches.push(curBranch);
+        curBranch = { condExpr: "", stmts: [] };
+        mode = "elsewhen_cond";
+        return;
+      }
+      if (txt === "then") {
+        mode = mode === "elsewhen_cond" ? "elsewhen_body" : "when_body";
+        return;
+      }
+      if (t === "expression" && (mode === "when_cond" || mode === "elsewhen_cond")) {
+        curBranch.condExpr = n.text || "";
+        curBranch.condStartByte = n.startIndex ?? sStart;
+        return;
+      }
+      if (t === "statement") {
+        curBranch.stmts.push(extractStatementFromNode(n));
+        return;
+      }
+      for (const ch of n.children || []) walkWhen(ch);
+    };
+    walkWhen(whenNode);
+    whenBranches.push(curBranch);
 
+    const firstBranch = whenBranches[0];
     return {
       kind: "when",
       rawText,
       startOffset: sStart,
       endOffset: sEnd,
-      condExpr,
-      condStartByte,
-      whenBody,
+      condExpr: firstBranch?.condExpr || undefined,
+      condStartByte: firstBranch?.condStartByte,
+      whenBody: firstBranch?.stmts ?? [],
+      branches: whenBranches,
     };
   }
 
@@ -790,34 +814,34 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
 
         if (!name) continue;
 
-        // Check for default binding: must be a top-level `=` (not inside parentheses),
-        // OR a class modification `(field = value, ...)` which also initializes the variable.
-        // e.g., `result = fill(1.0, n)` has a default via binding.
-        // e.g., `o(r1 = r, r2 = 1.0)` has a default via class modification.
+        // Mask comments/strings so description strings containing '=', '(', or '[' do not
+        // falsely register uninitialized scalar outputs as having defaults or arrays.
+        const maskedDecl = maskCommentsAndStringsPreservingLength(declText);
         let hasDefault = false;
         let parenDepth = 0;
-        for (let i = 0; i < declText.length; i++) {
-          const ch = declText[i];
+        for (let i = 0; i < maskedDecl.length; i++) {
+          const ch = maskedDecl[i];
           if (ch === "(") parenDepth++;
           else if (ch === ")") parenDepth--;
           else if (
             ch === "=" &&
             parenDepth === 0 &&
-            declText[i - 1] !== ":" &&
-            declText[i - 1] !== "<" &&
-            declText[i - 1] !== ">" &&
-            declText[i - 1] !== "!"
+            maskedDecl[i - 1] !== ":" &&
+            maskedDecl[i - 1] !== "<" &&
+            maskedDecl[i - 1] !== ">" &&
+            maskedDecl[i - 1] !== "!"
           ) {
             hasDefault = true;
             break;
           }
         }
         // Also treat parenthesized modifiers as initialization (for record outputs)
-        if (!hasDefault && declText.includes("(") && declText.includes("=")) {
+        if (!hasDefault && maskedDecl.includes("(") && maskedDecl.includes("=")) {
           hasDefault = true;
         }
 
-        const isArray = declText.includes("[") || compText.includes("[");
+        const maskedComp = maskCommentsAndStringsPreservingLength(compText);
+        const isArray = maskedDecl.includes("[") || maskedComp.includes("[");
         const info: VariableInfo = {
           name,
           isInput,
@@ -838,24 +862,25 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
       }
     } else {
       // Fallback: character scanner for when CST nodes aren't available.
+      const maskedComp = maskCommentsAndStringsPreservingLength(compText);
       // Skip the type specifier by finding the first identifier after prefixes and type name.
       let seenTypeSpec = false;
       let pos = 0;
-      const tLen = compText.length;
+      const tLen = maskedComp.length;
       while (pos < tLen) {
-        const ch = compText[pos]!;
+        const ch = maskedComp[pos]!;
         if ((ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch === "_") {
           const idStart = pos;
           pos++;
           while (pos < tLen) {
-            const c = compText[pos]!;
+            const c = maskedComp[pos]!;
             if ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_") {
               pos++;
             } else {
               break;
             }
           }
-          const name = compText.slice(idStart, pos);
+          const name = maskedComp.slice(idStart, pos);
           if (
             name === "Real" ||
             name === "Integer" ||
@@ -875,18 +900,18 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
             continue;
           }
 
-          while (pos < tLen && (compText[pos] === " " || compText[pos] === "\t")) pos++;
+          while (pos < tLen && (maskedComp[pos] === " " || maskedComp[pos] === "\t")) pos++;
           let isArray = false;
-          if (pos < tLen && compText[pos] === "[") {
+          if (pos < tLen && maskedComp[pos] === "[") {
             isArray = true;
-            const closeBracket = compText.indexOf("]", pos);
+            const closeBracket = maskedComp.indexOf("]", pos);
             pos = closeBracket !== -1 ? closeBracket + 1 : pos + 1;
           }
-          while (pos < tLen && (compText[pos] === " " || compText[pos] === "\t")) pos++;
-          let hasDefault = compText.includes("=");
-          if (pos < tLen && compText[pos] === "=") {
+          while (pos < tLen && (maskedComp[pos] === " " || maskedComp[pos] === "\t")) pos++;
+          let hasDefault = maskedComp.includes("=");
+          if (pos < tLen && maskedComp[pos] === "=") {
             hasDefault = true;
-            while (pos < tLen && compText[pos] !== "," && compText[pos] !== ";") pos++;
+            while (pos < tLen && maskedComp[pos] !== "," && maskedComp[pos] !== ";") pos++;
           }
 
           const startOffset = compStart + idStart;
@@ -896,7 +921,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
             isInput,
             isOutput,
             hasDefault,
-            isArray: isArray || compText.includes("["),
+            isArray: isArray || maskedComp.includes("["),
             startOffset,
             endOffset,
           };
@@ -1145,13 +1170,26 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
         if (stmt.loopVars) {
           for (const lv of stmt.loopVars) loopVars.add(lv);
         }
-        // `break`s inside the body are consumed by this loop. Loop bodies are optimistically assumed to
-        // execute at least once (zero-trip ranges are not proven), favouring no false M5020 errors.
+        // Detect provably empty literal ranges (`lo:hi` with `lo > hi` or `{}`): body never runs.
+        const rawRange = (stmt.rangeExpr ?? "").trim();
+        let isEmptyRange = rawRange === "{}";
+        if (!isEmptyRange) {
+          const rangeParts = rawRange.match(/^(-?\d+)\s*:\s*(-?\d+)$/);
+          if (rangeParts) {
+            const lo = Number(rangeParts[1]);
+            const hi = Number(rangeParts[2]);
+            if (Number.isFinite(lo) && Number.isFinite(hi) && lo > hi) {
+              isEmptyRange = true;
+            }
+          }
+        }
         const loopRes = analyzeStatements(stmt.loopBody || [], cur, loopVars);
-        for (const a of loopRes.assigned) {
-          if (!loopVars.has(a)) {
-            cur.add(a);
-            allAssignedEver.add(a);
+        if (!isEmptyRange) {
+          for (const a of loopRes.assigned) {
+            if (!loopVars.has(a)) {
+              cur.add(a);
+              allAssignedEver.add(a);
+            }
           }
         }
       } else if (stmt.kind === "while") {
@@ -1173,18 +1211,23 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
             }
             cur = intersected;
           }
-        } else {
-          // Optimistic (see `for`): assignments made by the body are considered done after the loop.
-          for (const a of whileRes.assigned) cur.add(a);
         }
+        // A general `while (cond)` loop may execute 0 times when `cond` starts false,
+        // so body assignments are already recorded in `allAssignedEver` but not added to `cur`.
       } else if (stmt.kind === "when") {
-        if (stmt.condExpr) {
-          checkExprReads(stmt.condExpr, stmt.condStartByte ?? stmt.startOffset, cur, activeLoopVars);
-        }
-        const whenRes = analyzeStatements(stmt.whenBody || [], cur, activeLoopVars);
-        for (const a of whenRes.assigned) {
-          cur.add(a);
-          allAssignedEver.add(a);
+        const branches =
+          stmt.branches && stmt.branches.length > 0
+            ? stmt.branches
+            : [{ condExpr: stmt.condExpr ?? "", condStartByte: stmt.condStartByte, stmts: stmt.whenBody ?? [] }];
+        for (const br of branches) {
+          if (br.condExpr) {
+            checkExprReads(br.condExpr, br.condStartByte ?? stmt.startOffset, cur, activeLoopVars);
+          }
+          const brRes = analyzeStatements(br.stmts, cur, activeLoopVars);
+          for (const a of brRes.assigned) {
+            cur.add(a);
+            allAssignedEver.add(a);
+          }
         }
       } else {
         // Other statement

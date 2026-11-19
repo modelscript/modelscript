@@ -6,6 +6,7 @@ import {
   dropComponentGhost,
   flipSelectedNodes,
   getGraph,
+  hydrateDiagramWasm,
   initGraph,
   isEphemeralDiagramNode,
   isMinimapVisible,
@@ -84,6 +85,8 @@ interface DiagramEditorProps {
   isLoading?: boolean | undefined;
   onRenderComplete?: ((diagramData: any) => void) | undefined;
   onInteractiveWrite?: ((variableName: string, value: any, nodeId: string) => void) | undefined;
+  onAction?: ((action: any) => void) | undefined;
+  onMessage?: ((msg: any) => void) | undefined;
   onShowProperties?: ((nodeId: string, cachedProps?: any, isLoading?: boolean) => void) | undefined;
   onNodeDoubleClick?: ((nodeId: string, nodeData?: any) => void) | undefined;
   fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
@@ -142,6 +145,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         switch (action.type) {
           case "move":
             if (p.onMove) p.onMove(action.items);
+            else p.onAction?.(action);
             break;
           case "resize":
             if (p.onResize)
@@ -154,22 +158,32 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
                 action.item.rotation,
                 action.item.edges,
               );
+            else p.onAction?.(action);
             break;
           case "connect":
             if (p.onConnect) p.onConnect(action.source, action.target, action.points);
+            else p.onAction?.(action);
             break;
           case "disconnect":
             if (p.onEdgeDelete) p.onEdgeDelete(action.source, action.target);
+            else p.onAction?.(action);
             break;
           case "moveEdge":
             if (p.onEdgeMove) p.onEdgeMove(action.edges);
+            else p.onAction?.(action);
             break;
           case "deleteComponents":
             if (p.onComponentsDelete) p.onComponentsDelete(action.names);
             else if (p.onComponentDelete && action.names.length > 0) p.onComponentDelete(action.names[0]);
+            else p.onAction?.(action);
             break;
           case "interactiveWrite":
             if (p.onInteractiveWrite) p.onInteractiveWrite(action.variableName, action.value, action.nodeId);
+            else p.onAction?.(action);
+            break;
+          default:
+            // Forward addComponent, reconnect, updateName, updateProperty, rotate, etc.
+            p.onAction?.(action);
             break;
         }
       },
@@ -186,6 +200,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       onUndo: () => propsRef.current.onUndo?.(),
       onRedo: () => propsRef.current.onRedo?.(),
       onAutoLayout: () => propsRef.current.onAutoLayout?.(),
+      onMessage: (msg) => propsRef.current.onMessage?.(msg),
       fitInsets: propsRef.current.fitInsets,
     });
     attachGraphListeners();
@@ -402,6 +417,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    void hydrateDiagramWasm("/lsp/server/dist/release.wasm");
 
     const target = container.parentElement ?? container;
 

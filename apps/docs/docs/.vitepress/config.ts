@@ -26,7 +26,14 @@ const GROUP_TO_INDUSTRY: Partial<Record<LanguageGroupId, string>> = {
 
 function languagesSidebar(): DefaultTheme.SidebarItem[] {
   const itemsFor = (group: LanguageGroupId): DefaultTheme.SidebarItem[] =>
-    LANGUAGES.filter((l) => l.group === group).map((l) => ({ text: l.sidebar, link: `/languages/${l.slug}` }));
+    LANGUAGES.filter((l) => l.group === group).flatMap((l) =>
+      l.slug === "sysml2"
+        ? [
+            { text: l.sidebar, link: `/languages/${l.slug}` },
+            { text: "SysML v2 Lints & Formal", link: "/languages/sysml2-lints" },
+          ]
+        : [{ text: l.sidebar, link: `/languages/${l.slug}` }],
+    );
 
   const platform = PLATFORM_GROUPS.map((g) => ({ text: g.label, collapsed: false, items: itemsFor(g.id) }));
   const industries = INDUSTRIES.flatMap((ind) => {
@@ -491,6 +498,7 @@ export default defineConfig({
             { text: "CLI Command Reference", link: "/cli/commands" },
             { text: "Polyglot Languages Matrix", link: "/languages/overview" },
             { text: "Compiler Linter Rules", link: "/reference/linter-rules" },
+            { text: "SysML v2 Lints & Formal", link: "/languages/sysml2-lints" },
             { text: "Radiology & Surgical CAS", link: "/reference/radiology-and-surgery" },
             { text: "Standards & Export Formats", link: "/reference/export-formats" },
             { text: "MCP Server & IDE Workbench", link: "/reference/mcp-and-ide" },

@@ -51,7 +51,7 @@ export const MORSEL_CORE_TOOLS: MorselToolDefinition[] = [
     type: "function",
     function: {
       name: "morsel_get_context",
-      description: "Read the active file name, language dialect, source code, and current diagnostics in Morsel.",
+      description: "Read the active file name, language dialect, source code, and current diagnostics in Ansatz.",
       parameters: {
         type: "object",
         properties: {
@@ -65,7 +65,7 @@ export const MORSEL_CORE_TOOLS: MorselToolDefinition[] = [
     type: "function",
     function: {
       name: "morsel_get_diagnostics",
-      description: "Return all current compiler, linter, and simulation diagnostics in the active Morsel editor.",
+      description: "Return all current compiler, linter, and simulation diagnostics in the active Ansatz editor.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -74,7 +74,7 @@ export const MORSEL_CORE_TOOLS: MorselToolDefinition[] = [
     function: {
       name: "morsel_apply_edit",
       description:
-        "Apply a code edit to the active Morsel editor (undoable). Provide either fullText or startLine/endLine + replacement.",
+        "Apply a code edit to the active Ansatz editor (undoable). Provide either fullText or startLine/endLine + replacement.",
       parameters: {
         type: "object",
         properties: {
@@ -90,7 +90,7 @@ export const MORSEL_CORE_TOOLS: MorselToolDefinition[] = [
     type: "function",
     function: {
       name: "morsel_flatten",
-      description: "Flatten/compile the active model in Morsel and return flattened equations or errors.",
+      description: "Flatten/compile the active model in Ansatz and return flattened equations or errors.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -98,7 +98,7 @@ export const MORSEL_CORE_TOOLS: MorselToolDefinition[] = [
     type: "function",
     function: {
       name: "morsel_simulate",
-      description: "Run the active model simulation in Morsel and return status and summary.",
+      description: "Run the active model simulation in Ansatz and return status and summary.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -110,7 +110,7 @@ export const MORSEL_EXTENDED_TOOLS: MorselToolDefinition[] = [
     type: "function",
     function: {
       name: "morsel_switch_view",
-      description: "Switch the active Morsel workspace view.",
+      description: "Switch the active Ansatz workspace view.",
       parameters: {
         type: "object",
         properties: {
@@ -127,7 +127,7 @@ export const MORSEL_EXTENDED_TOOLS: MorselToolDefinition[] = [
     type: "function",
     function: {
       name: "morsel_get_diagram",
-      description: "Inspect the current 2D diagram components and connections in Morsel.",
+      description: "Inspect the current 2D diagram components and connections in Ansatz.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -208,12 +208,12 @@ export async function executeMorselToolCall(host: MorselToolHost, call: MorselTo
           };
         }
         const previousCode = host.getCode();
-        const applied = host.applyCodeEdit(nextCode, "Morsel AI edit");
+        const applied = host.applyCodeEdit(nextCode, "Ansatz AI edit");
         return {
           toolCallId: call.id,
           name: call.name,
           ok: applied,
-          output: applied ? "Edit applied to active Morsel editor." : "Failed to apply edit to editor.",
+          output: applied ? "Edit applied to active Ansatz editor." : "Failed to apply edit to editor.",
           previousCode: applied ? previousCode : undefined,
           editedCode: applied ? nextCode : undefined,
         };
@@ -248,7 +248,7 @@ export async function executeMorselToolCall(host: MorselToolHost, call: MorselTo
           host.switchView
         ) {
           host.switchView(view as "code" | "diagram" | "simulation" | "3d" | "inspector" | "split");
-          return { toolCallId: call.id, name: call.name, ok: true, output: `Switched Morsel view to '${view}'.` };
+          return { toolCallId: call.id, name: call.name, ok: true, output: `Switched Ansatz view to '${view}'.` };
         }
         return { toolCallId: call.id, name: call.name, ok: false, output: "Invalid or unavailable view target." };
       }
@@ -262,7 +262,7 @@ export async function executeMorselToolCall(host: MorselToolHost, call: MorselTo
       }
 
       default:
-        return { toolCallId: call.id, name: call.name, ok: false, output: `Unknown Morsel tool '${call.name}'.` };
+        return { toolCallId: call.id, name: call.name, ok: false, output: `Unknown Ansatz tool '${call.name}'.` };
     }
   } catch (err) {
     return {

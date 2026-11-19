@@ -90,7 +90,7 @@ export const IssueList: React.FC<{ issues: AttachIssue[] }> = ({ issues }) =>
 
 const PROVENANCE_LABEL: Record<AttachProvenance, string> = {
   "user-provided": "Provided by you",
-  linked: "Linked morsel",
+  linked: "Linked model",
   synthesized: "Generated, not from your file",
   sample: "Sample data",
 };
@@ -392,7 +392,7 @@ export const ArtifactPicker: React.FC<{
         }
       },
       (err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load your morsels.");
+        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load your models.");
       },
     );
     return () => {
@@ -433,7 +433,7 @@ export const ArtifactPicker: React.FC<{
   if (!items) {
     return (
       <div role="status" style={{ fontSize: 13, color: "var(--ms-text-3)" }}>
-        Loading your morsels…
+        Loading your models…
       </div>
     );
   }

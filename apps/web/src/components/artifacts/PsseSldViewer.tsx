@@ -903,7 +903,7 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
       title,
     });
     const fromParam = viewConfig.artifactId ? `?fromArtifact=${encodeURIComponent(viewConfig.artifactId)}` : "";
-    navigate(`/morsel${fromParam}#m=${hash}`);
+    navigate(`/editor${fromParam}#m=${hash}`);
   };
 
   const lines = useMemo(() => (rawText ? rawText.split(/\r?\n/) : []), [rawText]);
@@ -954,7 +954,7 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
           </Button>
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
             <Button size="small" leadingVisual={DraftingTriangleIcon} onClick={handleOpenInPlayground}>
-              Open in Morsel
+              Open in Ansatz
             </Button>
           )}
         </Box>

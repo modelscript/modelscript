@@ -619,9 +619,9 @@ export const StudioInspectorSidebar: React.FC<StudioInspectorSidebarProps> = ({
                     font: "inherit",
                     display: "inline",
                   }}
-                  title={isMultiFile ? "Open in VS Code IDE (R)" : "Open in Morsel (R)"}
+                  title={isMultiFile ? "Open in VS Code IDE (R)" : "Open in Ansatz (R)"}
                 >
-                  [R] {isMultiFile ? "IDE" : "Morsel"}
+                  [R] {isMultiFile ? "IDE" : "Editor"}
                 </button>{" "}
               </>
             )}

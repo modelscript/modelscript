@@ -733,7 +733,7 @@ function severityLabel(sev?: number): string {
             <span>{{ copiedLink ? "Copied Link!" : "Copy Share Link" }}</span>
           </button>
           <button type="button" class="sb-btn sb-btn-outline" @click="openInMorselWithState">
-            <span>Open in Morsel IDE</span>
+            <span>Open in Ansatz</span>
             <MsIcon name="arrow-up-right" :size="14" />
           </button>
         </div>

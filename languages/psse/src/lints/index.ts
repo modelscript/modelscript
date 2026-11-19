@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { SparseTripletBuilder, sparseLuFactor, sparseLuSolve } from "@modelscript/runtime";
+import { analyzeStructuralDaeIndex, sparseLuFactor, sparseLuSolve, SparseTripletBuilder } from "@modelscript/runtime";
+import { verifyDyrProtectionCoordinationSmt } from "../analysis/formal-grid-checks.js";
+import { verifyGridOntologyCompliance } from "../analysis/grid-ontology-check.js";
 import { lowerPsseToDae } from "../dae/psse-to-dae.js";
 import { PsseErrorCode } from "../errors.js";
 import { DYR_MODEL_SCHEMAS } from "../parser/dyr-parser.js";
 import { analyzeSmallSignalStability } from "../solver/small-signal.js";
-import type { PsseCase, PsseDiagnostic, PsseDyrRecord } from "../types.js";
+import type { PsseCase, PsseDiagnostic, PsseDyrRecord, PsseLintOptions } from "../types.js";
 
 /**
  * Validates a parsed PSS/E base case (and optional `.dyr` dynamics) and returns semantic diagnostics.
+ * Supports tiered execution via `options.tier`: `"fast"` (<20ms keystroke checks), `"deep"` (default), or `"formal"`.
  */
-export function lintPsse(c: PsseCase): PsseDiagnostic[] {
+export function lintPsse(c: PsseCase, options?: PsseLintOptions): PsseDiagnostic[] {
+  const tier = options?.tier ?? "deep";
   const diagnostics: PsseDiagnostic[] = [];
 
   function addDiag(
@@ -18,6 +22,7 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     code: string,
     message: string,
     span?: { startOffset: number; endOffset: number; line: number; column: number },
+    rigor?: "rigorous" | "float-sound" | "heuristic",
   ) {
     diagnostics.push({
       severity,
@@ -27,6 +32,7 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
       endOffset: span?.endOffset ?? 0,
       line: span?.line,
       column: span?.column,
+      ...(rigor ? { rigor } : {}),
     });
   }
 
@@ -69,8 +75,7 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
           PsseErrorCode.VOLTAGE_OUT_OF_BOUNDS.message(b.i, b.vm),
           b.fieldSpans?.[7] ?? b.span,
         );
-      }
-      if (b.vm < 0.9 || b.vm > 1.1) {
+      } else if (b.vm < 0.9 || b.vm > 1.1) {
         addDiag(
           PsseErrorCode.SUBSTATION_VOLTAGE_VIOLATION_NERC.severity,
           PsseErrorCode.SUBSTATION_VOLTAGE_VIOLATION_NERC.code,
@@ -325,7 +330,7 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     const key = `${Math.min(br.i, jAbs)}:${Math.max(br.i, jAbs)}:${br.ckt}`;
     if (branchKeys.has(key)) {
       addDiag(
-        "warning",
+        PsseErrorCode.DUPLICATE_EQUIPMENT_ID.severity,
         PsseErrorCode.DUPLICATE_EQUIPMENT_ID.code,
         PsseErrorCode.DUPLICATE_EQUIPMENT_ID.branchMessage(br.i, jAbs, br.ckt),
         br.span,
@@ -383,14 +388,16 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
       }
     }
 
-    if (br.x <= 0) {
+    // Series-compensated transmission lines legitimately have negative reactance (X < 0);
+    // only exact zero reactance (X === 0) is an invalid reactance error.
+    if (br.x === 0) {
       addDiag(
         PsseErrorCode.BRANCH_INVALID_REACTANCE.severity,
         PsseErrorCode.BRANCH_INVALID_REACTANCE.code,
         PsseErrorCode.BRANCH_INVALID_REACTANCE.message(br.ckt, br.i, jAbs, br.x),
         br.span,
       );
-    } else if (br.x < 1e-5 && Math.abs(br.r) < 1e-5) {
+    } else if (Math.abs(br.x) < 1e-5 && Math.abs(br.r) < 1e-5) {
       addDiag(
         PsseErrorCode.BRANCH_EXTREME_IMPEDANCE.severity,
         PsseErrorCode.BRANCH_EXTREME_IMPEDANCE.code,
@@ -444,6 +451,37 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     }
   }
 
+  // 6b. P4011: Zero-impedance branch (ZBR) closed-loop check via Union-Find
+  {
+    const zbrParent = new Map<number, number>();
+    const findZbr = (x: number): number => {
+      let p = zbrParent.get(x) ?? x;
+      while ((zbrParent.get(p) ?? p) !== p) p = zbrParent.get(p)!;
+      zbrParent.set(x, p);
+      return p;
+    };
+    for (const br of c.branches) {
+      if (br.st !== 1) continue;
+      if (Math.abs(br.r) <= 1e-4 && Math.abs(br.x) <= 1e-4) {
+        const jAbs = Math.abs(br.j);
+        if (br.i === jAbs) continue;
+        const ru = findZbr(br.i);
+        const rv = findZbr(jAbs);
+        if (ru === rv) {
+          addDiag(
+            PsseErrorCode.ZBR_CLOSED_LOOP.severity,
+            PsseErrorCode.ZBR_CLOSED_LOOP.code,
+            PsseErrorCode.ZBR_CLOSED_LOOP.message(br.ckt, br.i, jAbs),
+            br.span,
+            "rigorous",
+          );
+        } else {
+          zbrParent.set(ru, rv);
+        }
+      }
+    }
+  }
+
   // 7. Validate Transformers (P1001, P2006, P4003, P4009) — includes 3W tertiary bus t.k & partial stat 1..4
   for (let xfIdx = 0; xfIdx < c.transformers.length; xfIdx++) {
     const t = c.transformers[xfIdx]!;
@@ -475,48 +513,51 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
       );
     }
 
-    // PSS/E transformer STAT: 0=out, 1=all in, 2/3/4=partial 3W winding in-service
+    // PSS/E transformer STAT: 0=out, 1=all in, 2=winding 2 out, 3=winding 3 out, 4=winding 1 out
     if (t.stat !== 0) {
-      if (fromBus && toBus && t.stat !== 4) {
+      const w1In = t.stat !== 4;
+      const w2In = t.stat !== 2;
+      const w3In = t.k !== 0 && t.stat !== 3;
+      if (fromBus && toBus && w1In && w2In) {
         linkTopology(t.i, t.j, `xf:${xfIdx}:ij`, "Transformer", t.ckt, t.span);
       }
       if (t.k !== 0 && tertBus) {
-        if (fromBus && t.stat !== 3) {
+        if (fromBus && w1In && w3In) {
           linkTopology(t.i, t.k, `xf:${xfIdx}:ik`, "Transformer", t.ckt, t.span);
         }
-        if (toBus && t.stat !== 2) {
+        if (toBus && w2In && w3In) {
           linkTopology(t.j, t.k, `xf:${xfIdx}:jk`, "Transformer", t.ckt, t.span);
         }
       }
-      if (t.stat === 1) {
-        if (fromBus?.ide === 4) {
-          addDiag(
-            PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.severity,
-            PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.code,
-            PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.message(t.i, `transformer '${t.ckt}'`),
-            t.span,
-          );
-        }
-        if (toBus?.ide === 4) {
-          addDiag(
-            PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.severity,
-            PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.code,
-            PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.message(t.j, `transformer '${t.ckt}'`),
-            t.span,
-          );
-        }
-        if (t.k !== 0 && tertBus?.ide === 4) {
-          addDiag(
-            PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.severity,
-            PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.code,
-            PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.message(t.k, `transformer '${t.ckt}'`),
-            t.span,
-          );
-        }
+      if (w1In && fromBus?.ide === 4) {
+        addDiag(
+          PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.severity,
+          PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.code,
+          PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.message(t.i, `transformer '${t.ckt}'`),
+          t.span,
+        );
+      }
+      if (w2In && toBus?.ide === 4) {
+        addDiag(
+          PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.severity,
+          PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.code,
+          PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.message(t.j, `transformer '${t.ckt}'`),
+          t.span,
+        );
+      }
+      if (w3In && tertBus?.ide === 4) {
+        addDiag(
+          PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.severity,
+          PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.code,
+          PsseErrorCode.TYPE4_BUS_WITH_INSERVICE_EQUIPMENT.message(t.k, `transformer '${t.ckt}'`),
+          t.span,
+        );
       }
     }
 
-    if (t.windv1 > 0 && (t.windv1 < 0.7 || t.windv1 > 1.3)) {
+    // P4003: Only enforce per-unit tap ratio bounds [0.7, 1.3] when CW=1 (off-nominal pu tap mode).
+    // When CW=2, WINDV1 is specified in kV (validated by P4008).
+    if (t.cw === 1 && t.windv1 > 0 && (t.windv1 < 0.7 || t.windv1 > 1.3)) {
       addDiag(
         PsseErrorCode.TRANSFORMER_TAP_OUT_OF_BOUNDS.severity,
         PsseErrorCode.TRANSFORMER_TAP_OUT_OF_BOUNDS.code,
@@ -526,14 +567,20 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     }
 
     if (t.k !== 0 && t.x23 !== undefined && t.x31 !== undefined) {
-      const xStar1 = 0.5 * (t.x12 + t.x31 - t.x23);
-      if (xStar1 < -0.05) {
-        addDiag(
-          PsseErrorCode.THREE_WINDING_NEGATIVE_STAR_REACTANCE.severity,
-          PsseErrorCode.THREE_WINDING_NEGATIVE_STAR_REACTANCE.code,
-          PsseErrorCode.THREE_WINDING_NEGATIVE_STAR_REACTANCE.message(t.ckt, t.i, t.j, t.k, xStar1),
-          t.span,
-        );
+      const starReactances: Array<[string, number]> = [
+        ["X1", 0.5 * (t.x12 + t.x31 - t.x23)],
+        ["X2", 0.5 * (t.x12 + t.x23 - t.x31)],
+        ["X3", 0.5 * (t.x23 + t.x31 - t.x12)],
+      ];
+      for (const [wName, xStar] of starReactances) {
+        if (xStar < -0.05) {
+          addDiag(
+            PsseErrorCode.THREE_WINDING_NEGATIVE_STAR_REACTANCE.severity,
+            PsseErrorCode.THREE_WINDING_NEGATIVE_STAR_REACTANCE.code,
+            PsseErrorCode.THREE_WINDING_NEGATIVE_STAR_REACTANCE.message(t.ckt, t.i, t.j, t.k, xStar, wName),
+            t.span,
+          );
+        }
       }
     }
 
@@ -641,8 +688,9 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     const queue: number[] = [startBusId];
     visitedIsland.add(startBusId);
     let hasSlack = false;
-    while (queue.length > 0) {
-      const u = queue.shift()!;
+    let head = 0;
+    while (head < queue.length) {
+      const u = queue[head++]!;
       comp.push(u);
       if (c.buses.get(u)?.ide === 3) hasSlack = true;
       for (const e of adjacency.get(u) ?? []) {
@@ -663,40 +711,71 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     }
   }
 
-  // Tarjan bridge detection for single-branch N-1 cut edges carrying >= 10 MW
+  // Iterative Tarjan bridge detection for single-branch N-1 cut edges carrying >= 10 MW (stack-safe on 70k+ bus grids)
   if (c.buses.size >= 3) {
     let dfsTimer = 0;
     const tin = new Map<number, number>();
     const low = new Map<number, number>();
     const subWeight = new Map<number, number>();
-    const dfsBridge = (u: number, parentEdgeId: string | null) => {
-      tin.set(u, dfsTimer);
-      low.set(u, dfsTimer);
+    interface TarjanFrame {
+      u: number;
+      parentEdgeId: string | null;
+      edgeIdx: number;
+      edges: NonNullable<ReturnType<typeof adjacency.get>>;
+      wSum: number;
+      parentEdge?: NonNullable<ReturnType<typeof adjacency.get>>[number] | undefined;
+    }
+    const runIterativeBridgeDfs = (root: number) => {
+      const rootEdges = adjacency.get(root) ?? [];
+      tin.set(root, dfsTimer);
+      low.set(root, dfsTimer);
       dfsTimer++;
-      let wSum = busPowerWeight.get(u) ?? 0;
-      for (const e of adjacency.get(u) ?? []) {
-        if (e.edgeId === parentEdgeId) continue;
-        if (tin.has(e.to)) {
-          low.set(u, Math.min(low.get(u)!, tin.get(e.to)!));
+      const stack: TarjanFrame[] = [
+        { u: root, parentEdgeId: null, edgeIdx: 0, edges: rootEdges, wSum: busPowerWeight.get(root) ?? 0 },
+      ];
+      while (stack.length > 0) {
+        const frame = stack[stack.length - 1]!;
+        if (frame.edgeIdx < frame.edges.length) {
+          const e = frame.edges[frame.edgeIdx++]!;
+          if (e.edgeId === frame.parentEdgeId) continue;
+          if (tin.has(e.to)) {
+            low.set(frame.u, Math.min(low.get(frame.u)!, tin.get(e.to)!));
+          } else {
+            tin.set(e.to, dfsTimer);
+            low.set(e.to, dfsTimer);
+            dfsTimer++;
+            stack.push({
+              u: e.to,
+              parentEdgeId: e.edgeId,
+              edgeIdx: 0,
+              edges: adjacency.get(e.to) ?? [],
+              wSum: busPowerWeight.get(e.to) ?? 0,
+              parentEdge: e,
+            });
+          }
         } else {
-          dfsBridge(e.to, e.edgeId);
-          const childWeight = subWeight.get(e.to) ?? 0;
-          wSum += childWeight;
-          low.set(u, Math.min(low.get(u)!, low.get(e.to)!));
-          if (low.get(e.to)! > tin.get(u)! && childWeight >= 10.0) {
-            addDiag(
-              PsseErrorCode.SINGLE_BRANCH_CUT_BRIDGE.severity,
-              PsseErrorCode.SINGLE_BRANCH_CUT_BRIDGE.code,
-              PsseErrorCode.SINGLE_BRANCH_CUT_BRIDGE.message(e.kind, e.ckt, e.u, e.v, childWeight),
-              e.span,
-            );
+          stack.pop();
+          subWeight.set(frame.u, frame.wSum);
+          if (stack.length > 0) {
+            const parent = stack[stack.length - 1]!;
+            const childWeight = frame.wSum;
+            parent.wSum += childWeight;
+            low.set(parent.u, Math.min(low.get(parent.u)!, low.get(frame.u)!));
+            if (low.get(frame.u)! > tin.get(parent.u)! && childWeight >= 10.0 && frame.parentEdge) {
+              const pe = frame.parentEdge;
+              addDiag(
+                PsseErrorCode.SINGLE_BRANCH_CUT_BRIDGE.severity,
+                PsseErrorCode.SINGLE_BRANCH_CUT_BRIDGE.code,
+                PsseErrorCode.SINGLE_BRANCH_CUT_BRIDGE.message(pe.kind, pe.ckt, pe.u, pe.v, childWeight),
+                pe.span,
+              );
+            }
           }
         }
       }
-      subWeight.set(u, wSum);
     };
     for (const [bId, b] of c.buses) {
-      if (b.ide !== 4 && !tin.has(bId)) dfsBridge(bId, null);
+      if (b.ide !== 4 && !tin.has(bId)) runIterativeBridgeDfs(bId);
     }
   }
 
@@ -850,6 +929,67 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
             rec.span,
           );
         }
+        // Deep CMPLDW tripping voltage ordering & shedding fraction sum
+        const vtr1 = rec.namedParams["Vtr1"];
+        const vtr2 = rec.namedParams["Vtr2"];
+        if (vtr1 !== undefined && vtr2 !== undefined && vtr1 > 0 && vtr2 > 0 && vtr1 <= vtr2) {
+          addDiag(
+            PsseErrorCode.IBR_CONTROL_CONFLICT.severity,
+            PsseErrorCode.IBR_CONTROL_CONFLICT.code,
+            PsseErrorCode.IBR_CONTROL_CONFLICT.message(rec.model, rec.ibus, `Vtr1 (${vtr1}) <= Vtr2 (${vtr2})`),
+            rec.span,
+          );
+        }
+        const ftr1 = rec.namedParams["Ftr1"] ?? 0;
+        const ftr2 = rec.namedParams["Ftr2"] ?? 0;
+        if (ftr1 + ftr2 > 1.001) {
+          addDiag(
+            PsseErrorCode.DYR_COMPOSITE_LOAD_FRACTION_SUM.severity,
+            PsseErrorCode.DYR_COMPOSITE_LOAD_FRACTION_SUM.code,
+            PsseErrorCode.DYR_COMPOSITE_LOAD_FRACTION_SUM.message(rec.model, rec.ibus, ftr1 + ftr2),
+            rec.span,
+          );
+        }
+      }
+
+      // Deep DER_A voltage/frequency trip band ordering
+      if (rec.model.toUpperCase().startsWith("DER_A") || rec.model.toUpperCase().startsWith("DERA")) {
+        const vl0 = rec.namedParams["Vl0"] ?? rec.namedParams["vl0"];
+        const vl1 = rec.namedParams["Vl1"] ?? rec.namedParams["vl1"];
+        const vh0 = rec.namedParams["Vh0"] ?? rec.namedParams["vh0"];
+        const vh1 = rec.namedParams["Vh1"] ?? rec.namedParams["vh1"];
+        if (vl0 !== undefined && vl1 !== undefined && vl0 > vl1) {
+          addDiag(
+            PsseErrorCode.IBR_CONTROL_CONFLICT.severity,
+            PsseErrorCode.IBR_CONTROL_CONFLICT.code,
+            PsseErrorCode.IBR_CONTROL_CONFLICT.message(rec.model, rec.ibus, `Vl0 (${vl0}) > Vl1 (${vl1})`),
+            rec.span,
+          );
+        }
+        if (vh0 !== undefined && vh1 !== undefined && vh0 > 0 && vh1 > 0 && vh0 < vh1) {
+          addDiag(
+            PsseErrorCode.IBR_CONTROL_CONFLICT.severity,
+            PsseErrorCode.IBR_CONTROL_CONFLICT.code,
+            PsseErrorCode.IBR_CONTROL_CONFLICT.message(rec.model, rec.ibus, `Vh0 (${vh0}) < Vh1 (${vh1})`),
+            rec.span,
+          );
+        }
+      }
+
+      // P5021: Active dynamic time-constant numerical step underflow (0 < T < 2 ms for standard PSS/E DELT)
+      const minSafeTcSec = 0.002;
+      const tcParamKeys = ["Td0pp", "Tq0pp", "TA", "TB", "TE", "TR", "T1", "T2", "Tg", "Tfltr", "Tpord"];
+      for (const tcKey of tcParamKeys) {
+        const tcVal = rec.namedParams[tcKey];
+        if (tcVal !== undefined && tcVal > 0 && tcVal < minSafeTcSec) {
+          addDiag(
+            PsseErrorCode.DYR_TIME_CONSTANT_UNDERFLOW.severity,
+            PsseErrorCode.DYR_TIME_CONSTANT_UNDERFLOW.code,
+            PsseErrorCode.DYR_TIME_CONSTANT_UNDERFLOW.message(rec.model, rec.ibus, tcKey, tcVal, minSafeTcSec),
+            rec.span,
+          );
+          break;
+        }
       }
 
       // P5019: HVDC link existence check
@@ -882,10 +1022,14 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
           );
         }
 
-        // P5005: Synchronous machine reactance & time-constant ordering
+        // P5005: Synchronous machine d-axis, q-axis, leakage (Xl), & time-constant ordering
         const xd = rec.namedParams["Xd"];
         const xdp = rec.namedParams["Xdp"];
         const xdpp = rec.namedParams["Xdpp"];
+        const xq = rec.namedParams["Xq"];
+        const xqp = rec.namedParams["Xqp"];
+        const xqpp = rec.namedParams["Xqpp"];
+        const xl = rec.namedParams["Xl"];
         if (xd !== undefined && xdp !== undefined && xd < xdp) {
           addDiag(
             PsseErrorCode.DYR_REACTANCE_HIERARCHY.severity,
@@ -902,6 +1046,38 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
             rec.span,
           );
         }
+        if (xq !== undefined && xqp !== undefined && xq > 0 && xqp > 0 && xq < xqp) {
+          addDiag(
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.severity,
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.code,
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.message(rec.model, rec.ibus, `Xq (${xq}) < X'q (${xqp})`),
+            rec.span,
+          );
+        }
+        if (xqp !== undefined && xqpp !== undefined && xqp > 0 && xqpp > 0 && xqp < xqpp) {
+          addDiag(
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.severity,
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.code,
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.message(rec.model, rec.ibus, `X'q (${xqp}) < X''q (${xqpp})`),
+            rec.span,
+          );
+        }
+        if (xdpp !== undefined && xl !== undefined && xdpp > 0 && xl > 0 && xdpp < xl) {
+          addDiag(
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.severity,
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.code,
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.message(rec.model, rec.ibus, `X''d (${xdpp}) < Xl (${xl})`),
+            rec.span,
+          );
+        }
+        if (xqpp !== undefined && xl !== undefined && xqpp > 0 && xl > 0 && xqpp < xl) {
+          addDiag(
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.severity,
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.code,
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.message(rec.model, rec.ibus, `X''q (${xqpp}) < Xl (${xl})`),
+            rec.span,
+          );
+        }
         const td0p = rec.namedParams["Td0p"];
         const td0pp = rec.namedParams["Td0pp"];
         if (td0p !== undefined && td0pp !== undefined && td0p > 0 && td0pp > 0 && td0p < td0pp) {
@@ -909,6 +1085,16 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
             PsseErrorCode.DYR_REACTANCE_HIERARCHY.severity,
             PsseErrorCode.DYR_REACTANCE_HIERARCHY.code,
             PsseErrorCode.DYR_REACTANCE_HIERARCHY.message(rec.model, rec.ibus, `T'd0 (${td0p}) < T''d0 (${td0pp})`),
+            rec.span,
+          );
+        }
+        const tq0p = rec.namedParams["Tq0p"];
+        const tq0pp = rec.namedParams["Tq0pp"];
+        if (tq0p !== undefined && tq0pp !== undefined && tq0p > 0 && tq0pp > 0 && tq0p < tq0pp) {
+          addDiag(
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.severity,
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.code,
+            PsseErrorCode.DYR_REACTANCE_HIERARCHY.message(rec.model, rec.ibus, `T'q0 (${tq0p}) < T''q0 (${tq0pp})`),
             rec.span,
           );
         }
@@ -921,7 +1107,11 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     for (const rec of c.dyr.records) {
       if (rec.category === "exciter" || rec.category === "governor" || rec.category === "stabilizer") {
         const slotId = rec.id.trim() || "1";
-        if (!genDynamicKeys.has(`${rec.ibus}:${slotId}`)) {
+        const hasGenDyn =
+          genDynamicKeys.has(`${rec.ibus}:${slotId}`) ||
+          genDynamicKeys.has(`${rec.ibus}:*`) ||
+          (slotId === "*" && Array.from(genDynamicKeys).some((k) => k.startsWith(`${rec.ibus}:`)));
+        if (!hasGenDyn) {
           addDiag(
             PsseErrorCode.DYR_ORPHAN_CONTROLLER.severity,
             PsseErrorCode.DYR_ORPHAN_CONTROLLER.code,
@@ -937,7 +1127,7 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
       if (g.stat !== 1) continue;
       const gId = g.id.trim() || "1";
       const slotKey = `${g.i}:${gId}`;
-      const genDyn = genRecordBySlot.get(slotKey);
+      const genDyn = genRecordBySlot.get(slotKey) ?? genRecordBySlot.get(`${g.i}:*`);
       if (!genDyn) {
         if (Math.abs(g.pg) >= 20.0 || g.mbase >= 20.0) {
           addDiag(
@@ -978,7 +1168,7 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
         );
       }
 
-      const excDyn = excRecordBySlot.get(slotKey);
+      const excDyn = excRecordBySlot.get(slotKey) ?? excRecordBySlot.get(`${g.i}:*`);
       const bus = c.buses.get(g.i);
       if (excDyn && bus) {
         const mbase = g.mbase > 0 ? g.mbase : sbase;
@@ -1020,16 +1210,18 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     }
   }
 
-  // 11. P6003: Driving-point Sparse Z_bus Short-Circuit Ratio (SCR) at IBR POIs
-  if (c.buses.size >= 2 && c.buses.size <= 5000) {
+  // 11. P6003: Driving-point Sparse Z_bus Short-Circuit Ratio (SCR) at IBR POIs (deep/formal tiers only)
+  if (tier !== "fast" && c.buses.size >= 2 && c.buses.size <= 5000) {
+    const onlineGenByKey = new Map<string, (typeof c.generators)[number]>();
+    for (const g of c.generators) {
+      if (g.stat === 1) onlineGenByKey.set(`${g.i}:${g.id.trim() || "1"}`, g);
+    }
     const ibrBusSet = new Map<number, number>();
     if (c.dyr) {
       for (const rec of c.dyr.records) {
         const up = rec.model.toUpperCase();
         if (up.startsWith("REGC") || up.startsWith("REEC") || up.startsWith("REPC") || up.startsWith("WT")) {
-          const gen = c.generators.find(
-            (g) => g.stat === 1 && g.i === rec.ibus && (g.id.trim() || "1") === (rec.id.trim() || "1"),
-          );
+          const gen = onlineGenByKey.get(`${rec.ibus}:${rec.id.trim() || "1"}`);
           const mva = gen
             ? Math.max(1, gen.mbase > 0 ? gen.mbase : Math.abs(gen.pt) || Math.abs(gen.pg) || sbase)
             : sbase;
@@ -1124,8 +1316,8 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     }
   }
 
-  // 12. P6005: Structural balance verification on lowered @modelscript/runtime DAE arena
-  if (c.dyr && c.dyr.records.length > 0 && c.buses.size > 0 && c.buses.size <= 500) {
+  // 12. P6005: Structural balance & Pryce/Dulmage-Mendelsohn singularity verification on lowered DAE arena (deep/formal)
+  if (tier !== "fast" && c.dyr && c.dyr.records.length > 0 && c.buses.size > 0 && c.buses.size <= 500) {
     try {
       const dae = lowerPsseToDae(c);
       if (dae.varCount !== dae.eqCount) {
@@ -1134,7 +1326,36 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
           PsseErrorCode.DAE_STRUCTURAL_IMBALANCE.code,
           PsseErrorCode.DAE_STRUCTURAL_IMBALANCE.message(dae.varCount, dae.eqCount),
           c.header.span,
+          "rigorous",
         );
+      } else if (tier === "formal" && dae.eqCount > 0) {
+        const idxAnalysis = analyzeStructuralDaeIndex(dae);
+        const unmatchedEqs = idxAnalysis.signatureMatrix.rowMatch.filter((m) => m < 0).length;
+        if (unmatchedEqs > 0) {
+          addDiag(
+            PsseErrorCode.DAE_STRUCTURAL_IMBALANCE.severity,
+            PsseErrorCode.DAE_STRUCTURAL_IMBALANCE.code,
+            PsseErrorCode.DAE_STRUCTURAL_IMBALANCE.message(
+              dae.varCount,
+              dae.eqCount,
+              `Dulmage-Mendelsohn found ${unmatchedEqs} structurally unmatched equation(s)`,
+            ),
+            c.header.span,
+            "rigorous",
+          );
+        } else if (idxAnalysis.structuralIndex >= 2) {
+          addDiag(
+            PsseErrorCode.DAE_STRUCTURAL_IMBALANCE.severity,
+            PsseErrorCode.DAE_STRUCTURAL_IMBALANCE.code,
+            PsseErrorCode.DAE_STRUCTURAL_IMBALANCE.message(
+              dae.varCount,
+              dae.eqCount,
+              `Pryce Sigma-method detected high structural DAE index (${idxAnalysis.structuralIndex})`,
+            ),
+            c.header.span,
+            "rigorous",
+          );
+        }
       }
     } catch {
       // Lowering failure on malformed records is covered by parser/syntax diagnostics
@@ -1212,10 +1433,21 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     }
   }
 
-  // 15. P6006: Small-signal electromechanical damping & eigenvalue check via analyzeSmallSignalStability
-  if (c.dyr && c.dyr.records.some((r) => r.category === "generator") && c.buses.size >= 2 && c.buses.size <= 120) {
+  // 15. P6006: Small-signal electromechanical damping & eigenvalue check via analyzeSmallSignalStability (deep/formal)
+  const smallSignalBusLimit = tier === "formal" ? 2500 : 120;
+  if (
+    tier !== "fast" &&
+    c.dyr &&
+    c.dyr.records.some((r) => r.category === "generator") &&
+    c.buses.size >= 2 &&
+    c.buses.size <= smallSignalBusLimit
+  ) {
     try {
-      const ss = analyzeSmallSignalStability(c, { dyr: c.dyr, dampingThreshold: 0.03 });
+      const ss = analyzeSmallSignalStability(c, {
+        dyr: c.dyr,
+        dampingThreshold: 0.03,
+        method: c.buses.size > 120 ? "arnoldi" : "auto",
+      });
       const badCount = ss.summary.unstableCount + ss.summary.poorlyDampedCount;
       if (badCount > 0 && ss.criticalModes.length > 0) {
         const worst = ss.criticalModes[0]!;
@@ -1304,7 +1536,7 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
       if (zMag > 1e-6) {
         const y = 1.0 / zMag;
         addYCap(br.i, y);
-        addYCap(br.j, y);
+        addYCap(Math.abs(br.j), y);
       }
     }
     for (const t of c.transformers) {
@@ -1337,8 +1569,8 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     }
   }
 
-  // 18. P6004: Sparse reduced Q-V Jacobian inverse-iteration voltage collapse proximity check
-  if (c.buses.size >= 2 && c.buses.size <= 300) {
+  // 18. P6004: Sparse reduced Q-V Jacobian inverse-iteration voltage collapse proximity check (deep/formal)
+  if (tier !== "fast" && c.buses.size >= 2 && c.buses.size <= 300) {
     const qvConnectedBuses = new Set<number>();
     for (const br of c.branches) {
       if (br.st !== 0) {
@@ -1369,11 +1601,12 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
         if (br.st === 0) continue;
         const z2 = br.r * br.r + br.x * br.x;
         if (z2 < 1e-10) continue;
+        const jAbs = Math.abs(br.j);
         const bSeries = Math.abs(br.x) / z2;
         const ui = pqIdx.get(br.i);
-        const uj = pqIdx.get(br.j);
+        const uj = pqIdx.get(jAbs);
         const bi = c.buses.get(br.i);
-        const bj = c.buses.get(br.j);
+        const bj = c.buses.get(jAbs);
         const vi = bi?.vm || 1.0;
         const vj = bj?.vm || 1.0;
         const cosD = Math.cos((((bi?.va ?? 0) - (bj?.va ?? 0)) * Math.PI) / 180);
@@ -1458,7 +1691,14 @@ export function lintPsse(c: PsseCase): PsseDiagnostic[] {
     }
   }
 
+  // 19. Formal tier: automatic DYR protection relay SMT (P8001) & NERC/IEEE 2800 ontology compliance (P8005)
+  if (tier === "formal" && c.dyr && c.dyr.records.length > 0) {
+    diagnostics.push(...verifyDyrProtectionCoordinationSmt(c));
+    diagnostics.push(...verifyGridOntologyCompliance(c));
+  }
+
   return diagnostics;
 }
 
+export * from "./soa.js";
 export * from "./workspace.js";

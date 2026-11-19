@@ -49,7 +49,11 @@
       "default": "./src-gen/bindings.js"
     },
     "./parser.wasm": "./dist/parser.wasm",
-    "./dist/parser.wasm": "./dist/parser.wasm"
+    "./dist/parser.wasm": "./dist/parser.wasm",
+    "./ui": {
+      "types": "./dist/src/ui/PdbPanel.d.ts",
+      "default": "./dist/src/ui/PdbPanel.js"
+    }
   },
   "files": [
     "src/**",
@@ -63,6 +67,7 @@
     "build:parser": "node ../../scripts/build-language-parser.js --force",
     "clean": "rimraf dist src-gen as-gen *.wasm",
     "lint": "eslint src tests --no-warn-ignored",
+    "playground": "npx tsx ../../scripts/language-playground.ts .",
     "test": "node ../../scripts/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
@@ -71,8 +76,21 @@
     "@modelscript/runtime": "*"
   },
   "devDependencies": {
+    "@types/react": "^19.0.10",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@modelscript/design-tokens": "*",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@modelscript/design-tokens": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
   },
   "modelscript": {
     "tier": "alpha",

@@ -258,7 +258,7 @@ For regulated utilities, civil aerospace manufacturers, medical device companies
 
 #### B.1 Single-Container Air-Gapped Intranet Appliance (Recommended for Isolated Enclaves / NERC CIP / Cleanrooms)
 
-Bundles the API server, `@modelscript/ee`, Web SPA (Morsel & Studio), Unified Documentation Portal (`/docs`), and Studio into a single hardened container on port `8080` with zero outbound network dependencies:
+Bundles the API server, `@modelscript/ee`, Web SPA (Ansatz & Studio), Unified Documentation Portal (`/docs`), and Studio into a single hardened container on port `8080` with zero outbound network dependencies:
 
 ```bash
 # 1. On an internet-connected bastion, pull and export the appliance image for offline transfer
@@ -332,7 +332,7 @@ curl -s http://localhost:8080/api/v1/compliance/airgap | jq .
 
 ### Scenario C: Official `modelscript.org` & `ansatz.social` Cloud Production Deployment
 
-`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile flagship` or `--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/ansatz/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/morsel`) on `ansatz.social`, alongside Studio (`/studio`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
+`modelscript.org` and `ansatz.social` run on a shared multi-container **Enterprise Edition** stack via [`docker-compose.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.yml) + [`docker-compose.prod.yml`](https://github.com/modelscript/modelscript/blob/main/docker-compose.prod.yml) (`--profile flagship` or `--profile federated`) behind Caddy automatic multi-domain TLS (`PUBLIC_DOMAIN=ansatz.social`, `DOCS_DOMAIN=modelscript.org`). Host-based routing in Nginx serves the **Unified VitePress Documentation & PDF Manual** (`/` and `/docs`, `/guide/*`, `/ansatz/*`, `/languages/*`, `/pricing`) on `modelscript.org` and the **Ansatz Federated Web SPA** (`/`, `/home`, `/explore`, `/packages`, `/repos`, `/editor`) on `ansatz.social`, alongside Studio (`/studio`, `/vscode`) and Enterprise API (`/api/*`, `/git/*`).
 
 #### C.1 Initial Server Provisioning (`/opt/modelscript`)
 

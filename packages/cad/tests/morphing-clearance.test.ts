@@ -20,7 +20,7 @@ describe("CAD 4D Deformable Organ & Device Spatial Clearance Verifier", () => {
     const lvWall = box({ width: 40, height: 40, depth: 40, name: "LV_Myocardium" });
 
     // LVAD Inflow Cannula: Cylinder radius 6mm, height 30mm, placed along Z axis at Z=45mm
-    // Bounds: X [-6, 6], Y [-15, 15], Z [30, 60]
+    // Bounds: X [-6, 6], Y [-6, 6], Z [30, 60]
     // Distance along Z: 30 - 20 = 10mm
     const cannula = translate(cylinder({ radius: 6, height: 30, name: "Cannula" }), [0, 0, 45]);
 
@@ -51,13 +51,13 @@ describe("CAD 4D Deformable Organ & Device Spatial Clearance Verifier", () => {
     assert.strictEqual(report.isCertifiedSafe, true);
     assert.strictEqual(report.timeHistory.length, 1);
     const step = report.timeHistory[0]!;
-    assert.strictEqual(Math.round(step.minDistance), 19);
+    assert.strictEqual(Math.round(step.minDistance), 10);
     assert.ok(step.closestPoints, "Closest points must be recorded");
 
-    // Closest point on LV_Myocardium is (0, 0, 20) and on Cannula is (0, 0, 39)
+    // Closest point on LV_Myocardium is (0, 0, 20) and on Cannula is (0, 0, 30)
     const [ptA, ptB] = step.closestPoints;
     assert.strictEqual(Math.round(ptA[2]), 20);
-    assert.strictEqual(Math.round(ptB[2]), 39);
+    assert.strictEqual(Math.round(ptB[2]), 30);
   });
 
   it("should evaluate dynamic volume-radial deformation and certify clearance during normal heartbeat", () => {

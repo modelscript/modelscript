@@ -628,6 +628,8 @@ export class LspFacade {
   _nextFileId = 1;
   _idleTimer = null;
   _maxMemoryQuotaBytes = 32 * 1024 * 1024; // 32MB threshold
+  _lastInputBufferUri = undefined;
+  _lastInputBufferLength = 0;
   /**
    * Retrieves or assigns a stable numeric fileId for a given URI.
    */
@@ -729,8 +731,11 @@ export class LspFacade {
    */
   setDocumentRoot(uri, rootPtr, version = 0) {
     const oldRoot = this.documentRoots.get(uri);
-    if (oldRoot && oldRoot !== rootPtr && this.exports.dropRoot) {
-      this.exports.dropRoot(oldRoot);
+    if (oldRoot && oldRoot !== rootPtr) {
+      this.rootSourceCode.delete(oldRoot);
+      if (this.exports.dropRoot) {
+        this.exports.dropRoot(oldRoot);
+      }
     }
     this.documentRoots.set(uri, rootPtr);
     this.documentVersions.set(uri, version);
@@ -750,14 +755,22 @@ export class LspFacade {
       this._fileIdToUri.delete(fileId);
     }
     const root = this.documentRoots.get(uri);
-    if (root && this.exports.dropRoot) {
-      this.exports.dropRoot(root);
+    if (root) {
+      this.rootSourceCode.delete(root);
+      if (this.exports.dropRoot) {
+        this.exports.dropRoot(root);
+      }
     }
     this.documentRoots.delete(uri);
     this.documentVersions.delete(uri);
     if (this.lastAstRoot === root) {
       this.lastAstRoot = 0;
     }
+    if (this._lastInputBufferUri === uri) {
+      this._lastInputBufferUri = undefined;
+      this._lastInputBufferLength = 0;
+    }
+    this._childTailCache.clear();
     // Trigger 3: Document lifecycle event (cleanup on close)
     this.scheduleCompaction(true);
     this.uriSourceCode.delete(uri);
@@ -798,6 +811,8 @@ export class LspFacade {
     else if (this.exports.setInputLength) this.exports.setInputLength(inputLen);
     this.currentInputLength = text.length;
     this._cachedLineStarts = null;
+    this._lastInputBufferUri = undefined;
+    this._lastInputBufferLength = 0;
   }
   /**
    * Returns all active document roots across open files in the workspace.
@@ -812,34 +827,75 @@ export class LspFacade {
    * Schedules a generational sweep/compaction pass.
    * Trigger 1: Quiescence / Idle Timer (1500ms debounce).
    */
-  scheduleCompaction(_immediate = false) {
+  scheduleCompaction(immediate = false) {
     if (this._idleTimer) {
       clearTimeout(this._idleTimer);
       this._idleTimer = null;
+    }
+    if (immediate) {
+      this.gcCompact();
+      return;
+    }
+    if (typeof setTimeout === "function") {
+      const handle = setTimeout(() => {
+        this._idleTimer = null;
+        this.gcCompact();
+      }, 1500);
+      handle.unref?.();
+      this._idleTimer = handle;
     }
   }
   /**
    * Trigger 2: Checks if allocated memory exceeds high-water mark quota.
    */
   checkMemoryQuota() {
-    // In immutable append-only arena, memory is reset on generation boundaries (didOpen/didClose/config)
+    const allocatedBytes = this.wasmMemory?.buffer?.byteLength ?? 0;
+    if (allocatedBytes >= this._maxMemoryQuotaBytes) {
+      this.gcCompact();
+    }
   }
   /**
-   * Performs compaction protecting all live document roots if requested.
+   * Reclaims WASM slab arenas for closed/stale documents and resets parser
+   * generations cleanly once all open document roots have been closed.
    */
   gcCompact() {
-    // No-op during active editing sessions to preserve append-only immutability
+    for (const [uri, fileId] of Array.from(this._uriToFileId.entries())) {
+      const root = this.documentRoots.get(uri) ?? 0;
+      if (root === 0) {
+        this.evictDocumentAst(fileId);
+        this._uriToFileId.delete(uri);
+        this._fileIdToUri.delete(fileId);
+        this.uriSourceCode.delete(uri);
+      }
+    }
+    if (this.documentRoots.size === 0 && this.lastAstRoot === 0) {
+      if (this.exports.resetParser) {
+        this.exports.resetParser();
+      }
+      this._cachedLineStarts = null;
+      this._childTailCache.clear();
+      this._lastInputBufferUri = undefined;
+      this._lastInputBufferLength = 0;
+    }
   }
   /** Resets the internal parser state and clears all cached data. */
   resetParser() {
+    if (this._idleTimer) {
+      clearTimeout(this._idleTimer);
+      this._idleTimer = null;
+    }
     if (this.exports.resetParser) {
       this.exports.resetParser();
     }
     this.lastAstRoot = 0;
     this.documentRoots.clear();
     this.documentVersions.clear();
+    this._uriToFileId.clear();
+    this._fileIdToUri.clear();
     this._cachedLineStarts = null;
     this._childTailCache.clear();
+    this._lastInputBufferUri = undefined;
+    this._lastInputBufferLength = 0;
   }
   getInputEncoding() {
     return this._inputEncoding !== undefined
@@ -888,6 +944,8 @@ export class LspFacade {
     this._cachedLineStarts = null;
     this._childTailCache.clear(); // Invalidate tail pointers on edit
     this.currentInputLength = newTotalLength;
+    this._lastInputBufferUri = uri;
+    this._lastInputBufferLength = Math.max(0, newTotalLength);
     if (this.exports.abortSuspend) this.exports.abortSuspend();
     const lenBytes = newTotalLength * 2;
     const prevAstRoot = this.getDocumentRoot(uri);
@@ -4268,6 +4326,33 @@ export class LspFacade {
     this._cachedLineStarts = null; // Invalidate cached line starts on edit
     this._childTailCache.clear(); // Invalidate tail pointers on edit
     if (this.exports.abortSuspend) this.exports.abortSuspend();
+    const prevAstRoot = uri ? this.getDocumentRoot(uri) : 0;
+    if (
+      typeof editStartOrEdits === "number" &&
+      uri !== undefined &&
+      uri === this._lastInputBufferUri &&
+      prevAstRoot > 0 &&
+      (oldRoot === undefined || oldRoot === prevAstRoot) &&
+      editOldEnd >= editStartOrEdits &&
+      editNewEnd >= editStartOrEdits &&
+      (editOldEnd > 0 || editNewEnd > 0) &&
+      text.length ===
+        this._lastInputBufferLength -
+          (editOldEnd - editStartOrEdits) +
+          (editNewEnd - editStartOrEdits)
+    ) {
+      const incRoot = this.parseIncremental(
+        text.slice(editStartOrEdits, editNewEnd),
+        editStartOrEdits,
+        editOldEnd - editStartOrEdits,
+        text.length,
+        uri,
+      );
+      if (incRoot > 0) {
+        this.uriSourceCode.set(uri, text);
+      }
+      return incRoot;
+    }
     const lenBytes = text.length * 2;
     const textPtr = this.exports.ensureInputBuffer
       ? this.exports.ensureInputBuffer(lenBytes)
@@ -4289,7 +4374,8 @@ export class LspFacade {
       this.exports.lsp_setInputLength(inputLen);
     else if (this.exports.setInputLength) this.exports.setInputLength(inputLen);
     this.currentInputLength = text.length;
-    const prevAstRoot = uri ? this.getDocumentRoot(uri) : 0;
+    this._lastInputBufferUri = uri;
+    this._lastInputBufferLength = uri ? text.length : 0;
     let baseRoot =
       oldRoot !== undefined
         ? oldRoot

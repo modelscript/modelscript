@@ -24,6 +24,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./panel": {
+      "types": "./dist/panel.d.ts",
+      "default": "./dist/panel.js"
     }
   },
   "main": "./dist/index.js",
@@ -40,6 +44,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelscript/design-tokens": "*",
     "@modelscript/embed": "*",
     "@modelscript/exchange": "*",
     "@modelscript/runtime": "*"

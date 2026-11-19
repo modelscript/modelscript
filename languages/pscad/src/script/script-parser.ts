@@ -19,8 +19,30 @@ import type { PscadBranchDescriptor, PscadCheckRule, PscadFlyByDoc, PscadScriptS
 /**
  * Extracts all `<segment>` elements within a `<script>` tag.
  */
-export function parseScriptElement(scriptEl: XmlElement, xmlContent: string): Map<string, PscadScriptSegment> {
+export function parseScriptElement(
+  scriptEl: XmlElement,
+  xmlContent: string,
+  lineStarts?: readonly number[],
+): Map<string, PscadScriptSegment> {
   const segments = new Map<string, PscadScriptSegment>();
+
+  const offsetToLine = (offset: number): number => {
+    if (lineStarts && lineStarts.length > 0) {
+      let lo = 0;
+      let hi = lineStarts.length - 1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >>> 1;
+        if (lineStarts[mid]! <= offset) lo = mid + 1;
+        else hi = mid - 1;
+      }
+      return Math.max(1, lo);
+    }
+    let line = 1;
+    for (let i = 0; i < offset && i < xmlContent.length; i++) {
+      if (xmlContent.charCodeAt(i) === 10) line++;
+    }
+    return line;
+  };
 
   for (const seg of scriptEl.children) {
     if (seg.name.toLowerCase() !== "segment") continue;
@@ -45,10 +67,7 @@ export function parseScriptElement(scriptEl: XmlElement, xmlContent: string): Ma
       content = seg.text;
     }
 
-    let startLine = 1;
-    for (let i = 0; i < bodyStartOffset && i < xmlContent.length; i++) {
-      if (xmlContent.charCodeAt(i) === 10) startLine++;
-    }
+    const startLine = offsetToLine(bodyStartOffset);
 
     segments.set(name.toLowerCase(), {
       name,
@@ -131,7 +150,9 @@ export function parseChecksSegment(checksText: string): PscadCheckRule[] {
 
   const rules: PscadCheckRule[] = [];
   const lines = checksText.split(/\r?\n/);
-  const guardStack: string[] = [];
+  // Each frame stores [priorBranchConditions[], activeBranchGuard]
+  const branchFrames: Array<{ prior: string[]; active: string }> = [];
+  const currentGuardParts = (): string[] => branchFrames.map((f) => f.active).filter(Boolean);
 
   for (const rawLine of lines) {
     let line = rawLine.trim();
@@ -145,20 +166,23 @@ export function parseChecksSegment(checksText: string): PscadCheckRule[] {
         const arg = directiveMatch[2]!.trim();
 
         if (dir === "IF") {
-          guardStack.push(arg);
+          branchFrames.push({ prior: [arg], active: arg });
         } else if (dir === "ELSEIF") {
-          if (guardStack.length > 0) {
-            guardStack[guardStack.length - 1] = arg;
+          if (branchFrames.length > 0) {
+            const top = branchFrames[branchFrames.length - 1]!;
+            const negPrior = top.prior.map((c) => `!(${c})`).join(" && ");
+            top.active = negPrior ? `${negPrior} && (${arg})` : arg;
+            top.prior.push(arg);
           } else {
-            guardStack.push(arg);
+            branchFrames.push({ prior: [arg], active: arg });
           }
         } else if (dir === "ELSE") {
-          if (guardStack.length > 0) {
-            const prev = guardStack[guardStack.length - 1]!;
-            guardStack[guardStack.length - 1] = `!(${prev})`;
+          if (branchFrames.length > 0) {
+            const top = branchFrames[branchFrames.length - 1]!;
+            top.active = top.prior.map((c) => `!(${c})`).join(" && ");
           }
         } else if (dir === "ENDIF") {
-          guardStack.pop();
+          branchFrames.pop();
         }
       }
       continue;
@@ -176,7 +200,8 @@ export function parseChecksSegment(checksText: string): PscadCheckRule[] {
         msg = rest.slice(0, colonIdx).trim();
         condition = rest.slice(colonIdx + 1).trim() || undefined;
       }
-      const guard = guardStack.length > 0 ? guardStack.join(" && ") : undefined;
+      const guardParts = currentGuardParts();
+      const guard = guardParts.length > 0 ? guardParts.join(" && ") : undefined;
 
       rules.push({
         severity: sev,

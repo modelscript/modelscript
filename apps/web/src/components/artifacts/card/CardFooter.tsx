@@ -417,8 +417,8 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             type="button"
             className="card-footer-ghost is-primary"
             onClick={handleOpenEditor}
-            data-tip={"Morsel\nEdit and run in the browser"}
-            aria-label="Open in Morsel"
+            data-tip={"Ansatz\nEdit and run in the browser"}
+            aria-label="Open in Ansatz"
           >
             <DraftingTriangleIcon size={14} />
           </button>

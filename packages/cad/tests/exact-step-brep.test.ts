@@ -172,4 +172,140 @@ ACTUAL ACT1 characteristic=C_FAN_RUNOUT serial="SN-1" value=0.042 status=FAIL
     assert.ok(res?.success !== false, "Expected OCCT ReadStepFile to succeed");
     assert.ok(Array.isArray(res?.meshes) && res.meshes.length >= 1, "Expected >=1 tessellated OCCT mesh");
   });
+
+  it("compiles analytical Box minus Cylinder plate through-hole (FACE_BOUND + internal CYLINDRICAL_SURFACE) verified by OCCT", async () => {
+    const plate = box({ width: 40, height: 30, depth: 10, name: "mounting_plate" });
+    const bore = translate(cylinder({ radius: 6, height: 14, name: "center_bore" }), [4, -2, 0]);
+    const holedPlate = subtract(plate, bore);
+    const step = compileToStep(holedPlate, "HoledPlate");
+
+    const brepCount = (step.match(/MANIFOLD_SOLID_BREP/g) ?? []).length;
+    assert.strictEqual(brepCount, 1, "Expected unified single MANIFOLD_SOLID_BREP shell for plate with through-hole");
+    assert.ok(step.includes("FACE_OUTER_BOUND"), "Expected outer rectangular loop FACE_OUTER_BOUND");
+    assert.ok(step.includes("FACE_BOUND"), "Expected circular bore FACE_BOUND");
+    assert.ok(step.includes("CYLINDRICAL_SURFACE"), "Expected internal CYLINDRICAL_SURFACE wall");
+    assert.ok(step.includes("CIRCLE"), "Expected bounding CIRCLE curves");
+
+    const req = createRequire(import.meta.url);
+    const occtMod = (await import("occt-import-js")) as { default?: any };
+    const initOcct = occtMod.default ?? occtMod;
+    const occt = await initOcct({
+      locateFile: (p: string) => (p.endsWith(".wasm") ? req.resolve(`occt-import-js/dist/${p}`) : p),
+    });
+    const res = occt.ReadStepFile(new TextEncoder().encode(step), null);
+    assert.ok(res?.success !== false, "Expected OCCT ReadStepFile to succeed for plate with through-hole");
+    assert.ok(Array.isArray(res?.meshes) && res.meshes.length >= 1, "Expected >=1 tessellated OCCT mesh");
+  });
+
+  it("compiles analytical blind hole, rectangular box slot, and Box/Cylinder Intersect B-Reps verified by OCCT", async () => {
+    const { intersect } = await import("../src/index.js");
+    const req = createRequire(import.meta.url);
+    const occtMod = (await import("occt-import-js")) as { default?: any };
+    const initOcct = occtMod.default ?? occtMod;
+    const occt = await initOcct({
+      locateFile: (p: string) => (p.endsWith(".wasm") ? req.resolve(`occt-import-js/dist/${p}`) : p),
+    });
+
+    // 1. Blind pocket hole entering +Z face and terminating at z = 0
+    const block = box({ width: 30, height: 30, depth: 16, name: "Block" });
+    const pocket = translate(cylinder({ radius: 5, height: 10, name: "BlindPocket" }), [0, 0, 5]);
+    const blindStep = compileToStep(subtract(block, pocket), "BlindPocketPart");
+    assert.strictEqual(
+      (blindStep.match(/FACE_BOUND\(/g) ?? []).length,
+      1,
+      "Blind hole has exactly 1 FACE_BOUND on top cap",
+    );
+    assert.ok(blindStep.includes("CYLINDRICAL_SURFACE"));
+    const blindRes = occt.ReadStepFile(new TextEncoder().encode(blindStep), null);
+    assert.ok(
+      blindRes?.success !== false && blindRes?.meshes?.length >= 1,
+      "Expected valid OCCT tessellation for blind hole",
+    );
+
+    // 2. Rectangular through-slot (Box - Box)
+    const slot = box({ width: 10, height: 8, depth: 20, name: "Window" });
+    const slottedStep = compileToStep(subtract(block, slot), "SlottedPlate");
+    assert.strictEqual(
+      (slottedStep.match(/FACE_BOUND\(/g) ?? []).length,
+      2,
+      "Rectangular slot has top & bottom FACE_BOUND",
+    );
+    assert.strictEqual((slottedStep.match(/PLANE\(/g) ?? []).length, 10, "Slotted plate has 10 analytical PLANE faces");
+    const slotRes = occt.ReadStepFile(new TextEncoder().encode(slottedStep), null);
+    assert.ok(
+      slotRes?.success !== false && slotRes?.meshes?.length >= 1,
+      "Expected valid OCCT tessellation for slotted plate",
+    );
+
+    // 3. Analytical Box ∩ Cylinder
+    const boss = cylinder({ radius: 6, height: 30, name: "TrimmedPin" });
+    const pinStep = compileToStep(intersect(block, boss), "ClampedPin");
+    assert.ok(pinStep.includes("CYLINDRICAL_SURFACE"), "Box ∩ Cylinder must preserve exact CYLINDRICAL_SURFACE");
+    const pinRes = occt.ReadStepFile(new TextEncoder().encode(pinStep), null);
+    assert.ok(
+      pinRes?.success !== false && pinRes?.meshes?.length >= 1,
+      "Expected valid OCCT tessellation for Box ∩ Cylinder",
+    );
+  });
+
+  it("compiles analytical blind coaxial cylinder bore, coaxial Cylinder ∩ Cylinder, and transverse cross-bore B_SPLINE_CURVE_WITH_KNOTS verified by OCCT", async () => {
+    const { intersect, rotate } = await import("../src/index.js");
+    const req = createRequire(import.meta.url);
+    const occtMod = (await import("occt-import-js")) as { default?: any };
+    const initOcct = occtMod.default ?? occtMod;
+    const occt = await initOcct({
+      locateFile: (p: string) => (p.endsWith(".wasm") ? req.resolve(`occt-import-js/dist/${p}`) : p),
+    });
+
+    // 1. Blind coaxial cylindrical bore (counterbore from top)
+    const shaft = cylinder({ radius: 12, height: 24, name: "Shaft" });
+    const blindBore = translate(cylinder({ radius: 6, height: 14, name: "Counterbore" }), [0, 0, 8]);
+    const blindStep = compileToStep(subtract(shaft, blindBore), "BlindShaft");
+    assert.strictEqual((blindStep.match(/MANIFOLD_SOLID_BREP/g) ?? []).length, 1);
+    assert.strictEqual(
+      (blindStep.match(/FACE_BOUND\(/g) ?? []).length,
+      1,
+      "Blind coaxial bore has inner bound on top annulus only",
+    );
+    assert.strictEqual((blindStep.match(/CYLINDRICAL_SURFACE/g) ?? []).length, 2);
+    const blindRes = occt.ReadStepFile(new TextEncoder().encode(blindStep), null);
+    assert.ok(
+      blindRes?.success !== false && blindRes?.meshes?.length >= 1,
+      "Expected valid OCCT tessellation for blind coaxial bore",
+    );
+
+    // 2. Coaxial Cylinder ∩ Cylinder
+    const outerCyl = cylinder({ radius: 14, height: 30, name: "CollarA" });
+    const tallPin = translate(cylinder({ radius: 7, height: 24, name: "CollarB" }), [0, 0, 9]);
+    const isectStep = compileToStep(intersect(outerCyl, tallPin), "CoaxialCylIsect");
+    assert.ok(
+      isectStep.includes("CYLINDRICAL_SURFACE"),
+      "Coaxial Cylinder ∩ Cylinder must emit analytical CYLINDRICAL_SURFACE",
+    );
+    assert.strictEqual((isectStep.match(/MANIFOLD_SOLID_BREP/g) ?? []).length, 1);
+    const isectRes = occt.ReadStepFile(new TextEncoder().encode(isectStep), null);
+    assert.ok(
+      isectRes?.success !== false && isectRes?.meshes?.length >= 1,
+      "Expected valid OCCT tessellation for coaxial Cylinder ∩ Cylinder",
+    );
+
+    // 3. Curved-on-curved perpendicular transverse cross-bore (B_SPLINE_CURVE_WITH_KNOTS)
+    const crossHole = rotate(cylinder({ radius: 4, height: 32, name: "CrossPinHole" }), [0, 1, 0], 90);
+    const crossStep = compileToStep(subtract(shaft, crossHole), "CrossBoredShaft");
+    assert.strictEqual((crossStep.match(/MANIFOLD_SOLID_BREP/g) ?? []).length, 1);
+    assert.ok(
+      crossStep.includes("B_SPLINE_CURVE_WITH_KNOTS"),
+      "Curved-on-curved cross bore must emit B_SPLINE_CURVE_WITH_KNOTS intersection edges",
+    );
+    assert.strictEqual(
+      (crossStep.match(/FACE_BOUND\(/g) ?? []).length,
+      2,
+      "Cross-bored shaft has 2 saddle hole FACE_BOUND loops",
+    );
+    const crossRes = occt.ReadStepFile(new TextEncoder().encode(crossStep), null);
+    assert.ok(
+      crossRes?.success !== false && crossRes?.meshes?.length >= 1,
+      "Expected valid OCCT tessellation for B_SPLINE_CURVE_WITH_KNOTS cross-bore",
+    );
+  });
 });

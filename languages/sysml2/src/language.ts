@@ -47,9 +47,11 @@ import {
   verificationCaseUsageQueries,
 } from "./queries.js";
 
+import { sysml2CompilerLints } from "./compiler-lints.js";
 import {
   actionDefinitionLints,
   actionUsageLints,
+  aliasLints,
   allocationLints,
   bindingConnectorLints,
   calculationDefinitionLints,
@@ -76,6 +78,7 @@ import {
   viewUsageLints,
 } from "./lints.js";
 
+export * from "./compiler-lints.js";
 export * from "./graphics.js";
 export * from "./lints.js";
 export * from "./queries.js";
@@ -83,7 +86,6 @@ export * from "./queries.js";
 import {
   choice,
   def,
-  domain,
   error,
   field,
   language,
@@ -122,6 +124,40 @@ export const sysml2Language = language({
   displayName: "SysML v2",
   fileExtensions: [".sysml", ".sysml2", ".kerml"],
   maturity: "stable",
+  ui: {
+    panels: [
+      {
+        id: "sysmlWorkbench",
+        viewType: "modelscript.sysmlWorkbench",
+        title: "SysML v2 Requirements & Element Workbench",
+        shortTitle: "SysML Studio",
+        selector: ["*.sysml", "*.sysml2"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/SysmlPanel.tsx",
+        artifactViewTypes: ["sysml2", "sysml"],
+      },
+    ],
+    stencils: [
+      {
+        label: "Part Def",
+        snippet: "\npart def SubSystem {\n  attribute mass : Real = 10.0;\n}\n",
+      },
+      {
+        label: "Port Def",
+        snippet: "\nport def SignalPort {\n  in item cmd : Real;\n  out item status : Real;\n}\n",
+      },
+      {
+        label: "Requirement",
+        snippet:
+          "\nrequirement def <'REQ-NEW'> PerformanceReq {\n  doc /* System shall satisfy target response time */\n}\n",
+      },
+      {
+        label: "Action Def",
+        snippet: "\naction def ExecuteControl {\n  in item sensorIn;\n  out item actuatorOut;\n}\n",
+      },
+    ],
+  },
 
   lsp: {
     fileExtensions: [".sysml", ".sysml2", ".kerml"],
@@ -166,38 +202,8 @@ export const sysml2Language = language({
 
   writeback: sysml2Writeback,
 
-  // Configure background SMT theories (Linear Real Arithmetic + Equality with Uninterpreted Functions)
-  semantics: {
-    reasoner: {
-      smt: {
-        theories: ["LRA", "EUF"],
-        maxSimplexVars: 500,
-      },
-    } as unknown as { maxFacts?: number | undefined },
-  },
-
-  // Relational Octagon abstract domain (±x ± y <= c) for static interval and difference bound analysis
-  domains: {
-    bounds: domain.octagon(),
-  },
-
-  // Control-flow graph (CFG) node descriptors for activity and state-machine static analysis
-  cfgNodes: {
-    IfNode: {
-      condition: "condition",
-      trueBranch: "thenBody",
-      falseBranch: "elseBody",
-    },
-    WhileLoopNode: {
-      condition: "condition",
-      trueBranch: "ActionBodyParameter",
-      isLoop: true,
-    },
-    TransitionUsage: {
-      condition: "guard",
-      trueBranch: "effect",
-    },
-  },
+  // Tier-1 arena-native WASM CST compiler lints (`facade.getDiagnostics`)
+  lints: sysml2CompilerLints,
 
   actions: sysml2Actions,
 
@@ -718,6 +724,7 @@ export const sysml2Language = language({
           name: "AliasNode" as const,
           visitable: true,
         },
+        lints: aliasLints,
       }),
 
     // =====================================================================

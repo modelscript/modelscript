@@ -568,10 +568,97 @@ function indentMultiline(block: string, indent: string): string {
     .join("\n");
 }
 
-function formatPlacementAnnotation(x: number, y: number): string {
+interface IconCoordSys {
+  extent?: [[number, number], [number, number]] | undefined;
+  initialScale?: number | undefined;
+}
+
+function findMatchingCloseParen(text: string, openIdx: number): number {
+  let depth = 0;
+  let inString: string | null = null;
+  for (let i = openIdx; i < text.length; i++) {
+    const ch = text[i]!;
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === inString) inString = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inString = ch;
+    } else if (ch === "/" && text[i + 1] === "/") {
+      const nl = text.indexOf("\n", i + 2);
+      if (nl === -1) break;
+      i = nl;
+    } else if (ch === "/" && text[i + 1] === "*") {
+      const end = text.indexOf("*/", i + 2);
+      if (end === -1) break;
+      i = end + 1;
+    } else if (ch === "(") {
+      depth++;
+    } else if (ch === ")") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Extracts `Icon(coordinateSystem(extent={{x1,y1},{x2,y2}}, initialScale=...))` from a Modelica class slice.
+ */
+export function parseIconCoordinateSystemFromSource(classSlice: string): IconCoordSys | null {
+  if (!classSlice || !classSlice.includes("Icon")) return null;
+  const iconRe = /\bIcon\s*\(/g;
+  let match: RegExpExecArray | null;
+  while ((match = iconRe.exec(classSlice)) !== null) {
+    const openIdx = match.index + match[0].length - 1;
+    const closeIdx = findMatchingCloseParen(classSlice, openIdx);
+    if (closeIdx === -1) continue;
+    const iconInner = classSlice.slice(openIdx + 1, closeIdx);
+    const csRe = /\bcoordinateSystem\s*\(/g;
+    const csMatch = csRe.exec(iconInner);
+    if (!csMatch) continue;
+    const csOpen = csMatch.index + csMatch[0].length - 1;
+    const csClose = findMatchingCloseParen(iconInner, csOpen);
+    if (csClose === -1) continue;
+    const csInner = iconInner.slice(csOpen + 1, csClose);
+    const extMatch = csInner.match(
+      /extent\s*=\s*\{\s*\{\s*([-+]?\d*\.?\d+)\s*,\s*([-+]?\d*\.?\d+)\s*\}\s*,\s*\{\s*([-+]?\d*\.?\d+)\s*,\s*([-+]?\d*\.?\d+)\s*\}\s*\}/,
+    );
+    const scaleMatch = csInner.match(/initialScale\s*=\s*([-+]?\d*\.?\d+)/);
+    const extent: [[number, number], [number, number]] | undefined = extMatch
+      ? [
+          [Number(extMatch[1]), Number(extMatch[2])],
+          [Number(extMatch[3]), Number(extMatch[4])],
+        ]
+      : undefined;
+    const initialScale = scaleMatch ? Number(scaleMatch[1]) : undefined;
+    if (extent || (initialScale !== undefined && Number.isFinite(initialScale))) {
+      return { extent, initialScale };
+    }
+  }
+  return null;
+}
+
+function formatPlacementAnnotation(x: number, y: number, iconCoord?: IconCoordSys | null): string {
   const rx = Math.round(x);
   const ry = Math.round(y);
-  return `annotation(Placement(transformation(extent={{${rx - 10},${ry - 10}},{${rx + 10},${ry + 10}}})))`;
+  const scale =
+    iconCoord?.initialScale && Number.isFinite(iconCoord.initialScale) && iconCoord.initialScale > 0
+      ? iconCoord.initialScale
+      : 0.1;
+  const extent = iconCoord?.extent;
+  let width = 200;
+  let height = 200;
+  if (extent && extent.length >= 2 && extent[0] && extent[1]) {
+    const extW = Math.abs(extent[1][0] - extent[0][0]);
+    const extH = Math.abs(extent[1][1] - extent[0][1]);
+    if (extW > 0 && Number.isFinite(extW)) width = extW;
+    if (extH > 0 && Number.isFinite(extH)) height = extH;
+  }
+  const halfW = (width * scale) / 2;
+  const halfH = (height * scale) / 2;
+  return `annotation(Placement(transformation(origin={${rx},${ry}}, extent={{-${halfW},-${halfH}},{${halfW},${halfH}}})))`;
 }
 
 /**
@@ -604,15 +691,47 @@ export function computeModelicaComponentDropEdits<
   y: number;
   classInstance: T | null | undefined;
   computeComponentInsert?:
-    | ((ci: T, className: string, compName: string, x: number, y: number, docText: string) => TextEdit[])
+    | ((
+        ci: T,
+        className: string,
+        compName: string,
+        x: number,
+        y: number,
+        docText: string,
+        componentIconCoord?: IconCoordSys | null,
+      ) => TextEdit[])
     | undefined;
   unifiedIndex?: SymbolIndex | null | undefined;
   instanceName?: string | undefined;
+  componentIconCoord?: IconCoordSys | null | undefined;
+  getResourceText?: ((uri: string) => string | undefined) | undefined;
 }): TextEdit[] {
-  const { docText, uri, rawClassName, x, y, classInstance, computeComponentInsert, unifiedIndex, instanceName } =
-    params;
+  const {
+    docText,
+    uri,
+    rawClassName,
+    x,
+    y,
+    classInstance,
+    computeComponentInsert,
+    unifiedIndex,
+    instanceName,
+    componentIconCoord,
+    getResourceText,
+  } = params;
   const resolved = resolveCrossLanguageComponentDrop(unifiedIndex, rawClassName, "modelica", docText);
   const compName = instanceName || generateUniqueNameInText(docText, resolved.baseName);
+
+  let effectiveIconCoord: IconCoordSys | null = componentIconCoord ?? null;
+  if (!effectiveIconCoord && unifiedIndex) {
+    const sym = findSymbolInUnifiedIndex(unifiedIndex, resolved.className);
+    if (sym && sym.startOffset != null && sym.endOffset != null && sym.endOffset > sym.startOffset) {
+      const symText = sym.resourceId && sym.resourceId !== uri ? getResourceText?.(sym.resourceId) : docText;
+      if (symText && sym.endOffset <= symText.length) {
+        effectiveIconCoord = parseIconCoordinateSystemFromSource(symText.slice(sym.startOffset, sym.endOffset));
+      }
+    }
+  }
 
   // Empty .mo file scaffold
   if (!docText || docText.trim().length === 0 || !classInstance) {
@@ -624,13 +743,13 @@ export function computeModelicaComponentDropEdits<
     if (resolved.stubBlock) {
       bodyLines.push(indentMultiline(resolved.stubBlock, "  "));
     }
-    bodyLines.push(`  ${resolved.className} ${compName} ${formatPlacementAnnotation(x, y)};`);
+    bodyLines.push(`  ${resolved.className} ${compName} ${formatPlacementAnnotation(x, y, effectiveIconCoord)};`);
     const scaffold = `model ${modelName}\n${bodyLines.join("\n")}\nequation\nend ${modelName};\n`;
     return [TextEdit.insert({ line: 0, character: 0 }, scaffold)];
   }
 
   const compEdits: TextEdit[] = computeComponentInsert
-    ? computeComponentInsert(classInstance, resolved.className, compName, x, y, docText)
+    ? computeComponentInsert(classInstance, resolved.className, compName, x, y, docText, effectiveIconCoord)
     : [];
 
   const needsImport = Boolean(resolved.importPath && !hasModelicaImport(docText, resolved.importPath));
