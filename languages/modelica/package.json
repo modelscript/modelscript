@@ -175,6 +175,7 @@
     "@modelscript/csv": "*",
     "@modelscript/diagram": "*",
     "@modelscript/dsl": "*",
+    "@modelscript/exchange": "*",
     "@modelscript/las": "*",
     "@modelscript/runtime": "*",
     "@modelscript/simulate": "*",
@@ -209,7 +210,8 @@
           "@modelscript/csv:build",
           "@modelscript/las:build",
           "@modelscript/simulate:build",
-          "@modelscript/cad:build"
+          "@modelscript/cad:build",
+          "@modelscript/exchange:build"
         ]
       }
     }

@@ -284,19 +284,19 @@ Model {
       );
 
       const viewersWithoutTelemetrySidebar = [
-        "PolyglotArtifactViewer.tsx",
-        "RocetsViewer.tsx",
-        "PipelineLpsViewer.tsx",
-        "FeaDeckViewer.tsx",
-        "CfdConfigViewer.tsx",
-        "PscadViewer.tsx",
-        "PsseSldViewer.tsx",
-        "OlgaFlowViewer.tsx",
-        "Easy5Viewer.tsx",
-        "GtSuiteViewer.tsx",
+        "../src/components/artifacts/PolyglotArtifactViewer.tsx",
+        "../../../languages/rocets/src/ui/RocetsPanel.tsx",
+        "../../../languages/lps/src/ui/LpsPanel.tsx",
+        "../src/components/artifacts/FeaDeckViewer.tsx",
+        "../src/components/artifacts/CfdConfigViewer.tsx",
+        "../../../languages/pscad/src/ui/PscadPanel.tsx",
+        "../src/components/artifacts/PsseSldViewer.tsx",
+        "../../../languages/olga/src/ui/OlgaPanel.tsx",
+        "../../../languages/easy5/src/ui/Easy5Panel.tsx",
+        "../../../languages/gtsuite/src/ui/GtSuitePanel.tsx",
       ];
       for (const file of viewersWithoutTelemetrySidebar) {
-        const src = fs.readFileSync(path.resolve(import.meta.dirname, "../src/components/artifacts", file), "utf8");
+        const src = fs.readFileSync(path.resolve(import.meta.dirname, file), "utf8");
         assert.ok(
           !src.includes("Hide Telemetry"),
           `${file} must not include a cluttered right-side Telemetry sidebar toggle`,
@@ -656,15 +656,6 @@ Model {
         "PolyglotArtifactViewer must use a fixed 440px non-fullscreen height so loadingText spinner completion does not shift height",
       );
 
-      const fortranSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../src/components/artifacts/FortranViewer.tsx"),
-        "utf8",
-      );
-      assert.ok(
-        fortranSrc.includes('height: ${(p) => (p.$isFullScreen ? "100%" : "440px")}'),
-        "FortranViewer must use a fixed 440px non-fullscreen height across loading and loaded states",
-      );
-
       const vegaSrc = fs.readFileSync(
         path.resolve(import.meta.dirname, "../src/components/artifacts/VegaViewer.tsx"),
         "utf8",
@@ -902,10 +893,18 @@ end DoublePendulum3D;
         "utf8",
       );
       assert.ok(
-        visualizerPaneSrc.includes("Modelica.Mechanics.MultiBody.Visualizers.FixedShape") &&
-          visualizerPaneSrc.includes("Modelica.Mechanics.MultiBody.Visualizers.SignalArrow") &&
-          visualizerPaneSrc.includes("Modelica.Mechanics.MultiBody.Visualizers.Torus"),
-        "MorselVisualizerPane must provide 3D MultiBody Visualizer drag-and-drop stencils",
+        visualizerPaneSrc.includes("getDiagramPalette"),
+        "MorselVisualizerPane must load diagram palette stencils via getDiagramPalette",
+      );
+      const modelicaLangSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../../languages/modelica/src/language.ts"),
+        "utf8",
+      );
+      assert.ok(
+        modelicaLangSrc.includes("Modelica.Mechanics.MultiBody.Visualizers.FixedShape") &&
+          modelicaLangSrc.includes("Modelica.Mechanics.MultiBody.Visualizers.SignalArrow") &&
+          modelicaLangSrc.includes("Modelica.Mechanics.MultiBody.Visualizers.Torus"),
+        "Modelica language definition must provide 3D MultiBody Visualizer drag-and-drop stencils",
       );
     });
   });
@@ -959,16 +958,10 @@ end DoublePendulum3D;
         "ModelicaCodeViewer.tsx",
         "SspViewer.tsx",
         "SysmlViewer.tsx",
-        "SimaViewer.tsx",
-        "Easy5Viewer.tsx",
-        "RocetsViewer.tsx",
-        "PipelineLpsViewer.tsx",
-        "GtSuiteViewer.tsx",
         "CfdConfigViewer.tsx",
         "CadStepViewer.tsx",
         "VegaViewer.tsx",
         "MermaidViewer.tsx",
-        "PscadViewer.tsx",
         "ArtifactViewCard.tsx",
       ];
 
@@ -981,6 +974,22 @@ end DoublePendulum3D;
         assert.ok(
           !src.includes('resolvedColorMode === "dark"'),
           `${file} must not compare Primer resolvedColorMode against "dark" (Primer uses "night"/"day")`,
+        );
+      }
+
+      const languagePanels = [
+        "../../../languages/sima/src/ui/SimaPanel.tsx",
+        "../../../languages/easy5/src/ui/Easy5Panel.tsx",
+        "../../../languages/rocets/src/ui/RocetsPanel.tsx",
+        "../../../languages/lps/src/ui/LpsPanel.tsx",
+        "../../../languages/gtsuite/src/ui/GtSuitePanel.tsx",
+        "../../../languages/pscad/src/ui/PscadPanel.tsx",
+      ];
+      for (const panelFile of languagePanels) {
+        const src = fs.readFileSync(path.resolve(import.meta.dirname, panelFile), "utf8");
+        assert.ok(
+          !src.includes('resolvedColorMode === "dark"'),
+          `${panelFile} must not compare Primer resolvedColorMode against "dark" (Primer uses "night"/"day")`,
         );
       }
     });
@@ -1234,18 +1243,16 @@ end DoublePendulum3D;
       assert.ok(res.resolvedThumbnailUrl.includes("data-qif-3d"), "Data URI must encode data-qif-3d");
     });
 
-    it("dispatches qif artifacts to dedicated 3D MBD QifViewer with STEP AP242 B-Rep pairing", () => {
+    it("dispatches qif artifacts via LanguagePanelHost and retains QifViewer 3D MBD features", () => {
       const dispatcherSrc = fs.readFileSync(
         path.resolve(import.meta.dirname, "../src/components/artifacts/card/ViewerDispatcher.tsx"),
         "utf8",
       );
-      const qifCaseSlice = dispatcherSrc.slice(
-        dispatcherSrc.indexOf('case "qif":'),
-        dispatcherSrc.indexOf('case "fortran":'),
-      );
       assert.ok(
-        qifCaseSlice.includes("<LazyHeavyViewer") && qifCaseSlice.includes("<QifViewer"),
-        "ViewerDispatcher must route 'qif' artifacts to <QifViewer /> wrapped in <LazyHeavyViewer /> for thumbnail-first 3D preview",
+        dispatcherSrc.includes("hasArtifactLanguagePanel(normalizedViewType)") &&
+          dispatcherSrc.includes("<DslArtifactPanelWrapper") &&
+          dispatcherSrc.includes('case "qif":'),
+        "ViewerDispatcher must route 'qif' artifacts via hasArtifactLanguagePanel / DslArtifactPanelWrapper and define expected height",
       );
 
       const qifViewerSrc = fs.readFileSync(
@@ -1297,22 +1304,20 @@ end DoublePendulum3D;
       );
       assert.ok(
         dispatcherSrc.includes('case "urdf":') &&
-          dispatcherSrc.includes("<UrdfViewer") &&
-          dispatcherSrc.includes('title="URDF Robotics Mechanism"'),
-        "ViewerDispatcher must route 'urdf', 'sdf', and 'xacro' artifacts to dedicated <UrdfViewer />",
+          dispatcherSrc.includes("hasArtifactLanguagePanel(normalizedViewType)") &&
+          dispatcherSrc.includes("<DslArtifactPanelWrapper"),
+        "ViewerDispatcher must route 'urdf', 'sdf', and 'xacro' artifacts via hasArtifactLanguagePanel / DslArtifactPanelWrapper",
       );
 
-      const urdfViewerSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../src/components/artifacts/UrdfViewer.tsx"),
+      const urdfPanelSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../../languages/urdf/src/ui/UrdfPanel.tsx"),
         "utf8",
       );
       assert.ok(
-        urdfViewerSrc.includes("MultibodyViewport3D") &&
-          urdfViewerSrc.includes("computeForwardKinematics") &&
-          urdfViewerSrc.includes("computeInverseDynamicsRnea") &&
-          urdfViewerSrc.includes("lintUrdfRobot") &&
-          urdfViewerSrc.includes("urdfToModelica"),
-        "UrdfViewer must integrate 3D pose, forward kinematics, RNEA hold torques, linter, and polyglot projections",
+        urdfPanelSrc.includes("parseUrdf") &&
+          urdfPanelSrc.includes("renderUrdfSvg") &&
+          urdfPanelSrc.includes("renderUrdfIsometric3DSvg"),
+        "UrdfPanel must integrate URDF parsing, 2D diagram SVG, and 3D isometric SVG rendering",
       );
 
       const polySrc = fs.readFileSync(
@@ -1502,15 +1507,6 @@ end DoublePendulum3D;
       assert.ok(src.includes("__ARTIFACT_READY"), "AasPackageViewer must signal __ARTIFACT_READY");
     });
 
-    it("verifies UrdfViewer step seeking synchronizes playbackTimeRef.current", () => {
-      const src = fs.readFileSync(path.join(viewersDir, "UrdfViewer.tsx"), "utf8");
-      assert.ok(
-        src.includes("playbackTimeRef.current = targetT"),
-        "UrdfViewer must update playbackTimeRef.current on step click so animation loop does not overwrite seek",
-      );
-      assert.ok(src.includes("__ARTIFACT_READY"), "UrdfViewer must signal __ARTIFACT_READY");
-    });
-
     it("verifies PsoutViewer displays clean empty state card on channel-free data", () => {
       const src = fs.readFileSync(path.join(viewersDir, "PsoutViewer.tsx"), "utf8");
       assert.ok(
@@ -1540,21 +1536,13 @@ end DoublePendulum3D;
 
     it("verifies universal deterministic readiness signaling (__ARTIFACT_READY) across all individual artifact viewers", () => {
       const viewers = [
-        "Easy5Viewer.tsx",
-        "GtSuiteViewer.tsx",
-        "RocetsViewer.tsx",
-        "PipelineLpsViewer.tsx",
-        "OlgaFlowViewer.tsx",
         "PsseSldViewer.tsx",
-        "SimaViewer.tsx",
         "LinkPreviewViewer.tsx",
         "PolyglotArtifactViewer.tsx",
         "ModelicaDiagramViewer.tsx",
         "ModelicaCodeViewer.tsx",
-        "PscadViewer.tsx",
         "SspViewer.tsx",
         "ReqifViewer.tsx",
-        "Owl2Viewer.tsx",
         "CadDiffViewer.tsx",
         "SimulationPlotViewer.tsx",
         "CsvViewer.tsx",

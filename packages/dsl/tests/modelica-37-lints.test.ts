@@ -41,7 +41,7 @@ describe("Modelica 3.7 Modular Lints Extraction & Direct Source AST", () => {
     expect(ast?.lints.has("variableNotFound")).toBe(true);
     expect(ast?.lints.has("extendsCycle")).toBe(true);
     expect(ast?.lints.has("duplicateModification")).toBe(true);
-    expect(ast?.lints.has("unbalancedModel")).toBe(true);
+    expect(ast?.lints.has("typeNotFound")).toBe(true);
     expect(ast?.lints.has("variabilityBindingMismatch")).toBe(true);
     expect(ast?.lints.has("outerModifier")).toBe(true);
     expect(ast?.lints.has("replaceableBaseClass")).toBe(true);

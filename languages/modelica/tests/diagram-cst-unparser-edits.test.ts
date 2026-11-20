@@ -504,8 +504,30 @@ end Circuit;`;
       const fakeStub = {
         name: "Circuit",
         components: [
-          { name: "R1", typeName: "Resistor" },
-          { name: "C1", typeName: "Capacitor" },
+          {
+            name: "R1",
+            typeName: "Resistor",
+            annotation: () => ({
+              transformation: {
+                extent: [
+                  [-10, -10],
+                  [10, 10],
+                ],
+              },
+            }),
+          },
+          {
+            name: "C1",
+            typeName: "Capacitor",
+            annotation: () => ({
+              transformation: {
+                extent: [
+                  [10, 10],
+                  [30, 30],
+                ],
+              },
+            }),
+          },
         ],
         connectEquations: [
           {

@@ -39,7 +39,8 @@
         "./packages/diagram/src/polyglot-diagram-builder.ts"
       ],
       "@modelscript/diagram/fault-tree": ["./packages/diagram/src/fault-tree.ts"],
-      "@modelscript/diagram/*": ["./packages/diagram/src/*"],
+      "@modelscript/diagram/kinematic-diagram-builder": ["./packages/diagram/src/kinematic-diagram-builder.ts"],
+      "@modelscript/diagram/*": ["./packages/diagram/src/*", "./packages/diagram/src/*.ts"],
       "@modelscript/cad": ["./packages/cad/src/index.ts"],
       "@modelscript/cad/*": ["./packages/cad/src/*"],
       "@modelscript/exchange": ["./packages/exchange/src/index.ts"],
