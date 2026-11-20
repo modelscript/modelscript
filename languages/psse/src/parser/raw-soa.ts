@@ -142,10 +142,19 @@ export function parseRawToSoa(sourceText: string): PsseSoaTables {
   while (lineIdx < lines.length && lines[lineIdx]!.isCommentOrBlank) lineIdx++;
   const hLine = lines[lineIdx++];
   const hToks = hLine ? extractFieldsFromCstTokens(hLine.tokens, sourceText, "delimited").map((f) => f.value) : [];
+  const hCommentUpper = (hLine?.commentText ?? "").toUpperCase();
+  const inferredRev =
+    hToks[2] !== undefined && hToks[2] !== ""
+      ? numField(hToks[2], 33)
+      : hToks.length <= 2
+        ? /PSS\/E[- ]*26|\bREV\s*26\b|\bV26\b/.test(hCommentUpper)
+          ? 26
+          : 29
+        : 33;
   const header = {
     ic: numField(hToks[0], 0),
     sbase: numField(hToks[1], 100.0),
-    rev: numField(hToks[2], 33),
+    rev: inferredRev,
     basfrq: numField(hToks[5], 60.0),
   };
 
@@ -207,7 +216,7 @@ export function parseRawToSoa(sourceText: string): PsseSoaTables {
   const brGj = new GrowableFloat64(256);
   const brBj = new GrowableFloat64(256);
   const brSt = new GrowableUint8(256);
-  let hasComplexRecords = false;
+  let hasComplexRecords = header.rev <= 30;
 
   let section = 0;
   while (lineIdx < lines.length) {

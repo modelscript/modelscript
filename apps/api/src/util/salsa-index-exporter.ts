@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { QueryEngine } from "@modelscript/runtime";
+import { serializeMemo, type QueryEngine } from "@modelscript/runtime";
 import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
@@ -62,7 +62,7 @@ export async function exportSalsaIndex(engine: QueryEngine, dbPath: string, libr
     let skipped = 0;
     for (const [key, memo] of engine.dumpMemos().entries()) {
       try {
-        const serialized = JSON.stringify(memo);
+        const serialized = JSON.stringify(serializeMemo(memo));
         insertMemo.run(key, serialized);
         exported++;
       } catch {

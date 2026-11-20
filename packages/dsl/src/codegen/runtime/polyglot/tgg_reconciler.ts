@@ -30,12 +30,16 @@ export function tgg_reconcile_interval(
   tgtMax: f64,
   corr: CorrespondenceIndex
 ): f64 {
+  if (isNaN(srcMin) || isNaN(srcMax) || isNaN(tgtMin) || isNaN(tgtMax) || srcMin > srcMax || tgtMin > tgtMax) {
+    corr.markConflict(slot);
+    return f64.NaN;
+  }
   let overlapMin: f64 = srcMin > tgtMin ? srcMin : tgtMin;
   let overlapMax: f64 = srcMax < tgtMax ? srcMax : tgtMax;
 
   if (overlapMin <= overlapMax) {
-    // Solvable constraint: pick midpoint of overlapping region
-    let consensusVal: f64 = (overlapMin + overlapMax) * 0.5;
+    // Solvable constraint: pick overflow-safe midpoint of overlapping region
+    let consensusVal: f64 = overlapMin + (overlapMax - overlapMin) * 0.5;
     corr.clearConflict(slot);
     return consensusVal;
   }
@@ -55,6 +59,10 @@ export function tgg_reconcile_scalar(
   strategy: u32,
   corr: CorrespondenceIndex
 ): f64 {
+  if (isNaN(srcVal) || isNaN(tgtVal)) {
+    corr.markConflict(slot);
+    return f64.NaN;
+  }
   if (srcVal == tgtVal) {
     corr.clearConflict(slot);
     return srcVal;
@@ -68,12 +76,12 @@ export function tgg_reconcile_scalar(
     return tgtVal;
   } else if (strategy == RECONCILE_STRATEGY_NARROWER_RANGE) {
     // Prefer smaller absolute value or narrower deviation
-    let chosen = Math.abs(srcVal) < Math.abs(tgtVal) ? srcVal : tgtVal;
+    let chosen = Math.abs(srcVal) <= Math.abs(tgtVal) ? srcVal : tgtVal;
     corr.clearConflict(slot);
     return chosen;
   } else if (strategy == RECONCILE_STRATEGY_PHYSICS_SIMPLEX) {
-    // Basic midpoint fallback when no additional bounds given
-    let midpoint = (srcVal + tgtVal) * 0.5;
+    // Basic overflow-safe midpoint fallback when no additional bounds given
+    let midpoint = srcVal + (tgtVal - srcVal) * 0.5;
     corr.clearConflict(slot);
     return midpoint;
   }
@@ -95,8 +103,8 @@ export function tgg_reconcile_physics_simplex(
   physMax: f64,
   corr: CorrespondenceIndex
 ): f64 {
-  // If even the bounds are infeasible
-  if (physMin > physMax) {
+  // If any input is NaN or bounds are infeasible
+  if (isNaN(srcVal) || isNaN(tgtVal) || isNaN(physMin) || isNaN(physMax) || physMin > physMax) {
     corr.markConflict(slot);
     return f64.NaN;
   }
@@ -110,7 +118,7 @@ export function tgg_reconcile_physics_simplex(
   let hullOverlaps = (minProp <= physMax && maxProp >= physMin);
 
   if (withinSource || withinTarget || hullOverlaps) {
-    let candidate = (srcVal + tgtVal) * 0.5;
+    let candidate = srcVal + (tgtVal - srcVal) * 0.5;
     if (candidate < physMin) {
       candidate = physMin;
     } else if (candidate > physMax) {
@@ -135,9 +143,13 @@ export function tgg_reconcile_conservation_balance(
   maxTolerance: f64,
   corr: CorrespondenceIndex
 ): f64 {
+  if (isNaN(inflow) || isNaN(outflow) || isNaN(maxTolerance) || maxTolerance < 0.0) {
+    corr.markConflict(slot);
+    return f64.NaN;
+  }
   let diff = Math.abs(inflow - outflow);
   if (diff <= maxTolerance) {
-    let balanced = (inflow + outflow) * 0.5;
+    let balanced = inflow + (outflow - inflow) * 0.5;
     corr.clearConflict(slot);
     return balanced;
   }

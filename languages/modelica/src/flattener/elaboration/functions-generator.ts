@@ -449,7 +449,9 @@ export function generateRecordConstructorFor(
     return cachedCtor;
   }
 
-  const fn = new DAEBuilder(dae.interner, fnName, "");
+  const fn = dae.exports
+    ? new DAEBuilder(dae.exports, fnName, "", dae.interner)
+    : new DAEBuilder(dae.interner, fnName, "");
   fn.classKind = "function";
   fn.description = `Automatically generated record constructor for ${fnName}`;
   if (flattener.isOperatorRecordSym(sym)) {
@@ -1093,7 +1095,9 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
             const specFnName = `${qualName}$${compName}`;
             const specSimpleName = `${sym.name}$${compName}`;
             if (!dae.functions.has(specFnName)) {
-              const specFn = new DAEBuilder(dae.interner, specFnName, "");
+              const specFn = dae.exports
+                ? new DAEBuilder(dae.exports, specFnName, "", dae.interner)
+                : new DAEBuilder(dae.interner, specFnName, "");
               specFn.classKind = "function";
               specFn.description = `Automatically generated record constructor for ${specFnName}`;
               if (flattener.isOperatorRecordSym(sym)) {
@@ -1248,7 +1252,9 @@ export function flattenFunction(
     flattener.currentFunctionEnclosingScope = null;
   }
 
-  const fn = new DAEBuilder(parentDae ? parentDae.interner : undefined, cleanFnName, "");
+  const fn = parentDae?.exports
+    ? new DAEBuilder(parentDae.exports, cleanFnName, "", parentDae.interner)
+    : new DAEBuilder(parentDae ? parentDae.interner : undefined, cleanFnName, "");
   (fn as any).parentDae = parentDae;
   (fn as any).db = db;
   fn.classKind = "function";

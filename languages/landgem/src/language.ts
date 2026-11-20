@@ -75,6 +75,46 @@ export const landgemLanguage = language({
       }
     },
   },
+  ui: {
+    toolbarButtons: [
+      {
+        id: "landgemSolveEmissions",
+        label: "Solve Methane & Biogas Generation",
+        shortLabel: "Solve Methane",
+        tooltip: "Solve Methane & Biogas Generation",
+        icon: "graph",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        actionId: "landgem_solve_emissions",
+      },
+      {
+        id: "landgemToDae",
+        label: "Lower LandGEM to DAEBuilder",
+        shortLabel: "Lower LandGEM",
+        tooltip: "Lower LandGEM to DAEBuilder",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "landgem_to_dae",
+      },
+      {
+        id: "landgemLint",
+        label: "Lint LandGEM / Biogas Deck",
+        shortLabel: "Lint LandGEM",
+        tooltip: "Lint LandGEM / Biogas Deck",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "landgem_lint",
+      },
+    ],
+  },
   actions: [
     {
       id: "landgem_lint",

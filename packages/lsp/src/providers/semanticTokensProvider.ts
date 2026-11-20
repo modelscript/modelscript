@@ -525,6 +525,7 @@ export function registerSemanticTokensProvider(
             parent?.type === "function_call" ||
             p?.type === "function_call" ||
             parent?.type === "function_call_args" ||
+            (p?.type === "primary" && p.children?.some((c) => c.type === "function_call_args")) ||
             parent?.type === "ModuleCall" ||
             parent?.type === "FunctionCall"
           ) {

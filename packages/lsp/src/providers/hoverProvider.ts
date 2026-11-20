@@ -557,8 +557,13 @@ export function registerHoverProvider(
     }
 
     // Enhance hover with formal abstract interpretation invariants if this is Modelica
+    const effectiveHoverUri = document.uri.startsWith("modelscript-lib://global")
+      ? "file://" + document.uri.substring("modelscript-lib://global".length)
+      : document.uri;
     if (document.uri.endsWith(".mo") || plugin?.id === "modelica") {
-      const proofMap = validationService.modelicaProofResultsByUri?.get(document.uri);
+      const proofMap =
+        validationService.modelicaProofResultsByUri?.get(document.uri) ??
+        validationService.modelicaProofResultsByUri?.get(effectiveHoverUri);
       if (proofMap) {
         const { token } = extractWordAtOffset(text, offset);
 
@@ -618,7 +623,9 @@ export function registerHoverProvider(
     // Enhance hover with DAE reachability bounds and algebraic loop certificates across all languages
     const daeMap =
       validationService?.daeVerificationResultsByUri?.get(document.uri) ??
-      validationService?.modelicaDaeVerificationResultsByUri?.get(document.uri);
+      validationService?.daeVerificationResultsByUri?.get(effectiveHoverUri) ??
+      validationService?.modelicaDaeVerificationResultsByUri?.get(document.uri) ??
+      validationService?.modelicaDaeVerificationResultsByUri?.get(effectiveHoverUri);
     if (daeMap) {
       const { token, start: tokenStart, end: tokenEnd } = extractWordAtOffset(text, offset);
 

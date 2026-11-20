@@ -99,6 +99,40 @@ export function planWcojPattern(pattern: WcojPattern): WcojPlan {
     }
   }
 
+  // Also detect general cycles (length >= 4) using O(V + E) undirected DFS
+  if (!isCyclic && variables.length > 0 && edges.length > 0) {
+    const adj = new Map<string, Set<string>>();
+    for (const v of variables) adj.set(v, new Set());
+    for (const e of edges) {
+      if (e.fromVar === e.toVar) {
+        isCyclic = true;
+        break;
+      }
+      adj.get(e.fromVar)?.add(e.toVar);
+      adj.get(e.toVar)?.add(e.fromVar);
+    }
+    if (!isCyclic) {
+      const visited = new Set<string>();
+      const hasCycleDfs = (node: string, parent: string | null): boolean => {
+        visited.add(node);
+        for (const nbr of adj.get(node) ?? []) {
+          if (!visited.has(nbr)) {
+            if (hasCycleDfs(nbr, node)) return true;
+          } else if (nbr !== parent) {
+            return true;
+          }
+        }
+        return false;
+      };
+      for (const v of variables) {
+        if (!visited.has(v) && hasCycleDfs(v, null)) {
+          isCyclic = true;
+          break;
+        }
+      }
+    }
+  }
+
   const complexityBound = isCyclic ? "O(N^(3/2)) [AGM Bound]" : "O(N) [Acyclic]";
 
   return {
@@ -138,7 +172,8 @@ export function compileWcojMatcher(plan: WcojPlan): string {
     }
     code += `  matchCount = leapfrog_intersect_3(iter1Ptr, iter2Ptr, iter3Ptr, resultZSetPtr);\n`;
     for (let eIdx = 3; eIdx < plan.edges.length; eIdx++) {
-      code += `  matchCount = leapfrog_intersect_2(iter1Ptr, iter${eIdx + 1}Ptr, resultZSetPtr);\n`;
+      code += `  changetype<LeapfrogIterator>(iter1Ptr).cursor = 0;\n`;
+      code += `  matchCount += leapfrog_intersect_2(iter1Ptr, iter${eIdx + 1}Ptr, resultZSetPtr);\n`;
     }
   } else if (plan.isCyclic && plan.variableOrder.length >= 3) {
     const [v1, v2, v3] = plan.variableOrder;

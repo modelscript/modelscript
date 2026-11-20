@@ -9,7 +9,6 @@ import {
   PlusIcon,
   SearchIcon,
   ServerIcon,
-  SidebarCollapseIcon,
   TrashIcon,
   XIcon,
 } from "@primer/octicons-react";
@@ -49,6 +48,7 @@ export interface MorselLeftSidebarProps {
   inputRef: React.RefObject<HTMLInputElement | null>;
   addLibraryButtonRef: React.RefObject<HTMLButtonElement | null>;
   onOpenAddLibrary: () => void;
+  onOpenAddComponent?: (() => void) | undefined;
   documentUri: string;
   debouncedFilter: string;
   onTreeSelect: (name: string, kind?: string) => void;
@@ -92,7 +92,7 @@ export type MobileSidebarSection = "parameters" | "variables" | "components" | "
 
 export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   treeVisible,
-  setTreeVisible,
+  setTreeVisible: _setTreeVisible,
   isNarrow,
   treeWidth,
   setTreeWidth,
@@ -107,6 +107,7 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
   inputRef,
   addLibraryButtonRef,
   onOpenAddLibrary,
+  onOpenAddComponent,
   documentUri,
   debouncedFilter,
   onTreeSelect,
@@ -792,20 +793,33 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                   flexShrink: 0,
                 }}
               >
-                <span>{showVariablesSection ? "Plot Variables" : translations.components}</span>
-                {showComponentsSection && componentCount > 0 && (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 600,
-                      padding: "1px 6px",
-                      borderRadius: 999,
-                      backgroundColor: _colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(15, 23, 42, 0.06)",
-                      color: "var(--ms-text-2, var(--color-fg-muted))",
-                    }}
-                  >
-                    {componentCount}
-                  </span>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span>{showVariablesSection ? "Plot Variables" : translations.components}</span>
+                  {showComponentsSection && componentCount > 0 && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        backgroundColor: _colorMode === "dark" ? "rgba(255, 255, 255, 0.08)" : "rgba(15, 23, 42, 0.06)",
+                        color: "var(--ms-text-2, var(--color-fg-muted))",
+                      }}
+                    >
+                      {componentCount}
+                    </span>
+                  )}
+                </div>
+                {showComponentsSection && (
+                  <IconButton
+                    icon={PlusIcon}
+                    aria-label="Add Component"
+                    title="Add Component"
+                    size="small"
+                    variant="invisible"
+                    onClick={onOpenAddComponent ?? onOpenAddLibrary}
+                    style={{ width: 28, height: 28, borderRadius: 6 }}
+                  />
                 )}
               </div>
             )}
@@ -980,29 +994,6 @@ export const MorselLeftSidebar: React.FC<MorselLeftSidebarProps> = ({
                   onClick={onOpenAddLibrary}
                   style={{ width: 28, height: 28, borderRadius: 6 }}
                 />
-                {setTreeVisible &&
-                  !(
-                    typeof window !== "undefined" &&
-                    (window.location.pathname.startsWith("/editor") ||
-                      window.location.pathname.startsWith("/playground") ||
-                      window.location.pathname.startsWith("/sketch") ||
-                      window.location.pathname.startsWith("/morsel"))
-                  ) && (
-                    <IconButton
-                      icon={SidebarCollapseIcon}
-                      aria-label={translations.collapseTree || "Collapse Libraries sidebar"}
-                      title={translations.collapseTree || "Collapse Libraries sidebar"}
-                      size="small"
-                      variant="invisible"
-                      onClick={() => {
-                        setTreeVisible(false);
-                        if (typeof window !== "undefined") {
-                          window.dispatchEvent(new CustomEvent("morsel:sidebar-changed", { detail: { open: false } }));
-                        }
-                      }}
-                      style={{ width: 28, height: 28, borderRadius: 6 }}
-                    />
-                  )}
               </div>
             </div>
             <div style={{ flex: 1, overflow: "auto", minHeight: 0, paddingBottom: isNarrow ? 72 : 0 }}>

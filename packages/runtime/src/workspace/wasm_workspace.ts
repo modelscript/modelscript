@@ -649,9 +649,14 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     return { changedIds: ids, structuralChangedIds: structIds };
   }
 
-  /** Returns the drained set of globally modified symbol names (if tracked). */
+  private globalChangedNames = new Set<string>();
+
+  /** Returns the drained set of globally modified symbol names. */
   takeGlobalChangedNames(): Set<string> | null {
-    return new Set<string>();
+    if (this.globalChangedNames.size === 0) return null;
+    const names = new Set(this.globalChangedNames);
+    this.globalChangedNames.clear();
+    return names;
   }
 
   /**
@@ -908,15 +913,26 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         const existingEntry = oldEntriesByKey.get(matchKey);
         const nodeStart = node.startOffset ?? node.startIndex ?? 0;
         const nodeEnd = node.endOffset ?? node.endIndex ?? 0;
+        const nodeMerkleLow: number = typeof node.merkleLow === "number" ? node.merkleLow : 0;
+        const nodeMerkleHigh: number = typeof node.merkleHigh === "number" ? node.merkleHigh : 0;
         if (existingEntry && oldSymbolsToDelete.has(existingEntry.id)) {
           symId = existingEntry.id;
           oldSymbolsToDelete.delete(symId);
-          // Mark symbol dirty only if its span intersects the incremental edit ranges or shifted bounds.
+          // Use O(1) Merkle equality when both old and new nodes have valid non-zero Merkle hashes,
+          // falling back to dirty-range intersection or span delta.
+          const existingWithMerkle = existingEntry as SymbolEntry & { merkleLow?: number; merkleHigh?: number };
+          const oldMerkleLow = existingWithMerkle.merkleLow ?? 0;
+          const oldMerkleHigh = existingWithMerkle.merkleHigh ?? 0;
+          const hasValidMerkle =
+            (nodeMerkleLow !== 0 || nodeMerkleHigh !== 0) && (oldMerkleLow !== 0 || oldMerkleHigh !== 0);
+          const merkleUnchanged = hasValidMerkle && nodeMerkleLow === oldMerkleLow && nodeMerkleHigh === oldMerkleHigh;
+
           const dirtyRanges = this.fileDirtyRanges.get(uri);
           const existingStart = existingEntry.startOffset;
           const existingEnd = existingEntry.endOffset;
-          const intersectsDirty =
-            dirtyRanges && dirtyRanges.length > 0
+          const intersectsDirty = merkleUnchanged
+            ? false
+            : dirtyRanges && dirtyRanges.length > 0
               ? dirtyRanges.some((r: any) => {
                   const rStart = r.startOffset ?? 0;
                   const rEnd = r.endOffset ?? 0;
@@ -931,6 +947,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
             this.globalStructuralChangedIds.add(symId);
             this.lazyChangedIds.add(symId);
             this.lazyStructuralChangedIds.add(symId);
+            if (name) this.globalChangedNames.add(name);
             if (parentId !== null) {
               this.globalChangedIds.add(parentId);
               this.globalStructuralChangedIds.add(parentId);
@@ -944,6 +961,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           this.globalStructuralChangedIds.add(symId);
           this.lazyChangedIds.add(symId);
           this.lazyStructuralChangedIds.add(symId);
+          if (name) this.globalChangedNames.add(name);
           if (parentId !== null) {
             this.globalChangedIds.add(parentId);
             this.globalStructuralChangedIds.add(parentId);
@@ -1007,6 +1025,11 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           inherits: extractStringList(node, hook.inheritPaths),
           metadata: extractMetadata(node, hook),
         };
+        if (nodeMerkleLow !== 0 || nodeMerkleHigh !== 0) {
+          const entryWithMerkle = entry as SymbolEntry & { merkleLow?: number; merkleHigh?: number };
+          entryWithMerkle.merkleLow = nodeMerkleLow;
+          entryWithMerkle.merkleHigh = nodeMerkleHigh;
+        }
 
         // Step 5c: Register symbol in the primary table, simple-name index, curried/prefixed local name index,
         // top-level FQN index (`_parentFQN.name`), and parent->children tree.
@@ -2063,8 +2086,20 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     }
     if (existed || oldNative) {
       this._version++;
+      const changedIds = new Set<SymbolId>();
       if (oldNative && oldNative.index.symbols.size > 0) {
-        const changedIds = new Set<SymbolId>(oldNative.index.symbols.keys());
+        for (const id of oldNative.index.symbols.keys()) changedIds.add(id);
+      }
+      const wsWithChanged = ws as unknown as {
+        takeGlobalChangedIds?: () => { changedIds?: Iterable<SymbolId> } | null;
+      };
+      if (ws && !this.isDelegatedSelf(ws) && typeof wsWithChanged.takeGlobalChangedIds === "function") {
+        const drained = wsWithChanged.takeGlobalChangedIds();
+        if (drained?.changedIds) {
+          for (const id of drained.changedIds) changedIds.add(id);
+        }
+      }
+      if (changedIds.size > 0 || existed) {
         this.notifyQueryEngines(uri, changedIds);
       }
     }
@@ -2841,7 +2876,11 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     this.tggCorrespondenceIndexer = new TggCorrespondenceIndexer(this.tggProjectionTable, hypergraph, options);
     for (const engine of this.queryEngines.values()) {
       if (engine && typeof engine.setCorrespondenceIndex === "function") {
-        engine.setCorrespondenceIndex(this.tggCorrespondenceIndexer.hypergraph, this.tggCorrespondenceIndexer.slotMap);
+        engine.setCorrespondenceIndex(
+          this.tggCorrespondenceIndexer.hypergraph,
+          this.tggCorrespondenceIndexer.slotMap,
+          this.tggCorrespondenceIndexer.slotsBySymbol,
+        );
       }
     }
     return this.tggCorrespondenceIndexer;
@@ -2881,7 +2920,11 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     );
     for (const engine of this.queryEngines.values()) {
       if (engine && typeof engine.setCorrespondenceIndex === "function") {
-        engine.setCorrespondenceIndex(this.tggCorrespondenceIndexer.hypergraph, this.tggCorrespondenceIndexer.slotMap);
+        engine.setCorrespondenceIndex(
+          this.tggCorrespondenceIndexer.hypergraph,
+          this.tggCorrespondenceIndexer.slotMap,
+          this.tggCorrespondenceIndexer.slotsBySymbol,
+        );
       }
     }
     return summary;
@@ -2900,7 +2943,11 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     if (this.queryEngines.size === 0) return merged;
     for (const engine of this.queryEngines.values()) {
       if (engine && typeof engine.setCorrespondenceIndex === "function") {
-        engine.setCorrespondenceIndex(this.tggCorrespondenceIndexer.hypergraph, this.tggCorrespondenceIndexer.slotMap);
+        engine.setCorrespondenceIndex(
+          this.tggCorrespondenceIndexer.hypergraph,
+          this.tggCorrespondenceIndexer.slotMap,
+          this.tggCorrespondenceIndexer.slotsBySymbol,
+        );
       }
       if (engine && typeof engine.updateIndex === "function") {
         engine.updateIndex(

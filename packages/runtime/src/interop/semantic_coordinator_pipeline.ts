@@ -219,12 +219,13 @@ export function runDigitalThreadAssertionLoop<TDiag extends CoordinatorDiagnosti
     lintSyntaxForLang,
   } = params;
 
-  const sysmlPkg = sysmlReqs[0]?.packageName ?? panes[0]?.namespaceFqn?.split("::").pop() ?? "SysML";
+  const fallbackPkg = panes[0]?.namespaceFqn?.split("::").pop() ?? "SysML";
   for (const req of sysmlReqs) {
+    const reqPkg = req.packageName ?? fallbackPkg;
     const attrSuffix = req.targetAttribute.includes(".") ? req.targetAttribute.split(".").pop()! : req.targetAttribute;
     const canonicalAttrFqn = req.subjectName
-      ? `SysML2::${sysmlPkg}::${req.subjectName}.${attrSuffix}`
-      : `SysML2::${sysmlPkg}::${req.targetAttribute}`;
+      ? `SysML2::${reqPkg}::${req.subjectName}.${attrSuffix}`
+      : `SysML2::${reqPkg}::${req.targetAttribute}`;
     coordinator.assertLiteral({
       predicate: "bound",
       args: [canonicalAttrFqn, req.operator, req.limitValue],
@@ -249,7 +250,7 @@ export function runDigitalThreadAssertionLoop<TDiag extends CoordinatorDiagnosti
   }
 
   for (const vLink of variableLinks) {
-    const numMatch = /^(-?\d+(?:\.\d+)?)/.exec(vLink.valueFormatted.trim());
+    const numMatch = /^(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(vLink.valueFormatted.trim());
     if (numMatch) {
       const evaluatedVal = Number.parseFloat(numMatch[1]!);
       if (Number.isFinite(evaluatedVal)) {
@@ -263,8 +264,13 @@ export function runDigitalThreadAssertionLoop<TDiag extends CoordinatorDiagnosti
   }
 
   const satRes = coordinator.checkSat();
-  if (!satRes.isSat && satRes.conflict && conflicts.length === 0) {
-    conflicts.push(satRes.conflict);
+  if (!satRes.isSat && satRes.conflict) {
+    const alreadyPresent = conflicts.some(
+      (c) => c.explanation === satRes.conflict!.explanation && c.theoryName === satRes.conflict!.theoryName,
+    );
+    if (!alreadyPresent) {
+      conflicts.push(satRes.conflict);
+    }
   }
 
   panes.forEach((p, idx) => {

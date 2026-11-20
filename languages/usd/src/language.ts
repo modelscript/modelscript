@@ -35,6 +35,32 @@ export const usdLanguage = language({
         artifactViewTypes: ["usd", "usda", "usd-scene"],
       },
     ],
+    toolbarButtons: [
+      {
+        id: "usdToDae",
+        label: "Lower UsdPhysics Stage to DAE",
+        shortLabel: "Lower UsdPhysics",
+        tooltip: "Lower UsdPhysics Stage to DAE",
+        icon: "stack",
+        views: ["3d", "code"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 10,
+        actionId: "usd_to_dae",
+      },
+      {
+        id: "usdLint",
+        label: "Lint OpenUSD Stage",
+        shortLabel: "Lint OpenUSD",
+        tooltip: "Lint OpenUSD Stage",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "usd_lint",
+      },
+    ],
   },
 
   actions: [

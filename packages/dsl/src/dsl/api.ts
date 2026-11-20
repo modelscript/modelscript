@@ -2,6 +2,7 @@
 
 import { generateJavaScriptWrapper } from "../bindings/javascript/index.js";
 import { compileMcpConfig, type McpManifest } from "../codegen/compile_mcp.js";
+import { emitAssemblyScriptCodec, emitTypeScriptCodecBindings } from "../codegen/emitters/codec-emitter.js";
 import type { GeneratedFile } from "../codegen/parser.js";
 import { generateParser, generateParserTables } from "../codegen/parser.js";
 import { generateTextMate } from "../codegen/textmate.js";
@@ -15,6 +16,24 @@ export type { McpManifest } from "../codegen/compile_mcp.js";
 export type { TranspileSubsetDiagnostic } from "../codegen/transpiler/transpiler.js";
 export type { GrammarConflictDiagnostic } from "./automata.js";
 export type { GrammarDiagnostic } from "./grammar.js";
+
+/**
+ * Generated AssemblyScript & TypeScript artifacts for a `kind: "binary"` entry in `LanguageOptions.formats`.
+ */
+export interface GeneratedBinaryCodec {
+  /** Key in `LanguageOptions.formats` (e.g. `"sav"`, `"out"`). */
+  formatKey: string;
+  /** Declarative codec name (`BinaryCodecDefinition.name`). */
+  codecName: string;
+  /** File extensions routed to this binary codec. */
+  fileExtensions: readonly string[];
+  /** Emitted AssemblyScript WASM codec source (undefined if the codec uses JS-only combinators). */
+  assemblyScript?: string | undefined;
+  /** Emitted TypeScript zero-copy WASM bindings source. */
+  typeScriptBindings: string;
+  /** Reason AssemblyScript emission was skipped, if any. */
+  assemblyScriptError?: string | undefined;
+}
 
 /**
  * Options for configuring language parser build and source AST extraction.
@@ -71,6 +90,8 @@ export interface BuildResult {
   queryDiagnostics?: TranspileSubsetDiagnostic[] | undefined;
   /** Compiled Model Context Protocol (MCP) tool and resource manifest. */
   mcpManifest?: McpManifest | undefined;
+  /** Generated AssemblyScript & TypeScript artifacts for `kind: "binary"` entries in `languageDef.formats`. */
+  binaryCodecs?: GeneratedBinaryCodec[] | undefined;
 }
 
 /**
@@ -119,6 +140,33 @@ export function buildParser(languageDef: LanguageOptions, options?: BuildOptions
     mcpManifest = compileMcpConfig(languageDef.mcp, languageDef.name).manifest;
   }
 
+  let binaryCodecs: GeneratedBinaryCodec[] | undefined;
+  if (languageDef.formats) {
+    const emitted: GeneratedBinaryCodec[] = [];
+    for (const [formatKey, fmtDef] of Object.entries(languageDef.formats)) {
+      if (fmtDef.kind !== "binary" || !fmtDef.codec) continue;
+      const typeScriptBindings = emitTypeScriptCodecBindings(fmtDef.codec);
+      let assemblyScript: string | undefined;
+      let assemblyScriptError: string | undefined;
+      try {
+        assemblyScript = emitAssemblyScriptCodec(fmtDef.codec);
+      } catch (err) {
+        assemblyScriptError = err instanceof Error ? err.message : String(err);
+      }
+      emitted.push({
+        formatKey,
+        codecName: fmtDef.codec.name,
+        fileExtensions: fmtDef.fileExtensions,
+        assemblyScript,
+        typeScriptBindings,
+        assemblyScriptError,
+      });
+    }
+    if (emitted.length > 0) {
+      binaryCodecs = emitted;
+    }
+  }
+
   return {
     parserInfo,
     assemblyScriptFiles,
@@ -130,5 +178,6 @@ export function buildParser(languageDef: LanguageOptions, options?: BuildOptions
     grammarDiagnostics: result.grammar.diagnostics,
     queryDiagnostics: validateLanguageQueries(languageDef),
     mcpManifest,
+    binaryCodecs,
   };
 }

@@ -453,6 +453,11 @@ export async function buildDiagramData(
   const edges: DiagramEdge[] = [];
 
   // Gather components (including inherited ones)
+  const ownComponentNames = new Set<string>(
+    Array.isArray(classInstance?.components)
+      ? classInstance.components.map((c: { name?: string }) => String(c?.name ?? "")).filter(Boolean)
+      : [],
+  );
   const components: any[] = classInstance ? collectAllComponents(classInstance) : [];
   if (components.length === 0 && classInstance?.db && classInstance.id !== undefined) {
     const db = classInstance.db;
@@ -517,7 +522,14 @@ export async function buildDiagramData(
         compKind === ModelicaClassKind.CONNECTOR ||
         compKind === ModelicaClassKind.EXPANDABLE_CONNECTOR ||
         Boolean(compPrefix?.includes("connector"));
-      const isProtected = component.visibility === "protected" || component.declaration?.visibility === "protected";
+      const isProtected = Boolean(
+        component.isProtected ||
+        component.declaration?.isProtected ||
+        component.declaration?.metadata?.isProtected ||
+        component.entry?.metadata?.isProtected ||
+        component.visibility === "protected" ||
+        component.declaration?.visibility === "protected",
+      );
       if (!isConnector || isProtected) {
         continue;
       }
@@ -1031,6 +1043,7 @@ export async function buildDiagramData(
         groups: { absolute: { position: "absolute", zIndex: 100 } },
       },
       properties,
+      ...(isIconMode && !ownComponentNames.has(component.name) ? { data: { isInherited: true, readOnly: true } } : {}),
     });
   }
 
@@ -1213,18 +1226,28 @@ export async function buildDiagramData(
   // Background graphics & interactive Icon primitives
   let diagramBackground: X6Markup | null = null;
   if (isIconMode) {
-    // 1. Render inherited (extends) Icon graphics as non-editable background layer
+    // 1. Render inherited (extends) Icon graphics as non-editable frozen background layer
     const inheritedDefs: X6Markup[] = [];
     const inheritedItems: X6Markup[] = [];
+    const visitedInherited = new Set<ModelicaClassInstance>();
     const collectInheritedIcons = (ci: ModelicaClassInstance) => {
       for (const ext of ci?.extendsClassInstances ?? []) {
-        const base = ext?.["classInstance"];
-        if (base) {
+        const base = ext?.["classInstance"] as ModelicaClassInstance | undefined;
+        if (base && !visitedInherited.has(base)) {
+          visitedInherited.add(base);
           collectInheritedIcons(base);
-          const baseIcon = typeof base.annotation === "function" ? (base.annotation("Icon") as IIcon | null) : null;
+          const baseNode = base as { cstNode?: unknown; abstractSyntaxNode?: unknown } | null | undefined;
+          const baseCst = baseNode?.cstNode ?? baseNode?.abstractSyntaxNode;
+          const baseWasm = baseCst ? evaluateIconWasm(baseCst) : undefined;
+          const baseIcon =
+            baseWasm !== undefined
+              ? baseWasm
+              : typeof base.annotation === "function"
+                ? (base.annotation("Icon") as IIcon | null)
+                : null;
           if (baseIcon?.graphics) {
             for (const g of baseIcon.graphics) {
-              inheritedItems.push(renderGraphicItemX6(g, inheritedDefs, base));
+              inheritedItems.push(renderGraphicItemX6(g as IGraphicItem, inheritedDefs, base));
             }
           }
         }
@@ -1248,8 +1271,13 @@ export async function buildDiagramData(
       };
     }
 
-    // 2. Emit own Icon.graphics primitives as selectable/editable DiagramNodes
-    const ownGraphics = (layerAnnotation as IIcon | null)?.graphics ?? [];
+    // 2. Emit ONLY own Icon.graphics primitives (never inherited shapes) as selectable/editable DiagramNodes
+    const ciNode = classInstance as { cstNode?: unknown; abstractSyntaxNode?: unknown } | null | undefined;
+    const ownCst = ciNode?.cstNode ?? ciNode?.abstractSyntaxNode;
+    const ownWasmIcon = ownCst ? evaluateIconWasm(ownCst) : undefined;
+    const ownGraphics = (
+      ownCst !== undefined ? (ownWasmIcon?.graphics ?? []) : ((layerAnnotation as IIcon | null)?.graphics ?? [])
+    ) as IGraphicItem[];
     const iconPrimitiveNodes: DiagramNode[] = [];
     for (let gi = 0; gi < ownGraphics.length; gi++) {
       const g = ownGraphics[gi]!;
@@ -2763,7 +2791,9 @@ function renderTextX6(
         tagName: "text",
         textContent,
         attrs: {
-          style: `dominant-baseline: central; fill: ${textColor}; stroke: none; font-family: ${fontName}; font-size: ${fontSize}px; font-style: ${fontStyle}; font-weight: ${fontWeight}; text-decoration: ${textDecoration}; text-anchor: ${textAnchor};`,
+          style: `dominant-baseline: central; fill: ${textColor}; stroke: none; font-family: ${fontName}; font-size: ${fontSize}px; font-style: ${fontStyle}; font-weight: ${fontWeight}; text-decoration: ${textDecoration}; text-anchor: ${textAnchor}; text-rendering: geometricPrecision;`,
+          "text-anchor": textAnchor,
+          "dominant-baseline": "central",
           x: textX,
           y: textY,
         },

@@ -20,6 +20,34 @@ export const pslfLanguage = language({
     fileExtensions: [".epc", ".dyd"],
   },
 
+  ui: {
+    toolbarButtons: [
+      {
+        id: "solvePslfPowerflow",
+        label: "Solve AC Power Flow (PSLF)",
+        shortLabel: "Solve AC",
+        tooltip: "Solve AC Power Flow (PSLF)",
+        icon: "pulse",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        actionId: "solve_pslf_powerflow",
+      },
+      {
+        id: "lintPslfModel",
+        label: "Lint PSLF Base Case",
+        shortLabel: "Lint PSLF",
+        tooltip: "Lint PSLF Base Case",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "lint_pslf_model",
+      },
+    ],
+  },
   actions: [
     {
       id: "solve_pslf_powerflow",

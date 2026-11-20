@@ -319,15 +319,19 @@ export function validateModelicaAbstractInterpretation(
 
         const algOffset = algSections[0].startIndex ?? 0;
         const variables = ModelicaAlgorithmAnalyzer.extractVariablesFromClassCst(classNode);
-        const statements = ModelicaCFGLowerer.extractStatementsFromCst(algSections[0], algOffset);
+        const statements: ReturnType<typeof ModelicaCFGLowerer.extractStatementsFromCst> = [];
+        for (const algSec of algSections) {
+          const secOffset = algSec.startIndex ?? algOffset;
+          statements.push(...ModelicaCFGLowerer.extractStatementsFromCst(algSec, secOffset));
+        }
         if (statements.length === 0) continue;
 
         const result = ModelicaAlgorithmAnalyzer.analyze(statements, variables, { functionName: name });
         proofMap.set(name, result);
 
         for (const bug of result.definiteBugs) {
-          const bugStart = (bug as any).startOffset ?? bug.startOffset ?? algOffset;
-          const bugEnd = (bug as any).endOffset ?? bug.endOffset ?? bugStart + 10;
+          const bugStart = bug.startOffset ?? algOffset;
+          const bugEnd = bug.endOffset ?? bugStart + 10;
           diagnostics.push({
             severity: SEVERITY_ERROR,
             range: { start: positionAt(bugStart), end: positionAt(bugEnd) },
@@ -463,159 +467,165 @@ export async function validateModelicaDaeReachability(
         break;
       }
       const arena = flattenClass(cls.name, cls.symbolId, effectiveUri);
-      if (!arena || arena.eqCount === 0) continue;
+      if (!arena) continue;
+      let record: NonNullable<ReturnType<typeof daeVerificationCache.get>>["record"] | undefined;
+      try {
+        if (arena.eqCount === 0) continue;
 
-      const key = `${effectiveUri}#${cls.name}`;
-      liveKeys.add(key);
-      const fingerprint = `${arenaFingerprint(arena)}#${reqFingerprint}`;
-      let record = daeVerificationCache.get(key)?.record;
-      if (!record || daeVerificationCache.get(key)!.fingerprint !== fingerprint) {
-        const stateVars = new Set<number>();
-        const scanDer = (exprId: number): void => {
-          if (exprId < 0) return;
-          const kind = arena.getExprKind(exprId);
-          if (kind === 12 /* ExprKind.Der */) {
-            const inner = arena.getExprData1(exprId);
-            if (inner >= 0 && arena.getExprKind(inner) === 0 /* ExprKind.Name */) {
-              const nameId = arena.getExprData1(inner);
-              let vIdx = arena.lookupVariable(nameId);
-              if (vIdx < 0) {
-                const resolved = arena.interner?.resolve(nameId);
-                if (resolved) vIdx = arena.getVarIdxByName(resolved);
+        const key = `${effectiveUri}#${cls.name}`;
+        liveKeys.add(key);
+        const fingerprint = `${arenaFingerprint(arena)}#${reqFingerprint}`;
+        record = daeVerificationCache.get(key)?.record;
+        if (!record || daeVerificationCache.get(key)!.fingerprint !== fingerprint) {
+          const stateVars = new Set<number>();
+          const scanDer = (exprId: number): void => {
+            if (exprId < 0) return;
+            const kind = arena.getExprKind(exprId);
+            if (kind === 12 /* ExprKind.Der */) {
+              const inner = arena.getExprData1(exprId);
+              if (inner >= 0 && arena.getExprKind(inner) === 0 /* ExprKind.Name */) {
+                const nameId = arena.getExprData1(inner);
+                let vIdx = arena.lookupVariable(nameId);
+                if (vIdx < 0) {
+                  const resolved = arena.interner?.resolve(nameId);
+                  if (resolved) vIdx = arena.getVarIdxByName(resolved);
+                }
+                if (vIdx >= 0) stateVars.add(vIdx);
               }
-              if (vIdx >= 0) stateVars.add(vIdx);
+              return;
             }
-            return;
-          }
-          switch (kind) {
-            case 5 /* ExprKind.Binary */:
-              scanDer(arena.getExprLeft(exprId));
-              scanDer(arena.getExprRight(exprId));
-              break;
-            case 6 /* ExprKind.Unary */:
-            case 14 /* ExprKind.Negate */:
-              scanDer(arena.getExprLeft(exprId));
-              break;
-            case 11 /* ExprKind.IfElse */:
-            case 10 /* ExprKind.Range */:
-              scanDer(arena.getExprData1(exprId));
-              scanDer(arena.getExprLeft(exprId));
-              scanDer(arena.getExprRight(exprId));
-              break;
-            case 7 /* ExprKind.Call */: {
-              const n = arena.getExprRight(exprId);
-              const first = arena.getExprLeft(exprId);
-              for (let k = 0; k < n; k++) {
-                const argExpr = k === 0 ? first : arena.getExprLeft(exprId + k);
-                if (argExpr >= 0) scanDer(argExpr);
+            switch (kind) {
+              case 5 /* ExprKind.Binary */:
+                scanDer(arena.getExprLeft(exprId));
+                scanDer(arena.getExprRight(exprId));
+                break;
+              case 6 /* ExprKind.Unary */:
+              case 14 /* ExprKind.Negate */:
+                scanDer(arena.getExprLeft(exprId));
+                break;
+              case 11 /* ExprKind.IfElse */:
+              case 10 /* ExprKind.Range */:
+                scanDer(arena.getExprData1(exprId));
+                scanDer(arena.getExprLeft(exprId));
+                scanDer(arena.getExprRight(exprId));
+                break;
+              case 7 /* ExprKind.Call */: {
+                const n = arena.getExprRight(exprId);
+                const first = arena.getExprLeft(exprId);
+                for (let k = 0; k < n; k++) {
+                  const argExpr = k === 0 ? first : arena.getExprLeft(exprId + k);
+                  if (argExpr >= 0) scanDer(argExpr);
+                }
+                break;
               }
+            }
+          };
+
+          for (let i = 0; i < arena.eqCount; i++) {
+            scanDer(arena.getEqLhs(i));
+            scanDer(arena.getEqRhs(i));
+          }
+
+          for (const sIdx of stateVars) {
+            const sName = arena.getVarName(sIdx);
+            const derName = `der(${sName})`;
+            if (arena.getVarIdxByName(derName) === -1) {
+              arena.addVariable(
+                derName,
+                arena.getVarType(sIdx),
+                arena.getVarVariability(sIdx),
+                arena.getVarCausality(sIdx),
+                0.0,
+              );
+            }
+          }
+
+          let bltResult: any;
+          try {
+            bltResult = performBltTransformationArena(arena, stateVars.size > 0 ? stateVars : undefined);
+          } catch {
+            continue;
+          }
+
+          const stringParams = extractArenaStringParams(arena);
+          const reachEngine = new DaeBltReachabilityEngine(arena, {
+            budgetMs,
+            sysmlRequirements: sysmlReqs,
+            twinMap,
+            stringParams,
+            stateVars: stateVars.size > 0 ? stateVars : undefined,
+          });
+          const reachSummary = reachEngine.verify(bltResult);
+          const hybridVerifier = new HybridModeConsistencyVerifier(arena);
+          const hybridResult = hybridVerifier.verify();
+
+          const matchedVars = new Set<number>();
+          for (const blk of bltResult.blocks) {
+            for (const v of blk.vars) matchedVars.add(v);
+          }
+          let isUnderdetermined = false;
+          for (let i = 0; i < arena.varCount; i++) {
+            if (stateVars.has(i) || matchedVars.has(i)) continue;
+            const variability = arena.getVarVariability(i);
+            if (variability === Variability.Continuous || variability === Variability.Discrete) {
+              isUnderdetermined = true;
               break;
             }
           }
-        };
+          const reachIssues = isUnderdetermined
+            ? reachSummary.issues.filter((iss) => iss.kind !== "singular_algebraic_loop")
+            : reachSummary.issues;
+          const allIssues = [...reachIssues, ...hybridResult.issues];
 
-        for (let i = 0; i < arena.eqCount; i++) {
-          scanDer(arena.getEqLhs(i));
-          scanDer(arena.getEqRhs(i));
-        }
-
-        for (const sIdx of stateVars) {
-          const sName = arena.getVarName(sIdx);
-          const derName = `der(${sName})`;
-          if (arena.getVarIdxByName(derName) === -1) {
-            arena.addVariable(
-              derName,
-              arena.getVarType(sIdx),
-              arena.getVarVariability(sIdx),
-              arena.getVarCausality(sIdx),
-              0.0,
-            );
+          const namedBounds = new Map<string, any>();
+          let unboundedVariables = 0;
+          for (let i = 0; i < arena.varCount; i++) {
+            const vName = arena.getVarName(i);
+            const bound = reachSummary.variableBounds.get(i) ?? reachEngine.evaluator.getVarBound(i);
+            const bounded = !!bound && !bound.isTop?.() && !bound.isBottom?.();
+            if (vName && bounded) namedBounds.set(vName, bound);
+            const variability = arena.getVarVariability(i);
+            if (!bounded && (variability === Variability.Continuous || variability === Variability.Discrete)) {
+              unboundedVariables++;
+            }
           }
-        }
 
-        let bltResult: any;
-        try {
-          bltResult = performBltTransformationArena(arena, stateVars.size > 0 ? stateVars : undefined);
-        } catch {
-          continue;
-        }
-
-        const stringParams = extractArenaStringParams(arena);
-        const reachEngine = new DaeBltReachabilityEngine(arena, {
-          budgetMs,
-          sysmlRequirements: sysmlReqs,
-          twinMap,
-          stringParams,
-          stateVars: stateVars.size > 0 ? stateVars : undefined,
-        });
-        const reachSummary = reachEngine.verify(bltResult);
-        const hybridVerifier = new HybridModeConsistencyVerifier(arena);
-        const hybridResult = hybridVerifier.verify();
-
-        const matchedVars = new Set<number>();
-        for (const blk of bltResult.blocks) {
-          for (const v of blk.vars) matchedVars.add(v);
-        }
-        let isUnderdetermined = false;
-        for (let i = 0; i < arena.varCount; i++) {
-          if (stateVars.has(i) || matchedVars.has(i)) continue;
-          const variability = arena.getVarVariability(i);
-          if (variability === Variability.Continuous || variability === Variability.Discrete) {
-            isUnderdetermined = true;
-            break;
+          const hasDefinite = allIssues.some((i: any) => i.severity === "definite");
+          let verdict: any;
+          if (reachSummary.verdict?.kind === "violated") {
+            verdict = reachSummary.verdict;
+          } else if (hasDefinite) {
+            verdict = {
+              kind: "violated",
+              witness: { time: 0, state: {} },
+              detail: "Equation is defective for every admissible state (definite singularity).",
+            };
+          } else if (reachSummary.verdict?.kind === "unknown") {
+            verdict = reachSummary.verdict;
+          } else if (allIssues.length === 0 && unboundedVariables === 0 && reachSummary.verdict?.kind === "proven") {
+            verdict = reachSummary.verdict;
+          } else {
+            verdict = {
+              kind: "unknown",
+              reason: "inconclusive-enclosure",
+              detail: `${allIssues.length} possible issue(s); ${unboundedVariables} unbounded variable(s).`,
+            };
           }
-        }
-        const reachIssues = isUnderdetermined
-          ? reachSummary.issues.filter((iss) => iss.kind !== "singular_algebraic_loop")
-          : reachSummary.issues;
-        const allIssues = [...reachIssues, ...hybridResult.issues];
 
-        const namedBounds = new Map<string, any>();
-        let unboundedVariables = 0;
-        for (let i = 0; i < arena.varCount; i++) {
-          const vName = arena.getVarName(i);
-          const bound = reachSummary.variableBounds.get(i) ?? reachEngine.evaluator.getVarBound(i);
-          const bounded = !!bound && !bound.isTop?.() && !bound.isBottom?.();
-          if (vName && bounded) namedBounds.set(vName, bound);
-          const variability = arena.getVarVariability(i);
-          if (!bounded && (variability === Variability.Continuous || variability === Variability.Discrete)) {
-            unboundedVariables++;
-          }
-        }
-
-        const hasDefinite = allIssues.some((i: any) => i.severity === "definite");
-        let verdict: any;
-        if (reachSummary.verdict?.kind === "violated") {
-          verdict = reachSummary.verdict;
-        } else if (hasDefinite) {
-          verdict = {
-            kind: "violated",
-            witness: { time: 0, state: {} },
-            detail: "Equation is defective for every admissible state (definite singularity).",
+          record = {
+            isFullyCertified: verdict.kind === "proven",
+            verdict,
+            reachSummary,
+            hybridResult,
+            issues: allIssues,
+            variableBounds: namedBounds,
+            unboundedVariables,
+            fingerprint,
           };
-        } else if (reachSummary.verdict?.kind === "unknown") {
-          verdict = reachSummary.verdict;
-        } else if (allIssues.length === 0 && unboundedVariables === 0 && reachSummary.verdict?.kind === "proven") {
-          verdict = reachSummary.verdict;
-        } else {
-          verdict = {
-            kind: "unknown",
-            reason: "inconclusive-enclosure",
-            detail: `${allIssues.length} possible issue(s); ${unboundedVariables} unbounded variable(s).`,
-          };
+          daeVerificationCache.set(key, { fingerprint, record });
         }
-
-        record = {
-          isFullyCertified: verdict.kind === "proven",
-          verdict,
-          reachSummary,
-          hybridResult,
-          issues: allIssues,
-          variableBounds: namedBounds,
-          unboundedVariables,
-          fingerprint,
-        };
-        daeVerificationCache.set(key, { fingerprint, record });
+      } finally {
+        arena?.free?.();
       }
 
       daeMap.set(cls.name, record);
@@ -730,12 +740,15 @@ export async function validateModelicaDaeReachability(
         if (!definite && !standardClause && !formalVerificationOnSave) {
           continue;
         }
+        const isUnreachable =
+          issue.kind === "unreachable_mode" || issue.kind === "dead_branch" || issue.kind === "unreachable_branch";
         diagnostics.push({
           severity: definite ? SEVERITY_ERROR : SEVERITY_WARNING,
           range: { start: positionAt(issueOffset), end: positionAt(issueOffset + issueLength) },
           message: `${standardClause ? "[Standard Compliance]" : definite ? "[DAE Formal Defect]" : "[DAE Invariant Warning]"} ${issue.message}`,
           source: "modelscript-dae-verifier",
           code: issue.kind,
+          ...(isUnreachable ? { tags: [1] } : {}),
           data: {
             kind: issue.kind,
             severity: issue.severity,

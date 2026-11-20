@@ -23,6 +23,7 @@ export * from "./units.js";
 export * from "./extensions/index.js";
 
 // Formal Verification & Abstract Interpretation
+export * from "./cosim-emt-participant.js";
 export * from "./formal/formal-verifier.js";
 export * from "./formal/modelica-abstract-evaluator.js";
 export * from "./formal/modelica-analyzer.js";

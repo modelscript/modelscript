@@ -20,6 +20,46 @@ export const toughLanguage = language({
   lsp: {
     fileExtensions: [".tough", ".dat", ".tgh"],
   },
+  ui: {
+    toolbarButtons: [
+      {
+        id: "toughSolveWells",
+        label: "Solve Geothermal Production",
+        shortLabel: "Solve Geothermal",
+        tooltip: "Solve Geothermal Production",
+        icon: "play",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        actionId: "tough_solve_wells",
+      },
+      {
+        id: "toughToDae",
+        label: "Lower TOUGH to DAEBuilder",
+        shortLabel: "Lower TOUGH",
+        tooltip: "Lower TOUGH to DAEBuilder",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "tough_to_dae",
+      },
+      {
+        id: "toughLint",
+        label: "Lint TOUGH Deck",
+        shortLabel: "Lint TOUGH",
+        tooltip: "Lint TOUGH Deck",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "tough_lint",
+      },
+    ],
+  },
   actions: [
     {
       id: "tough_lint",

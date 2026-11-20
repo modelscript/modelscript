@@ -29,6 +29,34 @@ export const fiberLanguage = language({
     outline: ["JsonPair"],
   },
 
+  ui: {
+    toolbarButtons: [
+      {
+        id: "fiberAnalyzeSrlg",
+        label: "Analyze Shared Risk Link Groups (SRLG)",
+        shortLabel: "Analyze Shared",
+        tooltip: "Analyze Shared Risk Link Groups (SRLG)",
+        icon: "search",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        actionId: "fiber_analyze_srlg",
+      },
+      {
+        id: "fiberToDae",
+        label: "Lower Fiber Plant to DAE",
+        shortLabel: "Lower Fiber",
+        tooltip: "Lower Fiber Plant to DAE",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "fiber_to_dae",
+      },
+    ],
+  },
   actions: [
     {
       id: "fiber_analyze_srlg",

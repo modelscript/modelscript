@@ -658,6 +658,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
         newChunk = freeChunkHead;
         freeChunkHead = load<u32>(newChunk as usize);
         freeChunkCount--;
+        memory.fill(newChunk as usize, 0, AST_CHUNK_SIZE);
       } else {
         newChunk = allocAlignedAstChunk();
       }
@@ -844,9 +845,10 @@ export function computeNodeMerkleHashAt(nodeId: u32, absoluteStart: u32): u64 {
 
   let low = (h & 0xffffffff) as u32;
   let high = (h >> 32) as u32;
+  if (low == 0 && high == 0) low = 1;
   node.merkleLow = low;
   node.merkleHigh = high;
-  return h;
+  return (low as u64) | ((high as u64) << 32);
 }
 
 export function computeNodeMerkleHash(nodeId: u32): u64 {
@@ -858,7 +860,7 @@ export function getNodeMerkleLow(nodeId: u32): u32 {
   if (nodeId == 0) return 0;
   let node = changetype<ASTNode>(nodeId);
   if (node.merkleLow == 0 && node.merkleHigh == 0) {
-    computeNodeMerkleHashAt(nodeId, getNodeLeadingPad(nodeId));
+    computeNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
   }
   return node.merkleLow;
 }
@@ -867,7 +869,7 @@ export function getNodeMerkleHigh(nodeId: u32): u32 {
   if (nodeId == 0) return 0;
   let node = changetype<ASTNode>(nodeId);
   if (node.merkleLow == 0 && node.merkleHigh == 0) {
-    computeNodeMerkleHashAt(nodeId, getNodeLeadingPad(nodeId));
+    computeNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
   }
   return node.merkleHigh;
 }
@@ -883,7 +885,7 @@ export function getNodeMerkleHashAt(nodeId: u32, absoluteStart: u32): u64 {
 
 export function getNodeMerkleHash(nodeId: u32): u64 {
   if (nodeId == 0) return 0;
-  return getNodeMerkleHashAt(nodeId, getNodeLeadingPad(nodeId));
+  return getNodeMerkleHashAt(nodeId, 0xFFFFFFFF);
 }
 
 export function setNodeMerkleHash(nodeId: u32, low: u32, high: u32): void {
@@ -2196,15 +2198,13 @@ export function clearAstMarks(rootToKeep: u32): void {
       let node = changetype<ASTNode>(ptr);
 
       if (!node.isGcMarked) {
-        // Node is dead: add to free-list using the freeListNext alias
-        node.freeListNext = S().freeNodeHead;
-        S().freeNodeHead = ptr;
+        // NOTE: allocNode() is currently bump-only and does not consume S().freeNodeHead.
+        // Do not overwrite node.freeListNext (aliased to firstChild) to avoid corrupting
+        // any live JS SyntaxNode handles referencing Gen1 nodes.
       } else {
         // Node is live: clear GC, LSP, error, and taint flags for the next cycle
         lastLivePtr = ptr + NODE_SIZE;
         node.clearFlag((FLAG_GC_MARK | FLAG_LSP_VISITED | FLAG_IS_TAINED) as u16);
-
-
       }
     }
   }

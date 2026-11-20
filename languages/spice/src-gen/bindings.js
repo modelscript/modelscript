@@ -4469,7 +4469,7 @@ export class LspFacade {
     }
     if (newAstRoot > 0) {
       this.rootSourceCode.set(newAstRoot, text);
-      if (this.rootSourceCode.size > 100) {
+      if (this.rootSourceCode.size > 2048) {
         const firstKey = this.rootSourceCode.keys().next().value;
         if (firstKey !== undefined) this.rootSourceCode.delete(firstKey);
       }
@@ -4909,11 +4909,30 @@ export class SyntaxNode {
     return this.type;
   }
   /** Extracts the substring from the original source code corresponding to this node. */
+  get merkleLow() {
+    if (!this.ptr) return 0;
+    return this.tree.mem32[(this.ptr + 24) >>> 2] >>> 0;
+  }
+  get merkleHigh() {
+    if (!this.ptr) return 0;
+    return this.tree.mem32[(this.ptr + 28) >>> 2] >>> 0;
+  }
   get text() {
     if (this._cachedText !== null) return this._cachedText;
     const enc = this.tree.facade?.getInputEncoding
       ? this.tree.facade.getInputEncoding()
       : (this.tree._encoding ?? 1);
+    if (this.tree.sourceCode) {
+      if (enc === 3 || enc === 4) {
+        return (this._cachedText = Array.from(this.tree.sourceCode)
+          .slice(this.startIndex, this.endIndex)
+          .join(""));
+      }
+      return (this._cachedText = this.tree.sourceCode.substring(
+        this.startIndex,
+        this.endIndex,
+      ));
+    }
     if ((enc === 0 || enc === 3 || enc === 4) && this.tree.facade?.wasmMemory) {
       const getInputBuf =
         this.tree.facade.exports.getInputBuffer ||
@@ -4943,16 +4962,7 @@ export class SyntaxNode {
             : String.fromCharCode(...rawBytes));
       }
     }
-    if (!this.tree.sourceCode) return "";
-    if (enc === 3 || enc === 4) {
-      return (this._cachedText = Array.from(this.tree.sourceCode)
-        .slice(this.startIndex, this.endIndex)
-        .join(""));
-    }
-    return (this._cachedText = this.tree.sourceCode.substring(
-      this.startIndex,
-      this.endIndex,
-    ));
+    return "";
   }
   /**
    * The encoding divisor to convert raw WASM byte offsets to character offsets.
@@ -5045,7 +5055,7 @@ export class SyntaxNode {
     if (this._cachedChildren !== null) {
       return this._cachedChildren;
     }
-    const mem32 = this.tree.mem32;
+    let mem32 = this.tree.mem32;
     const exports = this.tree.facade?.exports;
     const kids = [];
     const stack = [];
@@ -5076,6 +5086,7 @@ export class SyntaxNode {
               typeId,
               0,
             );
+            mem32 = this.tree.mem32;
           } catch {}
         }
         let fieldId = directFieldId > 0 ? directFieldId : inheritedFieldId;
@@ -5695,7 +5706,7 @@ export class TreeCursor {
     return parentFrame.node.fieldNameForChild(parentFrame.childIndex);
   }
   get currentFieldId() {
-    const fieldNames = this.tree?.facade?.fieldNames ?? FIELD_NAMES;
+    const fieldNames = this.current.tree?.facade?.fieldNames ?? FIELD_NAMES;
     const name = this.currentFieldName;
     return name && fieldNames[name] !== undefined ? fieldNames[name] : 0;
   }
@@ -6168,6 +6179,11 @@ export class Tree {
     ) {
       registry.delete(this.rootPtr);
     }
+    if (this.rootPtr && typeof this.facade?.exports?.dropRoot === "function") {
+      try {
+        this.facade.exports.dropRoot(this.rootPtr);
+      } catch {}
+    }
     this._mem32 = null;
     this._rootNode = null;
     this._lsTyped = null;
@@ -6273,6 +6289,16 @@ export class TreeSitterParser {
     );
     if (!astRoot) return null;
     return new Tree(facade, astRoot, code);
+  }
+  /**
+   * Parses `source` using a specific multi-format entry point (e.g. `"raw"`, `"dyr"`, `"seq"`, `"con"`, `"idv"`).
+   * Prepends the Private-Use-Area format sentinel (`\uE000<format>\uE001`) for zero-conflict GLR dispatch.
+   */
+  parseFormat(source, format, uri) {
+    const text =
+      typeof source === "string" ? source : new TextDecoder().decode(source);
+    const tagged = `\uE000${format}\uE001${text}`;
+    return this.parse(tagged, null, 0, 0, 0, uri);
   }
   reset() {
     if (this.languageBinding) {

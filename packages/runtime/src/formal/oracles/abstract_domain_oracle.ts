@@ -10,6 +10,7 @@
 import { OctagonDBM } from "../../analysis/octagon_dbm.js";
 import type { ConflictClause, SharedEquality, TheoryLiteral, TheoryOracle } from "../theory_coordinator.js";
 import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
+import { UndoTrail } from "./undo_trail.js";
 
 export class AbstractDomainOracle implements TheoryOracle {
   public readonly name = "AbstractDomainOracle";
@@ -21,13 +22,8 @@ export class AbstractDomainOracle implements TheoryOracle {
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private propagatedEqualities = new Set<string>();
   private sharedEqualities: SharedEquality[] = [];
-  private levelStack: {
-    dbm: OctagonDBM;
-    varToIdx: Map<string, number>;
-    idxToVar: string[];
-    dirtyIndices: Set<number>;
-    assertedLitIds: number[];
-  }[] = [];
+  private trail = new UndoTrail();
+  private dbmSavedDepth = 0;
 
   private dirtyIndices = new Set<number>();
 
@@ -43,29 +39,29 @@ export class AbstractDomainOracle implements TheoryOracle {
     this.assertedLiterals.clear();
     this.propagatedEqualities.clear();
     this.sharedEqualities = [];
-    this.levelStack = [];
+    this.trail.reset();
+    this.dbmSavedDepth = 0;
     this.dbm.reset();
   }
 
   public pushLevel(): void {
-    this.levelStack.push({
-      dbm: this.dbm.clone(),
-      varToIdx: new Map(this.varToIdx),
-      idxToVar: [...this.idxToVar],
-      dirtyIndices: new Set(this.dirtyIndices),
-      assertedLitIds: [],
-    });
+    this.trail.pushLevel();
   }
 
   public popLevel(): void {
-    const top = this.levelStack.pop();
-    if (!top) return;
-    this.dbm = top.dbm;
-    this.varToIdx = top.varToIdx;
-    this.idxToVar = top.idxToVar;
-    this.dirtyIndices = top.dirtyIndices;
-    for (const id of top.assertedLitIds) {
-      this.assertedLiterals.delete(id);
+    this.trail.popLevel();
+  }
+
+  private saveDbmForTrail(): void {
+    const d = this.trail.depth;
+    if (d > 0 && this.dbmSavedDepth < d) {
+      const prevDbm = this.dbm.clone();
+      const prevSavedDepth = this.dbmSavedDepth;
+      this.dbmSavedDepth = d;
+      this.trail.record(() => {
+        this.dbm = prevDbm;
+        this.dbmSavedDepth = prevSavedDepth;
+      });
     }
   }
 
@@ -74,11 +70,12 @@ export class AbstractDomainOracle implements TheoryOracle {
     if (idx !== undefined) return idx;
 
     idx = this.idxToVar.length;
-    this.idxToVar.push(name);
-    this.varToIdx.set(name, idx);
+    this.trail.arrayPush(this.idxToVar, name);
+    this.trail.mapSet(this.varToIdx, name, idx);
 
     if (idx >= this.dbm.numVars) {
       // Re-allocate larger DBM and copy
+      this.saveDbmForTrail();
       this.dbm = new OctagonDBM(Math.max(this.dbm.numVars * 2, idx + 16));
       // Replay all asserted literals into new DBM
       for (const lit of this.assertedLiterals.values()) {
@@ -95,9 +92,10 @@ export class AbstractDomainOracle implements TheoryOracle {
         const [varA, varB, maxDiff] = args as [string, string, number];
         const idxA = this.getOrAllocVar(varA);
         const idxB = this.getOrAllocVar(varB);
+        this.saveDbmForTrail();
         this.dbm.assumeDiff(idxA, idxB, maxDiff);
-        this.dirtyIndices.add(idxA);
-        this.dirtyIndices.add(idxB);
+        this.trail.setAdd(this.dirtyIndices, idxA);
+        this.trail.setAdd(this.dirtyIndices, idxB);
         break;
       }
       case "time_succession": {
@@ -105,39 +103,39 @@ export class AbstractDomainOracle implements TheoryOracle {
         const [eventA, eventB, minDelay, maxDelay] = args as [string, string, number, number];
         const idxA = this.getOrAllocVar(eventA);
         const idxB = this.getOrAllocVar(eventB);
+        this.saveDbmForTrail();
         // t_B - t_A <= maxDelay
         this.dbm.assumeDiff(idxB, idxA, maxDelay);
         // t_A - t_B <= -minDelay (equivalent to t_B - t_A >= minDelay)
         this.dbm.assumeDiff(idxA, idxB, -minDelay);
-        this.dirtyIndices.add(idxA);
-        this.dirtyIndices.add(idxB);
+        this.trail.setAdd(this.dirtyIndices, idxA);
+        this.trail.setAdd(this.dirtyIndices, idxB);
         break;
       }
       case "interval": {
         const [varName, lo, hi] = args as [string, number, number];
         const idx = this.getOrAllocVar(varName);
+        this.saveDbmForTrail();
         this.dbm.assumeInterval(idx, lo, hi);
-        this.dirtyIndices.add(idx);
+        this.trail.setAdd(this.dirtyIndices, idx);
         break;
       }
       case "equal": {
         const [varA, varB] = args as [string, string];
         const idxA = this.getOrAllocVar(varA);
         const idxB = this.getOrAllocVar(varB);
+        this.saveDbmForTrail();
         this.dbm.assumeDiff(idxA, idxB, 0);
         this.dbm.assumeDiff(idxB, idxA, 0);
-        this.dirtyIndices.add(idxA);
-        this.dirtyIndices.add(idxB);
+        this.trail.setAdd(this.dirtyIndices, idxA);
+        this.trail.setAdd(this.dirtyIndices, idxB);
         break;
       }
     }
   }
 
   public assertLiteral(lit: TheoryLiteral): boolean {
-    this.assertedLiterals.set(lit.id, lit);
-    if (this.levelStack.length > 0) {
-      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
-    }
+    this.trail.mapSet(this.assertedLiterals, lit.id, lit);
     this.applyLiteralToDbm(lit);
     return true;
   }
@@ -146,17 +144,19 @@ export class AbstractDomainOracle implements TheoryOracle {
     const hasShared = hasSharedEqualityWithLiteral(this.sharedEqualities, litId);
     if (!this.assertedLiterals.has(litId) && !hasShared) return;
     this.assertedLiterals.delete(litId);
-    const savedStack = this.levelStack;
+    const savedDepth = this.trail.depth;
     // Replay remaining asserted literals and re-apply non-retracted shared equalities
     const remaining = Array.from(this.assertedLiterals.values());
     const savedShared = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
     this.reset();
-    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
     for (const eq of savedShared) {
       this.onSharedEquality(eq);
+    }
+    for (let i = 0; i < savedDepth; i++) {
+      this.trail.pushLevel();
     }
   }
 
@@ -195,7 +195,7 @@ export class AbstractDomainOracle implements TheoryOracle {
           const key = varA < varB ? `${varA}==${varB}` : `${varB}==${varA}`;
 
           if (!this.propagatedEqualities.has(key)) {
-            this.propagatedEqualities.add(key);
+            this.trail.setAdd(this.propagatedEqualities, key);
             const justs: number[] = [];
             for (const lit of this.assertedLiterals.values()) {
               if (lit.args.includes(varA) || lit.args.includes(varB)) {
@@ -216,19 +216,26 @@ export class AbstractDomainOracle implements TheoryOracle {
       }
     }
 
+    if (this.trail.depth > 0) {
+      const savedDirty = Array.from(this.dirtyIndices);
+      this.trail.record(() => {
+        for (const idx of savedDirty) this.dirtyIndices.add(idx);
+      });
+    }
     this.dirtyIndices.clear();
     return equalities;
   }
 
   public onSharedEquality(eq: SharedEquality): void {
-    this.sharedEqualities.push(eq);
+    this.trail.arrayPush(this.sharedEqualities, eq);
     if (eq.domain === "interval" || eq.domain === "real" || eq.domain === "discrete") {
       const idxA = this.getOrAllocVar(eq.varA);
       const idxB = this.getOrAllocVar(eq.varB);
+      this.saveDbmForTrail();
       this.dbm.assumeDiff(idxA, idxB, 0);
       this.dbm.assumeDiff(idxB, idxA, 0);
-      this.dirtyIndices.add(idxA);
-      this.dirtyIndices.add(idxB);
+      this.trail.setAdd(this.dirtyIndices, idxA);
+      this.trail.setAdd(this.dirtyIndices, idxB);
       if (eq.bounds) {
         this.dbm.assumeInterval(idxA, eq.bounds[0], eq.bounds[1]);
         this.dbm.assumeInterval(idxB, eq.bounds[0], eq.bounds[1]);

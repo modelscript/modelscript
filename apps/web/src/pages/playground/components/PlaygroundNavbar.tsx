@@ -430,7 +430,12 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
             </SplitToggleButton>
           )}
 
-          <LanguageToolbarButtons languageId={currentLang} activeView={activeTabId} className="nav-hide-sm" />
+          <LanguageToolbarButtons
+            languageId={currentLang}
+            activeView={activeTabId}
+            maxPrimary={activeTabId === "icon" ? 6 : 2}
+            className="nav-hide-sm"
+          />
         </NavCenter>
       )}
 

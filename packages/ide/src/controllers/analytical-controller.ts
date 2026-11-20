@@ -56,9 +56,33 @@ export function registerAnalyticalCommands(
       },
     ),
 
-    vscode.commands.registerCommand("modelscript.openTraceReplay", (trace?: ReplayTraceData) => {
-      TraceReplayPanel.createOrShow(context.extensionUri, client, trace);
-    }),
+    vscode.commands.registerCommand(
+      "modelscript.openTraceReplay",
+      async (traceOrUri?: ReplayTraceData | string, activityName?: string) => {
+        if (typeof traceOrUri === "string") {
+          let resolvedTrace: ReplayTraceData | undefined;
+          if (client) {
+            try {
+              const res = await client.sendRequest<{
+                success?: boolean;
+                canonicalTrace?: ReplayTraceData;
+              }>("modelscript/runFormalVerification", {
+                uri: traceOrUri,
+                className: activityName,
+              });
+              if (res?.success && res.canonicalTrace) {
+                resolvedTrace = res.canonicalTrace;
+              }
+            } catch {
+              // Fall back to opening the panel without a preloaded trace
+            }
+          }
+          TraceReplayPanel.createOrShow(context.extensionUri, client, resolvedTrace);
+          return;
+        }
+        TraceReplayPanel.createOrShow(context.extensionUri, client, traceOrUri);
+      },
+    ),
 
     vscode.commands.registerCommand("modelscript.openMolstarViewer", (uri?: string) => {
       MolstarPanel.createOrShow(context.extensionUri, client, uri);

@@ -986,7 +986,18 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
                 let aSym = alias_data[aliasPtr + 1 + a * 2 + 1];
                 if (aIndex == logicalChildIndex) {
                   let node = changetype<ASTNode>(clone);
-                  node.type = aSym as u16;
+                  if (node.type != (aSym as u16)) {
+                    let prevM = (node.merkleLow as u64) | ((node.merkleHigh as u64) << 32);
+                    node.type = aSym as u16;
+                    if (prevM != 0) {
+                      let ah: u64 = prevM ^ ((aSym as u64) | 0x9e3779b97f4a7c15);
+                      ah = ah * 0x100000001b3;
+                      let aLow = (ah & 0xffffffff) as u32;
+                      let aHigh = (ah >> 32) as u32;
+                      if (aLow == 0 && aHigh == 0) aLow = 1;
+                      setNodeMerkleHash(clone, aLow, aHigh);
+                    }
+                  }
                   break;
                 }
               }
@@ -2852,7 +2863,18 @@ function constructReducedParentNode(
           let aSym = alias_data[aliasPtr + 1 + a * 2 + 1];
           if (aIndex == logicalChildIndex) {
             let node = changetype<ASTNode>(clone);
-            node.type = aSym as u16;
+            if (node.type != (aSym as u16)) {
+              let prevM = (node.merkleLow as u64) | ((node.merkleHigh as u64) << 32);
+              node.type = aSym as u16;
+              if (prevM != 0) {
+                let ah: u64 = prevM ^ ((aSym as u64) | 0x9e3779b97f4a7c15);
+                ah = ah * 0x100000001b3;
+                let aLow = (ah & 0xffffffff) as u32;
+                let aHigh = (ah >> 32) as u32;
+                if (aLow == 0 && aHigh == 0) aLow = 1;
+                setNodeMerkleHash(clone, aLow, aHigh);
+              }
+            }
             break;
           }
         }
@@ -4102,6 +4124,17 @@ export function advanceGLR(): void {
 
     // 3. Condense and prune next heads (Top-K heap extraction)
     if (nextHeadsCount > MAX_PARALLEL_HEADS) {
+      // Compact live heads first so dead heads never compete for Top-K slots
+      let liveCount: u32 = 0;
+      for (let li: u32 = 0; li < nextHeadsCount; li++) {
+        let hLive = changetype<ParseHead>(t_nextHeads[li]);
+        if (!hLive.isDead) {
+          t_nextHeads[liveCount++] = t_nextHeads[li];
+        }
+      }
+      nextHeadsCount = liveCount;
+    }
+    if (nextHeadsCount > MAX_PARALLEL_HEADS) {
       let heapLen = nextHeadsCount;
       for (let hi: i32 = (heapLen as i32) / 2 - 1; hi >= 0; hi--) {
         let ci: u32 = hi as u32;
@@ -4143,15 +4176,15 @@ export function advanceGLR(): void {
           if (left < heapLen) {
             let hL = changetype<ParseHead>(t_nextHeads[left]);
             let hS = changetype<ParseHead>(t_nextHeads[smallest]);
-            let cL = hL.errorCost > (hL.successfulShifts * 15) ? hL.errorCost - (hL.successfulShifts * 15) : 0;
-            let cS = hS.errorCost > (hS.successfulShifts * 15) ? hS.errorCost - (hS.successfulShifts * 15) : 0;
+            let cL = hL.errorCost == 0 ? 0 : (hL.errorCost > (hL.successfulShifts * 15) ? hL.errorCost - (hL.successfulShifts * 15) : 1);
+            let cS = hS.errorCost == 0 ? 0 : (hS.errorCost > (hS.successfulShifts * 15) ? hS.errorCost - (hS.successfulShifts * 15) : 1);
             if (cL < cS || (cL == cS && hL.dynamicPrec > hS.dynamicPrec)) smallest = left;
           }
           if (right < heapLen) {
             let hR = changetype<ParseHead>(t_nextHeads[right]);
             let hS = changetype<ParseHead>(t_nextHeads[smallest]);
-            let cR = hR.errorCost > (hR.successfulShifts * 15) ? hR.errorCost - (hR.successfulShifts * 15) : 0;
-            let cS = hS.errorCost > (hS.successfulShifts * 15) ? hS.errorCost - (hS.successfulShifts * 15) : 0;
+            let cR = hR.errorCost == 0 ? 0 : (hR.errorCost > (hR.successfulShifts * 15) ? hR.errorCost - (hR.successfulShifts * 15) : 1);
+            let cS = hS.errorCost == 0 ? 0 : (hS.errorCost > (hS.successfulShifts * 15) ? hS.errorCost - (hS.successfulShifts * 15) : 1);
             if (cR < cS || (cR == cS && hR.dynamicPrec > hS.dynamicPrec)) smallest = right;
           }
           if (smallest == ci) break;
@@ -4164,7 +4197,7 @@ export function advanceGLR(): void {
       for (let ei: u32 = 0; ei < sortLimit; ei++) {
         t_nextHeads[ei] = t_extractedHeadsBuffer[ei];
       }
-      nextHeadsCount = MAX_PARALLEL_HEADS;
+      nextHeadsCount = sortLimit;
       rebuildFrontierSummary(1, t_nextHeads, nextHeadsCount);
     }
 

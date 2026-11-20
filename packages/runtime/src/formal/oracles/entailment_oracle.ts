@@ -14,6 +14,7 @@
 import { ProofManifestGenerator, type DigitalThreadProofManifest } from "../proof_manifest.js";
 import type { ConflictClause, SharedEquality, TheoryLiteral, TheoryOracle } from "../theory_coordinator.js";
 import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
+import { UndoTrail } from "./undo_trail.js";
 
 export interface RequirementContract {
   id: string;
@@ -36,13 +37,7 @@ export class EntailmentTheoryOracle implements TheoryOracle {
   private certifiedManifests: DigitalThreadProofManifest[] = [];
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private sharedEqualities: SharedEquality[] = [];
-  private levelStack: {
-    requirements: Map<string, RequirementContract>;
-    queries: EntailmentVerification[];
-    certifiedManifests: DigitalThreadProofManifest[];
-    sharedEqualities: SharedEquality[];
-    assertedLitIds: number[];
-  }[] = [];
+  private trail = new UndoTrail();
 
   constructor() {
     this.reset();
@@ -54,33 +49,15 @@ export class EntailmentTheoryOracle implements TheoryOracle {
     this.certifiedManifests = [];
     this.sharedEqualities = [];
     this.assertedLiterals.clear();
-    this.levelStack = [];
+    this.trail.reset();
   }
 
   public pushLevel(): void {
-    const reqSnap = new Map<string, RequirementContract>();
-    for (const [k, v] of this.requirements) {
-      reqSnap.set(k, { ...v });
-    }
-    this.levelStack.push({
-      requirements: reqSnap,
-      queries: this.queries.map((q) => ({ ...q, childReqIds: [...q.childReqIds] })),
-      certifiedManifests: [...this.certifiedManifests],
-      sharedEqualities: [...this.sharedEqualities],
-      assertedLitIds: [],
-    });
+    this.trail.pushLevel();
   }
 
   public popLevel(): void {
-    const top = this.levelStack.pop();
-    if (!top) return;
-    this.requirements = top.requirements;
-    this.queries = top.queries;
-    this.certifiedManifests = top.certifiedManifests;
-    this.sharedEqualities = top.sharedEqualities;
-    for (const id of top.assertedLitIds) {
-      this.assertedLiterals.delete(id);
-    }
+    this.trail.popLevel();
   }
 
   public getCertifiedManifests(): DigitalThreadProofManifest[] {
@@ -88,21 +65,18 @@ export class EntailmentTheoryOracle implements TheoryOracle {
   }
 
   public assertLiteral(lit: TheoryLiteral): boolean {
-    this.assertedLiterals.set(lit.id, lit);
-    if (this.levelStack.length > 0) {
-      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
-    }
+    this.trail.mapSet(this.assertedLiterals, lit.id, lit);
     const { predicate, args } = lit;
 
     switch (predicate) {
       case "requirement": {
         const [id, variable, op, limit] = args as [string, string, "<=" | "<" | ">=" | ">" | "==", number];
-        this.requirements.set(id, { id, variable, op, limit });
+        this.trail.mapSet(this.requirements, id, { id, variable, op, limit });
         break;
       }
       case "entailment": {
         const [parentReqId, childReqIds] = args as [string, string[]];
-        this.queries.push({ parentReqId, childReqIds: [...childReqIds] });
+        this.trail.arrayPush(this.queries, { parentReqId, childReqIds: [...childReqIds] });
         break;
       }
     }
@@ -114,20 +88,28 @@ export class EntailmentTheoryOracle implements TheoryOracle {
     const hasShared = hasSharedEqualityWithLiteral(this.sharedEqualities, litId);
     if (!this.assertedLiterals.has(litId) && !hasShared) return;
     this.assertedLiterals.delete(litId);
-    const savedStack = this.levelStack;
+    const savedDepth = this.trail.depth;
     const remaining = Array.from(this.assertedLiterals.values());
     const remainingSharedEqs = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
     this.reset();
-    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
     for (const eq of remainingSharedEqs) {
       this.onSharedEquality(eq);
     }
+    for (let i = 0; i < savedDepth; i++) {
+      this.trail.pushLevel();
+    }
   }
 
   public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
+    if (this.trail.depth > 0) {
+      const prevManifests = this.certifiedManifests;
+      this.trail.record(() => {
+        this.certifiedManifests = prevManifests;
+      });
+    }
     this.certifiedManifests = [];
     for (const q of this.queries) {
       const parent = this.requirements.get(q.parentReqId);
@@ -226,9 +208,13 @@ export class EntailmentTheoryOracle implements TheoryOracle {
 
   public onSharedEquality(eq: SharedEquality): void {
     if (!eq.varA || !eq.varB || eq.varA === eq.varB) return;
-    this.sharedEqualities.push(eq);
+    this.trail.arrayPush(this.sharedEqualities, eq);
     for (const req of this.requirements.values()) {
       if (req.variable === eq.varA) {
+        const prevVar = req.variable;
+        this.trail.record(() => {
+          req.variable = prevVar;
+        });
         req.variable = eq.varB;
       }
     }

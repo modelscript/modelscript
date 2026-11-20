@@ -16,6 +16,7 @@
 
 import type { ConflictClause, SharedEquality, TheoryLiteral, TheoryOracle } from "../theory_coordinator.js";
 import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
+import { UndoTrail } from "./undo_trail.js";
 
 export interface StressMeasurementSpec {
   partName: string;
@@ -89,22 +90,9 @@ export class SpatialPhysicsOracle implements TheoryOracle {
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private nextLiteralId = 20000;
 
-  private levelStack: {
-    stressSpecs: Map<string, StressMeasurementSpec>;
-    deflectionSpecs: Map<string, DeflectionMeasurementSpec>;
-    fsiSpecs: Map<string, FsiEquilibriumSpec>;
-    solidSpecs: Map<string, SolidGeometrySpec>;
-    portPositions: Map<string, { x: number; y: number; z: number }>;
-    connectionLengthSpecs: Map<string, ConnectionLengthSpec>;
-    droneProps?: DroneSlicingProperties | undefined;
-    externalBounds: Map<string, [number, number]>;
-    externalBoundJustifications: Map<string, Set<number>>;
-    sharedEqualities: SharedEquality[];
-    assertedLitIds: number[];
-  }[] = [];
-
   private externalBoundJustifications = new Map<string, Set<number>>();
   private sharedEqualities: SharedEquality[] = [];
+  private trail = new UndoTrail();
 
   constructor() {
     this.reset();
@@ -149,45 +137,15 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     this.externalBoundJustifications.clear();
     this.sharedEqualities = [];
     this.assertedLiterals.clear();
-    this.levelStack = [];
+    this.trail.reset();
   }
 
   public pushLevel(): void {
-    const extJustSnap = new Map<string, Set<number>>();
-    for (const [k, v] of this.externalBoundJustifications) {
-      extJustSnap.set(k, new Set(v));
-    }
-    this.levelStack.push({
-      stressSpecs: new Map(this.stressSpecs),
-      deflectionSpecs: new Map(this.deflectionSpecs),
-      fsiSpecs: new Map(this.fsiSpecs),
-      solidSpecs: new Map(this.solidSpecs),
-      portPositions: new Map(this.portPositions),
-      connectionLengthSpecs: new Map(this.connectionLengthSpecs),
-      droneProps: this.droneProps ? { ...this.droneProps } : undefined,
-      externalBounds: new Map(this.externalBounds),
-      externalBoundJustifications: extJustSnap,
-      sharedEqualities: [...this.sharedEqualities],
-      assertedLitIds: [],
-    });
+    this.trail.pushLevel();
   }
 
   public popLevel(): void {
-    const top = this.levelStack.pop();
-    if (!top) return;
-    this.stressSpecs = top.stressSpecs;
-    this.deflectionSpecs = top.deflectionSpecs;
-    this.fsiSpecs = top.fsiSpecs;
-    this.solidSpecs = top.solidSpecs;
-    this.portPositions = top.portPositions;
-    this.connectionLengthSpecs = top.connectionLengthSpecs;
-    this.droneProps = top.droneProps;
-    this.externalBounds = top.externalBounds;
-    this.externalBoundJustifications = top.externalBoundJustifications;
-    this.sharedEqualities = top.sharedEqualities;
-    for (const litId of top.assertedLitIds) {
-      this.assertedLiterals.delete(litId);
-    }
+    this.trail.popLevel();
   }
 
   // --- Strongly typed assertion helpers ---
@@ -231,10 +189,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
   // --- TheoryOracle Implementation ---
 
   public assertLiteral(lit: TheoryLiteral): boolean {
-    this.assertedLiterals.set(lit.id, lit);
-    if (this.levelStack.length > 0) {
-      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
-    }
+    this.trail.mapSet(this.assertedLiterals, lit.id, lit);
 
     const { predicate, args } = lit;
 
@@ -242,6 +197,10 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       case "droneSlicing": {
         const props = args[0] as DroneSlicingProperties;
         if (props) {
+          const prevDrone = this.droneProps;
+          this.trail.record(() => {
+            this.droneProps = prevDrone;
+          });
           this.droneProps = { ...props };
         }
         break;
@@ -250,11 +209,11 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       case "feaStress": {
         if (args[0] && typeof args[0] === "object" && "partName" in args[0]) {
           const spec = args[0] as StressMeasurementSpec;
-          this.stressSpecs.set(spec.partName, { ...spec });
+          this.trail.mapSet(this.stressSpecs, spec.partName, { ...spec });
         } else if (args.length >= 3) {
           const [partName, maxVonMisesPa, yieldStrengthPa, safetyFactor, ultimateStrengthPa, ultimateSafetyFactor] =
             args as [string, number, number, number?, number?, number?];
-          this.stressSpecs.set(partName, {
+          this.trail.mapSet(this.stressSpecs, partName, {
             partName,
             maxVonMisesPa,
             yieldStrengthPa,
@@ -270,7 +229,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       case "feaDeflection": {
         if (args[0] && typeof args[0] === "object" && "partName" in args[0]) {
           const spec = args[0] as DeflectionMeasurementSpec;
-          this.deflectionSpecs.set(spec.partName, { ...spec });
+          this.trail.mapSet(this.deflectionSpecs, spec.partName, { ...spec });
         } else if (args.length >= 3) {
           const [partName, maxDisplacementMeters, allowableDisplacementMeters, direction, location] = args as [
             string,
@@ -279,7 +238,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
             ("x" | "y" | "z" | "resultant")?,
             string?,
           ];
-          this.deflectionSpecs.set(partName, {
+          this.trail.mapSet(this.deflectionSpecs, partName, {
             partName,
             maxDisplacementMeters,
             allowableDisplacementMeters,
@@ -294,7 +253,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       case "fsiCoupling": {
         if (args[0] && typeof args[0] === "object" && "interfaceName" in args[0]) {
           const spec = args[0] as FsiEquilibriumSpec;
-          this.fsiSpecs.set(spec.interfaceName, { ...spec });
+          this.trail.mapSet(this.fsiSpecs, spec.interfaceName, { ...spec });
         } else if (args.length >= 3) {
           const [interfaceName, fluidForce, solidForce, tolerance] = args as [
             string,
@@ -302,7 +261,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
             [number, number, number] | number,
             number?,
           ];
-          this.fsiSpecs.set(interfaceName, {
+          this.trail.mapSet(this.fsiSpecs, interfaceName, {
             interfaceName,
             fluidForce,
             solidForce,
@@ -316,10 +275,10 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       case "cadSolid": {
         if (args[0] && typeof args[0] === "object" && "solidName" in args[0]) {
           const spec = args[0] as SolidGeometrySpec;
-          this.solidSpecs.set(spec.solidName, { ...spec });
+          this.trail.mapSet(this.solidSpecs, spec.solidName, { ...spec });
         } else if (args.length >= 3) {
           const [solidName, isWatertight, volumeM3, surfaceAreaM2] = args as [string, boolean, number, number?];
-          this.solidSpecs.set(solidName, {
+          this.trail.mapSet(this.solidSpecs, solidName, {
             solidName,
             isWatertight: Boolean(isWatertight),
             volumeM3: Number(volumeM3),
@@ -334,9 +293,17 @@ export class SpatialPhysicsOracle implements TheoryOracle {
         const [portName, pos] = args as [string, { x: number; y: number; z: number } | [number, number, number]];
         if (typeof portName === "string" && pos) {
           if (Array.isArray(pos) && pos.length >= 3) {
-            this.portPositions.set(portName, { x: Number(pos[0]), y: Number(pos[1]), z: Number(pos[2]) });
+            this.trail.mapSet(this.portPositions, portName, {
+              x: Number(pos[0]),
+              y: Number(pos[1]),
+              z: Number(pos[2]),
+            });
           } else if (typeof pos === "object" && "x" in pos && "y" in pos && "z" in pos) {
-            this.portPositions.set(portName, { x: Number(pos.x), y: Number(pos.y), z: Number(pos.z) });
+            this.trail.mapSet(this.portPositions, portName, {
+              x: Number(pos.x),
+              y: Number(pos.y),
+              z: Number(pos.z),
+            });
           }
         }
         break;
@@ -347,7 +314,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       case "pipeLengthBound": {
         if (args[0] && typeof args[0] === "object" && "connectionName" in args[0]) {
           const spec = args[0] as ConnectionLengthSpec;
-          this.connectionLengthSpecs.set(spec.connectionName, { ...spec });
+          this.trail.mapSet(this.connectionLengthSpecs, spec.connectionName, { ...spec });
         } else if (args.length >= 4) {
           const [connectionName, sourcePort, targetPort, maxLengthMeters, minLengthMeters] = args as [
             string,
@@ -356,7 +323,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
             number,
             number?,
           ];
-          this.connectionLengthSpecs.set(connectionName, {
+          this.trail.mapSet(this.connectionLengthSpecs, connectionName, {
             connectionName,
             sourcePort,
             targetPort,
@@ -379,7 +346,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
             lo = Math.max(lo, val);
             hi = Math.min(hi, val);
           }
-          this.externalBounds.set(varName, [lo, hi]);
+          this.trail.mapSet(this.externalBounds, varName, [lo, hi]);
         }
         break;
       }
@@ -388,7 +355,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
         const [varName, lo, hi] = args as [string, number, number];
         if (typeof varName === "string" && typeof lo === "number" && typeof hi === "number") {
           const curr = this.externalBounds.get(varName) ?? [-Infinity, Infinity];
-          this.externalBounds.set(varName, [Math.max(curr[0], lo), Math.min(curr[1], hi)]);
+          this.trail.mapSet(this.externalBounds, varName, [Math.max(curr[0], lo), Math.min(curr[1], hi)]);
         }
         break;
       }
@@ -401,17 +368,18 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     const hasShared = hasSharedEqualityWithLiteral(this.sharedEqualities, litId);
     if (!this.assertedLiterals.has(litId) && !hasShared) return;
     this.assertedLiterals.delete(litId);
-    const savedStack = this.levelStack;
+    const savedTrail = this.trail;
     const remaining = Array.from(this.assertedLiterals.values());
     const remainingSharedEqs = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
+    this.trail = new UndoTrail();
     this.reset();
-    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
     for (const eq of remainingSharedEqs) {
       this.onSharedEquality(eq);
     }
+    this.trail = savedTrail;
   }
 
   public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
@@ -740,14 +708,14 @@ export class SpatialPhysicsOracle implements TheoryOracle {
   }
 
   public onSharedEquality(eq: SharedEquality): void {
-    this.sharedEqualities.push(eq);
+    this.trail.arrayPush(this.sharedEqualities, eq);
     if (eq.bounds) {
       const intersect = (varName: string, b: [number, number]) => {
         const prev = this.externalBounds.get(varName);
         if (prev) {
-          this.externalBounds.set(varName, [Math.max(prev[0], b[0]), Math.min(prev[1], b[1])]);
+          this.trail.mapSet(this.externalBounds, varName, [Math.max(prev[0], b[0]), Math.min(prev[1], b[1])]);
         } else {
-          this.externalBounds.set(varName, [b[0], b[1]]);
+          this.trail.mapSet(this.externalBounds, varName, [b[0], b[1]]);
         }
       };
       intersect(eq.varA, eq.bounds);
@@ -756,15 +724,19 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       }
       const justs = eq.justifications ?? eq.justification ?? [];
       if (justs.length > 0) {
-        if (!this.externalBoundJustifications.has(eq.varA)) {
-          this.externalBoundJustifications.set(eq.varA, new Set());
+        let setA = this.externalBoundJustifications.get(eq.varA);
+        if (!setA) {
+          setA = new Set();
+          this.trail.mapSet(this.externalBoundJustifications, eq.varA, setA);
         }
-        for (const j of justs) this.externalBoundJustifications.get(eq.varA)!.add(j);
+        for (const j of justs) this.trail.setAdd(setA, j);
         if (eq.varA !== eq.varB) {
-          if (!this.externalBoundJustifications.has(eq.varB)) {
-            this.externalBoundJustifications.set(eq.varB, new Set());
+          let setB = this.externalBoundJustifications.get(eq.varB);
+          if (!setB) {
+            setB = new Set();
+            this.trail.mapSet(this.externalBoundJustifications, eq.varB, setB);
           }
-          for (const j of justs) this.externalBoundJustifications.get(eq.varB)!.add(j);
+          for (const j of justs) this.trail.setAdd(setB, j);
         }
       }
     }

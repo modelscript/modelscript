@@ -1822,13 +1822,18 @@ function lowerPreBinaryCSTExpression(
       };
       const state = getFlatteningState(dae);
       const prevInsidePrevious = state.isInsidePrevious;
+      const prevInsideClock = state.isInsideClock;
       if (fnName === "previous") {
         state.isInsidePrevious = true;
+      }
+      if (fnName === "Clock") {
+        state.isInsideClock = true;
       }
       try {
         collectArgs(argsNode);
       } finally {
         state.isInsidePrevious = prevInsidePrevious;
+        state.isInsideClock = prevInsideClock;
       }
     }
     if (fnName === "integer" && argExprIds.length === 1) {
@@ -2973,39 +2978,56 @@ function lowerPreBinaryCSTExpression(
       }
     }
 
-    if (cleanFnName === "sample" && argExprIds.length >= 1) {
-      const startId = argExprIds[0]!;
-      const startText = argNodes[0]?.text?.trim() ?? "";
-      let vIdx = -1;
-      if (dae.getExprKind(startId) === ExprKind.Name) {
-        const vName = dae.interner.resolve(dae.getExprData1(startId));
-        vIdx = vName ? dae.lookupVariable(vName) : -1;
-      } else if (startText) {
-        vIdx = dae.lookupVariable(startText);
+    if (cleanFnName === "sample" && argExprIds.length === 2) {
+      const secondArgId = argExprIds[1]!;
+      let isClockSecondArg = inferArenaExprVarType(dae, secondArgId) === VarType.Clock;
+      if (!isClockSecondArg && dae.getExprKind(secondArgId) === ExprKind.Name) {
+        const cName = dae.interner.resolve(dae.getExprData1(secondArgId));
+        const cIdx = cName ? dae.getVarIdxByName(cName) : -1;
+        if (cIdx >= 0 && dae.getVarType(cIdx) === VarType.Clock) {
+          isClockSecondArg = true;
+        }
       }
-      if (vIdx >= 0) {
-        const vari = dae.getVarVariability(vIdx);
-        if (vari !== Variability.Parameter && vari !== Variability.Constant) {
-          let cur: any = node;
-          while (
-            cur &&
-            cur.type !== "component_clause" &&
-            cur.type !== "simple_equation" &&
-            cur.type !== "statement" &&
-            cur.type !== "assignment_statement" &&
-            cur.type !== "when_equation" &&
-            cur.type !== "when_statement"
-          ) {
-            cur = cur.parent;
+      if (!isClockSecondArg && dae.getExprKind(secondArgId) === ExprKind.Call) {
+        const cFn = dae.interner.resolve(dae.getExprData1(secondArgId));
+        if (cFn === "Clock" || cFn.startsWith("Clock")) {
+          isClockSecondArg = true;
+        }
+      }
+      if (!isClockSecondArg) {
+        const startId = argExprIds[0]!;
+        const startText = argNodes[0]?.text?.trim() ?? "";
+        let vIdx = -1;
+        if (dae.getExprKind(startId) === ExprKind.Name) {
+          const vName = dae.interner.resolve(dae.getExprData1(startId));
+          vIdx = vName ? dae.lookupVariable(vName) : -1;
+        } else if (startText) {
+          vIdx = dae.lookupVariable(startText);
+        }
+        if (vIdx >= 0) {
+          const vari = dae.getVarVariability(vIdx);
+          if (vari !== Variability.Parameter && vari !== Variability.Constant) {
+            let cur: any = node;
+            while (
+              cur &&
+              cur.type !== "component_clause" &&
+              cur.type !== "simple_equation" &&
+              cur.type !== "statement" &&
+              cur.type !== "assignment_statement" &&
+              cur.type !== "when_equation" &&
+              cur.type !== "when_statement"
+            ) {
+              cur = cur.parent;
+            }
+            const diagRange = getElementDiagRange(cur ?? node);
+            dae.diagnostics.push({
+              severity: "error",
+              code: ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
+              message: `Function argument start=${startText} in call to sample has variability continuous which is not a parameter expression.`,
+              range: diagRange,
+            });
+            return -1;
           }
-          const diagRange = getElementDiagRange(cur ?? node);
-          dae.diagnostics.push({
-            severity: "error",
-            code: ModelicaErrorCode.FUNCTION_ARG_TYPE_MISMATCH.code,
-            message: `Function argument start=${startText} in call to sample has variability continuous which is not a parameter expression.`,
-            range: diagRange,
-          });
-          return -1;
         }
       }
     }
@@ -3334,11 +3356,22 @@ function lowerPreBinaryCSTExpression(
           }
         }
       }
-    } else if (fnName === "Clock" && argExprIds.length === 1) {
-      if (dae.getExprKind(argExprIds[0]!) === ExprKind.IntLiteral) {
-        argExprIds.push(dae.addIntLiteral(1));
-      } else if (inferArenaExprVarType(dae, argExprIds[0]!) === VarType.Boolean) {
-        argExprIds.push(dae.addRealLiteral(0.0));
+    } else if (fnName === "Clock") {
+      if (argExprIds.length === 1) {
+        if (dae.getExprKind(argExprIds[0]!) === ExprKind.IntLiteral) {
+          argExprIds.push(dae.addIntLiteral(1));
+        } else if (inferArenaExprVarType(dae, argExprIds[0]!) === VarType.Boolean) {
+          argExprIds.push(dae.addRealLiteral(0.0));
+        }
+      } else if (argExprIds.length === 2 && dae.getExprKind(argExprIds[1]!) === ExprKind.Name) {
+        const resName = dae.interner.resolve(dae.getExprData1(argExprIds[1]!));
+        const resIdx = resName ? dae.getVarIdxByName(resName) : -1;
+        if (resIdx >= 0 && dae.getVarType(resIdx) === VarType.Integer && dae.isVarProtected(resIdx)) {
+          const bindId = dae.getVarBindingExpr(resIdx);
+          if (bindId !== undefined && bindId >= 0 && dae.getExprKind(bindId) === ExprKind.IntLiteral) {
+            argExprIds[1] = dae.addIntLiteral(dae.getExprData1(bindId));
+          }
+        }
       }
     }
 
@@ -5009,7 +5042,10 @@ function lowerPreBinaryCSTExpression(
 
     // 2.7. Builtin getInstanceName() function
     if ((fnName === "getInstanceName" || cleanFnName === "getInstanceName") && argExprIds.length === 0) {
-      const rootName = flattener?.currentRootClassName ?? "";
+      const rootName =
+        flattener?.currentRootClassName ||
+        (flattener?.currentRootClassId && db ? (db.symbol(flattener.currentRootClassId)?.name ?? "") : "") ||
+        (dae.name ? dae.name.split(".").pop()! : "");
       const instPath = prefix ? (rootName ? `${rootName}.${prefix}` : prefix) : rootName;
       return dae.addStringLiteral(instPath);
     }
@@ -5441,9 +5477,14 @@ function lowerPreBinaryCSTExpression(
                     : effectivePrefixSym.parentId
                       ? getSymbolQualifiedName(db, effectivePrefixSym.parentId)
                       : getSymbolQualifiedName(db, effectivePrefixSym.id);
+                const rootQual = flattener.currentRootClassId
+                  ? getSymbolQualifiedName(db, flattener.currentRootClassId)
+                  : ownerQual;
                 const specPkgPrefix =
                   prefix && (pkgRedeclArg || outerPkgRedeclArg)
-                    ? `${ownerQual}$${prefix.replaceAll(".", "$")}.${prefixStr}`
+                    ? dae.extensionMetadata?.["isOldFrontend"]
+                      ? `${ownerQual}$${prefix.replaceAll(".", "$")}.${prefixStr}`
+                      : `${rootQual}.${prefix}.${prefixStr}`
                     : `${ownerQual}.${prefixStr}`;
                 specializedQualifiedName = `${specPkgPrefix}.${fnBaseName}`;
                 enclosingScopeId = redeclaredPkgSym?.id ?? pkgRedeclTarget.parentId ?? undefined;
@@ -5579,17 +5620,27 @@ function lowerPreBinaryCSTExpression(
                         rawScopeId && rawScopeId !== qualScopeId && isClassAncestor(inScopeFn.parentId, rawScopeId),
                       ));
                   if (isDirectChild || isInherited) {
-                    if (
-                      !componentSpecializedPrefix &&
-                      prefix &&
-                      dae.classKind !== "function" &&
-                      currentParentMods?.args?.some(
-                        (a: any) => !a.isBreak && (a.isRedeclaration || a.redeclaredTypeSpecifier),
-                      )
-                    ) {
-                      const baseQual = getSymbolQualifiedName(db, qualScopeId);
-                      componentSpecializedPrefix = `${baseQual}$${prefix.replaceAll(".", "$")}`;
-                      componentInstancePrefix = prefix;
+                    const isOldFeFn = Boolean(
+                      dae.extensionMetadata?.["isOldFrontend"] ||
+                      flattener?.isOldFrontend ||
+                      flattener?.currentRootDae?.extensionMetadata?.isOldFrontend,
+                    );
+                    if (!componentSpecializedPrefix && prefix && dae.classKind !== "function") {
+                      if (!isOldFeFn && flattener?.currentRootClassId) {
+                        const rootQual = getSymbolQualifiedName(db, flattener.currentRootClassId);
+                        if (rootQual) {
+                          componentSpecializedPrefix = `${rootQual}.${prefix}`;
+                          componentInstancePrefix = prefix;
+                        }
+                      } else if (
+                        currentParentMods?.args?.some(
+                          (a: any) => !a.isBreak && (a.isRedeclaration || a.redeclaredTypeSpecifier),
+                        )
+                      ) {
+                        const baseQual = getSymbolQualifiedName(db, qualScopeId);
+                        componentSpecializedPrefix = `${baseQual}$${prefix.replaceAll(".", "$")}`;
+                        componentInstancePrefix = prefix;
+                      }
                     } else if (
                       dae.classKind === "function" &&
                       isLocalToCurrentFn &&
@@ -6639,10 +6690,63 @@ function lowerPreBinaryCSTExpression(
           targetFnCallName = extCall.fnName;
         }
       }
+      const isOldFeForArgs = Boolean(
+        dae.extensionMetadata?.["isOldFrontend"] ||
+        flattener?.isOldFrontend ||
+        flattener?.currentRootDae?.extensionMetadata?.isOldFrontend,
+      );
+      const tryCollapseWholeArrayArg = (argId: number): number => {
+        if (isOldFeForArgs || dae.getExprKind(argId) !== ExprKind.ArrayCtor) return argId;
+        const elems = getArrayCtorElements(argId, dae);
+        if (elems.length === 0) return argId;
+        // 1D whole-array check: {base[1], ..., base[N]}
+        if (dae.getExprKind(elems[0]!) === ExprKind.Name) {
+          const firstName = dae.interner.resolve(dae.getExprData1(elems[0]!));
+          const m = firstName?.match(/^(.+)\[1\]$/);
+          if (!m) return argId;
+          const base = m[1]!;
+          for (let i = 0; i < elems.length; i++) {
+            if (dae.getExprKind(elems[i]!) !== ExprKind.Name) return argId;
+            if (dae.interner.resolve(dae.getExprData1(elems[i]!)) !== `${base}[${i + 1}]`) return argId;
+          }
+          // Ensure it's the whole array (not a slice like v[1:2] of a larger array)
+          if (dae.getVarIdxByName(`${base}[${elems.length + 1}]`) >= 0) return argId;
+          return dae.addExpression(ExprKind.Name, dae.interner.intern(base));
+        }
+        // 2D whole-array check: {{base[1,1], ..., base[1,C]}, ..., {base[R,1], ..., base[R,C]}}
+        if (dae.getExprKind(elems[0]!) === ExprKind.ArrayCtor) {
+          const row0 = getArrayCtorElements(elems[0]!, dae);
+          if (row0.length === 0 || dae.getExprKind(row0[0]!) !== ExprKind.Name) return argId;
+          const firstName = dae.interner.resolve(dae.getExprData1(row0[0]!));
+          const m = firstName?.match(/^(.+)\[1,1\]$/);
+          if (!m) return argId;
+          const base = m[1]!;
+          const numRows = elems.length;
+          const numCols = row0.length;
+          for (let r = 0; r < numRows; r++) {
+            if (dae.getExprKind(elems[r]!) !== ExprKind.ArrayCtor) return argId;
+            const row = getArrayCtorElements(elems[r]!, dae);
+            if (row.length !== numCols) return argId;
+            for (let c = 0; c < numCols; c++) {
+              if (dae.getExprKind(row[c]!) !== ExprKind.Name) return argId;
+              if (dae.interner.resolve(dae.getExprData1(row[c]!)) !== `${base}[${r + 1},${c + 1}]`) return argId;
+            }
+          }
+          if (
+            dae.getVarIdxByName(`${base}[${numRows + 1},1]`) >= 0 ||
+            dae.getVarIdxByName(`${base}[1,${numCols + 1}]`) >= 0
+          ) {
+            return argId;
+          }
+          return dae.addExpression(ExprKind.Name, dae.interner.intern(base));
+        }
+        return argId;
+      };
       let inIdx = 0;
       for (let vi = 0; vi < fnDae.varCount; vi++) {
         if (fnDae.getVarCausality(vi) === Causality.Input) {
           if (inIdx < argExprIds.length) {
+            argExprIds[inIdx] = tryCollapseWholeArrayArg(argExprIds[inIdx]!);
             const expectedType = fnDae.getVarType(vi);
             if (expectedType === VarType.Real && !fnDae.getVarCustomType(vi) && !isRealExpr(argExprIds[inIdx]!, dae)) {
               argExprIds[inIdx] = castToRealExpr(argExprIds[inIdx]!, dae);
@@ -10799,13 +10903,22 @@ function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: Lo
             }
           }
           if (vIdx >= 0) {
-            if (dae.getVarVariability(vIdx) === Variability.Constant) {
+            const isConstVar = dae.getVarVariability(vIdx) === Variability.Constant;
+            const isEvalParam =
+              !isConstVar &&
+              !isAssignmentLhs &&
+              !state.isInsideClock &&
+              dae.classKind !== "function" &&
+              !dae.extensionMetadata?.["isOldFrontend"] &&
+              !flattener?.isOldFrontend &&
+              Boolean(state.evaluatedParams?.has(candidate));
+            if (isConstVar || isEvalParam) {
               const exprId = dae.getVarExpression(vIdx);
               if (exprId !== undefined && exprId >= 0) {
                 const k = dae.getExprKind(exprId);
                 if (k === ExprKind.RealLiteral) return dae.addRealLiteral(dae.getExprRealValue(exprId));
                 if (k === ExprKind.IntLiteral) return dae.addIntLiteral(dae.getExprData1(exprId));
-                if (k === ExprKind.BoolLiteral) return dae.addBoolLiteral(dae.getExprData1(exprId) !== 0);
+                if (isConstVar && k === ExprKind.BoolLiteral) return dae.addBoolLiteral(dae.getExprData1(exprId) !== 0);
               }
             }
             if (
@@ -11317,9 +11430,13 @@ function lowerPostBinaryCSTExpression(node: SyntaxNode, dae: DAEBuilder, ctx: Lo
         }
         rawName = mapped;
       }
-    } else if (db && rawName.includes(".")) {
+    }
+    if (db && rawName.includes(".")) {
+      const pkgScopeId = flattener?.currentParentMods?.packageScopeId;
       const scopeId = flattener?.currentClassId ?? flattener?.currentRootClassId;
-      const constRes = lookupDbConstant(rawName, db, scopeId);
+      const constRes =
+        (pkgScopeId && pkgScopeId !== scopeId ? lookupDbConstant(rawName, db, pkgScopeId) : null) ??
+        lookupDbConstant(rawName, db, scopeId);
       if (constRes !== null) {
         ensureOldFrontendPiAsin(rawName);
         if (Array.isArray(constRes.value)) {

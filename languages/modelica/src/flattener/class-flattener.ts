@@ -4232,6 +4232,18 @@ export class ModelicaFlattener {
         }
       }
     }
+    if (!shouldScalarize) {
+      for (let i = 0; i < dae.eqCount; i++) {
+        if (dae.getEqKind(i) === EqKind.Connect) {
+          const lhsName = dae.interner.resolve(dae.getExprData1(dae.getEqLhs(i))) ?? "";
+          const rhsName = dae.interner.resolve(dae.getExprData1(dae.getEqRhs(i))) ?? "";
+          if (lhsName.includes("[") || rhsName.includes("[")) {
+            shouldScalarize = true;
+            break;
+          }
+        }
+      }
+    }
 
     dae.extensionMetadata.expandableBuses = Array.from(this.expandableBuses.keys());
 

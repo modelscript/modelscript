@@ -24,6 +24,7 @@
 
 import type { ConflictClause, SharedEquality, TheoryLiteral, TheoryOracle } from "../theory_coordinator.js";
 import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
+import { UndoTrail } from "./undo_trail.js";
 
 export interface OpticalChannelSpec {
   channelId: string;
@@ -75,15 +76,7 @@ export class TelecomTheoryOracle implements TheoryOracle {
 
   private sharedEqualities: SharedEquality[] = [];
 
-  private levelStack: {
-    opticalChannels: Map<string, OpticalChannelSpec>;
-    ptpTimingChains: Map<string, PtpTimingSpec>;
-    microwavePaths: Map<string, MicrowavePathSpec>;
-    srlgPathPairs: Map<string, SrlgPathPairSpec>;
-    externalBounds: Map<string, [number, number]>;
-    sharedEqualities: SharedEquality[];
-    assertedLitIds: number[];
-  }[] = [];
+  private trail = new UndoTrail();
 
   constructor() {
     this.reset();
@@ -97,33 +90,15 @@ export class TelecomTheoryOracle implements TheoryOracle {
     this.externalBounds.clear();
     this.sharedEqualities = [];
     this.assertedLiterals.clear();
-    this.levelStack = [];
+    this.trail.reset();
   }
 
   public pushLevel(): void {
-    this.levelStack.push({
-      opticalChannels: new Map(this.opticalChannels),
-      ptpTimingChains: new Map(this.ptpTimingChains),
-      microwavePaths: new Map(this.microwavePaths),
-      srlgPathPairs: new Map(this.srlgPathPairs),
-      externalBounds: new Map(this.externalBounds),
-      sharedEqualities: [...this.sharedEqualities],
-      assertedLitIds: [],
-    });
+    this.trail.pushLevel();
   }
 
   public popLevel(): void {
-    const top = this.levelStack.pop();
-    if (!top) return;
-    this.opticalChannels = top.opticalChannels;
-    this.ptpTimingChains = top.ptpTimingChains;
-    this.microwavePaths = top.microwavePaths;
-    this.srlgPathPairs = top.srlgPathPairs;
-    this.externalBounds = top.externalBounds;
-    this.sharedEqualities = top.sharedEqualities;
-    for (const id of top.assertedLitIds) {
-      this.assertedLiterals.delete(id);
-    }
+    this.trail.popLevel();
   }
 
   // --- Strongly typed domain ingestion APIs ---
@@ -167,24 +142,21 @@ export class TelecomTheoryOracle implements TheoryOracle {
   // --- TheoryOracle implementation ---
 
   public assertLiteral(lit: TheoryLiteral): boolean {
-    this.assertedLiterals.set(lit.id, lit);
-    if (this.levelStack.length > 0) {
-      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
-    }
+    this.trail.mapSet(this.assertedLiterals, lit.id, lit);
 
     const { predicate, args } = lit;
     if (predicate === "opticalChannel") {
       const spec = args[0] as OpticalChannelSpec;
-      if (spec) this.opticalChannels.set(spec.channelId, spec);
+      if (spec) this.trail.mapSet(this.opticalChannels, spec.channelId, spec);
     } else if (predicate === "ptpTiming") {
       const spec = args[0] as PtpTimingSpec;
-      if (spec) this.ptpTimingChains.set(spec.chainId, spec);
+      if (spec) this.trail.mapSet(this.ptpTimingChains, spec.chainId, spec);
     } else if (predicate === "microwavePath") {
       const spec = args[0] as MicrowavePathSpec;
-      if (spec) this.microwavePaths.set(spec.linkId, spec);
+      if (spec) this.trail.mapSet(this.microwavePaths, spec.linkId, spec);
     } else if (predicate === "srlgPair") {
       const spec = args[0] as SrlgPathPairSpec;
-      if (spec) this.srlgPathPairs.set(`${spec.primaryPathId}_${spec.backupPathId}`, spec);
+      if (spec) this.trail.mapSet(this.srlgPathPairs, `${spec.primaryPathId}_${spec.backupPathId}`, spec);
     }
     return true;
   }
@@ -193,17 +165,18 @@ export class TelecomTheoryOracle implements TheoryOracle {
     const hasShared = hasSharedEqualityWithLiteral(this.sharedEqualities, litId);
     if (!this.assertedLiterals.has(litId) && !hasShared) return;
     this.assertedLiterals.delete(litId);
-    const savedStack = this.levelStack;
+    const savedTrail = this.trail;
     const remaining = Array.from(this.assertedLiterals.values());
     const remainingSharedEqs = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
+    this.trail = new UndoTrail();
     this.reset();
-    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
     for (const eq of remainingSharedEqs) {
       this.onSharedEquality(eq);
     }
+    this.trail = savedTrail;
   }
 
   public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
@@ -349,7 +322,7 @@ export class TelecomTheoryOracle implements TheoryOracle {
   }
 
   public onSharedEquality(eq: SharedEquality): void {
-    this.sharedEqualities.push(eq);
+    this.trail.arrayPush(this.sharedEqualities, eq);
   }
 
   public propagateEqualities(): SharedEquality[] {

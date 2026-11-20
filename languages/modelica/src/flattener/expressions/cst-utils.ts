@@ -35,6 +35,8 @@ import {
   BARE_SINGLE_LETTER_MODELICA_CONSTANTS,
   MAX_ARRAY_EXPANSION_LENGTH,
   MODELICA_CONSTANTS,
+  MODELICA_EPS,
+  MODELICA_SMALL,
 } from "../../constants.js";
 import { getShortClassSpecifierNode } from "../../queries.js";
 import { getFlatteningState, getNamedArrayShape } from "../support/state.js";
@@ -2642,6 +2644,12 @@ export function lookupDbConstant(
     }
     const hasLeadingDot = rawFullName.startsWith(".");
     const cleanFullName = hasLeadingDot ? rawFullName.slice(1) : rawFullName;
+    if (cleanFullName === "ModelicaServices.Machine.eps") {
+      return { value: MODELICA_EPS, isInteger: false };
+    }
+    if (cleanFullName === "ModelicaServices.Machine.small") {
+      return { value: MODELICA_SMALL, isInteger: false };
+    }
     const parseModValText = (
       valTextRaw: string,
       forceIsInt?: boolean,
@@ -2761,10 +2769,17 @@ export function lookupDbConstant(
     if (parts.length >= 2) {
       const resolveThroughComponent = (
         compSym: SymbolEntry,
-      ): { value: number | number[]; isInteger: boolean } | null => {
+        startIdx = 1,
+      ): { value: any; isInteger: boolean; isBoolean?: boolean } | null => {
         const compMod =
           db.query<any>("effectiveModification", compSym.id) ??
           db.query<any>("componentInstance", compSym.id)?.modification;
+        const bindText = compMod?.bindingExpression?.text?.trim();
+        if (bindText && isDottedIdentifierChain(stripLeadingDot(bindText)) && startIdx < parts.length) {
+          const restPath = parts.slice(startIdx).join(".");
+          const chainedRes = lookupDbConstant(`${bindText}.${restPath}`, db, compSym.parentId ?? scopeId);
+          if (chainedRes) return chainedRes;
+        }
         let currArgs: any[] = compMod?.args ? [...compMod.args] : [];
         let currComp: SymbolEntry | null = compSym;
         let currClassId: SymbolId | null = null;
@@ -2781,7 +2796,7 @@ export function lookupDbConstant(
           return null;
         };
         currClassId = resolveCompClassId(compSym);
-        for (let i = 1; i < parts.length; i++) {
+        for (let i = startIdx; i < parts.length; i++) {
           const bIdx = parts[i]!.indexOf("[");
           const seg = bIdx >= 0 ? parts[i]!.slice(0, bIdx) : parts[i]!;
           const matchedArg = currArgs.find((a: any) => a && !a.isBreak && a.name === seg);
@@ -2860,6 +2875,11 @@ export function lookupDbConstant(
           const seg = parts[i]!;
           const nextList: SymbolEntry[] = [];
           for (const p of currList) {
+            if (p.kind === "Component") {
+              const compRes = resolveThroughComponent(p, i);
+              if (compRes) return compRes;
+              continue;
+            }
             if (p.kind === "Class" || p.kind === "Package") {
               lastClassId = p.id;
             }

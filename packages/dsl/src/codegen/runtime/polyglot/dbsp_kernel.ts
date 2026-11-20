@@ -14,8 +14,12 @@ import { atomicChunkAlloc } from "../arena";
 import {
   DpoGraph,
   DPO_EDGE_STRIDE,
+  DPO_EDGE_SOURCE,
   DPO_EDGE_TARGET,
   DPO_EDGE_TYPE,
+  DPO_EDGE_NEXT,
+  DPO_NODE_STRIDE,
+  DPO_NODE_FIRST_EDGE,
   DPO_FLAG_ACTIVE,
   DPO_FLAG_TOMBSTONE,
 } from "./dpo_kernel";
@@ -135,17 +139,22 @@ export class LeapfrogIterator {
     if (this.cursor >= this.length) return;
     if (this.keys.get(this.cursor) >= targetKey) return;
 
-    // Exponential galloping phase
+    // Exponential galloping phase (overflow-safe)
     let low: u32 = this.cursor;
     let step: u32 = 1;
-    let high: u32 = low + step;
-    while (high < this.length && this.keys.get(high) < targetKey) {
-      low = high;
+    let high: u32 = this.length - 1;
+    while (step < this.length - low) {
+      let candidate = low + step;
+      if (this.keys.get(candidate) >= targetKey) {
+        high = candidate;
+        break;
+      }
+      low = candidate;
+      if (step > 0x7fffffff) {
+        high = this.length - 1;
+        break;
+      }
       step <<= 1;
-      high = low + step;
-    }
-    if (high >= this.length) {
-      high = this.length - 1;
     }
 
     // Binary search phase in [low, high]
@@ -330,13 +339,95 @@ export function leapfrog_intersect_3(
 }
 
 /**
+ * Zero-allocation exact directed triangle join over DpoGraph outgoing adjacency lists:
+ * finds all node triples (u, v, w) such that u -[e1Type]-> v -[e2Type]-> w -[e3Type]-> u
+ * and records each matched triangle root u in resultZSetPtr.
+ */
+export function leapfrog_intersect_triangle(
+  graphPtr: usize,
+  e1Type: u16,
+  e2Type: u16,
+  e3Type: u16,
+  resultZSetPtr: usize
+): u32 {
+  if (graphPtr == 0 || resultZSetPtr == 0) return 0;
+  let g = changetype<DpoGraph>(graphPtr);
+  let res = changetype<ZSet>(resultZSetPtr);
+  let matches: u32 = 0;
+
+  for (let u: u32 = 1; u <= g.nodeCount; u++) {
+    let e1 = g.nodes.get((u - 1) * DPO_NODE_STRIDE + DPO_NODE_FIRST_EDGE);
+    let g1: u32 = 0;
+    while (e1 != 0 && e1 <= g.edgeCount && g1 < g.edgeCount) {
+      g1++;
+      let off1 = (e1 - 1) * DPO_EDGE_STRIDE;
+      let next1 = g.edges.get(off1 + DPO_EDGE_NEXT);
+      let tw1 = g.edges.get(off1 + DPO_EDGE_TYPE);
+      let f1 = (tw1 & 0xffff) as u16;
+      let t1 = (tw1 >>> 16) as u16;
+      if ((f1 & DPO_FLAG_ACTIVE) != 0 && (f1 & DPO_FLAG_TOMBSTONE) == 0 && (e1Type == 0 || t1 == e1Type)) {
+        let v = g.edges.get(off1 + DPO_EDGE_TARGET);
+        if (v != 0 && v <= g.nodeCount) {
+          let e2 = g.nodes.get((v - 1) * DPO_NODE_STRIDE + DPO_NODE_FIRST_EDGE);
+          let g2: u32 = 0;
+          while (e2 != 0 && e2 <= g.edgeCount && g2 < g.edgeCount) {
+            g2++;
+            let off2 = (e2 - 1) * DPO_EDGE_STRIDE;
+            let next2 = g.edges.get(off2 + DPO_EDGE_NEXT);
+            let tw2 = g.edges.get(off2 + DPO_EDGE_TYPE);
+            let f2 = (tw2 & 0xffff) as u16;
+            let t2 = (tw2 >>> 16) as u16;
+            if ((f2 & DPO_FLAG_ACTIVE) != 0 && (f2 & DPO_FLAG_TOMBSTONE) == 0 && (e2Type == 0 || t2 == e2Type)) {
+              let w = g.edges.get(off2 + DPO_EDGE_TARGET);
+              if (w != 0 && w <= g.nodeCount) {
+                let e3 = g.nodes.get((w - 1) * DPO_NODE_STRIDE + DPO_NODE_FIRST_EDGE);
+                let g3: u32 = 0;
+                while (e3 != 0 && e3 <= g.edgeCount && g3 < g.edgeCount) {
+                  g3++;
+                  let off3 = (e3 - 1) * DPO_EDGE_STRIDE;
+                  let next3 = g.edges.get(off3 + DPO_EDGE_NEXT);
+                  let tw3 = g.edges.get(off3 + DPO_EDGE_TYPE);
+                  let f3 = (tw3 & 0xffff) as u16;
+                  let t3 = (tw3 >>> 16) as u16;
+                  if (
+                    (f3 & DPO_FLAG_ACTIVE) != 0 &&
+                    (f3 & DPO_FLAG_TOMBSTONE) == 0 &&
+                    (e3Type == 0 || t3 == e3Type) &&
+                    g.edges.get(off3 + DPO_EDGE_TARGET) == u
+                  ) {
+                    res.add(u, 1, 0);
+                    matches++;
+                  }
+                  e3 = next3;
+                }
+              }
+            }
+            e2 = next2;
+          }
+        }
+      }
+      e1 = next1;
+    }
+  }
+  return matches;
+}
+
+/**
  * Multiset Consolidation: Combines entries with identical element IDs by summing weights,
  * and eliminates net-zero entries (elements where weight == 0).
  */
 export function zset_consolidate(ptr: usize): u32 {
+  if (ptr == 0) return 0;
   let zset = changetype<ZSet>(ptr);
   let n = zset.count;
-  if (n <= 1) return n;
+  if (n == 0) return 0;
+  if (n == 1) {
+    if (zset.getWeight(0) == 0) {
+      zset.count = 0;
+      return 0;
+    }
+    return 1;
+  }
 
   // Simple in-place insertion sort by elementId (ZSet entries are small in differential steps)
   for (let i: u32 = 1; i < n; i++) {
@@ -427,40 +518,58 @@ export function dbsp_fixed_point_differentiate(
   let frontier = changetype<ZSet>(frontierPtr);
   let accumulated = changetype<ZSet>(accumulatedPtr);
   let iterations: u32 = 0;
+  let nextFrontierPtr: usize = graphPtr != 0 ? createZSet(frontier.count > 0 ? frontier.count * 2 : 16) : 0;
+  let nextFrontier = nextFrontierPtr != 0 ? changetype<ZSet>(nextFrontierPtr) : changetype<ZSet>(0);
 
   while (frontier.count > 0 && iterations < maxIterations) {
     zset_union_add(accumulatedPtr, frontierPtr);
     iterations++;
 
-    if (graphPtr != 0) {
+    if (graphPtr != 0 && nextFrontierPtr != 0) {
       let g = changetype<DpoGraph>(graphPtr);
-      let nextFrontier = changetype<ZSet>(createZSet(frontier.count > 0 ? frontier.count * 2 : 16));
+      nextFrontier.clear();
       for (let fIdx: u32 = 0; fIdx < frontier.count; fIdx++) {
         let srcNode = frontier.getElement(fIdx);
         let weight = frontier.getWeight(fIdx);
-        if (weight == 0) continue;
-        for (let eIdx: u32 = 0; eIdx < g.edgeCount; eIdx++) {
-          let eOffset = eIdx * DPO_EDGE_STRIDE;
+        if (weight == 0 || srcNode == 0 || srcNode > g.nodeCount) continue;
+
+        let edgeId = g.nodes.get((srcNode - 1) * DPO_NODE_STRIDE + DPO_NODE_FIRST_EDGE);
+        let edgeSteps: u32 = 0;
+        while (edgeId != 0 && edgeId <= g.edgeCount && edgeSteps <= g.edgeCount) {
+          edgeSteps++;
+          let eOffset = (edgeId - 1) * DPO_EDGE_STRIDE;
+          let nextEdgeId = g.edges.get(eOffset + DPO_EDGE_NEXT);
           let typeWord = g.edges.get(eOffset + DPO_EDGE_TYPE);
           let flags = (typeWord & 0xffff) as u16;
-          if ((flags & DPO_FLAG_ACTIVE) == 0 || (flags & DPO_FLAG_TOMBSTONE) != 0) continue;
-          if (g.edges.get(eOffset + DPO_EDGE_SOURCE) == srcNode) {
+          if ((flags & DPO_FLAG_ACTIVE) != 0 && (flags & DPO_FLAG_TOMBSTONE) == 0 && g.edges.get(eOffset + DPO_EDGE_SOURCE) == srcNode) {
             let dstNode = g.edges.get(eOffset + DPO_EDGE_TARGET);
-            // Only enqueue newly discovered nodes not already in accumulated
-            let seen = false;
-            for (let aIdx: u32 = 0; aIdx < accumulated.count; aIdx++) {
-              if (accumulated.getElement(aIdx) == dstNode && accumulated.getWeight(aIdx) != 0) {
-                seen = true;
+            // Binary search accumulated (sorted by zset_consolidate inside zset_union_add)
+            let accWeight: i32 = 0;
+            let lo: u32 = 0;
+            let hi: u32 = accumulated.count;
+            while (lo < hi) {
+              let mid = lo + ((hi - lo) >>> 1);
+              let midElem = accumulated.getElement(mid);
+              if (midElem == dstNode) {
+                accWeight = accumulated.getWeight(mid);
                 break;
+              } else if (midElem < dstNode) {
+                lo = mid + 1;
+              } else {
+                hi = mid;
               }
             }
-            if (!seen) {
+            // Positive deltas skip already-positive nodes (cycle guard); negative deltas propagate
+            // retractions whenever the target currently has positive weight (or hasn't been retracted yet).
+            let shouldEnqueue = weight > 0 ? accWeight <= 0 : accWeight > 0;
+            if (shouldEnqueue) {
               nextFrontier.add(dstNode, weight, iterations);
             }
           }
+          edgeId = nextEdgeId;
         }
       }
-      zset_consolidate(changetype<usize>(nextFrontier));
+      zset_consolidate(nextFrontierPtr);
       frontier.clear();
       for (let nIdx: u32 = 0; nIdx < nextFrontier.count; nIdx++) {
         frontier.add(nextFrontier.getElement(nIdx), nextFrontier.getWeight(nIdx), nextFrontier.getTimestamp(nIdx));

@@ -23,6 +23,7 @@ import { Cst } from "../src-gen/bindings.js";
 import { Context } from "../src/context.js";
 import { AnnotationEvaluator } from "../src/diagram/annotation-evaluator.js";
 import { buildDiagramData, getClassIconSvg, renderDiagramSvg, x6MarkupToSvg } from "../src/diagram/data.js";
+import { canonicalizeEqualityCliques, canonicalizeEquation } from "./dae-normalizer.js";
 import type {
   DiagramComparisonResult,
   FlattenResult,
@@ -234,16 +235,14 @@ export function resolveSymbolId(context: Context, name: string): number | null {
 
 function cleanFlatText(text: string): string {
   let cleaned = text.trim();
-  if (cleaned.startsWith("true\n") || cleaned.startsWith("true\r\n")) {
-    cleaned = cleaned.replace(/^true\r?\n/, "").trim();
-  }
+  cleaned = cleaned.replace(/^(?:true\r?\n)+/, "").trim();
   if (cleaned.startsWith('"')) {
     cleaned = cleaned.slice(1);
+    if (cleaned.endsWith('"')) {
+      cleaned = cleaned.slice(0, -1);
+    }
+    cleaned = cleaned.replace(/\\(\\|")/g, "$1");
   }
-  if (cleaned.endsWith('"')) {
-    cleaned = cleaned.slice(0, -1);
-  }
-  cleaned = cleaned.replace(/\\"/g, '"');
   return cleaned;
 }
 
@@ -1158,12 +1157,15 @@ function executeFlattenStage(context: Context, task: WorkerTask): FlattenResult 
   }
   const varNamesMatch = unmatchedVarNames === 0;
 
-  const normEq = (e: string) => e.replace(/\s+/g, "").replace(/;$/, "");
-  const omcEqSet = new Set(omcParsed.eqs.map(normEq).filter(Boolean));
-  const msEqSet = new Set(msParsed.eqs.map(normEq).filter(Boolean));
+  const normEq = (e: string) => canonicalizeEquation(e).replace(/\s+/g, "").replace(/;$/, "");
+  const omcEqSet = new Set(canonicalizeEqualityCliques(omcParsed.eqs).map(normEq).filter(Boolean));
+  const msEqSet = new Set(canonicalizeEqualityCliques(msParsed.eqs).map(normEq).filter(Boolean));
   let unmatchedEquations = 0;
   for (const e of omcEqSet) {
     if (!msEqSet.has(e)) unmatchedEquations++;
+  }
+  for (const e of msEqSet) {
+    if (!omcEqSet.has(e)) unmatchedEquations++;
   }
 
   const varCountMatch = omcParsed.vars.length === msParsed.vars.length;
@@ -1432,32 +1434,6 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
       }
     }
 
-    if (msVal === undefined || bracketIdx === -1) return valAtT;
-
-    // Only if the bracketing interval contains an actual duplicate-timestamp event nearby (within 1 output step),
-    // pick the pre- or post-event sample closest to msVal instead of fabricated window matching.
-    const checkStart = Math.max(0, bracketIdx - 1);
-    const checkEnd = Math.min(last - 1, bracketIdx + 1);
-    let hasNearbyEvent = false;
-    for (let k = checkStart; k <= checkEnd; k++) {
-      if (Math.abs(omcTimes[k + 1]! - omcTimes[k]!) < 1e-9) {
-        hasNearbyEvent = true;
-        break;
-      }
-    }
-    if (hasNearbyEvent) {
-      let bestVal = valAtT;
-      let bestDiff = Math.abs(msVal - valAtT);
-      for (let k = checkStart; k <= checkEnd + 1; k++) {
-        const d = Math.abs(msVal - vals[k]!);
-        if (d < bestDiff) {
-          bestDiff = d;
-          bestVal = vals[k]!;
-        }
-      }
-      return bestVal;
-    }
-
     return valAtT;
   };
 
@@ -1483,14 +1459,20 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
       const msVal = msRes.y[p][sIdx];
       const t = msRes.t ? msRes.t[p] : undefined;
       const omcVal = t !== undefined && omcTimes ? getInterpolatedOmc(omcValues, t, msVal) : omcValues[p];
-      if (omcVal !== undefined && Number.isFinite(msVal) && Number.isFinite(omcVal)) {
+      if (omcVal !== undefined && Number.isFinite(omcVal)) {
+        if (!Number.isFinite(msVal)) {
+          maxRelErr = Infinity;
+          maxVarName = `${varName}@t=${t?.toFixed(2)} (non-finite: ${msVal})`;
+          totalPoints++;
+          continue;
+        }
         const diff = Math.abs(msVal - omcVal);
         const scale = Math.max(1 + Math.abs(omcVal), varScale);
         let rel = diff / scale;
-        if (rel > tolerance) {
+        const isAngleVar = /(?:^|\.)(?:phi|theta|psi|angle|angles|yaw|pitch|roll)(?:\[|\d*$)/i.test(varName);
+        if (rel > tolerance && isAngleVar) {
           // Angle wrap: a sample whose difference is (within 5%) a whole period (2*pi rad or 360 deg)
-          // straddles the wrap instant of an angle; the residual is just sampling-time misalignment
-          // (the OMC reference is linearly interpolated across the discontinuity), not a numerical error.
+          // straddles the wrap instant of an angle.
           for (const period of [2 * Math.PI, 360]) {
             const k = Math.round(diff / period);
             if (k !== 0 && Math.abs(diff - k * period) / period <= 0.05) {
@@ -1745,14 +1727,13 @@ async function executeDiagramStage(context: Context, task: WorkerTask): Promise<
     const peakMemoryMB = Number((process.memoryUsage().rss / (1024 * 1024)).toFixed(2));
     const validSvg =
       (fullSvg.startsWith("<svg") && fullSvg.endsWith("</svg>") && !fullSvg.includes("NaN")) ||
-      (nodeCount > 0 && unresolved.length === 0) ||
-      (nodeCount === 0 && edgeCount === 0);
+      (nodeCount === 0 && edgeCount === 0 && fullSvg.length === 0);
     const svgPreview = validSvg && fullSvg.length <= 80_000 ? fullSvg : undefined;
 
     const inheritedFqns = collectInheritedClassFqns(cls);
     const omcDiag = runOmcDiagram(task, inheritedFqns);
-    const nodeCountMatch = !omcDiag.success || nodeCount === omcDiag.nodeCount;
-    const edgeCountMatch = !omcDiag.success || edgeCount === omcDiag.edgeCount;
+    const nodeCountMatch = omcDiag.success && nodeCount === omcDiag.nodeCount;
+    const edgeCountMatch = omcDiag.success && edgeCount === omcDiag.edgeCount;
 
     let diffSummary: string | undefined;
     if (omcDiag.success && (!nodeCountMatch || !edgeCountMatch)) {
@@ -1929,7 +1910,8 @@ async function runTask(task: WorkerTask): Promise<WorkerResult> {
     else if (
       !flattenRes.comparison.varCountMatch ||
       !flattenRes.comparison.eqCountMatch ||
-      !flattenRes.comparison.varNamesMatch
+      !flattenRes.comparison.varNamesMatch ||
+      flattenRes.comparison.unmatchedEquations > 0
     ) {
       status = "DIFF";
     }
@@ -1941,36 +1923,38 @@ async function runTask(task: WorkerTask): Promise<WorkerResult> {
       if (!simRes.omc.success) status = "OMC_ERROR";
       else if (!simRes.modelscript.success) status = "MS_ERROR";
       else if (!simRes.comparison.pass) status = "DIFF";
-    } else if (status === "MATCH" && !simRes.comparison.pass) {
-      status = "DIFF";
+    } else {
+      if (!simRes.omc.success && status === "MATCH") status = "OMC_ERROR";
+      else if (!simRes.modelscript.success && (status === "MATCH" || status === "DIFF")) status = "MS_ERROR";
+      else if (!simRes.comparison.pass && status === "MATCH") status = "DIFF";
     }
   }
 
   if (stage === "icon" || stage === "all") {
     iconRes = executeIconStage(context, task);
-    if (stage === "icon") {
-      if (!iconRes.modelscript.success) {
-        status = "MS_ERROR";
-      } else if (!iconRes.hasGraphics) {
-        status = "SKIPPED";
-      }
+    if (!iconRes.modelscript.success) {
+      if (stage === "icon" || status === "MATCH" || status === "DIFF") status = "MS_ERROR";
+    } else if (!iconRes.hasGraphics && stage === "icon") {
+      status = "SKIPPED";
     }
   }
 
   if (stage === "diagram" || stage === "all") {
     diagRes = await executeDiagramStage(context, task);
-    if (stage === "diagram") {
-      if (!diagRes.modelscript.success) {
-        status = "MS_ERROR";
-      } else if (diagRes.modelscript.nodeCount === 0 && diagRes.modelscript.svgLength === 0) {
-        status = "SKIPPED";
-      } else if (
-        diagRes.hasUnresolvedNodes ||
+    const hasDiagContent = diagRes.modelscript.nodeCount > 0 || diagRes.modelscript.svgLength > 0;
+    if (!diagRes.modelscript.success) {
+      if (stage === "diagram" || status === "MATCH" || status === "DIFF") status = "MS_ERROR";
+    } else if (!hasDiagContent && stage === "diagram") {
+      status = "SKIPPED";
+    } else if (hasDiagContent && !diagRes.omc?.success) {
+      if (stage === "diagram" || status === "MATCH") status = "OMC_ERROR";
+    } else if (
+      hasDiagContent &&
+      (diagRes.hasUnresolvedNodes ||
         (diagRes.nodeCountMatch !== undefined && !diagRes.nodeCountMatch) ||
-        (diagRes.edgeCountMatch !== undefined && !diagRes.edgeCountMatch)
-      ) {
-        status = "DIFF";
-      }
+        (diagRes.edgeCountMatch !== undefined && !diagRes.edgeCountMatch))
+    ) {
+      if (stage === "diagram" || status === "MATCH") status = "DIFF";
     }
   }
 
@@ -2022,6 +2006,13 @@ const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity 
       if (!trimmed) continue;
       const task: WorkerTask = JSON.parse(trimmed);
       const result = await runTask(task);
+      if (typeof globalThis.gc === "function") {
+        try {
+          globalThis.gc();
+        } catch {
+          // ignore
+        }
+      }
       process.stdout.write(JSON.stringify(result) + "\n");
     }
     process.exit(0);

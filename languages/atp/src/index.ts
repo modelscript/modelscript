@@ -8,6 +8,7 @@
  */
 
 export * from "./analysis/transient-solver.js";
+export * from "./atp-emt-participant.js";
 export * from "./dae/atp-to-dae.js";
 export * from "./indexing.js";
 export * from "./language.js";

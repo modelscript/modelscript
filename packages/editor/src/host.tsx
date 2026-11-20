@@ -43,6 +43,7 @@ export interface EditorLanguageToolbarButton {
   shortLabel?: string | undefined;
   tooltip?: string | undefined;
   icon?: string | undefined;
+  iconSvg?: string | undefined;
   views?: EditorToolbarView[] | undefined;
   targets?: Array<"vscode" | "morsel" | "artifact"> | undefined;
   placement?: "primary" | "overflow" | undefined;
@@ -74,13 +75,21 @@ export interface EditorLanguageUiRegistry {
   toolbarButtons: Record<string, EditorLanguageToolbarButton[]>;
 }
 
-let registeredLanguageUi: EditorLanguageUiRegistry = {
-  morselPanels: {},
-  artifactPanels: {},
-  simulationCards: [],
-  stencils: {},
-  toolbarButtons: {},
-};
+const LANGUAGE_UI_REGISTRY_SYMBOL = Symbol.for("@modelscript/editor/registeredLanguageUi");
+
+function getGlobalLanguageUi(): EditorLanguageUiRegistry {
+  const g = globalThis as Record<symbol, EditorLanguageUiRegistry | undefined>;
+  if (!g[LANGUAGE_UI_REGISTRY_SYMBOL]) {
+    g[LANGUAGE_UI_REGISTRY_SYMBOL] = {
+      morselPanels: {},
+      artifactPanels: {},
+      simulationCards: [],
+      stencils: {},
+      toolbarButtons: {},
+    };
+  }
+  return g[LANGUAGE_UI_REGISTRY_SYMBOL]!;
+}
 
 /**
  * Registers language UI panels, simulation cards, stencils, and toolbar buttons into `@modelscript/editor`.
@@ -88,17 +97,18 @@ let registeredLanguageUi: EditorLanguageUiRegistry = {
  * `scripts/language-playground.ts` (from `virtual:modelscript-playground-lang`).
  */
 export function registerEditorLanguageUi(registry: Partial<EditorLanguageUiRegistry>): void {
-  registeredLanguageUi = {
-    morselPanels: registry.morselPanels ?? registeredLanguageUi.morselPanels,
-    artifactPanels: registry.artifactPanels ?? registeredLanguageUi.artifactPanels,
-    simulationCards: registry.simulationCards ?? registeredLanguageUi.simulationCards,
-    stencils: registry.stencils ?? registeredLanguageUi.stencils,
-    toolbarButtons: registry.toolbarButtons ?? registeredLanguageUi.toolbarButtons,
+  const current = getGlobalLanguageUi();
+  (globalThis as Record<symbol, EditorLanguageUiRegistry>)[LANGUAGE_UI_REGISTRY_SYMBOL] = {
+    morselPanels: registry.morselPanels ?? current.morselPanels,
+    artifactPanels: registry.artifactPanels ?? current.artifactPanels,
+    simulationCards: registry.simulationCards ?? current.simulationCards,
+    stencils: registry.stencils ?? current.stencils,
+    toolbarButtons: registry.toolbarButtons ?? current.toolbarButtons,
   };
 }
 
 export function getEditorLanguageUi(): EditorLanguageUiRegistry {
-  return registeredLanguageUi;
+  return getGlobalLanguageUi();
 }
 
 /**
@@ -159,7 +169,7 @@ export function useLanguageToolbarButtons(
   options?: { target?: "vscode" | "morsel" | "artifact"; maxPrimary?: number },
 ): ResolvedLanguageToolbarButtons {
   const host = useEditorHost();
-  const rawButtons = registeredLanguageUi.toolbarButtons[languageId];
+  const rawButtons = getGlobalLanguageUi().toolbarButtons[languageId];
   return resolveLanguageToolbarButtons(rawButtons, activeView, {
     target: options?.target ?? "morsel",
     maxPrimary: options?.maxPrimary ?? 2,
@@ -361,7 +371,17 @@ const DEFAULT_HOST: EditorHostAdapter = {
   heroExamples: [],
 };
 
-const EditorHostContext = createContext<EditorHostAdapter>(DEFAULT_HOST);
+const EDITOR_HOST_CONTEXT_SYMBOL = Symbol.for("@modelscript/editor/EditorHostContext");
+
+function getEditorHostContext(): React.Context<EditorHostAdapter> {
+  const g = globalThis as Record<symbol, React.Context<EditorHostAdapter> | undefined>;
+  if (!g[EDITOR_HOST_CONTEXT_SYMBOL]) {
+    g[EDITOR_HOST_CONTEXT_SYMBOL] = createContext<EditorHostAdapter>(DEFAULT_HOST);
+  }
+  return g[EDITOR_HOST_CONTEXT_SYMBOL]!;
+}
+
+const EditorHostContext = getEditorHostContext();
 
 export const EditorHostProvider: React.FC<{
   host: EditorHostAdapter;

@@ -92,6 +92,8 @@ export interface SharedEquality {
   varB: string;
   domain: "discrete" | "real" | "interval" | "spatial" | "concept";
   bounds?: [number, number] | undefined;
+  /** Optional open-endpoint flags `[loOpen, hiOpen]` for strict inequalities (`>` / `<`). */
+  strict?: [boolean, boolean] | undefined;
   explanation?: string | undefined;
   sourceOracle?: string | undefined;
   justifications?: number[] | undefined;
@@ -133,6 +135,7 @@ export type PropagationEvent =
       domain?: "discrete" | "real" | "interval" | "spatial" | "concept" | undefined;
       theoryDomain?: TheoryDomain | undefined;
       bounds?: [number, number] | undefined;
+      strict?: [boolean, boolean] | undefined;
       explanation?: string | undefined;
       sourceOracle: string;
       justification?: number[] | undefined;
@@ -142,10 +145,51 @@ export type PropagationEvent =
       varName: string;
       theoryDomain?: TheoryDomain | undefined;
       bounds: [number, number];
+      strict?: [boolean, boolean] | undefined;
+      explanation?: string | undefined;
+      sourceOracle: string;
+      justification?: number[] | undefined;
+    }
+  | {
+      kind: "disequality";
+      varA: string;
+      varB: string;
+      theoryDomain?: TheoryDomain | undefined;
       explanation?: string | undefined;
       sourceOracle: string;
       justification?: number[] | undefined;
     };
+
+/**
+ * Variable-to-variable disequality (`varA != varB`) exchanged between theory oracles.
+ */
+export interface SharedDisequality {
+  varA: string;
+  varB: string;
+  explanation?: string | undefined;
+  sourceOracle?: string | undefined;
+  justifications?: number[] | undefined;
+}
+
+/**
+ * Finite-domain cardinality constraint (`|{vars}| <= maxCardinality`) for Polite/Shiny theory combination.
+ */
+export interface FiniteDomainConstraint {
+  vars: string[];
+  maxCardinality: number;
+  sourceOracle?: string | undefined;
+  justifications?: number[] | undefined;
+}
+
+/**
+ * Non-convex equality disjunction `(varA_1 = varB_1) \/ ... \/ (varA_k = varB_k)` emitted for CDCL(T) splitting.
+ */
+export interface EqualityDisjunction {
+  disjuncts: [string, string][];
+  explanation?: string | undefined;
+  sourceOracle?: string | undefined;
+  justifications?: number[] | undefined;
+}
 
 /**
  * Interface implemented by each domain-specific decision procedure participating in Nelson-Oppen / DPLL(T) coordination.
@@ -157,6 +201,14 @@ export interface TheoryOracle {
   retractLiteral(litId: number): void;
   checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined };
   propagateEqualities(): SharedEquality[];
+  /** Optional variable-to-variable disequality propagation (`x != y`). */
+  propagateDisequalities?(): SharedDisequality[];
+  /** Optional handler for disequalities deduced by other theories. */
+  onSharedDisequality?(diseq: SharedDisequality): void;
+  /** Optional non-convex equality disjunction propagation for CDCL(T) case splitting. */
+  propagateEqualityDisjunctions?(): EqualityDisjunction[];
+  /** Optional finite-domain cardinality constraints for Polite/Shiny Nelson-Oppen combination. */
+  getFiniteDomainConstraints?(): FiniteDomainConstraint[];
   onSharedEquality(eq: SharedEquality): void;
   pushLevel?(): void;
   popLevel?(): void;
@@ -166,7 +218,8 @@ export interface TheoryOracle {
 
 /**
  * Central Nelson-Oppen and CDCL(T) theory coordinator that synchronizes variable equivalence classes,
- * interval bounds, congruence closure, and conflict clauses across heterogeneous engineering theory oracles.
+ * interval bounds, disequalities, incremental congruence closure, finite-domain cardinality,
+ * and conflict clauses across heterogeneous engineering theory oracles.
  */
 export class SemanticTheoryCoordinator {
   /** Registered theory oracles keyed by oracle name. */
@@ -175,13 +228,23 @@ export class SemanticTheoryCoordinator {
   private activeLiterals = new Map<number, TheoryLiteral>();
   /** Deduplicated shared equalities exchanged between oracles, keyed by packed 64-bit pair ID. */
   private knownEqualities = new Map<bigint, SharedEquality>();
+  /** Deduplicated shared disequalities (`varA != varB`), keyed by packed 64-bit pair ID. */
+  private knownDisequalities = new Map<bigint, SharedDisequality>();
   /** Interned variable names to 32-bit IDs for packed 64-bit equality keys. */
   private varToId = new Map<string, number>();
   private idToVar: string[] = [];
   /** Union-Find parent map for variable equivalence classes. */
   private parentMap = new Map<string, string>();
+  /** Union-Find rank map for union-by-rank balancing. */
+  private parentRank = new Map<string, number>();
+  /** Spanning-forest proof graph tracking exact justifications for Union-Find merges. */
+  private equalityProofGraph = new Map<string, { neighbor: string; justs: number[] }[]>();
   /** Tightest intersected interval `[low, high]` for each canonical variable representative. */
   private canonicalBounds = new Map<string, [number, number]>();
+  /** Open-endpoint flags `[loOpen, hiOpen]` for strict inequalities on each canonical variable. */
+  private canonicalBoundStrict = new Map<string, [boolean, boolean]>();
+  /** Disallowed point values (`x != val`) per canonical variable, mapping forbidden value -> justification literal IDs. */
+  private disallowedValues = new Map<string, Map<number, number[]>>();
   /** Set of literal IDs justifying the current interval bounds of each canonical variable. */
   private canonicalBoundJustifications = new Map<string, Set<number>>();
   /** Oracles subscribed to updates on a specific raw variable name. */
@@ -190,33 +253,121 @@ export class SemanticTheoryCoordinator {
   private canonSubscribers = new Map<string, Set<TheoryOracle>>();
   /** Oracles subscribed to all events within a specific `TheoryDomain`. */
   private domainSubscribers = new Map<TheoryDomain, Set<TheoryOracle>>();
+  /** Theory domains referencing each variable (for shared interface-variable detection). */
+  private varDomains = new Map<string, Set<TheoryDomain>>();
+  /** Oracles that directly received a literal or a shared event justified by it (for incremental retraction). */
+  private literalAffectedOracles = new Map<number, Set<string>>();
   /** Set of oracle names whose state has changed since the last `checkSat` pass. */
   private dirtyOracles = new Set<string>();
-  /** Pending equality and bound propagation events awaiting dispatch. */
+  /** Pending equality, bound, and disequality propagation events awaiting dispatch. */
   private worklist: PropagationEvent[] = [];
   /** Cached satisfiability result for the current state revision. */
   private memoizedResult?: { revision: number; result: CoordinatorSatResult } | undefined;
-  /** Immediate bound-inversion or equality conflict detected during eager propagation. */
+  /** Immediate bound-inversion or equality/disequality conflict detected during eager propagation. */
   private infeasibleConflict?: ConflictClause | undefined;
-  /** Registered function application terms for congruence closure deduction. */
+  /** Registered function application terms for incremental congruence closure deduction. */
   private functionTerms: FunctionApplicationTerm[] = [];
-  /** Opposite-sign flow conservation pairings (vA = -vB) keyed by variable name. */
+  /** Incremental congruence use-list: canonical arg root -> indices into `functionTerms`. */
+  private termUseList = new Map<string, Set<number>>();
+  /** Incremental congruence signature table: canonical signature -> representative term index. */
+  private congruenceSigTable = new Map<string, number>();
+  /** Indices of `functionTerms` whose argument equivalence classes changed since last congruence check. */
+  private dirtyCongruenceTerms = new Set<number>();
+  /** Opposite-sign flow conservation pairings (vA = -vB) keyed by canonical variable root. */
   private oppositeSignPairs = new Map<string, { partner: string; justifications: number[] }[]>();
-  /** Backtracking stack of solver state snapshots for `pushLevel()` / `popLevel()`. */
+  /** Undo trail of lightweight O(1) rollback closures for pushed decision levels. */
+  private undoTrail: (() => void)[] = [];
+  /** O(1) backtracking frame stack storing trail marks and worklist/interning marks. */
   private levelStack: {
     literalIds: number[];
-    equalityKeys: bigint[];
-    worklistSnapshot?: PropagationEvent[] | undefined;
-    parentSnapshot?: Map<string, string> | undefined;
-    boundsSnapshot?: Map<string, [number, number]> | undefined;
-    canonSubscribersSnapshot?: Map<string, Set<TheoryOracle>> | undefined;
-    boundJustificationsSnapshot?: Map<string, Set<number>> | undefined;
+    trailMark: number;
+    idToVarMark: number;
+    worklistSnapshot: PropagationEvent[];
     infeasibleConflictSnapshot?: ConflictClause | undefined;
-    functionTermsSnapshot?: FunctionApplicationTerm[] | undefined;
-    oppositeSignPairsSnapshot?: Map<string, { partner: string; justifications: number[] }[]> | undefined;
+    purifyCounterSnapshot: number;
   }[] = [];
   /** Monotonically increasing counter for auto-assigned literal IDs. */
   private nextLitId = 1;
+  /** Counter for fresh interface variables introduced during mixed-term purification. */
+  private purifyCounter = 0;
+  /**
+   * When enabled (opt-in) and >= 2 oracles are registered, Phase 3 propagation suppresses
+   * purely local equalities, bounds, and disequalities whose variables do not touch any
+   * shared interface variable across theory domains.
+   */
+  private interfaceOnlyPropagation = false;
+
+  constructor(options?: { interfaceOnlyPropagation?: boolean }) {
+    if (options?.interfaceOnlyPropagation !== undefined) {
+      this.interfaceOnlyPropagation = options.interfaceOnlyPropagation;
+    }
+  }
+
+  /** Enable or disable interface-variable-only propagation filtering. */
+  public setInterfaceOnlyPropagation(enabled: boolean): void {
+    this.interfaceOnlyPropagation = enabled;
+  }
+
+  private trailMapSet<K, V>(map: Map<K, V>, key: K, value: V): void {
+    if (this.levelStack.length > 0) {
+      const had = map.has(key);
+      const prev = map.get(key);
+      this.undoTrail.push(() => {
+        if (had) map.set(key, prev as V);
+        else map.delete(key);
+      });
+    }
+    map.set(key, value);
+  }
+
+  private trailMapDelete<K, V>(map: Map<K, V>, key: K): void {
+    if (!map.has(key)) return;
+    if (this.levelStack.length > 0) {
+      const prev = map.get(key) as V;
+      this.undoTrail.push(() => {
+        map.set(key, prev);
+      });
+    }
+    map.delete(key);
+  }
+
+  private trailSetAdd<T>(set: Set<T>, value: T): void {
+    if (set.has(value)) return;
+    if (this.levelStack.length > 0) {
+      this.undoTrail.push(() => {
+        set.delete(value);
+      });
+    }
+    set.add(value);
+  }
+
+  private trailSetDelete<T>(set: Set<T>, value: T): void {
+    if (!set.has(value)) return;
+    if (this.levelStack.length > 0) {
+      this.undoTrail.push(() => {
+        set.add(value);
+      });
+    }
+    set.delete(value);
+  }
+
+  private trailArrayPush<T>(arr: T[], item: T): void {
+    arr.push(item);
+    if (this.levelStack.length > 0) {
+      this.undoTrail.push(() => {
+        arr.pop();
+      });
+    }
+  }
+
+  private markLiteralOracle(litId: number, oracleName: string): void {
+    let set = this.literalAffectedOracles.get(litId);
+    if (!set) {
+      set = new Set();
+      this.trailMapSet(this.literalAffectedOracles, litId, set);
+    }
+    this.trailSetAdd(set, oracleName);
+  }
 
   /**
    * Registers a specialized Theory Oracle with the coordinator.
@@ -246,25 +397,31 @@ export class SemanticTheoryCoordinator {
    * Subscribes an oracle to notifications for a specific variable name.
    */
   public subscribe(varName: string, oracle: TheoryOracle): void {
-    if (!this.varSubscribers.has(varName)) {
-      this.varSubscribers.set(varName, new Set());
+    let vSubs = this.varSubscribers.get(varName);
+    if (!vSubs) {
+      vSubs = new Set();
+      this.trailMapSet(this.varSubscribers, varName, vSubs);
     }
-    this.varSubscribers.get(varName)!.add(oracle);
+    this.trailSetAdd(vSubs, oracle);
 
     const canon = this.getCanonicalVar(varName);
-    if (!this.canonSubscribers.has(canon)) {
-      this.canonSubscribers.set(canon, new Set());
+    let cSubs = this.canonSubscribers.get(canon);
+    if (!cSubs) {
+      cSubs = new Set();
+      this.trailMapSet(this.canonSubscribers, canon, cSubs);
     }
-    this.canonSubscribers.get(canon)!.add(oracle);
+    this.trailSetAdd(cSubs, oracle);
   }
 
   /**
    * Unsubscribes an oracle from a variable.
    */
   public unsubscribe(varName: string, oracle: TheoryOracle): void {
-    this.varSubscribers.get(varName)?.delete(oracle);
+    const vSubs = this.varSubscribers.get(varName);
+    if (vSubs) this.trailSetDelete(vSubs, oracle);
     const canon = this.getCanonicalVar(varName);
-    this.canonSubscribers.get(canon)?.delete(oracle);
+    const cSubs = this.canonSubscribers.get(canon);
+    if (cSubs) this.trailSetDelete(cSubs, oracle);
   }
 
   /**
@@ -316,7 +473,211 @@ export class SemanticTheoryCoordinator {
   }
 
   /**
-   * Constructs a `ConflictClause` when interval bound intersection yields an empty interval (`lo > hi`).
+   * Computes a scale-aware relative epsilon for comparing two finite numbers.
+   */
+  private relEps(a: number, b: number, factor = 1e-12): number {
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+    return factor * Math.max(Math.abs(a), Math.abs(b));
+  }
+
+  /**
+   * Checks whether an interval `[lo, hi]` with open-endpoint flags `[loOpen, hiOpen]` is empty.
+   */
+  private isEmptyBounds(lo: number, hi: number, loOpen = false, hiOpen = false): boolean {
+    const eps = this.relEps(lo, hi, 1e-12);
+    if (lo > hi + eps) return true;
+    if ((loOpen || hiOpen) && Math.abs(lo - hi) <= eps) return true;
+    return false;
+  }
+
+  /**
+   * Checks whether `[newLo, newHi]` (with strictness) meaningfully tightens `[oldLo, oldHi]`.
+   */
+  private isTightenedBounds(
+    newLo: number,
+    newHi: number,
+    oldLo: number,
+    oldHi: number,
+    newLoOpen = false,
+    newHiOpen = false,
+    oldLoOpen = false,
+    oldHiOpen = false,
+  ): boolean {
+    const loEps = this.relEps(newLo, oldLo, 1e-9);
+    const hiEps = this.relEps(newHi, oldHi, 1e-9);
+    if (newLo > oldLo + loEps) return true;
+    if (newHi < oldHi - hiEps) return true;
+    if (newLoOpen && !oldLoOpen && Math.abs(newLo - oldLo) <= loEps) return true;
+    if (newHiOpen && !oldHiOpen && Math.abs(newHi - oldHi) <= hiEps) return true;
+    return false;
+  }
+
+  /**
+   * Intersects two bounds with open-endpoint strictness flags.
+   */
+  private intersectBoundsWithStrict(
+    aBounds: [number, number] | undefined,
+    aStrict: [boolean, boolean] | undefined,
+    bBounds: [number, number] | undefined,
+    bStrict: [boolean, boolean] | undefined,
+  ): { bounds: [number, number]; strict: [boolean, boolean] } {
+    const aLo = aBounds ? aBounds[0] : -Infinity;
+    const aHi = aBounds ? aBounds[1] : Infinity;
+    const bLo = bBounds ? bBounds[0] : -Infinity;
+    const bHi = bBounds ? bBounds[1] : Infinity;
+    const aLoOpen = aStrict ? aStrict[0] : false;
+    const aHiOpen = aStrict ? aStrict[1] : false;
+    const bLoOpen = bStrict ? bStrict[0] : false;
+    const bHiOpen = bStrict ? bStrict[1] : false;
+
+    const loEps = this.relEps(aLo, bLo, 1e-12);
+    let lo: number;
+    let loOpen: boolean;
+    if (bLo > aLo + loEps) {
+      lo = bLo;
+      loOpen = bLoOpen;
+    } else if (aLo > bLo + loEps) {
+      lo = aLo;
+      loOpen = aLoOpen;
+    } else {
+      lo = Math.max(aLo, bLo);
+      loOpen = aLoOpen || bLoOpen;
+    }
+
+    const hiEps = this.relEps(aHi, bHi, 1e-12);
+    let hi: number;
+    let hiOpen: boolean;
+    if (bHi < aHi - hiEps) {
+      hi = bHi;
+      hiOpen = bHiOpen;
+    } else if (aHi < bHi - hiEps) {
+      hi = aHi;
+      hiOpen = aHiOpen;
+    } else {
+      hi = Math.min(aHi, bHi);
+      hiOpen = aHiOpen || bHiOpen;
+    }
+
+    return { bounds: [lo, hi], strict: [loOpen, hiOpen] };
+  }
+
+  /**
+   * Registers a disallowed point value (`var != val`) on a canonical root and checks for point conflict.
+   */
+  private addDisallowedValue(
+    canonRoot: string,
+    val: number,
+    justIds: number[],
+    culprits: string[],
+  ): ConflictClause | undefined {
+    let map = this.disallowedValues.get(canonRoot);
+    if (!map) {
+      map = new Map();
+      this.trailMapSet(this.disallowedValues, canonRoot, map);
+    }
+    const existing = map.get(val);
+    if (existing) {
+      for (const id of justIds) {
+        if (!existing.includes(id)) this.trailArrayPush(existing, id);
+      }
+    } else {
+      this.trailMapSet(map, val, [...justIds]);
+    }
+    return this.checkDisallowedConflict(canonRoot, culprits);
+  }
+
+  /**
+   * Checks whether a canonical variable's tightened point interval collides with a disallowed value (`!=`).
+   */
+  private checkDisallowedConflict(canonRoot: string, culprits: string[]): ConflictClause | undefined {
+    const b = this.canonicalBounds.get(canonRoot);
+    if (!b) return undefined;
+    const [lo, hi] = b;
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) return undefined;
+    const eps = this.relEps(lo, hi, 1e-12);
+    if (Math.abs(lo - hi) > eps) return undefined;
+
+    const disallowed = this.disallowedValues.get(canonRoot);
+    if (!disallowed || disallowed.size === 0) return undefined;
+
+    const pt = (lo + hi) * 0.5;
+    for (const [forbVal, forbJusts] of disallowed.entries()) {
+      if (Math.abs(pt - forbVal) <= this.relEps(pt, forbVal, 1e-12)) {
+        const allJusts = new Set<number>(forbJusts);
+        const bj = this.canonicalBoundJustifications.get(canonRoot);
+        if (bj) for (const id of bj) allJusts.add(id);
+        return {
+          literals: this.resolveJustificationLiterals(Array.from(allJusts)),
+          explanation: `Arithmetic Disequality Conflict: Variable '${canonRoot}' is constrained to ${pt} but must satisfy != ${forbVal}.`,
+          culpritEntities: Array.from(new Set([canonRoot, ...culprits])),
+          theoryName: "SemanticTheoryCoordinator",
+        };
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Records an undirected justification edge in the equality proof forest when merging distinct classes.
+   */
+  private recordEqualityProofEdge(a: string, b: string, justIds: number[]): void {
+    if (a === b) return;
+    const copy = [...justIds];
+    let listA = this.equalityProofGraph.get(a);
+    if (!listA) {
+      listA = [];
+      this.trailMapSet(this.equalityProofGraph, a, listA);
+    }
+    this.trailArrayPush(listA, { neighbor: b, justs: copy });
+
+    let listB = this.equalityProofGraph.get(b);
+    if (!listB) {
+      listB = [];
+      this.trailMapSet(this.equalityProofGraph, b, listB);
+    }
+    this.trailArrayPush(listB, { neighbor: a, justs: copy });
+  }
+
+  /**
+   * Extracts the exact minimal set of justification literal IDs proving `a == b` in the equality proof forest.
+   */
+  public getEqualityProof(a: string, b: string): number[] {
+    if (a === b) return [];
+    if (this.getCanonicalVar(a) !== this.getCanonicalVar(b)) return [];
+
+    const visited = new Set<string>([a]);
+    const parent = new Map<string, { prev: string; justs: number[] }>();
+    const queue: string[] = [a];
+    let head = 0;
+
+    while (head < queue.length) {
+      const curr = queue[head++]!;
+      if (curr === b) {
+        const result = new Set<number>();
+        let node = b;
+        while (node !== a) {
+          const step = parent.get(node);
+          if (!step) break;
+          for (const id of step.justs) result.add(id);
+          node = step.prev;
+        }
+        return Array.from(result);
+      }
+      const edges = this.equalityProofGraph.get(curr);
+      if (!edges) continue;
+      for (const edge of edges) {
+        if (!visited.has(edge.neighbor)) {
+          visited.add(edge.neighbor);
+          parent.set(edge.neighbor, { prev: curr, justs: edge.justs });
+          queue.push(edge.neighbor);
+        }
+      }
+    }
+    return [];
+  }
+
+  /**
+   * Constructs a `ConflictClause` when interval bound intersection yields an empty interval (`lo > hi` or strict collision).
    */
   private makeBoundInversionConflict(
     culpritVar: string,
@@ -324,11 +685,16 @@ export class SemanticTheoryCoordinator {
     hi: number,
     justIds: number[],
     culprits: string[] = [culpritVar],
+    strict?: [boolean, boolean],
   ): ConflictClause {
     const lits = this.resolveJustificationLiterals(justIds);
+    const strictNote =
+      strict && (strict[0] || strict[1]) && Math.abs(lo - hi) <= this.relEps(lo, hi, 1e-12)
+        ? ` (strict inequality conflict at ${lo})`
+        : "";
     return {
       literals: lits,
-      explanation: `Arithmetic Bound Conflict: Immediate interval contradiction on '${culpritVar}': lower bound ${lo} exceeds upper bound ${hi}.`,
+      explanation: `Arithmetic Bound Conflict: Immediate interval contradiction on '${culpritVar}': lower bound ${lo} exceeds upper bound ${hi}${strictNote}.`,
       culpritEntities: Array.from(new Set(culprits)),
       theoryName: "SemanticTheoryCoordinator",
     };
@@ -336,9 +702,18 @@ export class SemanticTheoryCoordinator {
 
   /**
    * Resolves the canonical representative for a variable.
-   * Uses an iterative two-pass disjoint-set find with path compression and cycle guard.
+   * Uses a zero-allocation fast path for roots and an iterative two-pass disjoint-set find with cycle guard.
    */
   public getCanonicalVar(v: string): string {
+    const directParent = this.parentMap.get(v);
+    if (!directParent || directParent === v) {
+      return v;
+    }
+    const grandParent = this.parentMap.get(directParent);
+    if (!grandParent || grandParent === directParent) {
+      return directParent;
+    }
+
     let curr = v;
     const visited = new Set<string>();
     const path: string[] = [];
@@ -359,95 +734,245 @@ export class SemanticTheoryCoordinator {
 
     const root = curr;
     for (const node of path) {
-      this.parentMap.set(node, root);
+      if (this.parentMap.get(node) !== root) {
+        this.trailMapSet(this.parentMap, node, root);
+      }
     }
     return root;
   }
 
   /**
-   * Merges equivalence classes of two variables and intersects their known bounds.
+   * Merges equivalence classes of two variables using union-by-rank, records proof-forest edges,
+   * checks variable disequalities (`x != y`), migrates incremental congruence use-lists,
+   * and intersects bounds, strictness flags, disallowed values, and opposite-sign pairs.
    */
-  private unionVars(a: string, b: string): string {
+  private unionVars(a: string, b: string, justIds: number[] = []): string {
     const aIsNum = a.trim() !== "" && !isNaN(Number(a));
     const bIsNum = b.trim() !== "" && !isNaN(Number(b));
     if (aIsNum && bIsNum) {
-      if (Math.abs(Number(a) - Number(b)) > 1e-9) {
-        this.infeasibleConflict = this.makeBoundInversionConflict(a, Number(a), Number(b), [], [a, b]);
+      const nA = Number(a);
+      const nB = Number(b);
+      if (Math.abs(nA - nB) > this.relEps(nA, nB, 1e-12)) {
+        this.infeasibleConflict = {
+          literals: this.resolveJustificationLiterals(justIds),
+          explanation: `Arithmetic Bound Conflict: Conflicting constant equality '${a}' == '${b}' (${nA} != ${nB}).`,
+          culpritEntities: Array.from(new Set([a, b])),
+          theoryName: "SemanticTheoryCoordinator",
+        };
       }
       return a;
     }
     if (bIsNum && !aIsNum) {
       const rootA = this.getCanonicalVar(a);
       const val = Number(b);
-      const bA = this.canonicalBounds.get(rootA);
-      const lo = Math.max(bA ? bA[0] : -Infinity, val);
-      const hi = Math.min(bA ? bA[1] : Infinity, val);
-      this.canonicalBounds.set(rootA, [lo, hi]);
-      if (lo > hi + 1e-9) {
+      const merged = this.intersectBoundsWithStrict(
+        this.canonicalBounds.get(rootA),
+        this.canonicalBoundStrict.get(rootA),
+        [val, val],
+        [false, false],
+      );
+      this.trailMapSet(this.canonicalBounds, rootA, merged.bounds);
+      this.trailMapSet(this.canonicalBoundStrict, rootA, merged.strict);
+      if (this.isEmptyBounds(merged.bounds[0], merged.bounds[1], merged.strict[0], merged.strict[1])) {
         const jA = this.canonicalBoundJustifications.get(rootA);
-        this.infeasibleConflict = this.makeBoundInversionConflict(rootA, lo, hi, jA ? Array.from(jA) : [], [rootA, a]);
+        const allJusts = new Set<number>(justIds);
+        if (jA) for (const id of jA) allJusts.add(id);
+        this.infeasibleConflict = this.makeBoundInversionConflict(
+          rootA,
+          merged.bounds[0],
+          merged.bounds[1],
+          Array.from(allJusts),
+          [rootA, a],
+          merged.strict,
+        );
+      } else {
+        const disConflict = this.checkDisallowedConflict(rootA, [rootA, a]);
+        if (disConflict) this.infeasibleConflict = disConflict;
       }
       return rootA;
     }
     if (aIsNum && !bIsNum) {
       const rootB = this.getCanonicalVar(b);
       const val = Number(a);
-      const bB = this.canonicalBounds.get(rootB);
-      const lo = Math.max(bB ? bB[0] : -Infinity, val);
-      const hi = Math.min(bB ? bB[1] : Infinity, val);
-      this.canonicalBounds.set(rootB, [lo, hi]);
-      if (lo > hi + 1e-9) {
+      const merged = this.intersectBoundsWithStrict(
+        this.canonicalBounds.get(rootB),
+        this.canonicalBoundStrict.get(rootB),
+        [val, val],
+        [false, false],
+      );
+      this.trailMapSet(this.canonicalBounds, rootB, merged.bounds);
+      this.trailMapSet(this.canonicalBoundStrict, rootB, merged.strict);
+      if (this.isEmptyBounds(merged.bounds[0], merged.bounds[1], merged.strict[0], merged.strict[1])) {
         const jB = this.canonicalBoundJustifications.get(rootB);
-        this.infeasibleConflict = this.makeBoundInversionConflict(rootB, lo, hi, jB ? Array.from(jB) : [], [rootB, b]);
+        const allJusts = new Set<number>(justIds);
+        if (jB) for (const id of jB) allJusts.add(id);
+        this.infeasibleConflict = this.makeBoundInversionConflict(
+          rootB,
+          merged.bounds[0],
+          merged.bounds[1],
+          Array.from(allJusts),
+          [rootB, b],
+          merged.strict,
+        );
+      } else {
+        const disConflict = this.checkDisallowedConflict(rootB, [rootB, b]);
+        if (disConflict) this.infeasibleConflict = disConflict;
       }
       return rootB;
     }
+
     const rootA = this.getCanonicalVar(a);
     const rootB = this.getCanonicalVar(b);
     if (rootA !== rootB) {
-      this.parentMap.set(rootA, rootB);
-      const bA = this.canonicalBounds.get(rootA);
-      const bB = this.canonicalBounds.get(rootB);
-      if (bA || bB) {
-        const lo = Math.max(bA ? bA[0] : -Infinity, bB ? bB[0] : -Infinity);
-        const hi = Math.min(bA ? bA[1] : Infinity, bB ? bB[1] : Infinity);
-        this.canonicalBounds.set(rootB, [lo, hi]);
-        if (lo > hi + 1e-9) {
-          const allJusts = new Set<number>();
-          const jA = this.canonicalBoundJustifications.get(rootA);
-          const jB = this.canonicalBoundJustifications.get(rootB);
-          if (jA) for (const id of jA) allJusts.add(id);
-          if (jB) for (const id of jB) allJusts.add(id);
-          this.infeasibleConflict = this.makeBoundInversionConflict(rootB, lo, hi, Array.from(allJusts), [
-            rootA,
-            rootB,
-            a,
-            b,
-          ]);
+      const rankA = this.parentRank.get(rootA) ?? 0;
+      const rankB = this.parentRank.get(rootB) ?? 0;
+      let childRoot: string;
+      let newRoot: string;
+      if (rankA > rankB) {
+        childRoot = rootB;
+        newRoot = rootA;
+      } else {
+        childRoot = rootA;
+        newRoot = rootB;
+        if (rankA === rankB) {
+          this.trailMapSet(this.parentRank, newRoot, rankB + 1);
         }
       }
+
+      this.trailMapSet(this.parentMap, childRoot, newRoot);
+      this.recordEqualityProofEdge(a, b, justIds);
+
+      // Check variable-to-variable disequalities (`x != y`)
+      if (!this.infeasibleConflict && this.knownDisequalities.size > 0) {
+        for (const diseq of this.knownDisequalities.values()) {
+          if (this.getCanonicalVar(diseq.varA) === this.getCanonicalVar(diseq.varB)) {
+            const allJusts = new Set<number>(justIds);
+            for (const id of diseq.justifications ?? []) allJusts.add(id);
+            for (const id of this.getEqualityProof(diseq.varA, diseq.varB)) allJusts.add(id);
+            this.infeasibleConflict = {
+              literals: this.resolveJustificationLiterals(Array.from(allJusts)),
+              explanation: `Disequality Conflict: Variables '${diseq.varA}' and '${diseq.varB}' are declared disequal (${diseq.explanation ?? "!="}) but inferred equal.`,
+              culpritEntities: Array.from(new Set([diseq.varA, diseq.varB, a, b])),
+              theoryName: "SemanticTheoryCoordinator",
+            };
+            break;
+          }
+        }
+      }
+
+      // Migrate incremental congruence closure use-list from childRoot -> newRoot
+      const childUses = this.termUseList.get(childRoot);
+      if (childUses && childUses.size > 0) {
+        let newUses = this.termUseList.get(newRoot);
+        if (!newUses) {
+          newUses = new Set();
+          this.trailMapSet(this.termUseList, newRoot, newUses);
+        }
+        for (const termIdx of childUses) {
+          this.trailSetAdd(newUses, termIdx);
+          this.trailSetAdd(this.dirtyCongruenceTerms, termIdx);
+        }
+        this.trailMapDelete(this.termUseList, childRoot);
+      }
+
+      const bChild = this.canonicalBounds.get(childRoot);
+      const bNew = this.canonicalBounds.get(newRoot);
+      if (bChild || bNew) {
+        const merged = this.intersectBoundsWithStrict(
+          bChild,
+          this.canonicalBoundStrict.get(childRoot),
+          bNew,
+          this.canonicalBoundStrict.get(newRoot),
+        );
+        this.trailMapSet(this.canonicalBounds, newRoot, merged.bounds);
+        this.trailMapSet(this.canonicalBoundStrict, newRoot, merged.strict);
+        this.trailMapDelete(this.canonicalBounds, childRoot);
+        this.trailMapDelete(this.canonicalBoundStrict, childRoot);
+        if (this.isEmptyBounds(merged.bounds[0], merged.bounds[1], merged.strict[0], merged.strict[1])) {
+          const allJusts = new Set<number>(justIds);
+          const jChild = this.canonicalBoundJustifications.get(childRoot);
+          const jNew = this.canonicalBoundJustifications.get(newRoot);
+          if (jChild) for (const id of jChild) allJusts.add(id);
+          if (jNew) for (const id of jNew) allJusts.add(id);
+          this.infeasibleConflict = this.makeBoundInversionConflict(
+            newRoot,
+            merged.bounds[0],
+            merged.bounds[1],
+            Array.from(allJusts),
+            [rootA, rootB, a, b],
+            merged.strict,
+          );
+        }
+      }
+
       // Merge justifications
-      const jA = this.canonicalBoundJustifications.get(rootA);
-      const jB = this.canonicalBoundJustifications.get(rootB);
-      if (jA || jB) {
-        if (!this.canonicalBoundJustifications.has(rootB)) {
-          this.canonicalBoundJustifications.set(rootB, new Set());
+      const jChild = this.canonicalBoundJustifications.get(childRoot);
+      if (jChild && jChild.size > 0) {
+        let setNew = this.canonicalBoundJustifications.get(newRoot);
+        if (!setNew) {
+          setNew = new Set();
+          this.trailMapSet(this.canonicalBoundJustifications, newRoot, setNew);
         }
-        const setB = this.canonicalBoundJustifications.get(rootB)!;
-        if (jA) for (const id of jA) setB.add(id);
+        for (const id of jChild) this.trailSetAdd(setNew, id);
       }
+
+      // Merge disallowed point values (`!=`)
+      const disChild = this.disallowedValues.get(childRoot);
+      if (disChild && disChild.size > 0) {
+        let disNew = this.disallowedValues.get(newRoot);
+        if (!disNew) {
+          disNew = new Map();
+          this.trailMapSet(this.disallowedValues, newRoot, disNew);
+        }
+        for (const [val, jList] of disChild.entries()) {
+          const existing = disNew.get(val);
+          if (existing) {
+            for (const id of jList) if (!existing.includes(id)) this.trailArrayPush(existing, id);
+          } else {
+            this.trailMapSet(disNew, val, [...jList]);
+          }
+        }
+      }
+      if (!this.infeasibleConflict) {
+        const disConflict = this.checkDisallowedConflict(newRoot, [rootA, rootB, a, b]);
+        if (disConflict) this.infeasibleConflict = disConflict;
+      }
+
       // Merge canonical subscribers
-      const subsA = this.canonSubscribers.get(rootA);
-      if (subsA && subsA.size > 0) {
-        if (!this.canonSubscribers.has(rootB)) {
-          this.canonSubscribers.set(rootB, new Set());
+      const subsChild = this.canonSubscribers.get(childRoot);
+      if (subsChild && subsChild.size > 0) {
+        let subsNew = this.canonSubscribers.get(newRoot);
+        if (!subsNew) {
+          subsNew = new Set();
+          this.trailMapSet(this.canonSubscribers, newRoot, subsNew);
         }
-        const subsB = this.canonSubscribers.get(rootB)!;
-        for (const oracle of subsA) {
-          subsB.add(oracle);
+        for (const oracle of subsChild) {
+          this.trailSetAdd(subsNew, oracle);
         }
       }
-      return rootB;
+
+      // Merge opposite-sign pairs so bounds on either member propagate to all opposite-sign partners
+      const ospChild = this.oppositeSignPairs.get(childRoot);
+      if (ospChild && ospChild.length > 0) {
+        let ospNew = this.oppositeSignPairs.get(newRoot);
+        if (!ospNew) {
+          ospNew = [];
+          this.trailMapSet(this.oppositeSignPairs, newRoot, ospNew);
+        }
+        for (const item of ospChild) {
+          const existing = ospNew.find((x) => this.getCanonicalVar(x.partner) === this.getCanonicalVar(item.partner));
+          if (existing) {
+            for (const j of item.justifications) {
+              if (!existing.justifications.includes(j)) this.trailArrayPush(existing.justifications, j);
+            }
+          } else {
+            this.trailArrayPush(ospNew, { partner: item.partner, justifications: [...item.justifications] });
+          }
+        }
+        this.trailMapDelete(this.oppositeSignPairs, childRoot);
+      }
+
+      return newRoot;
     }
     return rootA;
   }
@@ -460,6 +985,177 @@ export class SemanticTheoryCoordinator {
   }
 
   /**
+   * Returns all shared interface variables referenced by 2 or more distinct theory domains.
+   */
+  public getSharedInterfaceVariables(): Set<string> {
+    const shared = new Set<string>();
+    for (const [v, domains] of this.varDomains.entries()) {
+      if (domains.size >= 2) {
+        shared.add(v);
+      }
+    }
+    return shared;
+  }
+
+  /**
+   * Returns true if `varName` is a shared interface variable across >= 2 theory domains.
+   */
+  public isSharedInterfaceVar(varName: string): boolean {
+    const domains = this.varDomains.get(varName);
+    return domains ? domains.size >= 2 : false;
+  }
+
+  /**
+   * Returns true if two variables are known to be disequal (`varA != varB`).
+   */
+  public areKnownDisequal(varA: string, varB: string): boolean {
+    const rootA = this.getCanonicalVar(varA);
+    const rootB = this.getCanonicalVar(varB);
+    if (rootA === rootB) return false;
+    for (const d of this.knownDisequalities.values()) {
+      const dA = this.getCanonicalVar(d.varA);
+      const dB = this.getCanonicalVar(d.varB);
+      if ((dA === rootA && dB === rootB) || (dA === rootB && dB === rootA)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Checks Polite/Shiny finite-domain cardinality constraints across all oracles.
+   * Returns a ConflictClause if `k > maxCardinality` variables are pairwise known disequal.
+   */
+  private checkFiniteDomainConflicts(): ConflictClause | undefined {
+    for (const oracle of this.oracles.values()) {
+      if (!oracle.getFiniteDomainConstraints) continue;
+      for (const fdc of oracle.getFiniteDomainConstraints()) {
+        // Deduplicate variables by current canonical root
+        const distinctReps: string[] = [];
+        const seenRoots = new Set<string>();
+        for (const v of fdc.vars) {
+          const r = this.getCanonicalVar(v);
+          if (!seenRoots.has(r)) {
+            seenRoots.add(r);
+            distinctReps.push(v);
+          }
+        }
+        if (distinctReps.length <= fdc.maxCardinality) continue;
+
+        // Check if any pair among distinctReps can still be merged (not known disequal)
+        let hasMergeablePair = false;
+        const diseqJusts = new Set<number>(fdc.justifications ?? []);
+        for (let i = 0; i < distinctReps.length; i++) {
+          for (let j = i + 1; j < distinctReps.length; j++) {
+            const vA = distinctReps[i]!;
+            const vB = distinctReps[j]!;
+            if (!this.areKnownDisequal(vA, vB)) {
+              hasMergeablePair = true;
+              break;
+            } else {
+              for (const d of this.knownDisequalities.values()) {
+                const dA = this.getCanonicalVar(d.varA);
+                const dB = this.getCanonicalVar(d.varB);
+                const rA = this.getCanonicalVar(vA);
+                const rB = this.getCanonicalVar(vB);
+                if ((dA === rA && dB === rB) || (dA === rB && dB === rA)) {
+                  for (const id of d.justifications ?? []) diseqJusts.add(id);
+                }
+              }
+            }
+          }
+          if (hasMergeablePair) break;
+        }
+
+        if (!hasMergeablePair) {
+          return {
+            literals: this.resolveJustificationLiterals(Array.from(diseqJusts)),
+            explanation: `Finite-Domain Cardinality Conflict: ${distinctReps.length} pairwise distinct variables [${distinctReps.join(", ")}] cannot fit in a finite domain of cardinality ${fdc.maxCardinality}.`,
+            culpritEntities: distinctReps,
+            theoryName: fdc.sourceOracle ?? oracle.name,
+          };
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Returns all tracked non-trivial variable equivalence classes (`root -> members`).
+   */
+  public getEquivalenceClasses(): Map<string, string[]> {
+    const groups = new Map<string, Set<string>>();
+    for (const v of this.parentMap.keys()) {
+      const root = this.getCanonicalVar(v);
+      let set = groups.get(root);
+      if (!set) {
+        set = new Set([root]);
+        groups.set(root, set);
+      }
+      set.add(v);
+    }
+    const result = new Map<string, string[]>();
+    for (const [root, members] of groups.entries()) {
+      if (members.size > 1) {
+        result.set(root, Array.from(members));
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Collects non-convex equality disjunctions from registered oracles AND synthesizes
+   * Pigeonhole equality disjunctions for finite-domain cardinality constraints (`|{vars}| <= m`).
+   */
+  public collectEqualityDisjunctions(): EqualityDisjunction[] {
+    const result: EqualityDisjunction[] = [];
+    for (const oracle of this.oracles.values()) {
+      if (oracle.propagateEqualityDisjunctions) {
+        const disjs = oracle.propagateEqualityDisjunctions();
+        for (const d of disjs) {
+          if (d.disjuncts.length > 0) {
+            result.push({ ...d, sourceOracle: d.sourceOracle ?? oracle.name });
+          }
+        }
+      }
+      if (oracle.getFiniteDomainConstraints) {
+        for (const fdc of oracle.getFiniteDomainConstraints()) {
+          const distinctReps: string[] = [];
+          const seenRoots = new Set<string>();
+          for (const v of fdc.vars) {
+            const r = this.getCanonicalVar(v);
+            if (!seenRoots.has(r)) {
+              seenRoots.add(r);
+              distinctReps.push(v);
+            }
+          }
+          if (distinctReps.length > fdc.maxCardinality) {
+            // Pigeonhole Principle: at least two of the first (m + 1) distinct variables must be equal
+            const subset = distinctReps.slice(0, fdc.maxCardinality + 1);
+            const disjuncts: [string, string][] = [];
+            for (let i = 0; i < subset.length; i++) {
+              for (let j = i + 1; j < subset.length; j++) {
+                if (!this.areKnownDisequal(subset[i]!, subset[j]!)) {
+                  disjuncts.push([subset[i]!, subset[j]!]);
+                }
+              }
+            }
+            if (disjuncts.length > 0) {
+              result.push({
+                disjuncts,
+                explanation: `Finite-domain Pigeonhole disjunction over [${subset.join(", ")}] (maxCardinality=${fdc.maxCardinality})`,
+                sourceOracle: fdc.sourceOracle ?? oracle.name,
+                justifications: fdc.justifications,
+              });
+            }
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  /**
    * Extracts variable identifiers from a theory literal for subscriber tracking.
    */
   private extractReferencedVariables(lit: TheoryLiteral): string[] {
@@ -468,7 +1164,12 @@ export class SemanticTheoryCoordinator {
 
     const { predicate, args } = lit;
     if (predicate === "hyperplane" && args[0] && typeof args[0] === "object") {
-      return Object.keys(args[0]);
+      const obj = args[0] as Record<string, unknown>;
+      const coeffs = obj["coeffs"];
+      if (coeffs && typeof coeffs === "object") {
+        return Object.keys(coeffs as Record<string, unknown>);
+      }
+      return Object.keys(obj);
     }
     if (
       predicate === "bundleClosure" ||
@@ -564,11 +1265,119 @@ export class SemanticTheoryCoordinator {
   }
 
   /**
-   * Asserts a new theory literal into the coordinator, routing to appropriate oracles.
+   * Purifies mixed-theory arithmetic/uninterpreted-function expressions by replacing nested `call` nodes
+   * `f(e_1, ..., e_k)` with fresh interface variables `__purify_N` and emitting pure `funcApply`
+   * and binding `expr` literals.
+   */
+  private purifyExprNode(
+    node: Record<string, unknown> & {
+      kind?: string;
+      fn?: string;
+      name?: string;
+      args?: Array<Record<string, unknown> & { kind?: string; name?: string }>;
+      left?: Record<string, unknown>;
+      right?: Record<string, unknown>;
+      child?: Record<string, unknown>;
+    },
+    domain: TheoryDomain | undefined,
+  ): { expr: Record<string, unknown>; changed: boolean } {
+    if (!node || typeof node !== "object") return { expr: node, changed: false };
+    if (node.kind === "call" && typeof node.fn === "string" && Array.isArray(node.args)) {
+      const argVars: string[] = [];
+      for (const arg of node.args) {
+        if (arg && arg.kind === "var" && typeof arg.name === "string") {
+          argVars.push(arg.name);
+        } else {
+          const purifiedArg = this.purifyExprNode(arg, domain);
+          const freshArg = `__purify_${this.purifyCounter++}`;
+          this.assertLiteral({
+            predicate: "expr",
+            args: [
+              {
+                expr: { kind: "sub", left: { kind: "var", name: freshArg }, right: purifiedArg.expr },
+                rel: "==",
+                rhs: 0,
+              },
+            ],
+            domain: domain ?? "constraint",
+          });
+          argVars.push(freshArg);
+        }
+      }
+      const freshResult = `__purify_${this.purifyCounter++}`;
+      this.assertLiteral({
+        predicate: "funcApply",
+        args: [freshResult, node.fn, argVars],
+        domain: domain ?? "constraint",
+      });
+      return { expr: { kind: "var", name: freshResult }, changed: true };
+    }
+
+    let changed = false;
+    const copy: Record<string, unknown> = { ...node };
+    if (node.left) {
+      const res = this.purifyExprNode(node.left, domain);
+      copy["left"] = res.expr;
+      changed = changed || res.changed;
+    }
+    if (node.right) {
+      const res = this.purifyExprNode(node.right, domain);
+      copy["right"] = res.expr;
+      changed = changed || res.changed;
+    }
+    if (node.child) {
+      const res = this.purifyExprNode(node.child, domain);
+      copy["child"] = res.expr;
+      changed = changed || res.changed;
+    }
+    return { expr: changed ? copy : node, changed };
+  }
+
+  /**
+   * Registers a function application term into the incremental congruence closure use-list index.
+   */
+  private registerFunctionTerm(term: FunctionApplicationTerm): void {
+    const idx = this.functionTerms.length;
+    this.trailArrayPush(this.functionTerms, term);
+    for (const arg of term.args) {
+      const root = this.getCanonicalVar(arg);
+      let uses = this.termUseList.get(root);
+      if (!uses) {
+        uses = new Set();
+        this.trailMapSet(this.termUseList, root, uses);
+      }
+      this.trailSetAdd(uses, idx);
+    }
+    this.trailSetAdd(this.dirtyCongruenceTerms, idx);
+  }
+
+  /**
+   * Asserts a new theory literal into the coordinator, purifying mixed terms if needed
+   * and routing to appropriate oracles.
    */
   public assertLiteral(lit: Omit<TheoryLiteral, "id"> & { id?: number | undefined }): number {
     const id = lit.id ?? this.nextLitId++;
-    const fullLit: TheoryLiteral = { ...lit, id };
+    const fullLit: TheoryLiteral = { ...lit, id, args: Array.isArray(lit.args) ? [...lit.args] : lit.args };
+
+    // Automatic Nelson-Oppen mixed-term purification for nonlinear/expr literals containing `call` nodes
+    if (
+      (fullLit.predicate === "nonlinear" || fullLit.predicate === "expr") &&
+      fullLit.args[0] &&
+      typeof fullLit.args[0] === "object"
+    ) {
+      if (fullLit.args[0].expr && fullLit.args[0].rel) {
+        const purified = this.purifyExprNode(fullLit.args[0].expr, fullLit.domain);
+        if (purified.changed) {
+          fullLit.args[0] = { ...fullLit.args[0], expr: purified.expr };
+        }
+      } else if (fullLit.args[0].kind) {
+        const purified = this.purifyExprNode(fullLit.args[0], fullLit.domain);
+        if (purified.changed) {
+          fullLit.args[0] = purified.expr;
+        }
+      }
+    }
+
     this.activeLiterals.set(id, fullLit);
 
     if (this.levelStack.length > 0) {
@@ -578,11 +1387,19 @@ export class SemanticTheoryCoordinator {
     const refVars = this.extractReferencedVariables(fullLit);
     for (const v of refVars) {
       if (!this.varSubscribers.has(v)) {
-        this.varSubscribers.set(v, new Set());
+        this.trailMapSet(this.varSubscribers, v, new Set());
+      }
+      if (fullLit.domain) {
+        let doms = this.varDomains.get(v);
+        if (!doms) {
+          doms = new Set();
+          this.trailMapSet(this.varDomains, v, doms);
+        }
+        this.trailSetAdd(doms, fullLit.domain);
       }
     }
 
-    // Register function application term for congruence closure
+    // Register function application term for incremental congruence closure
     if (
       (fullLit.predicate === "funcApply" ||
         fullLit.predicate === "functionApply" ||
@@ -597,7 +1414,7 @@ export class SemanticTheoryCoordinator {
         ? rawArgs.map(String)
         : fullLit.args.slice(2).filter((a): a is string => typeof a === "string");
       if (typeof resultVar === "string" && typeof fnName === "string") {
-        this.functionTerms.push({
+        this.registerFunctionTerm({
           functionName: fnName,
           args: argVars,
           resultVar,
@@ -618,13 +1435,25 @@ export class SemanticTheoryCoordinator {
         }
       }
     } else if (fullLit.predicate === "hyperplane" && fullLit.args[0] && typeof fullLit.args[0] === "object") {
-      const filteredCoeffs: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(fullLit.args[0])) {
-        if (typeof v !== "number" || Math.abs(v) >= 1e-12) {
-          filteredCoeffs[k] = v;
+      const arg0 = fullLit.args[0] as Record<string, unknown>;
+      const rawCoeffs = arg0["coeffs"];
+      if (rawCoeffs && typeof rawCoeffs === "object") {
+        const filteredCoeffs: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(rawCoeffs as Record<string, unknown>)) {
+          if (typeof v !== "number" || Math.abs(v) >= 1e-12) {
+            filteredCoeffs[k] = v;
+          }
         }
+        fullLit.args[0] = { ...arg0, coeffs: filteredCoeffs };
+      } else {
+        const filteredCoeffs: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(arg0)) {
+          if (typeof v !== "number" || Math.abs(v) >= 1e-12) {
+            filteredCoeffs[k] = v;
+          }
+        }
+        fullLit.args[0] = filteredCoeffs;
       }
-      fullLit.args[0] = filteredCoeffs;
     }
 
     // Route literal to relevant oracles and mark dirty
@@ -634,26 +1463,34 @@ export class SemanticTheoryCoordinator {
         oracle.assertLiteral(fullLit);
         this.dirtyOracles.add(oracle.name);
         receivingOracles.push(oracle.name);
+        this.markLiteralOracle(id, oracle.name);
 
         for (const v of refVars) {
           this.subscribe(v, oracle);
+          let doms = this.varDomains.get(v);
+          if (!doms) {
+            doms = new Set();
+            this.trailMapSet(this.varDomains, v, doms);
+          }
+          this.trailSetAdd(doms, oracle.domain);
         }
       }
     }
 
     const srcOracle = receivingOracles[0] ?? fullLit.domain ?? "coordinator";
 
-    // Automatically enqueue worklist event for bounds and equalities asserted directly
+    // Automatically enqueue worklist event for bounds, equalities, and disequalities asserted directly
     if (fullLit.predicate === "interval" && Array.isArray(fullLit.args) && fullLit.args.length >= 3) {
       const [varName, lo, hi] = fullLit.args;
       if (typeof varName === "string" && typeof lo === "number" && typeof hi === "number") {
-        if (lo > hi + 1e-9) {
+        if (this.isEmptyBounds(lo, hi, false, false)) {
           this.infeasibleConflict = this.makeBoundInversionConflict(varName, lo, hi, [id], [varName]);
         }
         this.enqueueEvent({
           kind: "bound",
           varName,
           bounds: [lo, hi],
+          strict: [false, false],
           theoryDomain: fullLit.domain,
           sourceOracle: srcOracle,
           justification: [id],
@@ -662,19 +1499,39 @@ export class SemanticTheoryCoordinator {
     } else if (fullLit.predicate === "bound" && Array.isArray(fullLit.args) && fullLit.args.length >= 3) {
       const [varName, op, val] = fullLit.args;
       if (typeof varName === "string" && typeof val === "number") {
-        let b: [number, number] | undefined;
-        if (op === "<=" || op === "<") b = [-Infinity, val];
-        else if (op === ">=" || op === ">") b = [val, Infinity];
-        else if (op === "==") b = [val, val];
-        if (b) {
-          this.enqueueEvent({
-            kind: "bound",
-            varName,
-            bounds: b,
-            theoryDomain: fullLit.domain,
-            sourceOracle: srcOracle,
-            justification: [id],
-          });
+        if (op === "!=") {
+          const canon = this.getCanonicalVar(varName);
+          const conflict = this.addDisallowedValue(canon, val, [id], [varName]);
+          if (conflict) {
+            this.infeasibleConflict = conflict;
+          }
+        } else {
+          let b: [number, number] | undefined;
+          let strict: [boolean, boolean] = [false, false];
+          if (op === "<=") {
+            b = [-Infinity, val];
+          } else if (op === "<") {
+            b = [-Infinity, val];
+            strict = [false, true];
+          } else if (op === ">=") {
+            b = [val, Infinity];
+          } else if (op === ">") {
+            b = [val, Infinity];
+            strict = [true, false];
+          } else if (op === "==") {
+            b = [val, val];
+          }
+          if (b) {
+            this.enqueueEvent({
+              kind: "bound",
+              varName,
+              bounds: b,
+              strict,
+              theoryDomain: fullLit.domain,
+              sourceOracle: srcOracle,
+              justification: [id],
+            });
+          }
         }
       }
     } else if (fullLit.predicate === "equal" && Array.isArray(fullLit.args) && fullLit.args.length >= 2) {
@@ -703,37 +1560,121 @@ export class SemanticTheoryCoordinator {
           justification: [id],
         });
       }
+    } else if (
+      (fullLit.predicate === "notEqual" || fullLit.predicate === "differentIndividuals") &&
+      Array.isArray(fullLit.args) &&
+      fullLit.args.length >= 2
+    ) {
+      const [varA, varB] = fullLit.args;
+      if (typeof varA === "string" && typeof varB === "string") {
+        this.enqueueEvent({
+          kind: "disequality",
+          varA,
+          varB,
+          theoryDomain: fullLit.domain,
+          sourceOracle: srcOracle,
+          justification: [id],
+        });
+      }
     }
 
     return id;
   }
 
   /**
-   * Registers an opposite-sign flow conservation pairing (`vA == -vB`, i.e., `vA + vB = 0`).
+   * Registers an opposite-sign flow conservation pairing (`vA == -vB`, i.e., `vA + vB = 0`)
+   * keyed by canonical representatives, deducing self-negation (`a == -a => a == 0`)
+   * and transitive equality (`a == -b && b == -c => a == c`).
    */
-  private registerOppositeSignPair(rawVarA: string, rawVarB: string, justifications: number[]): void {
+  private registerOppositeSignPair(
+    rawVarA: string,
+    rawVarB: string,
+    justifications: number[],
+    enqueueDeductions = true,
+  ): void {
     const cleanA = rawVarA.startsWith("-") ? rawVarA.slice(1) : rawVarA;
     const cleanB = rawVarB.startsWith("-") ? rawVarB.slice(1) : rawVarB;
-    const addLink = (fromVar: string, toVar: string) => {
-      if (!this.oppositeSignPairs.has(fromVar)) {
-        this.oppositeSignPairs.set(fromVar, []);
+    const rootA = this.getCanonicalVar(cleanA);
+    const rootB = this.getCanonicalVar(cleanB);
+
+    // Self-negation: a == -a implies a == 0
+    if (rootA === rootB) {
+      if (enqueueDeductions) {
+        this.enqueueEvent({
+          kind: "bound",
+          varName: rootA,
+          bounds: [0, 0],
+          strict: [false, false],
+          explanation: `Opposite-sign self-equality '${cleanA} == -${cleanB}' implies '${rootA} == 0'.`,
+          sourceOracle: "SemanticTheoryCoordinator",
+          justification: [...justifications],
+        });
       }
-      const list = this.oppositeSignPairs.get(fromVar)!;
-      const existing = list.find((item) => item.partner === toVar);
+      return;
+    }
+
+    // Transitivity: if rootA is already opposite to partner P, then rootB == P
+    if (enqueueDeductions) {
+      const existingA = this.oppositeSignPairs.get(rootA);
+      if (existingA) {
+        for (const item of existingA) {
+          const pRoot = this.getCanonicalVar(item.partner);
+          if (pRoot !== rootB) {
+            const combined = Array.from(new Set([...justifications, ...item.justifications]));
+            this.enqueueEvent({
+              kind: "equality",
+              varA: rootB,
+              varB: pRoot,
+              domain: "real",
+              explanation: `Transitive opposite-sign equality: ${rootB} == -${rootA} and ${pRoot} == -${rootA} implies ${rootB} == ${pRoot}.`,
+              sourceOracle: "SemanticTheoryCoordinator",
+              justification: combined,
+            });
+          }
+        }
+      }
+      const existingB = this.oppositeSignPairs.get(rootB);
+      if (existingB) {
+        for (const item of existingB) {
+          const pRoot = this.getCanonicalVar(item.partner);
+          if (pRoot !== rootA) {
+            const combined = Array.from(new Set([...justifications, ...item.justifications]));
+            this.enqueueEvent({
+              kind: "equality",
+              varA: rootA,
+              varB: pRoot,
+              domain: "real",
+              explanation: `Transitive opposite-sign equality: ${rootA} == -${rootB} and ${pRoot} == -${rootB} implies ${rootA} == ${pRoot}.`,
+              sourceOracle: "SemanticTheoryCoordinator",
+              justification: combined,
+            });
+          }
+        }
+      }
+    }
+
+    const addLink = (fromRoot: string, toRoot: string) => {
+      let list = this.oppositeSignPairs.get(fromRoot);
+      if (!list) {
+        list = [];
+        this.trailMapSet(this.oppositeSignPairs, fromRoot, list);
+      }
+      const existing = list.find((item) => this.getCanonicalVar(item.partner) === toRoot);
       if (existing) {
         for (const j of justifications) {
-          if (!existing.justifications.includes(j)) existing.justifications.push(j);
+          if (!existing.justifications.includes(j)) this.trailArrayPush(existing.justifications, j);
         }
       } else {
-        list.push({ partner: toVar, justifications: [...justifications] });
+        this.trailArrayPush(list, { partner: toRoot, justifications: [...justifications] });
       }
     };
-    addLink(cleanA, cleanB);
-    addLink(cleanB, cleanA);
+    addLink(rootA, rootB);
+    addLink(rootB, rootA);
   }
 
   /**
-   * Retracts an asserted literal from all oracles and rebuilds equivalence classes and bounds.
+   * Retracts an asserted literal incrementally from only the affected oracles and rebuilds
+   * coordinator equivalence classes, disequalities, congruence index, and bounds.
    */
   public retractLiteral(litId: number): void {
     if (!this.activeLiterals.has(litId)) return;
@@ -764,12 +1705,37 @@ export class SemanticTheoryCoordinator {
       }
     }
 
-    // Clear and rebuild equivalence classes, opposite-sign pairs, justifications, and canonical bounds
+    // Purge known disequalities that depended on the retracted literal
+    const directDiseqKey =
+      (lit.predicate === "notEqual" || lit.predicate === "differentIndividuals") &&
+      Array.isArray(lit.args) &&
+      typeof lit.args[0] === "string" &&
+      typeof lit.args[1] === "string"
+        ? this.makeEqualityKey(lit.args[0], lit.args[1])
+        : undefined;
+
+    for (const [key, diseq] of Array.from(this.knownDisequalities.entries())) {
+      const dependsOnLit =
+        (diseq.justifications && diseq.justifications.includes(litId)) ||
+        (directDiseqKey !== undefined && key === directDiseqKey);
+      if (dependsOnLit) {
+        this.knownDisequalities.delete(key);
+      }
+    }
+
+    // Clear and rebuild equivalence classes, opposite-sign pairs, justifications, congruence index, and canonical bounds
     this.parentMap.clear();
+    this.parentRank.clear();
+    this.equalityProofGraph.clear();
     this.canonicalBounds.clear();
+    this.canonicalBoundStrict.clear();
+    this.disallowedValues.clear();
     this.canonicalBoundJustifications.clear();
     this.canonSubscribers.clear();
     this.oppositeSignPairs.clear();
+    this.termUseList.clear();
+    this.congruenceSigTable.clear();
+    this.dirtyCongruenceTerms.clear();
 
     const addJustifications = (canon: string, ids: number[]) => {
       if (ids.length === 0) return;
@@ -790,9 +1756,9 @@ export class SemanticTheoryCoordinator {
         const [varA, varB] = activeLit.args;
         if (typeof varA === "string" && typeof varB === "string") {
           if (varA.startsWith("-") !== varB.startsWith("-")) {
-            this.registerOppositeSignPair(varA, varB, [activeLit.id]);
+            this.registerOppositeSignPair(varA, varB, [activeLit.id], false);
           } else {
-            const root = this.unionVars(varA, varB);
+            const root = this.unionVars(varA, varB, [activeLit.id]);
             addJustifications(root, [activeLit.id]);
           }
         }
@@ -805,11 +1771,26 @@ export class SemanticTheoryCoordinator {
       eq.justifications = justs;
       eq.justification = justs;
       if (eq.varA.startsWith("-") !== eq.varB.startsWith("-")) {
-        this.registerOppositeSignPair(eq.varA, eq.varB, justs);
+        this.registerOppositeSignPair(eq.varA, eq.varB, justs, false);
       } else {
-        const root = this.unionVars(eq.varA, eq.varB);
+        const root = this.unionVars(eq.varA, eq.varB, justs);
         addJustifications(root, justs);
       }
+    }
+
+    // 2.5 Rebuild incremental congruence use-list index from surviving functionTerms
+    for (let idx = 0; idx < this.functionTerms.length; idx++) {
+      const term = this.functionTerms[idx]!;
+      for (const arg of term.args) {
+        const root = this.getCanonicalVar(arg);
+        let uses = this.termUseList.get(root);
+        if (!uses) {
+          uses = new Set();
+          this.termUseList.set(root, uses);
+        }
+        uses.add(idx);
+      }
+      this.dirtyCongruenceTerms.add(idx);
     }
 
     // 3. Rebuild canonical subscribers from varSubscribers
@@ -825,34 +1806,54 @@ export class SemanticTheoryCoordinator {
       }
     }
 
-    // 4. Rebuild canonical bounds from remaining active interval/bound literals and knownEqualities
+    // 4. Rebuild canonical bounds, strictness, and disallowed values from remaining active literals
     for (const activeLit of this.activeLiterals.values()) {
       if (activeLit.predicate === "interval" && Array.isArray(activeLit.args) && activeLit.args.length >= 3) {
         const [vName, lo, hi] = activeLit.args;
         if (typeof vName === "string" && typeof lo === "number" && typeof hi === "number") {
           const canon = this.getCanonicalVar(vName);
-          const curr = this.canonicalBounds.get(canon);
-          const newLo = Math.max(curr ? curr[0] : -Infinity, lo);
-          const newHi = Math.min(curr ? curr[1] : Infinity, hi);
-          this.canonicalBounds.set(canon, [newLo, newHi]);
+          const merged = this.intersectBoundsWithStrict(
+            this.canonicalBounds.get(canon),
+            this.canonicalBoundStrict.get(canon),
+            [lo, hi],
+            [false, false],
+          );
+          this.canonicalBounds.set(canon, merged.bounds);
+          this.canonicalBoundStrict.set(canon, merged.strict);
           addJustifications(canon, [activeLit.id]);
         }
       } else if (activeLit.predicate === "bound" && Array.isArray(activeLit.args) && activeLit.args.length >= 3) {
         const [vName, op, val] = activeLit.args;
         if (typeof vName === "string" && typeof val === "number") {
-          let lo = -Infinity;
-          let hi = Infinity;
-          if (op === "<=" || op === "<") hi = val;
-          else if (op === ">=" || op === ">") lo = val;
-          else if (op === "==") {
-            lo = val;
-            hi = val;
-          }
           const canon = this.getCanonicalVar(vName);
-          const curr = this.canonicalBounds.get(canon);
-          const newLo = Math.max(curr ? curr[0] : -Infinity, lo);
-          const newHi = Math.min(curr ? curr[1] : Infinity, hi);
-          this.canonicalBounds.set(canon, [newLo, newHi]);
+          if (op === "!=") {
+            this.addDisallowedValue(canon, val, [activeLit.id], [vName]);
+            continue;
+          }
+          let b: [number, number] | undefined;
+          let strict: [boolean, boolean] = [false, false];
+          if (op === "<=") {
+            b = [-Infinity, val];
+          } else if (op === "<") {
+            b = [-Infinity, val];
+            strict = [false, true];
+          } else if (op === ">=") {
+            b = [val, Infinity];
+          } else if (op === ">") {
+            b = [val, Infinity];
+            strict = [true, false];
+          } else if (op === "==") {
+            b = [val, val];
+          }
+          if (!b) continue;
+          const merged = this.intersectBoundsWithStrict(
+            this.canonicalBounds.get(canon),
+            this.canonicalBoundStrict.get(canon),
+            b,
+            strict,
+          );
+          this.canonicalBounds.set(canon, merged.bounds);
+          this.canonicalBoundStrict.set(canon, merged.strict);
           addJustifications(canon, [activeLit.id]);
         }
       }
@@ -861,76 +1862,106 @@ export class SemanticTheoryCoordinator {
     for (const eq of this.knownEqualities.values()) {
       if (eq.bounds && eq.varA.startsWith("-") === eq.varB.startsWith("-")) {
         const canon = this.getCanonicalVar(eq.varA);
-        const curr = this.canonicalBounds.get(canon);
-        const newLo = Math.max(curr ? curr[0] : -Infinity, eq.bounds[0]);
-        const newHi = Math.min(curr ? curr[1] : Infinity, eq.bounds[1]);
-        this.canonicalBounds.set(canon, [newLo, newHi]);
+        const merged = this.intersectBoundsWithStrict(
+          this.canonicalBounds.get(canon),
+          this.canonicalBoundStrict.get(canon),
+          eq.bounds,
+          eq.strict,
+        );
+        this.canonicalBounds.set(canon, merged.bounds);
+        this.canonicalBoundStrict.set(canon, merged.strict);
       }
     }
 
-    // Mirror bounds across opposite-sign pairs
-    for (const [varName, partners] of this.oppositeSignPairs.entries()) {
-      const rootA = this.getCanonicalVar(varName);
-      const bA = this.canonicalBounds.get(rootA);
-      if (!bA) continue;
-      for (const { partner, justifications } of partners) {
-        const rootB = this.getCanonicalVar(partner);
-        const currB = this.canonicalBounds.get(rootB);
-        const newLo = Math.max(currB ? currB[0] : -Infinity, -bA[1]);
-        const newHi = Math.min(currB ? currB[1] : Infinity, -bA[0]);
-        this.canonicalBounds.set(rootB, [newLo, newHi]);
-        addJustifications(rootB, justifications);
-        const jA = this.canonicalBoundJustifications.get(rootA);
-        if (jA) addJustifications(rootB, Array.from(jA));
+    // Mirror bounds across opposite-sign pairs to a fixpoint (handles multi-hop chains)
+    let mirrored = true;
+    let mirrorPasses = 0;
+    while (mirrored && mirrorPasses < 32) {
+      mirrored = false;
+      mirrorPasses++;
+      for (const [varName, partners] of this.oppositeSignPairs.entries()) {
+        const rootA = this.getCanonicalVar(varName);
+        const bA = this.canonicalBounds.get(rootA);
+        if (!bA) continue;
+        const sA = this.canonicalBoundStrict.get(rootA) ?? [false, false];
+        for (const { partner, justifications } of partners) {
+          const rootB = this.getCanonicalVar(partner);
+          const currB = this.canonicalBounds.get(rootB);
+          const currSB = this.canonicalBoundStrict.get(rootB) ?? [false, false];
+          const negBounds: [number, number] = [-bA[1], -bA[0]];
+          const negStrict: [boolean, boolean] = [sA[1], sA[0]];
+          const merged = this.intersectBoundsWithStrict(currB, currSB, negBounds, negStrict);
+          if (
+            !currB ||
+            this.isTightenedBounds(
+              merged.bounds[0],
+              merged.bounds[1],
+              currB[0],
+              currB[1],
+              merged.strict[0],
+              merged.strict[1],
+              currSB[0],
+              currSB[1],
+            )
+          ) {
+            this.canonicalBounds.set(rootB, merged.bounds);
+            this.canonicalBoundStrict.set(rootB, merged.strict);
+            addJustifications(rootB, justifications);
+            const jA = this.canonicalBoundJustifications.get(rootA);
+            if (jA) addJustifications(rootB, Array.from(jA));
+            mirrored = true;
+          }
+        }
       }
     }
 
     for (const [canon, [lo, hi]] of this.canonicalBounds.entries()) {
-      if (lo > hi + 1e-9) {
+      const strict = this.canonicalBoundStrict.get(canon) ?? [false, false];
+      if (this.isEmptyBounds(lo, hi, strict[0], strict[1])) {
         const justs = this.canonicalBoundJustifications.get(canon)
           ? Array.from(this.canonicalBoundJustifications.get(canon)!)
           : [];
-        this.infeasibleConflict = this.makeBoundInversionConflict(canon, lo, hi, justs, [canon]);
+        this.infeasibleConflict = this.makeBoundInversionConflict(canon, lo, hi, justs, [canon], strict);
+        break;
+      }
+      const disConflict = this.checkDisallowedConflict(canon, [canon]);
+      if (disConflict) {
+        this.infeasibleConflict = disConflict;
         break;
       }
     }
 
-    for (const oracle of this.oracles.values()) {
-      oracle.retractLiteral(litId);
-      this.dirtyOracles.add(oracle.name);
+    // Incremental oracle retraction: only retract from oracles that actually received litId
+    // or a shared equality/disequality justified by litId (falls back to all if untracked).
+    const affected = this.literalAffectedOracles.get(litId);
+    this.literalAffectedOracles.delete(litId);
+    if (affected && affected.size > 0) {
+      for (const oracleName of affected) {
+        const oracle = this.oracles.get(oracleName);
+        if (oracle) {
+          oracle.retractLiteral(litId);
+          this.dirtyOracles.add(oracle.name);
+        }
+      }
+    } else {
+      for (const oracle of this.oracles.values()) {
+        oracle.retractLiteral(litId);
+        this.dirtyOracles.add(oracle.name);
+      }
     }
   }
 
   /**
-   * Pushes a backtracking decision level.
+   * Pushes a backtracking decision level in O(1) time using an undo trail.
    */
   public pushLevel(): void {
-    const csSnapshot = new Map<string, Set<TheoryOracle>>();
-    for (const [k, v] of this.canonSubscribers.entries()) {
-      csSnapshot.set(k, new Set(v));
-    }
-    const bjSnapshot = new Map<string, Set<number>>();
-    for (const [k, v] of this.canonicalBoundJustifications.entries()) {
-      bjSnapshot.set(k, new Set(v));
-    }
-    const ospSnapshot = new Map<string, { partner: string; justifications: number[] }[]>();
-    for (const [k, v] of this.oppositeSignPairs.entries()) {
-      ospSnapshot.set(
-        k,
-        v.map((item) => ({ partner: item.partner, justifications: [...item.justifications] })),
-      );
-    }
     this.levelStack.push({
       literalIds: [],
-      equalityKeys: [],
+      trailMark: this.undoTrail.length,
+      idToVarMark: this.idToVar.length,
       worklistSnapshot: [...this.worklist],
-      parentSnapshot: new Map(this.parentMap),
-      boundsSnapshot: new Map(this.canonicalBounds),
-      canonSubscribersSnapshot: csSnapshot,
-      boundJustificationsSnapshot: bjSnapshot,
       infeasibleConflictSnapshot: this.infeasibleConflict ? { ...this.infeasibleConflict } : undefined,
-      functionTermsSnapshot: [...this.functionTerms],
-      oppositeSignPairsSnapshot: ospSnapshot,
+      purifyCounterSnapshot: this.purifyCounter,
     });
     for (const oracle of this.oracles.values()) {
       oracle.pushLevel?.();
@@ -938,7 +1969,8 @@ export class SemanticTheoryCoordinator {
   }
 
   /**
-   * Pops the current decision level, retracting all literals and equalities asserted within it.
+   * Pops the current decision level in O(mutations) time by unwinding the undo trail
+   * and reclaiming transient interned variable IDs.
    */
   public popLevel(): void {
     const top = this.levelStack.pop();
@@ -950,32 +1982,20 @@ export class SemanticTheoryCoordinator {
       this.activeLiterals.delete(id);
     }
 
-    for (const key of top.equalityKeys) {
-      this.knownEqualities.delete(key);
+    // Unwind all map/set/array mutations in reverse order
+    while (this.undoTrail.length > top.trailMark) {
+      this.undoTrail.pop()!();
     }
 
-    if (top.worklistSnapshot) {
-      this.worklist = [...top.worklistSnapshot];
+    // Reclaim interned variable names created inside the popped level
+    while (this.idToVar.length > top.idToVarMark) {
+      const vName = this.idToVar.pop()!;
+      this.varToId.delete(vName);
     }
-    if (top.parentSnapshot) {
-      this.parentMap = top.parentSnapshot;
-    }
-    if (top.boundsSnapshot) {
-      this.canonicalBounds = top.boundsSnapshot;
-    }
-    if (top.canonSubscribersSnapshot) {
-      this.canonSubscribers = top.canonSubscribersSnapshot;
-    }
-    if (top.boundJustificationsSnapshot) {
-      this.canonicalBoundJustifications = top.boundJustificationsSnapshot;
-    }
+
+    this.worklist = [...top.worklistSnapshot];
     this.infeasibleConflict = top.infeasibleConflictSnapshot;
-    if (top.functionTermsSnapshot) {
-      this.functionTerms = top.functionTermsSnapshot;
-    }
-    if (top.oppositeSignPairsSnapshot) {
-      this.oppositeSignPairs = top.oppositeSignPairsSnapshot;
-    }
+    this.purifyCounter = top.purifyCounterSnapshot;
 
     for (const oracle of this.oracles.values()) {
       if (oracle.popLevel) {
@@ -990,55 +2010,44 @@ export class SemanticTheoryCoordinator {
   }
 
   /**
-   * Resets all registered oracles and internal equality graphs.
+   * Resets all registered oracles and internal equality graphs while preserving oracle domain subscriptions.
    */
   public reset(): void {
     this.activeLiterals.clear();
     this.knownEqualities.clear();
+    this.knownDisequalities.clear();
     this.varToId.clear();
     this.idToVar = [];
     this.parentMap.clear();
+    this.parentRank.clear();
+    this.equalityProofGraph.clear();
     this.canonicalBounds.clear();
+    this.canonicalBoundStrict.clear();
+    this.disallowedValues.clear();
     this.canonicalBoundJustifications.clear();
     this.varSubscribers.clear();
     this.canonSubscribers.clear();
     this.domainSubscribers.clear();
+    this.varDomains.clear();
+    this.literalAffectedOracles.clear();
     this.dirtyOracles.clear();
     this.worklist = [];
     this.memoizedResult = undefined;
     this.infeasibleConflict = undefined;
     this.functionTerms = [];
+    this.termUseList.clear();
+    this.congruenceSigTable.clear();
+    this.dirtyCongruenceTerms.clear();
     this.oppositeSignPairs.clear();
+    this.undoTrail = [];
     this.levelStack = [];
     this.nextLitId = 1;
+    this.purifyCounter = 0;
     for (const oracle of this.oracles.values()) {
       oracle.reset();
+      this.subscribeDomain(oracle.domain, oracle);
       this.dirtyOracles.add(oracle.name);
     }
-  }
-
-  /**
-   * Checks if an oracle is subscribed to a variable or any variable in its equivalence class.
-   */
-  private isSubscribedToVar(oracle: TheoryOracle, varName: string): boolean {
-    const cleanName = varName.startsWith("-") ? varName.slice(1) : varName;
-    const canon = this.getCanonicalVar(cleanName);
-    const canonSubs = this.canonSubscribers.get(canon);
-    if (canonSubs && canonSubs.has(oracle)) return true;
-
-    const directSubs = this.varSubscribers.get(cleanName) ?? this.varSubscribers.get(varName);
-    if (directSubs && directSubs.has(oracle)) return true;
-
-    return false;
-  }
-
-  /**
-   * Checks if an oracle is subscribed to a domain.
-   */
-  private isSubscribedToDomain(oracle: TheoryOracle, domain?: TheoryDomain): boolean {
-    if (!domain) return false;
-    const subs = this.domainSubscribers.get(domain);
-    return subs ? subs.has(oracle) : false;
   }
 
   private getVarId(name: string): number {
@@ -1078,70 +2087,177 @@ export class SemanticTheoryCoordinator {
   }
 
   /**
-   * Evaluates congruence closure over uninterpreted / surrogate function applications:
+   * Incrementally evaluates congruence closure over dirty function application terms:
    *   x_i == y_i for all i  ==>  f(x_1, ..., x_k) == f(y_1, ..., y_k)
-   * Enqueues newly discovered equality events between the result variables.
+   * Uses `dirtyCongruenceTerms` (populated on term registration and `unionVars` use-list merges)
+   * and `congruenceSigTable` to avoid rescanning unchanged terms.
    */
   public checkCongruenceClosure(): number {
+    if (this.dirtyCongruenceTerms.size === 0) return 0;
     let deducedCount = 0;
-    const sigMap = new Map<string, FunctionApplicationTerm[]>();
+    const toProcess = Array.from(this.dirtyCongruenceTerms);
+    for (const idx of toProcess) {
+      this.trailSetDelete(this.dirtyCongruenceTerms, idx);
+    }
 
-    for (const term of this.functionTerms) {
-      const canonArgs = term.args.map((a) => this.getCanonicalVar(a)).join(",");
-      const sig = `${term.functionName}(${canonArgs})`;
-      if (!sigMap.has(sig)) {
-        sigMap.set(sig, []);
+    for (const idx of toProcess) {
+      const term = this.functionTerms[idx];
+      if (!term) continue;
+      const canonArgs = term.args.map((a) => this.getCanonicalVar(a));
+      const sig = `${term.functionName}\0${term.args.length}\0${canonArgs.join("\0")}`;
+      const repIdx = this.congruenceSigTable.get(sig);
+      if (repIdx === undefined) {
+        this.trailMapSet(this.congruenceSigTable, sig, idx);
+        continue;
       }
-      const list = sigMap.get(sig)!;
-      for (const existing of list) {
-        const rootA = this.getCanonicalVar(existing.resultVar);
-        const rootB = this.getCanonicalVar(term.resultVar);
-        if (rootA !== rootB) {
-          const key = this.makeEqualityKey(existing.resultVar, term.resultVar);
-          if (!this.knownEqualities.has(key)) {
-            deducedCount++;
-            const combinedJusts = [existing.literalId, term.literalId];
-            this.enqueueEvent({
-              kind: "equality",
-              varA: existing.resultVar,
-              varB: term.resultVar,
-              domain: "real",
-              theoryDomain: "algebraic",
-              explanation: `Congruence closure: ${existing.functionName}(${existing.args.join(", ")}) == ${term.functionName}(${term.args.join(", ")}) implies ${existing.resultVar} == ${term.resultVar}.`,
-              sourceOracle: "CongruenceClosure",
-              justification: combinedJusts,
-            });
+      if (repIdx === idx) continue;
+      const representative = this.functionTerms[repIdx];
+      if (!representative) {
+        this.trailMapSet(this.congruenceSigTable, sig, idx);
+        continue;
+      }
+
+      const rootA = this.getCanonicalVar(representative.resultVar);
+      const rootB = this.getCanonicalVar(term.resultVar);
+      if (rootA !== rootB) {
+        const key = this.makeEqualityKey(representative.resultVar, term.resultVar);
+        if (!this.knownEqualities.has(key)) {
+          deducedCount++;
+          const combinedJusts = new Set<number>([representative.literalId, term.literalId]);
+          // Collect exact equality proof justifications for every argument pair (rep.args[i] == term.args[i])
+          for (let i = 0; i < term.args.length; i++) {
+            const argA = representative.args[i]!;
+            const argB = term.args[i]!;
+            if (argA !== argB) {
+              const proofIds = this.getEqualityProof(argA, argB);
+              for (const pid of proofIds) combinedJusts.add(pid);
+            }
           }
+          this.enqueueEvent({
+            kind: "equality",
+            varA: representative.resultVar,
+            varB: term.resultVar,
+            domain: "real",
+            theoryDomain: "algebraic",
+            explanation: `Congruence closure: ${representative.functionName}(${representative.args.join(", ")}) == ${term.functionName}(${term.args.join(", ")}) implies ${representative.resultVar} == ${term.resultVar}.`,
+            sourceOracle: "CongruenceClosure",
+            justification: Array.from(combinedJusts),
+          });
         }
       }
-      list.push(term);
     }
 
     return deducedCount;
   }
 
   /**
-   * Drains the coordinator worklist, tightening bounds, performing core interval inversion checks,
-   * and selectively notifying subscribed oracles.
+   * Collects target oracles directly from subscriber indices without scanning all registered oracles.
+   */
+  private collectTargetOracles(
+    vars: string[],
+    theoryDomain: TheoryDomain | undefined,
+    kind: "equality" | "bound" | "disequality",
+    sourceOracle: string,
+  ): Set<TheoryOracle> {
+    const targets = new Set<TheoryOracle>();
+    for (const rawVar of vars) {
+      const clean = rawVar.startsWith("-") ? rawVar.slice(1) : rawVar;
+      const canon = this.getCanonicalVar(clean);
+      const cSubs = this.canonSubscribers.get(canon);
+      if (cSubs) for (const o of cSubs) targets.add(o);
+      const vSubs = this.varSubscribers.get(clean);
+      if (vSubs) for (const o of vSubs) targets.add(o);
+      if (clean !== rawVar) {
+        const rSubs = this.varSubscribers.get(rawVar);
+        if (rSubs) for (const o of rSubs) targets.add(o);
+      }
+    }
+    if (theoryDomain) {
+      const dSubs = this.domainSubscribers.get(theoryDomain);
+      if (dSubs) for (const o of dSubs) targets.add(o);
+    }
+    const constraintSubs = this.domainSubscribers.get("constraint");
+    if (constraintSubs) for (const o of constraintSubs) targets.add(o);
+    if (kind === "bound") {
+      const spatialSubs = this.domainSubscribers.get("spatial_physics");
+      if (spatialSubs) for (const o of spatialSubs) targets.add(o);
+    }
+    if (kind === "disequality") {
+      const ontologySubs = this.domainSubscribers.get("ontology");
+      if (ontologySubs) for (const o of ontologySubs) targets.add(o);
+    }
+    const src = this.oracles.get(sourceOracle);
+    if (src) targets.delete(src);
+    return targets;
+  }
+
+  /**
+   * Drains the coordinator worklist in O(N) using a cursor, tightening bounds, performing
+   * interval/strict/disequality conflict checks, and selectively notifying subscribed oracles.
    */
   private drainWorklist(
     iteration: number,
     startTime: number,
   ): { unsat?: CoordinatorSatResult | undefined; eventsProcessed: number } {
     let eventsProcessed = 0;
-    const isTargetedByDomain = (oracle: TheoryOracle, ev: PropagationEvent): boolean => {
-      if (ev.kind === "bound") {
-        return (
-          oracle.name === "ConstraintTheoryOracle" ||
-          oracle.name === "SpatialPhysicsOracle" ||
-          oracle.name === "ToleranceStackOracle"
-        );
-      }
-      return oracle.name === "ConstraintTheoryOracle" || (ev.theoryDomain ? oracle.domain === ev.theoryDomain : false);
-    };
+    let head = 0;
 
-    while (this.worklist.length > 0) {
-      const event = this.worklist.shift()!;
+    while (head < this.worklist.length) {
+      const event = this.worklist[head++]!;
+      if (event.kind === "disequality") {
+        const rootA = this.getCanonicalVar(event.varA);
+        const rootB = this.getCanonicalVar(event.varB);
+        const justs = event.justification ?? [];
+        if (rootA === rootB) {
+          const allJusts = new Set<number>(justs);
+          for (const id of this.getEqualityProof(event.varA, event.varB)) allJusts.add(id);
+          this.worklist.length = 0;
+          return {
+            unsat: {
+              status: "UNSAT",
+              isSat: false,
+              conflict: {
+                literals: this.resolveJustificationLiterals(Array.from(allJusts)),
+                explanation: `Disequality Conflict: Variables '${event.varA}' and '${event.varB}' are declared disequal (${event.explanation ?? "!="}) but are already equal.`,
+                culpritEntities: Array.from(new Set([event.varA, event.varB, rootA])),
+                theoryName: "SemanticTheoryCoordinator",
+              },
+              sharedEqualities: Array.from(this.knownEqualities.values()),
+              iterations: iteration,
+              durationMs: performance.now() - startTime,
+            },
+            eventsProcessed,
+          };
+        }
+
+        const dKey = this.makeEqualityKey(event.varA, event.varB);
+        if (!this.knownDisequalities.has(dKey)) {
+          const diseq: SharedDisequality = {
+            varA: event.varA,
+            varB: event.varB,
+            explanation: event.explanation,
+            sourceOracle: event.sourceOracle,
+            justifications: justs,
+          };
+          this.trailMapSet(this.knownDisequalities, dKey, diseq);
+          eventsProcessed++;
+          const targets = this.collectTargetOracles(
+            [event.varA, event.varB],
+            event.theoryDomain,
+            "disequality",
+            event.sourceOracle,
+          );
+          for (const oracle of targets) {
+            if (oracle.onSharedDisequality) {
+              oracle.onSharedDisequality(diseq);
+              this.dirtyOracles.add(oracle.name);
+              for (const jId of justs) this.markLiteralOracle(jId, oracle.name);
+            }
+          }
+        }
+        continue;
+      }
+
       if (event.kind === "equality") {
         const key = this.makeEqualityKey(event.varA, event.varB);
         const existing = this.knownEqualities.get(key);
@@ -1159,29 +2275,38 @@ export class SemanticTheoryCoordinator {
           const rootB = this.getCanonicalVar(cleanB);
 
           if (justs.length > 0) {
-            if (!this.canonicalBoundJustifications.has(rootA)) {
-              this.canonicalBoundJustifications.set(rootA, new Set());
+            let jA = this.canonicalBoundJustifications.get(rootA);
+            if (!jA) {
+              jA = new Set();
+              this.trailMapSet(this.canonicalBoundJustifications, rootA, jA);
             }
-            if (!this.canonicalBoundJustifications.has(rootB)) {
-              this.canonicalBoundJustifications.set(rootB, new Set());
+            let jB = this.canonicalBoundJustifications.get(rootB);
+            if (!jB) {
+              jB = new Set();
+              this.trailMapSet(this.canonicalBoundJustifications, rootB, jB);
             }
-            const jA = this.canonicalBoundJustifications.get(rootA)!;
-            const jB = this.canonicalBoundJustifications.get(rootB)!;
             for (const id of justs) {
-              jA.add(id);
-              jB.add(id);
+              this.trailSetAdd(jA, id);
+              this.trailSetAdd(jB, id);
             }
           }
 
           const bA = this.canonicalBounds.get(rootA);
           const bB = this.canonicalBounds.get(rootB);
+          const sA = this.canonicalBoundStrict.get(rootA) ?? [false, false];
+          const sB = this.canonicalBoundStrict.get(rootB) ?? [false, false];
 
           // Mirror bounds: vA = -vB => vA in [-hiB, -loB] and vB in [-hiA, -loA]
           if (bA || bB) {
-            const loA = Math.max(bA ? bA[0] : -Infinity, bB ? -bB[1] : -Infinity);
-            const hiA = Math.min(bA ? bA[1] : Infinity, bB ? -bB[0] : Infinity);
-            const loB = Math.max(bB ? bB[0] : -Infinity, bA ? -bA[1] : -Infinity);
-            const hiB = Math.min(bB ? bB[1] : Infinity, bA ? -bA[0] : Infinity);
+            const negB: [number, number] | undefined = bB ? [-bB[1], -bB[0]] : undefined;
+            const negSB: [boolean, boolean] = [sB[1], sB[0]];
+            const negA: [number, number] | undefined = bA ? [-bA[1], -bA[0]] : undefined;
+            const negSA: [boolean, boolean] = [sA[1], sA[0]];
+
+            const mergedA = this.intersectBoundsWithStrict(bA, sA, negB, negSB);
+            const mergedB = this.intersectBoundsWithStrict(bB, sB, negA, negSA);
+            const [loA, hiA] = mergedA.bounds;
+            const [loB, hiB] = mergedB.bounds;
 
             const combinedJusts = new Set<number>(justs);
             const jSetA = this.canonicalBoundJustifications.get(rootA);
@@ -1190,17 +2315,20 @@ export class SemanticTheoryCoordinator {
             if (jSetB) for (const id of jSetB) combinedJusts.add(id);
             const allJustsArr = Array.from(combinedJusts);
 
-            if (loA > hiA + 1e-9) {
+            if (this.isEmptyBounds(loA, hiA, mergedA.strict[0], mergedA.strict[1])) {
+              this.worklist.length = 0;
               return {
                 unsat: {
                   status: "UNSAT",
                   isSat: false,
-                  conflict: this.makeBoundInversionConflict(cleanA, loA, hiA, allJustsArr, [
+                  conflict: this.makeBoundInversionConflict(
                     cleanA,
-                    cleanB,
-                    rootA,
-                    rootB,
-                  ]),
+                    loA,
+                    hiA,
+                    allJustsArr,
+                    [cleanA, cleanB, rootA, rootB],
+                    mergedA.strict,
+                  ),
                   sharedEqualities: Array.from(this.knownEqualities.values()),
                   iterations: iteration,
                   durationMs: performance.now() - startTime,
@@ -1208,17 +2336,20 @@ export class SemanticTheoryCoordinator {
                 eventsProcessed,
               };
             }
-            if (loB > hiB + 1e-9) {
+            if (this.isEmptyBounds(loB, hiB, mergedB.strict[0], mergedB.strict[1])) {
+              this.worklist.length = 0;
               return {
                 unsat: {
                   status: "UNSAT",
                   isSat: false,
-                  conflict: this.makeBoundInversionConflict(cleanB, loB, hiB, allJustsArr, [
-                    cleanA,
+                  conflict: this.makeBoundInversionConflict(
                     cleanB,
-                    rootA,
-                    rootB,
-                  ]),
+                    loB,
+                    hiB,
+                    allJustsArr,
+                    [cleanA, cleanB, rootA, rootB],
+                    mergedB.strict,
+                  ),
                   sharedEqualities: Array.from(this.knownEqualities.values()),
                   iterations: iteration,
                   durationMs: performance.now() - startTime,
@@ -1227,23 +2358,35 @@ export class SemanticTheoryCoordinator {
               };
             }
 
-            if (!bA || loA > bA[0] + 1e-9 || hiA < bA[1] - 1e-9) {
-              this.canonicalBounds.set(rootA, [loA, hiA]);
+            if (
+              !bA ||
+              this.isTightenedBounds(loA, hiA, bA[0], bA[1], mergedA.strict[0], mergedA.strict[1], sA[0], sA[1])
+            ) {
+              this.trailMapSet(this.canonicalBounds, rootA, [loA, hiA]);
+              this.trailMapSet(this.canonicalBoundStrict, rootA, mergedA.strict);
               if (jSetB) {
-                if (!this.canonicalBoundJustifications.has(rootA)) {
-                  this.canonicalBoundJustifications.set(rootA, new Set());
+                let targetSet = this.canonicalBoundJustifications.get(rootA);
+                if (!targetSet) {
+                  targetSet = new Set();
+                  this.trailMapSet(this.canonicalBoundJustifications, rootA, targetSet);
                 }
-                for (const id of jSetB) this.canonicalBoundJustifications.get(rootA)!.add(id);
+                for (const id of jSetB) this.trailSetAdd(targetSet, id);
               }
               isNewOrTightened = true;
             }
-            if (!bB || loB > bB[0] + 1e-9 || hiB < bB[1] - 1e-9) {
-              this.canonicalBounds.set(rootB, [loB, hiB]);
+            if (
+              !bB ||
+              this.isTightenedBounds(loB, hiB, bB[0], bB[1], mergedB.strict[0], mergedB.strict[1], sB[0], sB[1])
+            ) {
+              this.trailMapSet(this.canonicalBounds, rootB, [loB, hiB]);
+              this.trailMapSet(this.canonicalBoundStrict, rootB, mergedB.strict);
               if (jSetA) {
-                if (!this.canonicalBoundJustifications.has(rootB)) {
-                  this.canonicalBoundJustifications.set(rootB, new Set());
+                let targetSet = this.canonicalBoundJustifications.get(rootB);
+                if (!targetSet) {
+                  targetSet = new Set();
+                  this.trailMapSet(this.canonicalBoundJustifications, rootB, targetSet);
                 }
-                for (const id of jSetA) this.canonicalBoundJustifications.get(rootB)!.add(id);
+                for (const id of jSetA) this.trailSetAdd(targetSet, id);
               }
               isNewOrTightened = true;
             }
@@ -1257,35 +2400,44 @@ export class SemanticTheoryCoordinator {
               varB: event.varB,
               domain: event.domain ?? "real",
               bounds: event.bounds,
+              strict: event.strict,
               explanation: event.explanation,
               sourceOracle: event.sourceOracle,
               justifications: justs,
               justification: justs,
             };
-            this.knownEqualities.set(key, eqToBroadcast);
-            if (this.levelStack.length > 0) {
-              this.levelStack[this.levelStack.length - 1]!.equalityKeys.push(key);
-            }
+            this.trailMapSet(this.knownEqualities, key, eqToBroadcast);
+          } else if (isNewOrTightened) {
+            const updated: SharedEquality = {
+              ...existing,
+              bounds: event.bounds ? [...event.bounds] : existing.bounds,
+              strict: event.strict ? [...event.strict] : existing.strict,
+              sourceOracle: event.sourceOracle,
+              justifications: justs.length > 0 ? justs : existing.justifications,
+              justification: justs.length > 0 ? justs : existing.justification,
+            };
+            this.trailMapSet(this.knownEqualities, key, updated);
+            eqToBroadcast = updated;
           }
 
           if (isNewOrTightened && eqToBroadcast) {
             eventsProcessed++;
-            for (const oracle of this.oracles.values()) {
-              if (oracle.name === event.sourceOracle) continue;
-              const isSubscribed =
-                this.isSubscribedToVar(oracle, cleanA) ||
-                this.isSubscribedToVar(oracle, cleanB) ||
-                (event.theoryDomain ? this.isSubscribedToDomain(oracle, event.theoryDomain) : false);
-              if (isSubscribed || isTargetedByDomain(oracle, event)) {
-                oracle.onSharedEquality(eqToBroadcast);
-                this.dirtyOracles.add(oracle.name);
-              }
+            const targets = this.collectTargetOracles(
+              [cleanA, cleanB],
+              event.theoryDomain,
+              "equality",
+              event.sourceOracle,
+            );
+            for (const oracle of targets) {
+              oracle.onSharedEquality(eqToBroadcast);
+              this.dirtyOracles.add(oracle.name);
+              for (const jId of eqToBroadcast.justifications ?? []) this.markLiteralOracle(jId, oracle.name);
             }
           }
           continue;
         }
 
-        const canonRoot = this.unionVars(event.varA, event.varB);
+        const canonRoot = this.unionVars(event.varA, event.varB, event.justification ?? []);
         if (this.infeasibleConflict) {
           if (event.justification) {
             const extraLits = this.resolveJustificationLiterals(event.justification);
@@ -1295,6 +2447,7 @@ export class SemanticTheoryCoordinator {
               }
             }
           }
+          this.worklist.length = 0;
           return {
             unsat: {
               status: "UNSAT",
@@ -1309,33 +2462,39 @@ export class SemanticTheoryCoordinator {
         }
 
         const currentBound = this.canonicalBounds.get(canonRoot);
+        const currentStrict = this.canonicalBoundStrict.get(canonRoot) ?? [false, false];
 
         if (event.justification && event.justification.length > 0) {
-          if (!this.canonicalBoundJustifications.has(canonRoot)) {
-            this.canonicalBoundJustifications.set(canonRoot, new Set());
+          let jSet = this.canonicalBoundJustifications.get(canonRoot);
+          if (!jSet) {
+            jSet = new Set();
+            this.trailMapSet(this.canonicalBoundJustifications, canonRoot, jSet);
           }
-          const jSet = this.canonicalBoundJustifications.get(canonRoot)!;
-          for (const id of event.justification) jSet.add(id);
+          for (const id of event.justification) this.trailSetAdd(jSet, id);
         }
 
         if (event.bounds) {
-          const lo = Math.max(currentBound ? currentBound[0] : -Infinity, event.bounds[0]);
-          const hi = Math.min(currentBound ? currentBound[1] : Infinity, event.bounds[1]);
-          if (lo > hi + 1e-9) {
+          const merged = this.intersectBoundsWithStrict(currentBound, currentStrict, event.bounds, event.strict);
+          const [lo, hi] = merged.bounds;
+          if (this.isEmptyBounds(lo, hi, merged.strict[0], merged.strict[1])) {
             const allJustifications = this.canonicalBoundJustifications.get(canonRoot)
               ? Array.from(this.canonicalBoundJustifications.get(canonRoot)!)
               : event.justification
                 ? [...event.justification]
                 : [];
+            this.worklist.length = 0;
             return {
               unsat: {
                 status: "UNSAT",
                 isSat: false,
-                conflict: this.makeBoundInversionConflict(canonRoot, lo, hi, allJustifications, [
+                conflict: this.makeBoundInversionConflict(
                   canonRoot,
-                  event.varA,
-                  event.varB,
-                ]),
+                  lo,
+                  hi,
+                  allJustifications,
+                  [canonRoot, event.varA, event.varB],
+                  merged.strict,
+                ),
                 sharedEqualities: Array.from(this.knownEqualities.values()),
                 iterations: iteration,
                 durationMs: performance.now() - startTime,
@@ -1343,10 +2502,37 @@ export class SemanticTheoryCoordinator {
               eventsProcessed,
             };
           }
-          // Guard against micro-contractions (Zeno loop prevention) using 1e-9 tolerance
-          if (!currentBound || lo > currentBound[0] + 1e-9 || hi < currentBound[1] - 1e-9) {
-            this.canonicalBounds.set(canonRoot, [lo, hi]);
+          if (
+            !currentBound ||
+            this.isTightenedBounds(
+              lo,
+              hi,
+              currentBound[0],
+              currentBound[1],
+              merged.strict[0],
+              merged.strict[1],
+              currentStrict[0],
+              currentStrict[1],
+            )
+          ) {
+            this.trailMapSet(this.canonicalBounds, canonRoot, [lo, hi]);
+            this.trailMapSet(this.canonicalBoundStrict, canonRoot, merged.strict);
             isNewOrTightened = true;
+            const disConflict = this.checkDisallowedConflict(canonRoot, [canonRoot, event.varA, event.varB]);
+            if (disConflict) {
+              this.worklist.length = 0;
+              return {
+                unsat: {
+                  status: "UNSAT",
+                  isSat: false,
+                  conflict: disConflict,
+                  sharedEqualities: Array.from(this.knownEqualities.values()),
+                  iterations: iteration,
+                  durationMs: performance.now() - startTime,
+                },
+                eventsProcessed,
+              };
+            }
           }
         }
 
@@ -1366,66 +2552,78 @@ export class SemanticTheoryCoordinator {
             bounds:
               event.bounds ??
               (this.canonicalBounds.get(canonRoot) ? [...this.canonicalBounds.get(canonRoot)!] : undefined),
+            strict:
+              event.strict ??
+              (this.canonicalBoundStrict.get(canonRoot) ? [...this.canonicalBoundStrict.get(canonRoot)!] : undefined),
             explanation: event.explanation,
             sourceOracle: event.sourceOracle,
             justifications: allJustifications,
             justification: allJustifications,
           };
-          this.knownEqualities.set(key, eqToBroadcast);
-          if (this.levelStack.length > 0) {
-            this.levelStack[this.levelStack.length - 1]!.equalityKeys.push(key);
-          }
+          this.trailMapSet(this.knownEqualities, key, eqToBroadcast);
         } else if (isNewOrTightened && event.bounds) {
-          existing.bounds = [...event.bounds];
-          existing.sourceOracle = event.sourceOracle;
-          existing.justifications = allJustifications;
-          existing.justification = allJustifications;
-          eqToBroadcast = { ...existing };
+          const updated: SharedEquality = {
+            ...existing,
+            bounds: [...event.bounds],
+            strict: event.strict ? [...event.strict] : existing.strict,
+            sourceOracle: event.sourceOracle,
+            justifications: allJustifications,
+            justification: allJustifications,
+          };
+          this.trailMapSet(this.knownEqualities, key, updated);
+          eqToBroadcast = updated;
         }
 
         if (isNewOrTightened && eqToBroadcast) {
           eventsProcessed++;
-          for (const oracle of this.oracles.values()) {
-            if (oracle.name === event.sourceOracle) continue;
-            const isSubscribed =
-              this.isSubscribedToVar(oracle, event.varA) ||
-              this.isSubscribedToVar(oracle, event.varB) ||
-              (event.theoryDomain ? this.isSubscribedToDomain(oracle, event.theoryDomain) : false);
-            if (isSubscribed || isTargetedByDomain(oracle, event)) {
-              oracle.onSharedEquality(eqToBroadcast);
-              this.dirtyOracles.add(oracle.name);
-            }
+          const targets = this.collectTargetOracles(
+            [event.varA, event.varB],
+            event.theoryDomain,
+            "equality",
+            event.sourceOracle,
+          );
+          for (const oracle of targets) {
+            oracle.onSharedEquality(eqToBroadcast);
+            this.dirtyOracles.add(oracle.name);
+            for (const jId of allJustifications) this.markLiteralOracle(jId, oracle.name);
           }
         }
       } else if (event.kind === "bound") {
         const canonRoot = this.getCanonicalVar(event.varName);
         const currentBound = this.canonicalBounds.get(canonRoot);
+        const currentStrict = this.canonicalBoundStrict.get(canonRoot) ?? [false, false];
 
         if (event.justification && event.justification.length > 0) {
-          if (!this.canonicalBoundJustifications.has(canonRoot)) {
-            this.canonicalBoundJustifications.set(canonRoot, new Set());
+          let jSet = this.canonicalBoundJustifications.get(canonRoot);
+          if (!jSet) {
+            jSet = new Set();
+            this.trailMapSet(this.canonicalBoundJustifications, canonRoot, jSet);
           }
-          const jSet = this.canonicalBoundJustifications.get(canonRoot)!;
-          for (const id of event.justification) jSet.add(id);
+          for (const id of event.justification) this.trailSetAdd(jSet, id);
         }
 
-        const lo = Math.max(currentBound ? currentBound[0] : -Infinity, event.bounds[0]);
-        const hi = Math.min(currentBound ? currentBound[1] : Infinity, event.bounds[1]);
+        const merged = this.intersectBoundsWithStrict(currentBound, currentStrict, event.bounds, event.strict);
+        const [lo, hi] = merged.bounds;
 
-        if (lo > hi + 1e-9) {
+        if (this.isEmptyBounds(lo, hi, merged.strict[0], merged.strict[1])) {
           const allJustifications = this.canonicalBoundJustifications.get(canonRoot)
             ? Array.from(this.canonicalBoundJustifications.get(canonRoot)!)
             : event.justification
               ? [...event.justification]
               : [];
+          this.worklist.length = 0;
           return {
             unsat: {
               status: "UNSAT",
               isSat: false,
-              conflict: this.makeBoundInversionConflict(event.varName, lo, hi, allJustifications, [
-                canonRoot,
+              conflict: this.makeBoundInversionConflict(
                 event.varName,
-              ]),
+                lo,
+                hi,
+                allJustifications,
+                [canonRoot, event.varName],
+                merged.strict,
+              ),
               sharedEqualities: Array.from(this.knownEqualities.values()),
               iterations: iteration,
               durationMs: performance.now() - startTime,
@@ -1435,9 +2633,38 @@ export class SemanticTheoryCoordinator {
         }
 
         let isNewOrTightened = false;
-        if (!currentBound || lo > currentBound[0] + 1e-9 || hi < currentBound[1] - 1e-9) {
-          this.canonicalBounds.set(canonRoot, [lo, hi]);
+        if (
+          !currentBound ||
+          this.isTightenedBounds(
+            lo,
+            hi,
+            currentBound[0],
+            currentBound[1],
+            merged.strict[0],
+            merged.strict[1],
+            currentStrict[0],
+            currentStrict[1],
+          )
+        ) {
+          this.trailMapSet(this.canonicalBounds, canonRoot, [lo, hi]);
+          this.trailMapSet(this.canonicalBoundStrict, canonRoot, merged.strict);
           isNewOrTightened = true;
+
+          const disConflict = this.checkDisallowedConflict(canonRoot, [canonRoot, event.varName]);
+          if (disConflict) {
+            this.worklist.length = 0;
+            return {
+              unsat: {
+                status: "UNSAT",
+                isSat: false,
+                conflict: disConflict,
+                sharedEqualities: Array.from(this.knownEqualities.values()),
+                iterations: iteration,
+                durationMs: performance.now() - startTime,
+              },
+              eventsProcessed,
+            };
+          }
         }
 
         if (isNewOrTightened) {
@@ -1448,14 +2675,15 @@ export class SemanticTheoryCoordinator {
               ? [...event.justification]
               : [];
 
-          // Propagate negated bounds to any opposite-sign Kirchhoff flow partners
-          const partners = this.oppositeSignPairs.get(event.varName) ?? this.oppositeSignPairs.get(canonRoot) ?? [];
+          // Propagate negated bounds to all opposite-sign Kirchhoff flow partners of the equivalence class
+          const partners = this.oppositeSignPairs.get(canonRoot) ?? [];
           for (const { partner, justifications: pairJusts } of partners) {
             const mergedJusts = Array.from(new Set([...allJustifications, ...pairJusts]));
             this.enqueueEvent({
               kind: "bound",
               varName: partner,
               bounds: [-hi, -lo],
+              strict: [merged.strict[1], merged.strict[0]],
               theoryDomain: event.theoryDomain,
               explanation: `Kirchhoff opposite-sign flow bound from '${event.varName}' in [${lo}, ${hi}]`,
               sourceOracle: event.sourceOracle,
@@ -1468,25 +2696,24 @@ export class SemanticTheoryCoordinator {
             varB: event.varName,
             domain: "interval",
             bounds: [lo, hi],
+            strict: merged.strict,
             explanation: event.explanation ?? `Contracted bound on '${event.varName}' to [${lo}, ${hi}]`,
             sourceOracle: event.sourceOracle,
             justifications: allJustifications,
             justification: allJustifications,
           };
 
-          for (const oracle of this.oracles.values()) {
-            if (oracle.name === event.sourceOracle) continue;
-            const isSubscribed =
-              this.isSubscribedToVar(oracle, event.varName) ||
-              (event.theoryDomain ? this.isSubscribedToDomain(oracle, event.theoryDomain) : false);
-            if (isSubscribed || isTargetedByDomain(oracle, event)) {
-              oracle.onSharedEquality(boundEq);
-              this.dirtyOracles.add(oracle.name);
-            }
+          const targets = this.collectTargetOracles([event.varName], event.theoryDomain, "bound", event.sourceOracle);
+          for (const oracle of targets) {
+            oracle.onSharedEquality(boundEq);
+            this.dirtyOracles.add(oracle.name);
+            for (const jId of allJustifications) this.markLiteralOracle(jId, oracle.name);
           }
         }
       }
     }
+
+    this.worklist.length = 0;
     return { eventsProcessed };
   }
 
@@ -1511,10 +2738,9 @@ export class SemanticTheoryCoordinator {
   /**
    * Executes the Nelson-Oppen Worklist-Driven Equality Exchange & Satisfiability Procedure.
    * Alternates between:
-   *   1. Checking local satisfiability across dirty oracles only.
-   *   2. Enqueueing newly propagated equalities and bound contractions into the worklist.
-   *   3. Congruence closure deduction on uninterpreted function terms.
-   *   4. Draining worklist by selectively notifying subscribed and cross-domain oracles.
+   *   1. Draining pending equality/bound/disequality events and running incremental congruence closure.
+   *   2. Checking local satisfiability across dirty oracles only, plus finite-domain cardinality checks.
+   *   3. Collecting newly propagated equalities, bounds, and disequalities into the worklist.
    * Repeats until fixpoint (empty worklist and clean SAT oracles) or conflict.
    */
   public checkSat(maxIterations = 50, cancellationToken?: CancellationTokenLike): CoordinatorSatResult {
@@ -1544,7 +2770,7 @@ export class SemanticTheoryCoordinator {
       };
     }
 
-    if (this.dirtyOracles.size === 0) {
+    if (this.dirtyOracles.size === 0 && this.worklist.length === 0) {
       for (const name of this.oracles.keys()) {
         this.dirtyOracles.add(name);
       }
@@ -1568,15 +2794,17 @@ export class SemanticTheoryCoordinator {
       // Phase 1: Drain pending events (eager bound tightening, core inversion check, and subscriber notifications)
       const drain1 = this.drainWorklist(iteration, startTime);
       if (drain1.unsat) return drain1.unsat;
-      let totalEvents = drain1.eventsProcessed;
 
-      // Phase 1.5: Congruence closure deduction across functional terms
-      const congDeductions = this.checkCongruenceClosure();
-      totalEvents += congDeductions;
-      if (congDeductions > 0) {
-        const drain2 = this.drainWorklist(iteration, startTime);
-        if (drain2.unsat) return drain2.unsat;
-        totalEvents += drain2.eventsProcessed;
+      // Phase 1.5: Incremental congruence closure deduction to local fixpoint across dirty functional terms
+      if (this.dirtyCongruenceTerms.size > 0) {
+        let congGuard = 0;
+        while (congGuard < 64 && this.dirtyCongruenceTerms.size > 0) {
+          const congDeductions = this.checkCongruenceClosure();
+          if (congDeductions === 0) break;
+          congGuard++;
+          const drain2 = this.drainWorklist(iteration, startTime);
+          if (drain2.unsat) return drain2.unsat;
+        }
       }
 
       // Phase 2: Local oracle satisfiability check on dirty oracles only
@@ -1603,12 +2831,29 @@ export class SemanticTheoryCoordinator {
       }
       this.dirtyOracles.clear();
 
-      // Phase 3: Collect newly propagated equalities from checked oracles only and populate worklist
+      // Phase 2.5: Polite/Shiny finite-domain cardinality conflict check
+      const fdcConflict = this.checkFiniteDomainConflicts();
+      if (fdcConflict) {
+        return {
+          status: "UNSAT",
+          isSat: false,
+          conflict: fdcConflict,
+          sharedEqualities: Array.from(this.knownEqualities.values()),
+          iterations: iteration,
+          durationMs: performance.now() - startTime,
+        };
+      }
+
+      // Phase 3: Collect newly propagated equalities, bounds, and disequalities from checked oracles only
+      const filterToInterface = this.interfaceOnlyPropagation && this.oracles.size >= 2;
       for (const oracleName of checkingOracles) {
         const oracle = this.oracles.get(oracleName);
         if (!oracle) continue;
         const props = oracle.propagateEqualities();
         for (const eq of props) {
+          if (filterToInterface && !this.isSharedInterfaceVar(eq.varA) && !this.isSharedInterfaceVar(eq.varB)) {
+            continue;
+          }
           const justs = eq.justifications ?? (eq as any).justification ?? [];
           this.enqueueEvent({
             kind: "equality",
@@ -1617,15 +2862,36 @@ export class SemanticTheoryCoordinator {
             domain: eq.domain,
             theoryDomain: oracle.domain,
             bounds: eq.bounds,
+            strict: eq.strict,
             explanation: eq.explanation,
             sourceOracle: eq.sourceOracle ?? oracle.name,
             justification: justs,
           });
         }
+        if (oracle.propagateDisequalities) {
+          const diseqs = oracle.propagateDisequalities();
+          for (const d of diseqs) {
+            if (filterToInterface && !this.isSharedInterfaceVar(d.varA) && !this.isSharedInterfaceVar(d.varB)) {
+              continue;
+            }
+            const dKey = this.makeEqualityKey(d.varA, d.varB);
+            if (!this.knownDisequalities.has(dKey)) {
+              this.enqueueEvent({
+                kind: "disequality",
+                varA: d.varA,
+                varB: d.varB,
+                theoryDomain: oracle.domain,
+                explanation: d.explanation,
+                sourceOracle: d.sourceOracle ?? oracle.name,
+                justification: d.justifications ?? [],
+              });
+            }
+          }
+        }
       }
 
-      // Phase 4: Fixed point check — no dirty oracles, no worklist events, and no new congruence deductions
-      if (this.dirtyOracles.size === 0 && totalEvents === 0 && this.worklist.length === 0) {
+      // Phase 4: True fixpoint check — no dirty oracles and no newly enqueued worklist events
+      if (this.dirtyOracles.size === 0 && this.worklist.length === 0) {
         break;
       }
     }

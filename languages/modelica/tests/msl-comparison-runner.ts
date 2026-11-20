@@ -169,7 +169,7 @@ class PersistentWorker {
             this.activeTask = null;
             this.stderrBuf = "";
             this.tasksCompleted++;
-            if (this.tasksCompleted >= 80) {
+            if (this.tasksCompleted >= 25 || (parsed.peakMemoryMB ?? 0) >= 2200) {
               this.close();
             }
             resolve(parsed);
@@ -186,9 +186,10 @@ class PersistentWorker {
     });
 
     child.on("close", (code) => {
-      if (this.child === child) {
-        this.child = null;
+      if (this.child !== child) {
+        return;
       }
+      this.child = null;
       if (this.activeResolve && this.activeTask) {
         const resolve = this.activeResolve;
         const task = this.activeTask;

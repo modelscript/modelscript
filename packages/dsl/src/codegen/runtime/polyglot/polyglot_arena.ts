@@ -22,6 +22,7 @@ export class PolyglotArena {
   // Maps languageId (u16) to AST root node pointer (u32)
   languageRoots: ChunkedUint32Array;
   languageCount: u32;
+  maxLanguages: u32;
 
   // Per-Language Version Vectors (Concept 3)
   langVersions: ChunkedUint32Array;
@@ -33,7 +34,8 @@ export class PolyglotArena {
   // High-performance string pool in linear memory for interning identifiers & text properties
   stringPoolPtr: usize;
 
-  init(maxLanguages: u32 = 16, initialExtends: u32 = 512): void {
+  init(maxLanguages: u32 = 128, initialExtends: u32 = 512): void {
+    this.maxLanguages = maxLanguages;
     this.languageRoots = createChunkedUint32Array(maxLanguages);
     this.langVersions = createChunkedUint32Array(maxLanguages);
     this.languageCount = 0;
@@ -44,15 +46,16 @@ export class PolyglotArena {
 
   @inline
   registerLanguageRoot(languageId: u16, rootNodePtr: u32): void {
-    if (languageId >= this.languageCount) {
-      this.languageCount = (languageId as u32) + 1;
+    let id = languageId as u32;
+    if (id >= this.languageCount) {
+      this.languageCount = id + 1;
     }
-    this.languageRoots.set(languageId as u32, rootNodePtr);
+    this.languageRoots.set(id, rootNodePtr);
   }
 
   @inline
   getLanguageRoot(languageId: u16): u32 {
-    if (languageId >= this.languageCount) return 0;
+    if ((languageId as u32) >= this.languageCount) return 0;
     return this.languageRoots.get(languageId as u32);
   }
 
@@ -100,16 +103,20 @@ export class PolyglotArena {
 
   @inline
   getLangVersion(langId: u16): u32 {
-    if (langId >= 16) return 0;
-    return this.langVersions.get(langId as u32);
+    let id = langId as u32;
+    if (id >= this.maxLanguages) return 0;
+    return this.langVersions.get(id);
   }
 
   @inline
   incrementLangVersion(langId: u16): u32 {
-    if (langId >= 16) return 0;
-    let curr = this.langVersions.get(langId as u32);
+    let id = langId as u32;
+    if (id >= this.maxLanguages) {
+      this.maxLanguages = id + 1;
+    }
+    let curr = this.langVersions.get(id);
     let next = curr + 1;
-    this.langVersions.set(langId as u32, next);
+    this.langVersions.set(id, next);
     return next;
   }
 
@@ -149,13 +156,16 @@ export class PolyglotArena {
 
   @inline
   reset(): void {
+    for (let i: u32 = 0; i < this.languageCount; i++) {
+      this.languageRoots.set(i, 0);
+    }
     this.languageCount = 0;
     this.extendsCount = 0;
-    for (let i: u32 = 0; i < 16; i++) {
+    for (let i: u32 = 0; i < this.maxLanguages; i++) {
       this.langVersions.set(i, 0);
     }
     if (this.stringPoolPtr != 0) {
-      this.getStringPool().init();
+      this.getStringPool().reset();
     }
   }
 }

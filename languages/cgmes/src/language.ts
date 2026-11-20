@@ -21,6 +21,46 @@ export const cgmesLanguage = language({
     fileExtensions: [".cgmes"],
   },
 
+  ui: {
+    toolbarButtons: [
+      {
+        id: "cgmesSolvePowerflow",
+        label: "Solve AC Power Flow (CGMES)",
+        shortLabel: "Solve AC",
+        tooltip: "Solve AC Power Flow (CGMES)",
+        icon: "zap",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        actionId: "cgmes_solve_powerflow",
+      },
+      {
+        id: "cgmesToModelica",
+        label: "Project CGMES to OpenIPSL Modelica",
+        shortLabel: "Project CGMES",
+        tooltip: "Project CGMES to OpenIPSL Modelica",
+        icon: "export",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 20,
+        actionId: "cgmes_to_modelica",
+      },
+      {
+        id: "cgmesLint",
+        label: "Lint CGMES Profile",
+        shortLabel: "Lint CGMES",
+        tooltip: "Lint CGMES Profile",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "cgmes_lint",
+      },
+    ],
+  },
   actions: [
     {
       id: "cgmes_lint",

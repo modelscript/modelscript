@@ -427,6 +427,127 @@ export class ValidationService {
   public reasonerDiagnosticsByUri = new Map<string, Diagnostic[]>();
   /** Cached polyglot digital thread diagnostics merged across verifyAll runs per document URI. */
   public digitalThreadDiagnosticsByUri = new Map<string, Diagnostic[]>();
+  /** Tracks last document text auto-verified by SysML v2 checkAutoVerify to prevent infinite re-verification loops. */
+  public lastAutoVerifiedText = new Map<string, string>();
+  /** Debounce timer for workspace/codeLens/refresh notifications after async proof/verification updates. */
+  private codeLensRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Active WASM parser lock depth so Tier 1 keystroke parses can avoid clobbering an in-flight Tier 3 parse. */
+  private wasmParserLockCount = 0;
+
+  /** Cached parsed SysML v2 requirements per URI+text so Modelica edits do not re-parse unchanged SysML files. */
+  private parsedSysmlReqsCache = new Map<string, { text: string; reqs: any[] }>();
+  /** Short-TTL cache for async sibling directory scans in runLiveDigitalThreadValidation. */
+  private siblingDirCache = new Map<string, { ts: number; files: Array<{ uri: string; content: string }> }>();
+  /** Last evaluated digital thread input fingerprint to avoid redundant coordinator runs on unchanged content. */
+  private lastDigitalThreadFingerprint = "";
+
+  public isWasmParserBusy(): boolean {
+    return this.wasmParserLockCount > 0;
+  }
+
+  public requestCodeLensRefresh(delayMs = 150): void {
+    if (typeof this.connection?.sendRequest !== "function") return;
+    if (this.codeLensRefreshTimer) clearTimeout(this.codeLensRefreshTimer);
+    this.codeLensRefreshTimer = setTimeout(() => {
+      this.codeLensRefreshTimer = null;
+      this.connection.sendRequest("workspace/codeLens/refresh").catch(() => {});
+    }, delayMs);
+  }
+
+  /**
+   * Publishes a lightweight `modelscript/verificationStatus` notification summarizing formal proof
+   * counts and per-declaration gutter markers for `uri`.
+   */
+  public emitVerificationStatus(uri: string): void {
+    if (typeof this.connection?.sendNotification !== "function") return;
+    const effectiveUri = uri.startsWith("modelscript-lib://global")
+      ? "file://" + uri.substring("modelscript-lib://global".length)
+      : uri;
+    const proofMap = this.modelicaProofResultsByUri.get(uri) ?? this.modelicaProofResultsByUri.get(effectiveUri);
+    const daeMap =
+      this.modelicaDaeVerificationResultsByUri.get(uri) ?? this.modelicaDaeVerificationResultsByUri.get(effectiveUri);
+    const sysmlResults = this.verificationResultsByUri.get(uri) ?? this.verificationResultsByUri.get(effectiveUri);
+
+    let provenCount = 0;
+    let unprovenCount = 0;
+    let defectCount = 0;
+    let unboundedVariables = 0;
+    const markers: Array<{ line: number; status: "proven" | "unproven" | "defect"; label: string }> = [];
+
+    const doc = this.documentManager?.documents?.get?.(uri) ?? this.documentManager?.documents?.get?.(effectiveUri);
+    const docText = doc?.getText?.() ?? this.documentManager?.documentTrees?.get?.(uri)?.text ?? "";
+    const lines = docText ? splitLinesPreserve(docText) : [];
+    const findDeclLine = (name: string): number => {
+      if (!name || lines.length === 0) return 0;
+      const re = new RegExp(
+        `\\b(model|block|function|class|record|connector|package)\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+      );
+      for (let i = 0; i < lines.length; i++) {
+        if (re.test(lines[i]!)) return i;
+      }
+      return 0;
+    };
+
+    if (proofMap) {
+      for (const [name, proof] of proofMap.entries()) {
+        const hasDef = (proof?.definiteBugs?.length ?? 0) > 0;
+        const hasPot = (proof?.potentialBugs?.length ?? 0) > 0;
+        const status: "proven" | "unproven" | "defect" = hasDef ? "defect" : hasPot ? "unproven" : "proven";
+        if (status === "defect") defectCount++;
+        else if (status === "unproven") unprovenCount++;
+        else provenCount++;
+        const label =
+          status === "defect"
+            ? `${name}: ${proof.definiteBugs.length} formal defect(s)`
+            : status === "unproven"
+              ? `${name}: ${proof.potentialBugs.length} unproven condition(s)`
+              : `${name}: formally verified (0 RTEs)`;
+        markers.push({ line: findDeclLine(name), status, label });
+      }
+    }
+
+    if (daeMap) {
+      for (const [name, dae] of daeMap.entries()) {
+        const issues: any[] = dae?.issues ?? [];
+        const hasDef = issues.some((i) => i.severity === "definite");
+        const hasWarn = issues.length > 0 || dae?.verdict?.kind !== "proven";
+        const status: "proven" | "unproven" | "defect" = hasDef ? "defect" : hasWarn ? "unproven" : "proven";
+        if (status === "defect") defectCount++;
+        else if (status === "unproven") unprovenCount++;
+        else provenCount++;
+        if (typeof dae?.unboundedVariables === "number") {
+          unboundedVariables += dae.unboundedVariables;
+        }
+        const label =
+          status === "defect"
+            ? `${name}: DAE formal defect`
+            : status === "unproven"
+              ? `${name}: DAE inconclusive (${dae?.unboundedVariables ?? 0} unbounded)`
+              : `${name}: DAE proven singularity-free`;
+        markers.push({ line: findDeclLine(name), status, label });
+      }
+    }
+
+    if (Array.isArray(sysmlResults) && sysmlResults.length > 0) {
+      for (const r of sysmlResults) {
+        if (r?.isSatisfied) provenCount++;
+        else defectCount++;
+      }
+    }
+
+    try {
+      this.connection.sendNotification("modelscript/verificationStatus", {
+        uri,
+        provenCount,
+        unprovenCount,
+        defectCount,
+        unboundedVariables,
+        markers,
+      });
+    } catch {
+      // Non-fatal notification
+    }
+  }
 
   /**
    * Returns true once all declared project library dependencies have been loaded into the workspace.
@@ -655,6 +776,10 @@ export class ValidationService {
     this.reasonerDiagnosticsByUri.delete(eff);
     this.digitalThreadDiagnosticsByUri.delete(uri);
     this.digitalThreadDiagnosticsByUri.delete(eff);
+    this.lastAutoVerifiedText.delete(uri);
+    this.lastAutoVerifiedText.delete(eff);
+    this.parsedSysmlReqsCache.delete(uri);
+    this.parsedSysmlReqsCache.delete(eff);
 
     // Retract registered axioms from owl2Store and update reasoner
     const store = this.workspaceManager?.unifiedWorkspace?.owl2Store;
@@ -1334,18 +1459,23 @@ export class ValidationService {
         this.workspaceManager.documentInstances.delete(effectiveUri);
         this.lastIndexedText.set(effectiveUri, text);
         this.lastIndexedText.set(uri, text);
-        const activeEngine = plugin?.queryEngine ?? this.workspaceManager.getQueryEngine(langId);
-        if (activeEngine && typeof (activeEngine as any).disposeDocument === "function") {
-          (activeEngine as any).disposeDocument(effectiveUri);
-          if (uri !== effectiveUri) (activeEngine as any).disposeDocument(uri);
-          (activeEngine as any).disposeDocument(normUri);
-        }
       }
 
       const changedIdsObj = typeof wsIndex.takeGlobalChangedIds === "function" ? wsIndex.takeGlobalChangedIds() : null;
       changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
       structuralChangedIds = changedIdsObj ? (changedIdsObj as any).structuralChangedIds : null;
       changedNames = typeof wsIndex.takeGlobalChangedNames === "function" ? wsIndex.takeGlobalChangedNames() : null;
+
+      if (prevIndexedText !== text && !changedIds) {
+        const activeEngine = (plugin?.queryEngine ?? this.workspaceManager.getQueryEngine(langId)) as unknown as {
+          disposeDocument?: (u: string) => void;
+        } | null;
+        if (activeEngine && typeof activeEngine.disposeDocument === "function") {
+          activeEngine.disposeDocument(effectiveUri);
+          if (uri !== effectiveUri) activeEngine.disposeDocument(uri);
+          if (normUri !== effectiveUri && normUri !== uri) activeEngine.disposeDocument(normUri);
+        }
+      }
     }
 
     if (this.revalidationTimer) {
@@ -1430,13 +1560,85 @@ export class ValidationService {
   public diagnosticsConfig: {
     enabled?: boolean | undefined;
     maxProblems?: number | undefined;
+    maxNumberOfProblems?: number | undefined;
+    disabledRules?: string[] | undefined;
     crossDomainDrift?: "error" | "warning" | "information" | "off" | undefined;
     formalVerificationOnSave?: boolean | undefined;
     daeSingularityCheck?: boolean | undefined;
     showInformationalBadges?: boolean | undefined;
   } = {};
 
-  public async validateTextDocument(textDocument: TextDocument): Promise<void> {
+  /**
+   * Applies user diagnostic configuration (`disabledRules`, `crossDomainDrift`, and `maxProblems` / `maxNumberOfProblems`).
+   */
+  public applyDiagnosticFilters(diagnostics: Diagnostic[]): Diagnostic[] {
+    const disabledRaw = this.diagnosticsConfig.disabledRules;
+    const disabledSet =
+      Array.isArray(disabledRaw) && disabledRaw.length > 0
+        ? new Set(disabledRaw.map((r) => String(r).trim().toLowerCase()).filter(Boolean))
+        : null;
+    const driftMode = this.diagnosticsConfig.crossDomainDrift;
+    const isDriftDiag = (d: Diagnostic): boolean => {
+      const c = String(d.code ?? "").toUpperCase();
+      return (
+        c === "M5104" ||
+        c === "THREAD_DIVERGENCE" ||
+        c === "POLYGLOT_TWIN_DRIFT" ||
+        c === "X7001" ||
+        c === "X7002" ||
+        c === "X7003" ||
+        c === "X7004" ||
+        c === "X7005" ||
+        d.source === "modelscript-drift-checker"
+      );
+    };
+
+    let filtered = diagnostics;
+    if (disabledSet || driftMode) {
+      filtered = [];
+      for (const d of diagnostics) {
+        if (disabledSet) {
+          const codeStr = d.code !== undefined ? String(d.code).toLowerCase() : "";
+          const mCodeStr = typeof d.code === "number" ? `m${d.code}` : "";
+          const dataRule =
+            typeof (d.data as { rule?: unknown } | undefined)?.rule === "string"
+              ? String((d.data as { rule: string }).rule).toLowerCase()
+              : "";
+          if (
+            (codeStr && disabledSet.has(codeStr)) ||
+            (mCodeStr && disabledSet.has(mCodeStr)) ||
+            (dataRule && disabledSet.has(dataRule))
+          ) {
+            continue;
+          }
+        }
+        if (driftMode && isDriftDiag(d)) {
+          if (driftMode === "off") continue;
+          const mappedSev =
+            driftMode === "error"
+              ? DiagnosticSeverity.Error
+              : driftMode === "information"
+                ? DiagnosticSeverity.Information
+                : DiagnosticSeverity.Warning;
+          filtered.push(d.severity === mappedSev ? d : { ...d, severity: mappedSev });
+          continue;
+        }
+        filtered.push(d);
+      }
+    }
+
+    const rawMax = this.diagnosticsConfig.maxProblems ?? this.diagnosticsConfig.maxNumberOfProblems;
+    const limit = typeof rawMax === "number" && rawMax > 0 ? Math.floor(rawMax) : 1000;
+    if (filtered.length > limit) {
+      return filtered.slice(0, limit);
+    }
+    return filtered;
+  }
+
+  public async validateTextDocument(
+    textDocument: TextDocument,
+    options?: { isSave?: boolean | undefined },
+  ): Promise<void> {
     const uri = textDocument.uri;
     if (this.diagnosticsConfig.enabled === false) {
       this.connection.sendDiagnostics({ uri, diagnostics: [] });
@@ -1776,6 +1978,7 @@ export class ValidationService {
       releaseLock = resolve;
     });
     await currentLock;
+    this.wasmParserLockCount++;
 
     try {
       try {
@@ -1893,6 +2096,7 @@ export class ValidationService {
       syntaxDiags = res.syntaxDiags;
       wasmLintDiags = res.wasmLintDiags;
     } finally {
+      this.wasmParserLockCount = Math.max(0, this.wasmParserLockCount - 1);
       releaseLock();
     }
     const rawWasmLspDiags = this.convertWasmLintDiagnostics(wasmLintDiags, textDocument, plugin, text);
@@ -1914,13 +2118,30 @@ export class ValidationService {
           plugin,
         )
       : rawWasmLspDiags;
-    const cachedSemantic = (this.lastSemanticDiagnostics.get(uri) || []).filter(
-      (d) => typeof d.code !== "number" || d.code < 1000 || d.code >= 6000,
+    const prevPublished = this.lastSemanticDiagnostics.get(uri);
+    const cachedSemantic = (prevPublished || []).filter(
+      (d) => d.source !== "sysml2-verifier" && (typeof d.code !== "number" || d.code < 1000 || d.code >= 6000),
     );
-    const initialDiags = deduplicateAllDiagnostics([...syntaxDiags, ...wasmLspDiags, ...cachedSemantic]);
+    const initialDiags = this.applyDiagnosticFilters(
+      deduplicateAllDiagnostics([...syntaxDiags, ...wasmLspDiags, ...cachedSemantic]),
+    );
+    const unchangedFromPrev =
+      prevPublished !== undefined &&
+      initialDiags.length === prevPublished.length &&
+      initialDiags.every((d, i) => {
+        const p = prevPublished[i];
+        return (
+          p !== undefined &&
+          d.message === p.message &&
+          d.code === p.code &&
+          d.range.start.line === p.range.start.line &&
+          d.range.start.character === p.range.start.character
+        );
+      });
     this.lastSemanticDiagnostics.set(uri, initialDiags);
-    if (initialDiags.length > 1000) initialDiags.length = 1000;
-    this.connection.sendDiagnostics({ uri, diagnostics: initialDiags });
+    if (!unchangedFromPrev) {
+      this.connection.sendDiagnostics({ uri, diagnostics: initialDiags });
+    }
 
     // 4. Run Unified Semantic Pipeline
     const revisionAtStart = this.documentRevisions.get(uri) ?? 0;
@@ -1935,6 +2156,7 @@ export class ValidationService {
       plugin,
       langId,
       textDocument,
+      isSave: options?.isSave,
     }).catch((e) => {
       this.connection.console.error(`[runUnifiedSemanticPipeline] Failed for ${uri}: ${e?.message ?? e}`);
     });
@@ -1969,6 +2191,7 @@ export class ValidationService {
     plugin?: LanguagePlugin | undefined;
     langId: string;
     textDocument?: TextDocument | undefined;
+    isSave?: boolean | undefined;
   }): Promise<void> {
     const {
       uri,
@@ -1981,6 +2204,7 @@ export class ValidationService {
       plugin,
       langId,
       textDocument,
+      isSave,
     } = params;
     const newSemanticDiagnostics: Diagnostic[] = [];
 
@@ -2256,8 +2480,9 @@ export class ValidationService {
       // Stream core compiler lints immediately before running heavier post-validation hooks
       // (abstract interpretation, DAE reachability, cross-language drift, workspace linters).
       if (isStale()) return;
-      const earlyDiags = deduplicateAllDiagnostics([...baseDiagnostics, ...newSemanticDiagnostics]);
-      if (earlyDiags.length > 1000) earlyDiags.length = 1000;
+      const earlyDiags = this.applyDiagnosticFilters(
+        deduplicateAllDiagnostics([...baseDiagnostics, ...newSemanticDiagnostics]),
+      );
       this.connection.sendDiagnostics({ uri, diagnostics: earlyDiags });
       this.sendProjectTreeChanged(uri);
 
@@ -2273,8 +2498,13 @@ export class ValidationService {
           }
           this.checkAutoVerify(effectiveUri);
         } else if (langId === "modelica" && !hasSyntaxErrors && textDocument) {
-          await this.postValidateModelicaAbstractInterpretation(effectiveUri, textDocument, newSemanticDiagnostics);
-          await this.postValidateModelicaDaeReachability(effectiveUri, textDocument, newSemanticDiagnostics);
+          const deferFormalToSave = Boolean(this.diagnosticsConfig.formalVerificationOnSave) && !isSave;
+          if (!deferFormalToSave) {
+            await this.postValidateModelicaAbstractInterpretation(effectiveUri, textDocument, newSemanticDiagnostics);
+            if (this.diagnosticsConfig.daeSingularityCheck !== false) {
+              await this.postValidateModelicaDaeReachability(effectiveUri, textDocument, newSemanticDiagnostics);
+            }
+          }
           this.postValidateModelicaReasoner(effectiveUri, newSemanticDiagnostics);
         } else if (!hasSyntaxErrors) {
           this.postValidatePolyglotReasoner(effectiveUri, langId, newSemanticDiagnostics);
@@ -2334,8 +2564,7 @@ export class ValidationService {
       if (isStale()) return;
       this.lastSemanticDiagnostics.set(uri, finalSemanticDiags);
       const rawDiagnostics = [...baseDiagnostics, ...finalSemanticDiags];
-      const diagnostics = deduplicateAllDiagnostics(rawDiagnostics);
-      if (diagnostics.length > 1000) diagnostics.length = 1000;
+      const diagnostics = this.applyDiagnosticFilters(deduplicateAllDiagnostics(rawDiagnostics));
       const unchangedFromEarly =
         diagnostics.length === earlyDiags.length &&
         diagnostics.every((d, i) => {
@@ -2363,8 +2592,7 @@ export class ValidationService {
       this.connection.console.error(`[runUnifiedSemanticPipeline] Error for ${uri}: ${e.message}\n${e.stack}`);
       if (!isStale()) {
         const rawDiagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
-        const diagnostics = deduplicateAllDiagnostics(rawDiagnostics);
-        if (diagnostics.length > 1000) diagnostics.length = 1000;
+        const diagnostics = this.applyDiagnosticFilters(deduplicateAllDiagnostics(rawDiagnostics));
         this.connection.sendDiagnostics({ uri, diagnostics });
         this.sendProjectTreeChanged(uri);
       }
@@ -3108,7 +3336,9 @@ export class ValidationService {
     // Also validate zero-annotation TGG container correspondences aligned by TggCorrespondenceIndexer
     const tggIndexer = uw.tggCorrespondenceIndexer;
     if (tggIndexer) {
-      uw.syncTggCorrespondences?.(uIdx);
+      if ((tggIndexer as any).lastSyncedVersion !== uw.version) {
+        uw.syncTggCorrespondences?.(uIdx);
+      }
       for (const sym of uIdx.symbols.values()) {
         if ((sym.resourceId || sym.documentUri || "") !== effectiveUri) continue;
         for (const slot of tggIndexer.getSlotsForSymbol(sym.id)) {
@@ -3329,8 +3559,7 @@ export class ValidationService {
 
     if (isStale?.()) return diagnostics;
 
-    const finalDiags = deduplicateAllDiagnostics(diagnostics);
-    if (finalDiags.length > 1000) finalDiags.length = 1000;
+    const finalDiags = this.applyDiagnosticFilters(deduplicateAllDiagnostics(diagnostics));
 
     if (!skipSend) {
       this.lastSemanticDiagnostics.set(uri, finalDiags);
@@ -4370,27 +4599,33 @@ export class ValidationService {
    */
   public mergeDigitalThreadDiagnostics(diagsByUri: Map<string, Diagnostic[]>): void {
     const allKnownUris = new Set<string>([...this.digitalThreadDiagnosticsByUri.keys(), ...diagsByUri.keys()]);
+    let didChange = false;
     for (const uri of allKnownUris) {
       const next = diagsByUri.get(uri) || [];
       if (next.length === 0) {
         const hadPrev = this.digitalThreadDiagnosticsByUri.has(uri);
         this.digitalThreadDiagnosticsByUri.delete(uri);
         if (hadPrev) {
-          const base = (this.lastSemanticDiagnostics.get(uri) || []).filter(
-            (d) => d.source !== "modelscript-digital-thread",
+          const base = this.applyDiagnosticFilters(
+            (this.lastSemanticDiagnostics.get(uri) || []).filter((d) => d.source !== "modelscript-digital-thread"),
           );
           this.lastSemanticDiagnostics.set(uri, base);
           this.connection.sendDiagnostics({ uri, diagnostics: base });
+          didChange = true;
         }
       } else {
         this.digitalThreadDiagnosticsByUri.set(uri, next);
         const existing = (this.lastSemanticDiagnostics.get(uri) || []).filter(
           (d) => d.source !== "modelscript-digital-thread",
         );
-        const merged = deduplicateAllDiagnostics([...existing, ...next]);
+        const merged = this.applyDiagnosticFilters(deduplicateAllDiagnostics([...existing, ...next]));
         this.lastSemanticDiagnostics.set(uri, merged);
         this.connection.sendDiagnostics({ uri, diagnostics: merged });
+        didChange = true;
       }
+    }
+    if (didChange) {
+      this.requestCodeLensRefresh();
     }
   }
 
@@ -4410,6 +4645,23 @@ export class ValidationService {
    * contains multiple languages or `@twin:` / `@port_map:` / `@mesh_source:` directives.
    */
   public scheduleDigitalThreadValidation(triggerUri: string, delayMs = 700): void {
+    const openDocs = this.documentManager?.documents?.all?.() ?? [];
+    if (openDocs.length < 2 && this.digitalThreadDiagnosticsByUri.size === 0) {
+      const doc = this.documentManager?.documents?.get?.(triggerUri);
+      const docText = doc?.getText?.() ?? "";
+      const hasDirective =
+        docText.includes("@twin:") ||
+        docText.includes("@port_map:") ||
+        docText.includes("@mesh_source:") ||
+        docText.includes("annotation(twin");
+      const unifiedWs = this.workspaceManager?.unifiedWorkspace as
+        | { getAllDocumentEntries?: () => Array<{ uri?: string; text?: string }> }
+        | undefined;
+      const indexedCount = unifiedWs?.getAllDocumentEntries ? unifiedWs.getAllDocumentEntries().length : 0;
+      if (!hasDirective && indexedCount < 2) {
+        return;
+      }
+    }
     if (this.digitalThreadTimer) {
       clearTimeout(this.digitalThreadTimer);
       this.digitalThreadTimer = null;
@@ -4446,19 +4698,20 @@ export class ValidationService {
       }
     }
 
-    // Fallback: when a single file:// document is opened outside a workspace index, scan sibling files on disk
+    // Fallback: when a single file:// document is opened outside a workspace index, scan sibling files asynchronously with a 5s TTL cache
     if (/^file:\/\//i.test(triggerUri) && typeof process !== "undefined") {
       try {
         const procBuiltin = process as unknown as { getBuiltinModule?: (id: string) => unknown };
         const nodeFs = procBuiltin.getBuiltinModule?.("node:fs") as
           | {
-              existsSync: (p: string) => boolean;
-              readdirSync: (
-                p: string,
-                opts: { withFileTypes: boolean },
-              ) => Array<{ isFile: () => boolean; name: string }>;
-              statSync: (p: string) => { size: number };
-              readFileSync: (p: string, enc: string) => string;
+              promises?: {
+                readdir: (
+                  p: string,
+                  opts: { withFileTypes: boolean },
+                ) => Promise<Array<{ isFile: () => boolean; name: string }>>;
+                stat: (p: string) => Promise<{ size: number }>;
+                readFile: (p: string, enc: string) => Promise<string>;
+              };
             }
           | undefined;
         const nodePath = procBuiltin.getBuiltinModule?.("node:path") as
@@ -4467,9 +4720,15 @@ export class ValidationService {
         const nodeUrl = procBuiltin.getBuiltinModule?.("node:url") as
           | { fileURLToPath: (u: string) => string; pathToFileURL: (p: string) => { href: string } }
           | undefined;
-        if (nodeFs && nodePath && nodeUrl) {
+        if (nodeFs?.promises && nodePath && nodeUrl) {
           const triggerDir = nodePath.dirname(nodeUrl.fileURLToPath(triggerUri));
-          if (nodeFs.existsSync(triggerDir)) {
+          const now = Date.now();
+          const cachedDir = this.siblingDirCache.get(triggerDir);
+          if (cachedDir && now - cachedDir.ts < 5000) {
+            for (const f of cachedDir.files) {
+              addDoc(f.uri, f.content);
+            }
+          } else {
             const siblingExts = new Set([
               ".sysml",
               ".mo",
@@ -4489,7 +4748,9 @@ export class ValidationService {
               ".ofn",
               ".owl2",
             ]);
-            for (const entry of nodeFs.readdirSync(triggerDir, { withFileTypes: true })) {
+            const entries = await nodeFs.promises.readdir(triggerDir, { withFileTypes: true });
+            const scannedFiles: Array<{ uri: string; content: string }> = [];
+            for (const entry of entries) {
               if (!entry.isFile()) continue;
               const ext = nodePath.extname(entry.name).toLowerCase();
               if (!siblingExts.has(ext)) continue;
@@ -4497,12 +4758,23 @@ export class ValidationService {
               const sibUri = nodeUrl.pathToFileURL(fullPath).href;
               const sibKey = sibUri.replace(/^([a-z0-9+-]+):\/(?!\/)/i, "$1:///").toLowerCase();
               if (!byUri.has(sibKey)) {
-                const stat = nodeFs.statSync(fullPath);
-                if (stat.size <= 1024 * 1024) {
-                  addDoc(sibUri, nodeFs.readFileSync(fullPath, "utf-8"));
+                try {
+                  const stat = await nodeFs.promises.stat(fullPath);
+                  if (stat.size <= 1024 * 1024) {
+                    const content = await nodeFs.promises.readFile(fullPath, "utf-8");
+                    scannedFiles.push({ uri: sibUri, content });
+                    addDoc(sibUri, content);
+                  }
+                } catch {
+                  // Ignore unreadable sibling file
                 }
               }
             }
+            if (this.siblingDirCache.size >= 32) {
+              const oldest = this.siblingDirCache.keys().next().value;
+              if (oldest !== undefined) this.siblingDirCache.delete(oldest);
+            }
+            this.siblingDirCache.set(triggerDir, { ts: now, files: scannedFiles });
           }
         }
       } catch {
@@ -4520,9 +4792,18 @@ export class ValidationService {
         f.content.includes("annotation(twin"),
     );
     if (files.length < 2 || (!hasDirectives && uniqueExts.size < 2)) {
+      this.lastDigitalThreadFingerprint = "";
       if (this.digitalThreadDiagnosticsByUri.size > 0) {
         this.mergeDigitalThreadDiagnostics(new Map());
       }
+      return;
+    }
+
+    const fingerprint = files
+      .map((f) => `${f.uri}:${f.content.length}:${f.content.slice(0, 64)}:${f.content.slice(-64)}`)
+      .sort()
+      .join("|");
+    if (fingerprint === this.lastDigitalThreadFingerprint && this.digitalThreadDiagnosticsByUri.size > 0) {
       return;
     }
 
@@ -4579,6 +4860,7 @@ export class ValidationService {
         }
       }
       if (!isStale) {
+        this.lastDigitalThreadFingerprint = fingerprint;
         this.mergeDigitalThreadDiagnostics(diagsByUri);
       }
     } catch {
@@ -4611,6 +4893,11 @@ export class ValidationService {
       });
       if (!res) return;
       this.modelicaProofResultsByUri.set(effectiveUri, res.proofMap);
+      if (textDocument.uri !== effectiveUri) {
+        this.modelicaProofResultsByUri.set(textDocument.uri, res.proofMap);
+      }
+      this.requestCodeLensRefresh();
+      this.emitVerificationStatus(textDocument.uri);
       for (const d of res.diagnostics) {
         diagnostics.push(d as unknown as Diagnostic);
       }
@@ -4634,7 +4921,11 @@ export class ValidationService {
     const ctx = this.parserService?.sharedContext as any;
     if (!ctx || typeof ctx.flattenArena !== "function") return null;
     try {
-      return ctx.flattenArena(name, symbolId, uri) ?? null;
+      return (
+        ctx.flattenArena(name, symbolId, uri, {
+          deadlineMs: Date.now() + Math.max(50, this.daeVerificationBudgetMs),
+        }) ?? null
+      );
     } catch (err: any) {
       this.connection.console.debug?.(`[verification] Could not flatten '${name}' (${uri}): ${err?.message ?? err}`);
       return null;
@@ -4712,6 +5003,19 @@ export class ValidationService {
       } else if (typeof (this.documentManager.documents as any)?.values === "function") {
         candidateDocs = Array.from((this.documentManager.documents as any).values());
       }
+      const getCachedSysmlReqs = (sUri: string, sText: string): any[] => {
+        const cached = this.parsedSysmlReqsCache.get(sUri);
+        if (cached && cached.text === sText) {
+          return cached.reqs;
+        }
+        const reqs = parseSysmlRequirements(sText);
+        if (this.parsedSysmlReqsCache.size >= 128) {
+          const oldest = this.parsedSysmlReqsCache.keys().next().value;
+          if (oldest !== undefined) this.parsedSysmlReqsCache.delete(oldest);
+        }
+        this.parsedSysmlReqsCache.set(sUri, { text: sText, reqs });
+        return reqs;
+      };
       for (const d of candidateDocs) {
         const dUri = d?.uri || "";
         const lang = d?.languageId || "";
@@ -4727,7 +5031,7 @@ export class ValidationService {
         ) {
           seenSysmlUris.add(dUri);
           allSysmlDocs.push({ uri: dUri, text: dText });
-          for (const req of parseSysmlRequirements(dText)) {
+          for (const req of getCachedSysmlReqs(dUri, dText)) {
             taggedSysmlReqs.push({ req, sourceUri: dUri });
           }
         }
@@ -4743,7 +5047,7 @@ export class ValidationService {
           ) {
             seenSysmlUris.add(tUri);
             allSysmlDocs.push({ uri: tUri, text: entry.text });
-            for (const req of parseSysmlRequirements(entry.text)) {
+            for (const req of getCachedSysmlReqs(tUri, entry.text)) {
               taggedSysmlReqs.push({ req, sourceUri: tUri });
             }
           }
@@ -4782,6 +5086,12 @@ export class ValidationService {
 
       this.modelicaDaeVerificationResultsByUri.set(effectiveUri, res.daeMap);
       this.daeVerificationResultsByUri.set(effectiveUri, res.daeMap);
+      if (textDocument.uri !== effectiveUri) {
+        this.modelicaDaeVerificationResultsByUri.set(textDocument.uri, res.daeMap);
+        this.daeVerificationResultsByUri.set(textDocument.uri, res.daeMap);
+      }
+      this.requestCodeLensRefresh();
+      this.emitVerificationStatus(textDocument.uri);
       for (const d of res.diagnostics) {
         diagnostics.push(d as unknown as Diagnostic);
       }
@@ -4796,6 +5106,11 @@ export class ValidationService {
   private checkAutoVerify(effectiveUri: string): void {
     if (this.workspaceManager.unifiedWorkspace) {
       try {
+        const doc = this.documentManager.documents.get(effectiveUri);
+        const currentText = doc?.getText() ?? this.lastIndexedText.get(effectiveUri);
+        if (currentText !== undefined && this.lastAutoVerifiedText.get(effectiveUri) === currentText) {
+          return;
+        }
         const udb = this.workspaceManager.unifiedWorkspace.getIndex();
         const docSymbolIds = udb.symbolsByResource?.get(effectiveUri);
         let hasVerifyCases = false;
@@ -4816,6 +5131,9 @@ export class ValidationService {
           }
         }
         if (hasVerifyCases) {
+          if (currentText !== undefined) {
+            this.lastAutoVerifiedText.set(effectiveUri, currentText);
+          }
           if (this.verificationTimer) clearTimeout(this.verificationTimer);
           const verifyUri = effectiveUri;
           this.verificationTimer = setTimeout(() => {
@@ -5055,7 +5373,10 @@ export class ValidationService {
         (globalThis as any).create_sysml2_query_engine ??
         globalLanguageRegistry.getPluginForLanguageIdOrUri("sysml2")?.createQueryEngine;
       const sysmlEngine = typeof sysmlFactory === "function" ? sysmlFactory(db, verifyCstTreeWrapper) : null;
-      if (!sysmlEngine) return { ok: false };
+      if (!sysmlEngine) {
+        progressReporter?.done("SysML v2 query engine unavailable");
+        return { ok: false };
+      }
       const sysmlDB = sysmlEngine.toQueryDB();
       const newDiagnostics: Diagnostic[] = [];
       const allResults: any[] = [];
@@ -5080,12 +5401,34 @@ export class ValidationService {
         const targetEntry = db.symbols.get(rootNode.targetClassId);
 
         if (targetEntry) {
+          const implNeedle1 = `implements="${targetEntry.name}"`;
+          const implNeedle2 = `::${targetEntry.name}"`;
           for (const entry of db.symbols.values()) {
-            const text = sysmlDB.cstText(entry.startOffset, entry.endOffset, entry);
+            if (entry.kind !== "Class" && entry.kind !== "Def") continue;
+            const resId = entry.resourceId;
             if (
-              text &&
-              (text.includes(`implements="${targetEntry.name}"`) || text.includes(`::${targetEntry.name}"`))
+              !resId ||
+              resId.startsWith("modelica:") ||
+              resId.startsWith("sysml2://stdlib/") ||
+              resId.startsWith("library-bundle:") ||
+              resId.startsWith("builtin:")
             ) {
+              continue;
+            }
+            const loadedText =
+              this.documentManager.documentTrees.get(resId)?.text ??
+              this.documentManager.documents.get(resId)?.getText?.();
+            if (loadedText !== undefined) {
+              if (!loadedText.includes(implNeedle1) && !loadedText.includes(implNeedle2)) continue;
+              const slice = loadedText.substring(entry.startOffset, entry.endOffset);
+              if (slice.includes(implNeedle1) || slice.includes(implNeedle2)) {
+                simTargetId = entry.id;
+                break;
+              }
+              continue;
+            }
+            const text = sysmlDB.cstText(entry.startOffset, entry.endOffset, entry);
+            if (text && (text.includes(implNeedle1) || text.includes(implNeedle2))) {
               simTargetId = entry.id;
               break;
             }
@@ -5119,38 +5462,48 @@ export class ValidationService {
         };
 
         const context = this.parserService.sharedContext;
-        if (!context) return { ok: false, error: "Context not initialized" };
+        if (!context) {
+          progressReporter?.done("Context not initialized");
+          return { ok: false, error: "Context not initialized" };
+        }
         const flattenFn = (globalThis as any).flattenArenaFromInstance;
-        if (typeof flattenFn !== "function") return { ok: false, error: "Flattener not available" };
+        if (typeof flattenFn !== "function") {
+          progressReporter?.done("Flattener not available");
+          return { ok: false, error: "Flattener not available" };
+        }
         const arena = flattenFn(targetModel, context);
-
-        const exp = (arena as any)?.experiment ?? {};
-        const startTime = exp.startTime ?? 0;
-        const stopTime = exp.stopTime ?? 10;
-        const numIntervals = exp.numberOfIntervals;
-        const step = exp.interval ?? (numIntervals && numIntervals > 0 ? (stopTime - startTime) / numIntervals : 0.1);
-
-        const arenaSimResult = simulateArena(arena, {
-          startTime,
-          stopTime,
-          step,
-          atol: exp.tolerance,
-          rtol: exp.tolerance,
-          solver: exp.algorithm as any,
-        });
-
-        if (signal.aborted || progressReporter?.isCancelled) {
-          progressReporter?.done("Verification cancelled");
-          return { ok: false };
-        }
-
+        let arenaSimResult: ReturnType<typeof simulateArena>;
         const simParameters: { name: string; value: number | string | boolean }[] = [];
-        const paramInfo = getArenaParameterInfo(arena);
-        for (const p of paramInfo) {
-          simParameters.push({ name: p.name, value: p.defaultValue });
-        }
-        for (const [sName, sVal] of this.extractArenaStringParams(arena).entries()) {
-          simParameters.push({ name: sName, value: sVal });
+        try {
+          const exp = (arena as any)?.experiment ?? {};
+          const startTime = exp.startTime ?? 0;
+          const stopTime = exp.stopTime ?? 10;
+          const numIntervals = exp.numberOfIntervals;
+          const step = exp.interval ?? (numIntervals && numIntervals > 0 ? (stopTime - startTime) / numIntervals : 0.1);
+
+          arenaSimResult = simulateArena(arena, {
+            startTime,
+            stopTime,
+            step,
+            atol: exp.tolerance,
+            rtol: exp.tolerance,
+            solver: exp.algorithm as any,
+          });
+
+          if (signal.aborted || progressReporter?.isCancelled) {
+            progressReporter?.done("Verification cancelled");
+            return { ok: false };
+          }
+
+          const paramInfo = getArenaParameterInfo(arena);
+          for (const p of paramInfo) {
+            simParameters.push({ name: p.name, value: p.defaultValue });
+          }
+          for (const [sName, sVal] of this.extractArenaStringParams(arena).entries()) {
+            simParameters.push({ name: sName, value: sVal });
+          }
+        } finally {
+          (arena as { free?: () => void } | null)?.free?.();
         }
 
         const simResult = {
@@ -5194,8 +5547,11 @@ export class ValidationService {
         return { ok: false };
       }
 
+      this.lastAutoVerifiedText.set(uri, textDocument.getText());
       this.verificationDiagnosticsByUri.set(uri, newDiagnostics);
       this.verificationResultsByUri.set(uri, allResults);
+      this.requestCodeLensRefresh();
+      this.emitVerificationStatus(uri);
 
       this.validateTextDocument(textDocument);
       progressReporter?.report(100, `Completed ${fileNodes.length} verification case(s)`);
@@ -5213,7 +5569,10 @@ export class ValidationService {
       };
       this.verificationDiagnosticsByUri.set(uri, [crashDiag]);
       const doc = this.documentManager.documents.get(uri);
-      if (doc) this.validateTextDocument(doc);
+      if (doc) {
+        this.lastAutoVerifiedText.set(uri, doc.getText());
+        this.validateTextDocument(doc);
+      }
 
       return { ok: false };
     }

@@ -55,7 +55,13 @@ export function parseSeq(source: string, precomputedCst?: PsseCstDocument): Psse
     const term = isPsseSectionTerminator(fields);
     if (term === "end_file") break;
     if (term === "end_section") {
-      if (!seenHeader && entry.line.toUpperCase().includes("SEQ")) {
+      const upperTerm = entry.line.toUpperCase();
+      if (
+        !seenHeader &&
+        generators.length === 0 &&
+        !upperTerm.includes("END OF") &&
+        (upperTerm.includes("SEQ") || (fields.length >= 2 && Number(fields[1]?.value) >= 30))
+      ) {
         seenHeader = true;
         continue;
       }

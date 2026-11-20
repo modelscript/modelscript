@@ -1945,6 +1945,76 @@ export function evaluateArenaRuntime(
         return 1e100;
       }
 
+      // 8d-2. Modelica.Math.BooleanVectors reductions (andTrue, anyTrue, oneTrue, firstTrueIndex, allTrue, countTrue)
+      if (
+        rawFuncName.includes("BooleanVectors.") ||
+        funcName === "andTrue" ||
+        funcName === "anyTrue" ||
+        funcName === "oneTrue" ||
+        funcName === "firstTrueIndex"
+      ) {
+        const bvShort = rawFuncName.includes(".") ? rawFuncName.slice(rawFuncName.lastIndexOf(".") + 1) : funcName;
+        if (
+          (bvShort === "andTrue" ||
+            bvShort === "allTrue" ||
+            bvShort === "anyTrue" ||
+            bvShort === "oneTrue" ||
+            bvShort === "firstTrueIndex" ||
+            bvShort === "countTrue") &&
+          argCount >= 1
+        ) {
+          const vals: number[] = [];
+          const argKind = arena.getExprKind(firstArgId);
+          if (argKind === ExprKind.ArrayCtor) {
+            const count = arena.getExprData1(firstArgId);
+            const firstElem = arena.getExprLeft(firstArgId);
+            const elemIds = getSequenceElements(arena, firstArgId, count, firstElem);
+            for (const eid of elemIds) {
+              vals.push(evaluateArenaRuntime(arena, eid, valuesByStringId, preValuesByStringId));
+            }
+          } else if (argKind === ExprKind.Name) {
+            const vName = arena.interner.resolve(arena.getExprData1(firstArgId)) ?? "";
+            const vIdx = arena.getVarIdxByName(vName);
+            const dims = vIdx !== -1 ? arena.getVarShape?.(vIdx) : undefined;
+            if (dims && dims.length === 1 && dims[0]! > 0) {
+              for (let k = 1; k <= dims[0]!; k++) {
+                const elemId = arena.interner.intern(`${vName}[${k}]`);
+                vals.push(valuesByStringId[elemId] ?? 0);
+              }
+            } else {
+              for (let k = 1; k <= 1024; k++) {
+                const elemName = `${vName}[${k}]`;
+                if (arena.getVarIdxByName(elemName) === -1) break;
+                const elemId = arena.interner.intern(elemName);
+                vals.push(valuesByStringId[elemId] ?? 0);
+              }
+            }
+          }
+          if (bvShort === "andTrue" || bvShort === "allTrue") {
+            return vals.every((v) => v !== 0) ? 1 : 0;
+          }
+          if (bvShort === "anyTrue") {
+            return vals.some((v) => v !== 0) ? 1 : 0;
+          }
+          if (bvShort === "oneTrue") {
+            let countTrue = 0;
+            for (const v of vals) if (v !== 0) countTrue++;
+            return countTrue === 1 ? 1 : 0;
+          }
+          if (bvShort === "countTrue") {
+            let countTrue = 0;
+            for (const v of vals) if (v !== 0) countTrue++;
+            return countTrue;
+          }
+          if (bvShort === "firstTrueIndex") {
+            for (let k = 0; k < vals.length; k++) {
+              if (vals[k] !== 0) return k + 1;
+            }
+            return 0;
+          }
+        }
+      }
+
       // 8e. Fallback to external MSL C FFI or user-defined functions in `arena.functions`
       const cleanName = rawFuncName.replace(/^\.+/, "");
       const shortName = cleanName.includes(".") ? cleanName.slice(cleanName.lastIndexOf(".") + 1) : cleanName;

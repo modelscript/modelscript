@@ -94,6 +94,34 @@ export let t_nextHeadProbe: UnmanagedUint32Array = changetype<UnmanagedUint32Arr
 export let t_activeHeadNext: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
 /** Intrusive hash-chain next-index links parallel to `t_nextHeads`. */
 export let t_nextHeadNext: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+/** Generation tag parallel to `t_activeHeadProbe` for O(1) probe-table clearing. */
+export let t_activeHeadProbeGen: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+/** Generation tag parallel to `t_nextHeadProbe` for O(1) probe-table clearing. */
+export let t_nextHeadProbeGen: UnmanagedUint32Array = changetype<UnmanagedUint32Array>(0);
+let activeHeadProbeGen: u32 = 1;
+let nextHeadProbeGen: u32 = 1;
+
+@inline
+function bumpActiveProbeGen(): void {
+  activeHeadProbeGen++;
+  if (activeHeadProbeGen == 0) {
+    activeHeadProbeGen = 1;
+    if (changetype<usize>(t_activeHeadProbeGen) != 0) {
+      memory.fill(changetype<usize>(t_activeHeadProbeGen), 0, HEAD_PROBE_SIZE * 4);
+    }
+  }
+}
+
+@inline
+function bumpNextProbeGen(): void {
+  nextHeadProbeGen++;
+  if (nextHeadProbeGen == 0) {
+    nextHeadProbeGen = 1;
+    if (changetype<usize>(t_nextHeadProbeGen) != 0) {
+      memory.fill(changetype<usize>(t_nextHeadProbeGen), 0, HEAD_PROBE_SIZE * 4);
+    }
+  }
+}
 
 /**
  * Initializes the Graph-Structured Stack (GSS) active and next heads buffer memory.
@@ -119,6 +147,14 @@ export function initGSS(): void {
     t_nextHeadProbe = changetype<UnmanagedUint32Array>(heap.alloc(HEAD_PROBE_SIZE * 4));
     memory.fill(changetype<usize>(t_nextHeadProbe), 0, HEAD_PROBE_SIZE * 4);
   }
+  if (changetype<usize>(t_activeHeadProbeGen) == 0) {
+    t_activeHeadProbeGen = changetype<UnmanagedUint32Array>(heap.alloc(HEAD_PROBE_SIZE * 4));
+    memory.fill(changetype<usize>(t_activeHeadProbeGen), 0, HEAD_PROBE_SIZE * 4);
+  }
+  if (changetype<usize>(t_nextHeadProbeGen) == 0) {
+    t_nextHeadProbeGen = changetype<UnmanagedUint32Array>(heap.alloc(HEAD_PROBE_SIZE * 4));
+    memory.fill(changetype<usize>(t_nextHeadProbeGen), 0, HEAD_PROBE_SIZE * 4);
+  }
   if (changetype<usize>(t_activeHeadNext) == 0) {
     t_activeHeadNext = changetype<UnmanagedUint32Array>(heap.alloc(ARENA_BUFFER_SIZE * 4));
   }
@@ -133,19 +169,17 @@ export function initGSS(): void {
   }
   resetFrontierSummary(t_activeSummary);
   resetFrontierSummary(t_nextSummary);
+  bumpActiveProbeGen();
+  bumpNextProbeGen();
   activeHeadsCount = 0;
   nextHeadsCount = 0;
   pausedHeadsCount = 0;
 }
 
-/** Clears both `t_activeHeadProbe` and `t_nextHeadProbe` hash bucket tables to zero. */
+/** Clears both `t_activeHeadProbe` and `t_nextHeadProbe` in O(1) via generation counter bump. */
 export function resetGSSProbe(): void {
-  if (changetype<usize>(t_activeHeadProbe) != 0) {
-    memory.fill(changetype<usize>(t_activeHeadProbe), 0, HEAD_PROBE_SIZE * 4);
-  }
-  if (changetype<usize>(t_nextHeadProbe) != 0) {
-    memory.fill(changetype<usize>(t_nextHeadProbe), 0, HEAD_PROBE_SIZE * 4);
-  }
+  bumpActiveProbeGen();
+  bumpNextProbeGen();
 }
 
 /** Resets the count of paused sub-token GSS heads to zero. */
@@ -458,10 +492,21 @@ export function rebuildFrontierSummary(kind: u32, frontier: UnmanagedUint32Array
   let s = kind == 1 ? t_nextSummary : t_activeSummary;
   resetFrontierSummary(s);
   let probe = kind == 1 ? t_nextHeadProbe : t_activeHeadProbe;
+  let probeGenArr = kind == 1 ? t_nextHeadProbeGen : t_activeHeadProbeGen;
   let nextArr = kind == 1 ? t_nextHeadNext : t_activeHeadNext;
-  let hasProbe = changetype<usize>(probe) != 0 && changetype<usize>(nextArr) != 0;
+  let hasProbe =
+    changetype<usize>(probe) != 0 &&
+    changetype<usize>(probeGenArr) != 0 &&
+    changetype<usize>(nextArr) != 0;
+  let gen: u32 = 0;
   if (hasProbe) {
-    memory.fill(changetype<usize>(probe), 0, HEAD_PROBE_SIZE * 4);
+    if (kind == 1) {
+      bumpNextProbeGen();
+      gen = nextHeadProbeGen;
+    } else {
+      bumpActiveProbeGen();
+      gen = activeHeadProbeGen;
+    }
   }
   for (let i: u32 = 0; i < count; i++) {
     let h = changetype<ParseHead>(frontier[i]);
@@ -469,7 +514,9 @@ export function rebuildFrontierSummary(kind: u32, frontier: UnmanagedUint32Array
       addToFrontierSummary(s, h);
       if (hasProbe) {
         let key: u32 = (((h.state as u32) * 31) ^ h.pos) & HEAD_PROBE_MASK;
-        nextArr[i] = probe[key];
+        let headIdx: u32 = probeGenArr[key] == gen ? probe[key] : 0;
+        nextArr[i] = headIdx;
+        probeGenArr[key] = gen;
         probe[key] = i + 1;
       }
     } else if (hasProbe) {
@@ -482,8 +529,9 @@ export function fastBetterVersionExists(candidate: ParseHead, s: FrontierSummary
   if (changetype<usize>(s) == 0 || s.hasOverflow) return false;
 
   // 1. Healthy head dominates an in-error candidate ONLY if existing has strictly lower error cost
-  // and is at or ahead in the stream.
-  if (candidate.inErrorState && s.healthyCount > s.unconfirmedRepairs) {
+  // and is at or ahead in the stream. When unconfirmed repairs are present, minHealthyCost/posHealthyCost
+  // may include them, so betterVersionExists falls back to slowBetterVersionExists for exact checking.
+  if (candidate.inErrorState && s.healthyCount > 0 && s.unconfirmedRepairs == 0) {
     if (s.minHealthyCost < candidate.errorCost && s.maxHealthyPos >= candidate.pos) {
       if (s.minHealthyCostPos >= candidate.pos) {
         return true;
@@ -604,8 +652,12 @@ export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUin
   if (count == 0) return false;
   let s = isNext ? t_nextSummary : t_activeSummary;
 
+  let needsExact = changetype<usize>(s) == 0 || s.hasOverflow || (candidate.inErrorState && s.unconfirmedRepairs > 0 && s.healthyCount > s.unconfirmedRepairs);
+  if (needsExact) {
+    return slowBetterVersionExists(candidate, frontier, count);
+  }
   let fast = fastBetterVersionExists(candidate, s);
-  if (debugVerifyFrontierPruning || changetype<usize>(s) == 0 || s.hasOverflow) {
+  if (debugVerifyFrontierPruning) {
     let slow = slowBetterVersionExists(candidate, frontier, count);
     if (fast != slow) {
       debugLog(9601, fast ? 1 : 0, slow ? 1 : 0, count);
@@ -701,11 +753,17 @@ export function pushActiveHead(headPtr: u32): boolean {
     return false;
   }
   if (activeHeadsCount == 0 && changetype<usize>(t_activeHeadProbe) != 0) {
-    memory.fill(changetype<usize>(t_activeHeadProbe), 0, HEAD_PROBE_SIZE * 4);
+    bumpActiveProbeGen();
   }
   let probeKey: u32 = (((newHead.state as u32) * 31) ^ newHead.pos) & HEAD_PROBE_MASK;
-  if (changetype<usize>(t_activeHeadProbe) != 0 && changetype<usize>(t_activeHeadNext) != 0) {
-    let currIdx = t_activeHeadProbe[probeKey];
+  if (
+    changetype<usize>(t_activeHeadProbe) != 0 &&
+    changetype<usize>(t_activeHeadProbeGen) != 0 &&
+    changetype<usize>(t_activeHeadNext) != 0
+  ) {
+    let gen = activeHeadProbeGen;
+    let bucketHead: u32 = t_activeHeadProbeGen[probeKey] == gen ? t_activeHeadProbe[probeKey] : 0;
+    let currIdx = bucketHead;
     while (currIdx != 0) {
       let slot = currIdx - 1;
       let r = mergeIntoFrontierSlot(t_activeHeads, slot, newHead, false);
@@ -716,7 +774,8 @@ export function pushActiveHead(headPtr: u32): boolean {
       currIdx = t_activeHeadNext[slot];
     }
     let newSlot = activeHeadsCount;
-    t_activeHeadNext[newSlot] = t_activeHeadProbe[probeKey];
+    t_activeHeadNext[newSlot] = bucketHead;
+    t_activeHeadProbeGen[probeKey] = gen;
     t_activeHeadProbe[probeKey] = newSlot + 1;
   } else {
     for (let i: u32 = 0; i < activeHeadsCount; i++) {
@@ -751,9 +810,10 @@ function isBetterHead(a: ParseHead, b: ParseHead): bool {
 /** Copies every alternative predecessor edge of `from` onto `to`. */
 function inheritEdges(to: ParseHead, from: ParseHead): void {
   let curr = from.firstEdge;
+  let baseDelta = from.dynamicPrec - to.dynamicPrec;
   while (curr != 0) {
     let edge = changetype<GssEdge>(curr);
-    gssAddPredecessor(to, edge.targetHead, edge.astNode);
+    gssAddPredecessor(to, edge.targetHead, edge.astNode, baseDelta + edge.dynamicPrec);
     curr = edge.nextEdge;
   }
 }
@@ -821,11 +881,17 @@ export function pushNextHead(headPtr: u32): boolean {
     return false;
   }
   if (nextHeadsCount == 0 && changetype<usize>(t_nextHeadProbe) != 0) {
-    memory.fill(changetype<usize>(t_nextHeadProbe), 0, HEAD_PROBE_SIZE * 4);
+    bumpNextProbeGen();
   }
   let probeKey: u32 = (((newHead.state as u32) * 31) ^ newHead.pos) & HEAD_PROBE_MASK;
-  if (changetype<usize>(t_nextHeadProbe) != 0 && changetype<usize>(t_nextHeadNext) != 0) {
-    let currIdx = t_nextHeadProbe[probeKey];
+  if (
+    changetype<usize>(t_nextHeadProbe) != 0 &&
+    changetype<usize>(t_nextHeadProbeGen) != 0 &&
+    changetype<usize>(t_nextHeadNext) != 0
+  ) {
+    let gen = nextHeadProbeGen;
+    let bucketHead: u32 = t_nextHeadProbeGen[probeKey] == gen ? t_nextHeadProbe[probeKey] : 0;
+    let currIdx = bucketHead;
     while (currIdx != 0) {
       let slot = currIdx - 1;
       let r = mergeIntoFrontierSlot(t_nextHeads, slot, newHead, true);
@@ -833,7 +899,8 @@ export function pushNextHead(headPtr: u32): boolean {
       currIdx = t_nextHeadNext[slot];
     }
     let newSlot = nextHeadsCount;
-    t_nextHeadNext[newSlot] = t_nextHeadProbe[probeKey];
+    t_nextHeadNext[newSlot] = bucketHead;
+    t_nextHeadProbeGen[probeKey] = gen;
     t_nextHeadProbe[probeKey] = newSlot + 1;
   } else {
     for (let i: u32 = 0; i < nextHeadsCount; i++) {
@@ -874,14 +941,18 @@ export function swapActiveAndNextHeads(): void {
   let tmpProbe = t_activeHeadProbe;
   t_activeHeadProbe = t_nextHeadProbe;
   t_nextHeadProbe = tmpProbe;
+  let tmpProbeGen = t_activeHeadProbeGen;
+  t_activeHeadProbeGen = t_nextHeadProbeGen;
+  t_nextHeadProbeGen = tmpProbeGen;
+  let tmpGenVal = activeHeadProbeGen;
+  activeHeadProbeGen = nextHeadProbeGen;
+  nextHeadProbeGen = tmpGenVal;
   let tmpNext = t_activeHeadNext;
   t_activeHeadNext = t_nextHeadNext;
   t_nextHeadNext = tmpNext;
   activeHeadsCount = nextHeadsCount;
   nextHeadsCount = 0;
-  if (changetype<usize>(t_nextHeadProbe) != 0) {
-    memory.fill(changetype<usize>(t_nextHeadProbe), 0, HEAD_PROBE_SIZE * 4);
-  }
+  bumpNextProbeGen();
 
   let tmpSummary = t_activeSummary;
   t_activeSummary = t_nextSummary;

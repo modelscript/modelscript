@@ -56,7 +56,7 @@
     "bench:accc": "tsx tests/run-70k-accc.ts",
     "build": "npm run sync:schemas && node ../../scripts/build-language-parser.js && npm run build:wasm && tsc",
     "build:parser": "node ../../scripts/build-language-parser.js --force",
-    "build:wasm": "node scripts/build-wasm.js",
+    "build:wasm": "tsx scripts/build-wasm.js",
     "clean": "rimraf dist src-gen as-gen *.wasm",
     "lint": "eslint src tests --no-warn-ignored",
     "playground": "npx tsx ../../scripts/language-playground.ts .",

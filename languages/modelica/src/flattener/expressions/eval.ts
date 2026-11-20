@@ -781,6 +781,54 @@ export function castToRealExpr(exprId: number, dae: DAEBuilder): number {
         return dae.addCallExpr("fill", [castFirstArg, ...otherArgs]);
       }
     }
+    const isIntegerReturningBuiltin =
+      fnName === "integer" ||
+      fnName === "sign" ||
+      fnName === "size" ||
+      fnName === "ndims" ||
+      fnName === "cardinality" ||
+      fnName === "abs" ||
+      fnName === "min" ||
+      fnName === "max" ||
+      fnName === "div" ||
+      fnName === "mod" ||
+      fnName === "rem" ||
+      fnName === "sum" ||
+      fnName === "product" ||
+      fnName === "noEvent" ||
+      fnName === "hold" ||
+      fnName === "previous" ||
+      fnName === "sample" ||
+      fnName === "shiftSample" ||
+      fnName === "subSample" ||
+      fnName === "superSample" ||
+      fnName === "backSample" ||
+      fnName === "noClock";
+    let isKnownIntegerCall = isIntegerReturningBuiltin;
+    if (!isKnownIntegerCall) {
+      type DaeFunctionLookup = {
+        functions?: Map<string, DAEBuilder>;
+        builtinFunctions?: Map<string, DAEBuilder>;
+        parentDae?: DaeFunctionLookup;
+      };
+      const daeLookup = dae as unknown as DaeFunctionLookup;
+      const fnDae =
+        dae.functions.get(fnName) ??
+        daeLookup.builtinFunctions?.get(fnName) ??
+        daeLookup.parentDae?.functions?.get(fnName) ??
+        daeLookup.parentDae?.builtinFunctions?.get(fnName);
+      if (fnDae) {
+        for (let i = 0; i < fnDae.varCount; i++) {
+          if (fnDae.getVarCausality(i) === Causality.Output) {
+            isKnownIntegerCall = fnDae.getVarType(i) === VarType.Integer;
+            break;
+          }
+        }
+      }
+    }
+    if (!isKnownIntegerCall) {
+      return exprId;
+    }
     const dims = getExprDims(exprId, dae);
     if (dims && dims.length > 0) {
       return dae.addCallExpr(`/*Real[${dims.join(", ")}]*/`, [exprId]);

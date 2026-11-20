@@ -1020,6 +1020,8 @@ export declare class SyntaxNode {
   /** Semantic grammar type name. */
   get grammarType(): string;
   /** Extracts the substring from the original source code corresponding to this node. */
+  get merkleLow(): number;
+  get merkleHigh(): number;
   get text(): string;
   /**
    * The encoding divisor to convert raw WASM byte offsets to character offsets.
@@ -1275,6 +1277,15 @@ export declare class TreeSitterParser {
     editNewEnd?: number,
     uri?: string,
   ): Tree | null;
+  /**
+   * Parses `source` using a specific multi-format entry point (e.g. `"raw"`, `"dyr"`, `"seq"`, `"con"`, `"idv"`).
+   * Prepends the Private-Use-Area format sentinel (`\uE000<format>\uE001`) for zero-conflict GLR dispatch.
+   */
+  parseFormat(
+    source: string | Uint8Array,
+    format: string,
+    uri?: string,
+  ): Tree | null;
   reset(): void;
 }
 export declare const WasmLanguageBinding: typeof LspFacade;
@@ -1426,18 +1437,36 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  SourceFile = 10,
-  DataRecord = 11,
-  START = 12,
-  _START = 12,
-  SlashTerminator = 15,
-  BangComment = 16,
-  DoubleSlashComment = 17,
-  NumberNode = 18,
-  Number = 18,
-  QuotedString = 19,
-  Identifier = 20,
-  SymbolPunct = 21,
+  SourceFile = 15,
+  RawFile = 16,
+  RawMetadataLine = 17,
+  RawComment = 18,
+  RawFieldToken = 19,
+  DyrFile = 20,
+  DyrRecord = 21,
+  SeqFile = 22,
+  ConFile = 23,
+  ConComment = 24,
+  ConToken = 25,
+  IdvFile = 26,
+  IdvComment = 27,
+  IdvToken = 28,
+  DataRecord = 29,
+  START = 30,
+  _START = 30,
+  FormatRaw = 45,
+  FormatDyr = 46,
+  FormatSeq = 47,
+  FormatCon = 48,
+  FormatIdv = 49,
+  SlashTerminator = 51,
+  BangComment = 52,
+  DoubleSlashComment = 53,
+  NumberNode = 54,
+  Number = 54,
+  QuotedString = 55,
+  Identifier = 56,
+  SymbolPunct = 57,
   EOF = 1023,
 }
 
@@ -1453,10 +1482,82 @@ export interface SourceFileNode extends SyntaxNode {
   readonly typeId: SyntaxKind.SourceFile;
 }
 export declare function isSourceFile(node: SyntaxNode | null | undefined): node is SourceFileNode;
+export interface RawFileNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.RawFile;
+}
+export declare function isRawFile(node: SyntaxNode | null | undefined): node is RawFileNode;
+export interface RawMetadataLineNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.RawMetadataLine;
+}
+export declare function isRawMetadataLine(node: SyntaxNode | null | undefined): node is RawMetadataLineNode;
+export interface RawCommentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.RawComment;
+}
+export declare function isRawComment(node: SyntaxNode | null | undefined): node is RawCommentNode;
+export interface RawFieldTokenNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.RawFieldToken;
+}
+export declare function isRawFieldToken(node: SyntaxNode | null | undefined): node is RawFieldTokenNode;
+export interface DyrFileNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DyrFile;
+}
+export declare function isDyrFile(node: SyntaxNode | null | undefined): node is DyrFileNode;
+export interface DyrRecordNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.DyrRecord;
+}
+export declare function isDyrRecord(node: SyntaxNode | null | undefined): node is DyrRecordNode;
+export interface SeqFileNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.SeqFile;
+}
+export declare function isSeqFile(node: SyntaxNode | null | undefined): node is SeqFileNode;
+export interface ConFileNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ConFile;
+}
+export declare function isConFile(node: SyntaxNode | null | undefined): node is ConFileNode;
+export interface ConCommentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ConComment;
+}
+export declare function isConComment(node: SyntaxNode | null | undefined): node is ConCommentNode;
+export interface ConTokenNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.ConToken;
+}
+export declare function isConToken(node: SyntaxNode | null | undefined): node is ConTokenNode;
+export interface IdvFileNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.IdvFile;
+}
+export declare function isIdvFile(node: SyntaxNode | null | undefined): node is IdvFileNode;
+export interface IdvCommentNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.IdvComment;
+}
+export declare function isIdvComment(node: SyntaxNode | null | undefined): node is IdvCommentNode;
+export interface IdvTokenNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.IdvToken;
+}
+export declare function isIdvToken(node: SyntaxNode | null | undefined): node is IdvTokenNode;
 export interface DataRecordNode extends SyntaxNode {
   readonly typeId: SyntaxKind.DataRecord;
 }
 export declare function isDataRecord(node: SyntaxNode | null | undefined): node is DataRecordNode;
+export interface FormatRawNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FormatRaw;
+}
+export declare function isFormatRaw(node: SyntaxNode | null | undefined): node is FormatRawNode;
+export interface FormatDyrNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FormatDyr;
+}
+export declare function isFormatDyr(node: SyntaxNode | null | undefined): node is FormatDyrNode;
+export interface FormatSeqNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FormatSeq;
+}
+export declare function isFormatSeq(node: SyntaxNode | null | undefined): node is FormatSeqNode;
+export interface FormatConNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FormatCon;
+}
+export declare function isFormatCon(node: SyntaxNode | null | undefined): node is FormatConNode;
+export interface FormatIdvNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.FormatIdv;
+}
+export declare function isFormatIdv(node: SyntaxNode | null | undefined): node is FormatIdvNode;
 export interface SlashTerminatorNode extends SyntaxNode {
   readonly typeId: SyntaxKind.SlashTerminator;
 }
@@ -1493,10 +1594,100 @@ export declare namespace Cst {
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is SourceFileNode;
   };
+  export const RawFile: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is RawFileNode;
+  };
+  export const RawMetadataLine: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is RawMetadataLineNode;
+  };
+  export const RawComment: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is RawCommentNode;
+  };
+  export const RawFieldToken: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is RawFieldTokenNode;
+  };
+  export const DyrFile: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DyrFileNode;
+  };
+  export const DyrRecord: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is DyrRecordNode;
+  };
+  export const SeqFile: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is SeqFileNode;
+  };
+  export const ConFile: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ConFileNode;
+  };
+  export const ConComment: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ConCommentNode;
+  };
+  export const ConToken: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is ConTokenNode;
+  };
+  export const IdvFile: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IdvFileNode;
+  };
+  export const IdvComment: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IdvCommentNode;
+  };
+  export const IdvToken: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is IdvTokenNode;
+  };
   export const DataRecord: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DataRecordNode;
+  };
+  export const FormatRaw: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FormatRawNode;
+  };
+  export const FormatDyr: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FormatDyrNode;
+  };
+  export const FormatSeq: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FormatSeqNode;
+  };
+  export const FormatCon: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FormatConNode;
+  };
+  export const FormatIdv: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is FormatIdvNode;
   };
   export const SlashTerminator: {
     readonly typeId: number;

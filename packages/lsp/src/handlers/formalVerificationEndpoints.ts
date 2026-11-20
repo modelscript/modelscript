@@ -91,87 +91,93 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
         if (!docContext) return { success: false, error: "Context not initialized." };
 
         const arena = flattenArenaFromInstance(target, docContext);
-        const tSpan: [number, number] = params.tSpan ?? [0, 1.0];
-        const dt = params.dt ?? 0.05;
+        try {
+          const tSpan: [number, number] = params.tSpan ?? [0, 1.0];
+          const dt = params.dt ?? 0.05;
 
-        // Yield again during heavy computation
-        await new Promise((resolve) => setTimeout(resolve, 5));
+          // Yield again during heavy computation
+          await new Promise((resolve) => setTimeout(resolve, 5));
 
-        const verifyReport = await UnifiedVerifier.verify(
-          { uri: params.uri, arena },
-          { flowpipes: true, flowpipeHorizon: tSpan[1], flowpipeDt: dt },
-        );
-        const fpStage = verifyReport.stages["flowpipes"];
-        const fpDetails = fpStage?.details;
-
-        let times: number[];
-        let variableNames: string[];
-        let tubes: { lo: number; hi: number }[][];
-        let usedNumericalFallback = false;
-
-        if (fpDetails?.steps && Array.isArray(fpDetails.steps) && fpDetails.steps.length > 0) {
-          times = fpDetails.steps.map((s: any) => s.tEnd ?? s.t ?? 0);
-          variableNames = fpDetails.stateNames?.length ? fpDetails.stateNames : [arena.getVarName(0) || "x"];
-          tubes = fpDetails.steps.map((s: any) =>
-            (s.xEnclosure || []).map((iv: any) => ({ lo: iv.lo ?? -1, hi: iv.hi ?? 1 })),
+          const verifyReport = await UnifiedVerifier.verify(
+            { uri: params.uri, arena },
+            { flowpipes: true, flowpipeHorizon: tSpan[1], flowpipeDt: dt },
           );
-        } else {
-          usedNumericalFallback = true;
-          try {
-            const simRes = simulateArena(arena as any, {
-              startTime: tSpan[0],
-              stopTime: tSpan[1],
-              step: dt,
-              solver: "dopri5",
-            });
-            times = simRes.t;
-            variableNames = simRes.states.length > 0 ? simRes.states : [arena.getVarName(0) || "x"];
-            tubes = simRes.y.map((row) =>
-              (row.length > 0 ? row : [0]).map((val) => ({
-                lo: val - Math.max(1e-3, Math.abs(val) * 0.02),
-                hi: val + Math.max(1e-3, Math.abs(val) * 0.02),
-              })),
+          const fpStage = verifyReport.stages["flowpipes"];
+          const fpDetails = fpStage?.details;
+
+          let times: number[];
+          let variableNames: string[];
+          let tubes: { lo: number; hi: number }[][];
+          let usedNumericalFallback = false;
+
+          if (fpDetails?.steps && Array.isArray(fpDetails.steps) && fpDetails.steps.length > 0) {
+            times = fpDetails.steps.map((s: any) => s.tEnd ?? s.t ?? 0);
+            variableNames = fpDetails.stateNames?.length ? fpDetails.stateNames : [arena.getVarName(0) || "x"];
+            tubes = fpDetails.steps.map((s: any) =>
+              (s.xEnclosure || []).map((iv: any) => ({ lo: iv.lo ?? -1, hi: iv.hi ?? 1 })),
             );
-          } catch {
-            const numSteps = Math.max(2, Math.ceil((tSpan[1] - tSpan[0]) / dt));
-            times = Array.from({ length: numSteps }, (_, i) => tSpan[0] + i * dt);
-            variableNames = [arena.getVarName(0) || "x"];
-            tubes = times.map((t) => [{ lo: -1.0 * Math.exp(-t), hi: 1.0 * Math.exp(-t) }]);
+          } else {
+            usedNumericalFallback = true;
+            try {
+              const simRes = simulateArena(arena as any, {
+                startTime: tSpan[0],
+                stopTime: tSpan[1],
+                step: dt,
+                solver: "dopri5",
+              });
+              times = simRes.t;
+              variableNames = simRes.states.length > 0 ? simRes.states : [arena.getVarName(0) || "x"];
+              tubes = simRes.y.map((row) =>
+                (row.length > 0 ? row : [0]).map((val) => ({
+                  lo: val - Math.max(1e-3, Math.abs(val) * 0.02),
+                  hi: val + Math.max(1e-3, Math.abs(val) * 0.02),
+                })),
+              );
+            } catch {
+              const numSteps = Math.max(2, Math.ceil((tSpan[1] - tSpan[0]) / dt));
+              times = Array.from({ length: numSteps }, (_, i) => tSpan[0] + i * dt);
+              variableNames = [arena.getVarName(0) || "x"];
+              tubes = times.map((t) => [{ lo: -1.0 * Math.exp(-t), hi: 1.0 * Math.exp(-t) }]);
+            }
           }
+
+          const canonicalTrace = TraceRecordNormalizer.fromFlowpipeTubes({
+            times,
+            variableNames,
+            tubes,
+            propertyName: usedNumericalFallback
+              ? "NumericalTrajectorySensitivityTube"
+              : "ContinuousReachabilityEnvelope",
+          });
+
+          const { verifyArenaFormal } = await import("@modelscript/modelica");
+          const formalCst = target.entry ? docContext.queryEngine.toQueryDB().cstNode(target.entry.id) : null;
+          const formalDiagnostics = await verifyArenaFormal(arena, target.name, formalCst, null);
+
+          return {
+            success: true,
+            status: fpStage?.certified
+              ? "CERTIFIED_SAFE"
+              : fpStage?.passed === false
+                ? "VIOLATED"
+                : usedNumericalFallback
+                  ? "ESTIMATED_ENVELOPE"
+                  : "VERIFIED_ENVELOPE",
+            method: usedNumericalFallback ? "DOPRI5_SensitivityTube (Non-Rigorous)" : "TaylorModelPicardFlowpipe",
+            timeHorizon: tSpan,
+            stepSize: dt,
+            numVariables: arena.varCount,
+            canonicalTrace,
+            formalDiagnostics,
+            summary:
+              fpStage?.summary ??
+              (usedNumericalFallback
+                ? `Formal Picard flowpipe unavailable for ${target.name}; returning numerical sensitivity tube over t=[${tSpan[0]}, ${tSpan[1]}].`
+                : `Formal reachability flowpipe evaluated for ${target.name} over t=[${tSpan[0]}, ${tSpan[1]}].`),
+          };
+        } finally {
+          (arena as { free?: () => void } | null)?.free?.();
         }
-
-        const canonicalTrace = TraceRecordNormalizer.fromFlowpipeTubes({
-          times,
-          variableNames,
-          tubes,
-          propertyName: usedNumericalFallback ? "NumericalTrajectorySensitivityTube" : "ContinuousReachabilityEnvelope",
-        });
-
-        const { verifyArenaFormal } = await import("@modelscript/modelica");
-        const formalCst = target.entry ? docContext.queryEngine.toQueryDB().cstNode(target.entry.id) : null;
-        const formalDiagnostics = await verifyArenaFormal(arena, target.name, formalCst, null);
-
-        return {
-          success: true,
-          status: fpStage?.certified
-            ? "CERTIFIED_SAFE"
-            : fpStage?.passed === false
-              ? "VIOLATED"
-              : usedNumericalFallback
-                ? "ESTIMATED_ENVELOPE"
-                : "VERIFIED_ENVELOPE",
-          method: usedNumericalFallback ? "DOPRI5_SensitivityTube (Non-Rigorous)" : "TaylorModelPicardFlowpipe",
-          timeHorizon: tSpan,
-          stepSize: dt,
-          numVariables: arena.varCount,
-          canonicalTrace,
-          formalDiagnostics,
-          summary:
-            fpStage?.summary ??
-            (usedNumericalFallback
-              ? `Formal Picard flowpipe unavailable for ${target.name}; returning numerical sensitivity tube over t=[${tSpan[0]}, ${tSpan[1]}].`
-              : `Formal reachability flowpipe evaluated for ${target.name} over t=[${tSpan[0]}, ${tSpan[1]}].`),
-        };
       } catch (e) {
         return { success: false, error: e instanceof Error ? e.message : String(e) };
       }
@@ -255,19 +261,23 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
             if (found) target = found;
           }
           const arena = flattenArenaFromInstance(target, docContext);
-          const verifyReport = await UnifiedVerifier.verify({ uri: params.uri, arena }, { barriers: true });
-          const barrierStage = verifyReport.stages["barriers"];
-          if (barrierStage?.details?.barrierCoefficients) {
-            return {
-              success: true,
-              isCertifiedSafe: Boolean(barrierStage.certified),
-              candidateFound: Boolean(barrierStage.details.candidateFound),
-              verdict: barrierStage.details.verdict,
-              boundToModel: true,
-              degree: barrierStage.details.barrierDegree ?? 2,
-              stateNames: barrierStage.details.stateNames ?? [],
-              summary: barrierStage.summary,
-            };
+          try {
+            const verifyReport = await UnifiedVerifier.verify({ uri: params.uri, arena }, { barriers: true });
+            const barrierStage = verifyReport.stages["barriers"];
+            if (barrierStage?.details?.barrierCoefficients) {
+              return {
+                success: true,
+                isCertifiedSafe: Boolean(barrierStage.certified),
+                candidateFound: Boolean(barrierStage.details.candidateFound),
+                verdict: barrierStage.details.verdict,
+                boundToModel: true,
+                degree: barrierStage.details.barrierDegree ?? 2,
+                stateNames: barrierStage.details.stateNames ?? [],
+                summary: barrierStage.summary,
+              };
+            }
+          } finally {
+            (arena as { free?: () => void } | null)?.free?.();
           }
         }
 

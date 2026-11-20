@@ -15,6 +15,7 @@
 
 import type { ConflictClause, SharedEquality, TheoryLiteral, TheoryOracle } from "../theory_coordinator.js";
 import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
+import { UndoTrail } from "./undo_trail.js";
 
 export type FlowDirection = "in" | "out" | "inout";
 
@@ -72,18 +73,7 @@ export class FlowAlgebraOracle implements TheoryOracle {
 
   private sharedEqualities: SharedEquality[] = [];
 
-  private levelStack: {
-    portTypes: Map<string, PortTypeDefinition>;
-    portInstances: Map<string, PortInstance>;
-    connections: [string, string][];
-    spatialPatches: Map<string, SpatialCfdPatchSpec>;
-    patch1DConnections: Map<string, string>;
-    spatialFluxes: Map<string, SpatialFluxMeasurement>;
-    portValues1D: Map<string, OneDPortValues>;
-    aliases: Map<string, string>;
-    sharedEqualities: SharedEquality[];
-    assertedLitIds: number[];
-  }[] = [];
+  private trail = new UndoTrail();
 
   private nextLiteralId = 10000;
 
@@ -102,49 +92,34 @@ export class FlowAlgebraOracle implements TheoryOracle {
     this.patch1DConnections.clear();
     this.spatialFluxes.clear();
     this.portValues1D.clear();
-    this.levelStack = [];
+    this.trail.reset();
   }
 
   public pushLevel(): void {
-    this.levelStack.push({
-      portTypes: new Map(this.portTypes),
-      portInstances: new Map(this.portInstances),
-      connections: this.connections.map(([a, b]) => [a, b]),
-      spatialPatches: new Map(this.spatialPatches),
-      patch1DConnections: new Map(this.patch1DConnections),
-      spatialFluxes: new Map(this.spatialFluxes),
-      portValues1D: new Map(this.portValues1D),
-      aliases: new Map(this.aliases),
-      sharedEqualities: [...this.sharedEqualities],
-      assertedLitIds: [],
-    });
+    this.trail.pushLevel();
   }
 
   public popLevel(): void {
-    const top = this.levelStack.pop();
-    if (!top) return;
-    this.portTypes = top.portTypes;
-    this.portInstances = top.portInstances;
-    this.connections = top.connections;
-    this.spatialPatches = top.spatialPatches;
-    this.patch1DConnections = top.patch1DConnections;
-    this.spatialFluxes = top.spatialFluxes;
-    this.portValues1D = top.portValues1D;
-    this.aliases = top.aliases;
-    this.sharedEqualities = top.sharedEqualities;
-    for (const id of top.assertedLitIds) {
-      this.assertedLiterals.delete(id);
-    }
+    this.trail.popLevel();
   }
 
   private getCanonicalPort(port: string): string {
+    const directParent = this.aliases.get(port);
+    if (!directParent || directParent === port) {
+      return port;
+    }
+    const grandParent = this.aliases.get(directParent);
+    if (!grandParent || grandParent === directParent) {
+      return directParent;
+    }
+
     let curr = port;
     const visited = new Set<string>();
     const path: string[] = [];
 
     while (true) {
       if (visited.has(curr)) {
-        this.aliases.set(curr, curr);
+        this.trail.mapSet(this.aliases, curr, curr);
         break;
       }
       visited.add(curr);
@@ -158,7 +133,9 @@ export class FlowAlgebraOracle implements TheoryOracle {
 
     const root = curr;
     for (const node of path) {
-      this.aliases.set(node, root);
+      if (this.aliases.get(node) !== root) {
+        this.trail.mapSet(this.aliases, node, root);
+      }
     }
     return root;
   }
@@ -223,21 +200,18 @@ export class FlowAlgebraOracle implements TheoryOracle {
   }
 
   public assertLiteral(lit: TheoryLiteral): boolean {
-    this.assertedLiterals.set(lit.id, lit);
-    if (this.levelStack.length > 0) {
-      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
-    }
+    this.trail.mapSet(this.assertedLiterals, lit.id, lit);
     const { predicate, args } = lit;
 
     switch (predicate) {
       case "portType": {
         const [name, items] = args as [string, FlowItemSpec[]];
-        this.portTypes.set(name, { name, items });
+        this.trail.mapSet(this.portTypes, name, { name, items });
         break;
       }
       case "portUsage": {
         const [instName, typeName, isConjugated] = args as [string, string, boolean?];
-        this.portInstances.set(instName, {
+        this.trail.mapSet(this.portInstances, instName, {
           name: instName,
           typeName,
           isConjugated: !!isConjugated,
@@ -246,7 +220,7 @@ export class FlowAlgebraOracle implements TheoryOracle {
       }
       case "connect": {
         const [portA, portB] = args as [string, string];
-        this.connections.push([portA, portB]);
+        this.trail.arrayPush(this.connections, [portA, portB]);
         break;
       }
       case "spatialPatch": {
@@ -256,22 +230,22 @@ export class FlowAlgebraOracle implements TheoryOracle {
           [number, number, number],
           number,
         ];
-        this.spatialPatches.set(patchName, { patchName, surfaceAreaM2, normalVector, fluidDensity });
+        this.trail.mapSet(this.spatialPatches, patchName, { patchName, surfaceAreaM2, normalVector, fluidDensity });
         break;
       }
       case "connect1Dto3D": {
         const [oneDPort, cfdPatch] = args as [string, string];
-        this.patch1DConnections.set(oneDPort, cfdPatch);
+        this.trail.mapSet(this.patch1DConnections, oneDPort, cfdPatch);
         break;
       }
       case "spatialFlux": {
         const [patchName, integratedMassFlow, meanPressure] = args as [string, number, number];
-        this.spatialFluxes.set(patchName, { patchName, integratedMassFlow, meanPressure });
+        this.trail.mapSet(this.spatialFluxes, patchName, { patchName, integratedMassFlow, meanPressure });
         break;
       }
       case "portValue1D": {
         const [portName, massFlow, pressure] = args as [string, number, number];
-        this.portValues1D.set(portName, { portName, massFlow, pressure });
+        this.trail.mapSet(this.portValues1D, portName, { portName, massFlow, pressure });
         break;
       }
     }
@@ -283,16 +257,18 @@ export class FlowAlgebraOracle implements TheoryOracle {
     const hasShared = hasSharedEqualityWithLiteral(this.sharedEqualities, litId);
     if (!this.assertedLiterals.has(litId) && !hasShared) return;
     this.assertedLiterals.delete(litId);
-    const savedStack = this.levelStack;
+    const savedDepth = this.trail.depth;
     const remaining = Array.from(this.assertedLiterals.values());
     const remainingSharedEqs = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
     this.reset();
-    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
     for (const eq of remainingSharedEqs) {
       this.onSharedEquality(eq);
+    }
+    for (let i = 0; i < savedDepth; i++) {
+      this.trail.pushLevel();
     }
   }
 
@@ -459,12 +435,12 @@ export class FlowAlgebraOracle implements TheoryOracle {
   }
 
   public onSharedEquality(eq: SharedEquality): void {
-    this.sharedEqualities.push(eq);
+    this.trail.arrayPush(this.sharedEqualities, eq);
     if (eq.varA && eq.varB && eq.varA !== eq.varB) {
       const rootA = this.getCanonicalPort(eq.varA);
       const rootB = this.getCanonicalPort(eq.varB);
       if (rootA !== rootB) {
-        this.aliases.set(rootA, rootB);
+        this.trail.mapSet(this.aliases, rootA, rootB);
       }
     }
   }

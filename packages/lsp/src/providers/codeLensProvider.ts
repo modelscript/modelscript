@@ -200,4 +200,61 @@ export function registerCodeLensProvider(context: LspContext) {
 
     return lenses;
   });
+
+  context.connection.onRequest("codeLens/resolve", (lens: CodeLens): CodeLens => {
+    const data = lens.data as { kind?: string; uri?: string; className?: string } | undefined;
+    if (!data || !data.uri || !data.className || lens.command) {
+      return lens;
+    }
+    const effectiveUri = data.uri.startsWith("modelscript-lib://global")
+      ? "file://" + data.uri.substring("modelscript-lib://global".length)
+      : data.uri;
+    if (data.kind === "modelicaProof") {
+      const proofMap =
+        context.validationService?.modelicaProofResultsByUri?.get(data.uri) ??
+        context.validationService?.modelicaProofResultsByUri?.get(effectiveUri);
+      const proof = proofMap?.get(data.className);
+      if (proof) {
+        const title =
+          proof.definiteBugs?.length > 0
+            ? `✗ Formal Defect: ${proof.definiteBugs.length} bug(s) detected`
+            : proof.potentialBugs?.length > 0
+              ? `⚠ Formal Proof: ${proof.potentialBugs.length} unproven condition(s)`
+              : "✓ Formally Verified (0 RTEs, 100% Proven Safe)";
+        return {
+          ...lens,
+          command: {
+            title,
+            command: "modelscript.showProofDetails",
+            arguments: [data.uri, data.className, proof.formattedMatrix],
+          },
+        };
+      }
+    } else if (data.kind === "modelicaDae") {
+      const daeMap =
+        context.validationService?.modelicaDaeVerificationResultsByUri?.get(data.uri) ??
+        context.validationService?.modelicaDaeVerificationResultsByUri?.get(effectiveUri);
+      const daeProof = daeMap?.get(data.className);
+      if (daeProof) {
+        const definite = daeProof.issues?.find((i: { severity?: string }) => i.severity === "definite");
+        const title =
+          daeProof.issues?.length > 0
+            ? definite
+              ? `✗ DAE Defect: ${definite.message}`
+              : `⚠ DAE Invariant: ${daeProof.issues[0].message}`
+            : daeProof.verdict?.kind === "proven"
+              ? "✓ DAE: no singularities (interval analysis, all variables bounded)"
+              : `◌ DAE: no singularity found among bounded variables (${daeProof.unboundedVariables ?? "some"} unbounded — not proven)`;
+        return {
+          ...lens,
+          command: {
+            title,
+            command: "modelscript.showDaeVerificationDetails",
+            arguments: [data.uri, data.className, daeProof],
+          },
+        };
+      }
+    }
+    return lens;
+  });
 }

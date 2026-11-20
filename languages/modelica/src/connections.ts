@@ -10,6 +10,7 @@ import {
   UnifiedWorkspace,
   VarAttrKind,
   Variability,
+  VarType,
 } from "@modelscript/runtime";
 import { ModelicaErrorCode } from "./errors.js";
 import {
@@ -914,6 +915,24 @@ export class ModelicaPortBalancer {
         const getBase = (s: string) => stripArraySubscripts(s);
         const fromHasSub = fromStr.includes("[");
         const toHasSub = toStr.includes("[");
+
+        if ((!fromDesc || fromDesc.length === 0) && (!toDesc || toDesc.length === 0) && (fromHasSub || toHasSub)) {
+          const isScalarOrSubscriptedNonFlow = (str: string, exactIdx: number): boolean => {
+            if (exactIdx !== -1 && !dae.isVarRemoved(exactIdx) && !dae.isVarFlow(exactIdx)) return true;
+            const base = stripArraySubscripts(str);
+            if (base !== str) {
+              const baseIdx = dae.getVarIdxByName(base);
+              if (baseIdx !== -1 && !dae.isVarRemoved(baseIdx) && !dae.isVarFlow(baseIdx)) return true;
+            }
+            return false;
+          };
+          if (isScalarOrSubscriptedNonFlow(fromStr, fromExact) && isScalarOrSubscriptedNonFlow(toStr, toExact)) {
+            if (!isBrokenOverconstrainedVarPair(fromStr, toStr)) {
+              dae.addEquation(EqKind.Simple, dae.addNameExpr(fromStr), dae.addNameExpr(toStr));
+            }
+            continue;
+          }
+        }
 
         let fDesc = fromDesc;
         let tDesc = toDesc;
@@ -2357,15 +2376,34 @@ export class ModelicaPortBalancer {
             if (
               options?.omcCompatibility &&
               (dae.getVarVariability(potRoot) === Variability.Parameter ||
-                dae.getVarVariability(vIdx) === Variability.Parameter)
+                dae.getVarVariability(vIdx) === Variability.Parameter ||
+                dae.getVarVariability(potRoot) === Variability.Constant ||
+                dae.getVarVariability(vIdx) === Variability.Constant)
             ) {
-              const eqExpr = dae.addBinaryExpr(BinOp.Eq, rootExpr, vExpr);
-              const msgExpr = dae.addExpression(
-                ExprKind.StringLiteral,
-                dae.interner.intern("automatically generated from connect"),
-              );
-              const callExpr = dae.addCallExpr("assert", [eqExpr, msgExpr]);
-              potentialEqs.push({ kind: EqKind.FunctionCall, lhs: callExpr, rhs: 0, str: dae.getVarName(potRoot) });
+              const isRealPair =
+                !options?.isOldFrontend &&
+                dae.getVarType(potRoot) === VarType.Real &&
+                dae.getVarType(vIdx) === VarType.Real;
+              if (isRealPair) {
+                const diffExpr = dae.addBinaryExpr(BinOp.Sub, rootExpr, vExpr);
+                const absExpr = dae.addCallExpr("abs", [diffExpr]);
+                const zeroExpr = dae.addRealLiteral(0.0);
+                const condExpr = dae.addBinaryExpr(BinOp.Lte, absExpr, zeroExpr);
+                const msgExpr = dae.addExpression(
+                  ExprKind.StringLiteral,
+                  dae.interner.intern("Connected constants/parameters must be equal"),
+                );
+                const callExpr = dae.addCallExpr("assert", [condExpr, msgExpr]);
+                potentialEqs.push({ kind: EqKind.FunctionCall, lhs: callExpr, rhs: 0, str: dae.getVarName(potRoot) });
+              } else {
+                const eqExpr = dae.addBinaryExpr(BinOp.Eq, rootExpr, vExpr);
+                const msgExpr = dae.addExpression(
+                  ExprKind.StringLiteral,
+                  dae.interner.intern("automatically generated from connect"),
+                );
+                const callExpr = dae.addCallExpr("assert", [eqExpr, msgExpr]);
+                potentialEqs.push({ kind: EqKind.FunctionCall, lhs: callExpr, rhs: 0, str: dae.getVarName(potRoot) });
+              }
             } else {
               let finalLhs = rootExpr;
               let finalRhs = vExpr;

@@ -13,5 +13,6 @@ export * from "./lsp.js";
 export * from "./parser/spice-parser.js";
 export * from "./projections/index.js";
 export * from "./solvers/index.js";
+export * from "./solvers/spice-emt-participant.js";
 export * from "./tgg/index.js";
 export * from "./types.js";

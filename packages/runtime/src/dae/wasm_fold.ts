@@ -4330,7 +4330,9 @@ function isRealType(dae: DAEBuilder, exprId: number): boolean {
  */
 export function scalarizeArena(dae: DAEBuilder, expandArrayEquations = false): DAEBuilder {
   // --- Step 1: Clone Model Metadata & Index Array Variable Shapes ---
-  const out = new DAEBuilder(dae.interner);
+  const out = dae.exports
+    ? new DAEBuilder(dae.exports, dae.name || "Model", dae.description || "", dae.interner)
+    : new DAEBuilder(dae.interner);
   out.name = dae.name;
   out.classKind = dae.classKind;
   out.description = dae.description;

@@ -44,6 +44,7 @@ export class DpoGraph {
   nodeCount: u32;
   edgeCount: u32;
   freeNodeHead: u32; // 1-based slot index (0 = empty)
+  freeEdgeHead: u32; // 1-based edge slot index (0 = empty)
   topologyVersion: u32;
 
   init(initialNodes: u32 = 512, initialEdges: u32 = 1024): void {
@@ -52,6 +53,7 @@ export class DpoGraph {
     this.nodeCount = 0;
     this.edgeCount = 0;
     this.freeNodeHead = 0;
+    this.freeEdgeHead = 0;
     this.topologyVersion = 1;
   }
 
@@ -103,7 +105,13 @@ export class DpoGraph {
   addEdge(sourceNodeId: u32, targetNodeId: u32, edgeType: u16): u32 {
     if (!this.isNodeActive(sourceNodeId) || !this.isNodeActive(targetNodeId)) return 0;
 
-    let edgeSlot = this.edgeCount++;
+    let edgeSlot: u32;
+    if (this.freeEdgeHead != 0) {
+      edgeSlot = this.freeEdgeHead - 1;
+      this.freeEdgeHead = this.edges.get(edgeSlot * DPO_EDGE_STRIDE + DPO_EDGE_NEXT);
+    } else {
+      edgeSlot = this.edgeCount++;
+    }
     let edgeOffset = edgeSlot * DPO_EDGE_STRIDE;
 
     let srcSlot = sourceNodeId - 1;
@@ -137,6 +145,7 @@ export class DpoGraph {
    */
   @inline
   checkDanglingEdge(nodeId: u32, matchedIncidentDegree: u32): boolean {
+    if (!this.isNodeActive(nodeId)) return false;
     let hostDeg = this.getNodeDegree(nodeId);
     return hostDeg == matchedIncidentDegree;
   }
@@ -207,7 +216,9 @@ export class DpoGraph {
       if (tgtDeg > 0) this.nodes.set(tgtOffset + DPO_NODE_DEGREE, tgtDeg - 1);
     }
 
-    this.edges.set(edgeOffset + DPO_EDGE_NEXT, 0);
+    // Recycle edge slot onto freelist
+    this.edges.set(edgeOffset + DPO_EDGE_NEXT, this.freeEdgeHead);
+    this.freeEdgeHead = edgeSlot + 1;
     return true;
   }
 
@@ -282,8 +293,23 @@ export class DpoGraph {
     let newOffset = newTgtSlot * DPO_NODE_STRIDE + DPO_NODE_DEGREE;
     let newDeg = this.nodes.get(newOffset);
     this.nodes.set(newOffset, newDeg + 1);
+    this.topologyVersion++;
 
     return true;
+  }
+
+  reset(): void {
+    this.nodeCount = 0;
+    this.edgeCount = 0;
+    this.freeNodeHead = 0;
+    this.freeEdgeHead = 0;
+    this.topologyVersion++;
+    if (changetype<usize>(this.nodes) != 0) this.nodes.clear();
+    if (changetype<usize>(this.edges) != 0) this.edges.clear();
+  }
+
+  dispose(): void {
+    this.reset();
   }
 }
 

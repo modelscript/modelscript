@@ -19,6 +19,34 @@ export const iec104Language = language({
   lsp: {
     fileExtensions: [".iec104", ".104"],
   },
+  ui: {
+    toolbarButtons: [
+      {
+        id: "lowerIec104Dae",
+        label: "Lower IEC 60870-5-104 Profile to DAE",
+        shortLabel: "Lower IEC",
+        tooltip: "Lower IEC 60870-5-104 Profile to DAE",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 10,
+        actionId: "lower_iec104_dae",
+      },
+      {
+        id: "lintIec104",
+        label: "Lint IEC 60870-5-104 Profile",
+        shortLabel: "Lint IEC",
+        tooltip: "Lint IEC 60870-5-104 Profile",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "lint_iec104",
+      },
+    ],
+  },
   actions: [
     {
       id: "lint_iec104",

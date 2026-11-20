@@ -20,6 +20,46 @@ export const cymeLanguage = language({
   lsp: {
     fileExtensions: [".sxst", ".cyme"],
   },
+  ui: {
+    toolbarButtons: [
+      {
+        id: "lowerCymeDae",
+        label: "Lower CYME Network to DAE",
+        shortLabel: "Lower CYME",
+        tooltip: "Lower CYME Network to DAE",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 10,
+        actionId: "lower_cyme_dae",
+      },
+      {
+        id: "cymeToOpendss",
+        label: "Export CYME Network to OpenDSS",
+        shortLabel: "Export CYME",
+        tooltip: "Export CYME Network to OpenDSS",
+        icon: "export",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 20,
+        actionId: "cyme_to_opendss",
+      },
+      {
+        id: "lintCyme",
+        label: "Lint CYME Network",
+        shortLabel: "Lint CYME",
+        tooltip: "Lint CYME Network",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "lint_cyme",
+      },
+    ],
+  },
   actions: [
     {
       id: "lint_cyme",

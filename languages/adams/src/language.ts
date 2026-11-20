@@ -49,6 +49,20 @@ export const adamsLanguage = language({
       { label: "Part", snippet: "PART/99, MASS = 12.5, CM = 9901, IP = 1.2, 1.2, 0.8\n" },
       { label: "Joint", snippet: "JOINT/99, REVOLUTE, I = 101, J = 201\n" },
     ],
+    toolbarButtons: [
+      {
+        id: "autoLayout",
+        label: "Auto-Layout Diagram",
+        shortLabel: "Layout",
+        tooltip: "Re-run automatic schematic layout on the current diagram",
+        icon: "flowchart",
+        views: ["diagram"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        command: "morsel:autoLayout",
+      },
+    ],
   },
 
   rules: {

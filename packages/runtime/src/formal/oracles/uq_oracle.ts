@@ -10,6 +10,7 @@
 
 import type { ConflictClause, SharedEquality, TheoryLiteral, TheoryOracle } from "../theory_coordinator.js";
 import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
+import { UndoTrail } from "./undo_trail.js";
 
 export type DistributionSpec =
   | { kind: "normal"; mean: number; stdDev: number }
@@ -51,12 +52,7 @@ export class UqTheoryOracle implements TheoryOracle {
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private sharedEqualities: SharedEquality[] = [];
   private baseDistributions = new Map<string, DistributionSpec>();
-  private levelStack: {
-    distributions: Map<string, DistributionSpec>;
-    requirements: ProbabilisticRequirement[];
-    sharedEqualities: SharedEquality[];
-    assertedLitIds: number[];
-  }[] = [];
+  private trail = new UndoTrail();
 
   constructor() {
     this.reset();
@@ -68,39 +64,24 @@ export class UqTheoryOracle implements TheoryOracle {
     this.requirements = [];
     this.sharedEqualities = [];
     this.assertedLiterals.clear();
-    this.levelStack = [];
+    this.trail.reset();
   }
 
   public pushLevel(): void {
-    this.levelStack.push({
-      distributions: new Map(this.distributions),
-      requirements: [...this.requirements],
-      sharedEqualities: [...this.sharedEqualities],
-      assertedLitIds: [],
-    });
+    this.trail.pushLevel();
   }
 
   public popLevel(): void {
-    const top = this.levelStack.pop();
-    if (!top) return;
-    this.distributions = top.distributions;
-    this.requirements = top.requirements;
-    this.sharedEqualities = top.sharedEqualities;
-    for (const id of top.assertedLitIds) {
-      this.assertedLiterals.delete(id);
-    }
+    this.trail.popLevel();
   }
 
   public setDistribution(varName: string, dist: DistributionSpec): void {
     this.baseDistributions.set(varName, dist);
-    this.distributions.set(varName, dist);
+    this.trail.mapSet(this.distributions, varName, dist);
   }
 
   public assertLiteral(lit: TheoryLiteral): boolean {
-    this.assertedLiterals.set(lit.id, lit);
-    if (this.levelStack.length > 0) {
-      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
-    }
+    this.trail.mapSet(this.assertedLiterals, lit.id, lit);
     const { predicate, args } = lit;
 
     switch (predicate) {
@@ -108,16 +89,16 @@ export class UqTheoryOracle implements TheoryOracle {
         const [varName, kind] = args as [string, "normal" | "uniform"];
         if (kind === "normal") {
           const [, , mean, stdDev] = args as [string, string, number, number];
-          this.distributions.set(varName, { kind: "normal", mean, stdDev });
+          this.trail.mapSet(this.distributions, varName, { kind: "normal", mean, stdDev });
         } else if (kind === "uniform") {
           const [, , min, max] = args as [string, string, number, number];
-          this.distributions.set(varName, { kind: "uniform", min, max });
+          this.trail.mapSet(this.distributions, varName, { kind: "uniform", min, max });
         }
         break;
       }
       case "probBound": {
         const [varName, op, threshold, maxProbability] = args as [string, ">" | ">=" | "<" | "<=", number, number];
-        this.requirements.push({ varName, op, threshold, maxProbability });
+        this.trail.arrayPush(this.requirements, { varName, op, threshold, maxProbability });
         break;
       }
     }
@@ -129,12 +110,12 @@ export class UqTheoryOracle implements TheoryOracle {
     const hasShared = hasSharedEqualityWithLiteral(this.sharedEqualities, litId);
     if (!this.assertedLiterals.has(litId) && !hasShared) return;
     this.assertedLiterals.delete(litId);
-    const savedStack = this.levelStack;
+    const savedTrail = this.trail;
     const savedBase = new Map(this.baseDistributions);
     const remaining = Array.from(this.assertedLiterals.values());
     const remainingSharedEqs = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
+    this.trail = new UndoTrail();
     this.reset();
-    this.levelStack = savedStack;
     for (const [k, v] of savedBase) {
       this.setDistribution(k, v);
     }
@@ -144,6 +125,7 @@ export class UqTheoryOracle implements TheoryOracle {
     for (const eq of remainingSharedEqs) {
       this.onSharedEquality(eq);
     }
+    this.trail = savedTrail;
   }
 
   public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
@@ -153,9 +135,9 @@ export class UqTheoryOracle implements TheoryOracle {
       const distA = this.distributions.get(eq.varA);
       const distB = this.distributions.get(eq.varB);
       if (distA && !distB) {
-        this.distributions.set(eq.varB, distA);
+        this.trail.mapSet(this.distributions, eq.varB, distA);
       } else if (distB && !distA) {
-        this.distributions.set(eq.varA, distB);
+        this.trail.mapSet(this.distributions, eq.varA, distB);
       }
     }
 
@@ -245,14 +227,14 @@ export class UqTheoryOracle implements TheoryOracle {
   }
 
   public onSharedEquality(eq: SharedEquality): void {
-    this.sharedEqualities.push(eq);
+    this.trail.arrayPush(this.sharedEqualities, eq);
     // Merge distribution bounds if aliased
     const distA = this.distributions.get(eq.varA);
     const distB = this.distributions.get(eq.varB);
     if (distA && !distB) {
-      this.distributions.set(eq.varB, distA);
+      this.trail.mapSet(this.distributions, eq.varB, distA);
     } else if (distB && !distA) {
-      this.distributions.set(eq.varA, distB);
+      this.trail.mapSet(this.distributions, eq.varA, distB);
     }
   }
 }

@@ -94,10 +94,16 @@ const patternBuilderProxy: any = new Proxy(
 
 const varTokenProxy = (name: string): string => `${VAR_PREFIX}${name}`;
 
+const evaluatedRuleCache = new WeakMap<TGGRuleOptions, EvaluatedTGGRule>();
+
 /**
  * Evaluates a declarative `TGGRuleOptions` into normalized source/target `TGGPattern` descriptors.
+ * Results are cached per rule object in a WeakMap to avoid re-executing rule closures on every node.
  */
 export function evaluateRuleDescriptor(rule: TGGRuleOptions): EvaluatedTGGRule {
+  const cached = evaluatedRuleCache.get(rule);
+  if (cached) return cached;
+
   const sourcePattern: TGGPattern =
     typeof rule.source === "function"
       ? (rule.source(patternBuilderProxy, varTokenProxy) as TGGPattern)
@@ -117,7 +123,7 @@ export function evaluateRuleDescriptor(rule: TGGRuleOptions): EvaluatedTGGRule {
   const contextSourcePattern = evalPat(ctxObj?.source);
   const contextTargetPattern = evalPat(ctxObj?.target);
 
-  return {
+  const result: EvaluatedTGGRule = {
     rule,
     sourcePattern,
     targetPattern,
@@ -126,6 +132,8 @@ export function evaluateRuleDescriptor(rule: TGGRuleOptions): EvaluatedTGGRule {
     constraints,
     priority: rule.priority ?? 0,
   };
+  evaluatedRuleCache.set(rule, result);
+  return result;
 }
 
 function readNodeProperty(node: PolyglotNode, key: string): any {
@@ -233,6 +241,42 @@ export function matchNodePattern(
     }
   }
 
+  // Match nested child sub-patterns recursively if declared on the rule pattern
+  if (pattern.children && pattern.children.length > 0) {
+    const nodeChildren = (node["children"] as PolyglotNode[] | undefined) ?? [];
+    const usedIndices = new Set<number>();
+    for (const childPat of pattern.children) {
+      let matchedChildIdx = -1;
+      let matchedChildRes: PatternMatchResult | null = null;
+      for (let ci = 0; ci < nodeChildren.length; ci++) {
+        if (usedIndices.has(ci)) continue;
+        const cNode = nodeChildren[ci]!;
+        const cRes = matchNodePattern(cNode, childPat, evaluatedRule, transformer);
+        if (!cRes) continue;
+        // Verify consistency of shared variables with parent env
+        let consistent = true;
+        for (const [k, v] of Object.entries(cRes.env)) {
+          if (k in env && String(env[k]) !== String(v)) {
+            consistent = false;
+            break;
+          }
+        }
+        if (consistent) {
+          matchedChildIdx = ci;
+          matchedChildRes = cRes;
+          break;
+        }
+      }
+      if (matchedChildIdx === -1 || !matchedChildRes) {
+        return null;
+      }
+      usedIndices.add(matchedChildIdx);
+      Object.assign(env, matchedChildRes.env);
+      Object.assign(varToProp, matchedChildRes.varToProp);
+      specificity += matchedChildRes.specificity;
+    }
+  }
+
   return {
     rule: evaluatedRule,
     env,
@@ -268,16 +312,16 @@ function evalSafeArithmeticExpr(expr: string): number | null {
   };
 
   const parseTerm = (): number => {
-    let left = parsePower();
+    let left = parseUnary();
     while (true) {
       skipWs();
       const ch = expr[pos];
       if (ch === "*") {
         pos++;
-        left *= parsePower();
+        left *= parseUnary();
       } else if (ch === "/") {
         pos++;
-        left /= parsePower();
+        left /= parseUnary();
       } else {
         break;
       }
@@ -286,15 +330,15 @@ function evalSafeArithmeticExpr(expr: string): number | null {
   };
 
   const parsePower = (): number => {
-    const base = parseUnary();
+    const base = parsePrimary();
     skipWs();
     if (expr[pos] === "^") {
       pos++;
-      return Math.pow(base, parsePower());
+      return Math.pow(base, parseUnary());
     }
     if (expr[pos] === "*" && expr[pos + 1] === "*") {
       pos += 2;
-      return Math.pow(base, parsePower());
+      return Math.pow(base, parseUnary());
     }
     return base;
   };
@@ -309,7 +353,7 @@ function evalSafeArithmeticExpr(expr: string): number | null {
       pos++;
       return parseUnary();
     }
-    return parsePrimary();
+    return parsePower();
   };
 
   const parsePrimary = (): number => {
@@ -554,7 +598,19 @@ export function solveWhereConstraints(
     }
   };
 
-  propagateEqualities();
+  const runFixpoint = () => {
+    const maxPasses = Math.max(2, constraints.length + 1);
+    for (let pass = 0; pass < maxPasses; pass++) {
+      const beforeKeys = Object.keys(env).length;
+      const beforeSnapshot = JSON.stringify(env);
+      propagateEqualities();
+      if (Object.keys(env).length === beforeKeys && JSON.stringify(env) === beforeSnapshot) {
+        break;
+      }
+    }
+  };
+
+  runFixpoint();
 
   // Apply defaults for any unbound variables
   for (const c of constraints) {
@@ -567,7 +623,7 @@ export function solveWhereConstraints(
     }
   }
 
-  propagateEqualities();
+  runFixpoint();
 }
 
 /**
@@ -599,7 +655,7 @@ export function instantiateNodePattern(
   const properties: Record<string, any> = {};
   if (complementData) {
     for (const [k, v] of Object.entries(complementData)) {
-      if (v !== undefined) {
+      if (v !== undefined && k !== "properties") {
         properties[k] = v;
       }
     }
@@ -625,6 +681,12 @@ export function instantiateNodePattern(
     name: resolvedName,
     properties,
   };
+
+  if (pattern.children && pattern.children.length > 0) {
+    node["children"] = pattern.children.map((childPat, idx) =>
+      instantiateNodePattern(childPat, env, `${resolvedName}_child_${idx}`),
+    );
+  }
 
   return node;
 }

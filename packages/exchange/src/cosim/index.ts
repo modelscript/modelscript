@@ -21,11 +21,13 @@ export {
 } from "@modelscript/runtime";
 export * from "./algebraic-loop-advisor.js";
 export * from "./coupling.js";
+export * from "./fdne-fitter.js";
 export * from "./interface-jacobian.js";
 export * from "./network-sync.js";
 export * from "./olga-cosim-master.js";
 export * from "./orchestrator.js";
 export * from "./participant.js";
+export * from "./phasor-emt-types.js";
 export * from "./realtime.js";
 export * from "./session.js";
 export * from "./stateless-predictor.js";
@@ -37,6 +39,8 @@ export * from "./audio-worklet-clock.js";
 export * from "./ipc/fmu-shm-protocol.js";
 export * from "./ipc/shm-protocol.js";
 export * from "./participants/cfd-provider.js";
+export * from "./participants/emt-fmu-participant.js";
+export * from "./participants/emt-worker-participant.js";
 export * from "./participants/fea-provider.js";
 export * from "./participants/fmu-js.js";
 export * from "./participants/fmu-native-shm.js";
@@ -48,6 +52,7 @@ export * from "./participants/local-agent-proxy.js";
 export * from "./participants/lps-provider.js";
 export * from "./participants/native-shm-provider.js";
 export * from "./participants/olga-provider.js";
+export * from "./participants/phasor-fmu-participant.js";
 export * from "./participants/web-hardware.js";
 
 // ── Historian ──

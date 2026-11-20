@@ -21,7 +21,38 @@ export interface WasmPolyglotExports {
     parentSlot?: number,
   ) => number;
   tgg_retract_dispatch?: (sourceNodeTypeHash: number, sourceNodeId: number, corr: number, arena: number) => number;
-  tgg_propagate_all_stale?: (corr: number, stringPoolPtr?: number) => number;
+  tgg_propagate_all_stale?: (corr: number, stringPoolPtr?: number, direction?: number) => number;
+  // WASM CorrespondenceIndex exports
+  createCorrespondenceIndex?: (initialCapacity: number) => number;
+  corr_addLink?: (
+    ptr: number,
+    sourceNodeId: number,
+    targetNodeId: number,
+    ruleId: number,
+    flags: number,
+    revision: number,
+  ) => number;
+  corr_addLinkWithParent?: (
+    ptr: number,
+    sourceNodeId: number,
+    targetNodeId: number,
+    ruleId: number,
+    flags: number,
+    revision: number,
+    parentSlot: number,
+  ) => number;
+  corr_findBySource?: (ptr: number, sourceNodeId: number) => number;
+  corr_findByTarget?: (ptr: number, targetNodeId: number) => number;
+  corr_markStale?: (ptr: number, sourceNodeId: number) => void;
+  corr_markStaleCascading?: (ptr: number, parentSlot: number) => number;
+  corr_retractBySource?: (ptr: number, sourceNodeId: number) => number;
+  corr_retractByTarget?: (ptr: number, targetNodeId: number) => number;
+  corr_allocComplement?: (ptr: number, byteSize: number) => number;
+  corr_freeComplement?: (ptr: number, compPtr: number) => void;
+  corr_getStaleQueueCount?: (ptr: number) => number;
+  corr_getStaleQueueSlot?: (ptr: number, index: number) => number;
+  corr_clearStaleQueue?: (ptr: number) => void;
+  corr_reset?: (ptr: number) => void;
 }
 
 export interface ConsolidatedSymbolDeltas {
@@ -83,6 +114,8 @@ export class WasmPolyglotKernelBridge {
     const numericToKey = new Map<number, string>();
     const latestNodeByKey = new Map<string, PolyglotNode>();
     const isUpdateByKey = new Set<string>();
+    const addedKeys = new Set<string>();
+    const dedupedUpdatedKeys = new Set<string>();
     let nextId = 1;
 
     const internKey = (key: string): number => {
@@ -98,12 +131,16 @@ export class WasmPolyglotKernelBridge {
       const k = String(node.id ?? node.name);
       internKey(k);
       latestNodeByKey.set(k, node);
+      addedKeys.add(k);
     }
     for (const node of updatedIn) {
       const k = String(node.id ?? node.name);
       internKey(k);
       latestNodeByKey.set(k, node);
       isUpdateByKey.add(k);
+      if (!addedKeys.has(k)) {
+        dedupedUpdatedKeys.add(k);
+      }
     }
     for (const rem of removedIn) {
       internKey(rem);
@@ -114,55 +151,54 @@ export class WasmPolyglotKernelBridge {
 
     if (this.isWasmZSetAvailable() && exp) {
       const ptr = exp.createZSet!(Math.max(16, idToNumeric.size * 2));
-      try {
-        let rawEntries = 0;
-        for (const node of addedIn) {
-          const k = String(node.id ?? node.name);
-          exp.zset_add!(ptr, idToNumeric.get(k)!, 1, epochNow);
-          rawEntries++;
-        }
-        for (const node of updatedIn) {
-          const k = String(node.id ?? node.name);
-          exp.zset_add!(ptr, idToNumeric.get(k)!, 1, epochNow);
-          rawEntries++;
-        }
-        for (const rem of removedIn) {
-          exp.zset_add!(ptr, idToNumeric.get(rem)!, -1, epochNow);
-          rawEntries++;
-        }
-
-        exp.zset_consolidate!(ptr);
-        const surviving = exp.zset_count!(ptr);
-
-        const added: PolyglotNode[] = [];
-        const updated: PolyglotNode[] = [];
-        const removed: string[] = [];
-        for (let i = 0; i < surviving; i++) {
-          const elId = exp.zset_getElement!(ptr, i);
-          const weight = exp.zset_getWeight!(ptr, i);
-          const key = numericToKey.get(elId);
-          if (!key || weight === 0) continue;
-          if (weight > 0) {
-            const node = latestNodeByKey.get(key);
-            if (node) {
-              if (isUpdateByKey.has(key)) updated.push(node);
-              else added.push(node);
-            }
-          } else {
-            removed.push(key);
+      if (ptr !== 0) {
+        try {
+          let rawEntries = 0;
+          for (const node of addedIn) {
+            const k = String(node.id ?? node.name);
+            exp.zset_add!(ptr, idToNumeric.get(k)!, 1, epochNow);
+            rawEntries++;
           }
-        }
+          for (const k of dedupedUpdatedKeys) {
+            exp.zset_add!(ptr, idToNumeric.get(k)!, 1, epochNow);
+            rawEntries++;
+          }
+          for (const rem of removedIn) {
+            exp.zset_add!(ptr, idToNumeric.get(rem)!, -1, epochNow);
+            rawEntries++;
+          }
 
-        const activeTotal = added.length + updated.length + removed.length;
-        return {
-          added,
-          updated,
-          removed,
-          usedWasmZSet: true,
-          cancelledCount: Math.max(0, rawEntries - activeTotal),
-        };
-      } finally {
-        if (ptr !== 0) {
+          exp.zset_consolidate!(ptr);
+          const surviving = exp.zset_count!(ptr);
+
+          const added: PolyglotNode[] = [];
+          const updated: PolyglotNode[] = [];
+          const removed: string[] = [];
+          for (let i = 0; i < surviving; i++) {
+            const elId = exp.zset_getElement!(ptr, i);
+            const weight = exp.zset_getWeight!(ptr, i);
+            const key = numericToKey.get(elId);
+            if (!key || weight === 0) continue;
+            if (weight > 0) {
+              const node = latestNodeByKey.get(key);
+              if (node) {
+                if (isUpdateByKey.has(key)) updated.push(node);
+                else added.push(node);
+              }
+            } else {
+              removed.push(key);
+            }
+          }
+
+          const activeTotal = added.length + updated.length + removed.length;
+          return {
+            added,
+            updated,
+            removed,
+            usedWasmZSet: true,
+            cancelledCount: Math.max(0, rawEntries - activeTotal),
+          };
+        } finally {
           exp.zset_destroy?.(ptr);
         }
       }
@@ -176,8 +212,7 @@ export class WasmPolyglotKernelBridge {
       weights.set(k, (weights.get(k) ?? 0) + 1);
       rawEntries++;
     }
-    for (const node of updatedIn) {
-      const k = String(node.id ?? node.name);
+    for (const k of dedupedUpdatedKeys) {
       weights.set(k, (weights.get(k) ?? 0) + 1);
       rawEntries++;
     }
@@ -236,5 +271,116 @@ export class WasmPolyglotKernelBridge {
       targetLang,
     );
     return { consolidated, syncResult };
+  }
+
+  /**
+   * Returns true if the hydrated WASM runtime exposes linear-memory CorrespondenceIndex exports.
+   */
+  public isWasmCorrespondenceAvailable(): boolean {
+    const exp = this.resolveExports();
+    return Boolean(
+      exp &&
+      typeof exp.createCorrespondenceIndex === "function" &&
+      typeof exp.corr_addLink === "function" &&
+      typeof exp.corr_findBySource === "function" &&
+      typeof exp.corr_findByTarget === "function" &&
+      typeof exp.corr_markStale === "function" &&
+      typeof exp.corr_markStaleCascading === "function" &&
+      typeof exp.corr_retractBySource === "function",
+    );
+  }
+
+  /**
+   * Instantiates a linear-memory `WasmCorrespondenceBridge` backed by the hydrated runtime WASM exports.
+   * Returns `null` if WASM correspondence exports are unavailable or allocation fails.
+   */
+  public createCorrespondenceBridge(initialCapacity = 1024): WasmCorrespondenceBridge | null {
+    const exp = this.resolveExports();
+    if (!this.isWasmCorrespondenceAvailable() || !exp) return null;
+    const ptr = exp.createCorrespondenceIndex!(initialCapacity);
+    if (!ptr) return null;
+    return new WasmCorrespondenceBridge(exp, ptr);
+  }
+}
+
+/**
+ * Direct JS ↔ WASM adapter over the linear-memory `CorrespondenceIndex` struct.
+ * Implements `markStale(sourceNodeId)` and `markStaleCascading(parentSlot)` so it can
+ * be attached directly to `WasmQueryEngine.setCorrespondenceIndex()` or used by TGG runners.
+ */
+export class WasmCorrespondenceBridge {
+  constructor(
+    private readonly exp: WasmPolyglotExports,
+    public readonly ptr: number,
+  ) {}
+
+  addLink(sourceNodeId: number, targetNodeId: number, ruleId = 0, flags = 1, revision = 0): number {
+    return this.exp.corr_addLink!(this.ptr, sourceNodeId, targetNodeId, ruleId, flags, revision);
+  }
+
+  addLinkWithParent(
+    sourceNodeId: number,
+    targetNodeId: number,
+    parentSlot: number,
+    ruleId = 0,
+    flags = 1,
+    revision = 0,
+  ): number {
+    if (typeof this.exp.corr_addLinkWithParent === "function") {
+      return this.exp.corr_addLinkWithParent(this.ptr, sourceNodeId, targetNodeId, ruleId, flags, revision, parentSlot);
+    }
+    return this.addLink(sourceNodeId, targetNodeId, ruleId, flags, revision);
+  }
+
+  findBySource(sourceNodeId: number): number {
+    return this.exp.corr_findBySource!(this.ptr, sourceNodeId);
+  }
+
+  findByTarget(targetNodeId: number): number {
+    return this.exp.corr_findByTarget!(this.ptr, targetNodeId);
+  }
+
+  markStale(sourceNodeId: number): void {
+    this.exp.corr_markStale!(this.ptr, sourceNodeId);
+  }
+
+  markStaleCascading(parentSlot: number): number {
+    return this.exp.corr_markStaleCascading!(this.ptr, parentSlot);
+  }
+
+  retractBySource(sourceNodeId: number): number {
+    return this.exp.corr_retractBySource!(this.ptr, sourceNodeId);
+  }
+
+  retractByTarget(targetNodeId: number): number {
+    return this.exp.corr_retractByTarget!(this.ptr, targetNodeId);
+  }
+
+  allocComplement(byteSize: number): number {
+    return this.exp.corr_allocComplement?.(this.ptr, byteSize) ?? 0;
+  }
+
+  freeComplement(compPtr: number): void {
+    this.exp.corr_freeComplement?.(this.ptr, compPtr);
+  }
+
+  drainStaleSlots(): number[] {
+    if (
+      typeof this.exp.corr_getStaleQueueCount !== "function" ||
+      typeof this.exp.corr_getStaleQueueSlot !== "function"
+    ) {
+      return [];
+    }
+    const count = this.exp.corr_getStaleQueueCount(this.ptr);
+    const slots: number[] = [];
+    for (let i = 0; i < count; i++) {
+      slots.push(this.exp.corr_getStaleQueueSlot(this.ptr, i));
+    }
+    this.exp.corr_clearStaleQueue?.(this.ptr);
+    return slots;
+  }
+
+  reset(): void {
+    this.exp.corr_reset?.(this.ptr);
   }
 }

@@ -338,5 +338,59 @@ describe("@modelscript/lsp/core single-language runtime", () => {
     assert.strictEqual(bltPayload.supported, true);
     assert.strictEqual(bltPayload.data.status, "balanced");
     assert.deepStrictEqual(bltPayload.data.states, ["x"]);
+
+    const connRes = await runtime.handleRequest({
+      method: "modelscript/applyDiagramEdits",
+      code: sample,
+      documentUri: "file:///RC.mo",
+      params: {
+        seq: 1,
+        actions: [
+          {
+            type: "connect",
+            source: "R1.p",
+            target: "R1.n",
+            points: [
+              { x: -34, y: -28 },
+              { x: -34, y: -10 },
+              { x: -14, y: -10 },
+              { x: -14, y: -28 },
+            ],
+          },
+        ],
+      },
+    });
+    assert.strictEqual(connRes.handled, true);
+    const connPayload = connRes.result as { edits?: unknown[]; newText?: string };
+    assert.ok(connPayload.newText?.includes("points={{-34,-28}, {-34,-10}, {-14,-10}, {-14,-28}}"));
+
+    const moveEdgeRes = await runtime.handleRequest({
+      method: "modelscript/applyDiagramEdits",
+      code: connPayload.newText!,
+      documentUri: "file:///RC.mo",
+      params: {
+        seq: 2,
+        actions: [
+          {
+            type: "moveEdge",
+            edges: [
+              {
+                source: "R1.p",
+                target: "R1.n",
+                points: [
+                  { x: -34, y: -28 },
+                  { x: -34, y: 0 },
+                  { x: -14, y: 0 },
+                  { x: -14, y: -28 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    assert.strictEqual(moveEdgeRes.handled, true);
+    const moveEdgePayload = moveEdgeRes.result as { edits?: unknown[]; newText?: string };
+    assert.ok(moveEdgePayload.newText?.includes("points={{-34,-28}, {-34,0}, {-14,0}, {-14,-28}}"));
   });
 });

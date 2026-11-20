@@ -44,6 +44,7 @@ export interface MorselModalsProps {
   loadingMessage: string;
   isAddLibraryOpen: boolean;
   setIsAddLibraryOpen: (v: boolean) => void;
+  addLibraryInitialViewMode?: "components" | "libraries" | "import" | undefined;
   setContextVersion: React.Dispatch<React.SetStateAction<number>>;
   isFlattenDialogOpen: boolean;
   setFlattenDialogOpen: (v: boolean) => void;
@@ -85,6 +86,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
   loadingMessage,
   isAddLibraryOpen,
   setIsAddLibraryOpen,
+  addLibraryInitialViewMode,
   setContextVersion,
   isFlattenDialogOpen,
   setFlattenDialogOpen,
@@ -280,6 +282,7 @@ export const MorselModals: React.FC<MorselModalsProps> = ({
       {isAddLibraryOpen && (
         <AddLibraryModal
           isOpen={isAddLibraryOpen}
+          initialViewMode={addLibraryInitialViewMode}
           onDismiss={() => setIsAddLibraryOpen(false)}
           translations={translations}
           documentUri={documentUri}

@@ -44,9 +44,12 @@ import type { StepResult } from "./mqtt/protocol.js";
 import { DeadReckoningBuffer, type DeadReckoningEvent, NetworkTimeSynchronizer } from "./network-sync.js";
 import type { CoSimParticipant } from "./participant.js";
 import type { ICfdProvider } from "./participants/cfd-provider.js";
+import { EmtFmuParticipant } from "./participants/emt-fmu-participant.js";
+import { PhasorFmuParticipant } from "./participants/phasor-fmu-participant.js";
 import { RealtimePacer } from "./realtime.js";
 import type { CoSimSession } from "./session.js";
 import { StatelessLoopPredictor } from "./stateless-predictor.js";
+import { type HybridPhasorEmtResult, runHybridPhasorEmtCoSimulation } from "./ts-emt-orchestrator.js";
 
 /** Orchestrator event callbacks. */
 export interface OrchestratorCallbacks {
@@ -89,6 +92,8 @@ export class Orchestrator {
   private jacobianSolver: InterfaceJacobianSolver | null = null;
   readonly deadReckoning = new DeadReckoningBuffer();
   readonly networkSync = new NetworkTimeSynchronizer();
+  /** Populated when `Orchestrator.run()` auto-bridges `fmi-ls-rms` <-> `fmi-ls-emt` participants. */
+  public lastHybridResult: HybridPhasorEmtResult | null = null;
 
   constructor(session: CoSimSession, mqttClient: CosimMqttClient | null, callbacks: OrchestratorCallbacks = {}) {
     this.session = session;
@@ -105,6 +110,96 @@ export class Orchestrator {
 
     if (participants.length === 0) {
       throw new Error("No participants in session");
+    }
+
+    // ── Auto-Bridge: FMI 3.0 `fmi-ls-rms` <-> `fmi-ls-emt` Hybrid Phasor-EMT Coupling ──
+    const phasorPart = participants.find((p): p is PhasorFmuParticipant => p instanceof PhasorFmuParticipant);
+    const emtParts = participants.filter((p): p is EmtFmuParticipant => p instanceof EmtFmuParticipant);
+    if (phasorPart && emtParts.length > 0 && participants.length === 1 + emtParts.length) {
+      try {
+        this.session.transition("initializing");
+        this.callbacks.onStateChange?.("initializing");
+
+        const allCouplings = coupling.getAll();
+        const plantConfigs = emtParts.map((emtP) => {
+          const portSet = new Map<string, { phasorBusId: string; emtBusId: string }>();
+          for (const c of allCouplings) {
+            // Match V1_re_<pBus> -> ea_<eBus> or ia_<eBus> -> I1_re_<pBus>
+            if (c.from.participantId === phasorPart.id && c.to.participantId === emtP.id) {
+              const pMatch = c.from.variableName.match(/^V[120]_(?:re|im)_(.+)$/);
+              const eMatch = c.to.variableName.match(/^(?:e[abc]|gSrc)_(.+)$/);
+              if (pMatch?.[1] && eMatch?.[1]) {
+                const key = `${pMatch[1]}:${eMatch[1]}`;
+                portSet.set(key, { phasorBusId: pMatch[1], emtBusId: eMatch[1] });
+              }
+            } else if (c.from.participantId === emtP.id && c.to.participantId === phasorPart.id) {
+              const eMatch = c.from.variableName.match(/^i[abc]_(.+)$/);
+              const pMatch = c.to.variableName.match(/^I[120]_(?:re|im)_(.+)$/);
+              if (pMatch?.[1] && eMatch?.[1]) {
+                const key = `${pMatch[1]}:${eMatch[1]}`;
+                portSet.set(key, { phasorBusId: pMatch[1], emtBusId: eMatch[1] });
+              }
+            }
+          }
+          return {
+            id: emtP.id,
+            participant: emtP,
+            boundaryPorts: Array.from(portSet.values()),
+          };
+        });
+
+        if (plantConfigs.every((pc) => pc.boundaryPorts.length > 0)) {
+          this.session.transition("running");
+          this.callbacks.onStateChange?.("running");
+
+          const durationSec = Math.max(experiment.stepSize, experiment.stopTime - experiment.startTime);
+          const hasSeq3 = allCouplings.some(
+            (c) =>
+              c.from.variableName.startsWith("V2_") ||
+              c.from.variableName.startsWith("V0_") ||
+              c.to.variableName.startsWith("I2_") ||
+              c.to.variableName.startsWith("I0_"),
+          );
+
+          const hybridRes = await runHybridPhasorEmtCoSimulation(phasorPart, plantConfigs, {
+            durationSec,
+            dtTsSec: experiment.stepSize,
+            dtEmtSec: Math.min(50e-6, experiment.stepSize / 20),
+            mode: "direct", // participants are already PhasorFmuParticipant / EmtFmuParticipant
+            sequences: hasSeq3 ? 3 : 1,
+            useDynamicEquivalent: true,
+          });
+          this.lastHybridResult = hybridRes;
+
+          if (this.callbacks.onStep) {
+            const grouped = new Map<number, Record<string, Record<string, number>>>();
+            for (const rec of hybridRes.macroRecords) {
+              let row = grouped.get(rec.timeSec);
+              if (!row) {
+                row = { [phasorPart.id]: {} };
+                grouped.set(rec.timeSec, row);
+              }
+              row[phasorPart.id]![`V1_mag_${rec.phasorBusId}`] = rec.vTsMagPu;
+              row[rec.plantId] ??= {};
+              row[rec.plantId]![`I_rms_${rec.emtBusId}`] = rec.iEmtInjAmpRms;
+            }
+            for (const [time, outputs] of grouped) {
+              this.callbacks.onStep({ time, participants: outputs });
+            }
+          }
+
+          this.session.transition("completed");
+          this.callbacks.onStateChange?.("completed");
+          this.callbacks.onComplete?.();
+          return;
+        }
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        this.session.transition("failed", error.message);
+        this.callbacks.onStateChange?.("failed");
+        this.callbacks.onError?.(error);
+        throw error;
+      }
     }
 
     try {

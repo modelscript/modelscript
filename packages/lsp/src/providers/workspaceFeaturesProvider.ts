@@ -902,6 +902,7 @@ export function registerWorkspaceFeaturesProvider(
       const isReasonerDiag =
         diagnostic.source?.includes("reasoner") ||
         diagnostic.source?.includes("drift-checker") ||
+        diagnostic.source === "modelscript-prover" ||
         diagnostic.code === "M4101" ||
         diagnostic.code === "M4102" ||
         diagnostic.code === "M5101" ||
@@ -912,6 +913,7 @@ export function registerWorkspaceFeaturesProvider(
         diagnostic.code === "S5021" ||
         diagnostic.code === "division_by_zero" ||
         diagnostic.code === "div_by_zero" ||
+        diagnostic.code === "math_domain" ||
         diagnostic.code === "min_bound_violation" ||
         diagnostic.code === "max_bound_violation";
 
@@ -1039,7 +1041,7 @@ export function registerWorkspaceFeaturesProvider(
           }
         }
 
-        // 2. Abstract Interpretation Division Guard QuickFix
+        // 2. Abstract Interpretation Division & Math Domain Guard QuickFixes
         if (
           diagnostic.code === "M5101" ||
           diagnostic.code === "division_by_zero" ||
@@ -1048,6 +1050,7 @@ export function registerWorkspaceFeaturesProvider(
         ) {
           const divisor = findDivisorVariableInLine(lineContent);
           if (divisor) {
+            const indent = lineContent.match(/^[ \t]*/)?.[0] ?? "";
             actions.push({
               title: `Guard against division by zero with 'max(1e-6, ${divisor.name})'`,
               kind: CodeActionKind.QuickFix,
@@ -1061,6 +1064,53 @@ export function registerWorkspaceFeaturesProvider(
                         end: { line: diagnostic.range.start.line, character: divisor.end },
                       },
                       newText: `max(1e-6, ${divisor.name})`,
+                    },
+                  ],
+                },
+              },
+            });
+            actions.push({
+              title: `Insert invariant assertion 'assert(${divisor.name} <> 0, ...)'`,
+              kind: CodeActionKind.QuickFix,
+              diagnostics: [diagnostic],
+              edit: {
+                changes: {
+                  [params.textDocument.uri]: [
+                    {
+                      range: {
+                        start: { line: diagnostic.range.start.line, character: 0 },
+                        end: { line: diagnostic.range.start.line, character: 0 },
+                      },
+                      newText: `${indent}assert(${divisor.name} <> 0, "Divisor '${divisor.name}' must be non-zero");\n`,
+                    },
+                  ],
+                },
+              },
+            });
+          }
+        }
+
+        if (diagnostic.code === "math_domain" || /\b(sqrt|log|log10)\s*\(/.test(lineContent)) {
+          const mathMatch = /\b(sqrt|log|log10)\s*\(\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\)/.exec(lineContent);
+          if (mathMatch) {
+            const fnName = mathMatch[1]!;
+            const argName = mathMatch[2]!;
+            const cond = fnName === "sqrt" ? `${argName} >= 0` : `${argName} > 0`;
+            const indent = lineContent.match(/^[ \t]*/)?.[0] ?? "";
+            actions.push({
+              title: `Insert domain assertion 'assert(${cond}, ...)' before '${fnName}(${argName})'`,
+              kind: CodeActionKind.QuickFix,
+              isPreferred: true,
+              diagnostics: [diagnostic],
+              edit: {
+                changes: {
+                  [params.textDocument.uri]: [
+                    {
+                      range: {
+                        start: { line: diagnostic.range.start.line, character: 0 },
+                        end: { line: diagnostic.range.start.line, character: 0 },
+                      },
+                      newText: `${indent}assert(${cond}, "Argument '${argName}' must satisfy ${cond} for ${fnName}()");\n`,
                     },
                   ],
                 },

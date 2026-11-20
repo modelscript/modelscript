@@ -72,7 +72,13 @@ function getKernelExports(): DyrKernelExports {
     copy.set(bytes);
     cachedModule = new WebAssembly.Module(copy);
   }
-  const instance = new WebAssembly.Instance(cachedModule, {});
+  const instance = new WebAssembly.Instance(cachedModule, {
+    env: {
+      abort() {
+        throw new Error("dyr-kernel.wasm aborted");
+      },
+    },
+  });
   cachedExports = instance.exports as unknown as DyrKernelExports;
   return cachedExports;
 }

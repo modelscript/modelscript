@@ -5002,6 +5002,8 @@ export const classDefinitionQueries: Record<string, any> = {
           }
         }
         if (!isInput) continue;
+        const elemCst = db.cstNode(elem.id) as SyntaxNode | null;
+        if (elemCst?.children?.some((ch: SyntaxNode) => ch.type === "condition_attribute")) continue;
         if (hasDefaultBindingOrProtected(elem)) continue;
 
         const targetPath = `${comp.name}.${elem.name}`;

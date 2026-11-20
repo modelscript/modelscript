@@ -42,6 +42,20 @@ export const simpackLanguage = language({
           "force.id           = '$F_PrimarySpring'\nforce.type         = 43\nforce.stiffness    = 1.2e6\nforce.damping      = 1.5e4\n",
       },
     ],
+    toolbarButtons: [
+      {
+        id: "autoLayout",
+        label: "Auto-Layout Diagram",
+        shortLabel: "Layout",
+        tooltip: "Re-run automatic schematic layout on the current diagram",
+        icon: "flowchart",
+        views: ["diagram"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        command: "morsel:autoLayout",
+      },
+    ],
   },
   diagram: {
     placement: {

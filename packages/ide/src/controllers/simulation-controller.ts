@@ -1532,8 +1532,27 @@ export function registerSimulationCommands(
       const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
       if (!targetUri) return;
       VerificationPanel.createOrShow(context.extensionUri, client);
-      await client.sendRequest("modelscript/verifyAll", { uri: targetUri, options: { decisions: true } });
+      const report = await client.sendRequest<unknown>("modelscript/verifyAll", {
+        uri: targetUri,
+        options: { decisions: true, trajectories: false },
+      });
+      VerificationPanel.currentPanel?.postUnifiedReport(report);
     }),
+
+    vscode.commands.registerCommand(
+      "modelscript.showProofDetails",
+      async (_uri: string, className: string, formattedMatrix?: string) => {
+        if (formattedMatrix && formattedMatrix.trim().length > 0) {
+          const content = `# Formal Abstract Interpretation Proof: ${className || "algorithm"}\n\n\`\`\`\n${formattedMatrix.trim()}\n\`\`\`\n`;
+          const doc = await vscode.workspace.openTextDocument({ content, language: "markdown" });
+          await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true });
+        } else {
+          vscode.window.showInformationMessage(
+            `Formal Abstract Interpretation Proof: No runtime defects detected in ${className || "algorithm"}.`,
+          );
+        }
+      },
+    ),
 
     vscode.commands.registerCommand(
       "modelscript.showDaeVerificationDetails",
@@ -1550,17 +1569,23 @@ export function registerSimulationCommands(
       const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
       if (!targetUri) return;
       VerificationPanel.createOrShow(context.extensionUri, client);
-      await client.sendRequest("modelscript/verifyAll", { uri: targetUri, options: { flowpipes: true } });
+      const report = await client.sendRequest<unknown>("modelscript/verifyAll", {
+        uri: targetUri,
+        options: { flowpipes: true, trajectories: false },
+      });
+      VerificationPanel.currentPanel?.postUnifiedReport(report);
     }),
 
     vscode.commands.registerCommand("modelscript.generateBoundaryTests", async (uri?: string) => {
       if (!client) return;
       const targetUri = uri || vscode.window.activeTextEditor?.document.uri.toString();
       if (!targetUri) return;
-      await client.sendRequest("modelscript/verifyAll", {
+      VerificationPanel.createOrShow(context.extensionUri, client);
+      const report = await client.sendRequest<unknown>("modelscript/verifyAll", {
         uri: targetUri,
-        options: { regionDecomposition: true, mcdc: true },
+        options: { regionDecomposition: true, mcdc: true, trajectories: false },
       });
+      VerificationPanel.currentPanel?.postUnifiedReport(report);
     }),
 
     vscode.commands.registerCommand(

@@ -11,6 +11,7 @@
 import type { GdtToleranceSpecification, ToleranceChainSpec, ToleranceStackResult } from "../../interop/gdt_schema.js";
 import type { ConflictClause, SharedEquality, TheoryLiteral, TheoryOracle } from "../theory_coordinator.js";
 import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
+import { UndoTrail } from "./undo_trail.js";
 
 export class ToleranceStackOracle implements TheoryOracle {
   public readonly name = "ToleranceStackOracle";
@@ -25,15 +26,7 @@ export class ToleranceStackOracle implements TheoryOracle {
 
   private sharedEqualities: SharedEquality[] = [];
 
-  private levelStack: {
-    specs: Map<string, GdtToleranceSpecification>;
-    chains: Map<string, ToleranceChainSpec>;
-    constraints: Map<string, { min: number; max: number }>;
-    clearanceJustifications: Map<string, Set<number>>;
-    propagatedEqualities: Set<string>;
-    sharedEqualities: SharedEquality[];
-    assertedLitIds: number[];
-  }[] = [];
+  private trail = new UndoTrail();
 
   constructor() {
     this.reset();
@@ -47,55 +40,30 @@ export class ToleranceStackOracle implements TheoryOracle {
     this.assertedLiterals.clear();
     this.propagatedEqualities.clear();
     this.sharedEqualities = [];
-    this.levelStack = [];
+    this.trail.reset();
   }
 
   public pushLevel(): void {
-    const clearJustSnap = new Map<string, Set<number>>();
-    for (const [k, v] of this.clearanceJustifications) {
-      clearJustSnap.set(k, new Set(v));
-    }
-    this.levelStack.push({
-      specs: new Map(this.toleranceSpecs),
-      chains: new Map(this.chains),
-      constraints: new Map(this.clearanceConstraints),
-      clearanceJustifications: clearJustSnap,
-      propagatedEqualities: new Set(this.propagatedEqualities),
-      sharedEqualities: [...this.sharedEqualities],
-      assertedLitIds: [],
-    });
+    this.trail.pushLevel();
   }
 
   public popLevel(): void {
-    const top = this.levelStack.pop();
-    if (!top) return;
-    this.toleranceSpecs = top.specs;
-    this.chains = top.chains;
-    this.clearanceConstraints = top.constraints;
-    this.clearanceJustifications = top.clearanceJustifications;
-    this.propagatedEqualities = top.propagatedEqualities;
-    this.sharedEqualities = top.sharedEqualities;
-    for (const litId of top.assertedLitIds) {
-      this.assertedLiterals.delete(litId);
-    }
+    this.trail.popLevel();
   }
 
   public assertLiteral(lit: TheoryLiteral): boolean {
-    this.assertedLiterals.set(lit.id, lit);
-    if (this.levelStack.length > 0) {
-      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
-    }
+    this.trail.mapSet(this.assertedLiterals, lit.id, lit);
 
     if (lit.predicate === "gdtTolerance") {
       const spec = lit.args[0] as GdtToleranceSpecification;
       if (spec && spec.id) {
-        this.toleranceSpecs.set(spec.id, spec);
+        this.trail.mapSet(this.toleranceSpecs, spec.id, spec);
         return true;
       }
     } else if (lit.predicate === "toleranceChain") {
       const chain = lit.args[0] as ToleranceChainSpec;
       if (chain && chain.chainId) {
-        this.chains.set(chain.chainId, chain);
+        this.trail.mapSet(this.chains, chain.chainId, chain);
         return true;
       }
     } else if (lit.predicate === "clearanceConstraint") {
@@ -103,7 +71,7 @@ export class ToleranceStackOracle implements TheoryOracle {
       const min = Number(lit.args[1]);
       const max = Number(lit.args[2]);
       if (!isNaN(min) && !isNaN(max)) {
-        this.clearanceConstraints.set(chainId, { min, max });
+        this.trail.mapSet(this.clearanceConstraints, chainId, { min, max });
         return true;
       }
     }
@@ -115,17 +83,18 @@ export class ToleranceStackOracle implements TheoryOracle {
     const hasShared = hasSharedEqualityWithLiteral(this.sharedEqualities, litId);
     if (!this.assertedLiterals.has(litId) && !hasShared) return;
     this.assertedLiterals.delete(litId);
-    const savedStack = this.levelStack;
+    const savedTrail = this.trail;
     const remaining = Array.from(this.assertedLiterals.values());
     const remainingSharedEqs = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
+    this.trail = new UndoTrail();
     this.reset();
-    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
     for (const eq of remainingSharedEqs) {
       this.onSharedEquality(eq);
     }
+    this.trail = savedTrail;
   }
 
   public calculateChain(chain: ToleranceChainSpec): ToleranceStackResult {
@@ -301,7 +270,7 @@ export class ToleranceStackOracle implements TheoryOracle {
       const res = this.calculateChain(chain);
       const varKey = `clearance_${chainId}`;
       if (!this.propagatedEqualities.has(varKey)) {
-        this.propagatedEqualities.add(varKey);
+        this.trail.setAdd(this.propagatedEqualities, varKey);
         equalities.push({
           varA: varKey,
           varB: varKey,
@@ -319,7 +288,7 @@ export class ToleranceStackOracle implements TheoryOracle {
   }
 
   public onSharedEquality(eq: SharedEquality): void {
-    this.sharedEqualities.push(eq);
+    this.trail.arrayPush(this.sharedEqualities, eq);
     if (eq.domain === "interval" && eq.bounds && eq.varA.startsWith("clearance_")) {
       const chainId = eq.varA.replace(/^clearance_/, "");
       if (this.chains.has(chainId)) {
@@ -327,15 +296,17 @@ export class ToleranceStackOracle implements TheoryOracle {
         const current = this.clearanceConstraints.get(chainId) || this.chains.get(chainId)!.targetClearance;
         const tightenedMin = Math.max(current.min, sharedMin);
         const tightenedMax = Math.min(current.max, sharedMax);
-        this.clearanceConstraints.set(chainId, { min: tightenedMin, max: tightenedMax });
+        this.trail.mapSet(this.clearanceConstraints, chainId, { min: tightenedMin, max: tightenedMax });
 
         const justs = eq.justifications ?? eq.justification ?? [];
         if (justs.length > 0) {
-          if (!this.clearanceJustifications.has(chainId)) {
-            this.clearanceJustifications.set(chainId, new Set());
+          let jSet = this.clearanceJustifications.get(chainId);
+          if (!jSet) {
+            jSet = new Set();
+            this.trail.mapSet(this.clearanceJustifications, chainId, jSet);
           }
           for (const j of justs) {
-            this.clearanceJustifications.get(chainId)!.add(j);
+            this.trail.setAdd(jSet, j);
           }
         }
       }

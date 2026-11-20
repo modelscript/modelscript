@@ -34,4 +34,20 @@ export const autosarLanguage = language({
   },
   extras: ($) => [/[ \t\r\n]+/, $["COMMENT"]!, $["PROCESSING_INSTRUCTION"]!],
   rules: xmlRules,
+  ui: {
+    toolbarButtons: [
+      {
+        id: "autoLayout",
+        label: "Auto-Layout Diagram",
+        shortLabel: "Layout",
+        tooltip: "Re-run automatic schematic layout on the current diagram",
+        icon: "flowchart",
+        views: ["diagram"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        command: "morsel:autoLayout",
+      },
+    ],
+  },
 });

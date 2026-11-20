@@ -1093,7 +1093,12 @@ export function createLspRuntime(options: LspRuntimeOptions = {}): LspRuntime {
 
       if (method === "textDocument/codeLens") {
         if (!ch?.codeLens) return { handled: true, result: [] };
-        const result = await ch.codeLens(entry.doc);
+        const result = await (ch.codeLens as (doc: TextDocument, ctx?: unknown) => unknown)(entry.doc, {
+          uri: entry.doc.uri,
+          text: entry.doc.getText(),
+          headerRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+          flags: {},
+        });
         return { handled: true, result: Array.isArray(result) ? result : [] };
       }
 

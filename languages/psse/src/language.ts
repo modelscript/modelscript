@@ -1,10 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, def, language, repeat, type QueryDB, type SymbolEntry, type SymbolId } from "@modelscript/dsl";
+import {
+  choice,
+  def,
+  language,
+  repeat,
+  repeat1,
+  seq,
+  type QueryDB,
+  type SymbolEntry,
+  type SymbolId,
+} from "@modelscript/dsl";
 import { buildPsseBuiltinSymbols, indexPsseDocument } from "./builtins.js";
 import { auditNercCompliance } from "./compliance/nerc-auditor.js";
 import { lintPsse } from "./lints/index.js";
 import { extractPowerFlowNetlist, serializePowerFlowNetlist } from "./netlist/powerflow-netlist.js";
+import { psseOutStreamCodecDef, psseSavSoaCodecDef, readPsseOutWindow } from "./parser/codecs.js";
 import { executeIdv } from "./parser/idv-interpreter.js";
 import { parseRaw } from "./parser/raw-parser.js";
 import { parsePsseOut, serializePsseSav } from "./parser/sav-parser.js";
@@ -22,21 +33,71 @@ import { calculateGic } from "./solver/gic-solver.js";
 import { pssePolyglotConfig } from "./tgg.js";
 
 /**
- * ModelScript PSS/E RAW (`.raw`), DYR (`.dyr`), SEQ (`.seq`), CON/MON/SUB & SAV/OUT Language Definition.
+ * ModelScript PSS/E RAW (`.raw`), DYR (`.dyr`), SEQ (`.seq`), CON/MON/SUB, IDV & SAV/OUT Language Definition.
  *
- * Provides declarative grammar, linear CST queries, pre-flight grid linter,
- * AC power flow, multi-machine transient stability simulation, and Ybus netlist extraction.
+ * Provides declarative grammar, multi-format dialect registry, binary-to-SoA WASM codecs,
+ * linear CST queries, pre-flight grid linter, AC power flow, multi-machine transient stability
+ * simulation, and Ybus netlist extraction.
  */
 export const psseLanguage = language({
   name: "psse",
-  fileExtensions: [".raw", ".dyr", ".seq", ".con", ".mon", ".sub", ".sav", ".out"],
+  fileExtensions: [".raw", ".dyr", ".seq", ".con", ".mon", ".sub", ".idv", ".sav", ".out"],
+  formats: {
+    raw: {
+      kind: "text",
+      fileExtensions: [".raw"],
+      startRule: "RawFile",
+      versions: [26, 29, 30, 31, 32, 33, 34, 35, 36],
+      description: "PSS/E ASCII Power Flow Raw Data File (v26–v36).",
+    },
+    dyr: {
+      kind: "text",
+      fileExtensions: [".dyr"],
+      startRule: "DyrFile",
+      versions: [26, 29, 30, 31, 32, 33, 34, 35, 36],
+      description: "PSS/E Dynamic Model Data File.",
+    },
+    seq: {
+      kind: "text",
+      fileExtensions: [".seq"],
+      startRule: "SeqFile",
+      versions: [30, 31, 32, 33, 34, 35, 36],
+      description: "PSS/E Positive-, Negative-, and Zero-Sequence Impedance Data File.",
+    },
+    con: {
+      kind: "text",
+      fileExtensions: [".con", ".mon", ".sub"],
+      startRule: "ConFile",
+      description: "PSS/E ACCC Contingency, Monitored Element, and Subsystem Definitions.",
+    },
+    idv: {
+      kind: "text",
+      fileExtensions: [".idv"],
+      startRule: "IdvFile",
+      description: "PSS/E Interactive Batch & Macro Command Script.",
+    },
+    sav: {
+      kind: "binary",
+      fileExtensions: [".sav"],
+      codec: psseSavSoaCodecDef,
+      versions: [26, 29, 30, 31, 32, 33, 34, 35, 36],
+      description: "PSS/E Binary Saved Case Snapshot (SoA WASM codec).",
+    },
+    out: {
+      kind: "binary",
+      fileExtensions: [".out"],
+      codec: psseOutStreamCodecDef,
+      versions: [33, 34, 35, 36],
+      description: "PSS/E Binary Dynamic Channel Output (streaming & O(1) seekable WASM codec).",
+    },
+  },
   maturity: "stable",
   indexing: {
     builtins: buildPsseBuiltinSymbols,
     indexFile: indexPsseDocument,
   },
   lsp: {
-    fileExtensions: [".raw", ".dyr", ".seq", ".con", ".mon", ".sub", ".sav", ".out"],
+    fileExtensions: [".raw", ".dyr", ".seq", ".con", ".mon", ".sub", ".idv", ".sav", ".out"],
     icons: {
       light: "./assets/psse/icon-light.png",
       dark: "./assets/psse/icon-dark.png",
@@ -91,6 +152,54 @@ export const psseLanguage = language({
         placement: "overflow",
         order: 20,
         actionId: "analyze_n1_contingencies",
+      },
+      {
+        id: "shortCircuit",
+        label: "Run Short-Circuit Fault Analysis (IEC 60909 / ANSI C37)",
+        shortLabel: "Fault",
+        tooltip: "Run Short-Circuit Fault Analysis (IEC 60909 / ANSI C37)",
+        icon: "zap",
+        views: ["diagram", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "solve_short_circuit",
+      },
+      {
+        id: "gicTpl007",
+        label: "Calculate Geomagnetically Induced Currents (GIC) & NERC TPL-007 Compliance",
+        shortLabel: "GIC",
+        tooltip: "Calculate Geomagnetically Induced Currents (GIC) & NERC TPL-007 Compliance",
+        icon: "pulse",
+        views: ["diagram", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 35,
+        actionId: "calculate_gic_tpl007",
+      },
+      {
+        id: "exportModelica",
+        label: "Project to Modelica Power Grid (.mo)",
+        shortLabel: "Modelica",
+        tooltip: "Project to Modelica Power Grid (.mo)",
+        icon: "export",
+        views: ["code", "diagram"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 40,
+        actionId: "export_psse_modelica",
+      },
+      {
+        id: "nercAudit",
+        label: "Audit NERC Reliability Compliance (MOD-025/026/027 & TPL-001)",
+        shortLabel: "NERC Audit",
+        tooltip: "Audit NERC Reliability Compliance (MOD-025/026/027 & TPL-001)",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 45,
+        actionId: "audit_nerc_compliance",
       },
     ],
   },
@@ -332,6 +441,28 @@ export const psseLanguage = language({
       },
     },
     {
+      id: "read_psse_out_window",
+      title: "Read Windowed Slice from Binary .out Trajectory (O(1) Seek)",
+      description:
+        "Performs O(1) fixed-stride byte-offset seeking on a streaming PSSE_OUT file/Blob without loading the full trajectory into RAM.",
+      category: "query",
+      execute: async (
+        _ctx,
+        params: { binaryBuffer?: Uint8Array | undefined; startStep?: number | undefined; count?: number | undefined },
+      ) => {
+        if (!params?.binaryBuffer) return null;
+        const buf = params.binaryBuffer;
+        return readPsseOutWindow(
+          {
+            byteLength: buf.byteLength,
+            read: (offset, length) => buf.subarray(offset, offset + length),
+          },
+          params.startStep ?? 0,
+          params.count ?? 250,
+        );
+      },
+    },
+    {
       id: "calculate_gic_tpl007",
       title: "Calculate Geomagnetically Induced Currents (GIC) & NERC TPL-007 Compliance",
       description:
@@ -394,7 +525,14 @@ export const psseLanguage = language({
   rules: {
     SourceFile: ($) =>
       def({
-        syntax: repeat($["DataRecord"]!),
+        syntax: choice(
+          seq($["FormatRaw"]!, $["RawFile"]!),
+          seq($["FormatDyr"]!, $["DyrFile"]!),
+          seq($["FormatSeq"]!, $["SeqFile"]!),
+          seq($["FormatCon"]!, $["ConFile"]!),
+          seq($["FormatIdv"]!, $["IdvFile"]!),
+          repeat($["DataRecord"]!),
+        ),
         symbol: () => ({
           kind: "Class",
           name: "PsseCase",
@@ -438,6 +576,30 @@ export const psseLanguage = language({
           },
         },
       }),
+
+    // Multi-format GLR entry points (dispatched via Parser.parseFormat(source, "raw" | "dyr" | "seq" | "con" | "idv"))
+    RawFile: ($) => repeat(choice($["RawMetadataLine"]!, $["RawComment"]!, $["RawFieldToken"]!)),
+    RawMetadataLine: ($) => $["BangComment"]!,
+    RawComment: ($) => choice($["SlashTerminator"]!, $["DoubleSlashComment"]!),
+    RawFieldToken: ($) => choice($["Number"]!, $["QuotedString"]!, $["Identifier"]!, ",", $["SymbolPunct"]!),
+
+    DyrFile: ($) => repeat(choice($["DyrRecord"]!, $["BangComment"]!, $["DoubleSlashComment"]!)),
+    DyrRecord: ($) => seq(repeat1($["RawFieldToken"]!), $["SlashTerminator"]!),
+
+    SeqFile: ($) => repeat(choice($["RawMetadataLine"]!, $["RawComment"]!, $["RawFieldToken"]!)),
+    ConFile: ($) => repeat(choice($["ConComment"]!, $["ConToken"]!)),
+    ConComment: ($) => choice($["SlashTerminator"]!, $["BangComment"]!, $["DoubleSlashComment"]!),
+    ConToken: ($) => choice($["Number"]!, $["QuotedString"]!, $["Identifier"]!, ",", $["SymbolPunct"]!),
+
+    IdvFile: ($) => repeat(choice($["IdvComment"]!, $["IdvToken"]!)),
+    IdvComment: ($) => choice($["SlashTerminator"]!, $["BangComment"]!, $["DoubleSlashComment"]!),
+    IdvToken: ($) => choice($["Number"]!, $["QuotedString"]!, $["Identifier"]!, ",", $["SymbolPunct"]!),
+
+    FormatRaw: () => /\uE000raw\uE001/,
+    FormatDyr: () => /\uE000dyr\uE001/,
+    FormatSeq: () => /\uE000seq\uE001/,
+    FormatCon: () => /\uE000con\uE001/,
+    FormatIdv: () => /\uE000idv\uE001/,
 
     DataRecord: ($) =>
       choice(

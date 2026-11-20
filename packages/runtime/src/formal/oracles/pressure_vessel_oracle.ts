@@ -26,6 +26,7 @@ import type {
   TheoryOracle,
 } from "../theory_coordinator.js";
 import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
+import { UndoTrail } from "./undo_trail.js";
 
 export type VesselHeadType = "hemispherical" | "ellipsoidal" | "torispherical";
 
@@ -185,12 +186,17 @@ function resolveAllowableStress(params: {
   return undefined;
 }
 
-function intersectBoundMap(map: Map<string, [number, number]>, varName: string, bounds: [number, number]): void {
+function intersectBoundMap(
+  trail: UndoTrail,
+  map: Map<string, [number, number]>,
+  varName: string,
+  bounds: [number, number],
+): void {
   const prev = map.get(varName);
   if (prev) {
-    map.set(varName, [Math.max(prev[0], bounds[0]), Math.min(prev[1], bounds[1])]);
+    trail.mapSet(map, varName, [Math.max(prev[0], bounds[0]), Math.min(prev[1], bounds[1])]);
   } else {
-    map.set(varName, [bounds[0], bounds[1]]);
+    trail.mapSet(map, varName, [bounds[0], bounds[1]]);
   }
 }
 
@@ -203,13 +209,7 @@ export class PressureVesselOracle implements TheoryOracle {
   private sharedEqualities: SharedEquality[] = [];
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private nextLiteralId = 60000;
-
-  private levelStack: {
-    checks: Map<string, PressureVesselCheckSpec>;
-    externalBounds: Map<string, [number, number]>;
-    sharedEqualities: SharedEquality[];
-    assertedLitIds: number[];
-  }[] = [];
+  private trail = new UndoTrail();
 
   constructor() {
     this.reset();
@@ -220,27 +220,15 @@ export class PressureVesselOracle implements TheoryOracle {
     this.externalBounds.clear();
     this.sharedEqualities = [];
     this.assertedLiterals.clear();
-    this.levelStack = [];
+    this.trail.reset();
   }
 
   public pushLevel(): void {
-    this.levelStack.push({
-      checks: new Map(this.checks),
-      externalBounds: new Map(this.externalBounds),
-      sharedEqualities: [...this.sharedEqualities],
-      assertedLitIds: [],
-    });
+    this.trail.pushLevel();
   }
 
   public popLevel(): void {
-    const top = this.levelStack.pop();
-    if (!top) return;
-    this.checks = top.checks;
-    this.externalBounds = top.externalBounds;
-    this.sharedEqualities = top.sharedEqualities;
-    for (const litId of top.assertedLitIds) {
-      this.assertedLiterals.delete(litId);
-    }
+    this.trail.popLevel();
   }
 
   public assertCheck(spec: PressureVesselCheckSpec): number {
@@ -275,29 +263,26 @@ export class PressureVesselOracle implements TheoryOracle {
   }
 
   public assertLiteral(lit: TheoryLiteral): boolean {
-    this.assertedLiterals.set(lit.id, lit);
-    if (this.levelStack.length > 0) {
-      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
-    }
+    this.trail.mapSet(this.assertedLiterals, lit.id, lit);
 
     const arg0 = lit.args?.[0] as PressureVesselCheckSpec | undefined;
     if (arg0 && typeof arg0 === "object" && typeof arg0.checkId === "string" && typeof arg0.kind === "string") {
-      this.checks.set(arg0.checkId, { ...arg0 });
+      this.trail.mapSet(this.checks, arg0.checkId, { ...arg0 });
     } else if (lit.predicate === "pressureVesselUG27" && arg0) {
       const spec = arg0 as Omit<Ug27CylinderCheckSpec, "kind">;
-      this.checks.set(spec.checkId, { ...spec, kind: "ug27_cylinder" });
+      this.trail.mapSet(this.checks, spec.checkId, { ...spec, kind: "ug27_cylinder" });
     } else if (lit.predicate === "pressureVesselUG32" && arg0) {
       const spec = arg0 as Omit<Ug32HeadCheckSpec, "kind">;
-      this.checks.set(spec.checkId, { ...spec, kind: "ug32_head" });
+      this.trail.mapSet(this.checks, spec.checkId, { ...spec, kind: "ug32_head" });
     } else if (lit.predicate === "pressureVesselUG99" && arg0) {
       const spec = arg0 as Omit<Ug99HydrostaticCheckSpec, "kind">;
-      this.checks.set(spec.checkId, { ...spec, kind: "ug99_hydrostatic" });
+      this.trail.mapSet(this.checks, spec.checkId, { ...spec, kind: "ug99_hydrostatic" });
     } else if (lit.predicate === "pressureVesselUG125" && arg0) {
       const spec = arg0 as Omit<Ug125ReliefCheckSpec, "kind">;
-      this.checks.set(spec.checkId, { ...spec, kind: "ug125_relief" });
+      this.trail.mapSet(this.checks, spec.checkId, { ...spec, kind: "ug125_relief" });
     } else if (lit.predicate === "pressureVesselVIII2" && arg0) {
       const spec = arg0 as Omit<Viii2StressLinearizationSpec, "kind">;
-      this.checks.set(spec.checkId, { ...spec, kind: "viii2_stress_linearization" });
+      this.trail.mapSet(this.checks, spec.checkId, { ...spec, kind: "viii2_stress_linearization" });
     }
     return true;
   }
@@ -306,17 +291,18 @@ export class PressureVesselOracle implements TheoryOracle {
     const hasShared = hasSharedEqualityWithLiteral(this.sharedEqualities, litId);
     if (!this.assertedLiterals.has(litId) && !hasShared) return;
     this.assertedLiterals.delete(litId);
-    const savedStack = this.levelStack;
+    const savedTrail = this.trail;
     const remaining = Array.from(this.assertedLiterals.values());
     const remainingSharedEqs = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
+    this.trail = new UndoTrail();
     this.reset();
-    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
     for (const eq of remainingSharedEqs) {
       this.onSharedEquality(eq);
     }
+    this.trail = savedTrail;
   }
 
   private evaluateSpec(spec: PressureVesselCheckSpec): PressureVesselCheckResult {
@@ -761,11 +747,11 @@ export class PressureVesselOracle implements TheoryOracle {
   }
 
   public onSharedEquality(eq: SharedEquality): void {
-    this.sharedEqualities.push(eq);
+    this.trail.arrayPush(this.sharedEqualities, eq);
     if (eq.bounds) {
-      intersectBoundMap(this.externalBounds, eq.varA, eq.bounds);
+      intersectBoundMap(this.trail, this.externalBounds, eq.varA, eq.bounds);
       if (eq.varB && eq.varB !== eq.varA) {
-        intersectBoundMap(this.externalBounds, eq.varB, eq.bounds);
+        intersectBoundMap(this.trail, this.externalBounds, eq.varB, eq.bounds);
       }
     }
   }

@@ -599,296 +599,319 @@ export function registerAnalysisEndpoints(context: LspContext) {
         if (!options.cancellationToken && token) {
           options.cancellationToken = token;
         }
-        let simResult: Awaited<ReturnType<typeof simulateArenaAsync>> | undefined = undefined;
-        const needsSim = options.all || options.trajectories !== false || options.b2b;
-        if (arena && needsSim) {
-          try {
-            const exp = arena.experiment;
-            const startTime = exp?.startTime ?? 0;
-            const stopTime = exp?.stopTime ?? 10;
-            const step = options.b2bDt ?? exp?.interval ?? (stopTime - startTime) / 1000;
-            simResult = await simulateArenaAsync(arena, {
-              startTime,
-              stopTime,
-              step,
-            });
-          } catch (simErr: unknown) {
-            const msg = simErr instanceof Error ? simErr.message : String(simErr);
-            context.connection.console.warn(`[verifyAll] Numeric simulation warning: ${msg}`);
-          }
-        }
-
-        // 4. Run Unified Verification via Theory Coordinator & Verifier
-        const wmExt = context.workspaceManager as unknown as {
-          getCoordinator?: () => SemanticTheoryCoordinator;
-          coordinator?: SemanticTheoryCoordinator;
-        };
-        const coordinator = wmExt?.getCoordinator?.() || wmExt?.coordinator || new SemanticTheoryCoordinator();
-
-        const report = await UnifiedVerifier.verify(
-          {
-            uri: params.uri,
-            sourceText,
-            queryDB,
-            arena: arena ?? undefined,
-            simulationResult: simResult,
-            coordinator,
-            paths: [params.uri],
-          },
-          options,
-        );
-
-        const openDocs = context.documents?.all?.() ?? [];
-        const discoveredMap = new Map<string, { uri: string; fileName: string; content: string }>();
-        const normalizeDiscoveryKey = (uri: string) => uri.replace(/^([a-z0-9+-]+):\/(?!\/)/i, "$1:///").toLowerCase();
-        const isVirtualStdlibUri = (uri: string) => /^(builtin|modelica|msl):/i.test(uri);
-        const addDiscoveredFile = (uri: string, content: string) => {
-          const normKey = normalizeDiscoveryKey(uri);
-          if (discoveredMap.has(normKey)) return;
-          discoveredMap.set(normKey, {
-            uri,
-            fileName: uri.split(/[\\/]/).pop() || uri,
-            content,
-          });
-        };
-
-        for (const d of openDocs) {
-          addDiscoveredFile(d.uri, d.getText());
-        }
-
-        const unifiedWs = context.workspaceManager?.unifiedWorkspace as unknown as
-          | {
-              getAllDocumentEntries?: () => Array<{ uri?: string; text?: string }>;
-              getIndex?: () => {
-                documents?: Map<string, string | { text?: string; source?: string }>;
-                symbolsByResource?: Map<string, unknown>;
-              };
-              getDocument?: (uri: string) => unknown;
-            }
-          | undefined;
-        if (unifiedWs && typeof unifiedWs.getAllDocumentEntries === "function") {
-          for (const entry of unifiedWs.getAllDocumentEntries()) {
-            if (entry?.uri && entry.text && entry.text.trim().length > 0 && !isVirtualStdlibUri(entry.uri)) {
-              addDiscoveredFile(entry.uri, entry.text);
-            }
-          }
-        }
-        const indexedIndex = unifiedWs?.getIndex?.();
-        const fallbackIndexDocs = indexedIndex?.documents;
-        if (fallbackIndexDocs && typeof fallbackIndexDocs.entries === "function") {
-          for (const [docUri, docVal] of fallbackIndexDocs.entries()) {
-            const docText = typeof docVal === "string" ? docVal : (docVal?.text ?? docVal?.source);
-            if (docUri && docText && docText.trim().length > 0 && !isVirtualStdlibUri(docUri)) {
-              addDiscoveredFile(docUri, docText);
-            }
-          }
-        }
-        if (indexedIndex?.symbolsByResource) {
-          for (const resUri of indexedIndex.symbolsByResource.keys()) {
-            if (!resUri || isVirtualStdlibUri(resUri)) continue;
-            const docsExt = context.documents as unknown as { get?: (uri: string) => unknown } | undefined;
-            const wmDocs = context.workspaceManager as unknown as
-              | { getDocument?: (uri: string) => unknown }
-              | undefined;
-            const uDoc = (unifiedWs?.getDocument?.(resUri) ??
-              docsExt?.get?.(resUri) ??
-              wmDocs?.getDocument?.(resUri)) as { getText?: () => string; text?: string } | undefined;
-            const docText =
-              typeof uDoc?.text === "string"
-                ? uDoc.text
-                : typeof uDoc?.getText === "function"
-                  ? uDoc.getText()
-                  : undefined;
-            if (docText && docText.trim().length > 0) {
-              addDiscoveredFile(resUri, docText);
-            }
-          }
-        }
-
-        if (sourceText) {
-          addDiscoveredFile(params.uri, sourceText);
-        }
-
-        const POLYGLOT_MODEL_EXT_RE =
-          /\.(sysml|sysml2|mo|ms|msx|sp|cir|spice|scad|inp|cfd|urdf|step|stp|reqif|omn|ofn|owl)$/i;
-        // Discover transitively referenced files (*INCLUDE, @mesh_source:) and sibling model files on disk
+        let report: UnifiedVerificationReport;
         try {
-          const initialEntries = Array.from(discoveredMap.values());
-          for (const entry of initialEntries) {
-            if (!entry.uri.startsWith("file://")) continue;
-            let fsPath: string;
+          let simResult: Awaited<ReturnType<typeof simulateArenaAsync>> | undefined = undefined;
+          const needsSim = Boolean(options.all || options.trajectories === true || options.b2b);
+          if (arena && needsSim) {
             try {
-              fsPath = fileURLToPath(entry.uri);
-            } catch {
-              continue;
+              const exp = arena.experiment;
+              const startTime = exp?.startTime ?? 0;
+              const stopTime = exp?.stopTime ?? 10;
+              const step = options.b2bDt ?? exp?.interval ?? (stopTime - startTime) / 1000;
+              simResult = await simulateArenaAsync(arena, {
+                startTime,
+                stopTime,
+                step,
+              });
+            } catch (simErr: unknown) {
+              const msg = simErr instanceof Error ? simErr.message : String(simErr);
+              context.connection.console.warn(`[verifyAll] Numeric simulation warning: ${msg}`);
             }
-            const dir = path.dirname(fsPath);
-            // Referenced files via *INCLUDE, INPUT=... (FEA INP) or @mesh_source: ...
-            let includeRefs: string[] = [];
-            if (entry.content.toUpperCase().includes("*INCLUDE")) {
-              const { InpDialect } = await import("@modelscript/fea");
-              includeRefs = new InpDialect().parse(entry.content).includes ?? [];
-            }
-            const refTargets = [...includeRefs, ...extractMeshSourceDirectives(entry.content)];
-            for (const rawRef of refTargets) {
-              const refRel = rawRef.trim();
-              if (!refRel) continue;
-              const refPath = path.resolve(dir, refRel);
-              if (fs.existsSync(refPath) && fs.statSync(refPath).isFile()) {
-                addDiscoveredFile(pathToFileURL(refPath).href, fs.readFileSync(refPath, "utf-8"));
+          }
+
+          // 4. Run Unified Verification via Theory Coordinator & Verifier
+          const wmExt = context.workspaceManager as unknown as {
+            getCoordinator?: () => SemanticTheoryCoordinator;
+            coordinator?: SemanticTheoryCoordinator;
+          };
+          const coordinator = wmExt?.getCoordinator?.() || wmExt?.coordinator || new SemanticTheoryCoordinator();
+
+          report = await UnifiedVerifier.verify(
+            {
+              uri: params.uri,
+              sourceText,
+              queryDB,
+              arena: arena ?? undefined,
+              simulationResult: simResult,
+              coordinator,
+              paths: [params.uri],
+            },
+            options,
+          );
+        } finally {
+          (arena as { free?: () => void } | null)?.free?.();
+        }
+
+        const optsPoly = options as unknown as { digitalThread?: boolean; polyglotThread?: boolean };
+        const isTargetedSingleStage = Boolean(
+          !options.all &&
+          !optsPoly.digitalThread &&
+          !optsPoly.polyglotThread &&
+          (options.flowpipes ||
+            options.decisions ||
+            options.barriers ||
+            options.mcdc ||
+            options.regionDecomposition ||
+            options.b2b),
+        );
+        if (!isTargetedSingleStage) {
+          const openDocs = context.documents?.all?.() ?? [];
+          const discoveredMap = new Map<string, { uri: string; fileName: string; content: string }>();
+          const normalizeDiscoveryKey = (uri: string) =>
+            uri.replace(/^([a-z0-9+-]+):\/(?!\/)/i, "$1:///").toLowerCase();
+          const isVirtualStdlibUri = (uri: string) => /^(builtin|modelica|msl):/i.test(uri);
+          const addDiscoveredFile = (uri: string, content: string) => {
+            const normKey = normalizeDiscoveryKey(uri);
+            if (discoveredMap.has(normKey)) return;
+            discoveredMap.set(normKey, {
+              uri,
+              fileName: uri.split(/[\\/]/).pop() || uri,
+              content,
+            });
+          };
+
+          for (const d of openDocs) {
+            addDiscoveredFile(d.uri, d.getText());
+          }
+
+          const unifiedWs = context.workspaceManager?.unifiedWorkspace as unknown as
+            | {
+                getAllDocumentEntries?: () => Array<{ uri?: string; text?: string }>;
+                getIndex?: () => {
+                  documents?: Map<string, string | { text?: string; source?: string }>;
+                  symbolsByResource?: Map<string, unknown>;
+                };
+                getDocument?: (uri: string) => unknown;
               }
-            }
-            // Sibling model files in the target file's directory (capped at 24 files)
-            if (entry.uri.toLowerCase() === params.uri.toLowerCase() && fs.existsSync(dir)) {
-              const siblings = fs
-                .readdirSync(dir)
-                .filter((f) => POLYGLOT_MODEL_EXT_RE.test(f))
-                .slice(0, 24);
-              for (const sib of siblings) {
-                const sibPath = path.join(dir, sib);
-                try {
-                  if (fs.statSync(sibPath).isFile()) {
-                    addDiscoveredFile(pathToFileURL(sibPath).href, fs.readFileSync(sibPath, "utf-8"));
-                  }
-                } catch {
-                  // Ignore unreadable sibling
-                }
+            | undefined;
+          if (unifiedWs && typeof unifiedWs.getAllDocumentEntries === "function") {
+            for (const entry of unifiedWs.getAllDocumentEntries()) {
+              if (entry?.uri && entry.text && entry.text.trim().length > 0 && !isVirtualStdlibUri(entry.uri)) {
+                addDiscoveredFile(entry.uri, entry.text);
               }
             }
           }
-        } catch {
-          // Non-fatal disk discovery fallback
-        }
-
-        const workspaceFiles = Array.from(discoveredMap.values());
-        const uniqueExts = new Set(
-          workspaceFiles.map((d) => {
-            const name = d.fileName;
-            const dot = name.lastIndexOf(".");
-            return dot >= 0 ? name.slice(dot).toLowerCase() : "";
-          }),
-        );
-        const hasCrossLanguageDirective = workspaceFiles.some((d) => {
-          const txt = d.content;
-          return (
-            txt.includes("@twin:") ||
-            txt.includes("@port_map:") ||
-            txt.includes("@mesh_source:") ||
-            txt.includes("annotation(twin")
-          );
-        });
-        const hasPolyglotWorkspace =
-          (workspaceFiles.length >= 2 && uniqueExts.size >= 2) ||
-          hasCrossLanguageDirective ||
-          workspaceFiles.some((d) => /\.(scad|inp|cfd|urdf|step|stp)$/i.test(d.uri));
-        if (hasPolyglotWorkspace) {
-          try {
-            const [{ createPolyglotCoordinator }, providers] = await Promise.all([
-              import("@modelscript/runtime"),
-              loadPolyglotCoordinatorProviders(),
-            ]);
-            const { evaluatePolyglotDigitalThreadFromFiles } = createPolyglotCoordinator(
-              providers as unknown as Parameters<typeof createPolyglotCoordinator>[0],
-            );
-            const symbolIndex = context.workspaceManager?.unifiedWorkspace?.getIndex?.();
-            for (const wf of workspaceFiles) {
-              const wfExt = wf as { theoryConstraints?: unknown };
-              const plugin = globalLanguageRegistry.getPluginForUri(wf.uri);
-              if (plugin?.extractTheoryConstraints && !wfExt.theoryConstraints) {
-                try {
-                  wfExt.theoryConstraints = await plugin.extractTheoryConstraints(wf.content, wf.uri, symbolIndex);
-                } catch {
-                  // Non-fatal typed extractor fallback
-                }
+          const indexedIndex = unifiedWs?.getIndex?.();
+          const fallbackIndexDocs = indexedIndex?.documents;
+          if (fallbackIndexDocs && typeof fallbackIndexDocs.entries === "function") {
+            for (const [docUri, docVal] of fallbackIndexDocs.entries()) {
+              const docText = typeof docVal === "string" ? docVal : (docVal?.text ?? docVal?.source);
+              if (docUri && docText && docText.trim().length > 0 && !isVirtualStdlibUri(docUri)) {
+                addDiscoveredFile(docUri, docText);
               }
             }
-            const threadRes = evaluatePolyglotDigitalThreadFromFiles(workspaceFiles, undefined, { symbolIndex });
-            const portBindings =
-              "parsedMetadata" in threadRes ? threadRes.parsedMetadata.portBindings : threadRes.portBindings;
-            const artifacts = "artifacts" in threadRes ? threadRes.artifacts : undefined;
-            const suggestedEdits = "suggestedEdits" in threadRes ? threadRes.suggestedEdits : undefined;
-            const evaluatedEquations =
-              "evaluatedEquations" in threadRes
-                ? threadRes.evaluatedEquations
-                : "parsedMetadata" in threadRes
-                  ? threadRes.parsedMetadata.evaluatedEquations
-                  : undefined;
-            const threadPayload = {
-              mode: ("mode" in threadRes ? threadRes.mode : "scenario") as "generic" | "scenario",
-              scenarioId: threadRes.scenarioId,
-              scenarioTitle: threadRes.scenarioTitle,
-              status: threadRes.status,
-              isSat: threadRes.isSat,
-              elapsedMs: threadRes.elapsedMs,
-              fileCount: "fileCount" in threadRes ? threadRes.fileCount : workspaceFiles.length,
-              domains:
-                "domains" in threadRes
-                  ? threadRes.domains
-                  : Array.from(new Set(threadRes.hypergraphNodes.map((n) => n.domainName))),
-              summaryText: threadRes.summaryText,
-              artifacts,
-              hypergraphNodes: threadRes.hypergraphNodes,
-              variableLinks: threadRes.variableLinks,
-              portBindings,
-              evaluatedEquations,
-              suggestedEdits,
-              conflicts: threadRes.conflicts,
-            };
-            UnifiedVerifier.attachPolyglotDigitalThread(report, threadPayload);
-
-            // Merge & push live LSP diagnostics per artifact URI without clobbering existing lints
-            if (Array.isArray(artifacts)) {
-              const diagsByUri = new Map<
-                string,
-                Array<{
-                  range: { start: { line: number; character: number }; end: { line: number; character: number } };
-                  severity: number;
-                  code?: string | undefined;
-                  source: string;
-                  message: string;
-                  data?: { suggestedEdits: unknown[] } | undefined;
-                }>
-              >();
-              for (const art of artifacts) {
-                if (!art.uri) continue;
-                const mapped = (art.diagnostics ?? []).map((d) => ({
-                  range: {
-                    start: { line: Math.max(0, (d.startLine ?? 1) - 1), character: Math.max(0, (d.startCol ?? 1) - 1) },
-                    end: {
-                      line: Math.max(0, (d.endLine ?? d.startLine ?? 1) - 1),
-                      character: Math.max(0, (d.endCol ?? d.startCol ?? 1) - 1),
-                    },
-                  },
-                  severity: d.severity === "warning" ? 2 : d.severity === "info" ? 3 : 1,
-                  code: d.code,
-                  source: "modelscript-digital-thread",
-                  message: d.message,
-                  data: suggestedEdits && suggestedEdits.length > 0 ? { suggestedEdits } : undefined,
-                }));
-                diagsByUri.set(art.uri, mapped);
+          }
+          if (indexedIndex?.symbolsByResource) {
+            for (const resUri of indexedIndex.symbolsByResource.keys()) {
+              if (!resUri || isVirtualStdlibUri(resUri)) continue;
+              const docsExt = context.documents as unknown as { get?: (uri: string) => unknown } | undefined;
+              const wmDocs = context.workspaceManager as unknown as
+                | { getDocument?: (uri: string) => unknown }
+                | undefined;
+              const uDoc = (unifiedWs?.getDocument?.(resUri) ??
+                docsExt?.get?.(resUri) ??
+                wmDocs?.getDocument?.(resUri)) as { getText?: () => string; text?: string } | undefined;
+              const docText =
+                typeof uDoc?.text === "string"
+                  ? uDoc.text
+                  : typeof uDoc?.getText === "function"
+                    ? uDoc.getText()
+                    : undefined;
+              if (docText && docText.trim().length > 0) {
+                addDiscoveredFile(resUri, docText);
               }
-              const ctxExt = context as unknown as {
-                validationService?: { mergeDigitalThreadDiagnostics?: (m: typeof diagsByUri) => void };
-              };
-              if (!hasStaleDocument()) {
-                if (typeof ctxExt.validationService?.mergeDigitalThreadDiagnostics === "function") {
-                  ctxExt.validationService.mergeDigitalThreadDiagnostics(diagsByUri);
-                } else if (typeof context.connection?.sendDiagnostics === "function") {
-                  for (const [uri, diagnostics] of diagsByUri.entries()) {
-                    context.connection.sendDiagnostics({
-                      uri,
-                      diagnostics: diagnostics as Parameters<
-                        typeof context.connection.sendDiagnostics
-                      >[0]["diagnostics"],
-                    });
+            }
+          }
+
+          if (sourceText) {
+            addDiscoveredFile(params.uri, sourceText);
+          }
+
+          const POLYGLOT_MODEL_EXT_RE =
+            /\.(sysml|sysml2|mo|ms|msx|sp|cir|spice|scad|inp|cfd|urdf|step|stp|reqif|omn|ofn|owl)$/i;
+          // Discover transitively referenced files (*INCLUDE, @mesh_source:) and sibling model files on disk
+          try {
+            const initialEntries = Array.from(discoveredMap.values());
+            for (const entry of initialEntries) {
+              if (!entry.uri.startsWith("file://")) continue;
+              let fsPath: string;
+              try {
+                fsPath = fileURLToPath(entry.uri);
+              } catch {
+                continue;
+              }
+              const dir = path.dirname(fsPath);
+              // Referenced files via *INCLUDE, INPUT=... (FEA INP) or @mesh_source: ...
+              let includeRefs: string[] = [];
+              if (entry.content.toUpperCase().includes("*INCLUDE")) {
+                const { InpDialect } = await import("@modelscript/fea");
+                includeRefs = new InpDialect().parse(entry.content).includes ?? [];
+              }
+              const refTargets = [...includeRefs, ...extractMeshSourceDirectives(entry.content)];
+              for (const rawRef of refTargets) {
+                const refRel = rawRef.trim();
+                if (!refRel) continue;
+                const refPath = path.resolve(dir, refRel);
+                if (fs.existsSync(refPath) && fs.statSync(refPath).isFile()) {
+                  addDiscoveredFile(pathToFileURL(refPath).href, fs.readFileSync(refPath, "utf-8"));
+                }
+              }
+              // Sibling model files in the target file's directory (capped at 24 files)
+              if (entry.uri.toLowerCase() === params.uri.toLowerCase() && fs.existsSync(dir)) {
+                const siblings = fs
+                  .readdirSync(dir)
+                  .filter((f) => POLYGLOT_MODEL_EXT_RE.test(f))
+                  .slice(0, 24);
+                for (const sib of siblings) {
+                  const sibPath = path.join(dir, sib);
+                  try {
+                    if (fs.statSync(sibPath).isFile()) {
+                      addDiscoveredFile(pathToFileURL(sibPath).href, fs.readFileSync(sibPath, "utf-8"));
+                    }
+                  } catch {
+                    // Ignore unreadable sibling
                   }
                 }
               }
             }
-          } catch (polyErr: unknown) {
-            context.connection.console.warn(
-              `[verifyAll] Polyglot digital thread coordinator warning: ${polyErr instanceof Error ? polyErr.message : String(polyErr)}`,
+          } catch {
+            // Non-fatal disk discovery fallback
+          }
+
+          const workspaceFiles = Array.from(discoveredMap.values());
+          const uniqueExts = new Set(
+            workspaceFiles.map((d) => {
+              const name = d.fileName;
+              const dot = name.lastIndexOf(".");
+              return dot >= 0 ? name.slice(dot).toLowerCase() : "";
+            }),
+          );
+          const hasCrossLanguageDirective = workspaceFiles.some((d) => {
+            const txt = d.content;
+            return (
+              txt.includes("@twin:") ||
+              txt.includes("@port_map:") ||
+              txt.includes("@mesh_source:") ||
+              txt.includes("annotation(twin")
             );
+          });
+          const hasPolyglotWorkspace =
+            (workspaceFiles.length >= 2 && uniqueExts.size >= 2) ||
+            hasCrossLanguageDirective ||
+            workspaceFiles.some((d) => /\.(scad|inp|cfd|urdf|step|stp)$/i.test(d.uri));
+          if (hasPolyglotWorkspace) {
+            try {
+              const [{ createPolyglotCoordinator }, providers] = await Promise.all([
+                import("@modelscript/runtime"),
+                loadPolyglotCoordinatorProviders(),
+              ]);
+              const { evaluatePolyglotDigitalThreadFromFiles } = createPolyglotCoordinator(
+                providers as unknown as Parameters<typeof createPolyglotCoordinator>[0],
+              );
+              const symbolIndex = context.workspaceManager?.unifiedWorkspace?.getIndex?.();
+              for (const wf of workspaceFiles) {
+                const wfExt = wf as { theoryConstraints?: unknown };
+                const plugin = globalLanguageRegistry.getPluginForUri(wf.uri);
+                if (plugin?.extractTheoryConstraints && !wfExt.theoryConstraints) {
+                  try {
+                    wfExt.theoryConstraints = await plugin.extractTheoryConstraints(wf.content, wf.uri, symbolIndex);
+                  } catch {
+                    // Non-fatal typed extractor fallback
+                  }
+                }
+              }
+              const threadRes = evaluatePolyglotDigitalThreadFromFiles(workspaceFiles, undefined, { symbolIndex });
+              const portBindings =
+                "parsedMetadata" in threadRes ? threadRes.parsedMetadata.portBindings : threadRes.portBindings;
+              const artifacts = "artifacts" in threadRes ? threadRes.artifacts : undefined;
+              const suggestedEdits = "suggestedEdits" in threadRes ? threadRes.suggestedEdits : undefined;
+              const evaluatedEquations =
+                "evaluatedEquations" in threadRes
+                  ? threadRes.evaluatedEquations
+                  : "parsedMetadata" in threadRes
+                    ? threadRes.parsedMetadata.evaluatedEquations
+                    : undefined;
+              const threadPayload = {
+                mode: ("mode" in threadRes ? threadRes.mode : "scenario") as "generic" | "scenario",
+                scenarioId: threadRes.scenarioId,
+                scenarioTitle: threadRes.scenarioTitle,
+                status: threadRes.status,
+                isSat: threadRes.isSat,
+                elapsedMs: threadRes.elapsedMs,
+                fileCount: "fileCount" in threadRes ? threadRes.fileCount : workspaceFiles.length,
+                domains:
+                  "domains" in threadRes
+                    ? threadRes.domains
+                    : Array.from(new Set(threadRes.hypergraphNodes.map((n) => n.domainName))),
+                summaryText: threadRes.summaryText,
+                artifacts,
+                hypergraphNodes: threadRes.hypergraphNodes,
+                variableLinks: threadRes.variableLinks,
+                portBindings,
+                evaluatedEquations,
+                suggestedEdits,
+                conflicts: threadRes.conflicts,
+              };
+              UnifiedVerifier.attachPolyglotDigitalThread(report, threadPayload);
+
+              // Merge & push live LSP diagnostics per artifact URI without clobbering existing lints
+              if (Array.isArray(artifacts)) {
+                const diagsByUri = new Map<
+                  string,
+                  Array<{
+                    range: { start: { line: number; character: number }; end: { line: number; character: number } };
+                    severity: number;
+                    code?: string | undefined;
+                    source: string;
+                    message: string;
+                    data?: { suggestedEdits: unknown[] } | undefined;
+                  }>
+                >();
+                for (const art of artifacts) {
+                  if (!art.uri) continue;
+                  const mapped = (art.diagnostics ?? []).map((d) => ({
+                    range: {
+                      start: {
+                        line: Math.max(0, (d.startLine ?? 1) - 1),
+                        character: Math.max(0, (d.startCol ?? 1) - 1),
+                      },
+                      end: {
+                        line: Math.max(0, (d.endLine ?? d.startLine ?? 1) - 1),
+                        character: Math.max(0, (d.endCol ?? d.startCol ?? 1) - 1),
+                      },
+                    },
+                    severity: d.severity === "warning" ? 2 : d.severity === "info" ? 3 : 1,
+                    code: d.code,
+                    source: "modelscript-digital-thread",
+                    message: d.message,
+                    data: suggestedEdits && suggestedEdits.length > 0 ? { suggestedEdits } : undefined,
+                  }));
+                  diagsByUri.set(art.uri, mapped);
+                }
+                const ctxExt = context as unknown as {
+                  validationService?: { mergeDigitalThreadDiagnostics?: (m: typeof diagsByUri) => void };
+                };
+                if (!hasStaleDocument()) {
+                  if (typeof ctxExt.validationService?.mergeDigitalThreadDiagnostics === "function") {
+                    ctxExt.validationService.mergeDigitalThreadDiagnostics(diagsByUri);
+                  } else if (typeof context.connection?.sendDiagnostics === "function") {
+                    for (const [uri, diagnostics] of diagsByUri.entries()) {
+                      context.connection.sendDiagnostics({
+                        uri,
+                        diagnostics: diagnostics as Parameters<
+                          typeof context.connection.sendDiagnostics
+                        >[0]["diagnostics"],
+                      });
+                    }
+                  }
+                }
+              }
+            } catch (polyErr: unknown) {
+              context.connection.console.warn(
+                `[verifyAll] Polyglot digital thread coordinator warning: ${polyErr instanceof Error ? polyErr.message : String(polyErr)}`,
+              );
+            }
           }
         }
 

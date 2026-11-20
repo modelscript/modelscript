@@ -368,6 +368,11 @@ function extractEvaluatedValue(resolved: any, evalScope?: any): any {
     } catch {}
   }
 
+  const defaultVal = resolved.defaultValue ?? resolved.declaration?.metadata?.defaultValue;
+  if (typeof defaultVal === "number" || typeof defaultVal === "boolean" || typeof defaultVal === "string") {
+    return defaultVal;
+  }
+
   return undefined;
 }
 

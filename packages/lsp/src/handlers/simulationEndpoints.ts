@@ -56,27 +56,6 @@ export function resolveTargetClass(
     byName: new Map(),
     childrenOf: new Map(),
   };
-  if (className) {
-    const parts = className.split(".");
-    const candidates = unifiedIndex.byName.get(parts[parts.length - 1]!);
-    if (candidates && candidates.length > 0) {
-      for (const id of candidates) {
-        const entry = unifiedIndex.symbols.get(id);
-        if (
-          entry &&
-          (entry.kind === "Class" || entry.kind === "Def") &&
-          (entry.name === className || getCompositeName(entry, unifiedIndex) === className)
-        ) {
-          return {
-            symbolId: id,
-            className: entry.name,
-            classKind: (entry.metadata?.["classKind"] as string) ?? "class",
-          };
-        }
-      }
-    }
-  }
-
   const isSimulatableClassKind = (kind: string) => {
     const k = kind.toLowerCase();
     return k === "model" || k === "block" || k === "class";
@@ -107,6 +86,33 @@ export function resolveTargetClass(
     if (resBase && uriBase && resBase === uriBase) return true;
     return false;
   };
+
+  if (className) {
+    const parts = className.split(".");
+    const candidates = unifiedIndex.byName.get(parts[parts.length - 1]!);
+    if (candidates && candidates.length > 0) {
+      let firstMatch: { symbolId: number; className: string; classKind: string } | null = null;
+      for (const id of candidates) {
+        const entry = unifiedIndex.symbols.get(id);
+        if (
+          entry &&
+          (entry.kind === "Class" || entry.kind === "Def") &&
+          (entry.name === className || getCompositeName(entry, unifiedIndex) === className)
+        ) {
+          const candidate = {
+            symbolId: id,
+            className: entry.name,
+            classKind: (entry.metadata?.["classKind"] as string) ?? "class",
+          };
+          if (matchesUri(entry.resourceId)) {
+            return candidate;
+          }
+          if (!firstMatch) firstMatch = candidate;
+        }
+      }
+      if (firstMatch) return firstMatch;
+    }
+  }
 
   // Fallback: search for top-level class in the specified URI, preferring model/block/class over connector/record/type
   let fallbackUnified: { symbolId: number; className: string; classKind: string } | null = null;
@@ -176,9 +182,17 @@ export function flattenTargetClass(
   }
   const sharedContext = context.parserService.sharedContext;
   let arena: DAEBuilder | null = null;
-  if (sharedContext && typeof (sharedContext as any).flattenArena === "function") {
+  const sharedCtx = sharedContext as unknown as {
+    flattenArena?: (
+      className: string,
+      symbolId: unknown,
+      uri: string,
+      opts: { arrayMode: string },
+    ) => DAEBuilder | null;
+  } | null;
+  if (sharedCtx && typeof sharedCtx.flattenArena === "function") {
     try {
-      arena = (sharedContext as any).flattenArena(target.className, target.symbolId, uri);
+      arena = sharedCtx.flattenArena(target.className, target.symbolId, uri, { arrayMode: "scalarize" });
     } catch {
       arena = null;
     }

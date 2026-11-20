@@ -83,6 +83,7 @@ describe("Modelica Conditional HeatPort LSP & Diagram Integration", () => {
     const circuitSrc = `model TestCircuitHeated
       Modelica.Electrical.Analog.Basic.Resistor R1(R=100, useHeatPort=true) annotation(Placement(transformation(extent={{-20,-10},{20,10}}, rotation=90)));
       Modelica.Electrical.Analog.Basic.Resistor R2(R=100, useHeatPort=false) annotation(Placement(transformation(extent={{20,-10},{60,10}})));
+      Modelica.Electrical.Analog.Basic.Resistor R3(R=100) annotation(Placement(transformation(extent={{60,-10},{100,10}})));
       annotation(Diagram(coordinateSystem(extent={{-100,-100},{100,100}})));
     end TestCircuitHeated;`;
 
@@ -113,6 +114,15 @@ describe("Modelica Conditional HeatPort LSP & Diagram Integration", () => {
       r2PortIds,
       ["p", "n"],
       "R2 (useHeatPort=false) must have ports p and n only (heatPort hidden)",
+    );
+
+    const r3Node = diagData.nodes.find((n) => n.id === "R3");
+    assert(r3Node, "R3 node must exist");
+    const r3PortIds = ((r3Node.ports as any)?.items ?? []).map((p: any) => p.id);
+    assert.deepStrictEqual(
+      r3PortIds,
+      ["p", "n"],
+      "R3 (default useHeatPort) must have ports p and n only (heatPort hidden by default)",
     );
   });
 });

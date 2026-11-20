@@ -22,6 +22,7 @@ export * from "./projections/powerfactory-to-psse.js";
 export * from "./solvers/iec60909-corrections.js";
 export * from "./solvers/powerfactory-cable.js";
 export * from "./solvers/powerfactory-opf.js";
+export * from "./solvers/powerfactory-phasor-participant.js";
 export * from "./solvers/powerfactory-reliability.js";
 export * from "./tgg/index.js";
 export * from "./topology/topology-processor.js";

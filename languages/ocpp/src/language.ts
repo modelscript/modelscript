@@ -34,6 +34,46 @@ export const ocppLanguage = language({
     Root: () => "ocpp",
   },
 
+  ui: {
+    toolbarButtons: [
+      {
+        id: "ocppSchedule",
+        label: "Schedule Smart Charging Loads",
+        shortLabel: "Schedule Smart",
+        tooltip: "Schedule Smart Charging Loads",
+        icon: "sliders",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        actionId: "ocpp_schedule",
+      },
+      {
+        id: "ocppToDae",
+        label: "Lower OCPP to DAE Arena",
+        shortLabel: "Lower OCPP",
+        tooltip: "Lower OCPP to DAE Arena",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "ocpp_to_dae",
+      },
+      {
+        id: "ocppLint",
+        label: "Lint OCPP EV Charging Network",
+        shortLabel: "Lint OCPP",
+        tooltip: "Lint OCPP EV Charging Network",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "ocpp_lint",
+      },
+    ],
+  },
   actions: [
     {
       id: "ocpp_lint",

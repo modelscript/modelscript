@@ -168,12 +168,25 @@ function convertWorkspaceEdit(monaco: typeof Monaco, edit: any): Monaco.language
 
 const MODELICA_MONARCH: Monaco.languages.IMonarchLanguage = {
   defaultToken: "",
+  controlKeywords: [
+    "break",
+    "else",
+    "elseif",
+    "elsewhen",
+    "for",
+    "if",
+    "in",
+    "loop",
+    "return",
+    "then",
+    "when",
+    "while",
+  ],
   keywords: [
     "algorithm",
     "and",
     "annotation",
     "block",
-    "break",
     "class",
     "connect",
     "connector",
@@ -182,9 +195,6 @@ const MODELICA_MONARCH: Monaco.languages.IMonarchLanguage = {
     "der",
     "discrete",
     "each",
-    "else",
-    "elseif",
-    "elsewhen",
     "encapsulated",
     "end",
     "enumeration",
@@ -195,16 +205,12 @@ const MODELICA_MONARCH: Monaco.languages.IMonarchLanguage = {
     "false",
     "final",
     "flow",
-    "for",
     "function",
-    "if",
     "import",
     "impure",
-    "in",
     "initial",
     "inner",
     "input",
-    "loop",
     "model",
     "not",
     "operator",
@@ -220,13 +226,9 @@ const MODELICA_MONARCH: Monaco.languages.IMonarchLanguage = {
     "record",
     "redeclare",
     "replaceable",
-    "return",
     "stream",
-    "then",
     "true",
     "type",
-    "when",
-    "while",
     "within",
   ],
   typeKeywords: ["Real", "Integer", "Boolean", "String", "StateSelect", "ExternalObject", "Clock"],
@@ -252,7 +254,7 @@ const MODELICA_MONARCH: Monaco.languages.IMonarchLanguage = {
     "floor",
     "homotopy",
     "identity",
-    " initial",
+    "initial",
     "inStream",
     "integer",
     "isPresent",
@@ -271,7 +273,7 @@ const MODELICA_MONARCH: Monaco.languages.IMonarchLanguage = {
     "product",
     "reinit",
     "rem",
-    " rooted",
+    "rooted",
     "Sample",
     "scalar",
     "semiLinear",
@@ -303,6 +305,7 @@ const MODELICA_MONARCH: Monaco.languages.IMonarchLanguage = {
         {
           cases: {
             "@typeKeywords": "type.identifier",
+            "@controlKeywords": "keyword.control",
             "@keywords": "keyword",
             "@builtins": "predefined",
             "@default": "identifier",
@@ -1322,7 +1325,32 @@ export function setupMonacoLspAdapter(
             const cached = lastSemanticTokensCache.get(uri);
             return cached ? { data: cached } : null;
           }
-          const data = new Uint32Array(result.data);
+          let raw: number[] = result.data;
+          if (model.getLanguageId() === "modelica" && raw.length >= 5) {
+            // Preserve Monarch's keyword.control (purple) vs keyword (blue) distinction
+            const filtered: number[] = [];
+            let curLine = 0;
+            let curChar = 0;
+            let prevEmittedLine = 0;
+            let prevEmittedChar = 0;
+            for (let i = 0; i + 4 < raw.length; i += 5) {
+              const dl = raw[i]!;
+              const dc = raw[i + 1]!;
+              const len = raw[i + 2]!;
+              const typeIdx = raw[i + 3]!;
+              const mod = raw[i + 4]!;
+              curLine += dl;
+              curChar = dl === 0 ? curChar + dc : dc;
+              if (typeIdx === 0) continue; // skip "keyword"
+              const outDl = curLine - prevEmittedLine;
+              const outDc = outDl === 0 ? curChar - prevEmittedChar : curChar;
+              filtered.push(outDl, outDc, len, typeIdx, mod);
+              prevEmittedLine = curLine;
+              prevEmittedChar = curChar;
+            }
+            raw = filtered;
+          }
+          const data = new Uint32Array(raw);
           lastSemanticTokensCache.set(uri, data);
           return { data };
         } catch {

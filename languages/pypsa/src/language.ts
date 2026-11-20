@@ -20,6 +20,46 @@ export const pypsaLanguage = language({
   lsp: {
     fileExtensions: [".pypsa", ".pypsa.json"],
   },
+  ui: {
+    toolbarButtons: [
+      {
+        id: "lowerPypsaDae",
+        label: "Lower PyPSA Network to DAE",
+        shortLabel: "Lower PyPSA",
+        tooltip: "Lower PyPSA Network to DAE",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 10,
+        actionId: "lower_pypsa_dae",
+      },
+      {
+        id: "pypsaToAmpl",
+        label: "Export PyPSA Network to AMPL",
+        shortLabel: "Export PyPSA",
+        tooltip: "Export PyPSA Network to AMPL",
+        icon: "export",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 20,
+        actionId: "pypsa_to_ampl",
+      },
+      {
+        id: "lintPypsa",
+        label: "Lint PyPSA Network",
+        shortLabel: "Lint PyPSA",
+        tooltip: "Lint PyPSA Network",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "lint_pypsa",
+      },
+    ],
+  },
   actions: [
     {
       id: "lint_pypsa",

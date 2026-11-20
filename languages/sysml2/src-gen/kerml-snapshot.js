@@ -30,7 +30,9 @@ export const kermlStdlibEntries = [
       "package ScalarValues {\n    abstract attribute def Real;\n    abstract attribute def Integer;\n    abstract attribute def Boolean;\n    abstract attribute def String;\n    abstract attribute def Natural :> Integer;\n    abstract attribute def Positive :> Integer;\n    abstract attribute def UnlimitedNatural :> Natural;\n    abstract attribute def Complex;\n    abstract attribute def Rational;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3437812805,
+    "merkleHigh": 1646440204
   },
   {
     "id": 2,
@@ -61,7 +63,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 461252398,
+    "merkleHigh": 4280647465
   },
   {
     "id": 3,
@@ -92,7 +96,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 3624746281,
+    "merkleHigh": 3538808171
   },
   {
     "id": 4,
@@ -123,7 +129,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 3668427087,
+    "merkleHigh": 465495466
   },
   {
     "id": 5,
@@ -154,7 +162,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 3513019321,
+    "merkleHigh": 988305817
   },
   {
     "id": 6,
@@ -193,7 +203,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Integer"
-    }
+    },
+    "merkleLow": 3933040124,
+    "merkleHigh": 321250377
   },
   {
     "id": 7,
@@ -218,7 +230,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 458172194,
+    "merkleHigh": 2418849832
   },
   {
     "id": 8,
@@ -257,7 +271,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Integer"
-    }
+    },
+    "merkleLow": 854494771,
+    "merkleHigh": 3064860814
   },
   {
     "id": 9,
@@ -282,7 +298,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 458172194,
+    "merkleHigh": 2418849832
   },
   {
     "id": 10,
@@ -321,7 +339,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Natural"
-    }
+    },
+    "merkleLow": 931786619,
+    "merkleHigh": 1854325666
   },
   {
     "id": 11,
@@ -346,7 +366,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 861662013,
+    "merkleHigh": 1464358583
   },
   {
     "id": 12,
@@ -377,7 +399,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 3450057063,
+    "merkleHigh": 107809819
   },
   {
     "id": 13,
@@ -408,7 +432,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 1004638444,
+    "merkleHigh": 862790204
   },
   {
     "id": 14,
@@ -435,7 +461,9 @@ export const kermlStdlibEntries = [
       "package Base {\n    abstract item def Anything;\n    abstract item def Element :> Anything;\n    abstract item def Feature :> Element;\n    abstract item def Type :> Element;\n    abstract item def Classifier :> Type;\n    abstract item def DataType :> Classifier;\n    abstract item def Class :> Classifier;\n    abstract item def Structure :> Class;\n    abstract item def Behavior :> Class;\n    abstract item def Occurrence :> Class;\n    abstract item def Life :> Occurrence;\n    abstract item def Snapshot :> Occurrence;\n    abstract item def Link :> Relationship;\n    abstract item def Relationship :> Element;\n    abstract item def Association :> Classifier;\n    abstract item def Connector :> Feature;\n    abstract item def Interface :> Feature;\n    abstract item def Metadata :> Feature;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 694324271,
+    "merkleHigh": 729925763
   },
   {
     "id": 15,
@@ -466,7 +494,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 1170482351,
+    "merkleHigh": 4176176542
   },
   {
     "id": 16,
@@ -505,7 +535,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Anything"
-    }
+    },
+    "merkleLow": 339406369,
+    "merkleHigh": 3958392027
   },
   {
     "id": 17,
@@ -530,7 +562,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1358486151,
+    "merkleHigh": 3010559932
   },
   {
     "id": 18,
@@ -569,7 +603,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Element"
-    }
+    },
+    "merkleLow": 1505729026,
+    "merkleHigh": 2834506285
   },
   {
     "id": 19,
@@ -594,7 +630,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 799640052,
+    "merkleHigh": 301685473
   },
   {
     "id": 20,
@@ -633,7 +671,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Element"
-    }
+    },
+    "merkleLow": 1004725347,
+    "merkleHigh": 1757722535
   },
   {
     "id": 21,
@@ -658,7 +698,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 799640052,
+    "merkleHigh": 301685473
   },
   {
     "id": 22,
@@ -697,7 +739,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Type"
-    }
+    },
+    "merkleLow": 2127921163,
+    "merkleHigh": 1130829975
   },
   {
     "id": 23,
@@ -722,7 +766,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 324613705,
+    "merkleHigh": 3197657795
   },
   {
     "id": 24,
@@ -761,7 +807,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Classifier"
-    }
+    },
+    "merkleLow": 3676327499,
+    "merkleHigh": 618111429
   },
   {
     "id": 25,
@@ -786,7 +834,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1463251090,
+    "merkleHigh": 4084000835
   },
   {
     "id": 26,
@@ -825,7 +875,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Classifier"
-    }
+    },
+    "merkleLow": 2839515678,
+    "merkleHigh": 2368557172
   },
   {
     "id": 27,
@@ -850,7 +902,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1463251090,
+    "merkleHigh": 4084000835
   },
   {
     "id": 28,
@@ -889,7 +943,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Class"
-    }
+    },
+    "merkleLow": 2591276053,
+    "merkleHigh": 4100883041
   },
   {
     "id": 29,
@@ -914,7 +970,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 724246702,
+    "merkleHigh": 2891927194
   },
   {
     "id": 30,
@@ -953,7 +1011,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Class"
-    }
+    },
+    "merkleLow": 2736172391,
+    "merkleHigh": 450468829
   },
   {
     "id": 31,
@@ -978,7 +1038,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 724246702,
+    "merkleHigh": 2891927194
   },
   {
     "id": 32,
@@ -1017,7 +1079,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Class"
-    }
+    },
+    "merkleLow": 2905205782,
+    "merkleHigh": 315260426
   },
   {
     "id": 33,
@@ -1042,7 +1106,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 724246702,
+    "merkleHigh": 2891927194
   },
   {
     "id": 34,
@@ -1081,7 +1147,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Occurrence"
-    }
+    },
+    "merkleLow": 2735872077,
+    "merkleHigh": 3698171574
   },
   {
     "id": 35,
@@ -1106,7 +1174,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2393204286,
+    "merkleHigh": 1680318375
   },
   {
     "id": 36,
@@ -1145,7 +1215,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Occurrence"
-    }
+    },
+    "merkleLow": 740603031,
+    "merkleHigh": 76802788
   },
   {
     "id": 37,
@@ -1170,7 +1242,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2393204286,
+    "merkleHigh": 1680318375
   },
   {
     "id": 38,
@@ -1209,7 +1283,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Relationship"
-    }
+    },
+    "merkleLow": 3465447418,
+    "merkleHigh": 2175859066
   },
   {
     "id": 39,
@@ -1234,7 +1310,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4011620919,
+    "merkleHigh": 1369031002
   },
   {
     "id": 40,
@@ -1273,7 +1351,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Element"
-    }
+    },
+    "merkleLow": 1187278981,
+    "merkleHigh": 3237013380
   },
   {
     "id": 41,
@@ -1298,7 +1378,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 799640052,
+    "merkleHigh": 301685473
   },
   {
     "id": 42,
@@ -1337,7 +1419,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Classifier"
-    }
+    },
+    "merkleLow": 991703735,
+    "merkleHigh": 210980454
   },
   {
     "id": 43,
@@ -1362,7 +1446,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1463251090,
+    "merkleHigh": 4084000835
   },
   {
     "id": 44,
@@ -1401,7 +1487,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Feature"
-    }
+    },
+    "merkleLow": 1706922595,
+    "merkleHigh": 1331655727
   },
   {
     "id": 45,
@@ -1426,7 +1514,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1812641998,
+    "merkleHigh": 2348886317
   },
   {
     "id": 46,
@@ -1465,7 +1555,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Feature"
-    }
+    },
+    "merkleLow": 1617072127,
+    "merkleHigh": 764082254
   },
   {
     "id": 47,
@@ -1490,7 +1582,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1812641998,
+    "merkleHigh": 2348886317
   },
   {
     "id": 48,
@@ -1529,7 +1623,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Feature"
-    }
+    },
+    "merkleLow": 1968222764,
+    "merkleHigh": 3603716190
   },
   {
     "id": 49,
@@ -1554,7 +1650,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1812641998,
+    "merkleHigh": 2348886317
   },
   {
     "id": 50,
@@ -1581,7 +1679,9 @@ export const kermlStdlibEntries = [
       "package CoreTypes {\n    import Base::*;\n\n    abstract part def Part :> Structure;\n    abstract item def Item :> Structure;\n    abstract port def Port :> Feature;\n    abstract action def Action :> Behavior;\n    abstract state def State :> Behavior;\n    abstract constraint def Constraint :> Behavior;\n    abstract calc def Calculation :> Behavior;\n    abstract requirement def Requirement :> Constraint;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2781579072,
+    "merkleHigh": 176189168
   },
   {
     "id": 51,
@@ -1609,7 +1709,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 3632357851,
+    "merkleHigh": 1283035657
   },
   {
     "id": 52,
@@ -1648,7 +1750,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Structure"
-    }
+    },
+    "merkleLow": 2873103570,
+    "merkleHigh": 3946845626
   },
   {
     "id": 53,
@@ -1673,7 +1777,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3627596839,
+    "merkleHigh": 3262587863
   },
   {
     "id": 54,
@@ -1712,7 +1818,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Structure"
-    }
+    },
+    "merkleLow": 4082453303,
+    "merkleHigh": 2273144062
   },
   {
     "id": 55,
@@ -1737,7 +1845,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3627596839,
+    "merkleHigh": 3262587863
   },
   {
     "id": 56,
@@ -1776,7 +1886,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Feature"
-    }
+    },
+    "merkleLow": 413323884,
+    "merkleHigh": 2348727854
   },
   {
     "id": 57,
@@ -1801,7 +1913,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1812641998,
+    "merkleHigh": 2348886317
   },
   {
     "id": 58,
@@ -1832,7 +1946,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 3725650453,
+    "merkleHigh": 2237495529
   },
   {
     "id": 59,
@@ -1857,7 +1973,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3472828111,
+    "merkleHigh": 2369379858
   },
   {
     "id": 60,
@@ -1886,7 +2004,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "isParallel": null
-    }
+    },
+    "merkleLow": 2806762814,
+    "merkleHigh": 845693559
   },
   {
     "id": 61,
@@ -1911,7 +2031,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3472828111,
+    "merkleHigh": 2369379858
   },
   {
     "id": 62,
@@ -1942,7 +2064,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 1975687371,
+    "merkleHigh": 1154579025
   },
   {
     "id": 63,
@@ -1967,7 +2091,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3472828111,
+    "merkleHigh": 2369379858
   },
   {
     "id": 64,
@@ -1998,7 +2124,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 1587452430,
+    "merkleHigh": 1540320275
   },
   {
     "id": 65,
@@ -2023,7 +2151,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3472828111,
+    "merkleHigh": 2369379858
   },
   {
     "id": 66,
@@ -2054,7 +2184,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 183874462,
+    "merkleHigh": 1020540559
   },
   {
     "id": 67,
@@ -2079,7 +2211,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 586506980,
+    "merkleHigh": 3675068003
   },
   {
     "id": 68,
@@ -2106,7 +2240,9 @@ export const kermlStdlibEntries = [
       "package Collections {\n    import Base::*;\n\n    abstract item def Collection;\n    abstract item def List :> Collection;\n    abstract item def Set :> Collection;\n    abstract item def Bag :> Collection;\n    abstract item def Array :> Collection;\n    abstract item def Map :> Collection;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 234303064,
+    "merkleHigh": 3306740390
   },
   {
     "id": 69,
@@ -2134,7 +2270,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 3632357851,
+    "merkleHigh": 1283035657
   },
   {
     "id": 70,
@@ -2165,7 +2303,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 3427811295,
+    "merkleHigh": 435783662
   },
   {
     "id": 71,
@@ -2204,7 +2344,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Collection"
-    }
+    },
+    "merkleLow": 1880533858,
+    "merkleHigh": 3355862524
   },
   {
     "id": 72,
@@ -2229,7 +2371,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1317981619,
+    "merkleHigh": 1843065786
   },
   {
     "id": 73,
@@ -2268,7 +2412,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Collection"
-    }
+    },
+    "merkleLow": 3988704065,
+    "merkleHigh": 1877417155
   },
   {
     "id": 74,
@@ -2293,7 +2439,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1317981619,
+    "merkleHigh": 1843065786
   },
   {
     "id": 75,
@@ -2332,7 +2480,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Collection"
-    }
+    },
+    "merkleLow": 532895479,
+    "merkleHigh": 2442460103
   },
   {
     "id": 76,
@@ -2357,7 +2507,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1317981619,
+    "merkleHigh": 1843065786
   },
   {
     "id": 77,
@@ -2396,7 +2548,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Collection"
-    }
+    },
+    "merkleLow": 3009458046,
+    "merkleHigh": 1342768017
   },
   {
     "id": 78,
@@ -2421,7 +2575,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1317981619,
+    "merkleHigh": 1843065786
   },
   {
     "id": 79,
@@ -2460,7 +2616,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Collection"
-    }
+    },
+    "merkleLow": 4179510807,
+    "merkleHigh": 3960340549
   },
   {
     "id": 80,
@@ -2485,7 +2643,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1317981619,
+    "merkleHigh": 1843065786
   },
   {
     "id": 81,
@@ -2512,7 +2672,9 @@ export const kermlStdlibEntries = [
       "package Control {\n    abstract action def ControlNode;\n    abstract action def MergeNode :> ControlNode;\n    abstract action def DecisionNode :> ControlNode;\n    abstract action def ForkNode :> ControlNode;\n    abstract action def JoinNode :> ControlNode;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 361599713,
+    "merkleHigh": 2660838584
   },
   {
     "id": 82,
@@ -2543,7 +2705,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 427566303,
+    "merkleHigh": 723085106
   },
   {
     "id": 83,
@@ -2574,7 +2738,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 4166785046,
+    "merkleHigh": 381559766
   },
   {
     "id": 84,
@@ -2599,7 +2765,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1973960045,
+    "merkleHigh": 4149058882
   },
   {
     "id": 85,
@@ -2630,7 +2798,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 1848810788,
+    "merkleHigh": 1829154852
   },
   {
     "id": 86,
@@ -2655,7 +2825,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1973960045,
+    "merkleHigh": 4149058882
   },
   {
     "id": 87,
@@ -2686,7 +2858,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 773207814,
+    "merkleHigh": 2172254169
   },
   {
     "id": 88,
@@ -2711,7 +2885,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1973960045,
+    "merkleHigh": 4149058882
   },
   {
     "id": 89,
@@ -2742,7 +2918,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 1332559134,
+    "merkleHigh": 4170744145
   },
   {
     "id": 90,
@@ -2767,7 +2945,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1973960045,
+    "merkleHigh": 4149058882
   },
   {
     "id": 91,
@@ -2794,7 +2974,9 @@ export const kermlStdlibEntries = [
       "package Transfers {\n    import Base::*;\n\n    abstract item def Transfer;\n    abstract item def Flow :> Transfer;\n    abstract item def Message :> Transfer;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3953901921,
+    "merkleHigh": 3408500158
   },
   {
     "id": 92,
@@ -2822,7 +3004,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 3632357851,
+    "merkleHigh": 1283035657
   },
   {
     "id": 93,
@@ -2853,7 +3037,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 1924803622,
+    "merkleHigh": 923936040
   },
   {
     "id": 94,
@@ -2892,7 +3078,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Transfer"
-    }
+    },
+    "merkleLow": 1529447727,
+    "merkleHigh": 1950061668
   },
   {
     "id": 95,
@@ -2917,7 +3105,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4218453942,
+    "merkleHigh": 4099291638
   },
   {
     "id": 96,
@@ -2956,7 +3146,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Transfer"
-    }
+    },
+    "merkleLow": 2442535987,
+    "merkleHigh": 4117387238
   },
   {
     "id": 97,
@@ -2981,7 +3173,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4218453942,
+    "merkleHigh": 4099291638
   },
   {
     "id": 98,
@@ -3008,7 +3202,9 @@ export const kermlStdlibEntries = [
       "package Performances {\n    abstract action def Performance;\n    abstract action def Evaluation :> Performance;\n    abstract action def Execution :> Performance;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 415604300,
+    "merkleHigh": 4289507114
   },
   {
     "id": 99,
@@ -3039,7 +3235,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 2419837652,
+    "merkleHigh": 2301358349
   },
   {
     "id": 100,
@@ -3070,7 +3268,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 3848763831,
+    "merkleHigh": 1318583628
   },
   {
     "id": 101,
@@ -3095,7 +3295,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 909443090,
+    "merkleHigh": 2959987159
   },
   {
     "id": 102,
@@ -3126,7 +3328,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 2089224095,
+    "merkleHigh": 1509506277
   },
   {
     "id": 103,
@@ -3151,7 +3355,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 909443090,
+    "merkleHigh": 2959987159
   },
   {
     "id": 104,
@@ -3178,7 +3384,9 @@ export const kermlStdlibEntries = [
       "package ISQ {\n    import ScalarValues::*;\n\n    /* ── ISO/IEC 80000-3 Space and Time ── */\n    abstract attribute def Time :> Real;\n    abstract attribute def Duration :> Time;\n    abstract attribute def Period :> Time;\n    abstract attribute def Length :> Real;\n    abstract attribute def Width :> Length;\n    abstract attribute def Height :> Length;\n    abstract attribute def Distance :> Length;\n    abstract attribute def Position :> Length;\n    abstract attribute def Displacement :> Length;\n    abstract attribute def Radius :> Length;\n    abstract attribute def Diameter :> Length;\n    abstract attribute def Thickness :> Length;\n    abstract attribute def Area :> Real;\n    abstract attribute def Volume :> Real;\n    abstract attribute def Angle :> Real;\n    abstract attribute def SolidAngle :> Real;\n    abstract attribute def Velocity :> Real;\n    abstract attribute def LinearVelocity :> Velocity;\n    abstract attribute def Speed :> Velocity;\n    abstract attribute def AngularVelocity :> Real;\n    abstract attribute def Acceleration :> Real;\n    abstract attribute def LinearAcceleration :> Acceleration;\n    abstract attribute def AngularAcceleration :> Real;\n    abstract attribute def GravitationalAcceleration :> Acceleration;\n    abstract attribute def Frequency :> Real;\n    abstract attribute def RotationalFrequency :> Frequency;\n\n    /* ── ISO/IEC 80000-4 Mechanics ── */\n    abstract attribute def Mass :> Real;\n    abstract attribute def MassDensity :> Real;\n    abstract attribute def SpecificVolume :> Real;\n    abstract attribute def Momentum :> Real;\n    abstract attribute def AngularMomentum :> Real;\n    abstract attribute def MomentOfInertia :> Real;\n    abstract attribute def Force :> Real;\n    abstract attribute def Weight :> Force;\n    abstract attribute def Torque :> Real;\n    abstract attribute def MomentOfForce :> Torque;\n    abstract attribute def Pressure :> Real;\n    abstract attribute def Stress :> Pressure;\n    abstract attribute def NormalStress :> Stress;\n    abstract attribute def ShearStress :> Stress;\n    abstract attribute def Strain :> Real;\n    abstract attribute def Work :> Real;\n    abstract attribute def Energy :> Real;\n    abstract attribute def KineticEnergy :> Energy;\n    abstract attribute def PotentialEnergy :> Energy;\n    abstract attribute def Power :> Real;\n    abstract attribute def Efficiency :> Real;\n\n    /* ── Fluid Dynamics ── */\n    abstract attribute def DynamicViscosity :> Real;\n    abstract attribute def KinematicViscosity :> Real;\n    abstract attribute def SurfaceTension :> Real;\n    abstract attribute def VolumeFlowRate :> Real;\n    abstract attribute def MassFlowRate :> Real;\n    abstract attribute def ReynoldsNumber :> Real;\n    abstract attribute def MachNumber :> Real;\n\n    /* ── ISO/IEC 80000-5 Thermodynamics ── */\n    abstract attribute def ThermodynamicTemperature :> Real;\n    abstract attribute def CelsiusTemperature :> Real;\n    abstract attribute def Heat :> Energy;\n    abstract attribute def HeatFlowRate :> Power;\n    abstract attribute def ThermalConductivity :> Real;\n    abstract attribute def HeatCapacity :> Real;\n    abstract attribute def SpecificHeatCapacity :> Real;\n    abstract attribute def Entropy :> Real;\n    abstract attribute def Enthalpy :> Energy;\n    abstract attribute def InternalEnergy :> Energy;\n\n    /* ── ISO/IEC 80000-6 Electromagnetism ── */\n    abstract attribute def ElectricCurrent :> Real;\n    abstract attribute def ElectricCharge :> Real;\n    abstract attribute def Voltage :> Real;\n    abstract attribute def ElectricPotential :> Voltage;\n    abstract attribute def ElectromotiveForce :> Voltage;\n    abstract attribute def ElectricFieldStrength :> Real;\n    abstract attribute def ElectricFlux :> Real;\n    abstract attribute def ElectricResistance :> Real;\n    abstract attribute def Conductance :> Real;\n    abstract attribute def Resistivity :> Real;\n    abstract attribute def Conductivity :> Real;\n    abstract attribute def Capacitance :> Real;\n    abstract attribute def Permittivity :> Real;\n    abstract attribute def MagneticFlux :> Real;\n    abstract attribute def MagneticFluxDensity :> Real;\n    abstract attribute def MagneticFieldStrength :> Real;\n    abstract attribute def Permeability :> Real;\n    abstract attribute def Inductance :> Real;\n    abstract attribute def Impedance :> Real;\n    abstract attribute def Reactance :> Real;\n\n    /* ── ISO/IEC 80000-7/9 Light and Chemistry ── */\n    abstract attribute def AmountOfSubstance :> Real;\n    abstract attribute def MolarMass :> Real;\n    abstract attribute def LuminousIntensity :> Real;\n    abstract attribute def LuminousFlux :> Real;\n    abstract attribute def Illuminance :> Real;\n    abstract attribute def Luminance :> Real;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1567216737,
+    "merkleHigh": 2177435739
   },
   {
     "id": 105,
@@ -3206,7 +3414,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 439773534,
+    "merkleHigh": 1565328222
   },
   {
     "id": 106,
@@ -3245,7 +3455,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1352957714,
+    "merkleHigh": 2600396381
   },
   {
     "id": 107,
@@ -3270,7 +3482,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 108,
@@ -3309,7 +3523,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Time"
-    }
+    },
+    "merkleLow": 1793077310,
+    "merkleHigh": 2111879260
   },
   {
     "id": 109,
@@ -3334,7 +3550,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4122063832,
+    "merkleHigh": 144223708
   },
   {
     "id": 110,
@@ -3373,7 +3591,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Time"
-    }
+    },
+    "merkleLow": 3825189017,
+    "merkleHigh": 1618700764
   },
   {
     "id": 111,
@@ -3398,7 +3618,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4122063832,
+    "merkleHigh": 144223708
   },
   {
     "id": 112,
@@ -3437,7 +3659,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 698891525,
+    "merkleHigh": 2844381373
   },
   {
     "id": 113,
@@ -3462,7 +3686,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 114,
@@ -3501,7 +3727,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Length"
-    }
+    },
+    "merkleLow": 3339284742,
+    "merkleHigh": 3089057410
   },
   {
     "id": 115,
@@ -3526,7 +3754,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1111409463,
+    "merkleHigh": 1715421615
   },
   {
     "id": 116,
@@ -3565,7 +3795,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Length"
-    }
+    },
+    "merkleLow": 3599767008,
+    "merkleHigh": 3166341863
   },
   {
     "id": 117,
@@ -3590,7 +3822,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1111409463,
+    "merkleHigh": 1715421615
   },
   {
     "id": 118,
@@ -3629,7 +3863,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Length"
-    }
+    },
+    "merkleLow": 2841548478,
+    "merkleHigh": 3494465635
   },
   {
     "id": 119,
@@ -3654,7 +3890,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1111409463,
+    "merkleHigh": 1715421615
   },
   {
     "id": 120,
@@ -3693,7 +3931,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Length"
-    }
+    },
+    "merkleLow": 4097779382,
+    "merkleHigh": 1315911813
   },
   {
     "id": 121,
@@ -3718,7 +3958,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1111409463,
+    "merkleHigh": 1715421615
   },
   {
     "id": 122,
@@ -3757,7 +3999,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Length"
-    }
+    },
+    "merkleLow": 2421699134,
+    "merkleHigh": 744315971
   },
   {
     "id": 123,
@@ -3782,7 +4026,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1111409463,
+    "merkleHigh": 1715421615
   },
   {
     "id": 124,
@@ -3821,7 +4067,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Length"
-    }
+    },
+    "merkleLow": 1856526473,
+    "merkleHigh": 3640987436
   },
   {
     "id": 125,
@@ -3846,7 +4094,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1111409463,
+    "merkleHigh": 1715421615
   },
   {
     "id": 126,
@@ -3885,7 +4135,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Length"
-    }
+    },
+    "merkleLow": 3982318638,
+    "merkleHigh": 3223860173
   },
   {
     "id": 127,
@@ -3910,7 +4162,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1111409463,
+    "merkleHigh": 1715421615
   },
   {
     "id": 128,
@@ -3949,7 +4203,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Length"
-    }
+    },
+    "merkleLow": 1454086588,
+    "merkleHigh": 755290068
   },
   {
     "id": 129,
@@ -3974,7 +4230,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1111409463,
+    "merkleHigh": 1715421615
   },
   {
     "id": 130,
@@ -4013,7 +4271,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 894705586,
+    "merkleHigh": 1190087999
   },
   {
     "id": 131,
@@ -4038,7 +4298,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 132,
@@ -4077,7 +4339,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2230546519,
+    "merkleHigh": 2874315122
   },
   {
     "id": 133,
@@ -4102,7 +4366,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 134,
@@ -4141,7 +4407,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2799000763,
+    "merkleHigh": 1060256142
   },
   {
     "id": 135,
@@ -4166,7 +4434,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 136,
@@ -4205,7 +4475,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2053393011,
+    "merkleHigh": 1057513219
   },
   {
     "id": 137,
@@ -4230,7 +4502,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 138,
@@ -4269,7 +4543,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1745426772,
+    "merkleHigh": 2164685540
   },
   {
     "id": 139,
@@ -4294,7 +4570,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 140,
@@ -4333,7 +4611,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Velocity"
-    }
+    },
+    "merkleLow": 3418736020,
+    "merkleHigh": 1763989812
   },
   {
     "id": 141,
@@ -4358,7 +4638,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1083982218,
+    "merkleHigh": 4072832885
   },
   {
     "id": 142,
@@ -4397,7 +4679,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Velocity"
-    }
+    },
+    "merkleLow": 165215140,
+    "merkleHigh": 1982666908
   },
   {
     "id": 143,
@@ -4422,7 +4706,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1083982218,
+    "merkleHigh": 4072832885
   },
   {
     "id": 144,
@@ -4461,7 +4747,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1013445999,
+    "merkleHigh": 2380923946
   },
   {
     "id": 145,
@@ -4486,7 +4774,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 146,
@@ -4525,7 +4815,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1915284287,
+    "merkleHigh": 183394100
   },
   {
     "id": 147,
@@ -4550,7 +4842,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 148,
@@ -4589,7 +4883,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Acceleration"
-    }
+    },
+    "merkleLow": 3186520104,
+    "merkleHigh": 78889129
   },
   {
     "id": 149,
@@ -4614,7 +4910,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 553222289,
+    "merkleHigh": 3526827164
   },
   {
     "id": 150,
@@ -4653,7 +4951,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 525984452,
+    "merkleHigh": 442186163
   },
   {
     "id": 151,
@@ -4678,7 +4978,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 152,
@@ -4717,7 +5019,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Acceleration"
-    }
+    },
+    "merkleLow": 517560857,
+    "merkleHigh": 1227698156
   },
   {
     "id": 153,
@@ -4742,7 +5046,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 553222289,
+    "merkleHigh": 3526827164
   },
   {
     "id": 154,
@@ -4781,7 +5087,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1218433890,
+    "merkleHigh": 920823301
   },
   {
     "id": 155,
@@ -4806,7 +5114,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 156,
@@ -4845,7 +5155,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Frequency"
-    }
+    },
+    "merkleLow": 1811025468,
+    "merkleHigh": 963079032
   },
   {
     "id": 157,
@@ -4870,7 +5182,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4095383136,
+    "merkleHigh": 2870499378
   },
   {
     "id": 158,
@@ -4909,7 +5223,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3869332347,
+    "merkleHigh": 2012478612
   },
   {
     "id": 159,
@@ -4934,7 +5250,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 160,
@@ -4973,7 +5291,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1474284710,
+    "merkleHigh": 5727711
   },
   {
     "id": 161,
@@ -4998,7 +5318,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 162,
@@ -5037,7 +5359,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3574405131,
+    "merkleHigh": 1978129624
   },
   {
     "id": 163,
@@ -5062,7 +5386,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 164,
@@ -5101,7 +5427,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 411146509,
+    "merkleHigh": 40576762
   },
   {
     "id": 165,
@@ -5126,7 +5454,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 166,
@@ -5165,7 +5495,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3775093722,
+    "merkleHigh": 1958192076
   },
   {
     "id": 167,
@@ -5190,7 +5522,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 168,
@@ -5229,7 +5563,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2384703547,
+    "merkleHigh": 2792837011
   },
   {
     "id": 169,
@@ -5254,7 +5590,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 170,
@@ -5293,7 +5631,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3230880995,
+    "merkleHigh": 3390909022
   },
   {
     "id": 171,
@@ -5318,7 +5658,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 172,
@@ -5357,7 +5699,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Force"
-    }
+    },
+    "merkleLow": 1493346069,
+    "merkleHigh": 1861053544
   },
   {
     "id": 173,
@@ -5382,7 +5726,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 851574821,
+    "merkleHigh": 361558044
   },
   {
     "id": 174,
@@ -5421,7 +5767,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3920427875,
+    "merkleHigh": 466965590
   },
   {
     "id": 175,
@@ -5446,7 +5794,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 176,
@@ -5485,7 +5835,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Torque"
-    }
+    },
+    "merkleLow": 1830555744,
+    "merkleHigh": 1963213373
   },
   {
     "id": 177,
@@ -5510,7 +5862,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2358450061,
+    "merkleHigh": 934187607
   },
   {
     "id": 178,
@@ -5549,7 +5903,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2973170212,
+    "merkleHigh": 2260075446
   },
   {
     "id": 179,
@@ -5574,7 +5930,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 180,
@@ -5613,7 +5971,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Pressure"
-    }
+    },
+    "merkleLow": 3191174466,
+    "merkleHigh": 1758647424
   },
   {
     "id": 181,
@@ -5638,7 +5998,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1094393338,
+    "merkleHigh": 3816339708
   },
   {
     "id": 182,
@@ -5677,7 +6039,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Stress"
-    }
+    },
+    "merkleLow": 2238109470,
+    "merkleHigh": 116881775
   },
   {
     "id": 183,
@@ -5702,7 +6066,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 474023167,
+    "merkleHigh": 1370914921
   },
   {
     "id": 184,
@@ -5741,7 +6107,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Stress"
-    }
+    },
+    "merkleLow": 1491729833,
+    "merkleHigh": 3743779103
   },
   {
     "id": 185,
@@ -5766,7 +6134,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 474023167,
+    "merkleHigh": 1370914921
   },
   {
     "id": 186,
@@ -5805,7 +6175,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 526578520,
+    "merkleHigh": 1374833078
   },
   {
     "id": 187,
@@ -5830,7 +6202,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 188,
@@ -5869,7 +6243,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1628606558,
+    "merkleHigh": 3709348548
   },
   {
     "id": 189,
@@ -5894,7 +6270,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 190,
@@ -5933,7 +6311,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 870888297,
+    "merkleHigh": 745743121
   },
   {
     "id": 191,
@@ -5958,7 +6338,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 192,
@@ -5997,7 +6379,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Energy"
-    }
+    },
+    "merkleLow": 2136267609,
+    "merkleHigh": 2612338963
   },
   {
     "id": 193,
@@ -6022,7 +6406,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 513511363,
+    "merkleHigh": 3852984133
   },
   {
     "id": 194,
@@ -6061,7 +6447,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Energy"
-    }
+    },
+    "merkleLow": 4004847594,
+    "merkleHigh": 2343886154
   },
   {
     "id": 195,
@@ -6086,7 +6474,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 513511363,
+    "merkleHigh": 3852984133
   },
   {
     "id": 196,
@@ -6125,7 +6515,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3957348925,
+    "merkleHigh": 2390937952
   },
   {
     "id": 197,
@@ -6150,7 +6542,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 198,
@@ -6189,7 +6583,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 607160100,
+    "merkleHigh": 1205918868
   },
   {
     "id": 199,
@@ -6214,7 +6610,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 200,
@@ -6253,7 +6651,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1197263595,
+    "merkleHigh": 1035306161
   },
   {
     "id": 201,
@@ -6278,7 +6678,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 202,
@@ -6317,7 +6719,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2955309473,
+    "merkleHigh": 894277383
   },
   {
     "id": 203,
@@ -6342,7 +6746,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 204,
@@ -6381,7 +6787,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3414530698,
+    "merkleHigh": 3575286142
   },
   {
     "id": 205,
@@ -6406,7 +6814,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 206,
@@ -6445,7 +6855,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2532689713,
+    "merkleHigh": 729948854
   },
   {
     "id": 207,
@@ -6470,7 +6882,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 208,
@@ -6509,7 +6923,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3532405493,
+    "merkleHigh": 3138001146
   },
   {
     "id": 209,
@@ -6534,7 +6950,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 210,
@@ -6573,7 +6991,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1183181140,
+    "merkleHigh": 2450733325
   },
   {
     "id": 211,
@@ -6598,7 +7018,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 212,
@@ -6637,7 +7059,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1788440245,
+    "merkleHigh": 551199715
   },
   {
     "id": 213,
@@ -6662,7 +7086,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 214,
@@ -6701,7 +7127,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1499873349,
+    "merkleHigh": 1760004127
   },
   {
     "id": 215,
@@ -6726,7 +7154,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 216,
@@ -6765,7 +7195,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3704941383,
+    "merkleHigh": 257372231
   },
   {
     "id": 217,
@@ -6790,7 +7222,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 218,
@@ -6829,7 +7263,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Energy"
-    }
+    },
+    "merkleLow": 1717709819,
+    "merkleHigh": 3114951230
   },
   {
     "id": 219,
@@ -6854,7 +7290,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 513511363,
+    "merkleHigh": 3852984133
   },
   {
     "id": 220,
@@ -6893,7 +7331,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Power"
-    }
+    },
+    "merkleLow": 2645642665,
+    "merkleHigh": 3473947040
   },
   {
     "id": 221,
@@ -6918,7 +7358,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1356932419,
+    "merkleHigh": 929215543
   },
   {
     "id": 222,
@@ -6957,7 +7399,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2057678804,
+    "merkleHigh": 1559821511
   },
   {
     "id": 223,
@@ -6982,7 +7426,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 224,
@@ -7021,7 +7467,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1419526921,
+    "merkleHigh": 3147642886
   },
   {
     "id": 225,
@@ -7046,7 +7494,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 226,
@@ -7085,7 +7535,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 422009341,
+    "merkleHigh": 4059497693
   },
   {
     "id": 227,
@@ -7110,7 +7562,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 228,
@@ -7149,7 +7603,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1752750747,
+    "merkleHigh": 1468186130
   },
   {
     "id": 229,
@@ -7174,7 +7630,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 230,
@@ -7213,7 +7671,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Energy"
-    }
+    },
+    "merkleLow": 2490440308,
+    "merkleHigh": 1327600597
   },
   {
     "id": 231,
@@ -7238,7 +7698,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 513511363,
+    "merkleHigh": 3852984133
   },
   {
     "id": 232,
@@ -7277,7 +7739,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Energy"
-    }
+    },
+    "merkleLow": 815527142,
+    "merkleHigh": 3780084036
   },
   {
     "id": 233,
@@ -7302,7 +7766,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 513511363,
+    "merkleHigh": 3852984133
   },
   {
     "id": 234,
@@ -7341,7 +7807,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 292522266,
+    "merkleHigh": 2444310492
   },
   {
     "id": 235,
@@ -7366,7 +7834,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 236,
@@ -7405,7 +7875,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1663423378,
+    "merkleHigh": 2781013080
   },
   {
     "id": 237,
@@ -7430,7 +7902,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 238,
@@ -7469,7 +7943,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2126743480,
+    "merkleHigh": 168750607
   },
   {
     "id": 239,
@@ -7494,7 +7970,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 240,
@@ -7533,7 +8011,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Voltage"
-    }
+    },
+    "merkleLow": 220935852,
+    "merkleHigh": 4159094037
   },
   {
     "id": 241,
@@ -7558,7 +8038,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4115450206,
+    "merkleHigh": 3859546955
   },
   {
     "id": 242,
@@ -7597,7 +8079,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Voltage"
-    }
+    },
+    "merkleLow": 2438967835,
+    "merkleHigh": 1154215568
   },
   {
     "id": 243,
@@ -7622,7 +8106,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4115450206,
+    "merkleHigh": 3859546955
   },
   {
     "id": 244,
@@ -7661,7 +8147,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3350391500,
+    "merkleHigh": 3948044333
   },
   {
     "id": 245,
@@ -7686,7 +8174,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 246,
@@ -7725,7 +8215,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3720932747,
+    "merkleHigh": 3465640068
   },
   {
     "id": 247,
@@ -7750,7 +8242,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 248,
@@ -7789,7 +8283,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2371449035,
+    "merkleHigh": 1006347201
   },
   {
     "id": 249,
@@ -7814,7 +8310,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 250,
@@ -7853,7 +8351,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2065261145,
+    "merkleHigh": 406795399
   },
   {
     "id": 251,
@@ -7878,7 +8378,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 252,
@@ -7917,7 +8419,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1145393353,
+    "merkleHigh": 672775246
   },
   {
     "id": 253,
@@ -7942,7 +8446,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 254,
@@ -7981,7 +8487,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3939181838,
+    "merkleHigh": 3926962823
   },
   {
     "id": 255,
@@ -8006,7 +8514,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 256,
@@ -8045,7 +8555,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1250329964,
+    "merkleHigh": 1667854737
   },
   {
     "id": 257,
@@ -8070,7 +8582,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 258,
@@ -8109,7 +8623,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3456890841,
+    "merkleHigh": 3812874451
   },
   {
     "id": 259,
@@ -8134,7 +8650,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 260,
@@ -8173,7 +8691,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 99211530,
+    "merkleHigh": 1414083030
   },
   {
     "id": 261,
@@ -8198,7 +8718,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 262,
@@ -8237,7 +8759,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 4260288485,
+    "merkleHigh": 2113932869
   },
   {
     "id": 263,
@@ -8262,7 +8786,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 264,
@@ -8301,7 +8827,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3494663907,
+    "merkleHigh": 1830986292
   },
   {
     "id": 265,
@@ -8326,7 +8854,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 266,
@@ -8365,7 +8895,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3698425990,
+    "merkleHigh": 2407088011
   },
   {
     "id": 267,
@@ -8390,7 +8922,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 268,
@@ -8429,7 +8963,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 687718797,
+    "merkleHigh": 416633692
   },
   {
     "id": 269,
@@ -8454,7 +8990,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 270,
@@ -8493,7 +9031,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 180422628,
+    "merkleHigh": 591806152
   },
   {
     "id": 271,
@@ -8518,7 +9058,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 272,
@@ -8557,7 +9099,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2646336188,
+    "merkleHigh": 807903087
   },
   {
     "id": 273,
@@ -8582,7 +9126,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 274,
@@ -8621,7 +9167,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2453523061,
+    "merkleHigh": 3241257783
   },
   {
     "id": 275,
@@ -8646,7 +9194,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 276,
@@ -8685,7 +9235,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1892444367,
+    "merkleHigh": 1636110015
   },
   {
     "id": 277,
@@ -8710,7 +9262,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 278,
@@ -8749,7 +9303,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2495065235,
+    "merkleHigh": 2145378098
   },
   {
     "id": 279,
@@ -8774,7 +9330,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 280,
@@ -8813,7 +9371,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3639854122,
+    "merkleHigh": 549583320
   },
   {
     "id": 281,
@@ -8838,7 +9398,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 282,
@@ -8877,7 +9439,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 53686511,
+    "merkleHigh": 1117015100
   },
   {
     "id": 283,
@@ -8902,7 +9466,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 284,
@@ -8941,7 +9507,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 466423478,
+    "merkleHigh": 1641315009
   },
   {
     "id": 285,
@@ -8966,7 +9534,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 286,
@@ -8993,7 +9563,9 @@ export const kermlStdlibEntries = [
       "package SIBaseUnits {\n    import ScalarValues::*;\n\n    abstract attribute def Second :> Real;\n    abstract attribute def Kilogram :> Real;\n    abstract attribute def Metre :> Real;\n    abstract attribute def Ampere :> Real;\n    abstract attribute def Kelvin :> Real;\n    abstract attribute def Mole :> Real;\n    abstract attribute def Candela :> Real;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1185858592,
+    "merkleHigh": 2079297090
   },
   {
     "id": 287,
@@ -9021,7 +9593,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 439773534,
+    "merkleHigh": 1565328222
   },
   {
     "id": 288,
@@ -9060,7 +9634,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3026668157,
+    "merkleHigh": 3530895027
   },
   {
     "id": 289,
@@ -9085,7 +9661,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 290,
@@ -9124,7 +9702,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 845477073,
+    "merkleHigh": 1456826754
   },
   {
     "id": 291,
@@ -9149,7 +9729,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 292,
@@ -9188,7 +9770,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2324043127,
+    "merkleHigh": 3270226503
   },
   {
     "id": 293,
@@ -9213,7 +9797,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 294,
@@ -9252,7 +9838,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 296558401,
+    "merkleHigh": 801784961
   },
   {
     "id": 295,
@@ -9277,7 +9865,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 296,
@@ -9316,7 +9906,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 142156092,
+    "merkleHigh": 2110910172
   },
   {
     "id": 297,
@@ -9341,7 +9933,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 298,
@@ -9380,7 +9974,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2091846248,
+    "merkleHigh": 565063816
   },
   {
     "id": 299,
@@ -9405,7 +10001,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 300,
@@ -9444,7 +10042,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 220097360,
+    "merkleHigh": 1799775156
   },
   {
     "id": 301,
@@ -9469,7 +10069,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 302,
@@ -9496,7 +10098,9 @@ export const kermlStdlibEntries = [
       "package SIDerivedUnits {\n    import ScalarValues::*;\n\n    abstract attribute def Newton :> Real;\n    abstract attribute def Pascal :> Real;\n    abstract attribute def Joule :> Real;\n    abstract attribute def Watt :> Real;\n    abstract attribute def Volt :> Real;\n    abstract attribute def Coulomb :> Real;\n    abstract attribute def Ohm :> Real;\n    abstract attribute def Siemens :> Real;\n    abstract attribute def Farad :> Real;\n    abstract attribute def Henry :> Real;\n    abstract attribute def Weber :> Real;\n    abstract attribute def Tesla :> Real;\n    abstract attribute def Hertz :> Real;\n    abstract attribute def Radian :> Real;\n    abstract attribute def Steradian :> Real;\n    abstract attribute def Lumen :> Real;\n    abstract attribute def Lux :> Real;\n    abstract attribute def Becquerel :> Real;\n    abstract attribute def Gray :> Real;\n    abstract attribute def Sievert :> Real;\n    abstract attribute def Katal :> Real;\n    abstract attribute def DegreeCelsius :> Real;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4248517844,
+    "merkleHigh": 970965510
   },
   {
     "id": 303,
@@ -9524,7 +10128,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 439773534,
+    "merkleHigh": 1565328222
   },
   {
     "id": 304,
@@ -9563,7 +10169,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 4156377942,
+    "merkleHigh": 37779125
   },
   {
     "id": 305,
@@ -9588,7 +10196,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 306,
@@ -9627,7 +10237,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1224013877,
+    "merkleHigh": 2677145501
   },
   {
     "id": 307,
@@ -9652,7 +10264,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 308,
@@ -9691,7 +10305,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1765138621,
+    "merkleHigh": 642815809
   },
   {
     "id": 309,
@@ -9716,7 +10332,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 310,
@@ -9755,7 +10373,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 4059458367,
+    "merkleHigh": 1479524674
   },
   {
     "id": 311,
@@ -9780,7 +10400,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 312,
@@ -9819,7 +10441,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3597294824,
+    "merkleHigh": 2793781785
   },
   {
     "id": 313,
@@ -9844,7 +10468,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 314,
@@ -9883,7 +10509,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1408032877,
+    "merkleHigh": 4183658133
   },
   {
     "id": 315,
@@ -9908,7 +10536,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 316,
@@ -9947,7 +10577,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2921067180,
+    "merkleHigh": 793253617
   },
   {
     "id": 317,
@@ -9972,7 +10604,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 318,
@@ -10011,7 +10645,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 132593396,
+    "merkleHigh": 1388071200
   },
   {
     "id": 319,
@@ -10036,7 +10672,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 320,
@@ -10075,7 +10713,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1000126876,
+    "merkleHigh": 2764661127
   },
   {
     "id": 321,
@@ -10100,7 +10740,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 322,
@@ -10139,7 +10781,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 591922374,
+    "merkleHigh": 989207306
   },
   {
     "id": 323,
@@ -10164,7 +10808,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 324,
@@ -10203,7 +10849,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2046071965,
+    "merkleHigh": 1076164762
   },
   {
     "id": 325,
@@ -10228,7 +10876,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 326,
@@ -10267,7 +10917,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 4084392715,
+    "merkleHigh": 2266386436
   },
   {
     "id": 327,
@@ -10292,7 +10944,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 328,
@@ -10331,7 +10985,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3424217385,
+    "merkleHigh": 946137053
   },
   {
     "id": 329,
@@ -10356,7 +11012,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 330,
@@ -10395,7 +11053,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2350531020,
+    "merkleHigh": 2572711666
   },
   {
     "id": 331,
@@ -10420,7 +11080,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 332,
@@ -10459,7 +11121,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1235795487,
+    "merkleHigh": 4070867229
   },
   {
     "id": 333,
@@ -10484,7 +11148,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 334,
@@ -10523,7 +11189,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2286091949,
+    "merkleHigh": 366298163
   },
   {
     "id": 335,
@@ -10548,7 +11216,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 336,
@@ -10587,7 +11257,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2491450311,
+    "merkleHigh": 1708355070
   },
   {
     "id": 337,
@@ -10612,7 +11284,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 338,
@@ -10651,7 +11325,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 261517886,
+    "merkleHigh": 919069796
   },
   {
     "id": 339,
@@ -10676,7 +11352,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 340,
@@ -10715,7 +11393,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1356367880,
+    "merkleHigh": 2681408636
   },
   {
     "id": 341,
@@ -10740,7 +11420,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 342,
@@ -10779,7 +11461,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3365340494,
+    "merkleHigh": 2292959748
   },
   {
     "id": 343,
@@ -10804,7 +11488,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 344,
@@ -10843,7 +11529,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 457420749,
+    "merkleHigh": 1658713093
   },
   {
     "id": 345,
@@ -10868,7 +11556,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 346,
@@ -10907,7 +11597,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 129049704,
+    "merkleHigh": 1994697470
   },
   {
     "id": 347,
@@ -10932,7 +11624,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 348,
@@ -10959,7 +11653,9 @@ export const kermlStdlibEntries = [
       "package SI {\n    import ScalarValues::*;\n    import SIBaseUnits::*;\n    import SIDerivedUnits::*;\n\n    /* Base Unit Symbols */\n    abstract attribute def s :> Second;\n    abstract attribute def kg :> Kilogram;\n    abstract attribute def m :> Metre;\n    abstract attribute def A :> Ampere;\n    abstract attribute def K :> Kelvin;\n    abstract attribute def mol :> Mole;\n    abstract attribute def cd :> Candela;\n\n    /* Scaled and Derived Unit Symbols */\n    abstract attribute def g :> Real;\n    abstract attribute def mg :> Real;\n    abstract attribute def mm :> Real;\n    abstract attribute def cm :> Real;\n    abstract attribute def km :> Real;\n    abstract attribute def N :> Newton;\n    abstract attribute def kN :> Real;\n    abstract attribute def Pa :> Pascal;\n    abstract attribute def kPa :> Real;\n    abstract attribute def MPa :> Real;\n    abstract attribute def bar :> Real;\n    abstract attribute def J :> Joule;\n    abstract attribute def kJ :> Real;\n    abstract attribute def MJ :> Real;\n    abstract attribute def W :> Watt;\n    abstract attribute def kW :> Real;\n    abstract attribute def MW :> Real;\n    abstract attribute def V :> Volt;\n    abstract attribute def mV :> Real;\n    abstract attribute def kV :> Real;\n    abstract attribute def C :> Coulomb;\n    abstract attribute def ohm :> Ohm;\n    abstract attribute def kOhm :> Real;\n    abstract attribute def MOhm :> Real;\n    abstract attribute def F :> Farad;\n    abstract attribute def uF :> Real;\n    abstract attribute def nF :> Real;\n    abstract attribute def pF :> Real;\n    abstract attribute def H :> Henry;\n    abstract attribute def mH :> Real;\n    abstract attribute def uH :> Real;\n    abstract attribute def Hz :> Hertz;\n    abstract attribute def kHz :> Real;\n    abstract attribute def MHz :> Real;\n    abstract attribute def GHz :> Real;\n    abstract attribute def rad :> Radian;\n    abstract attribute def sr :> Steradian;\n    abstract attribute def kat :> Katal;\n    abstract attribute def deg :> Real;\n    abstract attribute def degC :> DegreeCelsius;\n\n    /* Scaled Full Unit Names */\n    abstract attribute def Millimetre :> Metre;\n    abstract attribute def Centimetre :> Metre;\n    abstract attribute def Kilometre :> Metre;\n    abstract attribute def Gram :> Real;\n    abstract attribute def Milligram :> Real;\n    abstract attribute def Millisecond :> Second;\n    abstract attribute def Minute :> Real;\n    abstract attribute def Hour :> Real;\n    abstract attribute def Day :> Real;\n    abstract attribute def Kilowatt :> Watt;\n    abstract attribute def Megawatt :> Watt;\n    abstract attribute def Kilojoule :> Joule;\n    abstract attribute def Megajoule :> Joule;\n    abstract attribute def Kilopascal :> Pascal;\n    abstract attribute def Megapascal :> Pascal;\n    abstract attribute def Bar :> Real;\n    abstract attribute def Litre :> Real;\n    abstract attribute def Millilitre :> Real;\n\n    /* Prefixes */\n    abstract attribute def Yotta :> Real;\n    abstract attribute def Zetta :> Real;\n    abstract attribute def Exa :> Real;\n    abstract attribute def Peta :> Real;\n    abstract attribute def Tera :> Real;\n    abstract attribute def Giga :> Real;\n    abstract attribute def Mega :> Real;\n    abstract attribute def Kilo :> Real;\n    abstract attribute def Hecto :> Real;\n    abstract attribute def Deca :> Real;\n    abstract attribute def Deci :> Real;\n    abstract attribute def Centi :> Real;\n    abstract attribute def Milli :> Real;\n    abstract attribute def Micro :> Real;\n    abstract attribute def Nano :> Real;\n    abstract attribute def Pico :> Real;\n    abstract attribute def Femto :> Real;\n    abstract attribute def Atto :> Real;\n\n    abstract attribute def kilo :> Kilo;\n    abstract attribute def mega :> Mega;\n    abstract attribute def giga :> Giga;\n    abstract attribute def milli :> Milli;\n    abstract attribute def micro :> Micro;\n    abstract attribute def nano :> Nano;\n    abstract attribute def pico :> Pico;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2173790955,
+    "merkleHigh": 222602351
   },
   {
     "id": 349,
@@ -10987,7 +11683,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 439773534,
+    "merkleHigh": 1565328222
   },
   {
     "id": 350,
@@ -11015,7 +11713,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 2702219475,
+    "merkleHigh": 3439310614
   },
   {
     "id": 351,
@@ -11043,7 +11743,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 3997209734,
+    "merkleHigh": 1999987257
   },
   {
     "id": 352,
@@ -11082,7 +11784,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Second"
-    }
+    },
+    "merkleLow": 4105008711,
+    "merkleHigh": 678532295
   },
   {
     "id": 353,
@@ -11107,7 +11811,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 253602575,
+    "merkleHigh": 503275589
   },
   {
     "id": 354,
@@ -11146,7 +11852,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Kilogram"
-    }
+    },
+    "merkleLow": 2167755469,
+    "merkleHigh": 1886176867
   },
   {
     "id": 355,
@@ -11171,7 +11879,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1647579603,
+    "merkleHigh": 850035706
   },
   {
     "id": 356,
@@ -11210,7 +11920,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Metre"
-    }
+    },
+    "merkleLow": 1464482619,
+    "merkleHigh": 1652116812
   },
   {
     "id": 357,
@@ -11235,7 +11947,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4246452833,
+    "merkleHigh": 3607855771
   },
   {
     "id": 358,
@@ -11274,7 +11988,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Ampere"
-    }
+    },
+    "merkleLow": 1470015917,
+    "merkleHigh": 972610903
   },
   {
     "id": 359,
@@ -11299,7 +12015,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 916969243,
+    "merkleHigh": 2129764944
   },
   {
     "id": 360,
@@ -11338,7 +12056,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Kelvin"
-    }
+    },
+    "merkleLow": 1945200134,
+    "merkleHigh": 568744700
   },
   {
     "id": 361,
@@ -11363,7 +12083,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 567020742,
+    "merkleHigh": 2296502005
   },
   {
     "id": 362,
@@ -11402,7 +12124,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Mole"
-    }
+    },
+    "merkleLow": 2983789929,
+    "merkleHigh": 556073932
   },
   {
     "id": 363,
@@ -11427,7 +12151,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3025070238,
+    "merkleHigh": 2412559775
   },
   {
     "id": 364,
@@ -11466,7 +12192,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Candela"
-    }
+    },
+    "merkleLow": 4146212865,
+    "merkleHigh": 1380611834
   },
   {
     "id": 365,
@@ -11491,7 +12219,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2593762182,
+    "merkleHigh": 1881081602
   },
   {
     "id": 366,
@@ -11530,7 +12260,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1655221917,
+    "merkleHigh": 2291274682
   },
   {
     "id": 367,
@@ -11555,7 +12287,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 368,
@@ -11594,7 +12328,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3910907789,
+    "merkleHigh": 2993707219
   },
   {
     "id": 369,
@@ -11619,7 +12355,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 370,
@@ -11658,7 +12396,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 911985851,
+    "merkleHigh": 3560100571
   },
   {
     "id": 371,
@@ -11683,7 +12423,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 372,
@@ -11722,7 +12464,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1464598445,
+    "merkleHigh": 3818166213
   },
   {
     "id": 373,
@@ -11747,7 +12491,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 374,
@@ -11786,7 +12532,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1413613301,
+    "merkleHigh": 3032120590
   },
   {
     "id": 375,
@@ -11811,7 +12559,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 376,
@@ -11850,7 +12600,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Newton"
-    }
+    },
+    "merkleLow": 3305946431,
+    "merkleHigh": 2892804845
   },
   {
     "id": 377,
@@ -11875,7 +12627,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3972199032,
+    "merkleHigh": 1718831083
   },
   {
     "id": 378,
@@ -11914,7 +12668,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1573347084,
+    "merkleHigh": 2922858622
   },
   {
     "id": 379,
@@ -11939,7 +12695,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 380,
@@ -11978,7 +12736,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Pascal"
-    }
+    },
+    "merkleLow": 1147203456,
+    "merkleHigh": 3337955164
   },
   {
     "id": 381,
@@ -12003,7 +12763,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3108519815,
+    "merkleHigh": 4247036840
   },
   {
     "id": 382,
@@ -12042,7 +12804,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 543489948,
+    "merkleHigh": 2141282930
   },
   {
     "id": 383,
@@ -12067,7 +12831,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 384,
@@ -12106,7 +12872,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 295126730,
+    "merkleHigh": 1528074153
   },
   {
     "id": 385,
@@ -12131,7 +12899,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 386,
@@ -12170,7 +12940,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3936114459,
+    "merkleHigh": 1096660637
   },
   {
     "id": 387,
@@ -12195,7 +12967,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 388,
@@ -12234,7 +13008,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Joule"
-    }
+    },
+    "merkleLow": 841280272,
+    "merkleHigh": 2347079266
   },
   {
     "id": 389,
@@ -12259,7 +13035,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2979449027,
+    "merkleHigh": 2567142088
   },
   {
     "id": 390,
@@ -12298,7 +13076,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2988109880,
+    "merkleHigh": 130966927
   },
   {
     "id": 391,
@@ -12323,7 +13103,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 392,
@@ -12362,7 +13144,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1481814970,
+    "merkleHigh": 1636038944
   },
   {
     "id": 393,
@@ -12387,7 +13171,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 394,
@@ -12426,7 +13212,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Watt"
-    }
+    },
+    "merkleLow": 1688783077,
+    "merkleHigh": 595682291
   },
   {
     "id": 395,
@@ -12451,7 +13239,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 729183985,
+    "merkleHigh": 2138062588
   },
   {
     "id": 396,
@@ -12490,7 +13280,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3388353027,
+    "merkleHigh": 2165562695
   },
   {
     "id": 397,
@@ -12515,7 +13307,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 398,
@@ -12554,7 +13348,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3626205725,
+    "merkleHigh": 3407315643
   },
   {
     "id": 399,
@@ -12579,7 +13375,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 400,
@@ -12618,7 +13416,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Volt"
-    }
+    },
+    "merkleLow": 148155681,
+    "merkleHigh": 757139000
   },
   {
     "id": 401,
@@ -12643,7 +13443,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2991563806,
+    "merkleHigh": 1985056759
   },
   {
     "id": 402,
@@ -12682,7 +13484,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 190556006,
+    "merkleHigh": 1882383468
   },
   {
     "id": 403,
@@ -12707,7 +13511,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 404,
@@ -12746,7 +13552,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3314843588,
+    "merkleHigh": 1645627810
   },
   {
     "id": 405,
@@ -12771,7 +13579,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 406,
@@ -12810,7 +13620,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Coulomb"
-    }
+    },
+    "merkleLow": 3036990391,
+    "merkleHigh": 587697722
   },
   {
     "id": 407,
@@ -12835,7 +13647,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1765348163,
+    "merkleHigh": 2276894918
   },
   {
     "id": 408,
@@ -12874,7 +13688,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Ohm"
-    }
+    },
+    "merkleLow": 1561316143,
+    "merkleHigh": 1149745475
   },
   {
     "id": 409,
@@ -12899,7 +13715,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1511390106,
+    "merkleHigh": 1311377128
   },
   {
     "id": 410,
@@ -12938,7 +13756,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1322171286,
+    "merkleHigh": 4046843981
   },
   {
     "id": 411,
@@ -12963,7 +13783,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 412,
@@ -13002,7 +13824,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1898325180,
+    "merkleHigh": 1117717521
   },
   {
     "id": 413,
@@ -13027,7 +13851,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 414,
@@ -13066,7 +13892,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Farad"
-    }
+    },
+    "merkleLow": 3567912017,
+    "merkleHigh": 2344803684
   },
   {
     "id": 415,
@@ -13091,7 +13919,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4193317798,
+    "merkleHigh": 3225173672
   },
   {
     "id": 416,
@@ -13130,7 +13960,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2832605070,
+    "merkleHigh": 751367866
   },
   {
     "id": 417,
@@ -13155,7 +13987,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 418,
@@ -13194,7 +14028,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 491981057,
+    "merkleHigh": 2018282601
   },
   {
     "id": 419,
@@ -13219,7 +14055,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 420,
@@ -13258,7 +14096,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2700737651,
+    "merkleHigh": 3581894894
   },
   {
     "id": 421,
@@ -13283,7 +14123,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 422,
@@ -13322,7 +14164,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Henry"
-    }
+    },
+    "merkleLow": 2476015333,
+    "merkleHigh": 498616727
   },
   {
     "id": 423,
@@ -13347,7 +14191,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 567706588,
+    "merkleHigh": 920444783
   },
   {
     "id": 424,
@@ -13386,7 +14232,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 4179088584,
+    "merkleHigh": 69364487
   },
   {
     "id": 425,
@@ -13411,7 +14259,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 426,
@@ -13450,7 +14300,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1595038256,
+    "merkleHigh": 2598800089
   },
   {
     "id": 427,
@@ -13475,7 +14327,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 428,
@@ -13514,7 +14368,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Hertz"
-    }
+    },
+    "merkleLow": 4224838889,
+    "merkleHigh": 3525875113
   },
   {
     "id": 429,
@@ -13539,7 +14395,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 986188439,
+    "merkleHigh": 190751757
   },
   {
     "id": 430,
@@ -13578,7 +14436,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 444639769,
+    "merkleHigh": 1002519417
   },
   {
     "id": 431,
@@ -13603,7 +14463,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 432,
@@ -13642,7 +14504,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2371925099,
+    "merkleHigh": 1824866146
   },
   {
     "id": 433,
@@ -13667,7 +14531,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 434,
@@ -13706,7 +14572,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1263851181,
+    "merkleHigh": 2684346483
   },
   {
     "id": 435,
@@ -13731,7 +14599,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 436,
@@ -13770,7 +14640,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Radian"
-    }
+    },
+    "merkleLow": 975050414,
+    "merkleHigh": 1478353633
   },
   {
     "id": 437,
@@ -13795,7 +14667,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3004690934,
+    "merkleHigh": 1413108329
   },
   {
     "id": 438,
@@ -13834,7 +14708,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Steradian"
-    }
+    },
+    "merkleLow": 2737230792,
+    "merkleHigh": 189086027
   },
   {
     "id": 439,
@@ -13859,7 +14735,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1519612473,
+    "merkleHigh": 2652523644
   },
   {
     "id": 440,
@@ -13898,7 +14776,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Katal"
-    }
+    },
+    "merkleLow": 1389553568,
+    "merkleHigh": 2534372111
   },
   {
     "id": 441,
@@ -13923,7 +14803,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1842479027,
+    "merkleHigh": 2913525122
   },
   {
     "id": 442,
@@ -13962,7 +14844,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1079227602,
+    "merkleHigh": 47650123
   },
   {
     "id": 443,
@@ -13987,7 +14871,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 444,
@@ -14026,7 +14912,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "DegreeCelsius"
-    }
+    },
+    "merkleLow": 3603521601,
+    "merkleHigh": 1467482273
   },
   {
     "id": 445,
@@ -14051,7 +14939,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1135212650,
+    "merkleHigh": 1050009209
   },
   {
     "id": 446,
@@ -14090,7 +14980,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Metre"
-    }
+    },
+    "merkleLow": 2804932017,
+    "merkleHigh": 1140654954
   },
   {
     "id": 447,
@@ -14115,7 +15007,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4246452833,
+    "merkleHigh": 3607855771
   },
   {
     "id": 448,
@@ -14154,7 +15048,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Metre"
-    }
+    },
+    "merkleLow": 1123979509,
+    "merkleHigh": 2481782944
   },
   {
     "id": 449,
@@ -14179,7 +15075,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4246452833,
+    "merkleHigh": 3607855771
   },
   {
     "id": 450,
@@ -14218,7 +15116,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Metre"
-    }
+    },
+    "merkleLow": 3999815944,
+    "merkleHigh": 3996009718
   },
   {
     "id": 451,
@@ -14243,7 +15143,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4246452833,
+    "merkleHigh": 3607855771
   },
   {
     "id": 452,
@@ -14282,7 +15184,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 4160409772,
+    "merkleHigh": 2040872258
   },
   {
     "id": 453,
@@ -14307,7 +15211,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 454,
@@ -14346,7 +15252,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2785149950,
+    "merkleHigh": 2822452499
   },
   {
     "id": 455,
@@ -14371,7 +15279,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 456,
@@ -14410,7 +15320,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Second"
-    }
+    },
+    "merkleLow": 799965401,
+    "merkleHigh": 2298336320
   },
   {
     "id": 457,
@@ -14435,7 +15347,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 253602575,
+    "merkleHigh": 503275589
   },
   {
     "id": 458,
@@ -14474,7 +15388,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 763096421,
+    "merkleHigh": 1106026977
   },
   {
     "id": 459,
@@ -14499,7 +15415,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 460,
@@ -14538,7 +15456,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1474824041,
+    "merkleHigh": 1027009635
   },
   {
     "id": 461,
@@ -14563,7 +15483,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 462,
@@ -14602,7 +15524,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 368467536,
+    "merkleHigh": 2495150463
   },
   {
     "id": 463,
@@ -14627,7 +15551,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 464,
@@ -14666,7 +15592,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Watt"
-    }
+    },
+    "merkleLow": 2724994830,
+    "merkleHigh": 1191686871
   },
   {
     "id": 465,
@@ -14691,7 +15619,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 729183985,
+    "merkleHigh": 2138062588
   },
   {
     "id": 466,
@@ -14730,7 +15660,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Watt"
-    }
+    },
+    "merkleLow": 2493810013,
+    "merkleHigh": 1904032443
   },
   {
     "id": 467,
@@ -14755,7 +15687,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 729183985,
+    "merkleHigh": 2138062588
   },
   {
     "id": 468,
@@ -14794,7 +15728,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Joule"
-    }
+    },
+    "merkleLow": 1239587248,
+    "merkleHigh": 1651360577
   },
   {
     "id": 469,
@@ -14819,7 +15755,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2979449027,
+    "merkleHigh": 2567142088
   },
   {
     "id": 470,
@@ -14858,7 +15796,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Joule"
-    }
+    },
+    "merkleLow": 3762090401,
+    "merkleHigh": 927546172
   },
   {
     "id": 471,
@@ -14883,7 +15823,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2979449027,
+    "merkleHigh": 2567142088
   },
   {
     "id": 472,
@@ -14922,7 +15864,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Pascal"
-    }
+    },
+    "merkleLow": 3468907734,
+    "merkleHigh": 1845110874
   },
   {
     "id": 473,
@@ -14947,7 +15891,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3108519815,
+    "merkleHigh": 4247036840
   },
   {
     "id": 474,
@@ -14986,7 +15932,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Pascal"
-    }
+    },
+    "merkleLow": 1566619129,
+    "merkleHigh": 3755966581
   },
   {
     "id": 475,
@@ -15011,7 +15959,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3108519815,
+    "merkleHigh": 4247036840
   },
   {
     "id": 476,
@@ -15050,7 +16000,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 993028859,
+    "merkleHigh": 2120903246
   },
   {
     "id": 477,
@@ -15075,7 +16027,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 478,
@@ -15114,7 +16068,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3908617208,
+    "merkleHigh": 1797635213
   },
   {
     "id": 479,
@@ -15139,7 +16095,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 480,
@@ -15178,7 +16136,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2310708070,
+    "merkleHigh": 600350127
   },
   {
     "id": 481,
@@ -15203,7 +16163,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 482,
@@ -15242,7 +16204,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1028002619,
+    "merkleHigh": 783296282
   },
   {
     "id": 483,
@@ -15267,7 +16231,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 484,
@@ -15306,7 +16272,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 4234921268,
+    "merkleHigh": 745362477
   },
   {
     "id": 485,
@@ -15331,7 +16299,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 486,
@@ -15370,7 +16340,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1070823178,
+    "merkleHigh": 3784795726
   },
   {
     "id": 487,
@@ -15395,7 +16367,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 488,
@@ -15434,7 +16408,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2913824311,
+    "merkleHigh": 1490047700
   },
   {
     "id": 489,
@@ -15459,7 +16435,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 490,
@@ -15498,7 +16476,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1488151389,
+    "merkleHigh": 4047809532
   },
   {
     "id": 491,
@@ -15523,7 +16503,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 492,
@@ -15562,7 +16544,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2581820727,
+    "merkleHigh": 2982631667
   },
   {
     "id": 493,
@@ -15587,7 +16571,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 494,
@@ -15626,7 +16612,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 851517677,
+    "merkleHigh": 1396935495
   },
   {
     "id": 495,
@@ -15651,7 +16639,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 496,
@@ -15690,7 +16680,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3289400894,
+    "merkleHigh": 3432593266
   },
   {
     "id": 497,
@@ -15715,7 +16707,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 498,
@@ -15754,7 +16748,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1897803829,
+    "merkleHigh": 4186493571
   },
   {
     "id": 499,
@@ -15779,7 +16775,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 500,
@@ -15818,7 +16816,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 249406660,
+    "merkleHigh": 787052712
   },
   {
     "id": 501,
@@ -15843,7 +16843,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 502,
@@ -15882,7 +16884,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 757145948,
+    "merkleHigh": 2552137718
   },
   {
     "id": 503,
@@ -15907,7 +16911,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 504,
@@ -15946,7 +16952,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3722112661,
+    "merkleHigh": 1500767536
   },
   {
     "id": 505,
@@ -15971,7 +16979,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 506,
@@ -16010,7 +17020,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1646114169,
+    "merkleHigh": 3260200095
   },
   {
     "id": 507,
@@ -16035,7 +17047,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 508,
@@ -16074,7 +17088,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2217589376,
+    "merkleHigh": 2109891910
   },
   {
     "id": 509,
@@ -16099,7 +17115,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 510,
@@ -16138,7 +17156,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3237251449,
+    "merkleHigh": 1885966882
   },
   {
     "id": 511,
@@ -16163,7 +17183,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 512,
@@ -16202,7 +17224,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 162010130,
+    "merkleHigh": 3274488221
   },
   {
     "id": 513,
@@ -16227,7 +17251,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 514,
@@ -16266,7 +17292,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2659396457,
+    "merkleHigh": 190401450
   },
   {
     "id": 515,
@@ -16291,7 +17319,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 516,
@@ -16330,7 +17360,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3982015115,
+    "merkleHigh": 4201222262
   },
   {
     "id": 517,
@@ -16355,7 +17387,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 518,
@@ -16394,7 +17428,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Kilo"
-    }
+    },
+    "merkleLow": 1223056511,
+    "merkleHigh": 734399724
   },
   {
     "id": 519,
@@ -16419,7 +17455,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1215993460,
+    "merkleHigh": 318435615
   },
   {
     "id": 520,
@@ -16458,7 +17496,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Mega"
-    }
+    },
+    "merkleLow": 2887061319,
+    "merkleHigh": 2105576119
   },
   {
     "id": 521,
@@ -16483,7 +17523,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 834374071,
+    "merkleHigh": 2888884981
   },
   {
     "id": 522,
@@ -16522,7 +17564,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Giga"
-    }
+    },
+    "merkleLow": 3647710103,
+    "merkleHigh": 3386780187
   },
   {
     "id": 523,
@@ -16547,7 +17591,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3725338553,
+    "merkleHigh": 3459791482
   },
   {
     "id": 524,
@@ -16586,7 +17632,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Milli"
-    }
+    },
+    "merkleLow": 2530030511,
+    "merkleHigh": 2449263364
   },
   {
     "id": 525,
@@ -16611,7 +17659,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3387331911,
+    "merkleHigh": 1559313429
   },
   {
     "id": 526,
@@ -16650,7 +17700,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Micro"
-    }
+    },
+    "merkleLow": 3241707311,
+    "merkleHigh": 980194292
   },
   {
     "id": 527,
@@ -16675,7 +17727,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3574238354,
+    "merkleHigh": 3058780892
   },
   {
     "id": 528,
@@ -16714,7 +17768,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Nano"
-    }
+    },
+    "merkleLow": 300496223,
+    "merkleHigh": 739531486
   },
   {
     "id": 529,
@@ -16739,7 +17795,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3099294291,
+    "merkleHigh": 3125923533
   },
   {
     "id": 530,
@@ -16778,7 +17836,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Pico"
-    }
+    },
+    "merkleLow": 1638919223,
+    "merkleHigh": 2651423045
   },
   {
     "id": 531,
@@ -16803,7 +17863,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 855182552,
+    "merkleHigh": 2843259656
   },
   {
     "id": 532,
@@ -16830,7 +17892,9 @@ export const kermlStdlibEntries = [
       "package USCustomaryUnits {\n    import ScalarValues::*;\n\n    /* Length & Area */\n    abstract attribute def Inch :> Real;\n    abstract attribute def Foot :> Real;\n    abstract attribute def Yard :> Real;\n    abstract attribute def Mile :> Real;\n    abstract attribute def NauticalMile :> Real;\n    abstract attribute def SquareFoot :> Real;\n    abstract attribute def Acre :> Real;\n\n    abstract attribute def inch :> Inch;\n    abstract attribute def ft :> Foot;\n    abstract attribute def yd :> Yard;\n    abstract attribute def mi :> Mile;\n\n    /* Mass and Force */\n    abstract attribute def Ounce :> Real;\n    abstract attribute def Pound :> Real;\n    abstract attribute def PoundMass :> Pound;\n    abstract attribute def PoundForce :> Real;\n    abstract attribute def Slug :> Real;\n    abstract attribute def Ton :> Real;\n\n    abstract attribute def oz :> Ounce;\n    abstract attribute def lb :> Pound;\n    abstract attribute def lbf :> PoundForce;\n\n    /* Volume */\n    abstract attribute def Gallon :> Real;\n    abstract attribute def Quart :> Real;\n    abstract attribute def Pint :> Real;\n    abstract attribute def Cup :> Real;\n    abstract attribute def FluidOunce :> Real;\n    abstract attribute def gal :> Gallon;\n\n    /* Pressure */\n    abstract attribute def PoundPerSquareInch :> Real;\n    abstract attribute def psi :> PoundPerSquareInch;\n    abstract attribute def ksi :> Real;\n\n    /* Energy, Power & Speed */\n    abstract attribute def BritishThermalUnit :> Real;\n    abstract attribute def Btu :> BritishThermalUnit;\n    abstract attribute def FootPound :> Real;\n    abstract attribute def Horsepower :> Real;\n    abstract attribute def hp :> Horsepower;\n    abstract attribute def MilePerHour :> Real;\n    abstract attribute def mph :> MilePerHour;\n\n    /* Temperature */\n    abstract attribute def DegreeFahrenheit :> Real;\n    abstract attribute def degF :> DegreeFahrenheit;\n    abstract attribute def Rankine :> Real;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3034076532,
+    "merkleHigh": 1111034199
   },
   {
     "id": 533,
@@ -16858,7 +17922,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 439773534,
+    "merkleHigh": 1565328222
   },
   {
     "id": 534,
@@ -16897,7 +17963,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1180812695,
+    "merkleHigh": 2580762056
   },
   {
     "id": 535,
@@ -16922,7 +17990,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 536,
@@ -16961,7 +18031,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 130222819,
+    "merkleHigh": 3243641278
   },
   {
     "id": 537,
@@ -16986,7 +18058,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 538,
@@ -17025,7 +18099,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2388247763,
+    "merkleHigh": 658916340
   },
   {
     "id": 539,
@@ -17050,7 +18126,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 540,
@@ -17089,7 +18167,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 3132154278,
+    "merkleHigh": 1398456042
   },
   {
     "id": 541,
@@ -17114,7 +18194,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 542,
@@ -17153,7 +18235,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 130828915,
+    "merkleHigh": 1386184551
   },
   {
     "id": 543,
@@ -17178,7 +18262,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 544,
@@ -17217,7 +18303,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 46390626,
+    "merkleHigh": 2161494407
   },
   {
     "id": 545,
@@ -17242,7 +18330,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 546,
@@ -17281,7 +18371,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 149607478,
+    "merkleHigh": 4016243930
   },
   {
     "id": 547,
@@ -17306,7 +18398,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 548,
@@ -17345,7 +18439,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Inch"
-    }
+    },
+    "merkleLow": 1171336727,
+    "merkleHigh": 3720811970
   },
   {
     "id": 549,
@@ -17370,7 +18466,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1326088729,
+    "merkleHigh": 3191929203
   },
   {
     "id": 550,
@@ -17409,7 +18507,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Foot"
-    }
+    },
+    "merkleLow": 2808939619,
+    "merkleHigh": 1897545463
   },
   {
     "id": 551,
@@ -17434,7 +18534,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2458108133,
+    "merkleHigh": 7638934
   },
   {
     "id": 552,
@@ -17473,7 +18575,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Yard"
-    }
+    },
+    "merkleLow": 1641599780,
+    "merkleHigh": 1153593750
   },
   {
     "id": 553,
@@ -17498,7 +18602,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 776782421,
+    "merkleHigh": 2350715972
   },
   {
     "id": 554,
@@ -17537,7 +18643,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Mile"
-    }
+    },
+    "merkleLow": 1609460086,
+    "merkleHigh": 1121169724
   },
   {
     "id": 555,
@@ -17562,7 +18670,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2896932844,
+    "merkleHigh": 2121511403
   },
   {
     "id": 556,
@@ -17601,7 +18711,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 315287446,
+    "merkleHigh": 144020011
   },
   {
     "id": 557,
@@ -17626,7 +18738,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 558,
@@ -17665,7 +18779,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 4280628714,
+    "merkleHigh": 3065190145
   },
   {
     "id": 559,
@@ -17690,7 +18806,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 560,
@@ -17729,7 +18847,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Pound"
-    }
+    },
+    "merkleLow": 77807243,
+    "merkleHigh": 1435851567
   },
   {
     "id": 561,
@@ -17754,7 +18874,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3101646328,
+    "merkleHigh": 2813162496
   },
   {
     "id": 562,
@@ -17793,7 +18915,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 2208427788,
+    "merkleHigh": 2732599179
   },
   {
     "id": 563,
@@ -17818,7 +18942,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 564,
@@ -17857,7 +18983,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 331233964,
+    "merkleHigh": 1213831717
   },
   {
     "id": 565,
@@ -17882,7 +19010,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 566,
@@ -17921,7 +19051,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 316441931,
+    "merkleHigh": 1168397999
   },
   {
     "id": 567,
@@ -17946,7 +19078,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 568,
@@ -17985,7 +19119,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Ounce"
-    }
+    },
+    "merkleLow": 1963892461,
+    "merkleHigh": 3601041519
   },
   {
     "id": 569,
@@ -18010,7 +19146,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3879241100,
+    "merkleHigh": 3110028797
   },
   {
     "id": 570,
@@ -18049,7 +19187,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Pound"
-    }
+    },
+    "merkleLow": 3992377382,
+    "merkleHigh": 3888124606
   },
   {
     "id": 571,
@@ -18074,7 +19214,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3101646328,
+    "merkleHigh": 2813162496
   },
   {
     "id": 572,
@@ -18113,7 +19255,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "PoundForce"
-    }
+    },
+    "merkleLow": 1613898641,
+    "merkleHigh": 1574498780
   },
   {
     "id": 573,
@@ -18138,7 +19282,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 708247150,
+    "merkleHigh": 2967093287
   },
   {
     "id": 574,
@@ -18177,7 +19323,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1269747728,
+    "merkleHigh": 1036201925
   },
   {
     "id": 575,
@@ -18202,7 +19350,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 576,
@@ -18241,7 +19391,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 269748531,
+    "merkleHigh": 3067119593
   },
   {
     "id": 577,
@@ -18266,7 +19418,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 578,
@@ -18305,7 +19459,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1147269054,
+    "merkleHigh": 748814412
   },
   {
     "id": 579,
@@ -18330,7 +19486,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 580,
@@ -18369,7 +19527,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 861392170,
+    "merkleHigh": 2642135730
   },
   {
     "id": 581,
@@ -18394,7 +19554,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 582,
@@ -18433,7 +19595,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1713780207,
+    "merkleHigh": 1287542688
   },
   {
     "id": 583,
@@ -18458,7 +19622,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 584,
@@ -18497,7 +19663,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Gallon"
-    }
+    },
+    "merkleLow": 495963865,
+    "merkleHigh": 2913002785
   },
   {
     "id": 585,
@@ -18522,7 +19690,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1178153810,
+    "merkleHigh": 3421542920
   },
   {
     "id": 586,
@@ -18561,7 +19731,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1626627979,
+    "merkleHigh": 1844193370
   },
   {
     "id": 587,
@@ -18586,7 +19758,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 588,
@@ -18625,7 +19799,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "PoundPerSquareInch"
-    }
+    },
+    "merkleLow": 1731259474,
+    "merkleHigh": 2165322491
   },
   {
     "id": 589,
@@ -18650,7 +19826,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 324299509,
+    "merkleHigh": 1497053042
   },
   {
     "id": 590,
@@ -18689,7 +19867,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1376801347,
+    "merkleHigh": 3527269505
   },
   {
     "id": 591,
@@ -18714,7 +19894,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 592,
@@ -18753,7 +19935,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 826768669,
+    "merkleHigh": 2242725746
   },
   {
     "id": 593,
@@ -18778,7 +19962,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 594,
@@ -18817,7 +20003,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "BritishThermalUnit"
-    }
+    },
+    "merkleLow": 2094389585,
+    "merkleHigh": 1598320699
   },
   {
     "id": 595,
@@ -18842,7 +20030,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3337972535,
+    "merkleHigh": 2610249132
   },
   {
     "id": 596,
@@ -18881,7 +20071,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 1303323558,
+    "merkleHigh": 1982238410
   },
   {
     "id": 597,
@@ -18906,7 +20098,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 598,
@@ -18945,7 +20139,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 4009769971,
+    "merkleHigh": 2877011402
   },
   {
     "id": 599,
@@ -18970,7 +20166,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 600,
@@ -19009,7 +20207,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Horsepower"
-    }
+    },
+    "merkleLow": 2560092549,
+    "merkleHigh": 2066637003
   },
   {
     "id": 601,
@@ -19034,7 +20234,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1902609181,
+    "merkleHigh": 114982147
   },
   {
     "id": 602,
@@ -19073,7 +20275,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 268043544,
+    "merkleHigh": 2902891313
   },
   {
     "id": 603,
@@ -19098,7 +20302,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 604,
@@ -19137,7 +20343,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "MilePerHour"
-    }
+    },
+    "merkleLow": 678327942,
+    "merkleHigh": 149541549
   },
   {
     "id": 605,
@@ -19162,7 +20370,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2738357102,
+    "merkleHigh": 3299545588
   },
   {
     "id": 606,
@@ -19201,7 +20411,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 4241217949,
+    "merkleHigh": 4294252201
   },
   {
     "id": 607,
@@ -19226,7 +20438,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 608,
@@ -19265,7 +20479,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "DegreeFahrenheit"
-    }
+    },
+    "merkleLow": 1807407983,
+    "merkleHigh": 2828550908
   },
   {
     "id": 609,
@@ -19290,7 +20506,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2107603391,
+    "merkleHigh": 3319129753
   },
   {
     "id": 610,
@@ -19329,7 +20547,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Real"
-    }
+    },
+    "merkleLow": 4040262014,
+    "merkleHigh": 762452201
   },
   {
     "id": 611,
@@ -19354,7 +20574,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 3645921849,
+    "merkleHigh": 213675367
   },
   {
     "id": 612,
@@ -19381,7 +20603,9 @@ export const kermlStdlibEntries = [
       "package CauseAndEffect {\n    import Base::*;\n    import CoreTypes::*;\n\n    abstract item def Cause;\n    abstract item def Effect;\n    abstract item def Causation :> Relationship;\n    abstract item def CausalConnection :> Relationship;\n    abstract item def Hazard :> Classifier;\n    abstract item def FailureMode :> Classifier;\n    abstract item def Fault :> Classifier;\n    abstract item def HazardousEvent;\n    abstract item def Risk;\n    abstract item def HazardousState;\n    abstract item def Mitigation;\n    abstract item def SafetyCase;\n    abstract item def SafetyRequirement :> Requirement;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4080264736,
+    "merkleHigh": 704555260
   },
   {
     "id": 613,
@@ -19409,7 +20633,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 3632357851,
+    "merkleHigh": 1283035657
   },
   {
     "id": 614,
@@ -19437,7 +20663,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 3974647089,
+    "merkleHigh": 694342811
   },
   {
     "id": 615,
@@ -19468,7 +20696,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 2459697091,
+    "merkleHigh": 3161214449
   },
   {
     "id": 616,
@@ -19499,7 +20729,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 3220565302,
+    "merkleHigh": 3080648428
   },
   {
     "id": 617,
@@ -19538,7 +20770,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Relationship"
-    }
+    },
+    "merkleLow": 3490092262,
+    "merkleHigh": 2797728918
   },
   {
     "id": 618,
@@ -19563,7 +20797,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4011620919,
+    "merkleHigh": 1369031002
   },
   {
     "id": 619,
@@ -19602,7 +20838,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Relationship"
-    }
+    },
+    "merkleLow": 2813660139,
+    "merkleHigh": 3334780045
   },
   {
     "id": 620,
@@ -19627,7 +20865,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4011620919,
+    "merkleHigh": 1369031002
   },
   {
     "id": 621,
@@ -19666,7 +20906,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Classifier"
-    }
+    },
+    "merkleLow": 956316377,
+    "merkleHigh": 1133068564
   },
   {
     "id": 622,
@@ -19691,7 +20933,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1463251090,
+    "merkleHigh": 4084000835
   },
   {
     "id": 623,
@@ -19730,7 +20974,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Classifier"
-    }
+    },
+    "merkleLow": 3399145429,
+    "merkleHigh": 2888434217
   },
   {
     "id": 624,
@@ -19755,7 +21001,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1463251090,
+    "merkleHigh": 4084000835
   },
   {
     "id": 625,
@@ -19794,7 +21042,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Classifier"
-    }
+    },
+    "merkleLow": 2086675322,
+    "merkleHigh": 2656914001
   },
   {
     "id": 626,
@@ -19819,7 +21069,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1463251090,
+    "merkleHigh": 4084000835
   },
   {
     "id": 627,
@@ -19850,7 +21102,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 561297700,
+    "merkleHigh": 58439197
   },
   {
     "id": 628,
@@ -19881,7 +21135,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 4191439390,
+    "merkleHigh": 3816228757
   },
   {
     "id": 629,
@@ -19912,7 +21168,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 2466717241,
+    "merkleHigh": 2774029207
   },
   {
     "id": 630,
@@ -19943,7 +21201,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 3365759028,
+    "merkleHigh": 2963157424
   },
   {
     "id": 631,
@@ -19974,7 +21234,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 1034083673,
+    "merkleHigh": 2486132728
   },
   {
     "id": 632,
@@ -20013,7 +21275,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Requirement"
-    }
+    },
+    "merkleLow": 666822124,
+    "merkleHigh": 3151637745
   },
   {
     "id": 633,
@@ -20038,7 +21302,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1545828567,
+    "merkleHigh": 621340400
   },
   {
     "id": 634,
@@ -20065,7 +21331,9 @@ export const kermlStdlibEntries = [
       "package SpatialFrames {\n    import Base::*;\n    import ScalarValues::*;\n\n    abstract item def SpatialFrame;\n    abstract item def WorldFrame :> SpatialFrame;\n    abstract item def CoordinateFrame :> SpatialFrame;\n    abstract item def CartesianFrame :> CoordinateFrame;\n    abstract item def Cartesian3DFrame :> CartesianFrame;\n    abstract item def Cartesian2DFrame :> CartesianFrame;\n    abstract item def CylindricalFrame :> CoordinateFrame;\n    abstract item def SphericalFrame :> CoordinateFrame;\n\n    abstract attribute def PositionVector;\n    abstract attribute def OrientationVector;\n    abstract attribute def Orientation;\n    abstract attribute def DisplacementVector;\n    abstract attribute def RotationMatrix;\n    abstract attribute def Quaternion;\n    abstract attribute def Transform;\n    abstract attribute def Transform3D :> Transform;\n    abstract attribute def Point3D;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 4002590147,
+    "merkleHigh": 2850131693
   },
   {
     "id": 635,
@@ -20093,7 +21361,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 3632357851,
+    "merkleHigh": 1283035657
   },
   {
     "id": 636,
@@ -20121,7 +21391,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 439773534,
+    "merkleHigh": 1565328222
   },
   {
     "id": 637,
@@ -20152,7 +21424,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 3695386448,
+    "merkleHigh": 1564050342
   },
   {
     "id": 638,
@@ -20191,7 +21465,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "SpatialFrame"
-    }
+    },
+    "merkleLow": 2044559958,
+    "merkleHigh": 101897929
   },
   {
     "id": 639,
@@ -20216,7 +21492,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 576633348,
+    "merkleHigh": 272291743
   },
   {
     "id": 640,
@@ -20255,7 +21533,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "SpatialFrame"
-    }
+    },
+    "merkleLow": 589108409,
+    "merkleHigh": 499022194
   },
   {
     "id": 641,
@@ -20280,7 +21560,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 576633348,
+    "merkleHigh": 272291743
   },
   {
     "id": 642,
@@ -20319,7 +21601,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "CoordinateFrame"
-    }
+    },
+    "merkleLow": 1515445753,
+    "merkleHigh": 1309151156
   },
   {
     "id": 643,
@@ -20344,7 +21628,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2799062935,
+    "merkleHigh": 2872465791
   },
   {
     "id": 644,
@@ -20383,7 +21669,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "CartesianFrame"
-    }
+    },
+    "merkleLow": 3859130183,
+    "merkleHigh": 3306930995
   },
   {
     "id": 645,
@@ -20408,7 +21696,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2113038044,
+    "merkleHigh": 493923681
   },
   {
     "id": 646,
@@ -20447,7 +21737,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "CartesianFrame"
-    }
+    },
+    "merkleLow": 3986176116,
+    "merkleHigh": 570822059
   },
   {
     "id": 647,
@@ -20472,7 +21764,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2113038044,
+    "merkleHigh": 493923681
   },
   {
     "id": 648,
@@ -20511,7 +21805,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "CoordinateFrame"
-    }
+    },
+    "merkleLow": 257335841,
+    "merkleHigh": 1809451046
   },
   {
     "id": 649,
@@ -20536,7 +21832,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2799062935,
+    "merkleHigh": 2872465791
   },
   {
     "id": 650,
@@ -20575,7 +21873,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "CoordinateFrame"
-    }
+    },
+    "merkleLow": 1790356346,
+    "merkleHigh": 3345075087
   },
   {
     "id": 651,
@@ -20600,7 +21900,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2799062935,
+    "merkleHigh": 2872465791
   },
   {
     "id": 652,
@@ -20631,7 +21933,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 2363631892,
+    "merkleHigh": 2583634784
   },
   {
     "id": 653,
@@ -20662,7 +21966,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 2828813468,
+    "merkleHigh": 2895565653
   },
   {
     "id": 654,
@@ -20693,7 +21999,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 4070282757,
+    "merkleHigh": 4161891417
   },
   {
     "id": 655,
@@ -20724,7 +22032,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 3235613056,
+    "merkleHigh": 4096140471
   },
   {
     "id": 656,
@@ -20755,7 +22065,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 2970207899,
+    "merkleHigh": 2440167329
   },
   {
     "id": 657,
@@ -20786,7 +22098,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 1231095316,
+    "merkleHigh": 1343170200
   },
   {
     "id": 658,
@@ -20817,7 +22131,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 1977250813,
+    "merkleHigh": 1106318353
   },
   {
     "id": 659,
@@ -20856,7 +22172,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": "Transform"
-    }
+    },
+    "merkleLow": 2388965994,
+    "merkleHigh": 666940953
   },
   {
     "id": 660,
@@ -20881,7 +22199,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2381801786,
+    "merkleHigh": 1767010514
   },
   {
     "id": 661,
@@ -20912,7 +22232,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 3837934370,
+    "merkleHigh": 2012242977
   },
   {
     "id": 662,
@@ -20939,7 +22261,9 @@ export const kermlStdlibEntries = [
       "package StateMachines {\n    import Base::*;\n    import CoreTypes::*;\n\n    abstract state def StateDefinition :> State;\n    abstract item def Transition;\n    abstract item def Trigger;\n    abstract item def Guard;\n    abstract action def EntryAction :> Action;\n    abstract action def ExitAction :> Action;\n    abstract action def DoAction :> Action;\n}"
     ],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 814356145,
+    "merkleHigh": 1438559597
   },
   {
     "id": 663,
@@ -20967,7 +22291,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 3632357851,
+    "merkleHigh": 1283035657
   },
   {
     "id": 664,
@@ -20995,7 +22321,9 @@ export const kermlStdlibEntries = [
     "metadata": {
       "isImportAll": null,
       "isRecursive": null
-    }
+    },
+    "merkleLow": 3974647089,
+    "merkleHigh": 694342811
   },
   {
     "id": 665,
@@ -21024,7 +22352,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "isParallel": null
-    }
+    },
+    "merkleLow": 3128421570,
+    "merkleHigh": 2033706264
   },
   {
     "id": 666,
@@ -21049,7 +22379,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 1857556343,
+    "merkleHigh": 2444504431
   },
   {
     "id": 667,
@@ -21080,7 +22412,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 2667045044,
+    "merkleHigh": 1472282234
   },
   {
     "id": 668,
@@ -21111,7 +22445,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 2356142766,
+    "merkleHigh": 1590004756
   },
   {
     "id": 669,
@@ -21142,7 +22478,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 3086805533,
+    "merkleHigh": 3283284760
   },
   {
     "id": 670,
@@ -21173,7 +22511,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 556179247,
+    "merkleHigh": 728241762
   },
   {
     "id": 671,
@@ -21198,7 +22538,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2463518325,
+    "merkleHigh": 1069216574
   },
   {
     "id": 672,
@@ -21229,7 +22571,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 3563382681,
+    "merkleHigh": 1686188258
   },
   {
     "id": 673,
@@ -21254,7 +22598,9 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2463518325,
+    "merkleHigh": 1069216574
   },
   {
     "id": 674,
@@ -21285,7 +22631,9 @@ export const kermlStdlibEntries = [
       "isAbstract": "abstract",
       "isVariation": null,
       "shortName": null
-    }
+    },
+    "merkleLow": 2552706156,
+    "merkleHigh": 953903590
   },
   {
     "id": 675,
@@ -21310,6 +22658,8 @@ export const kermlStdlibEntries = [
     },
     "exports": [],
     "inherits": [],
-    "metadata": {}
+    "metadata": {},
+    "merkleLow": 2463518325,
+    "merkleHigh": 1069216574
   }
 ];

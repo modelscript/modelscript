@@ -431,7 +431,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     () =>
       debounce((uri: string, value: string) => {
         void didChange(uri, value);
-      }, 120),
+      }, 180),
     [],
   );
 

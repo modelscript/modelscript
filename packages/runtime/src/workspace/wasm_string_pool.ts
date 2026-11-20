@@ -177,6 +177,18 @@ export class WasmStringPool implements IStringInterner {
   }
 
   private _internPredefined(s: string, expectedId: number) {
+    if (this.wasmExports?.stringPool_internUtf8 && this.poolPtr && this.wasmExports?.memory) {
+      const wasmId = this.intern(s);
+      if (wasmId === expectedId) return;
+      // Ensure expectedId slot is also populated if WASM assigned a different index
+      while (this.reverse.length < expectedId) {
+        this.reverse.push(undefined);
+      }
+      this.reverse[expectedId] = s;
+      this.table.set(s, wasmId);
+      this.shortTable.set(s, wasmId);
+      return;
+    }
     const id = this.reverse.length;
     if (id !== expectedId) {
       // Pad if needed
@@ -417,10 +429,12 @@ export class WasmStringPool implements IStringInterner {
       }
       if (s === undefined) continue;
       const maxLen = s.length * 3 + 1;
-      if (maxLen > scratchCap || scratchView.buffer !== exports.memory.buffer) {
+      if (maxLen > scratchCap) {
         if (exports.free) exports.free(scratchPtr);
         scratchCap = Math.max(maxLen, scratchCap * 2);
         scratchPtr = allocFn(scratchCap) >>> 0;
+        scratchView = new Uint8Array(exports.memory.buffer, scratchPtr >>> 0, scratchCap);
+      } else if (scratchView.buffer !== exports.memory.buffer) {
         scratchView = new Uint8Array(exports.memory.buffer, scratchPtr >>> 0, scratchCap);
       }
       let written: number;

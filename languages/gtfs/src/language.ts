@@ -84,6 +84,46 @@ export const gtfsLanguage = language({
       }
     },
   },
+  ui: {
+    toolbarButtons: [
+      {
+        id: "gtfsSolveTraction",
+        label: "Solve e-Bus Traction & Depot Charging",
+        shortLabel: "Solve e-Bus",
+        tooltip: "Solve e-Bus Traction & Depot Charging",
+        icon: "zap",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        actionId: "gtfs_solve_traction",
+      },
+      {
+        id: "gtfsToDae",
+        label: "Lower GTFS to DAEBuilder",
+        shortLabel: "Lower GTFS",
+        tooltip: "Lower GTFS to DAEBuilder",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "gtfs_to_dae",
+      },
+      {
+        id: "gtfsLint",
+        label: "Lint GTFS Transit Feed",
+        shortLabel: "Lint GTFS",
+        tooltip: "Lint GTFS Transit Feed",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "gtfs_lint",
+      },
+    ],
+  },
   actions: [
     {
       id: "gtfs_lint",

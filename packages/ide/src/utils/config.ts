@@ -561,12 +561,16 @@ export function buildLspSettingsPayload(languageIds: string[] = Object.keys(LANG
   inlayHints: {
     enabled: boolean;
     unitsAndBounds: boolean;
+    formalProofBadges: boolean;
     variabilityPrefixes: boolean;
   };
   diagnostics: {
     enabled: boolean;
     maxNumberOfProblems: number;
     disabledRules: string[];
+    crossDomainDrift: "error" | "warning" | "information" | "off";
+    formalVerificationOnSave: boolean;
+    daeSingularityCheck: boolean;
   };
 } {
   const features = getResolvedFeatureFlags();
@@ -600,6 +604,12 @@ export function buildLspSettingsPayload(languageIds: string[] = Object.keys(LANG
         ? "problemsOnly"
         : "off";
 
+  const rawDrift = diagCfg?.get<string>("crossDomainDrift");
+  const crossDomainDrift: "error" | "warning" | "information" | "off" =
+    rawDrift === "error" || rawDrift === "warning" || rawDrift === "information" || rawDrift === "off"
+      ? rawDrift
+      : "warning";
+
   return {
     features,
     languages: {
@@ -618,12 +628,16 @@ export function buildLspSettingsPayload(languageIds: string[] = Object.keys(LANG
     inlayHints: {
       enabled: ihCfg?.get<boolean>("enabled") ?? true,
       unitsAndBounds: ihCfg?.get<boolean>("unitsAndBounds") ?? ihCfg?.get<boolean>("units") ?? true,
+      formalProofBadges: ihCfg?.get<boolean>("formalProofBadges") ?? false,
       variabilityPrefixes: ihCfg?.get<boolean>("variabilityPrefixes") ?? true,
     },
     diagnostics: {
       enabled: diagCfg?.get<boolean>("enabled") ?? true,
       maxNumberOfProblems: diagCfg?.get<number>("maxNumberOfProblems") ?? 250,
       disabledRules: diagCfg?.get<string[]>("disabledRules") ?? [],
+      crossDomainDrift,
+      formalVerificationOnSave: diagCfg?.get<boolean>("formalVerificationOnSave") ?? false,
+      daeSingularityCheck: diagCfg?.get<boolean>("daeSingularityCheck") ?? true,
     },
   };
 }

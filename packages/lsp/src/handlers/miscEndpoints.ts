@@ -118,6 +118,7 @@ export function registerMiscEndpoints(context: LspContext) {
       for (const doc of context.documents.all()) {
         context.validationService.validateTextDocument(doc);
       }
+      context.validationService.requestCodeLensRefresh?.();
     }
   });
 

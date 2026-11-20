@@ -1102,23 +1102,81 @@ export function extractClassEquations(
               ? resolveChainedEqRedecl(a, a.ownerClassId ?? classId, rawChildSubModArgs)
               : a,
           );
+          let resolvedChildPkgScopeId: SymbolId | undefined = redeclPkgId ?? parentMods?.packageScopeId;
+          let resolvedChildPkgPrefixName: string | undefined = redeclPkgPrefix ?? undefined;
+          if (!redeclPkgId && compInst?.typeSpecifier?.includes(".")) {
+            const pkgPrefix = compInst.typeSpecifier.split(".")[0]!;
+            const concreteScopeId = parentMods?.ownerClassId ?? classId;
+            const resolvePkgInScope = (sid?: SymbolId): SymbolEntry | null => {
+              if (!sid) return null;
+              return (
+                db.query<(n: string) => SymbolEntry | null>("resolveName", sid)?.(pkgPrefix) ??
+                db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", sid)?.(pkgPrefix) ??
+                null
+              );
+            };
+            const pkgSym =
+              resolvePkgInScope(concreteScopeId) ??
+              (classId !== concreteScopeId ? resolvePkgInScope(classId) : null) ??
+              (child.parentId && child.parentId !== concreteScopeId && child.parentId !== classId
+                ? resolvePkgInScope(child.parentId)
+                : null);
+            if (pkgSym && (pkgSym.kind === "Class" || pkgSym.kind === "Package")) {
+              let targetPkgId: SymbolId = pkgSym.id;
+              const visitedAliases = new Set<SymbolId>();
+              while (targetPkgId && !visitedAliases.has(targetPkgId)) {
+                visitedAliases.add(targetPkgId);
+                const shortCst = db.cstNode(targetPkgId) as Parameters<typeof getShortClassSpecifierNode>[0];
+                const specShort = getShortClassSpecifierNode(shortCst);
+                if (!specShort) break;
+                const basePkg = db.query<SymbolEntry | null>("resolvedBaseClass", targetPkgId);
+                if (basePkg) {
+                  targetPkgId = basePkg.id;
+                  continue;
+                }
+                const tName = (
+                  Cst.ShortClassSpecifier.typeSpecifier(specShort) ??
+                  specShort.children?.find((c: { type: string }) => c.type === "type_specifier")
+                )?.text?.trim();
+                if (tName) {
+                  const aliasParentId = db.symbol(targetPkgId)?.parentId ?? concreteScopeId;
+                  const aliased =
+                    (aliasParentId
+                      ? db.query<(n: string) => SymbolEntry | null>("resolveName", aliasParentId)?.(tName)
+                      : null) ?? db.byName(tName).find((e) => e.kind === "Class" || e.kind === "Package");
+                  if (aliased) {
+                    targetPkgId = aliased.id;
+                    continue;
+                  }
+                }
+                break;
+              }
+              resolvedChildPkgScopeId = targetPkgId;
+              resolvedChildPkgPrefixName = pkgPrefix;
+            }
+          }
           const childSpecPkgPrefix =
-            redeclPkgId && redeclPkgPrefix
+            resolvedChildPkgScopeId && resolvedChildPkgPrefixName
               ? (() => {
                   const ownerClsId = parentMods?.ownerClassId ?? classId;
                   const ownerQual = ownerClsId ? getSymbolQualifiedName(db, ownerClsId) : "";
                   if (!ownerQual) return undefined;
-                  return prefix
-                    ? `${ownerQual}$${prefix.replaceAll(".", "$")}.${redeclPkgPrefix}`
-                    : `${ownerQual}.${redeclPkgPrefix}`;
+                  if (!prefix) return `${ownerQual}.${resolvedChildPkgPrefixName}`;
+                  if (dae.extensionMetadata?.["isOldFrontend"]) {
+                    return `${ownerQual}$${prefix.replaceAll(".", "$")}.${resolvedChildPkgPrefixName}`;
+                  }
+                  const rootQual = flattener.currentRootClassId
+                    ? getSymbolQualifiedName(db, flattener.currentRootClassId)
+                    : ownerQual;
+                  return `${rootQual}.${prefix}.${resolvedChildPkgPrefixName}`;
                 })()
               : parentMods?.specializedPkgPrefix;
           const childSubMod = {
             args: resolvedChildSubModArgs,
             ownerClassId: resolvedCompClassId,
-            packageScopeId: redeclPkgId ?? parentMods?.packageScopeId,
+            packageScopeId: resolvedChildPkgScopeId,
             specializedPkgPrefix: childSpecPkgPrefix,
-            specializedPkgInstPrefix: redeclPkgId ? prefix : parentMods?.specializedPkgInstPrefix,
+            specializedPkgInstPrefix: resolvedChildPkgScopeId ? prefix : parentMods?.specializedPkgInstPrefix,
           };
           const arrayDims = db.query<number[] | null>("resolvedArrayDimensions", child.id);
           if (curVisited.has(resolvedCompClassId)) {
@@ -1842,6 +1900,24 @@ export function extractClassEquations(
             }
 
             if (!isDynamic) {
+              if (!dae.extensionMetadata?.["isOldFrontend"] && !flattener.isOldFrontend) {
+                const state = getFlatteningState(dae);
+                for (let bi = 0; bi <= (staticBranchIndex ?? branches.length - 1); bi++) {
+                  const b = branches[bi];
+                  if (!b?.conditionNode) continue;
+                  const cId = flattener.lowerExpr(b.conditionNode, dae, prefix, substitutions);
+                  if (cId >= 0) {
+                    const condVars = new Set<string>();
+                    dae.collectExprVarNames(cId, condVars);
+                    for (const vName of condVars) {
+                      const vIdx = dae.getVarIdxByName(vName);
+                      if (vIdx >= 0 && dae.getVarVariability(vIdx) === Variability.Parameter) {
+                        (state.evaluatedParams ??= new Set<string>()).add(vName);
+                      }
+                    }
+                  }
+                }
+              }
               if (staticBranchIndex !== null) {
                 // Statically chosen branch: emit only its equations!
                 const chosen = branches[staticBranchIndex]!;

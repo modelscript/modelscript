@@ -16,21 +16,21 @@ export interface EditorLspTransport {
   dispose?(): void;
 }
 
-let activeTransport: EditorLspTransport | null = null;
+const ACTIVE_TRANSPORT_SYMBOL = Symbol.for("@modelscript/editor/activeTransport");
 
 /**
  * Installs a custom LSP transport for editor bridges.
  * Pass `null` to restore the default host transport.
  */
 export function setActiveEditorLspTransport(transport: EditorLspTransport | null): void {
-  activeTransport = transport;
+  (globalThis as Record<symbol, EditorLspTransport | null>)[ACTIVE_TRANSPORT_SYMBOL] = transport;
 }
 
 /**
  * Returns the currently injected custom transport, or `null` if using the default host transport.
  */
 export function getCustomEditorLspTransport(): EditorLspTransport | null {
-  return activeTransport;
+  return (globalThis as Record<symbol, EditorLspTransport | null | undefined>)[ACTIVE_TRANSPORT_SYMBOL] ?? null;
 }
 
 /**

@@ -89,6 +89,34 @@ export const lasLanguage = language({
     workspaceHooks: lasWorkspaceHooks,
   },
 
+  ui: {
+    toolbarButtons: [
+      {
+        id: "plotWellLog",
+        label: "Plot Well Log Curves",
+        shortLabel: "Plot Well",
+        tooltip: "Plot Well Log Curves",
+        icon: "graph",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        actionId: "plot_well_log",
+      },
+      {
+        id: "importAsModelica",
+        label: "Import LAS as Modelica Package",
+        shortLabel: "Import LAS",
+        tooltip: "Import LAS as Modelica Package",
+        icon: "export",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 20,
+        actionId: "import_as_modelica",
+      },
+    ],
+  },
   actions: [
     {
       id: "plot_well_log",

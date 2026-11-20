@@ -21,11 +21,11 @@ export const MODELICA_INTEGER_INF = 2147483647;
 /** Maximum allowed dimension length or unrolled array expansion count. */
 export const MAX_ARRAY_EXPANSION_LENGTH = 2000000;
 
-/** Machine epsilon used for floating-point tolerance in Modelica evaluation. */
-export const MODELICA_EPS = 1e-15;
+/** Machine epsilon used for floating-point tolerance in Modelica evaluation (IEEE-754 binary64). */
+export const MODELICA_EPS = Number.EPSILON; // 2.220446049250313e-16
 
-/** Minimum positive non-zero floating-point magnitude. */
-export const MODELICA_SMALL = 1e-60;
+/** Minimum positive normalized floating-point magnitude (IEEE-754 binary64 DBL_MIN). */
+export const MODELICA_SMALL = 2.2250738585072014e-308;
 
 /** Absolute zero temperature in degrees Celsius ($0\text{ K} = -273.15\text{ }^\circ\text{C}$). */
 export const MODELICA_T_ZERO = -273.15;

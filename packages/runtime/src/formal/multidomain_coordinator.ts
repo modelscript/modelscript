@@ -245,37 +245,45 @@ export class MultiDomainVerificationCoordinator {
     // 1. Setup default variable aliases and equivalence classes in Nelson-Oppen
     this.setupVariableAliases(decks.aliases);
 
-    // 2. Assert requirements into Entailment & Constraint oracles
+    // 2. Assert requirements through SemanticTheoryCoordinator (routing to Entailment, Constraint, and domain oracles)
     let litId = 1000;
     for (const req of requirements) {
       if (req.operator === "!=") {
-        this.constraintOracle.assertLiteral({
+        this.coordinator.assertLiteral({
           id: litId++,
           predicate: "bound",
           args: [req.variable, "!=", req.limitValue],
+          domain: "constraint",
         });
         continue;
       }
 
       const op = req.operator;
-      this.reqOracle.assertLiteral({
+      this.coordinator.assertLiteral({
         id: litId++,
         predicate: "requirement",
         args: [req.id, req.variable, op, req.limitValue],
+        domain: this.reqOracle.domain,
       });
 
-      // Propagate requirement bounds into coordinator canonical space
-      const [lo, hi] = this.operatorToBounds(op, req.limitValue);
-      this.coordinator.enqueueEvent({
-        kind: "bound",
-        varName: req.variable,
-        bounds: [lo, hi],
-        explanation: `Requirement ${req.id}: ${req.variable} ${op} ${req.limitValue}`,
-        sourceOracle: this.reqOracle.name,
+      this.coordinator.assertLiteral({
+        id: litId++,
+        predicate: "bound",
+        args: [req.variable, op, req.limitValue],
+        domain: "constraint",
       });
 
-      // Also directly inform oracles for all matching aliases
-      this.propagateBoundToAliases(req.variable, [lo, hi]);
+      // Also assert on any mapped canonical domain variable so domain oracles receive the canonical key
+      for (const [canonical, aliases] of DEFAULT_VARIABLE_MAPPINGS) {
+        if (aliases.includes(req.variable) && canonical !== req.variable) {
+          this.coordinator.assertLiteral({
+            id: litId++,
+            predicate: "bound",
+            args: [canonical, op, req.limitValue],
+            domain: "constraint",
+          });
+        }
+      }
     }
 
     // 3. Ingest Power Grid Decks (@modelscript/psse, @modelscript/pscad)
@@ -464,73 +472,6 @@ export class MultiDomainVerificationCoordinator {
           sourceOracle: "MultiDomainCoordinator",
         });
       }
-    }
-  }
-
-  private propagateBoundToAliases(variable: string, bounds: [number, number]): void {
-    // Notify oracles that directly understand bound events
-    this.gridOracle.onSharedEquality({
-      varA: variable,
-      varB: variable,
-      domain: "interval",
-      bounds,
-      sourceOracle: "ReqIF",
-    });
-    this.mooringOracle.onSharedEquality({
-      varA: variable,
-      varB: variable,
-      domain: "interval",
-      bounds,
-      sourceOracle: "ReqIF",
-    });
-    this.caeOracle.onSharedEquality({
-      varA: variable,
-      varB: variable,
-      domain: "interval",
-      bounds,
-      sourceOracle: "ReqIF",
-    });
-
-    // Check alias mappings to also propagate canonical names
-    for (const [canonical, aliases] of DEFAULT_VARIABLE_MAPPINGS) {
-      if (aliases.includes(variable) || canonical === variable) {
-        this.gridOracle.onSharedEquality({
-          varA: canonical,
-          varB: canonical,
-          domain: "interval",
-          bounds,
-          sourceOracle: "ReqIF",
-        });
-        this.mooringOracle.onSharedEquality({
-          varA: canonical,
-          varB: canonical,
-          domain: "interval",
-          bounds,
-          sourceOracle: "ReqIF",
-        });
-        this.caeOracle.onSharedEquality({
-          varA: canonical,
-          varB: canonical,
-          domain: "interval",
-          bounds,
-          sourceOracle: "ReqIF",
-        });
-      }
-    }
-  }
-
-  private operatorToBounds(op: string, val: number): [number, number] {
-    switch (op) {
-      case "<=":
-      case "<":
-        return [-Infinity, val];
-      case ">=":
-      case ">":
-        return [val, Infinity];
-      case "==":
-        return [val, val];
-      default:
-        return [-Infinity, Infinity];
     }
   }
 

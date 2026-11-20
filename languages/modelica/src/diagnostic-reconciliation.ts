@@ -273,7 +273,10 @@ export function reconcileModelicaCstDiagnostics<T extends CstDiagnosticLike>(
     if (codeNum === 4037 && hasArenaResult && (hasEngineOrArenaCode(4037) || !hasArenaError)) {
       return false;
     }
-    if (codeNum === 4053 && (arenaDiags ?? []).some((d) => parseDiagCodeNum(d.code) === 4106)) {
+    if ((codeNum === 4053 || codeNum === 2092) && (arenaDiags ?? []).some((d) => parseDiagCodeNum(d.code) === 4106)) {
+      return false;
+    }
+    if (codeNum === 2096 && !isOldFrontend) {
       return false;
     }
     if (codeNum === 3009 && hasEngineOrArenaCode(3009)) {
@@ -314,7 +317,12 @@ export function reconcileModelicaCstDiagnostics<T extends CstDiagnosticLike>(
       return false;
     }
 
-    if ((codeNum === 4017 || codeNum === 4042) && targetClassRange && resolveCharOffset) {
+    if (
+      (codeNum === 4017 || codeNum === 4042) &&
+      !(codeNum === 4017 && msg.includes("in function")) &&
+      targetClassRange &&
+      resolveCharOffset
+    ) {
       const charOffset = resolveCharOffset(cd);
       if (
         charOffset !== null &&

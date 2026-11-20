@@ -208,7 +208,19 @@ export const LanguageToolbarButtons: React.FC<LanguageToolbarButtonsProps> = ({
                 transition: "background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease",
               }}
             >
-              <IconComp size={14} />
+              {btn.iconSvg ? (
+                <svg
+                  width={14}
+                  height={14}
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                  style={{ display: "block", flexShrink: 0, color: "var(--ms-brand, #0891b2)" }}
+                  dangerouslySetInnerHTML={{ __html: btn.iconSvg }}
+                />
+              ) : (
+                <IconComp size={14} />
+              )}
               <span>{btn.shortLabel}</span>
             </button>
           );

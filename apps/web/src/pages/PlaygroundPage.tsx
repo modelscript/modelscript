@@ -1254,6 +1254,10 @@ export const PlaygroundPage: React.FC = () => {
   };
 
   const defaultSingleFileName = `model.${getLanguageInfo(currentLang).ext || "mo"}`;
+  const resolvedProjectFiles = useMemo(
+    () => projectFiles ?? { [defaultSingleFileName]: currentCode },
+    [projectFiles, defaultSingleFileName, currentCode],
+  );
 
   const handleRemoveProjectFile = (fileName: string) => {
     const baseFiles = projectFiles ?? { [defaultSingleFileName]: currentCode };
@@ -1760,7 +1764,7 @@ export const PlaygroundPage: React.FC = () => {
               dataUrl={null}
               initialCode={currentCode}
               isLoadingModel={Boolean(loadingTemplateTitle)}
-              projectFiles={projectFiles ?? { [defaultSingleFileName]: currentCode }}
+              projectFiles={resolvedProjectFiles}
               activeFileName={activeFile ?? defaultSingleFileName}
               onSelectProjectFile={handleSwitchProjectFile}
               onAddProjectFile={handleAddProjectFile}

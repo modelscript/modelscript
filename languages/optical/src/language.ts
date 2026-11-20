@@ -47,6 +47,32 @@ export const opticalLanguage = language({
         artifactViewTypes: ["openroadm"],
       },
     ],
+    toolbarButtons: [
+      {
+        id: "opticalToDae",
+        label: "Lower Optical EDFA to DAE",
+        shortLabel: "Lower Optical",
+        tooltip: "Lower Optical EDFA to DAE",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 10,
+        actionId: "optical_to_dae",
+      },
+      {
+        id: "opticalLint",
+        label: "Lint OpenROADM Optical Topology",
+        shortLabel: "Lint OpenROADM",
+        tooltip: "Lint OpenROADM Optical Topology",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "optical_lint",
+      },
+    ],
   },
 
   actions: [

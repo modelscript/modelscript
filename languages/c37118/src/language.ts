@@ -19,6 +19,34 @@ export const c37118Language = language({
   lsp: {
     fileExtensions: [".c37118", ".pmu"],
   },
+  ui: {
+    toolbarButtons: [
+      {
+        id: "lowerC37118Dae",
+        label: "Lower IEEE C37.118 PMU to DAE",
+        shortLabel: "Lower IEEE",
+        tooltip: "Lower IEEE C37.118 PMU to DAE",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 10,
+        actionId: "lower_c37118_dae",
+      },
+      {
+        id: "lintC37118",
+        label: "Lint IEEE C37.118 PMU Profile",
+        shortLabel: "Lint IEEE",
+        tooltip: "Lint IEEE C37.118 PMU Profile",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "lint_c37118",
+      },
+    ],
+  },
   actions: [
     {
       id: "lint_c37118",

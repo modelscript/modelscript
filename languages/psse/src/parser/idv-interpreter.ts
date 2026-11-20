@@ -43,64 +43,39 @@ export interface IdvExecutionResult {
   lastContingency: N1ContingencyAnalysisResult | null;
 }
 
-/**
- * Tokenizes a single line from an .idv file.
- */
-function tokenizeIdvLine(line: string): string[] {
-  let cleaned = line.trim();
-  const slashIdx = cleaned.indexOf("/");
-  if (slashIdx >= 0) {
-    cleaned = cleaned.slice(0, slashIdx).trim();
-  }
-  if (!cleaned || cleaned.startsWith("@!") || cleaned.startsWith("/*") || cleaned.startsWith("#")) {
-    return [];
-  }
-
-  const tokens: string[] = [];
-  let current = "";
-  let inQuotes = false;
-  let quoteChar = "";
-
-  for (let i = 0; i < cleaned.length; i++) {
-    const ch = cleaned[i]!;
-    if ((ch === '"' || ch === "'") && (!inQuotes || ch === quoteChar)) {
-      inQuotes = !inQuotes;
-      quoteChar = inQuotes ? ch : "";
-    } else if ((ch === "," || ch === "\t" || (!inQuotes && ch === " " && current.includes(","))) && !inQuotes) {
-      if (current.trim().length > 0) {
-        tokens.push(current.trim());
-      }
-      current = "";
-    } else if (ch === " " && !inQuotes && tokens.length === 0 && current.length > 0) {
-      // Space separated primary command (e.g. "OPEN BRANCH 101 TO 102")
-      tokens.push(current.trim());
-      current = "";
-    } else {
-      current += ch;
-    }
-  }
-  if (current.trim().length > 0) {
-    tokens.push(current.trim());
-  }
-
-  return tokens.map((t) => t.replace(/^["']|["']$/g, "").trim());
-}
-
-import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
-import { getPsseWasmParser } from "./wasm-loader.js";
+import { extractFieldsFromCstTokens, parsePsseCstDocument } from "./cst-tokens.js";
 
 /**
- * Parses an .idv script text into a sequence of executable IdvCommand objects.
+ * Parses an .idv script text into a sequence of executable IdvCommand objects
+ * directly from the native WASM GLR CST (eliminating hand-rolled string tokenization).
  */
 export function parseIdv(script: string): IdvCommand[] {
-  const cstTree = getPsseWasmParser().parse(script);
-  const cstLines = groupAllCstTokensByLine(cstTree?.rootNode);
+  const cstDoc = parsePsseCstDocument(script);
   const commands: IdvCommand[] = [];
 
-  for (const { row: i, tokens: cstTokens } of cstLines) {
-    const rawLine = cstLineText(script, cstTokens);
-    const tokens = tokenizeIdvLine(rawLine);
-    if (tokens.length === 0) continue;
+  for (const info of cstDoc.lines) {
+    if (info.isCommentOrBlank) continue;
+    const trimmed = info.line.trimStart();
+    if (trimmed.startsWith("#") || trimmed.startsWith("/*")) continue;
+
+    // Split on comma or whitespace using GLR CST leaf tokens
+    const hasComma = info.tokens.some((t) => (t.text ?? "") === ",");
+    const mode = hasComma ? "delimited" : "whitespace";
+    const rawFields = extractFieldsFromCstTokens(info.tokens, script, mode)
+      .map((f) => f.value.trim())
+      .filter((v) => v.length > 0);
+    if (rawFields.length === 0) continue;
+
+    // Handle "CMD arg1, arg2" where space separates command from comma-separated args
+    let tokens: string[];
+    if (hasComma && rawFields[0]!.includes(" ")) {
+      const firstSpace = rawFields[0]!.indexOf(" ");
+      const firstCmd = rawFields[0]!.slice(0, firstSpace).trim();
+      const firstArg = rawFields[0]!.slice(firstSpace + 1).trim();
+      tokens = firstArg.length > 0 ? [firstCmd, firstArg, ...rawFields.slice(1)] : [firstCmd, ...rawFields.slice(1)];
+    } else {
+      tokens = rawFields;
+    }
 
     let cmd = tokens[0]!.toUpperCase();
     if (cmd.startsWith("BAT_")) {
@@ -110,8 +85,8 @@ export function parseIdv(script: string): IdvCommand[] {
     commands.push({
       command: cmd,
       args: tokens.slice(1),
-      rawLine,
-      lineNo: i + 1,
+      rawLine: info.line,
+      lineNo: info.lineNum,
     });
   }
 

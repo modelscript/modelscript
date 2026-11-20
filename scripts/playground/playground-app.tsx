@@ -2,6 +2,7 @@
 
 import { PanelBltView, type BltAnalysisData } from "@modelscript/design-tokens/panel";
 import { createHttpLspTransport, EditorHostProvider, registerEditorLanguageUi } from "@modelscript/editor";
+import { LanguageToolbarButtons } from "@modelscript/editor/workbench/panels/LanguageToolbarButtons";
 import type {
   LanguagePanelHost,
   LanguagePanelMode,
@@ -770,6 +771,7 @@ export const PlaygroundApp: React.FC = () => {
                         </SplitToggleButton>
                       </>
                     )}
+                    <LanguageToolbarButtons languageId={PLAYGROUND_LANG.id} activeView={morselView} />
                   </NavCenter>
 
                   <NavRight>

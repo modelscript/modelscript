@@ -165,7 +165,18 @@ export function collectArenaExprDeps(arena: DAEBuilder, exprId: number, deps: Se
     case ExprKind.Name: {
       const nameId = arena.getExprData1(exprId);
       const varIdx = resolveArenaVarIdx(arena, nameId);
-      if (varIdx !== -1) deps.add(varIdx);
+      if (varIdx !== -1) {
+        deps.add(varIdx);
+      } else {
+        const name = arena.interner.resolve(nameId);
+        if (name) {
+          for (let k = 1; k <= 1024; k++) {
+            const elemIdx = arena.getVarIdxByName(`${name}[${k}]`);
+            if (elemIdx === -1) break;
+            if (!arena.isVarRemoved(elemIdx)) deps.add(elemIdx);
+          }
+        }
+      }
       break;
     }
     case ExprKind.Binary: {

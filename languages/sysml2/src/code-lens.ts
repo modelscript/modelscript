@@ -194,22 +194,6 @@ export function getSysml2CodeLenses(text: string, uri: string, ctx?: Sysml2CodeL
       lenses.push({
         range,
         command: {
-          title: "▶ Estimate Requirement Reachability (linearized zonotope, non-rigorous)",
-          command: "modelscript.runReachabilityFlowpipe",
-          arguments: [uri],
-        },
-      });
-      lenses.push({
-        range,
-        command: {
-          title: "▶ Verify Flowpipes (CORA / WASM Zonotopes)",
-          command: "modelscript.runReachabilityFlowpipe",
-          arguments: [uri],
-        },
-      });
-      lenses.push({
-        range,
-        command: {
           title: `🛡️ Verify Formal Requirement Contract: ${name}`,
           command: "modelscript.runReachabilityFlowpipe",
           arguments: [uri],

@@ -91,6 +91,10 @@ export function generateLexer(grammar: LanguageOptions, normalized: NormalizedGr
     }
   }
 
+  for (const { sentinel } of normalized.formatSentinels.values()) {
+    stringTokens.set(sentinel, sentinel);
+  }
+
   let wordRegex: RegExp | null = null;
   let wordName: string | null = null;
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { discoverSingleLanguage } from "@modelscript/dsl";
+import { discoverSingleLanguage, discoverWorkspaceLanguages } from "@modelscript/dsl";
 import {
   getActiveToolbarContext,
   getEditorLanguageUi,
@@ -228,5 +228,25 @@ describe("Declarative Per-Language / Per-View Toolbar Buttons", () => {
       extGenSrc.includes("lang.options.ui?.toolbarButtons"),
       "VS Code extension-generator must read ui.toolbarButtons",
     );
+  });
+
+  it("discovers valid ui.toolbarButtons across all 102 workspace languages", async () => {
+    const languagesDir = path.resolve(import.meta.dirname, "../../../languages");
+    const discovered = await discoverWorkspaceLanguages(languagesDir);
+    const byLang = discovered.ui.toolbarButtonsByLanguage;
+    const missing = discovered.manifest.map((m) => m.id).filter((id) => !(id in byLang));
+    assert.deepEqual(
+      missing,
+      [],
+      `Every discovered language must declare toolbarButtons (missing: ${missing.join(", ")})`,
+    );
+
+    for (const [langId, buttons] of Object.entries(byLang)) {
+      assert.ok(buttons.length > 0, `${langId} must have at least one toolbar button`);
+      for (const btn of buttons) {
+        assert.ok(btn.id && btn.label, `${langId} button must have id and label`);
+        assert.ok(Boolean(btn.actionId || btn.command), `${langId}.${btn.id} must specify either actionId or command`);
+      }
+    }
   });
 });

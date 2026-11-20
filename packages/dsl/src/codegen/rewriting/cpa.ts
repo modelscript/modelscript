@@ -471,7 +471,19 @@ export function runCPA(rules: TGGRuleOptions[], options?: { nodeDomainMap?: Reco
   for (const sig of signatures) {
     if (!adjList.has(sig.name)) adjList.set(sig.name, new Set());
     for (const other of signatures) {
-      if (sig.name === other.name) continue;
+      if (sig.name === other.name) {
+        // Explicit same-language self-loop (sourceNodeType === targetNodeType in same domain)
+        if (
+          sig.sourceLang &&
+          sig.targetLang &&
+          sig.sourceLang === sig.targetLang &&
+          sig.targetNodeType === sig.sourceNodeType &&
+          sig.targetNodeType !== "UnknownNode"
+        ) {
+          adjList.get(sig.name)!.add(other.name);
+        }
+        continue;
+      }
       // Check language compatibility when both rules specify/infer languages
       const isLangCompatible = !sig.targetLang || !other.sourceLang || sig.targetLang === other.sourceLang;
       // If sig's target could be consumed as other's source in the same language domain
@@ -481,9 +493,10 @@ export function runCPA(rules: TGGRuleOptions[], options?: { nodeDomainMap?: Reco
     }
   }
 
-  // Detect elementary cycles using path-based DFS with canonical rotation deduplication
+  // Detect cycles using O(V + E) 3-color DFS (visited + recStack) with canonical rotation deduplication
   const cycles: string[][] = [];
   const seenCycleKeys = new Set<string>();
+  const visited = new Set<string>();
   const recStack = new Set<string>();
   const path: string[] = [];
 
@@ -502,14 +515,13 @@ export function runCPA(rules: TGGRuleOptions[], options?: { nodeDomainMap?: Reco
   }
 
   function dfs(curr: string) {
+    visited.add(curr);
     recStack.add(curr);
     path.push(curr);
 
     const neighbors = adjList.get(curr) || new Set();
     for (const neighbor of neighbors) {
-      if (!recStack.has(neighbor)) {
-        dfs(neighbor);
-      } else {
+      if (recStack.has(neighbor)) {
         const cycleStartIndex = path.indexOf(neighbor);
         if (cycleStartIndex >= 0) {
           const cycle = path.slice(cycleStartIndex).concat(neighbor);
@@ -526,6 +538,8 @@ export function runCPA(rules: TGGRuleOptions[], options?: { nodeDomainMap?: Reco
             });
           }
         }
+      } else if (!visited.has(neighbor)) {
+        dfs(neighbor);
       }
     }
 
@@ -534,7 +548,9 @@ export function runCPA(rules: TGGRuleOptions[], options?: { nodeDomainMap?: Reco
   }
 
   for (const sig of signatures) {
-    dfs(sig.name);
+    if (!visited.has(sig.name)) {
+      dfs(sig.name);
+    }
   }
 
   return {

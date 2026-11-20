@@ -134,8 +134,8 @@ export function ${binaryGetterName}(): Uint8Array {
   const ascBin = path.resolve(dir, "../../node_modules/.bin", isWin ? "asc.cmd" : "asc");
   const cmd = fs.existsSync(ascBin) ? ascBin : isWin ? "npx.cmd" : "npx";
   const args = fs.existsSync(ascBin)
-    ? [entryFile, "--config", "asconfig.json"]
-    : ["asc", entryFile, "--config", "asconfig.json"];
+    ? [entryFile, "--config", "asconfig.json", "--outFile", outWasmFile]
+    : ["asc", entryFile, "--config", "asconfig.json", "--outFile", outWasmFile];
 
   execFileSync(cmd, args, {
     cwd: dir,

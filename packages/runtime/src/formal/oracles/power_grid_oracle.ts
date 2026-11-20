@@ -19,6 +19,7 @@
 
 import type { ConflictClause, SharedEquality, TheoryLiteral, TheoryOracle } from "../theory_coordinator.js";
 import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
+import { UndoTrail } from "./undo_trail.js";
 
 export interface BusVoltageSpec {
   busId: string | number;
@@ -71,15 +72,7 @@ export class PowerGridTheoryOracle implements TheoryOracle {
 
   private sharedEqualities: SharedEquality[] = [];
 
-  private levelStack: {
-    busVoltages: Map<string, BusVoltageSpec>;
-    reactivePowers: Map<string, ReactivePowerSpec>;
-    branchLoadings: Map<string, BranchLoadingSpec>;
-    ieee2800Clauses: Map<string, Ieee2800ClauseSpec>;
-    externalBounds: Map<string, [number, number]>;
-    sharedEqualities: SharedEquality[];
-    assertedLitIds: number[];
-  }[] = [];
+  private trail = new UndoTrail();
 
   constructor() {
     this.reset();
@@ -93,33 +86,15 @@ export class PowerGridTheoryOracle implements TheoryOracle {
     this.externalBounds.clear();
     this.sharedEqualities = [];
     this.assertedLiterals.clear();
-    this.levelStack = [];
+    this.trail.reset();
   }
 
   public pushLevel(): void {
-    this.levelStack.push({
-      busVoltages: new Map(this.busVoltages),
-      reactivePowers: new Map(this.reactivePowers),
-      branchLoadings: new Map(this.branchLoadings),
-      ieee2800Clauses: new Map(this.ieee2800Clauses),
-      externalBounds: new Map(this.externalBounds),
-      sharedEqualities: [...this.sharedEqualities],
-      assertedLitIds: [],
-    });
+    this.trail.pushLevel();
   }
 
   public popLevel(): void {
-    const top = this.levelStack.pop();
-    if (!top) return;
-    this.busVoltages = top.busVoltages;
-    this.reactivePowers = top.reactivePowers;
-    this.branchLoadings = top.branchLoadings;
-    this.ieee2800Clauses = top.ieee2800Clauses;
-    this.externalBounds = top.externalBounds;
-    this.sharedEqualities = top.sharedEqualities;
-    for (const id of top.assertedLitIds) {
-      this.assertedLiterals.delete(id);
-    }
+    this.trail.popLevel();
   }
 
   // --- Strongly typed domain ingestion APIs ---
@@ -253,29 +228,26 @@ export class PowerGridTheoryOracle implements TheoryOracle {
   // --- TheoryOracle implementation ---
 
   public assertLiteral(lit: TheoryLiteral): boolean {
-    this.assertedLiterals.set(lit.id, lit);
-    if (this.levelStack.length > 0) {
-      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
-    }
+    this.trail.mapSet(this.assertedLiterals, lit.id, lit);
 
     const { predicate, args } = lit;
     if (predicate === "busVoltage") {
       const spec = args[0] as BusVoltageSpec;
-      if (spec) this.busVoltages.set(String(spec.busId), spec);
+      if (spec) this.trail.mapSet(this.busVoltages, String(spec.busId), spec);
     } else if (predicate === "reactivePower") {
       const spec = args[0] as ReactivePowerSpec;
-      if (spec) this.reactivePowers.set(String(spec.genId), spec);
+      if (spec) this.trail.mapSet(this.reactivePowers, String(spec.genId), spec);
     } else if (predicate === "branchLoading") {
       const spec = args[0] as BranchLoadingSpec;
       if (spec) {
         const key = spec.circuitId
           ? `${spec.fromBus}_${spec.toBus}_${spec.circuitId}`
           : `${spec.fromBus}_${spec.toBus}`;
-        this.branchLoadings.set(key, spec);
+        this.trail.mapSet(this.branchLoadings, key, spec);
       }
     } else if (predicate === "ieee2800Clause") {
       const spec = args[0] as Ieee2800ClauseSpec;
-      if (spec) this.ieee2800Clauses.set(spec.clause, spec);
+      if (spec) this.trail.mapSet(this.ieee2800Clauses, spec.clause, spec);
     }
     return true;
   }
@@ -284,17 +256,18 @@ export class PowerGridTheoryOracle implements TheoryOracle {
     const hasShared = hasSharedEqualityWithLiteral(this.sharedEqualities, litId);
     if (!this.assertedLiterals.has(litId) && !hasShared) return;
     this.assertedLiterals.delete(litId);
-    const savedStack = this.levelStack;
+    const savedTrail = this.trail;
     const remaining = Array.from(this.assertedLiterals.values());
     const remainingSharedEqs = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
+    this.trail = new UndoTrail();
     this.reset();
-    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
     for (const eq of remainingSharedEqs) {
       this.onSharedEquality(eq);
     }
+    this.trail = savedTrail;
   }
 
   public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
@@ -475,15 +448,15 @@ export class PowerGridTheoryOracle implements TheoryOracle {
 
   public onSharedEquality(eq: SharedEquality): void {
     if (!eq.varA) return;
-    this.sharedEqualities.push(eq);
+    this.trail.arrayPush(this.sharedEqualities, eq);
 
     if (eq.bounds) {
       const intersect = (varName: string, b: [number, number]) => {
         const prev = this.externalBounds.get(varName);
         if (prev) {
-          this.externalBounds.set(varName, [Math.max(prev[0], b[0]), Math.min(prev[1], b[1])]);
+          this.trail.mapSet(this.externalBounds, varName, [Math.max(prev[0], b[0]), Math.min(prev[1], b[1])]);
         } else {
-          this.externalBounds.set(varName, [b[0], b[1]]);
+          this.trail.mapSet(this.externalBounds, varName, [b[0], b[1]]);
         }
       };
       intersect(eq.varA, eq.bounds);

@@ -17,6 +17,7 @@
 
 import type { ConflictClause, SharedEquality, TheoryLiteral, TheoryOracle } from "../theory_coordinator.js";
 import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
+import { UndoTrail } from "./undo_trail.js";
 
 export interface MooringLineSpec {
   lineId: string;
@@ -54,13 +55,7 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
 
   private sharedEqualities: SharedEquality[] = [];
 
-  private levelStack: {
-    lines: Map<string, MooringLineSpec>;
-    floaters: Map<string, FloaterExcursionSpec>;
-    externalBounds: Map<string, [number, number]>;
-    sharedEqualities: SharedEquality[];
-    assertedLitIds: number[];
-  }[] = [];
+  private trail = new UndoTrail();
 
   constructor() {
     this.reset();
@@ -72,29 +67,15 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
     this.externalBounds.clear();
     this.sharedEqualities = [];
     this.assertedLiterals.clear();
-    this.levelStack = [];
+    this.trail.reset();
   }
 
   public pushLevel(): void {
-    this.levelStack.push({
-      lines: new Map(this.lines),
-      floaters: new Map(this.floaters),
-      externalBounds: new Map(this.externalBounds),
-      sharedEqualities: [...this.sharedEqualities],
-      assertedLitIds: [],
-    });
+    this.trail.pushLevel();
   }
 
   public popLevel(): void {
-    const top = this.levelStack.pop();
-    if (!top) return;
-    this.lines = top.lines;
-    this.floaters = top.floaters;
-    this.externalBounds = top.externalBounds;
-    this.sharedEqualities = top.sharedEqualities;
-    for (const id of top.assertedLitIds) {
-      this.assertedLiterals.delete(id);
-    }
+    this.trail.popLevel();
   }
 
   // --- Strongly typed domain ingestion APIs ---
@@ -169,18 +150,15 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
   // --- TheoryOracle implementation ---
 
   public assertLiteral(lit: TheoryLiteral): boolean {
-    this.assertedLiterals.set(lit.id, lit);
-    if (this.levelStack.length > 0) {
-      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
-    }
+    this.trail.mapSet(this.assertedLiterals, lit.id, lit);
 
     const { predicate, args } = lit;
     if (predicate === "mooringLine") {
       const spec = args[0] as MooringLineSpec;
-      if (spec) this.lines.set(spec.lineId, spec);
+      if (spec) this.trail.mapSet(this.lines, spec.lineId, spec);
     } else if (predicate === "floaterExcursion") {
       const spec = args[0] as FloaterExcursionSpec;
-      if (spec) this.floaters.set(spec.floaterId, spec);
+      if (spec) this.trail.mapSet(this.floaters, spec.floaterId, spec);
     }
     return true;
   }
@@ -189,16 +167,18 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
     const hasShared = hasSharedEqualityWithLiteral(this.sharedEqualities, litId);
     if (!this.assertedLiterals.has(litId) && !hasShared) return;
     this.assertedLiterals.delete(litId);
-    const savedStack = this.levelStack;
+    const savedDepth = this.trail.depth;
     const remaining = Array.from(this.assertedLiterals.values());
     const remainingSharedEqs = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
     this.reset();
-    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
     for (const eq of remainingSharedEqs) {
       this.onSharedEquality(eq);
+    }
+    for (let i = 0; i < savedDepth; i++) {
+      this.trail.pushLevel();
     }
   }
 
@@ -402,15 +382,15 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
 
   public onSharedEquality(eq: SharedEquality): void {
     if (!eq.varA) return;
-    this.sharedEqualities.push(eq);
+    this.trail.arrayPush(this.sharedEqualities, eq);
 
     if (eq.bounds) {
       const intersect = (varName: string, b: [number, number]) => {
         const prev = this.externalBounds.get(varName);
         if (prev) {
-          this.externalBounds.set(varName, [Math.max(prev[0], b[0]), Math.min(prev[1], b[1])]);
+          this.trail.mapSet(this.externalBounds, varName, [Math.max(prev[0], b[0]), Math.min(prev[1], b[1])]);
         } else {
-          this.externalBounds.set(varName, [b[0], b[1]]);
+          this.trail.mapSet(this.externalBounds, varName, [b[0], b[1]]);
         }
       };
       intersect(eq.varA, eq.bounds);

@@ -5,6 +5,7 @@
  */
 
 import type { LanguageAction } from "./action-types.js";
+import type { FormatDefinition } from "./codec-types.js";
 import type { ConnectorDefinition } from "./codegraph.js";
 import type { Rule, RuleBuilder, RuleLike, TransformCombinator } from "./combinators.js";
 import type { ContainerDeclaration } from "./container-types.js";
@@ -455,6 +456,12 @@ export interface LanguageOptions<
 
   /** File extensions associated with this language (e.g. ['.sysml', '.sysml2']). */
   fileExtensions?: string[] | undefined;
+
+  /**
+   * Multi-format / dialect registry for languages spanning multiple text and/or binary file formats
+   * (e.g. PSS/E `.raw`, `.dyr`, `.seq`, `.con`, `.idv`, `.sav`, `.out`).
+   */
+  formats?: Record<string, FormatDefinition<NoInfer<RuleName>>> | undefined;
 
   /** Dedicated Declaration & Stub Symbol Schema for Tier 1 Workspace Indexing and fast F12 */
   symbols?: Partial<Record<RuleName, SymbolConfig<FieldName>>> | undefined;

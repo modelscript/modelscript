@@ -235,6 +235,14 @@ export class VerificationPanel extends BaseWebviewPanel {
     VerificationPanel.currentPanel = new VerificationPanel(panel, extensionUri, client);
   }
 
+  public postUnifiedReport(unifiedReport: unknown, requirements: unknown = []): void {
+    this._panel.webview.postMessage({
+      type: "verificationComplete",
+      requirements,
+      unifiedReport,
+    });
+  }
+
   public override dispose(): void {
     VerificationPanel.currentPanel = undefined;
     super.dispose();

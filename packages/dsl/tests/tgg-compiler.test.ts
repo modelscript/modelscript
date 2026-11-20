@@ -329,4 +329,36 @@ describe("AOT TGG Compiler", () => {
     expect(leaked.leakedRuleCount).toBe(1);
     expect(leaked.reports[0]?.leakedAttributes.includes("documentation")).toBe(true);
   });
+
+  it("emits f64 property accessors with !isNaN checks, runtime context parent guards, and bidirectional propagate", () => {
+    const rule = tggRule({
+      name: "ThermalSensorRule",
+      sourceLang: "sysml2",
+      targetLang: "modelica",
+      context: {
+        source: ($) => $.PartDefinition({}),
+        target: ($) => $.ClassDefinition({}),
+      },
+      source: ($, v) => $.AttributeUsage({ name: v("n"), temp: v("t"), offset: 0 }),
+      target: ($, v) => $.ComponentDeclaration({ name: v("n"), temp: v("tOut"), offset: 0 }),
+      where: (v) => [tggCompute(v("t"), "t * 1.0"), tggEq(v("t"), v("tOut"))],
+    });
+
+    const compiled = compileTGGRules([rule]);
+    // Numeric properties ('temp', 'offset') use f64 accessors with !isNaN guards (preserving 0.0)
+    expect(compiled.sourceCode).toContain("getProperty<f64>(sourceNodeId,");
+    expect(compiled.sourceCode).toContain("setProperty<f64>(targetNodeId,");
+    expect(compiled.sourceCode).toContain("!isNaN(");
+    // String/ID properties ('name') remain u32
+    expect(compiled.sourceCode).toContain("getProperty<u32>(sourceNodeId,");
+
+    // Context parent-type guards emitted in forward & backward
+    expect(compiled.sourceCode).toContain("let __ctxSrcNode = corr.getSource(parentSlot);");
+    expect(compiled.sourceCode).toContain("let __ctxTgtNode = corr.getTarget(parentSlot);");
+
+    // Bidirectional propagate support with backwards-compatible default direction: u32 = 0
+    expect(compiled.sourceCode).toContain("direction: u32 = 0");
+    expect(compiled.sourceCode).toContain("if (direction == 1)");
+    expect(compiled.sourceCode).toContain("tgg_propagate_all_stale(");
+  });
 });

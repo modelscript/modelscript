@@ -57,8 +57,22 @@ export class ThreadHypergraph {
 
   @inline
   createThread(threadId: u32, revision: u32 = 0): u32 {
-    let existingSlotPlusOne = this.threadIdToSlot.get(threadId as u64);
-    if (existingSlotPlusOne != 0) return existingSlotPlusOne - 1;
+    let tidKey: u64 = (threadId as u64) + 1;
+    let existingSlotPlusOne = this.threadIdToSlot.get(tidKey);
+    if (existingSlotPlusOne != 0) {
+      let existingSlot = existingSlotPlusOne - 1;
+      let existingOffset = existingSlot * THREAD_STRIDE;
+      let existingStatus = this.data.get(existingOffset + THREAD_FIELD_STATUS);
+      if ((existingStatus & THREAD_STATUS_REMOVED) != 0) {
+        this.data.set(existingOffset + THREAD_FIELD_MASK, 0);
+        this.data.set(existingOffset + THREAD_FIELD_STATUS, THREAD_STATUS_SYNCED);
+        this.data.set(existingOffset + THREAD_FIELD_REVISION, revision);
+        for (let d: u32 = 0; d < MAX_THREAD_DOMAINS; d++) {
+          this.data.set(existingOffset + THREAD_HEADER_WORDS + d, 0);
+        }
+      }
+      return existingSlot;
+    }
 
     let slot = this.count++;
     let offset = slot * THREAD_STRIDE;
@@ -68,7 +82,7 @@ export class ThreadHypergraph {
     this.data.set(offset + THREAD_FIELD_REVISION, revision);
     this.data.set(offset + THREAD_FIELD_RELATION, 0);
     this.data.set(offset + THREAD_FIELD_BRANCH, 0);
-    this.threadIdToSlot.set(threadId as u64, slot + 1);
+    this.threadIdToSlot.set(tidKey, slot + 1);
 
     for (let d: u32 = 0; d < MAX_THREAD_DOMAINS; d++) {
       this.data.set(offset + THREAD_HEADER_WORDS + d, 0);
@@ -78,7 +92,7 @@ export class ThreadHypergraph {
 
   @inline
   findSlotByThreadId(threadId: u32): u32 {
-    let slotPlusOne = this.threadIdToSlot.get(threadId as u64);
+    let slotPlusOne = this.threadIdToSlot.get((threadId as u64) + 1);
     if (slotPlusOne == 0) return 0xffffffff;
     return slotPlusOne - 1;
   }
@@ -98,21 +112,21 @@ export class ThreadHypergraph {
       this.data.set(offset + THREAD_FIELD_MASK, mask);
       this.data.set(offset + THREAD_HEADER_WORDS + domainIdx, nodeId);
     } else {
-      let ovKey: u64 = ((slot as u64) << 32) | (domainIdx as u64);
+      let ovKey: u64 = (((slot as u64) << 32) | (domainIdx as u64)) + 1;
       prevNodeId = this.overflowDomainNodes.get(ovKey);
       hadPrev = prevNodeId != 0;
       this.overflowDomainNodes.set(ovKey, nodeId);
     }
 
     if (hadPrev && prevNodeId != 0 && prevNodeId != nodeId) {
-      let oldKey: u64 = ((domainIdx as u64) << 32) | (prevNodeId as u64);
+      let oldKey: u64 = (((domainIdx as u64) << 32) | (prevNodeId as u64)) + 1;
       if (this.nodeToThreadSlot.get(oldKey) == slot + 1) {
         this.nodeToThreadSlot.set(oldKey, 0);
       }
     }
 
-    // Register reverse lookup key: domainIdx << 32 | nodeId
-    let key: u64 = ((domainIdx as u64) << 32) | (nodeId as u64);
+    // Register reverse lookup key: ((domainIdx << 32) | nodeId) + 1 (avoids UnmanagedMap64 key 0->1 aliasing)
+    let key: u64 = (((domainIdx as u64) << 32) | (nodeId as u64)) + 1;
     this.nodeToThreadSlot.set(key, slot + 1);
   }
 
@@ -122,13 +136,13 @@ export class ThreadHypergraph {
     if (domainIdx < MAX_THREAD_DOMAINS) {
       return this.data.get(slot * THREAD_STRIDE + THREAD_HEADER_WORDS + domainIdx);
     }
-    let ovKey: u64 = ((slot as u64) << 32) | (domainIdx as u64);
+    let ovKey: u64 = (((slot as u64) << 32) | (domainIdx as u64)) + 1;
     return this.overflowDomainNodes.get(ovKey);
   }
 
   @inline
   findThreadByDomainNode(domainIdx: u32, nodeId: u32): u32 {
-    let key: u64 = ((domainIdx as u64) << 32) | (nodeId as u64);
+    let key: u64 = (((domainIdx as u64) << 32) | (nodeId as u64)) + 1;
     let slotPlusOne = this.nodeToThreadSlot.get(key);
     if (slotPlusOne == 0) return 0;
     let slot = slotPlusOne - 1;
@@ -143,6 +157,14 @@ export class ThreadHypergraph {
     if (slot >= this.count) return;
     let offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
     let status = this.data.get(offset) | THREAD_STATUS_STALE;
+    this.data.set(offset, status);
+  }
+
+  @inline
+  clearStale(slot: u32): void {
+    if (slot >= this.count) return;
+    let offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
+    let status = this.data.get(offset) & ~THREAD_STATUS_STALE;
     this.data.set(offset, status);
   }
 
@@ -182,6 +204,18 @@ export class ThreadHypergraph {
     if (slot >= this.count) return false;
     let offset = slot * THREAD_STRIDE + THREAD_FIELD_STATUS;
     return (this.data.get(offset) & THREAD_STATUS_REMOVED) != 0;
+  }
+
+  reset(): void {
+    this.count = 0;
+    if (changetype<usize>(this.data) != 0) this.data.clear();
+    if (changetype<usize>(this.threadIdToSlot) != 0) this.threadIdToSlot.clear();
+    if (changetype<usize>(this.nodeToThreadSlot) != 0) this.nodeToThreadSlot.clear();
+    if (changetype<usize>(this.overflowDomainNodes) != 0) this.overflowDomainNodes.clear();
+  }
+
+  dispose(): void {
+    this.reset();
   }
 }
 

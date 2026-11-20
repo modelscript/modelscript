@@ -19,6 +19,7 @@ import {
   type TheoryOracle,
 } from "../theory_coordinator.js";
 import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
+import { UndoTrail } from "./undo_trail.js";
 
 export interface CaeScalarContractSpec {
   contractId: string;
@@ -56,12 +57,7 @@ export class CaeContractOracle implements TheoryOracle {
 
   private sharedEqualities: SharedEquality[] = [];
 
-  private levelStack: {
-    contracts: Map<string, CaeScalarContractSpec>;
-    externalBounds: Map<string, [number, number]>;
-    sharedEqualities: SharedEquality[];
-    assertedLitIds: number[];
-  }[] = [];
+  private trail = new UndoTrail();
 
   constructor() {
     this.reset();
@@ -72,27 +68,15 @@ export class CaeContractOracle implements TheoryOracle {
     this.externalBounds.clear();
     this.sharedEqualities = [];
     this.assertedLiterals.clear();
-    this.levelStack = [];
+    this.trail.reset();
   }
 
   public pushLevel(): void {
-    this.levelStack.push({
-      contracts: new Map(this.contracts),
-      externalBounds: new Map(this.externalBounds),
-      sharedEqualities: [...this.sharedEqualities],
-      assertedLitIds: [],
-    });
+    this.trail.pushLevel();
   }
 
   public popLevel(): void {
-    const top = this.levelStack.pop();
-    if (!top) return;
-    this.contracts = top.contracts;
-    this.externalBounds = top.externalBounds;
-    this.sharedEqualities = top.sharedEqualities;
-    for (const litId of top.assertedLitIds) {
-      this.assertedLiterals.delete(litId);
-    }
+    this.trail.popLevel();
   }
 
   /**
@@ -221,15 +205,12 @@ export class CaeContractOracle implements TheoryOracle {
   // --- TheoryOracle implementation ---
 
   public assertLiteral(lit: TheoryLiteral): boolean {
-    this.assertedLiterals.set(lit.id, lit);
-    if (this.levelStack.length > 0) {
-      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
-    }
+    this.trail.mapSet(this.assertedLiterals, lit.id, lit);
 
     if (lit.predicate === "caeContract") {
       const spec = lit.args[0] as CaeScalarContractSpec;
       if (spec && spec.contractId) {
-        this.contracts.set(spec.contractId, { ...spec });
+        this.trail.mapSet(this.contracts, spec.contractId, { ...spec });
       }
     }
     return true;
@@ -239,16 +220,18 @@ export class CaeContractOracle implements TheoryOracle {
     const hasShared = hasSharedEqualityWithLiteral(this.sharedEqualities, litId);
     if (!this.assertedLiterals.has(litId) && !hasShared) return;
     this.assertedLiterals.delete(litId);
-    const savedStack = this.levelStack;
+    const savedDepth = this.trail.depth;
     const remaining = Array.from(this.assertedLiterals.values());
     const remainingSharedEqs = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
     this.reset();
-    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
     for (const eq of remainingSharedEqs) {
       this.onSharedEquality(eq);
+    }
+    for (let i = 0; i < savedDepth; i++) {
+      this.trail.pushLevel();
     }
   }
 
@@ -365,14 +348,14 @@ export class CaeContractOracle implements TheoryOracle {
   }
 
   public onSharedEquality(eq: SharedEquality): void {
-    this.sharedEqualities.push(eq);
+    this.trail.arrayPush(this.sharedEqualities, eq);
     if (eq.bounds) {
       const intersect = (varName: string, b: [number, number]) => {
         const prev = this.externalBounds.get(varName);
         if (prev) {
-          this.externalBounds.set(varName, [Math.max(prev[0], b[0]), Math.min(prev[1], b[1])]);
+          this.trail.mapSet(this.externalBounds, varName, [Math.max(prev[0], b[0]), Math.min(prev[1], b[1])]);
         } else {
-          this.externalBounds.set(varName, [b[0], b[1]]);
+          this.trail.mapSet(this.externalBounds, varName, [b[0], b[1]]);
         }
       };
       intersect(eq.varA, eq.bounds);

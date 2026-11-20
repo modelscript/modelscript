@@ -135,6 +135,34 @@ export const csvLanguage = language({
   },
 
   // IDE and AI agent actions for telemetry plotting and Modelica package generation
+  ui: {
+    toolbarButtons: [
+      {
+        id: "plotTelemetry",
+        label: "Plot CSV Telemetry Data",
+        shortLabel: "Plot CSV",
+        tooltip: "Plot CSV Telemetry Data",
+        icon: "graph",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        actionId: "plot_telemetry",
+      },
+      {
+        id: "importAsModelica",
+        label: "Import as Modelica Parameter Package",
+        shortLabel: "Import as",
+        tooltip: "Import as Modelica Parameter Package",
+        icon: "export",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 20,
+        actionId: "import_as_modelica",
+      },
+    ],
+  },
   actions: [
     {
       id: "plot_telemetry",

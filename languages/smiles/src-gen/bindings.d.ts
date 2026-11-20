@@ -1020,6 +1020,8 @@ export declare class SyntaxNode {
   /** Semantic grammar type name. */
   get grammarType(): string;
   /** Extracts the substring from the original source code corresponding to this node. */
+  get merkleLow(): number;
+  get merkleHigh(): number;
   get text(): string;
   /**
    * The encoding divisor to convert raw WASM byte offsets to character offsets.
@@ -1273,6 +1275,15 @@ export declare class TreeSitterParser {
     editStart?: number,
     editOldEnd?: number,
     editNewEnd?: number,
+    uri?: string,
+  ): Tree | null;
+  /**
+   * Parses `source` using a specific multi-format entry point (e.g. `"raw"`, `"dyr"`, `"seq"`, `"con"`, `"idv"`).
+   * Prepends the Private-Use-Area format sentinel (`\uE000<format>\uE001`) for zero-conflict GLR dispatch.
+   */
+  parseFormat(
+    source: string | Uint8Array,
+    format: string,
     uri?: string,
   ): Tree | null;
   reset(): void;

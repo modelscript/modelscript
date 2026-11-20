@@ -5,15 +5,20 @@
  */
 
 import type { PsseCase } from "../types.js";
+import { writeRaw, type WriteRawOptions } from "./raw-parser.js";
 
 function q(str: string): string {
   return `'${str.replaceAll("'", "''")}'`;
 }
 
 /**
- * Serializes a `PsseCase` into PSS/E v33 `.raw` ASCII text.
+ * Serializes a `PsseCase` into PSS/E `.raw` ASCII text (defaults to v33 layout;
+ * pass `{ rev: 26 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 }` for version-targeted export).
  */
-export function serializePsseRaw(psseCase: PsseCase): string {
+export function serializePsseRaw(psseCase: PsseCase, opts?: WriteRawOptions): string {
+  if (opts?.rev !== undefined || opts?.includeMetadataHeaders !== undefined) {
+    return writeRaw(psseCase, opts);
+  }
   const { header, title1, title2 } = psseCase;
   const lines: string[] = [
     `${header.ic}, ${header.sbase}, ${header.rev}, ${header.xfrrat}, ${header.nxfrat}, ${header.basfrq}`,

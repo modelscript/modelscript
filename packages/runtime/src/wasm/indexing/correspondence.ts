@@ -39,6 +39,12 @@ export class CorrespondenceIndex {
   sourceToSlot: UnmanagedMap64;
   targetToSlot: UnmanagedMap64;
   compFreelistHeads: usize; // pointer to 8 x u32 freelist heads (size classes 16B..2048B)
+  // Parent -> children singly-linked list (1-based slot IDs; 0 = none) for O(|subtree|) cascading invalidation
+  childHead: ChunkedUint32Array;
+  nextChildSibling: ChunkedUint32Array;
+  // Stale worklist for O(ΔN) incremental propagation without scanning 0..count
+  staleQueue: ChunkedUint32Array;
+  staleQueueCount: u32;
 
   init(initialCapacity: u32 = 1024): void {
     this.data = createChunkedUint32Array(initialCapacity * CORR_STRIDE);
@@ -49,6 +55,18 @@ export class CorrespondenceIndex {
     for (let i: usize = 0; i < 8; i++) {
       store<u32>(this.compFreelistHeads + (i << 2), 0);
     }
+    this.childHead = createChunkedUint32Array(initialCapacity);
+    this.nextChildSibling = createChunkedUint32Array(initialCapacity);
+    this.staleQueue = createChunkedUint32Array(initialCapacity);
+    this.staleQueueCount = 0;
+  }
+
+  @inline
+  private _linkChildToParent(childSlot: u32, parentSlot: u32): void {
+    if (parentSlot == CORR_NO_PARENT || parentSlot >= this.count || childSlot == parentSlot) return;
+    let prevHead = this.childHead.get(parentSlot);
+    this.nextChildSibling.set(childSlot, prevHead);
+    this.childHead.set(parentSlot, childSlot + 1);
   }
 
   /**
@@ -75,6 +93,11 @@ export class CorrespondenceIndex {
           if (prevSource != 0 && prevSource != sourceNodeId) {
             this.sourceToSlot.set(prevSource as u64, 0);
           }
+          let prevComp = this.data.get(prevTargetSlot * CORR_STRIDE + CORR_COMPLEMENT_PTR);
+          if (prevComp != 0) {
+            this.freeComplement(prevComp);
+            this.data.set(prevTargetSlot * CORR_STRIDE + CORR_COMPLEMENT_PTR, 0);
+          }
           this.markRemoved(prevTargetSlot);
         }
       }
@@ -82,17 +105,26 @@ export class CorrespondenceIndex {
 
     let slot: u32;
     let isNewOrRetargeted = false;
+    let oldParent: u32 = CORR_NO_PARENT;
     if (existingSlotPlusOne != 0) {
       slot = existingSlotPlusOne - 1;
       let offsetOld = slot * CORR_STRIDE;
+      oldParent = this.data.get(offsetOld + CORR_PARENT_SLOT);
       let oldTarget = this.data.get(offsetOld + CORR_TARGET);
       if (oldTarget != targetNodeId) {
         if (oldTarget != 0) this.targetToSlot.set(oldTarget as u64, 0);
         if (targetNodeId != 0) this.targetToSlot.set(targetNodeId as u64, slot + 1);
+        let oldComp = this.data.get(offsetOld + CORR_COMPLEMENT_PTR);
+        if (oldComp != 0) {
+          this.freeComplement(oldComp);
+          this.data.set(offsetOld + CORR_COMPLEMENT_PTR, 0);
+        }
         isNewOrRetargeted = true;
       }
     } else {
       slot = this.count++;
+      this.childHead.set(slot, 0);
+      this.nextChildSibling.set(slot, 0);
       this.sourceToSlot.set(key, slot + 1);
       if (targetNodeId != 0) this.targetToSlot.set(targetNodeId as u64, slot + 1);
       isNewOrRetargeted = true;
@@ -109,8 +141,14 @@ export class CorrespondenceIndex {
       this.data.set(offset + CORR_COMPLEMENT_PTR, 0);
       this.data.set(offset + CORR_THREAD_ID, 0);
       this.data.set(offset + CORR_PARENT_SLOT, parentSlot);
+      if (parentSlot != CORR_NO_PARENT && parentSlot != oldParent) {
+        this._linkChildToParent(slot, parentSlot);
+      }
     } else if (parentSlot != CORR_NO_PARENT) {
       this.data.set(offset + CORR_PARENT_SLOT, parentSlot);
+      if (parentSlot != oldParent) {
+        this._linkChildToParent(slot, parentSlot);
+      }
     }
 
     return slot;
@@ -151,12 +189,7 @@ export class CorrespondenceIndex {
   markStale(sourceNodeId: u32): void {
     let slotPlusOne = this.sourceToSlot.get(sourceNodeId as u64);
     if (slotPlusOne == 0) return;
-    let slot = slotPlusOne - 1;
-    let offset = slot * CORR_STRIDE + CORR_META;
-    let meta = this.data.get(offset);
-    let ruleId = (meta >>> 16) as u16;
-    let flags = ((meta & 0xffff) as u16) | CORR_FLAG_STALE;
-    this.data.set(offset, ((ruleId as u32) << 16) | (flags as u32));
+    this.markStaleSlot(slotPlusOne - 1);
   }
 
   @inline
@@ -255,6 +288,11 @@ export class CorrespondenceIndex {
     }
     this.markRemoved(slot);
     let offset = slot * CORR_STRIDE;
+    let compPtr = this.data.get(offset + CORR_COMPLEMENT_PTR);
+    if (compPtr != 0) {
+      this.freeComplement(compPtr);
+      this.data.set(offset + CORR_COMPLEMENT_PTR, 0);
+    }
     let targetNodeId = this.data.get(offset + CORR_TARGET);
     this.sourceToSlot.set(sourceNodeId as u64, 0);
     if (targetNodeId != 0) {
@@ -274,6 +312,11 @@ export class CorrespondenceIndex {
     }
     this.markRemoved(slot);
     let offset = slot * CORR_STRIDE;
+    let compPtr = this.data.get(offset + CORR_COMPLEMENT_PTR);
+    if (compPtr != 0) {
+      this.freeComplement(compPtr);
+      this.data.set(offset + CORR_COMPLEMENT_PTR, 0);
+    }
     let sourceNodeId = this.data.get(offset + CORR_SOURCE);
     this.targetToSlot.set(targetNodeId as u64, 0);
     if (sourceNodeId != 0) {
@@ -296,9 +339,16 @@ export class CorrespondenceIndex {
 
   /**
    * Allocates a complement buffer from the size-classed freelist (16B..2048B).
+   * Allocations > 2048B bypass the freelist (header = 0xFFFFFFFF) to prevent size-class overflow.
    * Stores a 4-byte size-class header immediately preceding the returned pointer.
    */
   allocComplement(byteSize: u32): u32 {
+    if (byteSize > 2048) {
+      let raw = atomicChunkAlloc(byteSize + 4);
+      if (raw == 0) return 0;
+      store<u32>(raw, 0xffffffff);
+      return (raw + 4) as u32;
+    }
     let cls: u32 = 0;
     let cap: u32 = 16;
     while (cap < byteSize && cls < 7) {
@@ -312,8 +362,9 @@ export class CorrespondenceIndex {
       store<u32>(this.compFreelistHeads + headOffset, nextFree);
       return freePtr;
     }
-    let allocSize = (cap > byteSize ? cap : byteSize) + 4;
+    let allocSize = cap + 4;
     let raw = atomicChunkAlloc(allocSize);
+    if (raw == 0) return 0;
     store<u32>(raw, cls);
     return (raw + 4) as u32;
   }
@@ -376,7 +427,11 @@ export class CorrespondenceIndex {
   @inline
   setParentSlot(slot: u32, parentSlot: u32): void {
     if (slot >= this.count) return;
+    let oldParent = this.data.get(slot * CORR_STRIDE + CORR_PARENT_SLOT);
     this.data.set(slot * CORR_STRIDE + CORR_PARENT_SLOT, parentSlot);
+    if (parentSlot != CORR_NO_PARENT && parentSlot != oldParent) {
+      this._linkChildToParent(slot, parentSlot);
+    }
   }
 
   @inline
@@ -384,32 +439,82 @@ export class CorrespondenceIndex {
     if (slot >= this.count) return;
     let offset = slot * CORR_STRIDE + CORR_META;
     let meta = this.data.get(offset);
-    let ruleId = (meta >>> 16) as u16;
-    let flags = ((meta & 0xffff) as u16) | CORR_FLAG_STALE;
-    this.data.set(offset, ((ruleId as u32) << 16) | (flags as u32));
+    let oldFlags = (meta & 0xffff) as u16;
+    if ((oldFlags & CORR_FLAG_STALE) == 0) {
+      let ruleId = (meta >>> 16) as u16;
+      let flags = oldFlags | CORR_FLAG_STALE;
+      this.data.set(offset, ((ruleId as u32) << 16) | (flags as u32));
+      this.staleQueue.set(this.staleQueueCount++, slot);
+    }
+  }
+
+  @inline
+  getStaleQueueCount(): u32 {
+    return this.staleQueueCount;
+  }
+
+  @inline
+  getStaleQueueSlot(index: u32): u32 {
+    if (index >= this.staleQueueCount) return 0xffffffff;
+    return this.staleQueue.get(index);
+  }
+
+  @inline
+  clearStaleQueue(): void {
+    this.staleQueueCount = 0;
   }
 
   /**
-   * Cascading invalidation: marks the parent slot and all child slots that point to it as STALE.
+   * O(|subtree|) cascading invalidation: marks parentSlot and all descendants STALE
+   * by traversing the parent->children adjacency list using staleQueue as a BFS worklist.
    */
-  @inline
   markStaleCascading(parentSlot: u32): u32 {
     if (parentSlot >= this.count) return 0;
+    let qStart = this.staleQueueCount;
+    let wasStale = this.isStale(parentSlot);
     this.markStaleSlot(parentSlot);
-    let invalidatedCount: u32 = 1;
-    for (let s: u32 = 0; s < this.count; s++) {
-      if (this.getParentSlot(s) == parentSlot && !this.isRemoved(s)) {
-        this.markStaleSlot(s);
-        invalidatedCount++;
+    let invalidatedCount: u32 = wasStale ? 0 : 1;
+
+    // If parentSlot was already stale, still traverse its children via a temporary scan head
+    if (wasStale) {
+      this.staleQueue.set(this.staleQueueCount++, parentSlot);
+    }
+
+    let qCursor = qStart;
+    while (qCursor < this.staleQueueCount) {
+      let curr = this.staleQueue.get(qCursor++);
+      let childPlusOne = this.childHead.get(curr);
+      let guard: u32 = 0;
+      while (childPlusOne != 0 && guard < this.count) {
+        guard++;
+        let childSlot = childPlusOne - 1;
+        childPlusOne = this.nextChildSibling.get(childSlot);
+        if (childSlot >= this.count || this.isRemoved(childSlot)) continue;
+        if (this.getParentSlot(childSlot) != curr) continue;
+        if (!this.isStale(childSlot)) {
+          this.markStaleSlot(childSlot);
+          invalidatedCount++;
+        }
       }
     }
-    return invalidatedCount;
+    return invalidatedCount == 0 ? 1 : invalidatedCount;
   }
 
   @inline
   reset(): void {
+    for (let s: u32 = 0; s < this.count; s++) {
+      let compPtr = this.data.get(s * CORR_STRIDE + CORR_COMPLEMENT_PTR);
+      if (compPtr != 0) {
+        this.freeComplement(compPtr);
+        this.data.set(s * CORR_STRIDE + CORR_COMPLEMENT_PTR, 0);
+      }
+    }
     this.count = 0;
+    this.staleQueueCount = 0;
     if (changetype<usize>(this.data) != 0) this.data.clear();
+    if (changetype<usize>(this.childHead) != 0) this.childHead.clear();
+    if (changetype<usize>(this.nextChildSibling) != 0) this.nextChildSibling.clear();
+    if (changetype<usize>(this.staleQueue) != 0) this.staleQueue.clear();
     if (changetype<usize>(this.sourceToSlot) != 0) this.sourceToSlot.clear();
     if (changetype<usize>(this.targetToSlot) != 0) this.targetToSlot.clear();
   }
@@ -526,6 +631,18 @@ export function corr_setParentSlot(ptr: usize, slot: u32, parentSlot: u32): void
 
 export function corr_markStaleCascading(ptr: usize, parentSlot: u32): u32 {
   return changetype<CorrespondenceIndex>(ptr).markStaleCascading(parentSlot);
+}
+
+export function corr_getStaleQueueCount(ptr: usize): u32 {
+  return changetype<CorrespondenceIndex>(ptr).getStaleQueueCount();
+}
+
+export function corr_getStaleQueueSlot(ptr: usize, index: u32): u32 {
+  return changetype<CorrespondenceIndex>(ptr).getStaleQueueSlot(index);
+}
+
+export function corr_clearStaleQueue(ptr: usize): void {
+  changetype<CorrespondenceIndex>(ptr).clearStaleQueue();
 }
 
 export function corr_reset(ptr: usize): void {

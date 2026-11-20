@@ -2038,7 +2038,7 @@ export function instantiateElements(
       const elemHasColonSubscript = hasColonSubscript(elemCstForShape?.text ?? "", true);
       if (compInst?.name && elemHasColonSubscript && compInst?.modification?.bindingExpression?.text) {
         const fullName = prefix ? `${prefix}.${compInst.name}` : compInst.name;
-        const rawText = compInst.modification.bindingExpression.text.trim();
+        const rawText = stripLeadingEquals(compInst.modification.bindingExpression.text.trim());
         if (isArrayLiteral(rawText) && !containsWholeWordOutsideStrings(rawText, "for")) {
           const elems = parseArrayLiteralElements(rawText);
           if (elems.length > 0) {
@@ -2088,7 +2088,7 @@ export function instantiateElements(
           declaredNames.add(arg.name);
           if (prefix && arg.value?.text) {
             const fullName = `${prefix}.${arg.name}`;
-            const rawText = arg.value.text.trim();
+            const rawText = stripLeadingEquals(arg.value.text.trim());
             if (isArrayLiteral(rawText)) {
               const elems = parseArrayLiteralElements(rawText);
               if (elems.length > 0) {
@@ -2119,7 +2119,9 @@ export function instantiateElements(
           const hasExplicitMod = parentMods.args.some((a: any) => a.name === elemSym.name);
           if (hasExplicitMod) continue;
           const ci = flattener.db.query<any>("componentInstance", elemId);
-          const bText = ci?.modification?.value?.text?.trim() ?? "";
+          const bText = stripLeadingEquals(
+            (ci?.modification?.bindingExpression?.text ?? ci?.modification?.value?.text ?? "").trim(),
+          );
           const colonPos = bText.indexOf(":");
           const startPart = colonPos > 0 ? bText.slice(0, colonPos).trim() : "";
           const rangeSizeCall =
@@ -2691,15 +2693,50 @@ export function instantiateElements(
               exprText: string,
               scopePrefix: string,
               scopeClassId?: SymbolId,
+              depth = 0,
             ): boolean | number | null => {
+              if (depth > 8) return null;
               const t = exprText.trim();
               if (t === "true") return true;
               if (t === "false") return false;
               const num = Number(t);
               if (!isNaN(num) && t !== "") return num;
               if (isDottedIdentifierChain(t)) {
-                const cand = scopePrefix ? `${scopePrefix}.${t}` : t;
-                const refIdx = dae.getVarIdxByName(cand) >= 0 ? dae.getVarIdxByName(cand) : dae.getVarIdxByName(t);
+                // 1. Check component-level modifications (parentMods.args) first, e.g.
+                //    `H_PMOS(useTemperatureDependency=true)` with `extends ConditionalHeatPort(useHeatPort=useTemperatureDependency)`.
+                if (!t.includes(".") && parentMods?.args) {
+                  const modArg = parentMods.args
+                    .slice()
+                    .reverse()
+                    .find((a: ComponentModArgData) => !a.isBreak && a.name === t);
+                  if (modArg?.value) {
+                    const directMod = extractSimpleArgVal(modArg);
+                    if (directMod !== null) return directMod;
+                    if (modArg.value.text && modArg.value.text.trim() !== t) {
+                      const chainedMod = evalScalarTextInDaeOrDb(
+                        modArg.value.text,
+                        modArg.originPrefix ?? scopePrefix,
+                        modArg.evaluationScopeId ?? modArg.ownerClassId ?? scopeClassId,
+                        depth + 1,
+                      );
+                      if (chainedMod !== null) return chainedMod;
+                    }
+                  }
+                }
+                // 2. Check DAE variables under current prefix, scopePrefix, and unqualified name.
+                const candidateNames = [
+                  ...(prefix ? [`${prefix}.${t}`] : []),
+                  ...(scopePrefix && scopePrefix !== prefix ? [`${scopePrefix}.${t}`] : []),
+                  t,
+                ];
+                let refIdx = -1;
+                for (const cand of candidateNames) {
+                  const idx = dae.getVarIdxByName(cand);
+                  if (idx >= 0) {
+                    refIdx = idx;
+                    break;
+                  }
+                }
                 if (refIdx >= 0) {
                   const refExpr = dae.getVarExpression(refIdx);
                   if (refExpr !== undefined && refExpr >= 0) {
@@ -3142,6 +3179,13 @@ export function instantiateElements(
             const isEvaluated = flattener.db.query<boolean>("isEvaluate", elemId);
             if (!flattener.options.omcCompatibility && isEvaluated && variability === Variability.Parameter) {
               variability = Variability.Constant;
+            } else if (
+              isEvaluated &&
+              variability === Variability.Parameter &&
+              !dae.extensionMetadata?.["isOldFrontend"] &&
+              !flattener.isOldFrontend
+            ) {
+              (state.evaluatedParams ??= new Set<string>()).add(name);
             }
 
             if (
@@ -4325,9 +4369,14 @@ export function instantiateElements(
                 const ownerClsId = parentMods?.currentClassId ?? parentMods?.ownerClassId ?? flattener.currentClassId;
                 const ownerQual = ownerClsId ? getSymbolQualifiedName(flattener.db, ownerClsId) : "";
                 if (!ownerQual) return undefined;
-                return prefix
-                  ? `${ownerQual}$${prefix.replaceAll(".", "$")}.${redeclPkgPrefix}`
-                  : `${ownerQual}.${redeclPkgPrefix}`;
+                if (!prefix) return `${ownerQual}.${redeclPkgPrefix}`;
+                if (dae.extensionMetadata?.["isOldFrontend"]) {
+                  return `${ownerQual}$${prefix.replaceAll(".", "$")}.${redeclPkgPrefix}`;
+                }
+                const rootQual = flattener.currentRootClassId
+                  ? getSymbolQualifiedName(flattener.db, flattener.currentRootClassId)
+                  : ownerQual;
+                return `${rootQual}.${prefix}.${redeclPkgPrefix}`;
               })()
             : (parentMods?.specializedPkgPrefix ?? (dae as any)?.specializedPrefix);
         const isRecordTarget =
@@ -4956,15 +5005,19 @@ export function instantiateElements(
           let pkgScopeId: number | undefined = redeclPkgId ?? parentMods?.packageScopeId;
           if (!redeclPkgId && compInst.typeSpecifier?.includes(".")) {
             const pkgPrefix = compInst.typeSpecifier.split(".")[0]!;
-            const searchScopeId = elemParent ?? flattener.currentClassId;
+            const concreteScopeId = parentMods?.currentClassId ?? flattener.currentClassId;
+            const resolvePkgInScope = (sid?: SymbolId): SymbolEntry | null => {
+              if (!sid) return null;
+              return (
+                flattener.db.query<(n: string) => SymbolEntry | null>("resolveName", sid)?.(pkgPrefix) ??
+                flattener.db.query<(n: string) => SymbolEntry | null>("resolveSimpleName", sid)?.(pkgPrefix) ??
+                null
+              );
+            };
             const pkgSym =
-              (searchScopeId
-                ? (flattener.db.query<(n: string) => SymbolEntry | null>("resolveName", searchScopeId)?.(pkgPrefix) ??
-                  flattener.db.query<(n: string) => SymbolEntry | null>(
-                    "resolveSimpleName",
-                    searchScopeId,
-                  )?.(pkgPrefix))
-                : null) ?? flattener.db.byName(pkgPrefix).find((e) => e.kind === "Class" || e.kind === "Package");
+              resolvePkgInScope(concreteScopeId) ??
+              (elemParent && elemParent !== concreteScopeId ? resolvePkgInScope(elemParent) : null) ??
+              flattener.db.byName(pkgPrefix).find((e) => e.kind === "Class" || e.kind === "Package");
             if (pkgSym) {
               let targetPkgId: SymbolId = pkgSym.id;
               const visitedAliases = new Set<SymbolId>();
@@ -4983,7 +5036,11 @@ export function instantiateElements(
                   specShort.children?.find((c: any) => c.type === "type_specifier")
                 )?.text?.trim();
                 if (tName) {
-                  const aliased = flattener.db.byName(tName).find((e) => e.kind === "Class" || e.kind === "Package");
+                  const aliasParentId = flattener.db.symbol(targetPkgId)?.parentId ?? concreteScopeId;
+                  const aliased =
+                    (aliasParentId
+                      ? flattener.db.query<(n: string) => SymbolEntry | null>("resolveName", aliasParentId)?.(tName)
+                      : null) ?? flattener.db.byName(tName).find((e) => e.kind === "Class" || e.kind === "Package");
                   if (aliased) {
                     targetPkgId = aliased.id;
                     continue;
@@ -5086,6 +5143,9 @@ export function instantiateElements(
                       evaluationScopeId: ctorEvalScopeId,
                     });
                   }
+                }
+                if (rawArgs.length === 0 && !isOpRec) {
+                  resolvedPkgRecordConst = true;
                 }
                 if (
                   isDirectRecordCtor &&
@@ -7279,6 +7339,13 @@ export function instantiateElements(
         const isEvaluated = flattener.db.query<boolean>("isEvaluate", elemId);
         if (!flattener.options.omcCompatibility && isEvaluated && variability === Variability.Parameter) {
           variability = Variability.Constant;
+        } else if (
+          isEvaluated &&
+          variability === Variability.Parameter &&
+          !dae.extensionMetadata?.["isOldFrontend"] &&
+          !flattener.isOldFrontend
+        ) {
+          (state.evaluatedParams ??= new Set<string>()).add(name);
         }
 
         let causality = Causality.Local;

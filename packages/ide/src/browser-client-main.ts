@@ -249,6 +249,9 @@ export async function activate(context: vscode.ExtensionContext) {
   safeRegisterCommand("modelscript.collectWorkspaceSnapshot", () => hostBridgeService.collectWorkspaceSnapshot());
 
   // 11. Start Language Server Client & Notification Handlers
+  const { VerificationStatusDecorator } = await import("./services/verification-status-decorator.js");
+  const verificationStatusDecorator = new VerificationStatusDecorator();
+  context.subscriptions.push(verificationStatusDecorator);
   let isScmRegistered = false;
   lspManager.onBindNotifications((targetClient) => {
     targetClient.onNotification(
@@ -282,6 +285,13 @@ export async function activate(context: vscode.ExtensionContext) {
     targetClient.onNotification("modelscript/warning", (params: { message: string }) => {
       vscode.window.showWarningMessage(params.message);
     });
+
+    targetClient.onNotification(
+      "modelscript/verificationStatus",
+      (payload: import("./services/verification-status-decorator.js").VerificationStatusPayload) => {
+        verificationStatusDecorator.updateStatus(payload);
+      },
+    );
 
     targetClient.onNotification(
       "modelscript/cosimStream",

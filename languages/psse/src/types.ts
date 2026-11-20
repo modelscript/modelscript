@@ -510,6 +510,25 @@ export interface SubstationRecord {
 }
 
 /**
+ * PSS/E v34/v35/v36 System Switching Device Record (bus-to-bus breaker/switch).
+ */
+export interface SystemSwitchingDeviceRecord {
+  i: number;
+  j: number;
+  ckt: string;
+  x: number;
+  rate1: number;
+  rate2: number;
+  rate3: number;
+  stat: number;
+  nstat: number;
+  met: number;
+  stype: number;
+  name: string;
+  span?: SourceSpan | undefined;
+}
+
+/**
  * Parsed PSS/E Base Case Document.
  */
 export interface PsseCase {
@@ -527,6 +546,7 @@ export interface PsseCase {
   vscDc: VscDcRecord[];
   switchedShunts: SwitchedShuntRecord[];
   substations?: SubstationRecord[] | undefined;
+  systemSwitchingDevices?: SystemSwitchingDeviceRecord[] | undefined;
   dyr?: PsseDyrCase | undefined;
   con?: PsseConCase | undefined;
   seq?: PsseSeqCase | undefined;

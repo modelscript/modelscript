@@ -128,6 +128,10 @@ export interface SymbolEntry {
    * Null for single-language workspaces.
    */
   language?: string | undefined;
+  /** Optional 64-bit Merkle hash low 32 bits from CST node. */
+  merkleLow?: number | undefined;
+  /** Optional 64-bit Merkle hash high 32 bits from CST node. */
+  merkleHigh?: number | undefined;
 }
 
 /** The full symbol index for a single file. */
@@ -456,11 +460,23 @@ export interface Memo {
   verified_at: Revision;
   /** The revision in which this memo's value last actually changed. */
   changed_at: Revision;
+  /** Optional query name stored for cross-process hydration and volatile flushing. */
+  queryName?: string | undefined;
+  /** Optional target symbol ID stored for cross-process hydration. */
+  symbolId?: SymbolId | undefined;
+  /** Optional serialized arguments hash stored for cross-process hydration. */
+  argsHash?: string | undefined;
   /** Direct symbol input dependencies read during the last execution (zero-object packed integer IDs). */
   inputs?: Int32Array | undefined;
   /** Derived query dependencies read during the last execution. */
   queries?:
-    | { queryName: string; symbolId: SymbolId; argsHash?: string | undefined; key?: number | undefined }[]
+    | {
+        queryName: string;
+        symbolId: SymbolId;
+        argsHash?: string | undefined;
+        args?: Record<string, unknown> | undefined;
+        key?: number | undefined;
+      }[]
     | undefined;
   /** Name table lookups read during the last execution. */
   byNames?: string[] | undefined;

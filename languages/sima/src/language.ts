@@ -31,6 +31,20 @@ export const simaLanguage = language({
         artifactViewTypes: ["sima"],
       },
     ],
+    toolbarButtons: [
+      {
+        id: "autoLayout",
+        label: "Auto-Layout Diagram",
+        shortLabel: "Layout",
+        tooltip: "Re-run automatic schematic layout on the current diagram",
+        icon: "flowchart",
+        views: ["diagram"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        command: "morsel:autoLayout",
+      },
+    ],
   },
 
   errorCodes: SimaErrorCode,

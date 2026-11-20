@@ -6,9 +6,28 @@ import { DiagnosticSeverity } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { registerCodeLensProvider } from "../src/providers/codeLensProvider.js";
 import { registerHoverProvider } from "../src/providers/hoverProvider.js";
+import { registerBuiltinLanguagePlugins } from "../src/registry/builtin-plugins.js";
 import { ValidationService } from "../src/services/validation-service.js";
 
+let builtinsRegistered = false;
+function ensureBuiltinsRegistered() {
+  if (builtinsRegistered) return;
+  builtinsRegistered = true;
+  registerBuiltinLanguagePlugins({
+    workspaceManager: {
+      getWorkspaceIndex: () => ({}),
+      setWorkspaceIndex: () => {},
+      getQueryEngine: () => null,
+      setQueryEngine: () => {},
+      unifiedWorkspace: { registerWorkspace: () => {} },
+    } as any,
+    parserService: { getParser: () => null, getFacade: () => null } as any,
+    connection: { console: { info() {}, log() {}, warn() {}, error() {} } } as any,
+  });
+}
+
 test("LSP Formal Verification: Sound 4-Color Diagnostics, CodeLens, and Hovers", async (t) => {
+  ensureBuiltinsRegistered();
   const modelicaUri = "file:///workspace/FormalControl.mo";
   const modelicaContent = `
 package FormalControl

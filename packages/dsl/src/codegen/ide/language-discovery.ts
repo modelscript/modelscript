@@ -77,6 +77,7 @@ export interface DiscoveredUiToolbarButton {
   shortLabel?: string | undefined;
   tooltip?: string | undefined;
   icon?: string | undefined;
+  iconSvg?: string | undefined;
   views: LanguageToolbarView[];
   targets: LanguageUiTarget[];
   placement: LanguageToolbarButtonPlacement;
@@ -388,6 +389,7 @@ export async function discoverSingleLanguage(langDir: string): Promise<Discovere
           shortLabel: btn.shortLabel,
           tooltip: btn.tooltip,
           icon: btn.icon,
+          iconSvg: btn.iconSvg,
           views: btn.views && btn.views.length > 0 ? btn.views : ["*"],
           targets: btn.targets && btn.targets.length > 0 ? btn.targets : ["morsel", "vscode"],
           placement: btn.placement ?? "primary",

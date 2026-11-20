@@ -936,11 +936,15 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     // We don't want runtime drag-to-reparent behavior.
     // Parent-child relationships are strictly defined by semantic children via addChild().
     embedding: { enabled: false },
-    interacting: (cellView: { cell: { id: string } }) => {
+    interacting: (cellView: { cell: { id: string; getData?: () => Record<string, unknown> | undefined } }) => {
       if (isEphemeralDiagramNode(cellView.cell.id)) {
         return false;
       }
       if (getReadOnlyForGraph(g)) {
+        return false;
+      }
+      const cellData = cellView.cell.getData?.();
+      if (cellData?.["readOnly"] || cellData?.["isInherited"]) {
         return false;
       }
       return { nodeMovable: true, edgeMovable: true, edgeLabelMovable: true };

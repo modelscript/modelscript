@@ -311,11 +311,16 @@ export function getModelicaCodeLenses(doc: any, ctx?: ModelicaCodeLensContext): 
   const showVerification = flags.showVerification ?? false;
   const showPolyglotLinks = flags.showPolyglotLinks ?? false;
   const verificationMode = flags.verificationMode ?? "problemsOnly";
-  const rawVerif = flags.rawVerif;
-  const formalVerification = flags.formalVerification ?? false;
 
-  const proofMap = ctx?.validationService?.modelicaProofResultsByUri?.get(uri);
-  const daeMap = ctx?.validationService?.modelicaDaeVerificationResultsByUri?.get(uri);
+  const effectiveUri = uri.startsWith("modelscript-lib://global")
+    ? "file://" + uri.substring("modelscript-lib://global".length)
+    : uri;
+  const proofMap =
+    ctx?.validationService?.modelicaProofResultsByUri?.get(uri) ??
+    ctx?.validationService?.modelicaProofResultsByUri?.get(effectiveUri);
+  const daeMap =
+    ctx?.validationService?.modelicaDaeVerificationResultsByUri?.get(uri) ??
+    ctx?.validationService?.modelicaDaeVerificationResultsByUri?.get(effectiveUri);
   const emittedProofClasses = new Set<string>();
   const emittedDaeClasses = new Set<string>();
 
@@ -324,7 +329,7 @@ export function getModelicaCodeLenses(doc: any, ctx?: ModelicaCodeLensContext): 
   ): boolean => {
     if (!proof || verificationMode === "off") return false;
     const hasDefects = (proof.definiteBugs?.length ?? 0) > 0 || (proof.potentialBugs?.length ?? 0) > 0;
-    if (verificationMode === "problemsOnly" && !formalVerification && rawVerif !== true && rawVerif !== "all") {
+    if (verificationMode === "problemsOnly") {
       return hasDefects;
     }
     return true;
@@ -333,7 +338,7 @@ export function getModelicaCodeLenses(doc: any, ctx?: ModelicaCodeLensContext): 
   const shouldEmitDaeProof = (daeProof: { issues?: unknown[] } | null | undefined): boolean => {
     if (!daeProof || verificationMode === "off") return false;
     const hasIssues = (daeProof.issues?.length ?? 0) > 0;
-    if (verificationMode === "problemsOnly" && !formalVerification && rawVerif !== true && rawVerif !== "all") {
+    if (verificationMode === "problemsOnly") {
       return hasIssues;
     }
     return true;
@@ -486,10 +491,7 @@ export function getModelicaCodeLenses(doc: any, ctx?: ModelicaCodeLensContext): 
         emitClassLenses(rawKind, name, range);
 
         const proof = proofMap?.get(name);
-        const forNodes = [
-          ...findNodesByType(classNode, "for_statement"),
-          ...findNodesByType(classNode, "for_equation"),
-        ];
+        const forNodes = findNodesByType(classNode, "for_statement");
         for (const forNode of forNodes) {
           const forLine = forNode.startPosition?.row ?? 0;
           const forCol = forNode.startPosition?.column ?? 0;

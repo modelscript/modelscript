@@ -23,6 +23,34 @@ export const ranLanguage = language({
     fileExtensions: [".adf", ".nsma", ".msi", ".planet", ".pat"],
   },
 
+  ui: {
+    toolbarButtons: [
+      {
+        id: "ranToDae",
+        label: "Lower RAN Link Budget to DAE",
+        shortLabel: "Lower RAN",
+        tooltip: "Lower RAN Link Budget to DAE",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 10,
+        actionId: "ran_to_dae",
+      },
+      {
+        id: "ranLint",
+        label: "Lint Antenna Pattern Deck",
+        shortLabel: "Lint Antenna",
+        tooltip: "Lint Antenna Pattern Deck",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "ran_lint",
+      },
+    ],
+  },
   actions: [
     {
       id: "ran_lint",

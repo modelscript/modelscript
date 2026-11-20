@@ -593,7 +593,7 @@ export function salsa_backdateQuery(nodePtr: u32, newMerkleLow: u32, newMerkleHi
       node.valueMerkleLow == newMerkleLow &&
       node.valueMerkleHigh == newMerkleHigh) {
     // Merkle match: value is semantically unchanged!
-    node.revision = globalRevision;
+    // Preserve node.revision (changed_at) so downstream subscribers can early-cutoff.
     node.verifiedRevision = globalRevision;
     return true; // Successfully backdated!
   }

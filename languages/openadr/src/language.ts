@@ -88,6 +88,46 @@ export const openadrLanguage = language({
     Comment: () => semanticToken("comment", /(?:\/\/|#)[^\r\n]*/),
   },
 
+  ui: {
+    toolbarButtons: [
+      {
+        id: "openadrEvaluate",
+        label: "Evaluate Demand Response Schedule",
+        shortLabel: "Evaluate Demand",
+        tooltip: "Evaluate Demand Response Schedule",
+        icon: "zap",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        actionId: "openadr_evaluate",
+      },
+      {
+        id: "openadrToDae",
+        label: "Lower OpenADR to DAE Arena",
+        shortLabel: "Lower OpenADR",
+        tooltip: "Lower OpenADR to DAE Arena",
+        icon: "zap",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "openadr_to_dae",
+      },
+      {
+        id: "openadrLint",
+        label: "Lint OpenADR Deck",
+        shortLabel: "Lint OpenADR",
+        tooltip: "Lint OpenADR Deck",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "openadr_lint",
+      },
+    ],
+  },
   actions: [
     {
       id: "openadr_lint",

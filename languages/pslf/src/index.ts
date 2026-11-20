@@ -14,6 +14,7 @@ export * from "./parser/dyd-parser.js";
 export * from "./parser/dyd-writer.js";
 export * from "./parser/epc-parser.js";
 export * from "./parser/epc-writer.js";
+export * from "./phasor-participant.js";
 export * from "./projections/pslf-to-psse.js";
 export * from "./projections/psse-to-pslf.js";
 export * from "./types.js";

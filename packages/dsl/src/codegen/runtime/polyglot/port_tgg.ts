@@ -12,11 +12,12 @@
 import { ChunkedUint32Array, createChunkedUint32Array } from "../core/array";
 import { atomicChunkAlloc } from "../arena";
 
-export const PORT_STRIDE = 4;
+export const PORT_STRIDE = 5;
 export const PORT_ACROSS_VAR = 0;   // Across / Potential variable ID (Voltage, Pressure, Temp)
 export const PORT_FLOW_VAR = 1;     // Through / Flow variable ID (Current, MassFlow, HeatFlow)
 export const PORT_PARENT = 2;       // Union-Find parent pointer
 export const PORT_RANK = 3;         // Union-Find rank
+export const PORT_NEXT_MEMBER = 4;  // Circular linked-list next slot in the same junction
 
 export const JUNCTION_FLAG_BALANCED: u32 = 0x0001;
 
@@ -38,11 +39,13 @@ export class TggPortBalancer {
   @inline
   registerPort(acrossVarId: u32, flowVarId: u32): u32 {
     let slot = this.portCount++;
+    this.junctionCount++;
     let offset = slot * PORT_STRIDE;
     this.ports.set(offset + PORT_ACROSS_VAR, acrossVarId);
     this.ports.set(offset + PORT_FLOW_VAR, flowVarId);
     this.ports.set(offset + PORT_PARENT, slot); // Self-parented initially
     this.ports.set(offset + PORT_RANK, 0);
+    this.ports.set(offset + PORT_NEXT_MEMBER, slot); // Singleton circular list
     return slot + 1; // 1-based Port ID
   }
 
@@ -88,6 +91,14 @@ export class TggPortBalancer {
       this.ports.set(slotB * PORT_STRIDE + PORT_PARENT, slotA);
       this.ports.set(slotA * PORT_STRIDE + PORT_RANK, rankA + 1);
     }
+
+    // O(1) circular list splice: swap next pointers of slotA and slotB
+    let nextA = this.ports.get(slotA * PORT_STRIDE + PORT_NEXT_MEMBER);
+    let nextB = this.ports.get(slotB * PORT_STRIDE + PORT_NEXT_MEMBER);
+    this.ports.set(slotA * PORT_STRIDE + PORT_NEXT_MEMBER, nextB);
+    this.ports.set(slotB * PORT_STRIDE + PORT_NEXT_MEMBER, nextA);
+
+    if (this.junctionCount > 0) this.junctionCount--;
     return true;
   }
 
@@ -110,7 +121,8 @@ export class TggPortBalancer {
    */
   @inline
   isSameJunction(portA: u32, portB: u32): boolean {
-    return this.find(portA) == this.find(portB);
+    let rA = this.find(portA);
+    return rA != 0 && rA == this.find(portB);
   }
 
   verifyAcrossCompatibility(portA: u32, portB: u32): boolean {
@@ -123,13 +135,17 @@ export class TggPortBalancer {
   verifyJunctionFlowBalance(portId: u32, flowsPtr: usize, tolerance: f64 = 1e-6): boolean {
     let root = this.find(portId);
     if (root == 0 || flowsPtr == 0) return false;
+    let startSlot = root - 1;
+    let curr = startSlot;
     let netFlow: f64 = 0.0;
     let memberCount: u32 = 0;
-    for (let slot: u32 = 0; slot < this.portCount; slot++) {
-      if (this.find(slot + 1) == root) {
-        netFlow += load<f64>(flowsPtr + ((slot as usize) << 3));
-        memberCount++;
-      }
+    let guard: u32 = 0;
+    while (guard < this.portCount) {
+      netFlow += load<f64>(flowsPtr + ((curr as usize) << 3));
+      memberCount++;
+      curr = this.ports.get(curr * PORT_STRIDE + PORT_NEXT_MEMBER);
+      if (curr == startSlot || curr >= this.portCount) break;
+      guard++;
     }
     return memberCount > 0 && Math.abs(netFlow) <= tolerance;
   }

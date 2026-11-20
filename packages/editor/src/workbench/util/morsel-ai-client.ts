@@ -2,6 +2,7 @@
 
 import {
   ensureSharedLocalAiEngine,
+  getLastLocalAiError,
   isSharedLocalWebLLMLoaded,
   isWebGpuAvailable,
 } from "../../internal/local-ai-runtime";
@@ -316,7 +317,12 @@ export async function runMorselAiTurn(
     );
     if (!localEngine) {
       if (settings.mode === "local") {
-        throw new Error("Local browser AI (WebGPU or Chrome Prompt API) is unavailable in this browser.");
+        const detail = getLastLocalAiError();
+        throw new Error(
+          detail
+            ? `Local browser AI unavailable: ${detail}`
+            : "Local browser AI (WebGPU or Chrome Prompt API) is unavailable in this browser.",
+        );
       }
       effectiveMode = "ansatz";
     } else {
@@ -334,7 +340,7 @@ export async function runMorselAiTurn(
         } else {
           const res = await localEngine.engine.chat.completions.create({
             messages: [
-              { role: "system", content: systemPrompt },
+              { role: "system", content: `${systemPrompt}\n/no_think` },
               ...loopMessages.map((m) => ({
                 role: (m.role === "tool" ? "user" : m.role) as "system" | "user" | "assistant",
                 content: m.content,
@@ -342,6 +348,8 @@ export async function runMorselAiTurn(
             ],
             temperature: 0.2,
             max_tokens: 1024,
+            stream: false,
+            extra_body: { enable_thinking: false },
           });
           replyText = res.choices?.[0]?.message?.content || "";
         }
@@ -509,4 +517,127 @@ export async function runMorselAiTurn(
     providerUsed: effectiveMode,
     toolResults,
   };
+}
+
+export function fallbackTaskTitle(prompt: string): string {
+  const cleaned = prompt.replace(/\s+/g, " ").trim();
+  if (!cleaned) return "New AI Task";
+  return cleaned.length > 42 ? `${cleaned.slice(0, 39)}…` : cleaned;
+}
+
+function sanitizeGeneratedTitle(raw: string, prompt: string): string {
+  const cleaned = stripThinkBlocks(raw)
+    .replace(/^["'`“”]+|["'`“”.!?:]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned || cleaned.length > 72) {
+    return fallbackTaskTitle(prompt);
+  }
+  return cleaned;
+}
+
+export async function generateMorselTaskTitle(
+  prompt: string,
+  settings: MorselAiSettings,
+  signal?: AbortSignal,
+): Promise<string> {
+  const instruction =
+    "Generate a concise 3 to 6 word title for this engineering modeling task. Reply with ONLY the title, no quotes or trailing punctuation.";
+  const userContent = prompt.slice(0, 500);
+
+  let effectiveMode: MorselAiProviderMode = settings.mode;
+  if (effectiveMode === "auto") {
+    effectiveMode = isSharedLocalWebLLMLoaded() ? "local" : "ansatz";
+  }
+
+  try {
+    if (effectiveMode === "local") {
+      const localEngine = await ensureSharedLocalAiEngine(undefined, instruction);
+      if (localEngine?.kind === "prompt-api") {
+        const text = await localEngine.session.prompt(`${instruction}\n\n${userContent}`);
+        return sanitizeGeneratedTitle(text, prompt);
+      }
+      if (localEngine?.kind === "webllm") {
+        const res = await localEngine.engine.chat.completions.create({
+          messages: [
+            { role: "system", content: `${instruction}\n/no_think` },
+            { role: "user", content: userContent },
+          ],
+          temperature: 0.2,
+          max_tokens: 32,
+          stream: false,
+          extra_body: { enable_thinking: false },
+        });
+        return sanitizeGeneratedTitle(res.choices?.[0]?.message?.content || "", prompt);
+      }
+      return fallbackTaskTitle(prompt);
+    }
+
+    if (
+      effectiveMode === "local-endpoint" ||
+      (effectiveMode === "custom" && settings.directBrowserCustom && settings.customProtocol === "openai")
+    ) {
+      const baseUrl = (effectiveMode === "local-endpoint" ? settings.localEndpointUrl : settings.customBaseUrl).replace(
+        /\/+$/,
+        "",
+      );
+      const apiKey = effectiveMode === "local-endpoint" ? "ollama" : settings.customApiKey;
+      const model = effectiveMode === "local-endpoint" ? settings.localEndpointModel : settings.customModel;
+      const res = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: instruction },
+            { role: "user", content: userContent },
+          ],
+          temperature: 0.2,
+          max_tokens: 32,
+          stream: false,
+        }),
+        signal,
+      });
+      if (!res.ok) return fallbackTaskTitle(prompt);
+      const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+      return sanitizeGeneratedTitle(data.choices?.[0]?.message?.content || "", prompt);
+    }
+
+    const res = await fetch("/api/v1/ai/morsel/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            role: "user",
+            content: `${instruction}\n\nTask prompt: ${userContent}`,
+          },
+        ],
+        maxTokens: 32,
+        temperature: 0.2,
+        providerMode: effectiveMode === "custom" ? "custom" : "ansatz",
+        ...(effectiveMode === "custom"
+          ? {
+              customProvider: {
+                protocol: settings.customProtocol,
+                baseUrl: settings.customBaseUrl,
+                apiKey: settings.customApiKey,
+                model: settings.customModel,
+              },
+            }
+          : {}),
+      }),
+      signal,
+    });
+    const streamRes = await consumeSseResponse(res, "title");
+    return sanitizeGeneratedTitle(streamRes.content, prompt);
+  } catch {
+    return fallbackTaskTitle(prompt);
+  }
 }

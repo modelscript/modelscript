@@ -19,6 +19,34 @@ export const plscaddLanguage = language({
   lsp: {
     fileExtensions: [".pol", ".loa", ".plscadd"],
   },
+  ui: {
+    toolbarButtons: [
+      {
+        id: "lowerPlscaddDae",
+        label: "Lower PLS-CADD Line to DAE",
+        shortLabel: "Lower PLS-CADD",
+        tooltip: "Lower PLS-CADD Line to DAE",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 10,
+        actionId: "lower_plscadd_dae",
+      },
+      {
+        id: "lintPlscadd",
+        label: "Lint PLS-CADD Line Model",
+        shortLabel: "Lint PLS-CADD",
+        tooltip: "Lint PLS-CADD Line Model",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "lint_plscadd",
+      },
+    ],
+  },
   actions: [
     {
       id: "lint_plscadd",

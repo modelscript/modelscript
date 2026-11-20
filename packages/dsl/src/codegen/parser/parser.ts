@@ -234,9 +234,20 @@ export function generateParserTables(
     }
   }
 
-  // Helpers to serialize numeric tables as compact hex strings decoded into WASM linear memory at startup.
+  // Emit static binary WASM data segments (`memory.data<i32>`) for normal-sized tables
+  // (4x smaller than UTF-16 hex strings, zero startup allocation/decoding), falling back
+  // to hex decoding only for very large tables (> 16,384 words) to keep `asc` parse times fast.
+  const MAX_STATIC_DATA_WORDS = 16384;
+
   const generateStaticArray = (arr: number[], name: string) => {
     if (arr.length === 0) return `export const ${name}: usize = memory.data<i32>([0, 0]) + 4;\n`;
+    if (arr.length <= MAX_STATIC_DATA_WORDS) {
+      const words: number[] = [arr.length];
+      for (const item of arr) {
+        words.push((item === undefined ? 1 : item) | 0);
+      }
+      return `export const ${name}: usize = memory.data<i32>([${words.join(",")}]) + 4;\n`;
+    }
     let hex = "";
     for (const item of arr) {
       const val = item === undefined ? 1 : item;
@@ -247,6 +258,16 @@ export function generateParserTables(
 
   const generateStaticU16Array = (arr: ArrayLike<number>, name: string) => {
     if (arr.length === 0) return `export const ${name}: usize = memory.data<i32>([0, 0]) + 4;\n`;
+    const wordCount = (arr.length + 1) >>> 1;
+    if (wordCount <= MAX_STATIC_DATA_WORDS) {
+      const words: number[] = [arr.length];
+      for (let i = 0; i < arr.length; i += 2) {
+        const lo = arr[i] === undefined ? 0 : arr[i]! & 0xffff;
+        const hi = i + 1 < arr.length && arr[i + 1] !== undefined ? arr[i + 1]! & 0xffff : 0;
+        words.push(lo | (hi << 16) | 0);
+      }
+      return `export const ${name}: usize = memory.data<i32>([${words.join(",")}]) + 4;\n`;
+    }
     let hex = "";
     for (let i = 0; i < arr.length; i++) {
       const val = arr[i] === undefined ? 0 : arr[i]! & 0xffff;
@@ -257,6 +278,18 @@ export function generateParserTables(
 
   const generateStaticByteArray = (arr: ArrayLike<number>, name: string) => {
     if (arr.length === 0) return `export const ${name}: usize = memory.data<i32>([0, 0]) + 4;\n`;
+    const wordCount = (arr.length + 3) >>> 2;
+    if (wordCount <= MAX_STATIC_DATA_WORDS) {
+      const words: number[] = [arr.length];
+      for (let i = 0; i < arr.length; i += 4) {
+        const b0 = arr[i] === undefined ? 0 : arr[i]! & 0xff;
+        const b1 = i + 1 < arr.length && arr[i + 1] !== undefined ? arr[i + 1]! & 0xff : 0;
+        const b2 = i + 2 < arr.length && arr[i + 2] !== undefined ? arr[i + 2]! & 0xff : 0;
+        const b3 = i + 3 < arr.length && arr[i + 3] !== undefined ? arr[i + 3]! & 0xff : 0;
+        words.push(b0 | (b1 << 8) | (b2 << 16) | (b3 << 24) | 0);
+      }
+      return `export const ${name}: usize = memory.data<i32>([${words.join(",")}]) + 4;\n`;
+    }
     let hex = "";
     for (let i = 0; i < arr.length; i++) {
       const val = arr[i] === undefined ? 0 : arr[i]! & 0xff;
@@ -892,6 +925,16 @@ export function generateParserTables(
     }
   }
 
+  for (let p = 0; p < prodLengths.length; p++) {
+    const len = prodLengths[p]!;
+    if (len > 255) {
+      const prod = grammar.productions[p];
+      throw new Error(
+        `Production '${prod?.left ?? p}' has ${len} RHS symbols, exceeding the maximum of 255 for u8 prod_lengths.`,
+      );
+    }
+  }
+
   code += generateStaticByteArray(prodLengths, "prod_lengths");
   code += generateStaticArray(prodRightOffsets, "prod_right_offsets");
   code += generateStaticU16Array(prodRightSymbols, "prod_right_symbols");
@@ -1152,34 +1195,40 @@ export function generateParserTables(
   code += extractExports(groebnerCode, "./solvers/groebner");
   code += extractExports(linalgCode, "./solvers/linalg");
 
+  let generatedTypeSystemCode: string | undefined;
   if (originalGrammar.typeSystem) {
-    const tsCode = generateTypeSystem(originalGrammar, originalGrammar.typeSystem.customCode || "");
-    code += "\n" + extractExports(tsCode, "./typesys");
+    generatedTypeSystemCode = generateTypeSystem(originalGrammar, originalGrammar.typeSystem.customCode || "");
+    code += "\n" + extractExports(generatedTypeSystemCode, "./typesys");
   }
+  let generatedReasonerCode: string | undefined;
+  let generatedSimplexCode: string | undefined;
+  let generatedSatCode: string | undefined;
   if (originalGrammar.semantics) {
-    const rsCode = generateReasoner(originalGrammar, grammar);
-    code += "\n" + extractExports(rsCode, "./reasoner");
+    generatedReasonerCode = generateReasoner(originalGrammar, grammar);
+    code += "\n" + extractExports(generatedReasonerCode, "./reasoner");
     const reasonerCfg = originalGrammar.semantics.reasoner as { smt?: { theories?: string[] } } | undefined;
     if (reasonerCfg?.smt) {
       if (reasonerCfg.smt.theories?.includes("LRA")) {
-        const simplexCode = generateSimplex(originalGrammar as Parameters<typeof generateSimplex>[0]);
-        code += "\n" + extractExports(simplexCode, "./simplex");
+        generatedSimplexCode = generateSimplex(originalGrammar as Parameters<typeof generateSimplex>[0]);
+        code += "\n" + extractExports(generatedSimplexCode, "./simplex");
       }
-      const satCode = generateSAT(originalGrammar, grammar);
-      code += "\n" + extractExports(satCode, "./sat");
+      generatedSatCode = generateSAT(originalGrammar, grammar);
+      code += "\n" + extractExports(generatedSatCode, "./sat");
     }
   }
 
+  let generatedTggCode: string | undefined;
   if (originalGrammar.polyglot) {
-    const tggOutput = compileTGGRules(originalGrammar.polyglot);
-    code += "\n" + extractExports(tggOutput.sourceCode, "./tgg");
+    generatedTggCode = compileTGGRules(originalGrammar.polyglot, { syntaxTypes: grammar.symToInt }).sourceCode;
+    code += "\n" + extractExports(generatedTggCode, "./tgg");
   } else {
     code += `\nexport function tgg_forward_dispatch(sourceNodeTypeHash: u32, sourceNodeId: u32, corr: u32, arena: u32): u32 { return 0; }\nexport function tgg_backward_dispatch(targetNodeTypeHash: u32, targetNodeId: u32, corr: u32, arena: u32): u32 { return 0; }\nexport function tgg_propagate_all_stale(corr: u32): u32 { return 0; }\n`;
   }
 
+  let generatedMcpCode: string | undefined;
   if (originalGrammar.mcp) {
-    const mcpOutput = compileMcpConfig(originalGrammar.mcp, originalGrammar.name);
-    code += "\n" + extractExports(mcpOutput.sourceCode, "./mcp");
+    generatedMcpCode = compileMcpConfig(originalGrammar.mcp, originalGrammar.name).sourceCode;
+    code += "\n" + extractExports(generatedMcpCode, "./mcp");
   } else {
     code += `\nexport function mcp_getToolCount(): u32 { return 0; }\nexport function mcp_getToolNameHash(index: u32): u32 { return 0; }\nexport function mcp_dispatchTool(toolIndex: u32, arg1: u32, arg2: u32, arg3: u32): u32 { return 0; }\nexport function mcp_getOutputBuffer(): usize { return 0; }\nexport function mcp_getOutputLength(): u32 { return 0; }\n`;
   }
@@ -1344,26 +1393,23 @@ export function generateParserTables(
     }
   }
 
-  if (originalGrammar.typeSystem) {
-    outFiles.push({
-      filename: "typesys.ts",
-      content: generateTypeSystem(originalGrammar, originalGrammar.typeSystem.customCode || ""),
-    });
+  if (generatedTypeSystemCode !== undefined) {
+    outFiles.push({ filename: "typesys.ts", content: generatedTypeSystemCode });
   }
-  if (originalGrammar.semantics) {
-    outFiles.push({ filename: "reasoner.ts", content: generateReasoner(originalGrammar, grammar) });
+  if (generatedReasonerCode !== undefined) {
+    outFiles.push({ filename: "reasoner.ts", content: generatedReasonerCode });
   }
-  if (originalGrammar.polyglot) {
-    outFiles.push({
-      filename: "tgg.ts",
-      content: compileTGGRules(originalGrammar.polyglot, { syntaxTypes: grammar.symToInt }).sourceCode,
-    });
+  if (generatedSimplexCode !== undefined) {
+    outFiles.push({ filename: "simplex.ts", content: generatedSimplexCode });
   }
-  if (originalGrammar.mcp) {
-    outFiles.push({
-      filename: "mcp.ts",
-      content: compileMcpConfig(originalGrammar.mcp, originalGrammar.name).sourceCode,
-    });
+  if (generatedSatCode !== undefined) {
+    outFiles.push({ filename: "sat.ts", content: generatedSatCode });
+  }
+  if (generatedTggCode !== undefined) {
+    outFiles.push({ filename: "tgg.ts", content: generatedTggCode });
+  }
+  if (generatedMcpCode !== undefined) {
+    outFiles.push({ filename: "mcp.ts", content: generatedMcpCode });
   }
 
   code += extractExports(daeBuilderCode, "./dae/builder");
@@ -1428,6 +1474,11 @@ export function generateParserTables(
     code += extractExports(pantelidesContent, "./pantelides-domain");
     outFiles.push({ filename: "ir_layout.ts", content: layoutContent });
     outFiles.push({ filename: "cfg.ts", content: cfgContent });
+    outFiles.push({ filename: "analysis/ssa.ts", content: ssaContent });
+    outFiles.push({ filename: "analysis/alias_domain.ts", content: aliasContent });
+    outFiles.push({ filename: "typesys/octagon.ts", content: octagonContent });
+    outFiles.push({ filename: "analysis/isolation_domain.ts", content: isolationContent });
+    outFiles.push({ filename: "analysis/pantelides_domain.ts", content: pantelidesContent });
   }
   if (originalGrammar.analysis) {
     let dfContent = generateDataflow(originalGrammar);

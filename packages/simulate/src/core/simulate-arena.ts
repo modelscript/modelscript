@@ -249,6 +249,7 @@ export class ArenaSimulator {
 
   /** Event indicator functions for zero-crossing detection. */
   public eventIndicators: ArenaEventIndicator[] = [];
+  private sampleNextTimeByIdx = new Map<number, number>();
 
   /** Extracted derivative equations: der(x) = expr. */
   // derivativeEquations removed
@@ -2820,6 +2821,8 @@ export class ArenaSimulator {
       );
     }
     if (kind === ExprKind.Call) {
+      const fnName = this.arena.interner.resolve(this.arena.getExprData1(exprId));
+      if (fnName === "sample") return true;
       const argc = this.arena.getExprRight(exprId);
       const firstArg = this.arena.getExprLeft(exprId);
       for (let a = 0; a < argc; a++) {
@@ -2916,6 +2919,9 @@ export class ArenaSimulator {
       if (kind === ExprKind.Call) {
         const fnName = this.arena.interner.resolve(this.arena.getExprData1(exprId));
         if (fnName === "noEvent" || fnName === "smooth") return;
+        if (fnName === "sample") {
+          addIfIndicator(exprId);
+        }
         const argc = this.arena.getExprRight(exprId);
         const firstArg = this.arena.getExprLeft(exprId);
         for (let a = 0; a < argc; a++) {
@@ -5764,7 +5770,8 @@ export class ArenaSimulator {
       }
     };
 
-    return this.eventIndicators.map((ei) => {
+    this.sampleNextTimeByIdx.clear();
+    return this.eventIndicators.map((ei, eiIdx) => {
       const kind = this.arena.getExprKind(ei.exprId);
       const isSampleCall =
         kind === ExprKind.Call &&
@@ -5779,10 +5786,18 @@ export class ArenaSimulator {
           const start = evaluateArenaRuntime(this.arena, sampleStartExprId, valuesByStringId);
           const interval = evaluateArenaRuntime(this.arena, sampleIntervalExprId, valuesByStringId);
           if (interval <= 0) return -1;
-          if (t < start) return t - start;
-          const phase = (t - start) % interval;
-          const half = 0.5 * interval;
-          return phase < half ? phase : phase - interval;
+          let nextSample = this.sampleNextTimeByIdx.get(eiIdx);
+          if (nextSample === undefined) {
+            if (t < start - 1e-9) {
+              nextSample = start;
+            } else if (Math.abs(t - start) <= 1e-9) {
+              nextSample = start + interval;
+            } else {
+              nextSample = start + Math.ceil((t - start - 1e-9) / interval) * interval;
+            }
+            this.sampleNextTimeByIdx.set(eiIdx, nextSample);
+          }
+          return t - nextSample;
         }
         return evaluateArenaRuntime(this.arena, ei.exprId, valuesByStringId, this.preValuesByStringId);
       };
@@ -5897,8 +5912,20 @@ export class ArenaSimulator {
         }
         if (kind === ExprKind.Call) {
           const fnName = this.arena.interner.resolve(this.arena.getExprData1(condExprId));
-          if (fnName === "sample" && triggeredEi && this.areArenaExprsEqual(condExprId, triggeredEi.exprId)) {
-            return 1;
+          if (fnName === "sample") {
+            if (triggeredEi && this.areArenaExprsEqual(condExprId, triggeredEi.exprId)) {
+              return 1;
+            }
+            if (this.arena.getExprRight(condExprId) >= 2) {
+              const sStart = evaluateArenaRuntime(this.arena, this.arena.getExprLeft(condExprId), valuesByStringId);
+              const sInt = evaluateArenaRuntime(this.arena, this.arena.getExprLeft(condExprId + 1), valuesByStringId);
+              if (sInt > 0 && t >= sStart - 1e-7) {
+                const k = Math.round((t - sStart) / sInt);
+                if (k >= 0 && Math.abs(t - (sStart + k * sInt)) <= 1e-6) {
+                  return 1;
+                }
+              }
+            }
           }
         }
         return evaluateArenaRuntime(this.arena, condExprId, valuesByStringId, this.preValuesByStringId) !== 0 ? 1 : 0;
@@ -5992,6 +6019,25 @@ export class ArenaSimulator {
       this.evaluateDerivativeEquations(valuesByStringId);
       if (this.preValuesByStringId && this.preValuesByStringId.length === valuesByStringId.length) {
         this.preValuesByStringId.set(valuesByStringId);
+      }
+
+      for (let eiIdx = 0; eiIdx < this.eventIndicators.length; eiIdx++) {
+        const ei = this.eventIndicators[eiIdx]!;
+        if (
+          this.arena.getExprKind(ei.exprId) === ExprKind.Call &&
+          this.arena.interner.resolve(this.arena.getExprData1(ei.exprId)) === "sample" &&
+          this.arena.getExprRight(ei.exprId) >= 2
+        ) {
+          const start = evaluateArenaRuntime(this.arena, this.arena.getExprLeft(ei.exprId), valuesByStringId);
+          const interval = evaluateArenaRuntime(this.arena, this.arena.getExprLeft(ei.exprId + 1), valuesByStringId);
+          if (interval > 0) {
+            const curNext = this.sampleNextTimeByIdx.get(eiIdx);
+            if (eiIdx === eventIdx || (curNext !== undefined && t >= curNext - 1e-6)) {
+              const nextSample = start + (Math.floor((t - start + 1e-6) / interval) + 1) * interval;
+              this.sampleNextTimeByIdx.set(eiIdx, nextSample);
+            }
+          }
+        }
       }
 
       onEventCompleted?.(t);
@@ -6626,6 +6672,7 @@ export class ArenaSimulator {
         this.eventIndicators[i]!.prevValue = initEiPrevValue[i]!;
       }
       this.discreteEventEpoch = nextDiscreteEventEpoch++;
+      this.sampleNextTimeByIdx.clear();
       if (needsFullEnvReconstruction) {
         envSnapshots.length = 1;
       }
@@ -7013,7 +7060,7 @@ export class ArenaSimulator {
       let loadedSnapIdx = -1;
       y_out = rawResult.states.map((row, rowIdx) => {
         const tSample = t_out[rowIdx] ?? startTime;
-        while (snapIdx + 1 < envSnapshots.length && envSnapshots[snapIdx + 1]!.t <= tSample + 1e-12) {
+        while (snapIdx + 1 < envSnapshots.length && envSnapshots[snapIdx + 1]!.t <= tSample + 1e-8) {
           snapIdx++;
         }
         const activeSnap = envSnapshots[snapIdx];
@@ -7413,6 +7460,11 @@ export class ArenaSimulator {
       const resultT = new Float64Array(steps + 1);
       const resultY: Float64Array[] = new Array(steps + 1);
       let currentT = t;
+      valuesByStringId[timeId] = currentT;
+      this.evaluateBlocks(valuesByStringId);
+      this.processWhenClauses(valuesByStringId);
+      this.evaluateBlocks(valuesByStringId);
+      this.preValuesByStringId.set(valuesByStringId);
       resultT[0] = currentT;
       resultY[0] = new Float64Array(outN);
       for (let i = 0; i < outN; i++) resultY[0][i] = valuesByStringId[outIds[i] as number] ?? 0;
@@ -7421,8 +7473,9 @@ export class ArenaSimulator {
         currentT += step;
         valuesByStringId[timeId] = currentT;
         this.evaluateBlocks(valuesByStringId);
-        this.preValuesByStringId.set(valuesByStringId);
         this.processWhenClauses(valuesByStringId);
+        this.evaluateBlocks(valuesByStringId);
+        this.preValuesByStringId.set(valuesByStringId);
         resultT[s] = currentT;
         resultY[s] = new Float64Array(outN);
         for (let i = 0; i < outN; i++) resultY[s]![i] = valuesByStringId[outIds[i] as number] ?? 0;

@@ -45,6 +45,20 @@ export const urdfLanguage = language({
           '  <joint name="joint_new" type="revolute">\n    <parent link="base_link"/>\n    <child link="link_new"/>\n    <axis xyz="0 0 1"/>\n  </joint>\n',
       },
     ],
+    toolbarButtons: [
+      {
+        id: "autoLayout",
+        label: "Auto-Layout Diagram",
+        shortLabel: "Layout",
+        tooltip: "Re-run automatic schematic layout on the current diagram",
+        icon: "flowchart",
+        views: ["diagram"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        command: "morsel:autoLayout",
+      },
+    ],
   },
   diagram: {
     placement: {

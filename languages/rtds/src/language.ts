@@ -20,6 +20,46 @@ export const rtdsLanguage = language({
   lsp: {
     fileExtensions: [".dft", ".rtds"],
   },
+  ui: {
+    toolbarButtons: [
+      {
+        id: "lowerRtdsDae",
+        label: "Lower RTDS Draft to DAE",
+        shortLabel: "Lower RTDS",
+        tooltip: "Lower RTDS Draft to DAE",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 10,
+        actionId: "lower_rtds_dae",
+      },
+      {
+        id: "rtdsToAtp",
+        label: "Export RTDS Draft to ATP-EMTP",
+        shortLabel: "Export RTDS",
+        tooltip: "Export RTDS Draft to ATP-EMTP",
+        icon: "export",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 20,
+        actionId: "rtds_to_atp",
+      },
+      {
+        id: "lintRtds",
+        label: "Lint RTDS Draft",
+        shortLabel: "Lint RTDS",
+        tooltip: "Lint RTDS Draft",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "lint_rtds",
+      },
+    ],
+  },
   actions: [
     {
       id: "lint_rtds",

@@ -255,7 +255,7 @@ export class IndexedDBQueryCacheStore implements QueryCacheStore {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(this.storeName, "readwrite");
       const store = transaction.objectStore(this.storeName);
-      const request = store.put(memo, key);
+      const request = store.put(serializeMemo(memo), key);
 
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
@@ -272,7 +272,7 @@ export class IndexedDBQueryCacheStore implements QueryCacheStore {
       transaction.onerror = () => reject(transaction.error);
 
       for (const [key, memo] of memos.entries()) {
-        store.put(memo, key);
+        store.put(serializeMemo(memo), key);
       }
     });
   }

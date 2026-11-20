@@ -32,6 +32,46 @@ export const powerworldLanguage = language({
   conflicts: powerworldGrammar.conflicts,
   rules: powerworldGrammar.rules,
 
+  ui: {
+    toolbarButtons: [
+      {
+        id: "powerworldToDae",
+        label: "Lower PowerWorld AUX to DAE",
+        shortLabel: "Lower PowerWorld",
+        tooltip: "Lower PowerWorld AUX to DAE",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 10,
+        actionId: "powerworld_to_dae",
+      },
+      {
+        id: "powerworldToPsse",
+        label: "Export PowerWorld AUX to PSS/E .raw",
+        shortLabel: "Export",
+        tooltip: "Export PowerWorld AUX to PSS/E .raw",
+        icon: "export",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 20,
+        actionId: "powerworld_to_psse",
+      },
+      {
+        id: "lintPowerworld",
+        label: "Lint PowerWorld AUX Case",
+        shortLabel: "Lint PowerWorld",
+        tooltip: "Lint PowerWorld AUX Case",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "lint_powerworld",
+      },
+    ],
+  },
   actions: [
     {
       id: "lint_powerworld",

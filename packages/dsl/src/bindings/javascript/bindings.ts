@@ -4525,7 +4525,7 @@ export class LspFacade {
     }
     if (newAstRoot > 0) {
       this.rootSourceCode.set(newAstRoot, text);
-      if (this.rootSourceCode.size > 100) {
+      if (this.rootSourceCode.size > 2048) {
         const firstKey = this.rootSourceCode.keys().next().value;
         if (firstKey !== undefined) this.rootSourceCode.delete(firstKey);
       }
@@ -4937,11 +4937,27 @@ export class SyntaxNode {
   }
 
   /** Extracts the substring from the original source code corresponding to this node. */
+  get merkleLow(): number {
+    if (!this.ptr) return 0;
+    return this.tree.mem32[(this.ptr + 24) >>> 2] >>> 0;
+  }
+
+  get merkleHigh(): number {
+    if (!this.ptr) return 0;
+    return this.tree.mem32[(this.ptr + 28) >>> 2] >>> 0;
+  }
+
   get text(): string {
     if (this._cachedText !== null) return this._cachedText;
     const enc = this.tree.facade?.getInputEncoding
       ? this.tree.facade.getInputEncoding()
       : ((this.tree as any)._encoding ?? 1);
+    if (this.tree.sourceCode) {
+      if (enc === 3 || enc === 4) {
+        return (this._cachedText = Array.from(this.tree.sourceCode).slice(this.startIndex, this.endIndex).join(""));
+      }
+      return (this._cachedText = this.tree.sourceCode.substring(this.startIndex, this.endIndex));
+    }
     if ((enc === 0 || enc === 3 || enc === 4) && (this.tree.facade as any)?.wasmMemory) {
       const getInputBuf =
         this.tree.facade.exports.getInputBuffer || (this.tree.facade.exports as any).lsp_getInputBuffer;
@@ -4966,11 +4982,7 @@ export class SyntaxNode {
             : String.fromCharCode(...rawBytes));
       }
     }
-    if (!this.tree.sourceCode) return "";
-    if (enc === 3 || enc === 4) {
-      return (this._cachedText = Array.from(this.tree.sourceCode).slice(this.startIndex, this.endIndex).join(""));
-    }
-    return (this._cachedText = this.tree.sourceCode.substring(this.startIndex, this.endIndex));
+    return "";
   }
 
   /**
@@ -5067,7 +5079,7 @@ export class SyntaxNode {
     if (this._cachedChildren !== null) {
       return this._cachedChildren;
     }
-    const mem32 = this.tree.mem32;
+    let mem32 = this.tree.mem32;
     const exports = this.tree.facade?.exports;
     const kids: SyntaxNode[] = [];
     const stack: {
@@ -5101,6 +5113,7 @@ export class SyntaxNode {
         if (exports?.getFieldIdForChild && parentTypeId > 0) {
           try {
             directFieldId = exports.getFieldIdForChild(parentTypeId, childIndex, typeId, 0);
+            mem32 = this.tree.mem32;
           } catch {}
         }
         let fieldId = directFieldId > 0 ? directFieldId : inheritedFieldId;
@@ -5736,7 +5749,7 @@ export class TreeCursor {
   }
 
   get currentFieldId(): number {
-    const fieldNames = (this.tree?.facade as any)?.fieldNames ?? FIELD_NAMES;
+    const fieldNames = (this.current.tree?.facade as any)?.fieldNames ?? FIELD_NAMES;
     const name = this.currentFieldName;
     return name && fieldNames[name] !== undefined ? fieldNames[name] : 0;
   }
@@ -6186,6 +6199,11 @@ export class Tree {
     if (registry && typeof registry.get === "function" && registry.get(this.rootPtr) === this.sourceCode) {
       registry.delete(this.rootPtr);
     }
+    if (this.rootPtr && typeof (this.facade as any)?.exports?.dropRoot === "function") {
+      try {
+        (this.facade as any).exports.dropRoot(this.rootPtr);
+      } catch {}
+    }
     this._mem32 = null;
     this._rootNode = null;
     this._lsTyped = null;
@@ -6274,6 +6292,16 @@ export class TreeSitterParser {
     const astRoot = facade.parse(code, editStart, editOldEnd, editNewEnd, uri, oldRoot);
     if (!astRoot) return null;
     return new Tree(facade, astRoot, code);
+  }
+
+  /**
+   * Parses `source` using a specific multi-format entry point (e.g. `"raw"`, `"dyr"`, `"seq"`, `"con"`, `"idv"`).
+   * Prepends the Private-Use-Area format sentinel (`\uE000<format>\uE001`) for zero-conflict GLR dispatch.
+   */
+  parseFormat(source: string | Uint8Array, format: string, uri?: string): Tree | null {
+    const text = typeof source === "string" ? source : new TextDecoder().decode(source);
+    const tagged = `\uE000${format}\uE001${text}`;
+    return this.parse(tagged, null, 0, 0, 0, uri);
   }
 
   reset(): void {

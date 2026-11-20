@@ -31,10 +31,113 @@ export const SIMULATION_COLORS: string[] = [
   "#bc8cff",
 ];
 
+export interface MorselIconShapeTool {
+  id: string;
+  label: string;
+  title: string;
+  shortcut?: string | undefined;
+  /** Inline 16x16 SVG inner markup for the toolbar icon */
+  iconSvg: string;
+  primitive: Record<string, unknown>;
+}
+
 export interface MorselDiagramTypeOption {
   id: string;
   label: string;
+  iconTools?: readonly MorselIconShapeTool[] | undefined;
 }
+
+export const MODELICA_ICON_SHAPE_TOOLS: readonly MorselIconShapeTool[] = [
+  {
+    id: "rect",
+    label: "Rect",
+    title: "Add Rectangle",
+    shortcut: "R",
+    iconSvg:
+      '<rect x="2.25" y="3.5" width="11.5" height="9" rx="1.4" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-width="1.35"/>',
+    primitive: {
+      "@type": "Rectangle",
+      extent: [
+        [-60, -40],
+        [60, 40],
+      ],
+      lineColor: [8, 145, 178],
+      fillColor: [224, 242, 254],
+      fillPattern: "FillPattern.Solid",
+    },
+  },
+  {
+    id: "ellipse",
+    label: "Ellipse",
+    title: "Add Ellipse",
+    shortcut: "O",
+    iconSvg:
+      '<ellipse cx="8" cy="8" rx="5.75" ry="4.75" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-width="1.35"/>',
+    primitive: {
+      "@type": "Ellipse",
+      extent: [
+        [-40, -40],
+        [40, 40],
+      ],
+      lineColor: [8, 145, 178],
+      fillColor: [255, 255, 255],
+      fillPattern: "FillPattern.Solid",
+    },
+  },
+  {
+    id: "line",
+    label: "Line",
+    title: "Add Line",
+    shortcut: "L",
+    iconSvg:
+      '<line x1="3" y1="13" x2="13" y2="3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="3" cy="13" r="1.4" fill="currentColor"/><circle cx="13" cy="3" r="1.4" fill="currentColor"/>',
+    primitive: {
+      "@type": "Line",
+      points: [
+        [-60, 0],
+        [60, 0],
+      ],
+      color: [15, 23, 42],
+    },
+  },
+  {
+    id: "polygon",
+    label: "Polygon",
+    title: "Add Polygon",
+    shortcut: "P",
+    iconSvg:
+      '<polygon points="8,2.4 13.5,12.6 2.5,12.6" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/><circle cx="8" cy="2.4" r="1.15" fill="currentColor"/><circle cx="13.5" cy="12.6" r="1.15" fill="currentColor"/><circle cx="2.5" cy="12.6" r="1.15" fill="currentColor"/>',
+    primitive: {
+      "@type": "Polygon",
+      points: [
+        [0, 50],
+        [-45, -35],
+        [45, -35],
+        [0, 50],
+      ],
+      lineColor: [8, 145, 178],
+      fillColor: [224, 242, 254],
+      fillPattern: "FillPattern.Solid",
+    },
+  },
+  {
+    id: "text",
+    label: "Text",
+    title: "Add Text (%name)",
+    shortcut: "T",
+    iconSvg:
+      '<path d="M3.2 4V3h9.6v1M8 3v10M5.8 13h4.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>',
+    primitive: {
+      "@type": "Text",
+      extent: [
+        [-70, -18],
+        [70, 18],
+      ],
+      textString: "%name",
+      textColor: [15, 23, 42],
+    },
+  },
+];
 
 export type MorselSyntaxFamily =
   | "modelica"
@@ -116,7 +219,7 @@ export const ALL_MORSEL_LANGUAGES: readonly MorselLanguageInfo[] = [
     supports3d: true,
     diagramTypes: [
       { id: "diagram", label: "Diagram" },
-      { id: "icon", label: "Icon" },
+      { id: "icon", label: "Icon", iconTools: MODELICA_ICON_SHAPE_TOOLS },
     ],
   },
   {

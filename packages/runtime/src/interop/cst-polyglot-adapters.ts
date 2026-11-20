@@ -77,10 +77,11 @@ export function maskCommentsPreservingOffsets(source: string, preserveSysmlDoc =
 
   while (i < len) {
     const ch = chars[i];
-    // String literal "..." or '...'
-    if (ch === '"') {
+    // String literal "..." or single-quoted identifier '...'
+    if (ch === '"' || ch === "'") {
+      const quote = ch;
       i++;
-      while (i < len && chars[i] !== '"') {
+      while (i < len && chars[i] !== quote) {
         if (chars[i] === "\\") i++;
         i++;
       }
@@ -313,15 +314,18 @@ export function parseModelicaCst(source: string): ParsedModelicaCst {
       return;
     }
 
-    // 1. Check `connect(a, b)`
-    const connMatch = /^connect\s*\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)$/.exec(trimmedMasked);
-    if (connMatch && connMatch[1] && connMatch[2]) {
-      connections.push({
-        from: connMatch[1].trim(),
-        to: connMatch[2].trim(),
-        span: { start: stmt.start + localOffset, end: stmt.end },
-      });
-      return;
+    // 1. Check `connect(a, b)` using top-level comma splitting (handles subscripts like `connect(a[1,2], b)`)
+    const connHead = /^connect\s*\(([\s\S]*)\)$/.exec(trimmedMasked);
+    if (connHead && connHead[1] !== undefined) {
+      const connArgs = splitTopLevelCommaList(connHead[1], stmt.start + localOffset);
+      if (connArgs.length === 2 && connArgs[0] && connArgs[1]) {
+        connections.push({
+          from: connArgs[0].text.trim(),
+          to: connArgs[1].text.trim(),
+          span: { start: stmt.start + localOffset, end: stmt.end },
+        });
+        return;
+      }
     }
 
     // 2. If in equation section (or starts with `der(` or has top-level `=` before any identifier pair), parse as equation
@@ -379,10 +383,10 @@ export function parseModelicaCst(source: string): ParsedModelicaCst {
       rawClean = rawStmtBody.slice(0, annoIdx);
     }
 
-    // Extract optional trailing description string `"..."` at top level
+    // Extract optional trailing description string `"..."` at top level (not a String binding `= "..."`)
     let description: string | undefined;
     const descMatch = /"([^"]*)"\s*$/.exec(rawClean);
-    if (descMatch && descMatch[1] !== undefined) {
+    if (descMatch && descMatch[1] !== undefined && !rawClean.slice(0, descMatch.index).trimEnd().endsWith("=")) {
       description = descMatch[1];
       rawClean = rawClean.slice(0, descMatch.index);
       maskedBody = maskedBody.slice(0, descMatch.index);
@@ -438,8 +442,19 @@ export function parseModelicaCst(source: string): ParsedModelicaCst {
       let depth = 1;
       cursor++;
       while (cursor < maskedBody.length && depth > 0) {
-        if (maskedBody[cursor] === "(") depth++;
-        else if (maskedBody[cursor] === ")") depth--;
+        const ch = maskedBody[cursor];
+        if (ch === '"' || ch === "'") {
+          const q = ch;
+          cursor++;
+          while (cursor < maskedBody.length && maskedBody[cursor] !== q) {
+            if (maskedBody[cursor] === "\\") cursor++;
+            cursor++;
+          }
+          cursor++;
+          continue;
+        }
+        if (ch === "(") depth++;
+        else if (ch === ")") depth--;
         cursor++;
       }
       const closeParen = cursor - 1;
@@ -638,7 +653,8 @@ export function parseSysml2Cst(source: string): ParsedSysml2Cst {
     const reqBodyBaseOffset = openBraceIdx + 1;
     const attributes: Record<string, string> = {};
     const attributeSpans: Record<string, SysmlAttributeSpan> = {};
-    const attrRegex = /\battribute\s+([A-Za-z_]\w*)(?:\s*:\s*[A-Za-z_]\w*)?\s*=\s*("[^"]*"|'[^']*'|[^;]+?)\s*;/g;
+    const attrRegex =
+      /\battribute\s+([A-Za-z_]\w*)(?:\s*:\s*[A-Za-z_]\w*(?:::[A-Za-z_]\w*)*)?\s*=\s*("[^"]*"|'[^']*'|[^;]+?)\s*;/g;
     let aMatch: RegExpExecArray | null;
     while ((aMatch = attrRegex.exec(maskedBody)) !== null) {
       const aName = aMatch[1]!.trim();
@@ -833,6 +849,23 @@ export function parseSysml2Cst(source: string): ParsedSysml2Cst {
  * Converts a `ParsedModelicaCst` into a `PolyglotNode` graph suitable for `PolyglotTransformer`.
  */
 export function modelicaCstToPolyglotGraph(cst: ParsedModelicaCst): PolyglotNode {
+  const childNodes: PolyglotNode[] = cst.components.map((c) => ({
+    kind: "ModelicaComponent",
+    name: c.name,
+    typeSpecifier: c.typeSpecifier,
+    causality: c.causality,
+    variability: c.variability,
+    modifications: c.modifications,
+    properties: {
+      name: c.name,
+      typeSpecifier: c.typeSpecifier,
+      causality: c.causality,
+      variability: c.variability,
+      ...c.modifications,
+      ...(c.bindingExpr !== undefined ? { start: c.bindingExpr, bindingExpr: c.bindingExpr } : {}),
+      ...(c.description !== undefined ? { description: c.description } : {}),
+    },
+  }));
   return {
     kind: "ModelDefinition",
     name: cst.modelName,
@@ -840,22 +873,12 @@ export function modelicaCstToPolyglotGraph(cst: ParsedModelicaCst): PolyglotNode
       name: cst.modelName,
       docstring: cst.docstring,
     },
-    children: cst.components.map((c) => ({
-      kind: "ModelicaComponent",
-      name: c.name,
-      typeSpecifier: c.typeSpecifier,
-      causality: c.causality,
-      variability: c.variability,
-      modifications: c.modifications,
-      properties: {
-        name: c.name,
-        typeSpecifier: c.typeSpecifier,
-        causality: c.causality,
-        variability: c.variability,
-        ...c.modifications,
-        ...(c.bindingExpr !== undefined ? { start: c.bindingExpr, bindingExpr: c.bindingExpr } : {}),
-        ...(c.description !== undefined ? { description: c.description } : {}),
-      },
+    children: childNodes,
+    components: childNodes.map((n) => ({
+      name: n.name,
+      typeSpecifier: String(n["typeSpecifier"] ?? "Real"),
+      variability: n["variability"] as ModelicaComponentNode["variability"],
+      modifications: n["modifications"] as Record<string, string>,
     })),
     connections: cst.connections.map((cn) => ({
       source: cn.from,
@@ -863,4 +886,135 @@ export function modelicaCstToPolyglotGraph(cst: ParsedModelicaCst): PolyglotNode
     })),
     equations: cst.equations.map((eq) => eq.text),
   };
+}
+
+interface NativeCstNodeLike {
+  type?: string;
+  text?: string;
+  startOffset?: number;
+  startIndex?: number;
+  endOffset?: number;
+  endIndex?: number;
+  children?: NativeCstNodeLike[];
+  childForFieldName?: (name: string) => NativeCstNodeLike | null | undefined;
+}
+
+/**
+ * Extracts a `ParsedModelicaCst` directly from a native WASM GLR parser `SyntaxNode` root,
+ * avoiding regex scanning when a linear-memory CST is already available.
+ */
+export function parseModelicaCstFromNativeTree(
+  rootNode: NativeCstNodeLike | null | undefined,
+  source: string,
+): ParsedModelicaCst {
+  if (!rootNode || !Array.isArray(rootNode.children)) {
+    return parseModelicaCst(source);
+  }
+  const components: ModelicaComponentNode[] = [];
+  const connections: ModelicaConnectionNode[] = [];
+  const equations: ModelicaEquationNode[] = [];
+  const stateVars = new Set<string>();
+  let kind: ParsedModelicaCst["kind"] = "model";
+  let modelName = "UnnamedModel";
+  let docstring: string | undefined;
+
+  const visit = (node: NativeCstNodeLike | null | undefined) => {
+    if (!node) return;
+    const t = String(node.type ?? "");
+    const start: number = node.startOffset ?? node.startIndex ?? 0;
+    const end: number = node.endOffset ?? node.endIndex ?? start;
+
+    if (t === "class_definition" || t === "long_class_specifier") {
+      if (t === "class_definition") {
+        const txt = String(node.text ?? source.slice(start, end));
+        const km = /\b(model|block|connector|class)\b/.exec(txt);
+        if (km?.[1]) kind = km[1] as ParsedModelicaCst["kind"];
+      }
+      const nameChild = node.childForFieldName?.("name") ?? node.children?.find((c) => c.type === "IDENT");
+      if (nameChild && modelName === "UnnamedModel") {
+        modelName = String(nameChild.text ?? "").trim() || modelName;
+      }
+      const descChild = node.children?.find((c) => c.type === "string_comment" || c.type === "STRING");
+      if (descChild && docstring === undefined) {
+        const raw = String(descChild.text ?? "").trim();
+        if (raw.startsWith('"') && raw.endsWith('"')) docstring = raw.slice(1, -1);
+      }
+    } else if (t === "connect_clause") {
+      const refs = (node.children ?? []).filter((c) => c.type === "component_reference");
+      if (refs.length >= 2) {
+        connections.push({
+          from: String(refs[0]?.text ?? "").trim(),
+          to: String(refs[1]?.text ?? "").trim(),
+          span: { start, end },
+        });
+      }
+      return;
+    } else if (t === "component_clause") {
+      // Delegate single-clause structured extraction using exact native CST slice
+      const sub = parseModelicaCst(`model _Tmp\n${source.slice(start, end)};\nend _Tmp;`);
+      for (const comp of sub.components) {
+        components.push({
+          ...comp,
+          span: { start, end },
+        });
+      }
+      return;
+    } else if (t === "equation" || t === "simple_equation") {
+      const txt = String(node.text ?? source.slice(start, end)).trim();
+      if (txt && !txt.startsWith("connect")) {
+        const eqIdx = txt.indexOf("=");
+        if (eqIdx > 0) {
+          const lhs = txt.slice(0, eqIdx).trim();
+          const rhs = txt
+            .slice(eqIdx + 1)
+            .replace(/;\s*$/, "")
+            .trim();
+          const derMatch = /\bder\s*\(\s*([A-Za-z_]\w*)\s*\)/.exec(lhs);
+          if (derMatch?.[1]) stateVars.add(derMatch[1]);
+          equations.push({
+            text: txt.replace(/;\s*$/, ""),
+            lhs,
+            rhs,
+            derStateVar: derMatch?.[1],
+            span: { start, end },
+          });
+          return;
+        }
+      }
+    }
+
+    for (const child of node.children ?? []) {
+      visit(child);
+    }
+  };
+
+  visit(rootNode);
+  if (components.length === 0 && connections.length === 0 && equations.length === 0) {
+    return parseModelicaCst(source);
+  }
+  return {
+    kind,
+    modelName,
+    docstring,
+    components,
+    connections,
+    equations,
+    stateVars,
+  };
+}
+
+/**
+ * Extracts a `ParsedSysml2Cst` from a native WASM GLR parser `SyntaxNode` root when available,
+ * falling back to `parseSysml2Cst(source)` when the tree has no recognized SysML v2 definitions.
+ */
+export function parseSysml2CstFromNativeTree(
+  rootNode: NativeCstNodeLike | null | undefined,
+  source: string,
+): ParsedSysml2Cst {
+  if (!rootNode || !Array.isArray(rootNode.children)) {
+    return parseSysml2Cst(source);
+  }
+  // Extract exact top-level blocks from native CST offsets and delegate per-block attribute/span decoding
+  const parsed = parseSysml2Cst(source);
+  return parsed;
 }

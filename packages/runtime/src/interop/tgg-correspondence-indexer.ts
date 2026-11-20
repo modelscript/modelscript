@@ -31,6 +31,7 @@ import {
 } from "../util/symbol_roles.js";
 import { evaluateRuleDescriptor } from "./tgg-pattern-interpreter.js";
 import { DigitalThreadHypergraph, ThreadDomain, ThreadRelation } from "./thread_hypergraph.js";
+import { type WasmCorrespondenceBridge, WasmPolyglotKernelBridge } from "./wasm-polyglot-bridge.js";
 
 const VAR_PREFIX = "__var_";
 
@@ -653,6 +654,9 @@ export class TggCorrespondenceIndexer {
   private indexerOwnedSlots = new Set<number>();
   private lastVersion = -1;
   private lastSymbolCount = -1;
+  private wasmCorrespondence: WasmCorrespondenceBridge | null = null;
+  private wasmCorrespondenceInitialized = false;
+  private readonly wasmSlotBySymbol = new Map<SymbolId, number>();
 
   constructor(
     projectionTable = new TggSymbolProjectionTable(),
@@ -662,6 +666,34 @@ export class TggCorrespondenceIndexer {
     this.projectionTable = projectionTable;
     this.hypergraph = hypergraph;
     this.autoAlignTopLevel = options.autoAlignTopLevel ?? true;
+  }
+
+  /**
+   * Returns the lazily-initialized linear-memory `WasmCorrespondenceBridge` when the
+   * runtime WASM kernel is hydrated, or `null` if unavailable.
+   */
+  public getWasmCorrespondenceBridge(): WasmCorrespondenceBridge | null {
+    if (!this.wasmCorrespondenceInitialized) {
+      this.wasmCorrespondenceInitialized = true;
+      this.wasmCorrespondence = new WasmPolyglotKernelBridge().createCorrespondenceBridge();
+    }
+    return this.wasmCorrespondence;
+  }
+
+  /**
+   * Marks `symbolId` and all descendant correspondence links stale in O(|subtree|) via the
+   * linear-memory WASM `CorrespondenceIndex` and drains the stale slot queue.
+   */
+  public markSymbolStaleCascading(symbolId: SymbolId): number[] {
+    const wasmCorr = this.getWasmCorrespondenceBridge();
+    if (!wasmCorr) return [];
+    const wasmSlot = this.wasmSlotBySymbol.get(symbolId);
+    if (wasmSlot === undefined) {
+      wasmCorr.markStale(symbolId);
+      return wasmCorr.drainStaleSlots();
+    }
+    wasmCorr.markStaleCascading(wasmSlot);
+    return wasmCorr.drainStaleSlots();
   }
 
   /** Maps a language ID to its canonical `ThreadDomain` in `this.hypergraph`. */
@@ -743,7 +775,7 @@ export class TggCorrespondenceIndexer {
             const rec = this.hypergraph.getRecord(oldSlot);
             if (!rec) continue;
             for (const memberId of Object.values(rec.domainNodes)) {
-              if (typeof memberId === "number") dirtyIds.add(memberId);
+              if (typeof memberId === "number") expandSymbol(memberId);
             }
           }
         }
@@ -752,17 +784,42 @@ export class TggCorrespondenceIndexer {
         expandSymbol(seedId);
       }
 
+      // Prune stale STEP entity cache entries for any dirty or deleted symbols
+      if (this.cachedStepByEntityKey.size > 0) {
+        for (const [stepKey, list] of this.cachedStepByEntityKey.entries()) {
+          const filtered = list.filter((s) => !dirtyIds.has(s.id) && index.symbols.has(s.id));
+          if (filtered.length === 0) {
+            this.cachedStepByEntityKey.delete(stepKey);
+          } else if (filtered.length !== list.length) {
+            this.cachedStepByEntityKey.set(stepKey, filtered);
+          }
+        }
+      }
+
       const slotsToRetract = new Set<number>();
       for (const did of dirtyIds) {
         for (const s of this.slotsBySymbol.get(did) ?? []) {
           slotsToRetract.add(s);
+          // Also ensure every member of a retracted slot is cleaned up from slotsBySymbol/slotMap
+          const rec = this.hypergraph.getRecord(s);
+          if (rec) {
+            for (const memberId of Object.values(rec.domainNodes)) {
+              if (typeof memberId === "number") dirtyIds.add(memberId);
+            }
+          }
         }
       }
       for (const oldSlot of slotsToRetract) {
         this.hypergraph.markRemoved(oldSlot);
         this.indexerOwnedSlots.delete(oldSlot);
       }
+      const wasmCorr = this.getWasmCorrespondenceBridge();
       for (const did of dirtyIds) {
+        if (wasmCorr) {
+          wasmCorr.retractBySource(did);
+          wasmCorr.retractByTarget(did);
+          this.wasmSlotBySymbol.delete(did);
+        }
         const sSet = this.slotsBySymbol.get(did);
         if (sSet) {
           for (const s of slotsToRetract) sSet.delete(s);
@@ -785,8 +842,11 @@ export class TggCorrespondenceIndexer {
       this.slotMap.clear();
       this.slotsBySymbol.clear();
       this.cachedStepByEntityKey.clear();
+      this.wasmSlotBySymbol.clear();
+      this.getWasmCorrespondenceBridge()?.reset();
     }
 
+    const wasmCorr = this.getWasmCorrespondenceBridge();
     const touchedSlots: number[] = [];
     const containerPairs: Array<{ a: SymbolEntry; b: SymbolEntry; slot: number }> = [];
     const boundPairs = new Set<string>();
@@ -857,6 +917,22 @@ export class TggCorrespondenceIndexer {
       this.hypergraph.bindDomainNode(slot, domB, b.id);
       recordSymbolSlot(a.id, slot);
       recordSymbolSlot(b.id, slot);
+
+      // Mirror link into linear-memory WASM CorrespondenceIndex with parent-child hierarchy
+      if (wasmCorr) {
+        const parentWasmSlot =
+          (a.parentId !== null ? this.wasmSlotBySymbol.get(a.parentId) : undefined) ??
+          (b.parentId !== null ? this.wasmSlotBySymbol.get(b.parentId) : undefined) ??
+          0xffffffff;
+        const wasmSlot =
+          parentWasmSlot !== 0xffffffff
+            ? wasmCorr.addLinkWithParent(a.id, b.id, parentWasmSlot, 0, 1, this.lastVersion >= 0 ? this.lastVersion : 0)
+            : wasmCorr.addLink(a.id, b.id, 0, 1, this.lastVersion >= 0 ? this.lastVersion : 0);
+        if (wasmSlot >= 0) {
+          if (!this.wasmSlotBySymbol.has(a.id)) this.wasmSlotBySymbol.set(a.id, wasmSlot);
+          if (!this.wasmSlotBySymbol.has(b.id)) this.wasmSlotBySymbol.set(b.id, wasmSlot);
+        }
+      }
 
       if (this.isContainerSymbol(index, a) && this.isContainerSymbol(index, b)) {
         containerPairs.push({ a, b, slot });
@@ -1027,9 +1103,11 @@ export class TggCorrespondenceIndexer {
             "Type",
           ]);
           if (target) {
-            bindPair(sym, target, ThreadRelation.Aligned);
+            const boundSlot = bindPair(sym, target, ThreadRelation.Aligned);
             // Also propagate contextual child bindings between the typed usage's enclosing container or usage children and target
-            containerPairs.push({ a: sym, b: target, slot: this.slotMap.get(sym.id)! });
+            if (boundSlot !== undefined && boundSlot !== null) {
+              containerPairs.push({ a: sym, b: target, slot: boundSlot });
+            }
           }
         }
       }

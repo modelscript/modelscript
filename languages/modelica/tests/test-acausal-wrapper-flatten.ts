@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { generateFmuWrapperModelica, type FmiModelDescription, type FmiTerminal } from "@modelscript/exchange";
 import { Context } from "@modelscript/modelica/context";
 import { createWasmParser } from "@modelscript/modelica/parser";
 import assert from "node:assert";
@@ -7,7 +8,6 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { generateFmuWrapperModelica, type FmiModelDescription, type FmiTerminal } from "../src/fmu/index.js";
 class NodeFileSystem {
   basename(p: string): string {
     return path.basename(p);
@@ -24,7 +24,7 @@ class NodeFileSystem {
   readBinary(p: string): Uint8Array {
     return fs.readFileSync(p);
   }
-  readdir(p: string): any[] {
+  readdir(p: string): fs.Dirent[] {
     return fs.readdirSync(p, { withFileTypes: true });
   }
   resolve(...paths: string[]): string {
@@ -33,7 +33,7 @@ class NodeFileSystem {
   get sep(): string {
     return path.sep;
   }
-  stat(p: string): any {
+  stat(p: string): fs.Stats | null {
     return fs.statSync(p, { throwIfNoEntry: false }) ?? null;
   }
 }
@@ -44,7 +44,7 @@ const modelicaWasmPath = require.resolve("@modelscript/modelica/parser.wasm");
 console.log("=== Running Acausal FMU Wrapper Modelica Flattener Parity Tests ===");
 
 const { parser } = await createWasmParser(modelicaWasmPath);
-Context.registerParser(".mo", parser as any);
+Context.registerParser(".mo", parser as Parameters<typeof Context.registerParser>[1]);
 
 const desc: FmiModelDescription = {
   fmiVersion: "3.0",

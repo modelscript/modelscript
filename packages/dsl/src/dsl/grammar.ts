@@ -4,6 +4,7 @@
  * Grammar normalization and BNF production flattening for DSL language definitions.
  */
 
+import { FORMAT_SENTINEL_END, FORMAT_SENTINEL_START } from "./codec-types.js";
 import { LanguageOptions, Rule, toRule } from "./language.js";
 
 /** A type alias for string, representing a grammar symbol (terminal or non-terminal) */
@@ -640,6 +641,8 @@ export class NormalizedGrammar {
   symbolRefs = new Map<string, Set<string>>();
   /** Extra symbol names referenced in `extras` or `externals` for reachability analysis. */
   entrySymbols = new Set<string>();
+  /** Synthesized PUA format-dispatch sentinels (`\uE000<format>\uE001`) generated from `LanguageOptions.formats`. */
+  formatSentinels = new Map<string, { sentinel: string; startRule: string }>();
   /** Static grammar diagnostics computed after flattening. */
   diagnostics: GrammarDiagnostic[] = [];
 
@@ -876,6 +879,30 @@ export class NormalizedGrammar {
       if (globalPrec !== undefined) p.prec = globalPrec;
       const right = this.flatten(name, rule, p);
       this.addProduction(name, right, p.prec, p.assoc, false, p.dynamicPrec);
+    }
+
+    // Wire declarative `formats` text entry points into GLR dispatch & reachability
+    if (grammar.formats) {
+      const existingTerminals = Array.from(this.terminals);
+      for (const [fmtKey, fmtDef] of Object.entries(grammar.formats)) {
+        if (fmtDef.kind !== "text" || !fmtDef.startRule) continue;
+        if (!this.evaluatedRules[fmtDef.startRule]) {
+          this.recordSymbolRef("_formats", fmtDef.startRule);
+          continue;
+        }
+        this.entrySymbols.add(fmtDef.startRule);
+        const sentinel = `${FORMAT_SENTINEL_START}${fmtKey}${FORMAT_SENTINEL_END}`;
+        const quotedSentinel = `"${sentinel}"`;
+        const escapedSentinel = `\\uE000${fmtKey}\\uE001`;
+        const alreadyDeclared = existingTerminals.some(
+          (t) => t === quotedSentinel || t.includes(sentinel) || t.includes(escapedSentinel),
+        );
+        if (!alreadyDeclared && this.startSymbol) {
+          this.formatSentinels.set(fmtKey, { sentinel, startRule: fmtDef.startRule });
+          this.terminals.add(quotedSentinel);
+          this.addProduction(this.startSymbol, [{ sym: quotedSentinel }, { sym: fmtDef.startRule }]);
+        }
+      }
     }
 
     // Ensure symbols that have productions (nonTerminals) are not classified as terminals

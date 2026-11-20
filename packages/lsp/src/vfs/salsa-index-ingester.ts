@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Memo, QueryCacheStore, SymbolEntry } from "@modelscript/runtime";
+import { deserializeMemo, type Memo, type QueryCacheStore, type SymbolEntry } from "@modelscript/runtime";
 import { createRequire } from "node:module";
 import initSqlJs from "sql.js";
 
@@ -93,7 +93,7 @@ export async function ingestSalsaIndex(
       for (const row of memoRows[0].values) {
         try {
           const key = Number(row[0]);
-          const data = JSON.parse(row[1] as string) as Memo;
+          const data = deserializeMemo(JSON.parse(row[1] as string));
           memos.set(key, data);
         } catch {
           // Ignore malformed memos

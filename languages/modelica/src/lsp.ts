@@ -26,6 +26,7 @@ import {
   computeComponentsDelete,
   computeConnectInsert,
   computeConnectRemove,
+  computeEdgePointEdits,
   computeNameEdit,
   computeParameterEdit,
   computePlacementEdits,
@@ -355,6 +356,7 @@ export function applyModelicaDiagramEdits(
   }
 
   let currentText = code;
+  let currentCi = ci;
   const allEdits: TextEdit[] = [];
 
   for (const rawAction of actions) {
@@ -382,10 +384,16 @@ export function applyModelicaDiagramEdits(
             width: typeof it["width"] === "number" ? it["width"] : 20,
             height: typeof it["height"] === "number" ? it["height"] : 20,
             rotation: typeof it["rotation"] === "number" ? it["rotation"] : undefined,
+            flipX: typeof it["flipX"] === "boolean" ? it["flipX"] : undefined,
+            flipY: typeof it["flipY"] === "boolean" ? it["flipY"] : undefined,
+            edges: Array.isArray(it["edges"])
+              ? (it["edges"] as Array<{ source: string; target: string; points: { x: number; y: number }[] }>)
+              : undefined,
+            connectedOnly: typeof it["connectedOnly"] === "boolean" ? it["connectedOnly"] : undefined,
           }))
           .filter((p) => Boolean(p.name));
         if (placements.length > 0) {
-          stepEdits = computePlacementEdits(currentText, ci, placements);
+          stepEdits = computePlacementEdits(currentText, currentCi, placements);
         }
       } else {
         const compName = typeof action["componentName"] === "string" ? action["componentName"] : "";
@@ -395,8 +403,17 @@ export function applyModelicaDiagramEdits(
         const height = typeof action["height"] === "number" ? action["height"] : 20;
         const rotation = typeof action["rotation"] === "number" ? action["rotation"] : undefined;
         if (compName) {
-          stepEdits = computePlacementEdits(currentText, ci, [{ name: compName, x, y, width, height, rotation }]);
+          stepEdits = computePlacementEdits(currentText, currentCi, [
+            { name: compName, x, y, width, height, rotation },
+          ]);
         }
+      }
+    } else if (kind === "moveEdge") {
+      const edges = Array.isArray(action["edges"])
+        ? (action["edges"] as Array<{ source: string; target: string; points: { x: number; y: number }[] }>)
+        : [];
+      if (edges.length > 0) {
+        stepEdits = computeEdgePointEdits(currentText.split("\n"), currentCi, edges);
       }
     } else if (kind === "setParameter" || kind === "updateParameter") {
       const compName =
@@ -413,7 +430,7 @@ export function applyModelicaDiagramEdits(
             : "";
       const value = action["value"] !== undefined ? String(action["value"]) : "";
       if (compName && paramName) {
-        stepEdits = computeParameterEdit(ci, compName, paramName, value, currentText);
+        stepEdits = computeParameterEdit(currentCi, compName, paramName, value, currentText);
       }
     } else if (kind === "addComponent") {
       const className = typeof action["className"] === "string" ? action["className"] : "";
@@ -423,25 +440,56 @@ export function applyModelicaDiagramEdits(
       if (className && !compName) {
         const leaf = className.split(".").pop() || "component";
         const base = leaf.charAt(0).toLowerCase() + leaf.slice(1);
-        const existing = new Set((ci.components ?? []).map((c) => c.name));
+        const existing = new Set((currentCi.components ?? []).map((c) => c.name));
         let idx = 1;
         while (existing.has(`${base}${idx}`)) idx++;
         compName = `${base}${idx}`;
       }
       if (className && compName) {
-        stepEdits = computeComponentInsert(ci, className, compName, x, y, currentText);
+        stepEdits = computeComponentInsert(currentCi, className, compName, x, y, currentText);
       }
     } else if (kind === "addConnect" || kind === "connect") {
       const source = typeof action["source"] === "string" ? action["source"] : "";
       const target = typeof action["target"] === "string" ? action["target"] : "";
+      const points = Array.isArray(action["points"])
+        ? (action["points"] as Array<{ x: number; y: number }>)
+        : undefined;
+      const color =
+        Array.isArray(action["color"]) && action["color"].length === 3
+          ? (action["color"] as [number, number, number])
+          : undefined;
       if (source && target) {
-        stepEdits = computeConnectInsert(currentText, ci, source, target);
+        stepEdits = computeConnectInsert(currentText, currentCi, source, target, points, color);
+      }
+    } else if (kind === "reconnect") {
+      const oldSource = typeof action["oldSource"] === "string" ? action["oldSource"] : "";
+      const oldTarget = typeof action["oldTarget"] === "string" ? action["oldTarget"] : "";
+      const newSource = typeof action["newSource"] === "string" ? action["newSource"] : "";
+      const newTarget = typeof action["newTarget"] === "string" ? action["newTarget"] : "";
+      const points = Array.isArray(action["points"])
+        ? (action["points"] as Array<{ x: number; y: number }>)
+        : undefined;
+      const color =
+        Array.isArray(action["color"]) && action["color"].length === 3
+          ? (action["color"] as [number, number, number])
+          : undefined;
+      if (oldSource && oldTarget && newSource && newTarget) {
+        const rmEdits = computeConnectRemove(currentText, currentCi, oldSource, oldTarget);
+        if (rmEdits.length > 0) {
+          allEdits.push(...rmEdits);
+          currentText = applyEditsToText(currentText, rmEdits);
+          currentCi =
+            buildFallbackClassInstance(currentText, effectiveClass) ??
+            buildFallbackClassInstance(currentText) ??
+            currentCi;
+        }
+        stepEdits = computeConnectInsert(currentText, currentCi, newSource, newTarget, points, color);
       }
     } else if (kind === "removeConnect" || kind === "disconnect") {
       const source = typeof action["source"] === "string" ? action["source"] : "";
       const target = typeof action["target"] === "string" ? action["target"] : "";
       if (source && target) {
-        stepEdits = computeConnectRemove(currentText, ci, source, target);
+        stepEdits = computeConnectRemove(currentText, currentCi, source, target);
       }
     } else if (kind === "deleteComponents") {
       const rawNames = Array.isArray(action["names"])
@@ -451,7 +499,7 @@ export function applyModelicaDiagramEdits(
           : [];
       const names = (rawNames as unknown[]).filter((n): n is string => typeof n === "string");
       if (names.length > 0) {
-        stepEdits = computeComponentsDelete(currentText, ci, names);
+        stepEdits = computeComponentsDelete(currentText, currentCi, names);
       }
     } else if (kind === "renameComponent" || kind === "updateName") {
       const oldName =
@@ -462,13 +510,15 @@ export function applyModelicaDiagramEdits(
             : "";
       const newName = typeof action["newName"] === "string" ? action["newName"] : "";
       if (oldName && newName) {
-        stepEdits = computeNameEdit(ci, oldName, newName, currentText);
+        stepEdits = computeNameEdit(currentCi, oldName, newName, currentText);
       }
     }
 
     if (stepEdits.length > 0) {
       allEdits.push(...stepEdits);
       currentText = applyEditsToText(currentText, stepEdits);
+      currentCi =
+        buildFallbackClassInstance(currentText, effectiveClass) ?? buildFallbackClassInstance(currentText) ?? currentCi;
     }
   }
 

@@ -588,13 +588,17 @@ interface TsEmtArgs extends CosimArgs {
   duration: number;
   "dt-ts": number;
   "dt-emt": number;
+  mode: "direct" | "fmi";
+  sequences: 1 | 3;
+  fdne: boolean;
+  "max-iterations": number;
   out?: string | undefined;
 }
 
 /** Multi-rate TS-EMT hybrid co-simulation between PSS/E and PSCAD. */
 const tsEmt: CommandModule<CosimArgs, TsEmtArgs> = {
   command: "ts-emt <raw> <pscx>",
-  describe: "Run multi-rate TS-EMT hybrid co-simulation between PSS/E and PSCAD",
+  describe: "Run closed-loop multi-rate TS-EMT hybrid co-simulation between PSS/E and PSCAD (direct or FMI 3.0)",
   builder: (yargs) => {
     return yargs
       .positional("raw", {
@@ -629,62 +633,85 @@ const tsEmt: CommandModule<CosimArgs, TsEmtArgs> = {
         type: "number",
         default: 50e-6,
       })
+      .option("mode", {
+        description: "Coupling engine mode: direct polyglot or FMI 3.0 (fmi-ls-rms/fmi-ls-emt)",
+        choices: ["direct", "fmi"] as const,
+        default: "direct" as const,
+      })
+      .option("sequences", {
+        description: "Sequence coupling order (1 = balanced positive-seq, 3 = unbalanced pos/neg/zero)",
+        choices: [1, 3] as const,
+        default: 1 as const,
+      })
+      .option("fdne", {
+        description: "Enable Frequency-Dependent Network Equivalent (FDNE) vector fitting at boundary",
+        type: "boolean",
+        default: false,
+      })
+      .option("max-iterations", {
+        description: "Max Picard waveform-relaxation iterations per macro-step",
+        type: "number",
+        default: 1,
+      })
       .option("out", {
         alias: "o",
         description: "Output JSON or CSV report file path",
         type: "string",
-      });
+      }) as unknown as import("yargs").Argv<TsEmtArgs>;
   },
   handler: async (args) => {
     const rawContent = fs.readFileSync(args.raw, "utf-8");
     const pscxContent = fs.readFileSync(args.pscx, "utf-8");
 
     const [bTsStr, bEmtStr] = (args.boundary || "").split(":");
-    const psseBusNumber = parseInt(bTsStr || "1", 10);
+    const psseBusId = String(parseInt(bTsStr || "1", 10));
     const pscadBusId = (bEmtStr || "Bus1").trim();
 
-    const { parseRaw, simulatePsseTransient } = await import("@modelscript/psse");
-    const { parsePscx, extractEmtNetlist, EmtSolver } = await import("@modelscript/pscad");
-    const { runTsEmtCoSimulation } = await import("@modelscript/exchange");
+    const { parseRaw, PssePhasorParticipant } = await import("@modelscript/psse");
+    const { parsePscx, extractEmtNetlist, PscadEmtParticipant } = await import("@modelscript/pscad");
+    const { runHybridPhasorEmtCoSimulation } = await import("@modelscript/exchange");
 
     const pCase = parseRaw(rawContent);
     const pProj = parsePscx(pscxContent);
     const netlist = extractEmtNetlist(pProj);
 
-    console.log(`Starting TS-EMT Hybrid Co-Simulation...`);
-    console.log(`  PSS/E Model: ${args.raw} (Bus ${psseBusNumber})`);
+    const phasorParticipant = new PssePhasorParticipant(pCase, { id: "PSS_E" });
+    const emtParticipant = new PscadEmtParticipant(netlist, { id: "PSCAD_Plant_1" });
+
+    console.log(`Starting Closed-Loop TS-EMT Hybrid Co-Simulation [${args.mode.toUpperCase()}]...`);
+    console.log(`  PSS/E Model: ${args.raw} (Bus ${psseBusId})`);
     console.log(`  PSCAD Model: ${args.pscx} (Node '${pscadBusId}')`);
     console.log(
-      `  Macro TS Step: ${(args["dt-ts"] * 1e3).toFixed(2)} ms | Micro EMT Step: ${(args["dt-emt"] * 1e6).toFixed(1)} µs`,
+      `  Macro TS Step: ${(args["dt-ts"] * 1e3).toFixed(2)} ms | Micro EMT Step: ${(args["dt-emt"] * 1e6).toFixed(1)} µs | Sequences: ${args.sequences} | FDNE: ${args.fdne}`,
     );
     console.log(`  Duration: ${args.duration} s`);
 
-    const result = await runTsEmtCoSimulation(
-      (tsOpts) =>
-        simulatePsseTransient(pCase, tsOpts as unknown as Parameters<typeof simulatePsseTransient>[1]) as ReturnType<
-          Parameters<typeof runTsEmtCoSimulation>[0]
-        >,
-      (emtOpts) => {
-        const solver = new EmtSolver(netlist, emtOpts);
-        return solver.solve() as ReturnType<Parameters<typeof runTsEmtCoSimulation>[1]>;
-      },
+    const result = await runHybridPhasorEmtCoSimulation(
+      phasorParticipant,
+      [
+        {
+          id: "PSCAD_Plant_1",
+          participant: emtParticipant,
+          boundaryPorts: [{ phasorBusId: psseBusId, emtBusId: pscadBusId }],
+        },
+      ],
       {
         durationSec: args.duration,
         dtTsSec: args["dt-ts"],
         dtEmtSec: args["dt-emt"],
-        boundaryPorts: [
-          {
-            psseBusNumber,
-            pscadBusId,
-          },
-        ],
+        mode: args.mode,
+        sequences: args.sequences,
+        useFdne: args.fdne,
+        maxIterations: args["max-iterations"],
       },
     );
 
-    console.log(`\n✔ TS-EMT Co-Simulation Completed in ${result.wallClockTimeMs} ms:`);
-    console.log(`  Total TS Macro-Steps: ${result.totalMacroSteps}`);
-    console.log(`  Total EMT Sub-Steps: ${result.totalEmtSubSteps}`);
-    console.log(`  Multi-Rate Step Ratio: 1:${result.ratioM}`);
+    console.log(`\n✔ Closed-Loop TS-EMT Co-Simulation Completed in ${result.wallClockTimeMs} ms:`);
+    console.log(`  Mode: ${result.mode} | Sequences: ${result.sequences} | FDNE: ${result.usedFdne}`);
+    console.log(
+      `  Total TS Macro-Steps: ${result.totalMacroSteps} | Total EMT Sub-Steps: ${result.totalEmtSubSteps} (1:${result.ratioM})`,
+    );
+    console.log(`  Topology Updates: ${result.topologyUpdates} | Picard Iterations: ${result.totalPicardIterations}`);
     if (result.macroRecords.length > 0) {
       const last = result.macroRecords[result.macroRecords.length - 1]!;
       console.log(`  Final Boundary TS Voltage: ${last.vTsMagPu.toFixed(4)} pu ∠ ${last.vTsAngleDeg.toFixed(2)}°`);
@@ -738,6 +765,9 @@ interface MultiTsEmtArgs extends CosimArgs {
   duration: number;
   "dt-ts": number;
   "dt-emt": number;
+  mode: "direct" | "fmi";
+  sequences: 1 | 3;
+  fdne: boolean;
   extrapolation?: "constant" | "linear" | "quadratic" | undefined;
   out?: string | undefined;
 }
@@ -745,7 +775,8 @@ interface MultiTsEmtArgs extends CosimArgs {
 /** Multi-rate concurrent multi-plant TS-EMT hybrid co-simulation between PSS/E and multiple PSCAD plants. */
 const multiTsEmt: CommandModule<CosimArgs, MultiTsEmtArgs> = {
   command: "multi-ts-emt <raw>",
-  describe: "Run concurrent multi-plant TS-EMT hybrid co-simulation (PSS/E transmission + multiple PSCAD plants)",
+  describe:
+    "Run closed-loop concurrent multi-plant TS-EMT hybrid co-simulation (PSS/E transmission + multiple PSCAD plants)",
   builder: (yargs) => {
     return yargs
       .positional("raw", {
@@ -775,10 +806,25 @@ const multiTsEmt: CommandModule<CosimArgs, MultiTsEmtArgs> = {
         type: "number",
         default: 50e-6,
       })
+      .option("mode", {
+        description: "Coupling engine mode: direct polyglot or FMI 3.0",
+        choices: ["direct", "fmi"] as const,
+        default: "direct" as const,
+      })
+      .option("sequences", {
+        description: "Sequence coupling order (1 = balanced, 3 = unbalanced pos/neg/zero)",
+        choices: [1, 3] as const,
+        default: 1 as const,
+      })
+      .option("fdne", {
+        description: "Enable FDNE rational vector fitting at boundaries",
+        type: "boolean",
+        default: false,
+      })
       .option("extrapolation", {
         description: "Boundary voltage extrapolation mode",
         choices: ["constant", "linear", "quadratic"] as const,
-        default: "quadratic" as const,
+        default: "linear" as const,
       })
       .option("out", {
         alias: "o",
@@ -788,9 +834,9 @@ const multiTsEmt: CommandModule<CosimArgs, MultiTsEmtArgs> = {
   },
   handler: async (args) => {
     const rawContent = fs.readFileSync(args.raw, "utf-8");
-    const { parseRaw, simulatePsseTransient } = await import("@modelscript/psse");
-    const { parsePscx, extractEmtNetlist, EmtSolver } = await import("@modelscript/pscad");
-    const { runMultiPlantTsEmtCoSimulation } = await import("@modelscript/exchange");
+    const { parseRaw, PssePhasorParticipant } = await import("@modelscript/psse");
+    const { parsePscx, extractEmtNetlist, PscadEmtParticipant } = await import("@modelscript/pscad");
+    const { runHybridPhasorEmtCoSimulation } = await import("@modelscript/exchange");
 
     const pCase = parseRaw(rawContent);
 
@@ -800,7 +846,7 @@ const multiTsEmt: CommandModule<CosimArgs, MultiTsEmtArgs> = {
         throw new Error(`Invalid plant specification '${pStr}'. Expected format 'id:path.pscx:psseBusNumber:emtBusId'`);
       }
       const [id, pscxPath, psseBusStr, emtBusId] = parts;
-      const psseBusNumber = parseInt(psseBusStr!, 10);
+      const psseBusId = String(parseInt(psseBusStr!, 10));
       const content = fs.readFileSync(pscxPath!, "utf-8");
       const proj = parsePscx(content);
       const netlist = extractEmtNetlist(proj);
@@ -808,62 +854,51 @@ const multiTsEmt: CommandModule<CosimArgs, MultiTsEmtArgs> = {
       return {
         id: id!,
         pscxPath: pscxPath!,
-        psseBusNumber,
+        psseBusId,
         emtBusId: emtBusId!,
         netlist,
       };
     });
 
-    console.log(`Starting Concurrent Multi-Plant TS-EMT Co-Simulation...`);
+    console.log(`Starting Closed-Loop Multi-Plant TS-EMT Co-Simulation [${args.mode.toUpperCase()}]...`);
     console.log(`  PSS/E Bulk Transmission: ${args.raw}`);
     console.log(`  Concurrent EMT Plants: ${plantSpecs.length}`);
     for (const p of plantSpecs) {
-      console.log(`    - [${p.id}] ${p.pscxPath} (PSS/E Bus ${p.psseBusNumber} <-> EMT Bus '${p.emtBusId}')`);
+      console.log(`    - [${p.id}] ${p.pscxPath} (PSS/E Bus ${p.psseBusId} <-> EMT Bus '${p.emtBusId}')`);
     }
     console.log(
-      `  Macro TS Step: ${(args["dt-ts"] * 1e3).toFixed(2)} ms | Micro EMT Step: ${(args["dt-emt"] * 1e6).toFixed(1)} µs`,
+      `  Macro TS Step: ${(args["dt-ts"] * 1e3).toFixed(2)} ms | Micro EMT Step: ${(args["dt-emt"] * 1e6).toFixed(1)} µs | Sequences: ${args.sequences} | FDNE: ${args.fdne}`,
     );
     console.log(`  Duration: ${args.duration} s | Extrapolation: ${args.extrapolation}`);
 
+    const phasorParticipant = new PssePhasorParticipant(pCase, { id: "PSS_E_BulkGrid" });
     const plants = plantSpecs.map((p) => ({
       id: p.id,
+      participant: new PscadEmtParticipant(p.netlist, { id: p.id }),
       boundaryPorts: [
         {
-          psseBusNumber: p.psseBusNumber,
-          pscadBusId: p.emtBusId,
+          phasorBusId: p.psseBusId,
+          emtBusId: p.emtBusId,
         },
       ],
-      runner: (
-        emtOpts: Parameters<
-          NonNullable<Parameters<typeof runMultiPlantTsEmtCoSimulation>[1]["plants"][number]["runner"]>
-        >[0],
-      ) => {
-        const solver = new EmtSolver(p.netlist, emtOpts);
-        return solver.solve() as ReturnType<
-          NonNullable<Parameters<typeof runMultiPlantTsEmtCoSimulation>[1]["plants"][number]["runner"]>
-        >;
-      },
     }));
 
-    const result = await runMultiPlantTsEmtCoSimulation(
-      (tsOpts) =>
-        simulatePsseTransient(pCase, tsOpts as unknown as Parameters<typeof simulatePsseTransient>[1]) as ReturnType<
-          Parameters<typeof runMultiPlantTsEmtCoSimulation>[0]
-        >,
-      {
-        durationSec: args.duration,
-        dtTsSec: args["dt-ts"],
-        dtEmtSec: args["dt-emt"],
-        extrapolation: args.extrapolation,
-        plants,
-      },
-    );
+    const result = await runHybridPhasorEmtCoSimulation(phasorParticipant, plants, {
+      durationSec: args.duration,
+      dtTsSec: args["dt-ts"],
+      dtEmtSec: args["dt-emt"],
+      mode: args.mode,
+      sequences: args.sequences,
+      useFdne: args.fdne,
+      extrapolation: args.extrapolation,
+    });
 
-    console.log(`\n✔ Concurrent Multi-Plant TS-EMT Co-Simulation Completed in ${result.wallClockTimeMs} ms:`);
-    console.log(`  Total TS Macro-Steps: ${result.totalMacroSteps}`);
-    console.log(`  Total EMT Sub-Steps: ${result.totalEmtSubSteps}`);
-    console.log(`  Simulated Plants: ${result.plantCount}`);
-    console.log(`  Multi-Rate Step Ratio: 1:${result.ratioM}`);
+    console.log(`\n✔ Closed-Loop Multi-Plant TS-EMT Co-Simulation Completed in ${result.wallClockTimeMs} ms:`);
+    console.log(`  Mode: ${result.mode} | Sequences: ${result.sequences} | FDNE: ${result.usedFdne}`);
+    console.log(
+      `  Total TS Macro-Steps: ${result.totalMacroSteps} | Total EMT Sub-Steps: ${result.totalEmtSubSteps} (1:${result.ratioM})`,
+    );
+    console.log(`  Simulated Plants: ${result.plantCount} | Topology Updates: ${result.topologyUpdates}`);
 
     if (args.out) {
       fs.writeFileSync(args.out, JSON.stringify(result.macroRecords, null, 2), "utf-8");

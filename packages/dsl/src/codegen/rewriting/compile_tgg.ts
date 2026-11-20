@@ -346,6 +346,7 @@ export function compileTGGRules(
     hasPhysBounds: boolean;
     minStr: string;
     maxStr: string;
+    strategyCode?: number | undefined;
   }[] = [];
 
   let code = `// ============================================================================\n`;
@@ -371,10 +372,52 @@ export function compileTGGRules(
     const srcBindings = evaluatedSource?.bindings || {};
     const tgtBindings = evaluatedTarget?.bindings || {};
 
+    // Infer numeric (f64) property names from constraints & literal bindings so AOT codegen
+    // emits getProperty<f64>/setProperty<f64> instead of truncating floats to <u32>.
+    const numericVars = new Set<string>();
+    const numericProps = new Set<string>();
+    for (const [k, v] of Object.entries(srcBindings)) {
+      if (typeof v === "number") numericProps.add(k);
+    }
+    for (const [k, v] of Object.entries(tgtBindings)) {
+      if (typeof v === "number") numericProps.add(k);
+    }
+    for (const c of constraints) {
+      if (c.kind === "reconcile" || c.kind === "reconcilePhysics" || c.kind === "invertible" || c.kind === "compute") {
+        for (const arg of c.args) {
+          if (typeof arg === "string" && arg.startsWith("__var_")) {
+            numericVars.add(arg);
+            numericProps.add(stripVarPrefix(arg));
+          }
+        }
+      }
+    }
+    for (const [k, v] of Object.entries(srcBindings)) {
+      if (typeof v === "string" && numericVars.has(v)) numericProps.add(k);
+    }
+    for (const [k, v] of Object.entries(tgtBindings)) {
+      if (typeof v === "string" && numericVars.has(v)) numericProps.add(k);
+    }
+
+    // Evaluate optional rule.context parent node types for runtime parentSlot verification
+    const rawCtx = r.rule.context;
+    const evalCtx = typeof rawCtx === "function" ? rawCtx($proxy, vProxy) : rawCtx;
+    const ctxSrcPat = typeof evalCtx?.source === "function" ? evalCtx.source($proxy, vProxy) : evalCtx?.source;
+    const ctxTgtPat = typeof evalCtx?.target === "function" ? evalCtx.target($proxy, vProxy) : evalCtx?.target;
+    const ctxSrcHash = ctxSrcPat?.nodeType ? getCollisionFreeNodeHash(ctxSrcPat.nodeType) & 0xffff : 0;
+    const ctxTgtHash = ctxTgtPat?.nodeType ? getCollisionFreeNodeHash(ctxTgtPat.nodeType) & 0xffff : 0;
+
     // Forward transformation
     code += `// --- Rule ${idx}: ${ruleName} (Forward) ---\n`;
     code += `export function tgg_forward_${ruleName}(sourceNodeId: u32, corr: CorrespondenceIndex, arena: PolyglotArena, parentSlot: u32 = 0xFFFFFFFF): u32 {\n`;
     code += `  if (sourceNodeId == 0) return 0;\n`;
+    if (ctxSrcHash !== 0) {
+      code += `  // Context precondition: verify parentSlot source node matches '${ctxSrcPat.nodeType}'\n`;
+      code += `  if (parentSlot != 0xFFFFFFFF) {\n`;
+      code += `    let __ctxSrcNode = corr.getSource(parentSlot);\n`;
+      code += `    if (__ctxSrcNode == 0 || getNodeType(__ctxSrcNode) != (${ctxSrcHash} as u16)) return 0;\n`;
+      code += `  }\n`;
+    }
     code += `  \n`;
     code += `  // Check if target already created in correspondence index\n`;
     code += `  let existingTarget = corr.findBySource(sourceNodeId);\n`;
@@ -392,6 +435,25 @@ export function compileTGGRules(
       }
     }
 
+    // Verify Negative Application Conditions (NACs) BEFORE allocating targetNodeId to avoid leaking orphan nodes
+    for (const c of constraints) {
+      if (c.kind === "not") {
+        const [forbiddenPattern] = c.args;
+        const evaluatedForbidden =
+          typeof forbiddenPattern === "function" ? forbiddenPattern($proxy, vProxy) : forbiddenPattern;
+        const forbiddenType = evaluatedForbidden?.nodeType || String(forbiddenPattern);
+        const forbiddenHash = getCollisionFreeNodeHash(forbiddenType);
+        code += `  // NAC: Verify forbidden pattern '${forbiddenType}' is absent\n`;
+        code += `  {\n`;
+        code += `    let checkChild = getNodeFirstChild(sourceNodeId);\n`;
+        code += `    while (checkChild != 0) {\n`;
+        code += `      if (getNodeType(checkChild) == ((${forbiddenHash} & 0xffff) as u16)) return 0;\n`;
+        code += `      checkChild = getNodeNextSibling(checkChild);\n`;
+        code += `    }\n`;
+        code += `  }\n`;
+      }
+    }
+
     // Allocate target AST node
     code += `  let targetNodeId = graph.model.create((${targetNodeHash} & 0xffff) as u16);\n\n`;
 
@@ -402,8 +464,9 @@ export function compileTGGRules(
         const matchedSrcAttr = Object.keys(srcBindings).find((k) => srcBindings[k] === tgtVal);
         if (matchedSrcAttr) {
           const srcPropHash = getDJB2Hash(matchedSrcAttr) as u32;
-          code += `  let __val_${tgtProp} = graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32);\n`;
-          code += `  graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __val_${tgtProp});\n`;
+          const propTy = numericProps.has(tgtProp) || numericProps.has(matchedSrcAttr) ? "f64" : "u32";
+          code += `  let __val_${tgtProp} = graph.model.getProperty<${propTy}>(sourceNodeId, ${srcPropHash} as u32);\n`;
+          code += `  graph.model.setProperty<${propTy}>(targetNodeId, ${tgtPropHash} as u32, __val_${tgtProp});\n`;
         }
       } else if (typeof tgtVal === "boolean") {
         code += `  graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, ${tgtVal ? 1 : 0} as u32);\n`;
@@ -431,9 +494,14 @@ export function compileTGGRules(
         if (srcProp && tgtProp) {
           const srcPropHash = getDJB2Hash(srcProp) as u32;
           const tgtPropHash = getDJB2Hash(tgtProp) as u32;
-          code += `  let __eqVal_fwd_${idx}_${cIdx} = graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32);\n`;
-          code += `  if (__eqVal_fwd_${idx}_${cIdx} != 0) {\n`;
-          code += `    graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __eqVal_fwd_${idx}_${cIdx});\n`;
+          const propTy = numericProps.has(srcProp) || numericProps.has(tgtProp) ? "f64" : "u32";
+          code += `  let __eqVal_fwd_${idx}_${cIdx} = graph.model.getProperty<${propTy}>(sourceNodeId, ${srcPropHash} as u32);\n`;
+          if (propTy === "f64") {
+            code += `  if (!isNaN(__eqVal_fwd_${idx}_${cIdx})) {\n`;
+          } else {
+            code += `  if (__eqVal_fwd_${idx}_${cIdx} != 0) {\n`;
+          }
+          code += `    graph.model.setProperty<${propTy}>(targetNodeId, ${tgtPropHash} as u32, __eqVal_fwd_${idx}_${cIdx});\n`;
           code += `  }\n`;
         }
       } else if (c.kind === "defaultVal") {
@@ -545,19 +613,7 @@ export function compileTGGRules(
         code += `    graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __compVal_fwd_${idx}_${cIdx});\n`;
         code += `  }\n`;
       } else if (c.kind === "not") {
-        const [forbiddenPattern] = c.args;
-        const evaluatedForbidden =
-          typeof forbiddenPattern === "function" ? forbiddenPattern($proxy, vProxy) : forbiddenPattern;
-        const forbiddenType = evaluatedForbidden?.nodeType || String(forbiddenPattern);
-        const forbiddenHash = getDJB2Hash(forbiddenType);
-        code += `  // NAC: Verify forbidden pattern '${forbiddenType}' is absent\n`;
-        code += `  {\n`;
-        code += `    let checkChild = getNodeFirstChild(sourceNodeId);\n`;
-        code += `    while (checkChild != 0) {\n`;
-        code += `      if (getNodeType(checkChild) == ((${forbiddenHash} & 0xffff) as u16)) return 0;\n`;
-        code += `      checkChild = getNodeNextSibling(checkChild);\n`;
-        code += `    }\n`;
-        code += `  }\n`;
+        // Already verified before targetNodeId allocation above
       } else if (c.kind === "path") {
         const [sourceVar, pathString, targetVar] = c.args;
         const srcProp = findBoundProperty(srcBindings, sourceVar, "source");
@@ -695,10 +751,10 @@ export function compileTGGRules(
         const tgtAcrossProp = findBoundProperty(tgtBindings, acrossVar, stripVarPrefix(acrossVar));
         const srcFlowProp = findBoundProperty(srcBindings, flowVar, stripVarPrefix(flowVar));
         const tgtFlowProp = findBoundProperty(tgtBindings, flowVar, stripVarPrefix(flowVar));
-        code += `  let __acrossVal_fwd_${idx} = graph.model.getProperty<u32>(sourceNodeId, ${getDJB2Hash(srcAcrossProp)} as u32);\n`;
-        code += `  if (__acrossVal_fwd_${idx} != 0) graph.model.setProperty<u32>(targetNodeId, ${getDJB2Hash(tgtAcrossProp)} as u32, __acrossVal_fwd_${idx});\n`;
-        code += `  let __flowVal_fwd_${idx} = graph.model.getProperty<u32>(sourceNodeId, ${getDJB2Hash(srcFlowProp)} as u32);\n`;
-        code += `  if (__flowVal_fwd_${idx} != 0) graph.model.setProperty<u32>(targetNodeId, ${getDJB2Hash(tgtFlowProp)} as u32, __flowVal_fwd_${idx});\n`;
+        code += `  let __acrossVal_fwd_${idx}_${cIdx} = graph.model.getProperty<u32>(sourceNodeId, ${getDJB2Hash(srcAcrossProp)} as u32);\n`;
+        code += `  if (__acrossVal_fwd_${idx}_${cIdx} != 0) graph.model.setProperty<u32>(targetNodeId, ${getDJB2Hash(tgtAcrossProp)} as u32, __acrossVal_fwd_${idx}_${cIdx});\n`;
+        code += `  let __flowVal_fwd_${idx}_${cIdx} = graph.model.getProperty<u32>(sourceNodeId, ${getDJB2Hash(srcFlowProp)} as u32);\n`;
+        code += `  if (__flowVal_fwd_${idx}_${cIdx} != 0) graph.model.setProperty<u32>(targetNodeId, ${getDJB2Hash(tgtFlowProp)} as u32, __flowVal_fwd_${idx}_${cIdx});\n`;
       }
     }
 
@@ -708,14 +764,16 @@ export function compileTGGRules(
     code += `  // Register bidirectional link in correspondence index\n`;
     code += `  let corrSlot = corr.addLink(sourceNodeId, targetNodeId, ${idx}, CORR_FLAG_SYNCED, 0, parentSlot);\n`;
     if (compFields.length > 0) {
-      code += `  // Allocate and store shadow complement fiber in linear memory\n`;
-      code += `  let compPtr = atomicChunkAlloc(${compFields.length * 8});\n`;
+      code += `  // Allocate and store shadow complement fiber via CorrespondenceIndex freelist\n`;
+      code += `  let compPtr = corr.allocComplement(${compFields.length * 8});\n`;
+      code += `  if (compPtr != 0) {\n`;
       for (let fIdx = 0; fIdx < compFields.length; fIdx++) {
         const fHash = getDJB2Hash(compFields[fIdx]!) as u32;
-        code += `  store<u32>(compPtr + ${fIdx * 8}, ${fHash});\n`;
-        code += `  store<u32>(compPtr + ${fIdx * 8 + 4}, graph.model.getProperty<u32>(sourceNodeId, ${fHash}));\n`;
+        code += `    store<u32>((compPtr as usize) + ${fIdx * 8}, ${fHash});\n`;
+        code += `    store<u32>((compPtr as usize) + ${fIdx * 8 + 4}, graph.model.getProperty<u32>(sourceNodeId, ${fHash}));\n`;
       }
-      code += `  corr.setComplement(corrSlot, compPtr as u32);\n`;
+      code += `    corr.updateComplement(corrSlot, compPtr);\n`;
+      code += `  }\n`;
     }
     code += `  return targetNodeId;\n`;
     code += `}\n\n`;
@@ -724,6 +782,13 @@ export function compileTGGRules(
     code += `// --- Rule ${idx}: ${ruleName} (Backward) ---\n`;
     code += `export function tgg_backward_${ruleName}(targetNodeId: u32, corr: CorrespondenceIndex, arena: PolyglotArena, parentSlot: u32 = 0xFFFFFFFF): u32 {\n`;
     code += `  if (targetNodeId == 0) return 0;\n`;
+    if (ctxTgtHash !== 0) {
+      code += `  // Context precondition: verify parentSlot target node matches '${ctxTgtPat.nodeType}'\n`;
+      code += `  if (parentSlot != 0xFFFFFFFF) {\n`;
+      code += `    let __ctxTgtNode = corr.getTarget(parentSlot);\n`;
+      code += `    if (__ctxTgtNode == 0 || getNodeType(__ctxTgtNode) != (${ctxTgtHash} as u16)) return 0;\n`;
+      code += `  }\n`;
+    }
     code += `  \n`;
     code += `  let existingSource = corr.findByTarget(targetNodeId);\n`;
     code += `  if (existingSource != 0) return existingSource;\n\n`;
@@ -749,8 +814,9 @@ export function compileTGGRules(
         const matchedTgtAttr = Object.keys(tgtBindings).find((k) => tgtBindings[k] === srcVal);
         if (matchedTgtAttr) {
           const tgtPropHash = getDJB2Hash(matchedTgtAttr) as u32;
-          code += `  let __val_bwd_${srcProp} = graph.model.getProperty<u32>(targetNodeId, ${tgtPropHash} as u32);\n`;
-          code += `  graph.model.setProperty<u32>(sourceNodeId, ${srcPropHash} as u32, __val_bwd_${srcProp});\n`;
+          const propTy = numericProps.has(srcProp) || numericProps.has(matchedTgtAttr) ? "f64" : "u32";
+          code += `  let __val_bwd_${srcProp} = graph.model.getProperty<${propTy}>(targetNodeId, ${tgtPropHash} as u32);\n`;
+          code += `  graph.model.setProperty<${propTy}>(sourceNodeId, ${srcPropHash} as u32, __val_bwd_${srcProp});\n`;
         }
       } else if (typeof srcVal === "boolean") {
         code += `  graph.model.setProperty<u32>(sourceNodeId, ${srcPropHash} as u32, ${srcVal ? 1 : 0} as u32);\n`;
@@ -777,9 +843,14 @@ export function compileTGGRules(
         if (srcProp && tgtProp) {
           const srcPropHash = getDJB2Hash(srcProp) as u32;
           const tgtPropHash = getDJB2Hash(tgtProp) as u32;
-          code += `  let __eqVal_bwd_${idx}_${cIdx} = graph.model.getProperty<u32>(targetNodeId, ${tgtPropHash} as u32);\n`;
-          code += `  if (__eqVal_bwd_${idx}_${cIdx} != 0) {\n`;
-          code += `    graph.model.setProperty<u32>(sourceNodeId, ${srcPropHash} as u32, __eqVal_bwd_${idx}_${cIdx});\n`;
+          const propTy = numericProps.has(srcProp) || numericProps.has(tgtProp) ? "f64" : "u32";
+          code += `  let __eqVal_bwd_${idx}_${cIdx} = graph.model.getProperty<${propTy}>(targetNodeId, ${tgtPropHash} as u32);\n`;
+          if (propTy === "f64") {
+            code += `  if (!isNaN(__eqVal_bwd_${idx}_${cIdx})) {\n`;
+          } else {
+            code += `  if (__eqVal_bwd_${idx}_${cIdx} != 0) {\n`;
+          }
+          code += `    graph.model.setProperty<${propTy}>(sourceNodeId, ${srcPropHash} as u32, __eqVal_bwd_${idx}_${cIdx});\n`;
           code += `  }\n`;
         }
       } else if (c.kind === "formatUri") {
@@ -968,10 +1039,10 @@ export function compileTGGRules(
         const tgtAcrossProp = findBoundProperty(tgtBindings, acrossVar, stripVarPrefix(acrossVar));
         const srcFlowProp = findBoundProperty(srcBindings, flowVar, stripVarPrefix(flowVar));
         const tgtFlowProp = findBoundProperty(tgtBindings, flowVar, stripVarPrefix(flowVar));
-        code += `  let __acrossVal_bwd_${idx} = graph.model.getProperty<u32>(targetNodeId, ${getDJB2Hash(tgtAcrossProp)} as u32);\n`;
-        code += `  if (__acrossVal_bwd_${idx} != 0) graph.model.setProperty<u32>(sourceNodeId, ${getDJB2Hash(srcAcrossProp)} as u32, __acrossVal_bwd_${idx});\n`;
-        code += `  let __flowVal_bwd_${idx} = graph.model.getProperty<u32>(targetNodeId, ${getDJB2Hash(tgtFlowProp)} as u32);\n`;
-        code += `  if (__flowVal_bwd_${idx} != 0) graph.model.setProperty<u32>(sourceNodeId, ${getDJB2Hash(srcFlowProp)} as u32, __flowVal_bwd_${idx});\n`;
+        code += `  let __acrossVal_bwd_${idx}_${cIdx} = graph.model.getProperty<u32>(targetNodeId, ${getDJB2Hash(tgtAcrossProp)} as u32);\n`;
+        code += `  if (__acrossVal_bwd_${idx}_${cIdx} != 0) graph.model.setProperty<u32>(sourceNodeId, ${getDJB2Hash(srcAcrossProp)} as u32, __acrossVal_bwd_${idx}_${cIdx});\n`;
+        code += `  let __flowVal_bwd_${idx}_${cIdx} = graph.model.getProperty<u32>(targetNodeId, ${getDJB2Hash(tgtFlowProp)} as u32);\n`;
+        code += `  if (__flowVal_bwd_${idx}_${cIdx} != 0) graph.model.setProperty<u32>(sourceNodeId, ${getDJB2Hash(srcFlowProp)} as u32, __flowVal_bwd_${idx}_${cIdx});\n`;
       } else if (c.kind === "typeMap") {
         const [sourceVar, targetVar, mapKey] = c.args;
         const srcProp = findBoundProperty(srcBindings, sourceVar, "type");
@@ -997,7 +1068,7 @@ export function compileTGGRules(
 
     if (compFields.length > 0) {
       code += `  // Read preserved shadow complement fiber before updating correspondence link\n`;
-      code += `  let __existingCompPtr: usize = 0;\n`;
+      code += `  let __existingCompPtr: u32 = 0;\n`;
       code += `  let targetSlotPlusOne = corr.targetToSlot.get(targetNodeId as u64);\n`;
       code += `  if (targetSlotPlusOne != 0) {\n`;
       code += `    __existingCompPtr = corr.getComplement((targetSlotPlusOne - 1) as u32);\n`;
@@ -1046,17 +1117,30 @@ export function compileTGGRules(
     const physMinStr = formatFloatLiteral(physBounds.min ?? 0);
     const physMaxStr = formatFloatLiteral(physBounds.max ?? 1000);
 
+    const rawStrategy = typeof recConstraint?.args?.[2] === "string" ? recConstraint.args[2] : undefined;
+    const strategyCode =
+      rawStrategy === "source-wins"
+        ? 1
+        : rawStrategy === "target-wins"
+          ? 2
+          : rawStrategy === "narrower-range"
+            ? 3
+            : rawStrategy === "physics-simplex"
+              ? 4
+              : undefined;
+
     ruleReconcileMeta.push({
       srcPropHash: recSrcPropHash,
       tgtPropHash: recTgtPropHash,
       hasPhysBounds: Boolean(recPhysConstraint),
       minStr: physMinStr,
       maxStr: physMaxStr,
+      strategyCode,
     });
 
-    // Incremental propagation
+    // Incremental propagation (direction: 0 = forward source->target, 1 = backward target->source)
     code += `// --- Rule ${idx}: ${ruleName} (Incremental Propagate) ---\n`;
-    code += `export function tgg_propagate_${ruleName}(slot: u32, corr: CorrespondenceIndex, stringPoolPtr: usize = 0): void {\n`;
+    code += `export function tgg_propagate_${ruleName}(slot: u32, corr: CorrespondenceIndex, stringPoolPtr: usize = 0, direction: u32 = 0): void {\n`;
     code += `  let sourceNodeId = corr.getSource(slot);\n`;
     code += `  let targetNodeId = corr.getTarget(slot);\n`;
     code += `  if (sourceNodeId == 0 || targetNodeId == 0) return;\n`;
@@ -1094,16 +1178,17 @@ export function compileTGGRules(
     } else {
       code += `    return;\n`;
     }
-    code += `  } else {\n`;
-    // Synchronize stale attributes and constraints from sourceNodeId -> targetNodeId
-    for (const [tgtProp, tgtVal] of Object.entries(tgtBindings)) {
-      const tgtPropHash = getDJB2Hash(tgtProp) as u32;
-      if (typeof tgtVal === "string" && tgtVal.startsWith("__var_")) {
-        const matchedSrcAttr = Object.keys(srcBindings).find((k) => srcBindings[k] === tgtVal);
-        if (matchedSrcAttr) {
-          const srcPropHash = getDJB2Hash(matchedSrcAttr) as u32;
-          code += `    let __prop_val_${tgtProp} = graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32);\n`;
-          code += `    graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __prop_val_${tgtProp});\n`;
+    code += `  } else if (direction == 1) {\n`;
+    // Backward propagation: targetNodeId -> sourceNodeId
+    for (const [srcProp, srcVal] of Object.entries(srcBindings)) {
+      const srcPropHash = getDJB2Hash(srcProp) as u32;
+      if (typeof srcVal === "string" && srcVal.startsWith("__var_")) {
+        const matchedTgtAttr = Object.keys(tgtBindings).find((k) => tgtBindings[k] === srcVal);
+        if (matchedTgtAttr) {
+          const tgtPropHash = getDJB2Hash(matchedTgtAttr) as u32;
+          const propTy = numericProps.has(srcProp) || numericProps.has(matchedTgtAttr) ? "f64" : "u32";
+          code += `    let __prop_bwd_${srcProp} = graph.model.getProperty<${propTy}>(targetNodeId, ${tgtPropHash} as u32);\n`;
+          code += `    graph.model.setProperty<${propTy}>(sourceNodeId, ${srcPropHash} as u32, __prop_bwd_${srcProp});\n`;
         }
       }
     }
@@ -1122,9 +1207,55 @@ export function compileTGGRules(
         if (srcProp && tgtProp) {
           const srcPropHash = getDJB2Hash(srcProp) as u32;
           const tgtPropHash = getDJB2Hash(tgtProp) as u32;
-          code += `    let __eqVal_prop_${idx}_${cIdx} = graph.model.getProperty<u32>(sourceNodeId, ${srcPropHash} as u32);\n`;
-          code += `    if (__eqVal_prop_${idx}_${cIdx} != 0) {\n`;
-          code += `      graph.model.setProperty<u32>(targetNodeId, ${tgtPropHash} as u32, __eqVal_prop_${idx}_${cIdx});\n`;
+          const propTy = numericProps.has(srcProp) || numericProps.has(tgtProp) ? "f64" : "u32";
+          code += `    let __eqVal_bprop_${idx}_${cIdx} = graph.model.getProperty<${propTy}>(targetNodeId, ${tgtPropHash} as u32);\n`;
+          if (propTy === "f64") {
+            code += `    if (!isNaN(__eqVal_bprop_${idx}_${cIdx})) {\n`;
+          } else {
+            code += `    if (__eqVal_bprop_${idx}_${cIdx} != 0) {\n`;
+          }
+          code += `      graph.model.setProperty<${propTy}>(sourceNodeId, ${srcPropHash} as u32, __eqVal_bprop_${idx}_${cIdx});\n`;
+          code += `    }\n`;
+        }
+      }
+    }
+    code += `  } else {\n`;
+    // Synchronize stale attributes and constraints from sourceNodeId -> targetNodeId
+    for (const [tgtProp, tgtVal] of Object.entries(tgtBindings)) {
+      const tgtPropHash = getDJB2Hash(tgtProp) as u32;
+      if (typeof tgtVal === "string" && tgtVal.startsWith("__var_")) {
+        const matchedSrcAttr = Object.keys(srcBindings).find((k) => srcBindings[k] === tgtVal);
+        if (matchedSrcAttr) {
+          const srcPropHash = getDJB2Hash(matchedSrcAttr) as u32;
+          const propTy = numericProps.has(tgtProp) || numericProps.has(matchedSrcAttr) ? "f64" : "u32";
+          code += `    let __prop_val_${tgtProp} = graph.model.getProperty<${propTy}>(sourceNodeId, ${srcPropHash} as u32);\n`;
+          code += `    graph.model.setProperty<${propTy}>(targetNodeId, ${tgtPropHash} as u32, __prop_val_${tgtProp});\n`;
+        }
+      }
+    }
+    for (let cIdx = 0; cIdx < constraints.length; cIdx++) {
+      const c = constraints[cIdx]!;
+      if (c.kind === "eq") {
+        const [a, b] = c.args;
+        const aName = stripVarPrefix(a);
+        const bName = stripVarPrefix(b);
+        const srcProp = Object.keys(srcBindings).find(
+          (k) => srcBindings[k] === a || k === aName || srcBindings[k] === b || k === bName,
+        );
+        const tgtProp = Object.keys(tgtBindings).find(
+          (k) => tgtBindings[k] === b || k === bName || tgtBindings[k] === a || k === aName,
+        );
+        if (srcProp && tgtProp) {
+          const srcPropHash = getDJB2Hash(srcProp) as u32;
+          const tgtPropHash = getDJB2Hash(tgtProp) as u32;
+          const propTy = numericProps.has(srcProp) || numericProps.has(tgtProp) ? "f64" : "u32";
+          code += `    let __eqVal_prop_${idx}_${cIdx} = graph.model.getProperty<${propTy}>(sourceNodeId, ${srcPropHash} as u32);\n`;
+          if (propTy === "f64") {
+            code += `    if (!isNaN(__eqVal_prop_${idx}_${cIdx})) {\n`;
+          } else {
+            code += `    if (__eqVal_prop_${idx}_${cIdx} != 0) {\n`;
+          }
+          code += `      graph.model.setProperty<${propTy}>(targetNodeId, ${tgtPropHash} as u32, __eqVal_prop_${idx}_${cIdx});\n`;
           code += `    }\n`;
         }
       } else if (c.kind === "typeMap") {
@@ -1236,21 +1367,32 @@ export function compileTGGRules(
   code += `// ============================================================================\n\n`;
 
   // Group by sourceNodeHash
+  // Group by 16-bit collision-free sourceNodeHash (matches u16 stored by graph.model.create / getNodeType)
   const rulesBySourceHash = new Map<number, typeof activeRules>();
   for (const r of activeRules) {
-    if (!rulesBySourceHash.has(r.sourceNodeHash)) {
-      rulesBySourceHash.set(r.sourceNodeHash, []);
+    const key16 = r.sourceNodeHash & 0xffff;
+    if (!rulesBySourceHash.has(key16)) {
+      rulesBySourceHash.set(key16, []);
     }
-    rulesBySourceHash.get(r.sourceNodeHash)!.push(r);
+    rulesBySourceHash.get(key16)!.push(r);
   }
 
   code += `export function tgg_forward_dispatch(sourceNodeTypeHash: u32, sourceNodeId: u32, corr: CorrespondenceIndex, arena: PolyglotArena, targetLangId: u16 = 0, parentSlot: u32 = 0xFFFFFFFF): u32 {\n`;
-  code += `  switch (sourceNodeTypeHash) {\n`;
+  code += `  switch (sourceNodeTypeHash & 0xffff) {\n`;
   for (const [srcHash, group] of rulesBySourceHash.entries()) {
     group.sort((a, b) => b.priority - a.priority);
     code += `    case ${srcHash}: {\n`;
     if (group.length === 1) {
-      code += `      return tgg_forward_${group[0]!.ruleName}(sourceNodeId, corr, arena, parentSlot);\n`;
+      const r = group[0]!;
+      if (r.targetLang) {
+        const langId = getDJB2Hash(r.targetLang) & 0xffff;
+        code += `      if (targetLangId == 0 || targetLangId == ${langId}) {\n`;
+        code += `        return tgg_forward_${r.ruleName}(sourceNodeId, corr, arena, parentSlot);\n`;
+        code += `      }\n`;
+        code += `      return 0;\n`;
+      } else {
+        code += `      return tgg_forward_${r.ruleName}(sourceNodeId, corr, arena, parentSlot);\n`;
+      }
     } else {
       for (const r of group) {
         if (r.targetLang) {
@@ -1274,22 +1416,32 @@ export function compileTGGRules(
   code += `  }\n`;
   code += `}\n\n`;
 
-  // Group by targetNodeHash
+  // Group by 16-bit collision-free targetNodeHash
   const rulesByTargetHash = new Map<number, typeof activeRules>();
   for (const r of activeRules) {
-    if (!rulesByTargetHash.has(r.targetNodeHash)) {
-      rulesByTargetHash.set(r.targetNodeHash, []);
+    const key16 = r.targetNodeHash & 0xffff;
+    if (!rulesByTargetHash.has(key16)) {
+      rulesByTargetHash.set(key16, []);
     }
-    rulesByTargetHash.get(r.targetNodeHash)!.push(r);
+    rulesByTargetHash.get(key16)!.push(r);
   }
 
   code += `export function tgg_backward_dispatch(targetNodeTypeHash: u32, targetNodeId: u32, corr: CorrespondenceIndex, arena: PolyglotArena, sourceLangId: u16 = 0, parentSlot: u32 = 0xFFFFFFFF): u32 {\n`;
-  code += `  switch (targetNodeTypeHash) {\n`;
+  code += `  switch (targetNodeTypeHash & 0xffff) {\n`;
   for (const [tgtHash, group] of rulesByTargetHash.entries()) {
     group.sort((a, b) => b.priority - a.priority);
     code += `    case ${tgtHash}: {\n`;
     if (group.length === 1) {
-      code += `      return tgg_backward_${group[0]!.ruleName}(targetNodeId, corr, arena, parentSlot);\n`;
+      const r = group[0]!;
+      if (r.sourceLang) {
+        const langId = getDJB2Hash(r.sourceLang) & 0xffff;
+        code += `      if (sourceLangId == 0 || sourceLangId == ${langId}) {\n`;
+        code += `        return tgg_backward_${r.ruleName}(targetNodeId, corr, arena, parentSlot);\n`;
+        code += `      }\n`;
+        code += `      return 0;\n`;
+      } else {
+        code += `      return tgg_backward_${r.ruleName}(targetNodeId, corr, arena, parentSlot);\n`;
+      }
     } else {
       for (const r of group) {
         if (r.sourceLang) {
@@ -1314,7 +1466,7 @@ export function compileTGGRules(
   code += `}\n\n`;
 
   code += `export function tgg_retract_dispatch(sourceNodeTypeHash: u32, sourceNodeId: u32, corr: CorrespondenceIndex, arena: PolyglotArena): u32 {\n`;
-  code += `  switch (sourceNodeTypeHash) {\n`;
+  code += `  switch (sourceNodeTypeHash & 0xffff) {\n`;
   for (const [srcHash, group] of rulesBySourceHash.entries()) {
     if (group.length === 1) {
       code += `    case ${srcHash}: return tgg_retract_${group[0]!.ruleName}(sourceNodeId, corr, arena);\n`;
@@ -1332,15 +1484,33 @@ export function compileTGGRules(
   code += `  }\n`;
   code += `}\n\n`;
 
-  code += `export function tgg_propagate_all_stale(corr: CorrespondenceIndex, stringPoolPtr: usize = 0): u32 {\n`;
+  code += `export function tgg_propagate_all_stale(corr: CorrespondenceIndex, stringPoolPtr: usize = 0, direction: u32 = 0): u32 {\n`;
   code += `  let updatedCount: u32 = 0;\n`;
+  code += `  let qCount = corr.getStaleQueueCount();\n`;
+  code += `  if (qCount > 0) {\n`;
+  code += `    for (let qi: u32 = 0; qi < qCount; qi++) {\n`;
+  code += `      let slot = corr.getStaleQueueSlot(qi);\n`;
+  code += `      if (slot < corr.count && corr.isStale(slot) && !corr.isRemoved(slot)) {\n`;
+  code += `        let ruleId = corr.getRule(slot);\n`;
+  code += `        switch (ruleId) {\n`;
+  for (let rIdx = 0; rIdx < activeRules.length; rIdx++) {
+    const ruleName = activeRules[rIdx]!.ruleName;
+    code += `          case ${rIdx}: tgg_propagate_${ruleName}(slot, corr, stringPoolPtr, direction); updatedCount++; break;\n`;
+  }
+  code += `          default: break;\n`;
+  code += `        }\n`;
+  code += `      }\n`;
+  code += `    }\n`;
+  code += `    corr.clearStaleQueue();\n`;
+  code += `    return updatedCount;\n`;
+  code += `  }\n`;
   code += `  for (let slot: u32 = 0; slot < corr.count; slot++) {\n`;
   code += `    if (corr.isStale(slot) && !corr.isRemoved(slot)) {\n`;
   code += `      let ruleId = corr.getRule(slot);\n`;
   code += `      switch (ruleId) {\n`;
   for (let rIdx = 0; rIdx < activeRules.length; rIdx++) {
     const ruleName = activeRules[rIdx]!.ruleName;
-    code += `        case ${rIdx}: tgg_propagate_${ruleName}(slot, corr, stringPoolPtr); updatedCount++; break;\n`;
+    code += `        case ${rIdx}: tgg_propagate_${ruleName}(slot, corr, stringPoolPtr, direction); updatedCount++; break;\n`;
   }
   code += `        default: break;\n`;
   code += `      }\n`;
@@ -1362,14 +1532,16 @@ export function compileTGGRules(
   code += `      let hasPhysBounds: boolean = false;\n`;
   code += `      let physMin: f64 = -1e308;\n`;
   code += `      let physMax: f64 = 1e308;\n`;
+  code += `      let effectiveStrategy: u32 = strategy;\n`;
   if (ruleReconcileMeta.length > 0) {
     code += `      switch (ruleId) {\n`;
     for (let rIdx = 0; rIdx < ruleReconcileMeta.length; rIdx++) {
       const rm = ruleReconcileMeta[rIdx]!;
+      const stratAssign = rm.strategyCode !== undefined ? ` effectiveStrategy = ${rm.strategyCode};` : "";
       if (rm.hasPhysBounds) {
-        code += `        case ${rIdx}: srcPropHash = ${rm.srcPropHash} as u32; tgtPropHash = ${rm.tgtPropHash} as u32; hasPhysBounds = true; physMin = ${rm.minStr}; physMax = ${rm.maxStr}; break;\n`;
+        code += `        case ${rIdx}: srcPropHash = ${rm.srcPropHash} as u32; tgtPropHash = ${rm.tgtPropHash} as u32; hasPhysBounds = true; physMin = ${rm.minStr}; physMax = ${rm.maxStr};${stratAssign} break;\n`;
       } else {
-        code += `        case ${rIdx}: srcPropHash = ${rm.srcPropHash} as u32; tgtPropHash = ${rm.tgtPropHash} as u32; break;\n`;
+        code += `        case ${rIdx}: srcPropHash = ${rm.srcPropHash} as u32; tgtPropHash = ${rm.tgtPropHash} as u32;${stratAssign} break;\n`;
       }
     }
     code += `        default: break;\n`;
@@ -1377,7 +1549,7 @@ export function compileTGGRules(
   }
   code += `      let srcVal = sourceNodeId != 0 ? graph.model.getProperty<f64>(sourceNodeId, srcPropHash) : 0.0;\n`;
   code += `      let tgtVal = targetNodeId != 0 ? graph.model.getProperty<f64>(targetNodeId, tgtPropHash) : 0.0;\n`;
-  code += `      let recVal = hasPhysBounds ? tgg_reconcile_physics_simplex(slot, srcVal, tgtVal, physMin, physMax, corr) : tgg_reconcile_scalar(slot, srcVal, tgtVal, strategy, corr);\n`;
+  code += `      let recVal = hasPhysBounds ? tgg_reconcile_physics_simplex(slot, srcVal, tgtVal, physMin, physMax, corr) : tgg_reconcile_scalar(slot, srcVal, tgtVal, effectiveStrategy, corr);\n`;
   code += `      if (!corr.isConflicted(slot)) {\n`;
   code += `        if (sourceNodeId != 0) graph.model.setProperty<f64>(sourceNodeId, srcPropHash, recVal);\n`;
   code += `        if (targetNodeId != 0) graph.model.setProperty<f64>(targetNodeId, tgtPropHash, recVal);\n`;

@@ -18,6 +18,7 @@ import {
   getDefaultLanguageView,
   getLanguageExtension,
   getLanguageInfo,
+  MODELICA_ICON_SHAPE_TOOLS,
   MORSEL_LANGUAGES,
 } from "./constants";
 import type { DiagramEditorHandle } from "./Diagram";
@@ -40,7 +41,7 @@ import {
 } from "./util/lsp-bridge";
 import { startLsp } from "./util/lsp-worker";
 
-import { useEditorFeatureFlag as useFeatureFlag, useEditorToast as useToast } from "../host";
+import { getEditorLanguageUi, useEditorFeatureFlag as useFeatureFlag, useEditorToast as useToast } from "../host";
 import { useMorselEngine } from "./hooks";
 import { useMorselHost } from "./MorselHostContext";
 import {
@@ -284,6 +285,7 @@ export default function MorselEditor(props: MorselEditorProps) {
   const [isShareDialogOpen, setShareDialogOpen] = useState(false);
   const shareButtonRef = useRef<HTMLButtonElement>(null);
   const [isAddLibraryOpen, setIsAddLibraryOpen] = useState(false);
+  const [addLibraryViewMode, setAddLibraryViewMode] = useState<"components" | "libraries" | "import">("components");
   const addLibraryButtonRef = useRef<HTMLButtonElement>(null);
   const [isOpenFileDialogOpen, setIsOpenFileDialogOpen] = useState(false);
   const openFileButtonRef = useRef<HTMLButtonElement>(null);
@@ -405,7 +407,22 @@ export default function MorselEditor(props: MorselEditorProps) {
 
   const handleDiagnosticsChange = useCallback((markers: editor.IMarkerData[], uri?: string) => {
     const targetUri = uri || documentUriRef.current;
+    const markersEqual = (a: editor.IMarkerData[], b: editor.IMarkerData[]) =>
+      a.length === b.length &&
+      a.every(
+        (m, i) =>
+          m.message === b[i]!.message &&
+          m.severity === b[i]!.severity &&
+          m.startLineNumber === b[i]!.startLineNumber &&
+          m.startColumn === b[i]!.startColumn &&
+          m.code === b[i]!.code,
+      );
+
     setDiagnosticsByUri((prev) => {
+      const existing = prev.get(targetUri);
+      if (existing ? markersEqual(existing, markers) : markers.length === 0) {
+        return prev;
+      }
       const next = new Map(prev);
       if (markers.length === 0) {
         next.delete(targetUri);
@@ -415,7 +432,7 @@ export default function MorselEditor(props: MorselEditorProps) {
       return next;
     });
     if (!uri || uri === documentUriRef.current) {
-      setEditorDiagnostics(markers);
+      setEditorDiagnostics((prev) => (markersEqual(prev, markers) ? prev : markers));
     }
     if (!userToggledDiagnosticsRef.current && markers.length > 0) {
       setIsDiagnosticsExpanded(true);
@@ -1901,7 +1918,53 @@ export default function MorselEditor(props: MorselEditorProps) {
         case "morsel:simulate":
           void handleSimulate();
           return;
+        case "morsel:deleteIconPrimitive": {
+          const match = /^__icon_gfx_(\d+)$/.exec(selectedComponent ?? "");
+          if (!match) {
+            toast.info("Select an icon shape first");
+            return;
+          }
+          const idx = Number(match[1]);
+          handleSelectComponent(null);
+          enqueueDiagramAction({ type: "deleteIconPrimitive", index: idx });
+          return;
+        }
         default:
+          if (btn.command?.startsWith("morsel:addIconPrimitive:")) {
+            const shapeId = btn.command.slice("morsel:addIconPrimitive:".length);
+            const tool = MODELICA_ICON_SHAPE_TOOLS.find((t) => t.id === shapeId);
+            if (tool) {
+              enqueueDiagramAction({
+                type: "addIconPrimitive",
+                primitive: tool.primitive,
+              });
+            }
+            return;
+          }
+          if (btn.command?.startsWith("morsel:reorderIconPrimitive:")) {
+            const dir = btn.command.slice("morsel:reorderIconPrimitive:".length);
+            const match = /^__icon_gfx_(\d+)$/.exec(selectedComponent ?? "");
+            if (!match) {
+              toast.info("Select an icon shape first");
+              return;
+            }
+            const fromIndex = Number(match[1]);
+            const toIndex = dir === "forward" ? fromIndex + 1 : Math.max(0, fromIndex - 1);
+            if (toIndex !== fromIndex) {
+              enqueueDiagramAction({ type: "reorderIconPrimitive", fromIndex, toIndex });
+            }
+            return;
+          }
+          if (btn.command?.startsWith("morsel:insertStencil:")) {
+            const stencilLabel = btn.command.slice("morsel:insertStencil:".length);
+            const langId = detail?.languageId || dialect || "modelica";
+            const stencils = getEditorLanguageUi().stencils[langId] ?? [];
+            const match = stencils.find((s) => s.label === stencilLabel);
+            if (match?.snippet) {
+              handleInsertStencilSnippet(match.snippet, match.className);
+            }
+            return;
+          }
           break;
       }
 
@@ -1961,7 +2024,19 @@ export default function MorselEditor(props: MorselEditorProps) {
 
     window.addEventListener("morsel:toolbar-action", handleToolbarAction);
     return () => window.removeEventListener("morsel:toolbar-action", handleToolbarAction);
-  }, [dialect, documentUri, handleAutoLayout, handleRunOnDemandLints, handleSimulate, lastLoadedContent, toast]);
+  }, [
+    dialect,
+    documentUri,
+    enqueueDiagramAction,
+    handleAutoLayout,
+    handleInsertStencilSnippet,
+    handleRunOnDemandLints,
+    handleSelectComponent,
+    handleSimulate,
+    lastLoadedContent,
+    selectedComponent,
+    toast,
+  ]);
 
   const handleNewModel = useCallback(
     (e?: React.MouseEvent) => {
@@ -2027,6 +2102,9 @@ export default function MorselEditor(props: MorselEditorProps) {
     !isNarrow && !props.embed
       ? 12 + (isDiagnosticsExpanded ? diagnosticsPanelHeight : COLLAPSED_DIAGNOSTICS_HEIGHT) + 12
       : 12;
+  const aiPanelWidth = 380;
+  const isAiDockedDesktop = hasMorselAi && !props.embed && isAiOpen && !isNarrow;
+  const floatingRightOffset = isAiDockedDesktop ? 12 + aiPanelWidth + 12 : 12;
   const floatingCardShadow =
     colorMode === "dark"
       ? "0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 16px 40px -8px rgba(0, 0, 0, 0.56)"
@@ -2110,7 +2188,14 @@ export default function MorselEditor(props: MorselEditorProps) {
             isSearching={isSearching}
             inputRef={inputRef}
             addLibraryButtonRef={addLibraryButtonRef}
-            onOpenAddLibrary={() => setIsAddLibraryOpen(true)}
+            onOpenAddLibrary={() => {
+              setAddLibraryViewMode("libraries");
+              setIsAddLibraryOpen(true);
+            }}
+            onOpenAddComponent={() => {
+              setAddLibraryViewMode("components");
+              setIsAddLibraryOpen(true);
+            }}
             documentUri={documentUri}
             debouncedFilter={debouncedFilter}
             onTreeSelect={handleTreeSelect}
@@ -2144,7 +2229,7 @@ export default function MorselEditor(props: MorselEditorProps) {
             activeFileName={props.activeFileName ?? `model.${getLanguageInfo(dialect || "modelica").ext || "mo"}`}
             onSelectProjectFile={props.onSelectProjectFile}
             onAddProjectFile={props.onAddProjectFile}
-            onOpenNewModelModal={props.onOpenNewModelModal}
+            onOpenNewModelModal={props.onOpenNewModelModal ?? (() => setIsOpenFileDialogOpen(true))}
             isLoadingModel={props.isLoadingModel}
             onRemoveProjectFile={props.onRemoveProjectFile}
             onRenameProjectFile={props.onRenameProjectFile}
@@ -2181,7 +2266,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                       position: "absolute",
                       top: 72,
                       left: treeVisible ? treeWidth + 24 : 12,
-                      right: 12,
+                      right: floatingRightOffset,
                       bottom: diagnosticsBottomOffset,
                       flexDirection: view === View.SPLIT_ROWS ? "column" : "row",
                       minHeight: 0,
@@ -2365,7 +2450,7 @@ export default function MorselEditor(props: MorselEditorProps) {
                       : isFullScreenSplitCanvas && view === View.SPLIT_ROWS
                         ? {
                             left: treeVisible ? treeWidth + 24 : 12,
-                            right: 12,
+                            right: floatingRightOffset,
                             top: `max(${Math.max(8, floatingTopOffset - 4)}px, calc(${splitRatio * 100}% - 4px))`,
                           }
                         : {}),
@@ -2479,7 +2564,10 @@ export default function MorselEditor(props: MorselEditorProps) {
                       : isFullScreenSplitCanvas && view === View.SPLIT_COLUMNS
                         ? `max(${treeVisible ? treeWidth + 24 : 12}px, calc(${splitRatio * 100}% + 6px))`
                         : undefined,
-                  right: (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas ? 12 : undefined,
+                  right:
+                    (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas
+                      ? floatingRightOffset
+                      : undefined,
                   bottom:
                     (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas
                       ? diagnosticsBottomOffset
@@ -2646,6 +2734,63 @@ export default function MorselEditor(props: MorselEditorProps) {
               />
             )}
           </div>
+
+          {hasMorselAi && !props.embed && (
+            <MorselAiPanel
+              isOpen={isAiOpen}
+              onClose={() => setIsAiOpen(false)}
+              colorMode={colorMode}
+              floating={isFloatingWorkspace}
+              topOffset={floatingTopOffset}
+              bottomOffset={diagnosticsBottomOffset}
+              isNarrow={isNarrow}
+              width={aiPanelWidth}
+              fileName={props.activeFileName || `model.${getLanguageExtension(dialect)}`}
+              dialect={dialect}
+              diagnostics={formatMonacoMarkers(mergedEditorDiagnostics)}
+              initialPrompt={aiInitialPrompt}
+              onConsumeInitialPrompt={() => setAiInitialPrompt(undefined)}
+              toolHost={
+                {
+                  getFileName: () => props.activeFileName || `model.${getLanguageExtension(dialect)}`,
+                  getDialect: () => dialect,
+                  getCode: () => editor?.getValue() ?? content,
+                  getDiagnostics: () => formatMonacoMarkers(mergedEditorDiagnostics),
+                  getSelectedComponent: () => selectedTreeClassName || undefined,
+                  applyCodeEdit: (nextCode, description) => {
+                    const model = editor?.getModel();
+                    if (!editor || !model) {
+                      setLoadedCodeOverride(nextCode);
+                      props.onCodeChange?.(nextCode);
+                      return true;
+                    }
+                    editor.executeEdits(description || "morsel-ai", [
+                      { range: model.getFullModelRange(), text: nextCode, forceMoveMarkers: true },
+                    ]);
+                    return true;
+                  },
+                  runFlatten: async () => {
+                    await handleFlatten();
+                    return { ok: true, output: flattenedCode || "Flatten triggered in Morsel." };
+                  },
+                  runSimulate: async () => {
+                    await handleSimulate();
+                    return {
+                      ok: simulationStatus?.status !== "failed",
+                      output: simulationStatus?.error
+                        ? `Simulation failed: ${simulationStatus.error}`
+                        : `Simulation status: ${simulationStatus?.status ?? "completed"}`,
+                    };
+                  },
+                  switchView: (nextView) => setView(nextView as View),
+                  getDiagramSummary: async () => {
+                    const diagram = await getDiagramData(documentUri, selectedTreeClassName || undefined);
+                    return JSON.stringify(diagram ?? {});
+                  },
+                } satisfies MorselToolHost
+              }
+            />
+          )}
         </div>
 
         {/* Floating dock */}
@@ -2684,58 +2829,6 @@ export default function MorselEditor(props: MorselEditorProps) {
           />
         )}
 
-        {hasMorselAi && !props.embed && (
-          <MorselAiPanel
-            isOpen={isAiOpen}
-            onClose={() => setIsAiOpen(false)}
-            colorMode={colorMode}
-            fileName={props.activeFileName || `model.${getLanguageExtension(dialect)}`}
-            dialect={dialect}
-            diagnostics={formatMonacoMarkers(mergedEditorDiagnostics)}
-            initialPrompt={aiInitialPrompt}
-            onConsumeInitialPrompt={() => setAiInitialPrompt(undefined)}
-            toolHost={
-              {
-                getFileName: () => props.activeFileName || `model.${getLanguageExtension(dialect)}`,
-                getDialect: () => dialect,
-                getCode: () => editor?.getValue() ?? content,
-                getDiagnostics: () => formatMonacoMarkers(mergedEditorDiagnostics),
-                getSelectedComponent: () => selectedTreeClassName || undefined,
-                applyCodeEdit: (nextCode, description) => {
-                  const model = editor?.getModel();
-                  if (!editor || !model) {
-                    setLoadedCodeOverride(nextCode);
-                    props.onCodeChange?.(nextCode);
-                    return true;
-                  }
-                  editor.executeEdits(description || "morsel-ai", [
-                    { range: model.getFullModelRange(), text: nextCode, forceMoveMarkers: true },
-                  ]);
-                  return true;
-                },
-                runFlatten: async () => {
-                  await handleFlatten();
-                  return { ok: true, output: flattenedCode || "Flatten triggered in Morsel." };
-                },
-                runSimulate: async () => {
-                  await handleSimulate();
-                  return {
-                    ok: simulationStatus?.status !== "failed",
-                    output: simulationStatus?.error
-                      ? `Simulation failed: ${simulationStatus.error}`
-                      : `Simulation status: ${simulationStatus?.status ?? "completed"}`,
-                  };
-                },
-                switchView: (nextView) => setView(nextView as View),
-                getDiagramSummary: async () => {
-                  const diagram = await getDiagramData(documentUri, selectedTreeClassName || undefined);
-                  return JSON.stringify(diagram ?? {});
-                },
-              } satisfies MorselToolHost
-            }
-          />
-        )}
-
         {/* Modals & Dialogs */}
         <MorselModals
           isShareDialogOpen={isShareDialogOpen}
@@ -2767,6 +2860,7 @@ export default function MorselEditor(props: MorselEditorProps) {
           loadingMessage={loadingMessage}
           isAddLibraryOpen={isAddLibraryOpen}
           setIsAddLibraryOpen={setIsAddLibraryOpen}
+          addLibraryInitialViewMode={addLibraryViewMode}
           setContextVersion={setContextVersion}
           isFlattenDialogOpen={isFlattenDialogOpen}
           setFlattenDialogOpen={setFlattenDialogOpen}

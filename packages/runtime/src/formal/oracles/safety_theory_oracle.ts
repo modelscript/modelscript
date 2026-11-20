@@ -26,6 +26,7 @@ import type {
   TheoryOracle,
 } from "../theory_coordinator.js";
 import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
+import { UndoTrail } from "./undo_trail.js";
 
 export type SafetyStandard = "ISO26262" | "DO178C" | "ARP4754A" | "IEC61508";
 
@@ -115,13 +116,7 @@ export class SafetyTheoryOracle implements TheoryOracle {
   private baseHazards = new Map<string, SystemHazard>();
   private sharedEqualities: SharedEquality[] = [];
   private activeLiterals: TheoryLiteral[] = [];
-  private levelStack: {
-    failureModes: Map<string, ComponentFailureMode>;
-    ftaNodes: Map<string, FtaNode>;
-    hazards: Map<string, SystemHazard>;
-    sharedEqualities: SharedEquality[];
-    activeLiterals: TheoryLiteral[];
-  }[] = [];
+  private trail = new UndoTrail();
   private missionTimeHours = 10000; // 10,000 hours typical automotive/aerospace life
 
   constructor(missionTimeHours = 10000) {
@@ -130,31 +125,31 @@ export class SafetyTheoryOracle implements TheoryOracle {
 
   public registerFailureMode(mode: ComponentFailureMode): void {
     this.baseFailureModes.set(mode.id, { ...mode });
-    this.failureModes.set(mode.id, { ...mode });
+    this.trail.mapSet(this.failureModes, mode.id, { ...mode });
   }
 
   public registerFtaNode(node: FtaNode): void {
     this.baseFtaNodes.set(node.id, { ...node, children: [...node.children] });
-    this.ftaNodes.set(node.id, { ...node, children: [...node.children] });
+    this.trail.mapSet(this.ftaNodes, node.id, { ...node, children: [...node.children] });
   }
 
   public registerHazard(hazard: SystemHazard): void {
     this.baseHazards.set(hazard.id, { ...hazard });
-    this.hazards.set(hazard.id, { ...hazard });
+    this.trail.mapSet(this.hazards, hazard.id, { ...hazard });
   }
 
   public assertLiteral(lit: TheoryLiteral): boolean {
-    this.activeLiterals.push(lit);
+    this.trail.arrayPush(this.activeLiterals, lit);
     const { predicate, args } = lit;
     if (predicate === "failureMode" && args[0]) {
       const mode = args[0] as ComponentFailureMode;
-      this.failureModes.set(mode.id, { ...mode });
+      this.trail.mapSet(this.failureModes, mode.id, { ...mode });
     } else if (predicate === "ftaNode" && args[0]) {
       const node = args[0] as FtaNode;
-      this.ftaNodes.set(node.id, { ...node, children: [...node.children] });
+      this.trail.mapSet(this.ftaNodes, node.id, { ...node, children: [...node.children] });
     } else if (predicate === "hazard" && args[0]) {
       const hazard = args[0] as SystemHazard;
-      this.hazards.set(hazard.id, { ...hazard });
+      this.trail.mapSet(this.hazards, hazard.id, { ...hazard });
     }
     return true;
   }
@@ -166,7 +161,8 @@ export class SafetyTheoryOracle implements TheoryOracle {
     }
     const remainingLits = this.activeLiterals.filter((l) => l.id !== litId);
     const remainingEqs = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
-    const savedStack = this.levelStack;
+    const savedTrail = this.trail;
+    this.trail = new UndoTrail();
     this.failureModes.clear();
     for (const [k, v] of this.baseFailureModes) {
       this.failureModes.set(k, { ...v });
@@ -181,37 +177,21 @@ export class SafetyTheoryOracle implements TheoryOracle {
     }
     this.activeLiterals = [];
     this.sharedEqualities = [];
-    this.levelStack = savedStack;
     for (const lit of remainingLits) {
       this.assertLiteral(lit);
     }
     for (const eq of remainingEqs) {
       this.onSharedEquality(eq);
     }
+    this.trail = savedTrail;
   }
 
   public pushLevel(): void {
-    const fmSnap = new Map<string, ComponentFailureMode>();
-    for (const [k, v] of this.failureModes) {
-      fmSnap.set(k, { ...v });
-    }
-    this.levelStack.push({
-      failureModes: fmSnap,
-      ftaNodes: new Map(this.ftaNodes),
-      hazards: new Map(this.hazards),
-      sharedEqualities: [...this.sharedEqualities],
-      activeLiterals: [...this.activeLiterals],
-    });
+    this.trail.pushLevel();
   }
 
   public popLevel(): void {
-    const top = this.levelStack.pop();
-    if (!top) return;
-    this.failureModes = top.failureModes;
-    this.ftaNodes = top.ftaNodes;
-    this.hazards = top.hazards;
-    this.sharedEqualities = top.sharedEqualities;
-    this.activeLiterals = top.activeLiterals;
+    this.trail.popLevel();
   }
 
   public reset(): void {
@@ -223,15 +203,19 @@ export class SafetyTheoryOracle implements TheoryOracle {
     this.baseFtaNodes.clear();
     this.baseHazards.clear();
     this.sharedEqualities = [];
-    this.levelStack = [];
+    this.trail.reset();
   }
 
   public onSharedEquality(eq: SharedEquality): void {
     if (!eq.varA) return;
-    this.sharedEqualities.push(eq);
+    this.trail.arrayPush(this.sharedEqualities, eq);
     for (const [fmId, fm] of this.failureModes) {
       if (eq.varA === `${fmId}.baseFitRate` || eq.varA === `${fmId}.fit` || eq.varA === fmId) {
         if (eq.bounds && Number.isFinite(eq.bounds[1])) {
+          const prevRate = fm.failureRatePerHour;
+          this.trail.record(() => {
+            fm.failureRatePerHour = prevRate;
+          });
           fm.failureRatePerHour = eq.bounds[1] * 1e-9;
         }
       }

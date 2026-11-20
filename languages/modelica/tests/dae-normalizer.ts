@@ -83,17 +83,31 @@ function canonicalizeMultiplicativeChain(s: string): string {
   // Do not split if expression has top-level additive, relational, conditional, or logical operators
   let depth = 0;
   let inQuotes = false;
+  let inSingleQuotes = false;
+  let topLevelText = "";
   const ops: { op: "*" | "/"; idx: number }[] = [];
   for (let i = 0; i < s.length; i++) {
     const ch = s[i]!;
-    if (ch === '"') {
+    if (!inSingleQuotes && ch === '"') {
       inQuotes = !inQuotes;
       continue;
     }
-    if (inQuotes) continue;
+    if (!inQuotes && ch === "'") {
+      inSingleQuotes = !inSingleQuotes;
+      continue;
+    }
+    if (inQuotes || inSingleQuotes) continue;
+    if (ch === "/" && s[i + 1] === "*") {
+      const end = s.indexOf("*/", i + 2);
+      if (end >= 0) {
+        i = end + 1;
+        continue;
+      }
+    }
     if (ch === "(" || ch === "[" || ch === "{") depth++;
     else if (ch === ")" || ch === "]" || ch === "}") depth--;
     else if (depth === 0) {
+      topLevelText += ch;
       if (ch === "*" || ch === "/") {
         ops.push({ op: ch, idx: i });
       } else if (ch === "+" || ch === "<" || ch === ">" || ch === "=" || ch === ":" || ch === ";") {
@@ -108,7 +122,7 @@ function canonicalizeMultiplicativeChain(s: string): string {
     }
   }
   if (ops.length === 0) return s;
-  if (/^(?:if|for|when)\b|\b(?:then|else|elseif|and|or)\b/.test(s)) return s;
+  if (/^(?:if|for|when)\b|\b(?:then|else|elseif|and|or)\b/.test(topLevelText.trim())) return s;
 
   const numerators: string[] = [];
   const denominators: string[] = [];
@@ -147,6 +161,58 @@ function canonicalizeMultiplicativeChain(s: string): string {
 
   const canonNums = numerators.map(canonPart);
   const canonDens = denominators.map(canonPart);
+
+  // Fold pure numeric literal factors across numerators and denominators
+  // (e.g. `1e5 * time / 10` and `0.1 * 1e5 * time` both become `10000 * time`,
+  //  `time / 1` becomes `time`, `x / 0.0289586` becomes `34.5320561077 * x`).
+  const NUM_LIT_RE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+  const numLitCount = canonNums.filter((f) => NUM_LIT_RE.test(f)).length;
+  const denLitCount = canonDens.filter((f) => NUM_LIT_RE.test(f)).length;
+  const hasLongFloat = canonNums.some((f) => NUM_LIT_RE.test(f) && f.length > 13);
+  if (numLitCount >= 2 || denLitCount >= 1 || hasLongFloat) {
+    let coeff = 1;
+    let valid = true;
+    const symNums: string[] = [];
+    const symDens: string[] = [];
+    for (const f of canonNums) {
+      if (NUM_LIT_RE.test(f)) {
+        const v = Number(f);
+        if (!Number.isFinite(v)) {
+          valid = false;
+          break;
+        }
+        coeff *= v;
+      } else {
+        symNums.push(f);
+      }
+    }
+    if (valid) {
+      for (const f of canonDens) {
+        if (NUM_LIT_RE.test(f)) {
+          const v = Number(f);
+          if (!Number.isFinite(v) || v === 0) {
+            valid = false;
+            break;
+          }
+          coeff /= v;
+        } else {
+          symDens.push(f);
+        }
+      }
+    }
+    if (valid && Number.isFinite(coeff)) {
+      if (coeff === 0 && symDens.length === 0) return "0";
+      symNums.sort(compareFactors);
+      const rounded = Number(coeff.toPrecision(12));
+      if (rounded !== 1 || symNums.length === 0) {
+        symNums.unshift(String(rounded));
+      }
+      const numPartFolded = symNums.join(" * ");
+      if (symDens.length === 0) return numPartFolded;
+      return `${numPartFolded} / ${symDens.join(" / ")}`;
+    }
+  }
+
   canonNums.sort(compareFactors);
 
   const numFiltered = canonNums.length > 1 ? canonNums.filter((f) => f !== "1") : canonNums;
@@ -156,10 +222,209 @@ function canonicalizeMultiplicativeChain(s: string): string {
 }
 
 /**
+ * Soundly evaluates pure `String(<int>, 0, true)` calls (outside string literals)
+ * and merges adjacent string literal concatenations `"a" + "b"` -> `"ab"`.
+ */
+function canonicalizeStringLiterals(expr: string): string {
+  if (!expr.includes('"')) return expr;
+  // Pass 1: replace unquoted `String(<int>, 0, true)` with `"<int>"`
+  let out = "";
+  let inQuote = false;
+  let i = 0;
+  while (i < expr.length) {
+    const ch = expr[i]!;
+    if (inQuote) {
+      out += ch;
+      if (ch === "\\" && i + 1 < expr.length) {
+        out += expr[i + 1]!;
+        i += 2;
+        continue;
+      }
+      if (ch === '"') inQuote = false;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inQuote = true;
+      out += ch;
+      i++;
+      continue;
+    }
+    if (expr.startsWith("String(", i)) {
+      const m = expr.slice(i).match(/^String\(\s*(-?\d+)\s*,\s*0\s*,\s*true\s*\)/);
+      if (m) {
+        out += `"${m[1]}"`;
+        i += m[0].length;
+        continue;
+      }
+    }
+    out += ch;
+    i++;
+  }
+  // Pass 2: merge adjacent string literals separated by `+`: `"a" + "b"` -> `"ab"`
+  let merged = "";
+  inQuote = false;
+  i = 0;
+  while (i < out.length) {
+    const ch = out[i]!;
+    if (inQuote) {
+      if (ch === "\\" && i + 1 < out.length) {
+        merged += ch + out[i + 1]!;
+        i += 2;
+        continue;
+      }
+      if (ch === '"') {
+        // Check if followed by optional whitespace, `+`, optional whitespace, `"`
+        let j = i + 1;
+        while (j < out.length && (out[j] === " " || out[j] === "\t")) j++;
+        if (j < out.length && out[j] === "+") {
+          j++;
+          while (j < out.length && (out[j] === " " || out[j] === "\t")) j++;
+          if (j < out.length && out[j] === '"') {
+            // Merge seamlessly by skipping `" + "`
+            i = j + 1;
+            continue;
+          }
+        }
+        inQuote = false;
+      }
+      merged += ch;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inQuote = true;
+    }
+    merged += ch;
+    i++;
+  }
+  return merged;
+}
+
+/**
+ * Recursively canonicalizes the `then` and `else` branch expressions of a top-level
+ * `if <cond> then <t> [elseif <c2> then <t2>]* else <e>` expression.
+ */
+function canonicalizeIfExpression(s: string): string {
+  if (!/^if\b/.test(s)) return s;
+  // Tokenize top-level keywords `if`, `then`, `elseif`, `else` respecting parens/brackets/quotes
+  const segments: { kw: string; text: string }[] = [];
+  let depth = 0;
+  let inQuote = false;
+  let quoteCh = "";
+  let curKw = "if";
+  let segStart = 2; // right after leading "if"
+  const isIdentChar = (c: string) => /[a-zA-Z0-9_]/.test(c);
+  for (let i = 2; i < s.length; i++) {
+    const ch = s[i]!;
+    if (inQuote) {
+      if (ch === "\\" && i + 1 < s.length) {
+        i++;
+        continue;
+      }
+      if (ch === quoteCh) inQuote = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuote = true;
+      quoteCh = ch;
+      continue;
+    }
+    if (ch === "(" || ch === "[" || ch === "{") {
+      depth++;
+      continue;
+    }
+    if (ch === ")" || ch === "]" || ch === "}") {
+      depth--;
+      continue;
+    }
+    if (depth === 0) {
+      const prevOk = i === 0 || !isIdentChar(s[i - 1]!);
+      if (prevOk) {
+        for (const kw of ["elseif", "then", "else"]) {
+          if (s.startsWith(kw, i) && (i + kw.length >= s.length || !isIdentChar(s[i + kw.length]!))) {
+            segments.push({ kw: curKw, text: s.slice(segStart, i).trim() });
+            curKw = kw;
+            segStart = i + kw.length;
+            i += kw.length - 1;
+            break;
+          }
+        }
+      }
+    }
+  }
+  segments.push({ kw: curKw, text: s.slice(segStart).trim() });
+  if (segments.length < 3 || !segments.some((seg) => seg.kw === "then") || !segments.some((seg) => seg.kw === "else")) {
+    return s;
+  }
+  return segments
+    .map((seg) => {
+      if (seg.kw === "then" || seg.kw === "else") {
+        return `${seg.kw} ${canonicalizeExpression(seg.text)}`;
+      }
+      return `${seg.kw} ${seg.text}`;
+    })
+    .join(" ");
+}
+
+/**
+ * Recursively canonicalizes arguments of a single top-level function call `fn(a1, a2, ...)`
+ * (excluding `assert` and `String` to preserve message/format argument structure).
+ */
+function canonicalizeCallExpression(s: string): string {
+  const m = s.match(/^([a-zA-Z_][a-zA-Z0-9_.']*)\(/);
+  if (!m || !s.endsWith(")")) return s;
+  const fnName = m[1]!;
+  if (fnName === "assert" || fnName === "String") return s;
+  // Verify the opening `(` after fnName matches the final `)`
+  const openIdx = fnName.length;
+  let depth = 0;
+  let inQuote = false;
+  let quoteCh = "";
+  const argSpans: [number, number][] = [];
+  let argStart = openIdx + 1;
+  for (let i = openIdx; i < s.length; i++) {
+    const ch = s[i]!;
+    if (inQuote) {
+      if (ch === "\\" && i + 1 < s.length) {
+        i++;
+        continue;
+      }
+      if (ch === quoteCh) inQuote = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuote = true;
+      quoteCh = ch;
+      continue;
+    }
+    if (ch === "(" || ch === "[" || ch === "{") {
+      depth++;
+    } else if (ch === ")" || ch === "]" || ch === "}") {
+      depth--;
+      if (depth === 0) {
+        if (i !== s.length - 1) return s; // Not a single call (e.g. `f(x) + g(y)`)
+        argSpans.push([argStart, i]);
+      }
+    } else if (ch === "," && depth === 1) {
+      argSpans.push([argStart, i]);
+      argStart = i + 1;
+    }
+  }
+  if (depth !== 0 || argSpans.length === 0) return s;
+  const canonArgs = argSpans.map(([st, en]) => {
+    const raw = s.slice(st, en).trim();
+    if (!raw) return raw;
+    return canonicalizeExpression(raw);
+  });
+  return `${fnName}(${canonArgs.join(", ")})`;
+}
+
+/**
  * Normalizes an expression with respect to commutative operations.
  */
-function canonicalizeExpression(expr: string): string {
-  let s = normalizeReciprocalAndProducts(expr.trim());
+function canonicalizeExpression(expr: string, allowAdditive = true): string {
+  let s = canonicalizeStringLiterals(normalizeReciprocalAndProducts(expr.trim()));
   // Remove unnecessary outer parentheses e.g. ((x)) -> (x)
   while (s.startsWith("(") && s.endsWith(")")) {
     // Check if matching pair
@@ -182,10 +447,97 @@ function canonicalizeExpression(expr: string): string {
     }
   }
 
+  // Recursively canonicalize branches of top-level `if ... then ... else ...`
+  if (/^if\b/.test(s)) {
+    return canonicalizeIfExpression(s);
+  }
+
+  // Recursively canonicalize arguments of single function calls (e.g. `integer(floor(u + 0.5))`, `smooth(0, if ...)`)
+  if (/^[a-zA-Z_][a-zA-Z0-9_.']*\(/.test(s) && s.endsWith(")")) {
+    const callCanon = canonicalizeCallExpression(s);
+    if (callCanon !== s) return callCanon;
+  }
+
+  // Normalize redundant parens around negated identifier on the left of `*`: `(-a.b) * c` -> `-a.b * c`
+  s = s.replace(/\(\s*-\s*([a-zA-Z_][a-zA-Z0-9_.[\],]*)\s*\)\s*\*/g, "-$1 *");
+
   // Normalize `x ^ 2` or `x ^ 2.0` (including array subscripts) to `x * x`
   s = s.replace(/\b([a-zA-Z_][a-zA-Z0-9_.[\],]*)\s*\^\s*2(?:\.0+)?\b/g, "$1 * $1");
 
-  return canonicalizeMultiplicativeChain(s);
+  const mulCanon = canonicalizeMultiplicativeChain(s);
+  if (mulCanon !== s) return mulCanon;
+  if (
+    allowAdditive &&
+    (s.includes("+") || s.includes("-")) &&
+    !/\b(?:if|then|else|elseif|and|or|when|for|while)\b/.test(s) &&
+    !/[<>=,;:]/.test(s) &&
+    !s.includes('"')
+  ) {
+    const terms = parseAdditiveTerms(s);
+    if (terms.length > 1) {
+      // Combine identical signed terms: e.g. `Ta1 + Ta1` -> `2 * Ta1`
+      const counts = new Map<string, number>();
+      for (const t of terms) {
+        counts.set(t.expr, (counts.get(t.expr) ?? 0) + t.sign);
+      }
+      const combined: SignedTerm[] = [];
+      for (const [tExpr, cnt] of counts.entries()) {
+        if (cnt === 0) continue;
+        const absCnt = Math.abs(cnt);
+        const sign: 1 | -1 = cnt < 0 ? -1 : 1;
+        combined.push({
+          sign,
+          expr: absCnt === 1 ? tExpr : canonicalizeExpression(`${absCnt} * ${tExpr}`, false),
+        });
+      }
+      if (combined.length === 0) return "0";
+      combined.sort((a, b) => a.expr.localeCompare(b.expr));
+      const parts: string[] = [];
+      for (let i = 0; i < combined.length; i++) {
+        const t = combined[i]!;
+        if (i === 0) {
+          parts.push(t.sign === -1 ? `-${t.expr}` : t.expr);
+        } else {
+          parts.push(t.sign === -1 ? `- ${t.expr}` : `+ ${t.expr}`);
+        }
+      }
+      return parts.join(" ");
+    }
+  }
+  return s;
+}
+
+/**
+ * Strips an optional trailing Modelica equation description comment `"..."`
+ * (e.g. `coil.V_m = coil.N * coil.i "Ampere's law"`) without touching string expressions
+ * like `s = "foo"` or `"a" + "b"` or `assert(..., "msg")`.
+ */
+function stripTrailingEquationComment(s: string): string {
+  const trimmed = s.trimEnd();
+  if (!trimmed.endsWith('"')) return trimmed;
+  // Walk backwards to find the matching opening quote of the trailing string literal
+  let openIdx = -1;
+  for (let i = trimmed.length - 2; i >= 0; i--) {
+    if (trimmed[i] === '"') {
+      // Count preceding backslashes to handle escaped quotes `\"`
+      let bs = 0;
+      for (let j = i - 1; j >= 0 && trimmed[j] === "\\"; j--) bs++;
+      if (bs % 2 === 0) {
+        openIdx = i;
+        break;
+      }
+    }
+  }
+  if (openIdx <= 0) return trimmed;
+  const before = trimmed.slice(0, openIdx).trimEnd();
+  if (!before) return trimmed;
+  const lastCh = before[before.length - 1]!;
+  // Only strip if preceded by a completed expression token (identifier, number, `)`, `]`, `}`)
+  // and NOT an operator (`+`, `=`, `(`, `,`) or keyword (`then`, `else`)
+  if (/[a-zA-Z0-9_)\]}]/.test(lastCh) && !/\b(?:then|else|elseif|return)$/.test(before)) {
+    return before;
+  }
+  return trimmed;
 }
 
 /**
@@ -194,6 +546,7 @@ function canonicalizeExpression(expr: string): string {
 export function canonicalizeEquation(eqStr: string): string {
   let s = eqStr.trim();
   if (s.endsWith(";")) s = s.slice(0, -1).trim();
+  s = stripTrailingEquationComment(s);
 
   // Find top-level '='
   let depth = 0;
@@ -253,7 +606,7 @@ export function canonicalizeEquation(eqStr: string): string {
   // Canonicalize assignment equation: variable = expr
   lhs = canonicalizeExpression(lhs);
   rhs = canonicalizeExpression(rhs);
-  if (rhs.includes("+") || rhs.includes("-")) {
+  if ((rhs.includes("+") || rhs.includes("-")) && !/\b(?:if|then|else|elseif|and|or|when|for|while)\b/.test(rhs)) {
     const rhsTerms = parseAdditiveTerms(rhs);
     if (rhsTerms.length > 1) {
       rhsTerms.sort((a, b) => a.expr.localeCompare(b.expr));
@@ -296,8 +649,7 @@ function parseAdditiveTerms(expr: string): SignedTerm[] {
   let s = expr
     .trim()
     .replace(/\s*"[^"]*"\s*$/, "")
-    .trim()
-    .replace(/-\s*\((\([^()]+\)\s*\*\s*[^+]+\+\s*\([^()]+\)\s*\*\s*[^()]+)\)/g, "- $1");
+    .trim();
   // Strip outer negation: -(a + b + ...)
   let outerNeg = false;
   if (s.startsWith("-(") && s.endsWith(")")) {
@@ -319,9 +671,17 @@ function parseAdditiveTerms(expr: string): SignedTerm[] {
     else if (ch === ")" || ch === "]" || ch === "}") depth--;
 
     if (depth === 0 && (ch === "+" || ch === "-") && i > 0 && curTerm.trim().length > 0) {
+      const prevTrim = curTerm.trimEnd();
+      const prevCh = prevTrim[prevTrim.length - 1];
+      const isSciExp =
+        (prevCh === "e" || prevCh === "E") && prevTrim.length >= 2 && /[0-9.]/.test(prevTrim[prevTrim.length - 2]!);
+      if (isSciExp || prevCh === "*" || prevCh === "/" || prevCh === "^") {
+        curTerm += ch;
+        continue;
+      }
       const termInfo = cleanTerm(curTerm, curSign);
       if (termInfo.expr) {
-        terms.push({ sign: termInfo.sign, expr: canonicalizeExpression(termInfo.expr) });
+        terms.push({ sign: termInfo.sign, expr: canonicalizeExpression(termInfo.expr, false) });
       }
       curSign = ch === "-" ? -1 : 1;
       curTerm = "";
@@ -338,7 +698,7 @@ function parseAdditiveTerms(expr: string): SignedTerm[] {
 
   const lastTermInfo = cleanTerm(curTerm, curSign);
   if (lastTermInfo.expr) {
-    terms.push({ sign: lastTermInfo.sign, expr: canonicalizeExpression(lastTermInfo.expr) });
+    terms.push({ sign: lastTermInfo.sign, expr: canonicalizeExpression(lastTermInfo.expr, false) });
   }
 
   if (outerNeg) {
@@ -383,7 +743,8 @@ function cleanTerm(term: string, currentSign: 1 | -1): { sign: 1 | -1; expr: str
   if (t.startsWith("(-") && t.includes(")")) {
     const closeIdx = t.indexOf(")");
     const inner = t.slice(2, closeIdx).trim();
-    if (!inner.includes("(") && !inner.includes("+") && !inner.includes("-")) {
+    const isSciNum = /^[0-9]+(?:\.[0-9]+)?[eE][+-]?[0-9]+$/.test(inner);
+    if (isSciNum || (!inner.includes("(") && !inner.includes("+") && !inner.includes("-"))) {
       sign = (sign * -1) as 1 | -1;
       t = `${inner}${t.slice(closeIdx + 1)}`;
     }
@@ -534,7 +895,7 @@ export function parseFlatModelica(text: string, options?: DaeComparisonOptions):
   return classes;
 }
 
-function canonicalizeEqualityCliques(equations: string[]): string[] {
+export function canonicalizeEqualityCliques(equations: string[]): string[] {
   const varEqRegex = /^([a-zA-Z_][a-zA-Z0-9_.[\],]*)\s*=\s*([a-zA-Z_][a-zA-Z0-9_.[\],]*);?$/;
   interface Edge {
     u: string;
@@ -610,7 +971,66 @@ function canonicalizeEqualityCliques(equations: string[]): string[] {
     }
   }
   result.push(...newEquations);
-  return result;
+
+  // Also canonicalize spanning-tree cliques of `assert(abs(a - b) <= 0, "Connected constants/parameters must be equal")`
+  const assertEqRegex =
+    /^assert\(\s*abs\(\s*([a-zA-Z_][a-zA-Z0-9_.[\],]*)\s*-\s*([a-zA-Z_][a-zA-Z0-9_.[\],]*)\s*\)\s*<=\s*0(?:\.0+)?\s*,\s*"Connected constants\/parameters must be equal"\s*\);?$/;
+  const assertEdges: Edge[] = [];
+  for (let i = 0; i < result.length; i++) {
+    const m = result[i]!.trim().match(assertEqRegex);
+    if (m && m[1] && m[2]) {
+      assertEdges.push({ u: m[1].trim(), v: m[2].trim(), eqIdx: i });
+    }
+  }
+  if (assertEdges.length === 0) return result;
+
+  const assertAdj = new Map<string, { neighbor: string; eqIdx: number }[]>();
+  for (const e of assertEdges) {
+    if (!assertAdj.has(e.u)) assertAdj.set(e.u, []);
+    if (!assertAdj.has(e.v)) assertAdj.set(e.v, []);
+    assertAdj.get(e.u)!.push({ neighbor: e.v, eqIdx: e.eqIdx });
+    assertAdj.get(e.v)!.push({ neighbor: e.u, eqIdx: e.eqIdx });
+  }
+  const assertVisited = new Set<string>();
+  const assertReplaced = new Set<number>();
+  const assertNew: string[] = [];
+  for (const node of assertAdj.keys()) {
+    if (assertVisited.has(node)) continue;
+    const compNodes: string[] = [];
+    const compEqIndices = new Set<number>();
+    const queue = [node];
+    assertVisited.add(node);
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      compNodes.push(curr);
+      for (const edge of assertAdj.get(curr) || []) {
+        compEqIndices.add(edge.eqIdx);
+        if (!assertVisited.has(edge.neighbor)) {
+          assertVisited.add(edge.neighbor);
+          queue.push(edge.neighbor);
+        }
+      }
+    }
+    if (compNodes.length > 1 && compEqIndices.size === compNodes.length - 1) {
+      for (const idx of compEqIndices) assertReplaced.add(idx);
+      compNodes.sort();
+      const rep = compNodes[0]!;
+      for (let i = 1; i < compNodes.length; i++) {
+        assertNew.push(
+          canonicalizeEquation(
+            `assert(abs(${rep} - ${compNodes[i]!}) <= 0.0, "Connected constants/parameters must be equal");`,
+          ),
+        );
+      }
+    }
+  }
+  if (assertReplaced.size === 0) return result;
+  const finalResult: string[] = [];
+  for (let i = 0; i < result.length; i++) {
+    if (!assertReplaced.has(i)) finalResult.push(result[i]!);
+  }
+  finalResult.push(...assertNew);
+  return finalResult;
 }
 
 /**
@@ -679,6 +1099,12 @@ export function areDaeOutputsEquivalent(
     if (exp.algorithms.length !== act.algorithms.length) return false;
     for (let j = 0; j < exp.algorithms.length; j++) {
       if (!areAlgorithmsEquivalent(exp.algorithms[j]!, act.algorithms[j]!)) return false;
+    }
+
+    // Check initial algorithms
+    if (exp.initialAlgorithms.length !== act.initialAlgorithms.length) return false;
+    for (let j = 0; j < exp.initialAlgorithms.length; j++) {
+      if (!areAlgorithmsEquivalent(exp.initialAlgorithms[j]!, act.initialAlgorithms[j]!)) return false;
     }
   }
 
@@ -829,14 +1255,9 @@ export function areAlgorithmsEquivalent(expAlgo: string, actAlgo: string): boole
       .replace(/(\b[a-zA-Z_][a-zA-Z0-9_.[\],]*)\s*\^\s*2\b/g, "$1 * $1")
       .replace(/\(-([a-zA-Z_][a-zA-Z0-9_.[\],]*)\)\s*\*\s*2\b/g, "(-2) * $1")
       .replace(/(\b[a-zA-Z_][a-zA-Z0-9_.[\],]*)\s*\*\s*2\b/g, "2 * $1")
-      .replace(/\bnoEvent\(\s*if\s+(.+?)\s+then\s+(.+)\)(?=\s*\)\s*;$)/g, "if noEvent($1) then $2")
       .replace(/\+\s*\(-([^()]+)\)/g, "- $1")
       .replace(/-\s*\(-([^()]+)\)/g, "+ $1")
       .replace(/\(\s*0\s*-\s*([^()]+)\)/g, "(-($1))")
-      .replace(
-        /\b([a-zA-Z_][a-zA-Z0-9_.[\],]*)\s*\*\s*([a-zA-Z_][a-zA-Z0-9_.[\],]*)\s*\+\s*\(-\(\1\s*\*\s*\2\)\)\s*\*\s*cos\(angle\)/g,
-        "($1 - $1 * cos(angle)) * $2",
-      )
       .replace(
         /\(-([a-zA-Z_][a-zA-Z0-9_.[\],]*)\)\s*\*\s*([a-zA-Z_][a-zA-Z0-9_.[\],]*)/g,
         (_m, a: string, b: string) => (a < b ? `(-${a}) * ${b}` : `(-${b}) * ${a}`),

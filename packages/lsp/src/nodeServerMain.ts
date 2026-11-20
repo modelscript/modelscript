@@ -474,12 +474,20 @@ export function startNodeServer(input?: any, output?: any) {
 
   documents.onDidSave(async (e) => {
     try {
-      await validationService.validateTextDocument(e.document);
-      const progressReporter = await LspWorkDoneProgressReporter.create(connection, "ModelScript Formal Verification", {
-        message: "Verifying requirements & invariants...",
-      });
-      await validationService.runVerificationForUri(e.document.uri, progressReporter);
-      await validationService.runLiveDigitalThreadValidation(e.document.uri);
+      await validationService.validateTextDocument(e.document, { isSave: true });
+      const uri = e.document.uri;
+      const langId = (e.document.languageId || "").toLowerCase();
+      if (langId === "sysml2" || langId === "sysml" || /\.(sysml|sysml2|kerml)$/i.test(uri)) {
+        const progressReporter = await LspWorkDoneProgressReporter.create(
+          connection,
+          "ModelScript Formal Verification",
+          {
+            message: "Verifying requirements & invariants...",
+          },
+        );
+        await validationService.runVerificationForUri(uri, progressReporter);
+      }
+      await validationService.runLiveDigitalThreadValidation(uri);
     } catch (err: any) {
       connection.console.warn(`[onDidSave] Verification error for ${e.document.uri}: ${err?.message}`);
     }
@@ -509,6 +517,7 @@ export function startNodeServer(input?: any, output?: any) {
     const uri = change.document.uri;
     validationService.verificationDiagnosticsByUri.delete(uri);
     validationService.verificationResultsByUri.delete(uri);
+    validationService.lastAutoVerifiedText.delete(uri);
 
     // Invalidate digital thread slots associated with this URI
     const threadEntries = workspaceManager.getThreadsForUri(uri);
@@ -584,7 +593,7 @@ export function startNodeServer(input?: any, output?: any) {
         ? parserService.getParser("modelica")
         : undefined);
 
-    if (parser) {
+    if (parser && !validationService.isWasmParserBusy()) {
       try {
         const text = change.document.getText();
         const oldCached = documentManager.documentTrees.get(uri);
@@ -614,20 +623,30 @@ export function startNodeServer(input?: any, output?: any) {
             change.document,
             plugin,
           );
-          const wasmLspDiags = validationService.convertWasmLintDiagnostics(
-            wasmLintDiags,
-            change.document,
-            plugin,
-            text,
-          );
+          const wasmLspDiags = validationService
+            .convertWasmLintDiagnostics(wasmLintDiags, change.document, plugin, text)
+            .filter((d) => {
+              const codeStr = String(d.code ?? "").toLowerCase();
+              return (
+                codeStr !== "2002" &&
+                codeStr !== "2003" &&
+                codeStr !== "m2002" &&
+                codeStr !== "m2003" &&
+                codeStr !== "variable-not-found" &&
+                codeStr !== "class-not-found"
+              );
+            });
           const fastDiags = deduplicateAllDiagnostics([...syntaxDiags, ...wasmLspDiags]);
           const lastCount = lastSyntaxErrorsCount.get(uri) ?? 0;
 
           // Surface fast syntax and WASM CST lint errors: clear immediately when 0, debounce by 40ms when editing
           if (fastDiags.length === 0 && lastCount > 0) {
             lastSyntaxErrorsCount.set(uri, 0);
-            const cachedSemantic = (validationService.lastSemanticDiagnostics.get(uri) || []).filter(
-              (d) => typeof d.code !== "number" || d.code < 1000 || d.code >= 6000,
+            const cachedSemantic = validationService.applyDiagnosticFilters(
+              (validationService.lastSemanticDiagnostics.get(uri) || []).filter(
+                (d) =>
+                  d.source !== "sysml2-verifier" && (typeof d.code !== "number" || d.code < 1000 || d.code >= 6000),
+              ),
             );
             validationService.lastSemanticDiagnostics.set(uri, cachedSemantic);
             connection.sendDiagnostics({ uri, diagnostics: cachedSemantic });
@@ -639,11 +658,13 @@ export function startNodeServer(input?: any, output?: any) {
                 if ((validationService.documentRevisions.get(uri) ?? 0) !== currentRevision) return;
                 lastSyntaxErrorsCount.set(uri, fastDiags.length);
                 const cachedSemantic = (validationService.lastSemanticDiagnostics.get(uri) || []).filter(
-                  (d) => typeof d.code !== "number" || d.code < 1000 || d.code >= 6000,
+                  (d) =>
+                    d.source !== "sysml2-verifier" && (typeof d.code !== "number" || d.code < 1000 || d.code >= 6000),
                 );
-                const allDiags = deduplicateAllDiagnostics([...fastDiags, ...cachedSemantic]);
+                const allDiags = validationService.applyDiagnosticFilters(
+                  deduplicateAllDiagnostics([...fastDiags, ...cachedSemantic]),
+                );
                 validationService.lastSemanticDiagnostics.set(uri, allDiags);
-                if (allDiags.length > 1000) allDiags.length = 1000;
                 connection.sendDiagnostics({ uri, diagnostics: allDiags });
               }, 40),
             );
@@ -674,7 +695,7 @@ export function startNodeServer(input?: any, output?: any) {
       }, 60),
     );
 
-    // === TIER 3: Longer Debounce (~100ms) — Salsa QueryEngine, Declarative Lints & Semantic Diagnostics ===
+    // === TIER 3: Longer Debounce (~180ms) — Salsa QueryEngine, Declarative Lints & Semantic Diagnostics ===
     validationService.activeValidationTimers.set(
       uri,
       setTimeout(async () => {
@@ -692,12 +713,19 @@ export function startNodeServer(input?: any, output?: any) {
         }
         const doc = documents.get(uri);
         if (doc) await validationService.validateTextDocument(doc);
-      }, 100),
+      }, 180),
     );
   });
 
   documents.onDidClose((e) => {
     const uri = e.document.uri;
+    const closedLangId = (e.document.languageId || globalLanguageRegistry.getPluginForUri(uri)?.id || "").toLowerCase();
+    const linkedThreadUris = new Set<string>();
+    for (const entry of workspaceManager.getThreadsForUri(uri)) {
+      for (const aligned of workspaceManager.findAlignedElementsBySlot(entry.slot)) {
+        if (aligned.uri && aligned.uri !== uri) linkedThreadUris.add(aligned.uri);
+      }
+    }
     const syntaxTimer = activeSyntaxDebounceTimers.get(uri);
     if (syntaxTimer) {
       clearTimeout(syntaxTimer);
@@ -720,16 +748,23 @@ export function startNodeServer(input?: any, output?: any) {
         documentManager.documentTrees.delete(u);
       }
     }
-    const persistentDiags = [
-      ...(validationService.reasonerDiagnosticsByUri?.get(uri) || []),
-      ...(validationService.verificationDiagnosticsByUri?.get(uri) || []),
-    ];
-    connection.sendDiagnostics({ uri, diagnostics: persistentDiags });
+    connection.sendDiagnostics({ uri, diagnostics: [] });
 
     cadMetricsService.disposeDocument(uri);
-    // Re-validate remaining open documents
+    // Re-validate only remaining open documents that share the closed language or are linked via digital threads
+    const isCrossDomainPeer = (langA: string, langB: string): boolean =>
+      (langA === "modelica" && (langB === "sysml2" || langB === "sysml")) ||
+      ((langA === "sysml2" || langA === "sysml") && langB === "modelica") ||
+      (langA === "psse" && langB === "pscad") ||
+      (langA === "pscad" && langB === "psse");
     for (const doc of documents.all()) {
-      validationService.validateTextDocument(doc).catch(() => {});
+      const docLangId = (doc.languageId || globalLanguageRegistry.getPluginForUri(doc.uri)?.id || "").toLowerCase();
+      if (
+        linkedThreadUris.has(doc.uri) ||
+        (closedLangId && (docLangId === closedLangId || isCrossDomainPeer(closedLangId, docLangId)))
+      ) {
+        validationService.validateTextDocument(doc).catch(() => {});
+      }
     }
   });
 
@@ -784,6 +819,7 @@ export function startNodeServer(input?: any, output?: any) {
       for (const doc of documents.all()) {
         validationService.validateTextDocument(doc);
       }
+      validationService.requestCodeLensRefresh();
     }
   });
 

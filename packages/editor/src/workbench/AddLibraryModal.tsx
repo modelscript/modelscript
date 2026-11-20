@@ -103,6 +103,7 @@ export interface AddLibraryModalProps {
   documentUri?: string | undefined;
   dialect?: string | undefined;
   colorMode?: "dark" | "light" | undefined;
+  initialViewMode?: HubViewMode | undefined;
 }
 
 function formatCompactCount(count?: number): string {
@@ -197,6 +198,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
   onUninstallPackage,
   onPlaceComponent,
   colorMode: propColorMode,
+  initialViewMode = "components",
 }) => {
   const toast = useToast();
   const { colorMode: themeMode, resolvedColorMode } = useTheme();
@@ -205,7 +207,13 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
     (!propColorMode &&
       (themeMode === "dark" || themeMode === "night" || resolvedColorMode === "dark" || resolvedColorMode === "night"));
 
-  const [viewMode, setViewMode] = useState<HubViewMode>("components");
+  const [viewMode, setViewMode] = useState<HubViewMode>(initialViewMode);
+
+  useEffect(() => {
+    if (isOpen) {
+      setViewMode(initialViewMode);
+    }
+  }, [isOpen, initialViewMode]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDomain, setSelectedDomain] = useState<EngineeringDomainId>("all");
   const [packageFilter, setPackageFilter] = useState<string | null>(null);
@@ -1035,40 +1043,37 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
               <PackageIcon size={16} />
             </div>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 650, lineHeight: 1.2 }}>Component &amp; Library Hub</div>
+              <div style={{ fontSize: 15, fontWeight: 650, lineHeight: 1.2 }}>
+                {initialViewMode === "components" ? "Add Component" : "Add Library"}
+              </div>
               <div style={{ fontSize: 11.5, color: palette.muted }}>
-                Drag or place schematic components · Manage Ansatz packages
+                {initialViewMode === "components"
+                  ? "Drag or place schematic components"
+                  : "Manage Ansatz packages or import local/remote libraries"}
               </div>
             </div>
           </div>
 
-          {/* Crisp 3-tab Segmented Control */}
-          <SegmentedControl
-            aria-label="Hub view mode"
-            size="small"
-            onChange={(idx) => {
-              const modes = ["components", "libraries", "import"] as const;
-              const next = modes[idx];
-              if (next) setViewMode(next);
-            }}
-          >
-            <SegmentedControl.Button selected={viewMode === "components"}>
-              Components (
-              {Math.max(
-                filteredComponents.length,
-                !mountedOnlyFilter && registryTotal !== null ? registryTotal : 0,
-              ).toLocaleString()}
-              )
-            </SegmentedControl.Button>
-            <SegmentedControl.Button selected={viewMode === "libraries"}>
-              Libraries ({mountedVisibleCount}/{allPackages.length})
-            </SegmentedControl.Button>
-            <SegmentedControl.Button selected={viewMode === "import"}>Import</SegmentedControl.Button>
-          </SegmentedControl>
+          {initialViewMode !== "components" && (
+            <SegmentedControl
+              aria-label="Library hub view mode"
+              size="small"
+              onChange={(idx) => {
+                const modes = ["libraries", "import"] as const;
+                const next = modes[idx];
+                if (next) setViewMode(next);
+              }}
+            >
+              <SegmentedControl.Button selected={viewMode === "libraries"}>
+                Libraries ({mountedVisibleCount}/{allPackages.length})
+              </SegmentedControl.Button>
+              <SegmentedControl.Button selected={viewMode === "import"}>Import</SegmentedControl.Button>
+            </SegmentedControl>
+          )}
 
           <IconButton
             icon={XIcon}
-            aria-label="Close Component and Library Hub"
+            aria-label={initialViewMode === "components" ? "Close Add Component" : "Close Add Library"}
             variant="invisible"
             size="small"
             onClick={onDismiss}
@@ -1555,11 +1560,12 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                                   overflow: "hidden",
                                   textOverflow: "ellipsis",
                                   whiteSpace: "nowrap",
+                                  minWidth: 0,
                                 }}
                                 title={
                                   isPkgMounted
                                     ? `${comp.packageName} (mounted)`
-                                    : `${comp.packageName} (auto-installs on place)`
+                                    : `Pulls in ${comp.packageName} library on place`
                                 }
                               >
                                 <span
@@ -1571,7 +1577,9 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
                                     flexShrink: 0,
                                   }}
                                 />
-                                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{comp.packageName}</span>
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {isPkgMounted ? comp.packageName : `Pulls ${comp.packageName}`}
+                                </span>
                               </span>
 
                               {isBusy && (

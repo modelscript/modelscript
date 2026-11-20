@@ -108,6 +108,46 @@ export const modflowLanguage = language({
       }
     },
   },
+  ui: {
+    toolbarButtons: [
+      {
+        id: "modflowSolveBalance",
+        label: "Solve Aquifer Balance",
+        shortLabel: "Solve Aquifer",
+        tooltip: "Solve Aquifer Balance",
+        icon: "table",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        actionId: "modflow_solve_balance",
+      },
+      {
+        id: "modflowToDae",
+        label: "Lower MODFLOW to DAEBuilder",
+        shortLabel: "Lower MODFLOW",
+        tooltip: "Lower MODFLOW to DAEBuilder",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "modflow_to_dae",
+      },
+      {
+        id: "modflowLint",
+        label: "Lint MODFLOW Model",
+        shortLabel: "Lint MODFLOW",
+        tooltip: "Lint MODFLOW Model",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "modflow_lint",
+      },
+    ],
+  },
   actions: [
     {
       id: "modflow_lint",

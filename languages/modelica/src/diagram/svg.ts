@@ -718,7 +718,7 @@ function renderGraphicItemString(
       const textTransformAttr = transformParts.length > 0 ? ` transform="${transformParts.join(" ")}"` : "";
       const compLabelAttr = isComponentLabel ? ' data-component-label="true"' : "";
 
-      const textEl = `<text x="${textX}" y="${textY}" dominant-baseline="central" text-anchor="${textAnchor}" font-size="${fontSize}" font-family="${escapeSvgXml(txt.fontName || "sans-serif")}"${compLabelAttr}${unflippedAttr} fill="${fill}" font-style="${fontStyle}" font-weight="${fontWeight}" text-decoration="${textDecoration}"${textTransformAttr}${originRotAttr ? "" : visAttr}>${escapeSvgXml(str)}</text>`;
+      const textEl = `<text x="${textX}" y="${textY}" dominant-baseline="central" text-anchor="${textAnchor}" text-rendering="geometricPrecision" font-size="${fontSize}" font-family="${escapeSvgXml(txt.fontName || "sans-serif")}"${compLabelAttr}${unflippedAttr} fill="${fill}" font-style="${fontStyle}" font-weight="${fontWeight}" text-decoration="${textDecoration}"${textTransformAttr}${originRotAttr ? "" : visAttr}>${escapeSvgXml(str)}</text>`;
       return originRotAttr ? `<g${originRotAttr}${visAttr}>${textEl}</g>` : textEl;
     }
     case "Bitmap": {

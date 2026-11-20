@@ -396,7 +396,11 @@ export const MorselViewSubHeader: React.FC<MorselViewSubHeaderProps> = ({
 
       {/* Right: Per-Language/View Toolbar Buttons + Unified View Tabs + Split */}
       <ViewTabsWrapper>
-        <LanguageToolbarButtons languageId={activeLangInfo.id} activeView={activeTabId} />
+        <LanguageToolbarButtons
+          languageId={activeLangInfo.id}
+          activeView={activeTabId}
+          maxPrimary={activeTabId === "icon" ? 6 : 2}
+        />
 
         <SegmentedControl
           size="small"

@@ -40,6 +40,58 @@ export const sspLanguage = language({
   rules: xmlRules,
 
   // IDE and AI agent actions for inspecting SSD diagrams, running multi-FMU co-simulation, and Modelica projection
+  ui: {
+    toolbarButtons: [
+      {
+        id: "autoLayout",
+        label: "Auto-Layout Diagram",
+        shortLabel: "Layout",
+        tooltip: "Re-run automatic schematic layout on the current diagram",
+        icon: "flowchart",
+        views: ["diagram"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        command: "morsel:autoLayout",
+      },
+      {
+        id: "openSspEditor",
+        label: "Inspect System Structure (.ssd)",
+        shortLabel: "Inspect System",
+        tooltip: "Inspect System Structure (.ssd)",
+        icon: "tools",
+        views: ["diagram", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 20,
+        actionId: "open_ssp_editor",
+      },
+      {
+        id: "launchCosimulation",
+        label: "Launch Multi-FMU Co-Simulation Master",
+        shortLabel: "Launch Multi-FMU",
+        tooltip: "Launch Multi-FMU Co-Simulation Master",
+        icon: "play",
+        views: ["diagram", "simulation"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "launch_cosimulation",
+      },
+      {
+        id: "projectToModelica",
+        label: "Project System to Modelica Model",
+        shortLabel: "Project System",
+        tooltip: "Project System to Modelica Model",
+        icon: "export",
+        views: ["code", "diagram"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 40,
+        actionId: "project_to_modelica",
+      },
+    ],
+  },
   actions: [
     {
       id: "open_ssp_editor",

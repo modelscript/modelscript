@@ -124,6 +124,8 @@ export interface LanguageToolbarButtonDeclaration {
    * (e.g. "flowchart", "pulse", "stack", "shield-check", "play", or "$(pulse)").
    */
   icon?: string | undefined;
+  /** Optional inline 16x16 SVG inner markup for custom toolbar glyphs in Morsel/Ansatz. */
+  iconSvg?: string | undefined;
   /** Which workbench views display this button (default: ["*"]). */
   views?: LanguageToolbarView[] | undefined;
   /** Host surfaces where this button should appear (default: ["morsel", "vscode"]). */

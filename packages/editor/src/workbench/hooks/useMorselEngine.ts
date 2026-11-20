@@ -1854,6 +1854,7 @@ export function useMorselEngine({
 
   // ── Fetch CAD annotations or tessellate direct STEP / OpenSCAD 3D geometry ──
   useEffect(() => {
+    if (!showCadView && dialect !== "step" && dialect !== "scad" && dialect !== "qif") return;
     let cancelled = false;
 
     const runClassicCad = () => {
@@ -2070,6 +2071,7 @@ export function useMorselEngine({
     projectFiles,
     activeFileName,
     onUpdateProjectFile,
+    showCadView,
   ]);
 
   // ── Live MQTT data bridge ──

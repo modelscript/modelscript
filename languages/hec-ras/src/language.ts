@@ -23,6 +23,46 @@ export const hecRasLanguage = language({
     Root: () => "hec-ras",
   },
 
+  ui: {
+    toolbarButtons: [
+      {
+        id: "hecrasSolveProfile",
+        label: "Solve Water Surface Profile",
+        shortLabel: "Solve Water",
+        tooltip: "Solve Water Surface Profile",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        actionId: "hecras_solve_profile",
+      },
+      {
+        id: "hecrasToDae",
+        label: "Lower HEC-RAS to DAE Arena",
+        shortLabel: "Lower HEC-RAS",
+        tooltip: "Lower HEC-RAS to DAE Arena",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "hecras_to_dae",
+      },
+      {
+        id: "hecrasLint",
+        label: "Lint HEC-RAS Deck",
+        shortLabel: "Lint HEC-RAS",
+        tooltip: "Lint HEC-RAS Deck",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "hecras_lint",
+      },
+    ],
+  },
   actions: [
     {
       id: "hecras_lint",

@@ -16,8 +16,10 @@ export interface FlatteningState {
   scopeDeclaredNames?: Map<string, Set<string>> | undefined;
   outerToInner?: Map<string, string> | undefined;
   constantAliases?: Map<string, string> | undefined;
+  evaluatedParams?: Set<string> | undefined;
   stateOutputVars?: Set<string> | undefined;
   isInsidePrevious?: boolean | undefined;
+  isInsideClock?: boolean | undefined;
   currentCompClauseRange?: SourceSpan | any;
   outerNonConstantAccess?: any[] | undefined;
   currentPrefix?: string | undefined;
@@ -117,6 +119,7 @@ export function getFlatteningState(dae: DAEBuilder, flattener?: FlattenerHostLik
     scopeDeclaredNames: undefined,
     outerToInner: undefined,
     constantAliases: undefined,
+    evaluatedParams: undefined,
     stateOutputVars: undefined,
     isInsidePrevious: undefined,
     currentCompClauseRange: undefined,

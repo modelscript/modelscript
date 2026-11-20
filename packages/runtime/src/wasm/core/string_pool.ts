@@ -100,6 +100,28 @@ export class ArenaStringPool {
     this._internPredefinedKeywords();
   }
 
+  reset(): void {
+    this.charOffset = 0;
+    this.stringCount = 1;
+    if (changetype<usize>(this.stringOffsets) != 0) this.stringOffsets.clear();
+    if (changetype<usize>(this.stringLengths) != 0) this.stringLengths.clear();
+    if (this.stringMapPtr != 0) this.getStringMap().clear();
+    if (this.pathMapPtr != 0) this.getPathMap().clear();
+
+    this._internPredefined("Real", STRING_REAL_ID);
+    this._internPredefined("Integer", STRING_INTEGER_ID);
+    this._internPredefined("Boolean", STRING_BOOLEAN_ID);
+    this._internPredefined("String", STRING_STRING_ID);
+    this._internPredefined("parameter", STRING_PARAMETER_ID);
+    this._internPredefined("constant", STRING_CONSTANT_ID);
+    this._internPredefined("discrete", STRING_DISCRETE_ID);
+    this._internPredefined("continuous", STRING_CONTINUOUS_ID);
+    this._internPredefined("input", STRING_INPUT_ID);
+    this._internPredefined("output", STRING_OUTPUT_ID);
+
+    this._internPredefinedKeywords();
+  }
+
   private _internPredefined(s: string, expectedId: u32): void {
     let len: u32 = s.length;
     let id = this.stringCount++;

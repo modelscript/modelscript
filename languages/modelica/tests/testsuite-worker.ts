@@ -813,12 +813,11 @@ function runTestCaseCore(
       byName: (n: string) => db.byName(n),
       query: <T = unknown>(q: string, id: number) => db.query<T>(q, id),
     };
-    const targetSym =
-      testCase.metadata.status === "correct" && lastClassName
-        ? Array.from(context.queryEngine.index.symbols.values()).find(
-            (s) => (s.kind === "Class" || s.kind === "Package") && s.name === lastClassName,
-          )
-        : undefined;
+    const targetSym = lastClassName
+      ? Array.from(context.queryEngine.index.symbols.values()).find(
+          (s) => (s.kind === "Class" || s.kind === "Package") && s.name === lastClassName,
+        )
+      : undefined;
     const sourceLines = targetSym ? testCase.source.split("\n") : null;
     const isOldFrontend = testCase.source.includes("-d=-newInst");
     const cstDiags = reconcileModelicaCstDiagnostics({
@@ -866,7 +865,6 @@ function runTestCaseCore(
               (d as any).code === 4035 ||
               (typeof d.message === "string" &&
                 d.message.includes("could not be evaluated due to a cyclic dependency"))) &&
-            testCase.metadata.status === "correct" &&
             lastClassName
           ) {
             const targetSym = Array.from(context.queryEngine.index.symbols.values()).find(
@@ -1089,7 +1087,6 @@ function runTestCaseCore(
             d.message.includes("Redeclaration with a new type requires") ||
             (dd as any).code === 4035 ||
             d.message.includes("could not be evaluated due to a cyclic dependency")) &&
-          testCase.metadata.status === "correct" &&
           isOutsideTargetClass(d.startOffset)
         ) {
           continue;
@@ -1317,7 +1314,11 @@ function runTestCaseCore(
           "The maximum recursion depth of 256 was reached, probably due to mutual recursion.",
         )
         .replace(/^- elab_untyped_mod [^\n]+\n?/gm, "")
-        .replace(/(\[[^\]]*:writable\] Notification: From here:\n\[[^\]]*:writable\] Error: [^\n]+\n)\1+/g, "$1");
+        .replace(/^Failed to parse file: [^\n]+!\n?/gm, "")
+        .replace(/^Error: Error occurred while flattening model [^\n]+\n?/gm, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .replace(/(\[[^\]]*:writable\] Notification: From here:\n\[[^\]]*:writable\] Error: [^\n]+\n)\1+/g, "$1")
+        .trim();
 
     // ── Compare results ──
     const isModelicaOutput = /^(class|function|record|model|block|connector)\s/.test(testCase.expectedResult.trim());
@@ -1327,7 +1328,6 @@ function runTestCaseCore(
         const actual = diagLines.join("\n");
         const expected = stripWarnings(testCase.expectedResult.trim());
         if (stripDiagRanges(actual) === stripDiagRanges(expected)) return makeResult("passed");
-        if (expected.startsWith("Stack overflow detected")) return makeResult("passed");
 
         let reformatActual = actual;
         if (expected.includes("Error processing file:")) {
@@ -1394,9 +1394,6 @@ function runTestCaseCore(
           for (let i = 0; i < omcDiagLines.length; i++) {
             const line = omcDiagLines[i];
             if (line.includes("Notification: From here:")) {
-              if (!expected.includes("Notification: From here:")) {
-                continue;
-              }
               let nextError = "";
               for (let j = i + 1; j < omcDiagLines.length; j++) {
                 if (!omcDiagLines[j].includes("Notification: From here:")) {
@@ -1440,17 +1437,8 @@ function runTestCaseCore(
             return true;
           });
 
-          const hasErrorOccurred =
-            expected.includes("Error: Error occurred while flattening model") &&
-            !filteredOmcDiagLines.some((l) => l.includes("Error occurred while flattening model"));
-          const errorLine = hasErrorOccurred ? `\nError: Error occurred while flattening model ${lastClassName}` : "";
-          const relPath = path.relative(testsuiteRoot, testCase.file);
-          const relPathParts = relPath.split(path.sep).join("/");
-          const failedToParsePrefix = expected.includes("Failed to parse file:")
-            ? `Failed to parse file: ${relPathParts}!\n\nFailed to parse file: ${relPathParts}!\n\n`
-            : "";
           // Match OMC's output order: boilerplate first, then diagnostics
-          reformatActual = `Error processing file: ${path.basename(testCase.file)}\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n${failedToParsePrefix ? failedToParsePrefix : "\n"}${filteredOmcDiagLines.join("\n")}${errorLine}\n\nExecution failed!`;
+          reformatActual = `Error processing file: ${path.basename(testCase.file)}\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\n${filteredOmcDiagLines.join("\n")}\n\nExecution failed!`;
           if (stripDiagRanges(reformatActual) === stripDiagRanges(expected)) return makeResult("passed");
         }
 
@@ -1460,7 +1448,11 @@ function runTestCaseCore(
         }
         return makeResult("failed", formatMismatch(expected, reformatActual));
       }
-      if (flattenedResult === null) return makeResult("passed");
+      if (flattenedResult === null) {
+        const expected = stripWarnings(testCase.expectedResult.trim());
+        if (!expected) return makeResult("passed");
+        return makeResult("failed", formatMismatch(expected, ""));
+      }
       {
         let combinedActual = flattenedResult.trim();
         const combinedDiagLines = formatDiagLines();
@@ -1521,21 +1513,9 @@ function runTestCaseCore(
             uniqueOmcDiagLines.push(line);
           }
         }
-        const hasErrorOccurred =
-          expected.includes("Error: Error occurred while flattening model") &&
-          !uniqueOmcDiagLines.some((l) => l.includes("Error occurred while flattening model"));
-        const errorLine = hasErrorOccurred ? `\nError: Error occurred while flattening model ${lastClassName}` : "";
-        const relPath = path.relative(testsuiteRoot, testCase.file);
-        const relPathParts = relPath.split(path.sep).join("/");
-        const failedToParsePrefix = expected.includes("Failed to parse file:")
-          ? `Failed to parse file: ${relPathParts}!\n\nFailed to parse file: ${relPathParts}!\n\n`
-          : "";
-        const diagBlock =
-          uniqueOmcDiagLines.length > 0 || errorLine
-            ? `${failedToParsePrefix ? failedToParsePrefix : "\n"}${uniqueOmcDiagLines.join("\n")}${errorLine}\n\n`
-            : `${failedToParsePrefix ? failedToParsePrefix : "\n"}`;
+        const diagBlock = uniqueOmcDiagLines.length > 0 ? `\n${uniqueOmcDiagLines.join("\n")}\n\n` : "\n";
         const boilerplateFirst = `Error processing file: ${path.basename(testCase.file)}\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n${diagBlock}Execution failed!`;
-        const boilerplateLast = `Error processing file: ${path.basename(testCase.file)}\n${uniqueOmcDiagLines.join("\n")}${errorLine}\n\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\nExecution failed!`;
+        const boilerplateLast = `Error processing file: ${path.basename(testCase.file)}\n${uniqueOmcDiagLines.join("\n")}\n\n# Error encountered! Exiting...\n# Please check the error message and the flags.\n\nExecution failed!`;
         if (
           stripDiagRanges(boilerplateFirst) === stripDiagRanges(expected) ||
           stripDiagRanges(boilerplateLast) === stripDiagRanges(expected)
@@ -1642,9 +1622,7 @@ function runTestCaseCore(
       error instanceof RangeError ||
       error instanceof SyntaxError;
     const isCompilerDiagnosticError =
-      !isInternalJsError &&
-      typeof errorMsg === "string" &&
-      (expected.includes(errorMsg) || /^\[M\d+\]|^Error:|^Parse error:|^Syntax Error:/.test(errorMsg));
+      !isInternalJsError && typeof errorMsg === "string" && errorMsg.length > 0 && expected.includes(errorMsg);
     if (
       isCompilerDiagnosticError &&
       testCase.metadata.status === "incorrect" &&

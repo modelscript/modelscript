@@ -31,6 +31,34 @@ export const gridlabdLanguage = language({
   conflicts: gridlabdGrammar.conflicts,
   rules: gridlabdGrammar.rules,
 
+  ui: {
+    toolbarButtons: [
+      {
+        id: "gridlabdToDae",
+        label: "Lower GridLAB-D Model to DAE",
+        shortLabel: "Lower GridLAB-D",
+        tooltip: "Lower GridLAB-D Model to DAE",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 10,
+        actionId: "gridlabd_to_dae",
+      },
+      {
+        id: "lintGridlabd",
+        label: "Lint GridLAB-D Model",
+        shortLabel: "Lint GridLAB-D",
+        tooltip: "Lint GridLAB-D Model",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "lint_gridlabd",
+      },
+    ],
+  },
   actions: [
     {
       id: "lint_gridlabd",

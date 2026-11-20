@@ -67,6 +67,46 @@ export const matpowerLanguage = language({
     },
   },
 
+  ui: {
+    toolbarButtons: [
+      {
+        id: "solveMatpowerPowerflow",
+        label: "Solve AC Power Flow (MATPOWER)",
+        shortLabel: "Solve AC",
+        tooltip: "Solve AC Power Flow (MATPOWER)",
+        icon: "pulse",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        actionId: "solve_matpower_powerflow",
+      },
+      {
+        id: "lowerMatpowerDae",
+        label: "Lower MATPOWER Case to DAE Arena",
+        shortLabel: "Lower MATPOWER",
+        tooltip: "Lower MATPOWER Case to DAE Arena",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 20,
+        actionId: "lower_matpower_dae",
+      },
+      {
+        id: "lintMatpowerCase",
+        label: "Lint MATPOWER Case",
+        shortLabel: "Lint MATPOWER",
+        tooltip: "Lint MATPOWER Case",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        actionId: "lint_matpower_case",
+      },
+    ],
+  },
   actions: [
     {
       id: "solve_matpower_powerflow",

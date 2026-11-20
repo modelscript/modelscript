@@ -3,6 +3,7 @@
 export * from "./action-types.js";
 export * from "./api.js";
 export * from "./automata.js";
+export * from "./codec-types.js";
 export * from "./codegraph.js";
 export * from "./combinators.js";
 export * from "./compose.js";

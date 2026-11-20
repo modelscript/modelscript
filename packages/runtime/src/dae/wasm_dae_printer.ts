@@ -401,6 +401,9 @@ export class ArenaDAEPrinter {
             const childOp = a.getExprData1(childId) as BinOp;
             if (LOW_PREC_OPS.has(childOp)) return true;
           }
+          if (op === BinOp.And && ck === ExprKind.Binary && (a.getExprData1(childId) as BinOp) === BinOp.Or) {
+            return true;
+          }
           if (ck === ExprKind.IfElse || ck === ExprKind.Range) return true;
           return false;
         };

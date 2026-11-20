@@ -853,7 +853,6 @@ export class CdclSatSolver {
             const val: number = wasm.sat_getValue(this.wasmSatPtr, v);
             const isTrue = val >= 0;
             model.set(v, isTrue);
-            this.assignments.set(v, isTrue ? 1 : -1);
           }
           return { status: "SAT", model };
         } else if (statusCode === 2) {

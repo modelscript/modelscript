@@ -3,7 +3,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  ensureSharedWebLLMEngine,
+  getLastLocalAiError,
+} from "../../../packages/editor/src/internal/local-ai-runtime.js";
+import {
   DEFAULT_MORSEL_AI_SETTINGS,
+  fallbackTaskTitle,
+  generateMorselTaskTitle,
   runMorselAiTurn,
 } from "../../../packages/editor/src/workbench/util/morsel-ai-client.js";
 import {
@@ -112,5 +118,35 @@ describe("MorselAiClient agentic loop", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("generates and sanitizes LLM task titles with fallback", async () => {
+    assert.equal(fallbackTaskTitle("   "), "New AI Task");
+    assert.equal(fallbackTaskTitle("Fix Chua circuit equation"), "Fix Chua circuit equation");
+
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () => {
+        const sse = [
+          `data: ${JSON.stringify({ type: "text", delta: '<think>thinking</think>"Fix Chua Circuit Oscillation."' })}\n\n`,
+          `data: ${JSON.stringify({ type: "done", model: "qwen2.5-coder:32b" })}\n\n`,
+        ].join("");
+        return new Response(sse, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+      }) as typeof fetch;
+
+      const title = await generateMorselTaskTitle("Why does ChuaCircuit oscillate?", {
+        ...DEFAULT_MORSEL_AI_SETTINGS,
+        mode: "ansatz",
+      });
+      assert.equal(title, "Fix Chua Circuit Oscillation");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("reports a clear diagnostic when WebGPU is unavailable", async () => {
+    const engine = await ensureSharedWebLLMEngine();
+    assert.equal(engine, null);
+    assert.match(getLastLocalAiError() || "", /WebGPU/i);
   });
 });

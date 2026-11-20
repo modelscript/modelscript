@@ -53,8 +53,13 @@ const WORKSPACE_LINTER_LOADERS: Record<string, () => Promise<WorkspaceLinterFn>>
 
 export const SUPPORTED_WORKSPACE_LINTER_LANGUAGES: readonly string[] = Object.keys(WORKSPACE_LINTER_LOADERS);
 
+const CROSS_DOMAIN_WORKSPACE_LINTER_LANGS = new Set(["psse", "pscad", "reqif", "sysml2"]);
+
 export function hasWorkspaceLinter(langId: string): boolean {
-  return Object.prototype.hasOwnProperty.call(WORKSPACE_LINTER_LOADERS, langId);
+  return (
+    Object.prototype.hasOwnProperty.call(WORKSPACE_LINTER_LOADERS, langId) ||
+    CROSS_DOMAIN_WORKSPACE_LINTER_LANGS.has(langId)
+  );
 }
 
 /**
@@ -80,6 +85,32 @@ function toDiagnosticSeverity(sev: WorkspaceLintDiagnostic["severity"]): Diagnos
 
 function normalizeUri(uri: string): string {
   return uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
+}
+
+const MAX_CROSS_DOMAIN_PARSE_CACHE_ENTRIES = 64;
+const rawParseCache = new Map<string, { text: string; value: unknown }>();
+const dyrParseCache = new Map<string, { text: string; value: unknown }>();
+const seqParseCache = new Map<string, { text: string; value: unknown }>();
+const pscxParseCache = new Map<string, { text: string; value: unknown }>();
+const xmlParseCache = new Map<string, { text: string; value: unknown }>();
+
+function getOrParseCached<T>(
+  cache: Map<string, { text: string; value: unknown }>,
+  uri: string,
+  text: string,
+  parseFn: (src: string) => T,
+): T {
+  const existing = cache.get(uri);
+  if (existing && existing.text === text) {
+    return existing.value as T;
+  }
+  const value = parseFn(text);
+  if (cache.size >= MAX_CROSS_DOMAIN_PARSE_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey !== undefined) cache.delete(oldestKey);
+  }
+  cache.set(uri, { text, value });
+  return value;
 }
 
 /**
@@ -121,12 +152,18 @@ export async function lintPssePscadCrossDomain(
     import("@modelscript/dsl/xml"),
   ]);
 
-  const rawCases = rawEntries.map(([uri, txt]) => ({ uri, parsed: parseRaw(txt) }));
-  const dyrRecords = dyrEntries.flatMap(([, txt]) => parseDyr(txt).records);
-  const seqXfmrs = seqEntries.flatMap(([, txt]) => parseSeq(txt).transformers);
+  const rawCases = rawEntries.map(([uri, txt]) => ({
+    uri,
+    parsed: getOrParseCached(rawParseCache, uri, txt, parseRaw),
+  }));
+  const dyrRecords = dyrEntries.flatMap(([uri, txt]) => getOrParseCached(dyrParseCache, uri, txt, parseDyr).records);
+  const seqXfmrs = seqEntries.flatMap(([uri, txt]) => getOrParseCached(seqParseCache, uri, txt, parseSeq).transformers);
   const pscadCases = pscxEntries.map(([uri, txt]) => {
-    const proj = parsePscx(txt);
-    return { uri, project: proj, netlist: extractEmtNetlist(proj) };
+    const cached = getOrParseCached(pscxParseCache, uri, txt, (t) => {
+      const project = parsePscx(t);
+      return { project, netlist: extractEmtNetlist(project) };
+    });
+    return { uri, project: cached.project, netlist: cached.netlist };
   });
 
   const diagnostics: WorkspaceLintDiagnostic[] = [];
@@ -278,12 +315,12 @@ export async function lintPssePscadCrossDomain(
     // X7004: FMU modelDescription.xml communication step & port unit validation against PSCAD timeStepUs
     const emtDtUs = pc.project.settings.timeStepUs;
     for (const [fmuUri, fmuXml] of fmuXmlEntries) {
-      const xmlDoc = parseXml(fmuXml);
+      const xmlDoc = getOrParseCached(xmlParseCache, fmuUri, fmuXml, parseXml);
       if (!xmlDoc.root) continue;
       const findAttr = (el: typeof xmlDoc.root, attrName: string): string | undefined =>
-        el.attributes.find((a) => a.name === attrName)?.value;
+        el.attributes.find((a: { name: string; value: string }) => a.name === attrName)?.value;
 
-      const expEl = xmlDoc.root.children.find((c) => c.name === "DefaultExperiment");
+      const expEl = xmlDoc.root.children.find((c: { name: string }) => c.name === "DefaultExperiment");
       if (expEl && emtDtUs > 0) {
         const stepStr = findAttr(expEl, "stepSize");
         const stepSec = stepStr !== undefined ? Number(stepStr) : NaN;
@@ -302,13 +339,13 @@ export async function lintPssePscadCrossDomain(
         }
       }
 
-      const modelVarsEl = xmlDoc.root.children.find((c) => c.name === "ModelVariables");
+      const modelVarsEl = xmlDoc.root.children.find((c: { name: string }) => c.name === "ModelVariables");
       if (modelVarsEl && pc.netlist.fmuInstances.length > 0) {
         for (const sv of modelVarsEl.children) {
           if (sv.name !== "ScalarVariable") continue;
           const varName = findAttr(sv, "name") ?? "";
           const causality = findAttr(sv, "causality") ?? "";
-          const realEl = sv.children.find((c) => c.name === "Real");
+          const realEl = sv.children.find((c: { name: string }) => c.name === "Real");
           const unit = realEl ? (findAttr(realEl, "unit") ?? "") : "";
           const lowUnit = unit.toLowerCase();
           const lowVar = varName.toLowerCase();
@@ -334,7 +371,7 @@ export async function lintPssePscadCrossDomain(
   if (reqifEntries.length > 0 || sysmlEntries.length > 0) {
     const reqClauses: Array<{ uri: string; text: string }> = [];
     for (const [rUri, rXml] of reqifEntries) {
-      const xmlDoc = parseXml(rXml);
+      const xmlDoc = getOrParseCached(xmlParseCache, rUri, rXml, parseXml);
       const visit = (el: NonNullable<typeof xmlDoc.root>) => {
         for (const a of el.attributes) {
           if (a.name.toUpperCase() === "THE-VALUE" && a.value.trim().length > 0) {
@@ -454,11 +491,15 @@ export async function runWorkspaceLinterForDocument(
   existingDiagnostics: Diagnostic[],
 ): Promise<void> {
   const loader = WORKSPACE_LINTER_LOADERS[langId];
-  if (!loader) return;
+  const runCrossDomain = CROSS_DOMAIN_WORKSPACE_LINTER_LANGS.has(langId);
+  if (!loader && !runCrossDomain) return;
 
-  const linter = await loader();
-  const wsDiags = [...(await linter(workspaceDocs, rootUri))];
-  if (langId === "psse" || langId === "pscad" || langId === "reqif" || langId === "sysml2") {
+  const wsDiags: WorkspaceLintDiagnostic[] = [];
+  if (loader) {
+    const linter = await loader();
+    wsDiags.push(...(await linter(workspaceDocs, rootUri)));
+  }
+  if (runCrossDomain) {
     wsDiags.push(...(await lintPssePscadCrossDomain(workspaceDocs)));
   }
   const normRoot = normalizeUri(rootUri);

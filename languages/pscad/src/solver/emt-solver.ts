@@ -85,6 +85,22 @@ export interface EmtBoundaryFeed {
   thevenin?:
     | ((t: number) => { vPeak: number; freqRad: number; phaseRad: number; gSrc: number } | undefined)
     | undefined;
+  /** Optional unbalanced 3-phase Thévenin/Norton feed with optional 3x3 phase conductance matrix and FDNE history current. */
+  threePhaseThevenin?:
+    | ((t: number) =>
+        | {
+            ea: number;
+            eb: number;
+            ec: number;
+            gSrc: number;
+            gMatrix3x3?: Float64Array | number[] | undefined;
+            mutualCouplings?: Array<{ peerBusId: string; gMatrix3x3: Float64Array | number[] }> | undefined;
+            iHistA?: number | undefined;
+            iHistB?: number | undefined;
+            iHistC?: number | undefined;
+          }
+        | undefined)
+    | undefined;
   /** Optional dynamic 3-phase instantaneous current injection in Amperes. */
   currentInjection?: ((t: number) => { ia: number; ib: number; ic: number } | undefined) | undefined;
 }
@@ -2174,7 +2190,7 @@ export class EmtSolver {
    * Returns `""` if time-varying boundaryFeeds supply dynamic Thévenin conductances.
    */
   private computeTopologyKey(t: number): string {
-    if (this.options?.boundaryFeeds?.some((bf) => Boolean(bf.thevenin))) {
+    if (this.options?.boundaryFeeds?.some((bf) => Boolean(bf.thevenin) || Boolean(bf.threePhaseThevenin))) {
       return "";
     }
     let swKey = "";
@@ -2671,6 +2687,24 @@ export class EmtSolver {
               this.J3[3 * bIdx + 1]! + th.gSrc * th.vPeak * Math.sin(th.freqRad * t + th.phaseRad - (2 * Math.PI) / 3);
             this.J3[3 * bIdx + 2] =
               this.J3[3 * bIdx + 2]! + th.gSrc * th.vPeak * Math.sin(th.freqRad * t + th.phaseRad + (2 * Math.PI) / 3);
+          }
+        }
+        if (bf.threePhaseThevenin) {
+          const th3 = bf.threePhaseThevenin(t);
+          if (th3) {
+            const gm = th3.gMatrix3x3;
+            if (gm && gm.length >= 9) {
+              this.J3[3 * bIdx + 0] =
+                this.J3[3 * bIdx + 0]! + gm[0]! * th3.ea + gm[1]! * th3.eb + gm[2]! * th3.ec + (th3.iHistA ?? 0.0);
+              this.J3[3 * bIdx + 1] =
+                this.J3[3 * bIdx + 1]! + gm[3]! * th3.ea + gm[4]! * th3.eb + gm[5]! * th3.ec + (th3.iHistB ?? 0.0);
+              this.J3[3 * bIdx + 2] =
+                this.J3[3 * bIdx + 2]! + gm[6]! * th3.ea + gm[7]! * th3.eb + gm[8]! * th3.ec + (th3.iHistC ?? 0.0);
+            } else {
+              this.J3[3 * bIdx + 0] = this.J3[3 * bIdx + 0]! + th3.gSrc * th3.ea + (th3.iHistA ?? 0.0);
+              this.J3[3 * bIdx + 1] = this.J3[3 * bIdx + 1]! + th3.gSrc * th3.eb + (th3.iHistB ?? 0.0);
+              this.J3[3 * bIdx + 2] = this.J3[3 * bIdx + 2]! + th3.gSrc * th3.ec + (th3.iHistC ?? 0.0);
+            }
           }
         }
         if (bf.currentInjection) {
@@ -3953,6 +3987,200 @@ export class EmtSolver {
   }
 
   /**
+   * Begins an incremental, lock-stepped EMT co-simulation session.
+   * Call `stepSessionBatch()` once per macro-step, then `endStepSession()` to retrieve full trajectories.
+   */
+  public beginStepSession(): {
+    loopState: ReturnType<EmtSolver["initSolveLoopState"]>;
+    stepCursor: number;
+    startTime: number;
+  } {
+    this.licenseGuard.verifyOrThrow(
+      this.customBlockStates.map((cbs) => ({
+        block: cbs.block,
+        runner: cbs.runner,
+      })),
+    );
+    const startTime = performance.now();
+    const loopState = this.initSolveLoopState();
+    return { loopState, stepCursor: 0, startTime };
+  }
+
+  /**
+   * Updates boundary feeds dynamically between macro-steps.
+   */
+  public setBoundaryFeeds(feeds: EmtBoundaryFeed[] | undefined): void {
+    this.options.boundaryFeeds = feeds;
+  }
+
+  /**
+   * Advances an active EMT session by `nSubSteps` micro-steps.
+   */
+  public stepSessionBatch(
+    session: { loopState: ReturnType<EmtSolver["initSolveLoopState"]>; stepCursor: number; startTime: number },
+    nSubSteps: number,
+    updatedFeeds?: EmtBoundaryFeed[] | undefined,
+  ): number {
+    if (updatedFeeds !== undefined) {
+      this.options.boundaryFeeds = updatedFeeds;
+    }
+    if (this.nBuses === 0 || nSubSteps <= 0) return 0;
+    const kStart = session.stepCursor;
+    const kEnd = Math.min(this.nSteps, kStart + nSubSteps);
+    if (kEnd <= kStart) return 0;
+    this.runStepBatch(session.loopState, kStart, kEnd);
+    session.stepCursor = kEnd;
+    return kEnd - kStart;
+  }
+
+  /**
+   * Finalizes an incremental EMT session and builds the full `EmtSolverResult`.
+   */
+  public endStepSession(session: {
+    loopState: ReturnType<EmtSolver["initSolveLoopState"]>;
+    stepCursor: number;
+    startTime: number;
+  }): EmtSolverResult {
+    if (this.nBuses === 0) {
+      return this.solveZeroBusSystem(session.startTime);
+    }
+    return this.finalizeSolveResult(session.startTime);
+  }
+
+  /**
+   * Captures a complete in-memory checkpoint of an active EMT step session
+   * for macro-step Picard / waveform-relaxation rollback.
+   */
+  public captureStepSessionState(session: {
+    loopState: ReturnType<EmtSolver["initSolveLoopState"]>;
+    stepCursor: number;
+    startTime: number;
+  }): unknown {
+    return {
+      stepCursor: session.stepCursor,
+      vaStep: new Float64Array(this.vaStep),
+      vbStep: new Float64Array(this.vbStep),
+      vcStep: new Float64Array(this.vcStep),
+      vaPrevStep: new Float64Array(session.loopState.vaPrevStep),
+      vbPrevStep: new Float64Array(session.loopState.vbPrevStep),
+      vcPrevStep: new Float64Array(session.loopState.vcPrevStep),
+      vPreStep3: new Float64Array(session.loopState.vPreStep3),
+      branchHistories: this.companionBranches.map((br) => ({
+        iHistA: br.iHistA,
+        iHistB: br.iHistB,
+        iHistC: br.iHistC,
+      })),
+      bergeronStates: this.bergeronLines.map((bl) => ({
+        ptr: bl.ptr,
+        vkBufA: new Float64Array(bl.vkBufA),
+        vkBufB: new Float64Array(bl.vkBufB),
+        vkBufC: new Float64Array(bl.vkBufC),
+        vmBufA: new Float64Array(bl.vmBufA),
+        vmBufB: new Float64Array(bl.vmBufB),
+        vmBufC: new Float64Array(bl.vmBufC),
+        ikmBufA: new Float64Array(bl.ikmBufA),
+        ikmBufB: new Float64Array(bl.ikmBufB),
+        ikmBufC: new Float64Array(bl.ikmBufC),
+        imkBufA: new Float64Array(bl.imkBufA),
+        imkBufB: new Float64Array(bl.imkBufB),
+        imkBufC: new Float64Array(bl.imkBufC),
+      })),
+      syncGenStates: this.syncGenerators.map((sg) => ({
+        deltaRad: sg.deltaRad,
+        omegaRadSec: sg.omegaRadSec,
+        edSubPu: sg.edSubPu,
+        eqSubPu: sg.eqSubPu,
+      })),
+      switchStates: this.switchStates.map((sw) => sw.currentClosed),
+    };
+  }
+
+  /**
+   * Restores a previously captured EMT step session checkpoint.
+   */
+  public restoreStepSessionState(
+    session: {
+      loopState: ReturnType<EmtSolver["initSolveLoopState"]>;
+      stepCursor: number;
+      startTime: number;
+    },
+    snapshot: unknown,
+  ): void {
+    const s = snapshot as {
+      stepCursor: number;
+      vaStep: Float64Array;
+      vbStep: Float64Array;
+      vcStep: Float64Array;
+      vaPrevStep: Float64Array;
+      vbPrevStep: Float64Array;
+      vcPrevStep: Float64Array;
+      vPreStep3: Float64Array;
+      branchHistories: Array<{ iHistA: number; iHistB: number; iHistC: number }>;
+      bergeronStates: Array<{
+        ptr: number;
+        vkBufA: Float64Array;
+        vkBufB: Float64Array;
+        vkBufC: Float64Array;
+        vmBufA: Float64Array;
+        vmBufB: Float64Array;
+        vmBufC: Float64Array;
+        ikmBufA: Float64Array;
+        ikmBufB: Float64Array;
+        ikmBufC: Float64Array;
+        imkBufA: Float64Array;
+        imkBufB: Float64Array;
+        imkBufC: Float64Array;
+      }>;
+      syncGenStates: Array<{ deltaRad: number; omegaRadSec: number; edSubPu: number; eqSubPu: number }>;
+      switchStates: boolean[];
+    };
+    session.stepCursor = s.stepCursor;
+    this.vaStep.set(s.vaStep);
+    this.vbStep.set(s.vbStep);
+    this.vcStep.set(s.vcStep);
+    session.loopState.vaPrevStep.set(s.vaPrevStep);
+    session.loopState.vbPrevStep.set(s.vbPrevStep);
+    session.loopState.vcPrevStep.set(s.vcPrevStep);
+    session.loopState.vPreStep3.set(s.vPreStep3);
+
+    for (let i = 0; i < this.companionBranches.length && i < s.branchHistories.length; i++) {
+      const br = this.companionBranches[i]!;
+      const h = s.branchHistories[i]!;
+      br.iHistA = h.iHistA;
+      br.iHistB = h.iHistB;
+      br.iHistC = h.iHistC;
+    }
+    for (let i = 0; i < this.bergeronLines.length && i < s.bergeronStates.length; i++) {
+      const bl = this.bergeronLines[i]!;
+      const bs = s.bergeronStates[i]!;
+      bl.ptr = bs.ptr;
+      bl.vkBufA.set(bs.vkBufA);
+      bl.vkBufB.set(bs.vkBufB);
+      bl.vkBufC.set(bs.vkBufC);
+      bl.vmBufA.set(bs.vmBufA);
+      bl.vmBufB.set(bs.vmBufB);
+      bl.vmBufC.set(bs.vmBufC);
+      bl.ikmBufA.set(bs.ikmBufA);
+      bl.ikmBufB.set(bs.ikmBufB);
+      bl.ikmBufC.set(bs.ikmBufC);
+      bl.imkBufA.set(bs.imkBufA);
+      bl.imkBufB.set(bs.imkBufB);
+      bl.imkBufC.set(bs.imkBufC);
+    }
+    for (let i = 0; i < this.syncGenerators.length && i < s.syncGenStates.length; i++) {
+      const sg = this.syncGenerators[i]!;
+      const gs = s.syncGenStates[i]!;
+      sg.deltaRad = gs.deltaRad;
+      sg.omegaRadSec = gs.omegaRadSec;
+      sg.edSubPu = gs.edSubPu;
+      sg.eqSubPu = gs.eqSubPu;
+    }
+    for (let i = 0; i < this.switchStates.length && i < s.switchStates.length; i++) {
+      this.switchStates[i]!.currentClosed = s.switchStates[i]!;
+    }
+  }
+
+  /**
    * Executes the EMT simulation in non-blocking chunks so browser WebWorkers or IDE runtimes
    * can Pause, Resume, Single-Step, Abort, stream progress, and apply `interactiveWrite()` mid-run.
    */
@@ -4329,11 +4557,47 @@ export class EmtSolver {
         if (this.options?.boundaryFeeds) {
           for (const bf of this.options.boundaryFeeds) {
             const bIdx = this.busIdxMap.get(bf.busId);
-            if (bIdx !== undefined && bf.thevenin) {
+            if (bIdx === undefined) continue;
+            if (bf.thevenin) {
               const th = bf.thevenin(t);
               const gSrc = th?.gSrc ?? 10.0;
               for (let p = 0; p < 3; p++) {
                 this.stampDiagonal(3 * bIdx + p, gSrc);
+              }
+            }
+            if (bf.threePhaseThevenin) {
+              const th3 = bf.threePhaseThevenin(t);
+              if (th3) {
+                const gm = th3.gMatrix3x3;
+                if (gm && gm.length >= 9) {
+                  for (let p = 0; p < 3; p++) {
+                    for (let q = 0; q < 3; q++) {
+                      const val = gm[p * 3 + q]!;
+                      if (val !== 0) {
+                        this.stampEntry(3 * bIdx + p, 3 * bIdx + q, val);
+                      }
+                    }
+                  }
+                } else {
+                  const gSrc = th3.gSrc ?? 10.0;
+                  for (let p = 0; p < 3; p++) {
+                    this.stampDiagonal(3 * bIdx + p, gSrc);
+                  }
+                }
+                if (th3.mutualCouplings) {
+                  for (const mc of th3.mutualCouplings) {
+                    const peerIdx = this.busIdxMap.get(mc.peerBusId);
+                    if (peerIdx === undefined || mc.gMatrix3x3.length < 9) continue;
+                    for (let p = 0; p < 3; p++) {
+                      for (let q = 0; q < 3; q++) {
+                        const val = mc.gMatrix3x3[p * 3 + q]!;
+                        if (val !== 0) {
+                          this.stampEntry(3 * bIdx + p, 3 * peerIdx + q, val);
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
           }

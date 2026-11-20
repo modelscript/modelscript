@@ -7,8 +7,16 @@
  * individuals, and automated package bundle closures.
  */
 
-import type { ConflictClause, SharedEquality, TheoryLiteral, TheoryOracle } from "../theory_coordinator.js";
+import type {
+  ConflictClause,
+  FiniteDomainConstraint,
+  SharedDisequality,
+  SharedEquality,
+  TheoryLiteral,
+  TheoryOracle,
+} from "../theory_coordinator.js";
 import { hasSharedEqualityWithLiteral, retainSharedEqualitiesWithoutLiteral } from "./retraction_utils.js";
+import { UndoTrail } from "./undo_trail.js";
 
 export interface ScopedBundleDef {
   packageIri: string;
@@ -29,18 +37,15 @@ export class OntologyTheoryOracle implements TheoryOracle {
   private sameIndividualMap = new Map<string, string>();
   // Explicitly different individuals: indA -> Set<indB>
   private differentIndividuals = new Map<string, Set<string>>();
+  // Finite-domain cardinality constraints for Polite/Shiny Nelson-Oppen combination
+  private finiteDomains: FiniteDomainConstraint[] = [];
 
   private assertedLiterals = new Map<number, TheoryLiteral>();
   private propagatedEqualities = new Set<string>();
+  private propagatedDisequalities = new Set<string>();
   private sharedEqualities: SharedEquality[] = [];
-  private levelStack: {
-    subClasses: Map<string, Set<string>>;
-    disjointClasses: Map<string, Set<string>>;
-    individualTypes: Map<string, Set<string>>;
-    sameIndividualMap: Map<string, string>;
-    differentIndividuals: Map<string, Set<string>>;
-    assertedLitIds: number[];
-  }[] = [];
+  private individualJustifications = new Map<string, Set<number>>();
+  private trail = new UndoTrail();
 
   constructor() {
     this.reset();
@@ -52,53 +57,40 @@ export class OntologyTheoryOracle implements TheoryOracle {
     this.individualTypes.clear();
     this.sameIndividualMap.clear();
     this.differentIndividuals.clear();
+    this.finiteDomains = [];
     this.assertedLiterals.clear();
     this.propagatedEqualities.clear();
+    this.propagatedDisequalities.clear();
     this.sharedEqualities = [];
-    this.levelStack = [];
+    this.individualJustifications.clear();
+    this.trail.reset();
   }
 
   public pushLevel(): void {
-    const subClassesClone = new Map<string, Set<string>>();
-    for (const [k, v] of this.subClasses) subClassesClone.set(k, new Set(v));
-    const disjointClone = new Map<string, Set<string>>();
-    for (const [k, v] of this.disjointClasses) disjointClone.set(k, new Set(v));
-    const typesClone = new Map<string, Set<string>>();
-    for (const [k, v] of this.individualTypes) typesClone.set(k, new Set(v));
-    const diffClone = new Map<string, Set<string>>();
-    for (const [k, v] of this.differentIndividuals) diffClone.set(k, new Set(v));
-
-    this.levelStack.push({
-      subClasses: subClassesClone,
-      disjointClasses: disjointClone,
-      individualTypes: typesClone,
-      sameIndividualMap: new Map(this.sameIndividualMap),
-      differentIndividuals: diffClone,
-      assertedLitIds: [],
-    });
+    this.trail.pushLevel();
   }
 
   public popLevel(): void {
-    const top = this.levelStack.pop();
-    if (!top) return;
-    this.subClasses = top.subClasses;
-    this.disjointClasses = top.disjointClasses;
-    this.individualTypes = top.individualTypes;
-    this.sameIndividualMap = top.sameIndividualMap;
-    this.differentIndividuals = top.differentIndividuals;
-    for (const id of top.assertedLitIds) {
-      this.assertedLiterals.delete(id);
-    }
+    this.trail.popLevel();
   }
 
   private findRootIndividual(x: string): string {
+    const directParent = this.sameIndividualMap.get(x);
+    if (!directParent || directParent === x) {
+      return x;
+    }
+    const grandParent = this.sameIndividualMap.get(directParent);
+    if (!grandParent || grandParent === directParent) {
+      return directParent;
+    }
+
     let curr = x;
     const visited = new Set<string>();
     const path: string[] = [];
 
     while (true) {
       if (visited.has(curr)) {
-        this.sameIndividualMap.set(curr, curr);
+        this.trail.mapSet(this.sameIndividualMap, curr, curr);
         break;
       }
       visited.add(curr);
@@ -112,22 +104,51 @@ export class OntologyTheoryOracle implements TheoryOracle {
 
     const root = curr;
     for (const node of path) {
-      this.sameIndividualMap.set(node, root);
+      if (this.sameIndividualMap.get(node) !== root) {
+        this.trail.mapSet(this.sameIndividualMap, node, root);
+      }
     }
     return root;
   }
 
-  private unionIndividuals(x: string, y: string): void {
+  private unionIndividuals(x: string, y: string, justIds: readonly number[] = []): void {
     const rootX = this.findRootIndividual(x);
     const rootY = this.findRootIndividual(y);
     if (rootX !== rootY) {
-      this.sameIndividualMap.set(rootX, rootY);
+      this.trail.mapSet(this.sameIndividualMap, rootX, rootY);
+      if (!this.sameIndividualMap.has(rootY)) {
+        this.trail.mapSet(this.sameIndividualMap, rootY, rootY);
+      }
 
       // Merge individual types
-      const typesX = this.individualTypes.get(rootX) ?? new Set<string>();
-      const typesY = this.individualTypes.get(rootY) ?? new Set<string>();
-      for (const t of typesX) typesY.add(t);
-      this.individualTypes.set(rootY, typesY);
+      const typesX = this.individualTypes.get(rootX);
+      if (typesX && typesX.size > 0) {
+        let typesY = this.individualTypes.get(rootY);
+        if (!typesY) {
+          typesY = new Set<string>();
+          this.trail.mapSet(this.individualTypes, rootY, typesY);
+        }
+        for (const t of typesX) this.trail.setAdd(typesY, t);
+      }
+
+      // Merge justifications
+      const jX = this.individualJustifications.get(rootX);
+      let jY = this.individualJustifications.get(rootY);
+      if (!jY && (jX || justIds.length > 0)) {
+        jY = new Set<number>();
+        this.trail.mapSet(this.individualJustifications, rootY, jY);
+      }
+      if (jY) {
+        if (jX) for (const id of jX) this.trail.setAdd(jY, id);
+        for (const id of justIds) this.trail.setAdd(jY, id);
+      }
+    } else if (justIds.length > 0) {
+      let jY = this.individualJustifications.get(rootY);
+      if (!jY) {
+        jY = new Set<number>();
+        this.trail.mapSet(this.individualJustifications, rootY, jY);
+      }
+      for (const id of justIds) this.trail.setAdd(jY, id);
     }
   }
 
@@ -150,25 +171,34 @@ export class OntologyTheoryOracle implements TheoryOracle {
    * Asserts a theory literal into the ontology oracle.
    */
   public assertLiteral(lit: TheoryLiteral): boolean {
-    this.assertedLiterals.set(lit.id, lit);
-    if (this.levelStack.length > 0) {
-      this.levelStack[this.levelStack.length - 1]!.assertedLitIds.push(lit.id);
-    }
+    this.trail.mapSet(this.assertedLiterals, lit.id, lit);
     const { predicate, args } = lit;
 
     switch (predicate) {
       case "subClassOf": {
         const [sub, sup] = args as [string, string];
-        if (!this.subClasses.has(sub)) this.subClasses.set(sub, new Set());
-        this.subClasses.get(sub)!.add(sup);
+        let set = this.subClasses.get(sub);
+        if (!set) {
+          set = new Set();
+          this.trail.mapSet(this.subClasses, sub, set);
+        }
+        this.trail.setAdd(set, sup);
         break;
       }
       case "disjoint": {
         const [clsA, clsB] = args as [string, string];
-        if (!this.disjointClasses.has(clsA)) this.disjointClasses.set(clsA, new Set());
-        if (!this.disjointClasses.has(clsB)) this.disjointClasses.set(clsB, new Set());
-        this.disjointClasses.get(clsA)!.add(clsB);
-        this.disjointClasses.get(clsB)!.add(clsA);
+        let setA = this.disjointClasses.get(clsA);
+        if (!setA) {
+          setA = new Set();
+          this.trail.mapSet(this.disjointClasses, clsA, setA);
+        }
+        let setB = this.disjointClasses.get(clsB);
+        if (!setB) {
+          setB = new Set();
+          this.trail.mapSet(this.disjointClasses, clsB, setB);
+        }
+        this.trail.setAdd(setA, clsB);
+        this.trail.setAdd(setB, clsA);
         break;
       }
       case "type":
@@ -176,21 +206,34 @@ export class OntologyTheoryOracle implements TheoryOracle {
       case "classAssertion": {
         const [ind, cls] = args as [string, string];
         const root = this.findRootIndividual(ind);
-        if (!this.individualTypes.has(root)) this.individualTypes.set(root, new Set());
-        this.individualTypes.get(root)!.add(cls);
+        if (!this.sameIndividualMap.has(root)) this.trail.mapSet(this.sameIndividualMap, root, root);
+        let types = this.individualTypes.get(root);
+        if (!types) {
+          types = new Set();
+          this.trail.mapSet(this.individualTypes, root, types);
+        }
+        this.trail.setAdd(types, cls);
         break;
       }
       case "sameIndividual": {
         const [indA, indB] = args as [string, string];
-        this.unionIndividuals(indA, indB);
+        this.unionIndividuals(indA, indB, [lit.id]);
         break;
       }
       case "differentIndividuals": {
         const [indA, indB] = args as [string, string];
-        if (!this.differentIndividuals.has(indA)) this.differentIndividuals.set(indA, new Set());
-        if (!this.differentIndividuals.has(indB)) this.differentIndividuals.set(indB, new Set());
-        this.differentIndividuals.get(indA)!.add(indB);
-        this.differentIndividuals.get(indB)!.add(indA);
+        let setA = this.differentIndividuals.get(indA);
+        if (!setA) {
+          setA = new Set();
+          this.trail.mapSet(this.differentIndividuals, indA, setA);
+        }
+        let setB = this.differentIndividuals.get(indB);
+        if (!setB) {
+          setB = new Set();
+          this.trail.mapSet(this.differentIndividuals, indB, setB);
+        }
+        this.trail.setAdd(setA, indB);
+        this.trail.setAdd(setB, indA);
         break;
       }
       case "bundleClosure": {
@@ -202,12 +245,41 @@ export class OntologyTheoryOracle implements TheoryOracle {
             const cA = siblings[i]!;
             const cB = siblings[j]!;
             if (!this.hasDeclaredJointSubclass(cA, cB)) {
-              if (!this.disjointClasses.has(cA)) this.disjointClasses.set(cA, new Set());
-              if (!this.disjointClasses.has(cB)) this.disjointClasses.set(cB, new Set());
-              this.disjointClasses.get(cA)!.add(cB);
-              this.disjointClasses.get(cB)!.add(cA);
+              let setA = this.disjointClasses.get(cA);
+              if (!setA) {
+                setA = new Set();
+                this.trail.mapSet(this.disjointClasses, cA, setA);
+              }
+              let setB = this.disjointClasses.get(cB);
+              if (!setB) {
+                setB = new Set();
+                this.trail.mapSet(this.disjointClasses, cB, setB);
+              }
+              this.trail.setAdd(setA, cB);
+              this.trail.setAdd(setB, cA);
             }
           }
+        }
+        break;
+      }
+      case "finiteDomain": {
+        // args: [vars: string[], maxCardinality: number] or [domainName: string, vars: string[], maxCardinality: number]
+        let vars: string[] = [];
+        let maxCard = 0;
+        if (Array.isArray(args[0]) && typeof args[1] === "number") {
+          vars = args[0].map(String);
+          maxCard = args[1];
+        } else if (typeof args[0] === "string" && Array.isArray(args[1]) && typeof args[2] === "number") {
+          vars = args[1].map(String);
+          maxCard = args[2];
+        }
+        if (vars.length > 0 && maxCard >= 1) {
+          this.trail.arrayPush(this.finiteDomains, {
+            vars,
+            maxCardinality: maxCard,
+            sourceOracle: this.name,
+            justifications: [lit.id],
+          });
         }
         break;
       }
@@ -227,20 +299,66 @@ export class OntologyTheoryOracle implements TheoryOracle {
 
   public retractLiteral(litId: number): void {
     const hasShared = hasSharedEqualityWithLiteral(this.sharedEqualities, litId);
-    if (!this.assertedLiterals.has(litId) && !hasShared) return;
+    const existingLit = this.assertedLiterals.get(litId);
+    if (!existingLit && !hasShared) return;
     this.assertedLiterals.delete(litId);
-    const savedStack = this.levelStack;
-    // Replay remaining literals and re-apply non-retracted shared equalities
+
+    // Incremental fast-path for single-individual type/isa/classAssertion or differentIndividuals
+    if (existingLit && !hasShared) {
+      if (
+        (existingLit.predicate === "type" ||
+          existingLit.predicate === "isa" ||
+          existingLit.predicate === "classAssertion") &&
+        typeof existingLit.args[0] === "string"
+      ) {
+        const root = this.findRootIndividual(existingLit.args[0]);
+        const newTypes = new Set<string>();
+        for (const lit of this.assertedLiterals.values()) {
+          if (
+            (lit.predicate === "type" || lit.predicate === "isa" || lit.predicate === "classAssertion") &&
+            typeof lit.args[0] === "string" &&
+            this.findRootIndividual(lit.args[0]) === root &&
+            typeof lit.args[1] === "string"
+          ) {
+            newTypes.add(lit.args[1]);
+          }
+        }
+        if (newTypes.size === 0) this.individualTypes.delete(root);
+        else this.individualTypes.set(root, newTypes);
+        return;
+      }
+      if (
+        existingLit.predicate === "differentIndividuals" &&
+        typeof existingLit.args[0] === "string" &&
+        typeof existingLit.args[1] === "string"
+      ) {
+        const [indA, indB] = existingLit.args as [string, string];
+        const stillDifferent = Array.from(this.assertedLiterals.values()).some(
+          (l) =>
+            l.predicate === "differentIndividuals" &&
+            ((l.args[0] === indA && l.args[1] === indB) || (l.args[0] === indB && l.args[1] === indA)),
+        );
+        if (!stillDifferent) {
+          this.differentIndividuals.get(indA)?.delete(indB);
+          this.differentIndividuals.get(indB)?.delete(indA);
+          const key = indA < indB ? `${indA}!=${indB}` : `${indB}!=${indA}`;
+          this.propagatedDisequalities.delete(key);
+        }
+        return;
+      }
+    }
+
+    const savedTrail = this.trail;
     const remaining = Array.from(this.assertedLiterals.values());
     const savedShared = retainSharedEqualitiesWithoutLiteral(this.sharedEqualities, litId);
     this.reset();
-    this.levelStack = savedStack;
     for (const lit of remaining) {
       this.assertLiteral(lit);
     }
     for (const eq of savedShared) {
       this.onSharedEquality(eq);
     }
+    this.trail = savedTrail;
   }
 
   /**
@@ -250,8 +368,11 @@ export class OntologyTheoryOracle implements TheoryOracle {
    */
   public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
     // 1. Check disjointness violation across all individuals
-    for (const [ind] of this.sameIndividualMap.entries()) {
+    const checkedRoots = new Set<string>();
+    for (const ind of this.sameIndividualMap.keys()) {
       const root = this.findRootIndividual(ind);
+      if (checkedRoots.has(root)) continue;
+      checkedRoots.add(root);
       const directTypes = this.individualTypes.get(root);
       if (!directTypes) continue;
 
@@ -295,12 +416,22 @@ export class OntologyTheoryOracle implements TheoryOracle {
       for (const indB of diffs) {
         const rootB = this.findRootIndividual(indB);
         if (rootA === rootB) {
+          const culprits: TheoryLiteral[] = Array.from(this.assertedLiterals.values()).filter(
+            (l) => l.args.includes(indA) && l.args.includes(indB),
+          );
+          const rootJusts = this.individualJustifications.get(rootA);
+          if (rootJusts) {
+            for (const id of rootJusts) {
+              if (!culprits.some((c) => c.id === id)) {
+                const l = this.assertedLiterals.get(id);
+                culprits.push(l ?? { id, predicate: "crossTheoryAntecedent", args: [indA, indB] });
+              }
+            }
+          }
           return {
             isSat: false,
             conflict: {
-              literals: Array.from(this.assertedLiterals.values()).filter(
-                (l) => l.args.includes(indA) && l.args.includes(indB),
-              ),
+              literals: culprits,
               explanation: `Identity Conflict: Individuals '${indA}' and '${indB}' are declared different, but inferred to be the same.`,
               culpritEntities: [indA, indB],
               theoryName: this.name,
@@ -314,7 +445,7 @@ export class OntologyTheoryOracle implements TheoryOracle {
   }
 
   /**
-   * Propagates deduced equalities (sameIndividual relations).
+   * Propagates deduced equalities (sameIndividual relations) as an O(k) spanning path with justifications.
    */
   public propagateEqualities(): SharedEquality[] {
     const equalities: SharedEquality[] = [];
@@ -326,23 +457,26 @@ export class OntologyTheoryOracle implements TheoryOracle {
       roots.get(root)!.push(ind);
     }
 
-    for (const [, group] of roots.entries()) {
+    for (const [root, group] of roots.entries()) {
       if (group.length > 1) {
-        for (let i = 0; i < group.length; i++) {
-          for (let j = i + 1; j < group.length; j++) {
-            const vA = group[i]!;
-            const vB = group[j]!;
-            const key = vA < vB ? `${vA}==${vB}` : `${vB}==${vA}`;
-            if (!this.propagatedEqualities.has(key)) {
-              this.propagatedEqualities.add(key);
-              equalities.push({
-                varA: vA,
-                varB: vB,
-                domain: "concept",
-                explanation: `Deduced from ontology SameIndividual(${vA}, ${vB})`,
-                sourceOracle: this.name,
-              });
-            }
+        const rootJusts = this.individualJustifications.get(root);
+        const justsArr = rootJusts ? Array.from(rootJusts) : [];
+        // Emit O(k) spanning path group[i] == group[i+1] rather than O(k^2) clique
+        for (let i = 0; i < group.length - 1; i++) {
+          const vA = group[i]!;
+          const vB = group[i + 1]!;
+          const key = vA < vB ? `${vA}==${vB}` : `${vB}==${vA}`;
+          if (!this.propagatedEqualities.has(key)) {
+            this.trail.setAdd(this.propagatedEqualities, key);
+            equalities.push({
+              varA: vA,
+              varB: vB,
+              domain: "concept",
+              explanation: `Deduced from ontology SameIndividual(${vA}, ${vB})`,
+              sourceOracle: this.name,
+              justifications: justsArr,
+              justification: justsArr,
+            });
           }
         }
       }
@@ -353,11 +487,64 @@ export class OntologyTheoryOracle implements TheoryOracle {
 
   /**
    * Receives shared equalities from the coordinator and merges individuals.
+   * Accepts concept, discrete, and cross-theory real equalities (excluding self-bound events).
    */
   public onSharedEquality(eq: SharedEquality): void {
-    this.sharedEqualities.push(eq);
-    if (eq.domain === "concept" || eq.domain === "discrete") {
-      this.unionIndividuals(eq.varA, eq.varB);
+    this.trail.arrayPush(this.sharedEqualities, eq);
+    if (eq.varA !== eq.varB && (eq.domain === "concept" || eq.domain === "discrete" || eq.domain === "real")) {
+      const justs = eq.justifications ?? eq.justification ?? [];
+      this.unionIndividuals(eq.varA, eq.varB, justs);
     }
+  }
+
+  /**
+   * Propagates explicitly asserted `differentIndividuals` disequalities to other theory oracles.
+   */
+  public propagateDisequalities(): SharedDisequality[] {
+    const result: SharedDisequality[] = [];
+    for (const [indA, diffs] of this.differentIndividuals.entries()) {
+      for (const indB of diffs) {
+        if (indA >= indB) continue;
+        const key = `${indA}!=${indB}`;
+        if (this.propagatedDisequalities.has(key)) continue;
+        this.trail.setAdd(this.propagatedDisequalities, key);
+        const justs = Array.from(this.assertedLiterals.values())
+          .filter((l) => l.predicate === "differentIndividuals" && l.args.includes(indA) && l.args.includes(indB))
+          .map((l) => l.id);
+        result.push({
+          varA: indA,
+          varB: indB,
+          explanation: `Ontology DifferentIndividuals(${indA}, ${indB})`,
+          sourceOracle: this.name,
+          justifications: justs,
+        });
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Receives deduced disequalities (`x != y`) from other theories (e.g., disjoint intervals).
+   */
+  public onSharedDisequality(diseq: SharedDisequality): void {
+    let setA = this.differentIndividuals.get(diseq.varA);
+    if (!setA) {
+      setA = new Set();
+      this.trail.mapSet(this.differentIndividuals, diseq.varA, setA);
+    }
+    let setB = this.differentIndividuals.get(diseq.varB);
+    if (!setB) {
+      setB = new Set();
+      this.trail.mapSet(this.differentIndividuals, diseq.varB, setB);
+    }
+    this.trail.setAdd(setA, diseq.varB);
+    this.trail.setAdd(setB, diseq.varA);
+  }
+
+  /**
+   * Returns finite-domain cardinality constraints for Polite/Shiny Nelson-Oppen combination.
+   */
+  public getFiniteDomainConstraints(): FiniteDomainConstraint[] {
+    return this.finiteDomains;
   }
 }

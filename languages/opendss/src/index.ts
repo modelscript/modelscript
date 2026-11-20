@@ -20,6 +20,7 @@ export * from "./solvers/opendss-gic-solver.js";
 export * from "./solvers/opendss-harmonics-solver.js";
 export * from "./solvers/opendss-hosting-capacity.js";
 export * from "./solvers/opendss-invcontrol.js";
+export * from "./solvers/opendss-phasor-participant.js";
 export * from "./solvers/opendss-protection.js";
 export * from "./solvers/opendss-reliability.js";
 export * from "./solvers/opendss-ybus-solver.js";

@@ -14,6 +14,7 @@ import type {
   SubstationRecord,
   SubstationTerminalRecord,
   SwitchedShuntRecord,
+  SystemSwitchingDeviceRecord,
   TransformerRecord,
   TwoTerminalDcRecord,
   VscDcRecord,
@@ -103,10 +104,18 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
   // 1. Header (Case Identification)
   const headerLineInfo = nextLine();
   const headerTokens = fieldsOf(headerLineInfo);
+  const headerCommentUpper = (headerLineInfo?.commentText ?? "").toUpperCase();
+  let inferredRev = 33;
+  if (headerTokens[2] !== undefined && headerTokens[2] !== "") {
+    inferredRev = parseNum(headerTokens[2], 33);
+  } else if (headerTokens.length <= 2) {
+    // Pre-v30 PSS/E RAW files (v26–v29) only have `IC, SBASE` on line 1 (no REV column)
+    inferredRev = /PSS\/E[- ]*26|\bREV\s*26\b|\bV26\b/.test(headerCommentUpper) ? 26 : 29;
+  }
   const header: CaseIdentification = {
     ic: parseNum(headerTokens[0], 0),
     sbase: parseNum(headerTokens[1], 100.0),
-    rev: parseNum(headerTokens[2], 33),
+    rev: inferredRev,
     xfrrat: parseNum(headerTokens[3], 0),
     nxfrat: parseNum(headerTokens[4], 0),
     basfrq: parseNum(headerTokens[5], 60.0),
@@ -162,6 +171,7 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
   const vscDc: VscDcRecord[] = [];
   const switchedShunts: SwitchedShuntRecord[] = [];
   const substations: SubstationRecord[] = [];
+  const systemSwitchingDevices: SystemSwitchingDeviceRecord[] = [];
   let currentSub: SubstationRecord | null = null;
   let subStage: "header" | "nodes" | "switches" | "terminals" = "header";
 
@@ -200,11 +210,40 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
     if (upper.includes("END OF SWITCHED SHUNT")) return 17;
     if (upper.includes("BEGIN SUBSTATION")) return 18;
     if (upper.includes("END OF SUBSTATION DATA")) return 19;
+    if (upper.includes("BEGIN SYSTEM SWITCHING DEVICE")) return 20;
+    // Pre-v31 RAW files (v26, v29, v30) embed GL/BL in Bus Data and have no Fixed Shunt section
+    if (currentSec === 1 && header.rev <= 30) return 3;
     return currentSec + 1;
   }
 
   let openSection: { section: number; span?: SourceSpan | undefined } | undefined;
   let prevLineEndOffset = 0;
+  let currentSectionCols = new Map<string, number>();
+
+  function parseMetadataColumns(rawLine: string): void {
+    const trimmed = rawLine.trimStart();
+    if (!trimmed.startsWith("@!")) return;
+    const body = trimmed.slice(2).trim();
+    if (!body.includes(",")) return;
+    const parts = body.split(",").map((p) =>
+      p
+        .replace(/^['"]|['"]$/g, "")
+        .trim()
+        .toUpperCase(),
+    );
+    if (parts.length >= 3) {
+      const next = new Map<string, number>();
+      for (let idx = 0; idx < parts.length; idx++) {
+        const key = parts[idx]!;
+        if (key.length > 0 && !next.has(key)) next.set(key, idx);
+      }
+      currentSectionCols = next;
+    }
+  }
+
+  function col(name: string, fallback: number): number {
+    return currentSectionCols.get(name) ?? fallback;
+  }
 
   while (lineIdx < lines.length) {
     const info = nextLine();
@@ -219,6 +258,7 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
     }
     prevLineEndOffset = info.endOffset;
     if (info.isCommentOrBlank) {
+      parseMetadataColumns(info.line);
       if ((info.commentText || info.line).toUpperCase().includes("BEGIN SUBSTATION")) {
         flushCurrentSub();
         openSection = undefined;
@@ -236,6 +276,7 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
     }
     if (term === "end_section") {
       openSection = undefined;
+      currentSectionCols.clear();
       const commentUpper = (info.commentText || info.line).toUpperCase().trim();
       const isEndOfSubstationSection =
         commentUpper.includes("END OF SUBSTATION DATA") || /END OF SUBSTATION\s*$/.test(commentUpper);
@@ -268,23 +309,70 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
 
     switch (section) {
       case 0: {
-        // Bus Data
-        const busNum = parseNum(toks[0], 0);
+        // Bus Data (supports v26/v29/v30 inline GL,BL normalization + v31–v36 & @! column mapping)
+        const busNum = parseNum(toks[col("I", 0)], 0);
         if (busNum > 0) {
+          const hasInlineGlBl =
+            header.rev <= 30 && toks.length >= 10 && toks.length <= 11 && !currentSectionCols.has("NVHI");
+          let area: number;
+          let zone: number;
+          let owner: number;
+          let vm: number;
+          let va: number;
+          let nvhi: number | undefined;
+          let nvlo: number | undefined;
+          let evhi: number | undefined;
+          let evlo: number | undefined;
+
+          if (hasInlineGlBl) {
+            // PSS/E v26/v29/v30 layout: I,'NAME',BASKV,IDE,GL,BL,AREA,ZONE,VM,VA[,OWNER]
+            const gl = parseNum(toks[4], 0.0);
+            const bl = parseNum(toks[5], 0.0);
+            area = parseNum(toks[6], 1);
+            zone = parseNum(toks[7], 1);
+            vm = parseNum(toks[8], 1.0);
+            va = parseNum(toks[9], 0.0);
+            owner = toks[10] !== undefined ? parseNum(toks[10], 1) : 1;
+            if (gl !== 0 || bl !== 0) {
+              fixedShunts.push({
+                i: busNum,
+                id: "1",
+                status: 1,
+                gl,
+                bl,
+                span,
+              });
+            }
+          } else {
+            area = parseNum(toks[col("AREA", 4)], 1);
+            zone = parseNum(toks[col("ZONE", 5)], 1);
+            owner = parseNum(toks[col("OWNER", 6)], 1);
+            vm = parseNum(toks[col("VM", 7)], 1.0);
+            va = parseNum(toks[col("VA", 8)], 0.0);
+            const iNvhi = col("NVHI", 9);
+            const iNvlo = col("NVLO", 10);
+            const iEvhi = col("EVHI", 11);
+            const iEvlo = col("EVLO", 12);
+            nvhi = toks[iNvhi] !== undefined ? parseNum(toks[iNvhi], 1.1) : undefined;
+            nvlo = toks[iNvlo] !== undefined ? parseNum(toks[iNvlo], 0.9) : undefined;
+            evhi = toks[iEvhi] !== undefined ? parseNum(toks[iEvhi], 1.1) : undefined;
+            evlo = toks[iEvlo] !== undefined ? parseNum(toks[iEvlo], 0.9) : undefined;
+          }
+
           const bus: BusRecord = {
             i: busNum,
-            name: parseStr(toks[1], `BUS ${busNum}`),
-            baseKv: parseNum(toks[2], 0),
-            ide: (parseNum(toks[3], 1) as BusType) || 1,
-            area: parseNum(toks[4], 1),
-            zone: parseNum(toks[5], 1),
-            owner: parseNum(toks[6], 1),
-            vm: parseNum(toks[7], 1.0),
-            va: parseNum(toks[8], 0.0),
-            nvhi: toks[9] !== undefined ? parseNum(toks[9], 1.1) : undefined,
-            nvlo: toks[10] !== undefined ? parseNum(toks[10], 0.9) : undefined,
-            evhi: toks[11] !== undefined ? parseNum(toks[11], 1.1) : undefined,
-            evlo: toks[12] !== undefined ? parseNum(toks[12], 0.9) : undefined,
+            name: parseStr(toks[col("NAME", 1)], `BUS ${busNum}`),
+            baseKv: parseNum(toks[col("BASKV", 2)], 0),
+            ide: (parseNum(toks[col("IDE", 3)], 1) as BusType) || 1,
+            area,
+            zone,
+            owner,
+            vm,
+            va,
+            nvhi,
+            nvlo,
+            evhi,
+            evlo,
             span,
             fieldSpans,
             position: parsePosComment(info.commentText),
@@ -300,23 +388,23 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
 
       case 1: {
         // Load Data
-        const busNum = parseNum(toks[0], 0);
+        const busNum = parseNum(toks[col("I", 0)], 0);
         if (busNum > 0) {
           loads.push({
             i: busNum,
-            id: parseStr(toks[1], "1"),
-            status: parseNum(toks[2], 1),
-            area: parseNum(toks[3], 1),
-            zone: parseNum(toks[4], 1),
-            pl: parseNum(toks[5], 0.0),
-            ql: parseNum(toks[6], 0.0),
-            ip: parseNum(toks[7], 0.0),
-            iq: parseNum(toks[8], 0.0),
-            yp: parseNum(toks[9], 0.0),
-            yq: parseNum(toks[10], 0.0),
-            owner: parseNum(toks[11], 1),
-            scale: parseNum(toks[12], 1),
-            intrct: parseNum(toks[13], 1),
+            id: parseStr(toks[col("ID", 1)], "1"),
+            status: parseNum(toks[col("STATUS", 2)], 1),
+            area: parseNum(toks[col("AREA", 3)], 1),
+            zone: parseNum(toks[col("ZONE", 4)], 1),
+            pl: parseNum(toks[col("PL", 5)], 0.0),
+            ql: parseNum(toks[col("QL", 6)], 0.0),
+            ip: parseNum(toks[col("IP", 7)], 0.0),
+            iq: parseNum(toks[col("IQ", 8)], 0.0),
+            yp: parseNum(toks[col("YP", 9)], 0.0),
+            yq: parseNum(toks[col("YQ", 10)], 0.0),
+            owner: parseNum(toks[col("OWNER", 11)], 1),
+            scale: parseNum(toks[col("SCALE", 12)], 1),
+            intrct: parseNum(toks[col("INTRPT", col("INTRCT", 13))], 1),
             span,
             position: parsePosComment(info.commentText),
           });
@@ -326,14 +414,14 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
 
       case 2: {
         // Fixed Bus Shunt Data
-        const busNum = parseNum(toks[0], 0);
+        const busNum = parseNum(toks[col("I", 0)], 0);
         if (busNum > 0) {
           fixedShunts.push({
             i: busNum,
-            id: parseStr(toks[1], "1"),
-            status: parseNum(toks[2], 1),
-            gl: parseNum(toks[3], 0.0),
-            bl: parseNum(toks[4], 0.0),
+            id: parseStr(toks[col("ID", 1)], "1"),
+            status: parseNum(toks[col("STATUS", 2)], 1),
+            gl: parseNum(toks[col("GL", 3)], 0.0),
+            bl: parseNum(toks[col("BL", 4)], 0.0),
             span,
             position: parsePosComment(info.commentText),
           });
@@ -343,31 +431,33 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
 
       case 3: {
         // Generator Data
-        const busNum = parseNum(toks[0], 0);
+        const busNum = parseNum(toks[col("I", 0)], 0);
         if (busNum > 0) {
-          // PSS/E v35 inserts NREG (regulated node) at toks[8] before MBASE
+          // PSS/E v35/v36 inserts NREG (regulated node) at toks[8] before MBASE
           const off = header.rev >= 35 && toks.length >= 20 ? 1 : 0;
+          const iO1 = col("O1", 18 + off);
+          const iF1 = col("F1", 19 + off);
           generators.push({
             i: busNum,
-            id: parseStr(toks[1], "1"),
-            pg: parseNum(toks[2], 0.0),
-            qg: parseNum(toks[3], 0.0),
-            qt: parseNum(toks[4], 9999.0),
-            qb: parseNum(toks[5], -9999.0),
-            vs: parseNum(toks[6], 1.0),
-            ireg: parseNum(toks[7], 0),
-            mbase: parseNum(toks[8 + off], header.sbase),
-            zr: parseNum(toks[9 + off], 0.0),
-            zx: parseNum(toks[10 + off], 1.0),
-            rt: parseNum(toks[11 + off], 0.0),
-            xt: parseNum(toks[12 + off], 0.0),
-            gtap: parseNum(toks[13 + off], 1.0),
-            stat: parseNum(toks[14 + off], 1),
-            rmpct: parseNum(toks[15 + off], 100.0),
-            pt: parseNum(toks[16 + off], 9999.0),
-            pb: parseNum(toks[17 + off], -9999.0),
-            o1: toks[18 + off] !== undefined ? parseNum(toks[18 + off], 1) : undefined,
-            f1: toks[19 + off] !== undefined ? parseNum(toks[19 + off], 1.0) : undefined,
+            id: parseStr(toks[col("ID", 1)], "1"),
+            pg: parseNum(toks[col("PG", 2)], 0.0),
+            qg: parseNum(toks[col("QG", 3)], 0.0),
+            qt: parseNum(toks[col("QT", 4)], 9999.0),
+            qb: parseNum(toks[col("QB", 5)], -9999.0),
+            vs: parseNum(toks[col("VS", 6)], 1.0),
+            ireg: parseNum(toks[col("IREG", 7)], 0),
+            mbase: parseNum(toks[col("MBASE", 8 + off)], header.sbase),
+            zr: parseNum(toks[col("ZR", 9 + off)], 0.0),
+            zx: parseNum(toks[col("ZX", 10 + off)], 1.0),
+            rt: parseNum(toks[col("RT", 11 + off)], 0.0),
+            xt: parseNum(toks[col("XT", 12 + off)], 0.0),
+            gtap: parseNum(toks[col("GTAP", 13 + off)], 1.0),
+            stat: parseNum(toks[col("STAT", 14 + off)], 1),
+            rmpct: parseNum(toks[col("RMPCT", 15 + off)], 100.0),
+            pt: parseNum(toks[col("PT", 16 + off)], 9999.0),
+            pb: parseNum(toks[col("PB", 17 + off)], -9999.0),
+            o1: toks[iO1] !== undefined ? parseNum(toks[iO1], 1) : undefined,
+            f1: toks[iF1] !== undefined ? parseNum(toks[iF1], 1.0) : undefined,
             span,
             fieldSpans,
             position: parsePosComment(info.commentText),
@@ -378,32 +468,34 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
 
       case 4: {
         // Branch Data
-        const fromBus = parseNum(toks[0], 0);
-        const toBus = parseNum(toks[1], 0);
+        const fromBus = parseNum(toks[col("I", 0)], 0);
+        const toBus = parseNum(toks[col("J", 1)], 0);
         if (fromBus > 0 && toBus !== 0) {
-          // PSS/E v35 inserts NAME at toks[6] and uses 12 RATE columns (toks[7..18]) before GI..BJ & STAT
+          // PSS/E v35/v36 inserts NAME at toks[6] and uses 12 RATE columns (toks[7..18]) before GI..BJ & STAT
           const isFullV35 = header.rev >= 35 && toks.length >= 26;
           const rateOff = isFullV35 ? 1 : 0;
           const off = isFullV35 ? 10 : 0;
+          const iO1 = col("O1", 16 + off);
+          const iF1 = col("F1", 17 + off);
           branches.push({
             i: fromBus,
             j: toBus,
-            ckt: parseStr(toks[2], "1"),
-            r: parseNum(toks[3], 0.0),
-            x: parseNum(toks[4], 0.0001),
-            b: parseNum(toks[5], 0.0),
-            rateA: parseNum(toks[6 + rateOff], 0.0),
-            rateB: parseNum(toks[7 + rateOff], 0.0),
-            rateC: parseNum(toks[8 + rateOff], 0.0),
-            gi: parseNum(toks[9 + off], 0.0),
-            bi: parseNum(toks[10 + off], 0.0),
-            gj: parseNum(toks[11 + off], 0.0),
-            bj: parseNum(toks[12 + off], 0.0),
-            st: parseNum(toks[13 + off], 1),
-            met: parseNum(toks[14 + off], 1),
-            len: parseNum(toks[15 + off], 0.0),
-            o1: toks[16 + off] !== undefined ? parseNum(toks[16 + off], 1) : undefined,
-            f1: toks[17 + off] !== undefined ? parseNum(toks[17 + off], 1.0) : undefined,
+            ckt: parseStr(toks[col("CKT", 2)], "1"),
+            r: parseNum(toks[col("R", 3)], 0.0),
+            x: parseNum(toks[col("X", 4)], 0.0001),
+            b: parseNum(toks[col("B", 5)], 0.0),
+            rateA: parseNum(toks[col("RATE1", col("RATEA", 6 + rateOff))], 0.0),
+            rateB: parseNum(toks[col("RATE2", col("RATEB", 7 + rateOff))], 0.0),
+            rateC: parseNum(toks[col("RATE3", col("RATEC", 8 + rateOff))], 0.0),
+            gi: parseNum(toks[col("GI", 9 + off)], 0.0),
+            bi: parseNum(toks[col("BI", 10 + off)], 0.0),
+            gj: parseNum(toks[col("GJ", 11 + off)], 0.0),
+            bj: parseNum(toks[col("BJ", 12 + off)], 0.0),
+            st: parseNum(toks[col("STAT", col("ST", 13 + off))], 1),
+            met: parseNum(toks[col("MET", 14 + off)], 1),
+            len: parseNum(toks[col("LEN", 15 + off)], 0.0),
+            o1: toks[iO1] !== undefined ? parseNum(toks[iO1], 1) : undefined,
+            f1: toks[iF1] !== undefined ? parseNum(toks[iF1], 1.0) : undefined,
             span,
             fieldSpans,
           });
@@ -758,6 +850,30 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
         break;
       }
 
+      case 20: {
+        // PSS/E v34/v35/v36 System Switching Device Data
+        const iBus = parseNum(toks[col("I", 0)], 0);
+        const jBus = parseNum(toks[col("J", 1)], 0);
+        if (iBus > 0 && jBus > 0) {
+          systemSwitchingDevices.push({
+            i: iBus,
+            j: jBus,
+            ckt: parseStr(toks[col("CKT", 2)], "1"),
+            x: parseNum(toks[col("X", 3)], 0.0001),
+            rate1: parseNum(toks[col("RATE1", 4)], 0.0),
+            rate2: parseNum(toks[col("RATE2", 5)], 0.0),
+            rate3: parseNum(toks[col("RATE3", 6)], 0.0),
+            stat: parseNum(toks[col("STAT", 7)], 1),
+            nstat: parseNum(toks[col("NSTAT", 8)], 1),
+            met: parseNum(toks[col("MET", 9)], 1),
+            stype: parseNum(toks[col("STYPE", 10)], 1),
+            name: parseStr(toks[col("NAME", 11)], ""),
+            span,
+          });
+        }
+        break;
+      }
+
       default:
         break;
     }
@@ -780,79 +896,187 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
     vscDc,
     switchedShunts,
     ...(substations.length > 0 ? { substations } : {}),
+    ...(systemSwitchingDevices.length > 0 ? { systemSwitchingDevices } : {}),
     ...(openSection ? { unterminatedSection: openSection } : {}),
   };
 }
 
+export interface WriteRawOptions {
+  /** Target PSS/E RAW format revision (`26 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36`). Defaults to `c.header.rev`. */
+  rev?: number | undefined;
+  /** Emit `@!` column metadata headers (default: `true` for `rev >= 34`, `false` otherwise). */
+  includeMetadataHeaders?: boolean | undefined;
+}
+
 /**
- * Formats a `PsseCase` back into standard PSS/E RAW format text.
+ * Formats a `PsseCase` back into standard PSS/E RAW format text for any revision `v26`–`v36`.
  */
-export function writeRaw(c: PsseCase): string {
+export function writeRaw(c: PsseCase, opts?: WriteRawOptions): string {
+  const rev = opts?.rev ?? c.header.rev;
+  const emitMeta = opts?.includeMetadataHeaders ?? rev >= 34;
   const lines: string[] = [];
 
   // Header
-  lines.push(
-    `0, ${c.header.sbase.toFixed(2)}, ${c.header.rev}, ${c.header.xfrrat}, ${c.header.nxfrat}, ${c.header.basfrq.toFixed(2)} / PSS/E RAW Data File`,
-  );
+  if (rev <= 29) {
+    lines.push(`0, ${c.header.sbase.toFixed(2)} / PSS/E-${rev} RAW Data File`);
+  } else {
+    lines.push(
+      `0, ${c.header.sbase.toFixed(2)}, ${rev}, ${c.header.xfrrat}, ${c.header.nxfrat}, ${c.header.basfrq.toFixed(2)} / PSS/E-${rev} RAW Data File`,
+    );
+  }
   lines.push(c.title1 || "MODELSCALE POWER FLOW BASE CASE");
   lines.push(c.title2 || "");
 
-  // Bus Data
-  for (const b of c.buses.values()) {
-    lines.push(
-      `${b.i}, '${b.name}', ${b.baseKv.toFixed(3)}, ${b.ide}, ${b.area}, ${b.zone}, ${b.owner}, ${b.vm.toFixed(4)}, ${b.va.toFixed(4)}`,
-    );
+  // Aggregate fixed shunts by bus when exporting to pre-v31 formats (v26, v29, v30)
+  const shuntByBus = new Map<number, { gl: number; bl: number }>();
+  if (rev <= 30) {
+    for (const s of c.fixedShunts) {
+      if (s.status !== 1) continue;
+      const cur = shuntByBus.get(s.i) ?? { gl: 0, bl: 0 };
+      cur.gl += s.gl;
+      cur.bl += s.bl;
+      shuntByBus.set(s.i, cur);
+    }
   }
-  lines.push("0 / END OF BUS DATA");
+
+  // Bus Data
+  if (emitMeta) {
+    lines.push("@!   I, 'NAME        ', BASKV, IDE, AREA, ZONE, OWNER, VM, VA, NVHI, NVLO, EVHI, EVLO");
+  }
+  for (const b of c.buses.values()) {
+    if (rev <= 26) {
+      const sh = shuntByBus.get(b.i) ?? { gl: 0, bl: 0 };
+      lines.push(
+        `${b.i}, '${b.name}', ${b.baseKv.toFixed(3)}, ${b.ide}, ${sh.gl.toFixed(3)}, ${sh.bl.toFixed(3)}, ${b.area}, ${b.zone}, ${b.vm.toFixed(4)}, ${b.va.toFixed(4)}`,
+      );
+    } else if (rev <= 30) {
+      const sh = shuntByBus.get(b.i) ?? { gl: 0, bl: 0 };
+      lines.push(
+        `${b.i}, '${b.name}', ${b.baseKv.toFixed(3)}, ${b.ide}, ${sh.gl.toFixed(3)}, ${sh.bl.toFixed(3)}, ${b.area}, ${b.zone}, ${b.vm.toFixed(4)}, ${b.va.toFixed(4)}, ${b.owner}`,
+      );
+    } else if (rev >= 32) {
+      lines.push(
+        `${b.i}, '${b.name}', ${b.baseKv.toFixed(3)}, ${b.ide}, ${b.area}, ${b.zone}, ${b.owner}, ${b.vm.toFixed(4)}, ${b.va.toFixed(4)}, ${(b.nvhi ?? 1.1).toFixed(4)}, ${(b.nvlo ?? 0.9).toFixed(4)}, ${(b.evhi ?? 1.1).toFixed(4)}, ${(b.evlo ?? 0.9).toFixed(4)}`,
+      );
+    } else {
+      lines.push(
+        `${b.i}, '${b.name}', ${b.baseKv.toFixed(3)}, ${b.ide}, ${b.area}, ${b.zone}, ${b.owner}, ${b.vm.toFixed(4)}, ${b.va.toFixed(4)}`,
+      );
+    }
+  }
+  lines.push("0 / END OF BUS DATA, BEGIN LOAD DATA");
 
   // Load Data
+  if (emitMeta) {
+    lines.push("@!   I, 'ID', STATUS, AREA, ZONE, PL, QL, IP, IQ, YP, YQ, OWNER, SCALE, INTRPT");
+  }
   for (const l of c.loads) {
     lines.push(
       `${l.i}, '${l.id}', ${l.status}, ${l.area}, ${l.zone}, ${l.pl.toFixed(3)}, ${l.ql.toFixed(3)}, ${l.ip.toFixed(3)}, ${l.iq.toFixed(3)}, ${l.yp.toFixed(3)}, ${l.yq.toFixed(3)}, ${l.owner}, ${l.scale}, ${l.intrct}`,
     );
   }
-  lines.push("0 / END OF LOAD DATA");
-
-  // Fixed Shunt Data
-  for (const s of c.fixedShunts) {
-    lines.push(`${s.i}, '${s.id}', ${s.status}, ${s.gl.toFixed(3)}, ${s.bl.toFixed(3)}`);
+  if (rev <= 30) {
+    lines.push("0 / END OF LOAD DATA, BEGIN GENERATOR DATA");
+  } else {
+    lines.push("0 / END OF LOAD DATA, BEGIN FIXED SHUNT DATA");
+    // Fixed Shunt Data (v31+)
+    if (emitMeta) {
+      lines.push("@!   I, 'ID', STATUS, GL, BL");
+    }
+    for (const s of c.fixedShunts) {
+      lines.push(`${s.i}, '${s.id}', ${s.status}, ${s.gl.toFixed(3)}, ${s.bl.toFixed(3)}`);
+    }
+    lines.push("0 / END OF FIXED SHUNT DATA, BEGIN GENERATOR DATA");
   }
-  lines.push("0 / END OF FIXED SHUNT DATA");
 
   // Generator Data
-  for (const g of c.generators) {
+  if (emitMeta) {
     lines.push(
-      `${g.i}, '${g.id}', ${g.pg.toFixed(3)}, ${g.qg.toFixed(3)}, ${g.qt.toFixed(3)}, ${g.qb.toFixed(3)}, ${g.vs.toFixed(4)}, ${g.ireg}, ${g.mbase.toFixed(2)}, ${g.zr.toFixed(5)}, ${g.zx.toFixed(5)}, ${g.rt.toFixed(5)}, ${g.xt.toFixed(5)}, ${g.gtap.toFixed(4)}, ${g.stat}, ${g.rmpct.toFixed(1)}, ${g.pt.toFixed(3)}, ${g.pb.toFixed(3)}`,
+      rev >= 35
+        ? "@!   I, 'ID', PG, QG, QT, QB, VS, IREG, NREG, MBASE, ZR, ZX, RT, XT, GTAP, STAT, RMPCT, PT, PB, O1, F1"
+        : "@!   I, 'ID', PG, QG, QT, QB, VS, IREG, MBASE, ZR, ZX, RT, XT, GTAP, STAT, RMPCT, PT, PB, O1, F1",
     );
   }
-  lines.push("0 / END OF GENERATOR DATA");
+  for (const g of c.generators) {
+    if (rev >= 35) {
+      lines.push(
+        `${g.i}, '${g.id}', ${g.pg.toFixed(3)}, ${g.qg.toFixed(3)}, ${g.qt.toFixed(3)}, ${g.qb.toFixed(3)}, ${g.vs.toFixed(4)}, ${g.ireg}, 0, ${g.mbase.toFixed(2)}, ${g.zr.toFixed(5)}, ${g.zx.toFixed(5)}, ${g.rt.toFixed(5)}, ${g.xt.toFixed(5)}, ${g.gtap.toFixed(4)}, ${g.stat}, ${g.rmpct.toFixed(1)}, ${g.pt.toFixed(3)}, ${g.pb.toFixed(3)}, ${g.o1 ?? 1}, ${(g.f1 ?? 1.0).toFixed(4)}`,
+      );
+    } else {
+      lines.push(
+        `${g.i}, '${g.id}', ${g.pg.toFixed(3)}, ${g.qg.toFixed(3)}, ${g.qt.toFixed(3)}, ${g.qb.toFixed(3)}, ${g.vs.toFixed(4)}, ${g.ireg}, ${g.mbase.toFixed(2)}, ${g.zr.toFixed(5)}, ${g.zx.toFixed(5)}, ${g.rt.toFixed(5)}, ${g.xt.toFixed(5)}, ${g.gtap.toFixed(4)}, ${g.stat}, ${g.rmpct.toFixed(1)}, ${g.pt.toFixed(3)}, ${g.pb.toFixed(3)}`,
+      );
+    }
+  }
+  lines.push("0 / END OF GENERATOR DATA, BEGIN BRANCH DATA");
 
   // Branch Data
-  for (const br of c.branches) {
+  if (emitMeta) {
     lines.push(
-      `${br.i}, ${br.j}, '${br.ckt}', ${br.r.toFixed(5)}, ${br.x.toFixed(5)}, ${br.b.toFixed(5)}, ${br.rateA.toFixed(2)}, ${br.rateB.toFixed(2)}, ${br.rateC.toFixed(2)}, ${br.gi.toFixed(5)}, ${br.bi.toFixed(5)}, ${br.gj.toFixed(5)}, ${br.bj.toFixed(5)}, ${br.st}, ${br.met}, ${br.len.toFixed(2)}`,
+      rev >= 35
+        ? "@!   I, J, 'CKT', R, X, B, 'NAME', RATE1, RATE2, RATE3, RATE4, RATE5, RATE6, RATE7, RATE8, RATE9, RATE10, RATE11, RATE12, GI, BI, GJ, BJ, STAT, MET, LEN, O1, F1"
+        : "@!   I, J, 'CKT', R, X, B, RATEA, RATEB, RATEC, GI, BI, GJ, BJ, ST, MET, LEN",
     );
   }
-  lines.push("0 / END OF BRANCH DATA");
+  for (const br of c.branches) {
+    if (rev >= 35) {
+      lines.push(
+        `${br.i}, ${br.j}, '${br.ckt}', ${br.r.toFixed(5)}, ${br.x.toFixed(5)}, ${br.b.toFixed(5)}, '', ${br.rateA.toFixed(2)}, ${br.rateB.toFixed(2)}, ${br.rateC.toFixed(2)}, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, ${br.gi.toFixed(5)}, ${br.bi.toFixed(5)}, ${br.gj.toFixed(5)}, ${br.bj.toFixed(5)}, ${br.st}, ${br.met}, ${br.len.toFixed(2)}, ${br.o1 ?? 1}, ${(br.f1 ?? 1.0).toFixed(4)}`,
+      );
+    } else {
+      lines.push(
+        `${br.i}, ${br.j}, '${br.ckt}', ${br.r.toFixed(5)}, ${br.x.toFixed(5)}, ${br.b.toFixed(5)}, ${br.rateA.toFixed(2)}, ${br.rateB.toFixed(2)}, ${br.rateC.toFixed(2)}, ${br.gi.toFixed(5)}, ${br.bi.toFixed(5)}, ${br.gj.toFixed(5)}, ${br.bj.toFixed(5)}, ${br.st}, ${br.met}, ${br.len.toFixed(2)}`,
+      );
+    }
+  }
+  if (rev >= 34 && c.systemSwitchingDevices && c.systemSwitchingDevices.length > 0) {
+    lines.push("0 / END OF BRANCH DATA, BEGIN SYSTEM SWITCHING DEVICE DATA");
+    if (emitMeta) {
+      lines.push("@!   I, J, 'CKT', X, RATE1, RATE2, RATE3, STAT, NSTAT, MET, STYPE, 'NAME'");
+    }
+    for (const swd of c.systemSwitchingDevices) {
+      lines.push(
+        `${swd.i}, ${swd.j}, '${swd.ckt}', ${swd.x.toFixed(5)}, ${swd.rate1.toFixed(2)}, ${swd.rate2.toFixed(2)}, ${swd.rate3.toFixed(2)}, ${swd.stat}, ${swd.nstat}, ${swd.met}, ${swd.stype}, '${swd.name}'`,
+      );
+    }
+    lines.push("0 / END OF SYSTEM SWITCHING DEVICE DATA, BEGIN TRANSFORMER DATA");
+  } else {
+    lines.push("0 / END OF BRANCH DATA, BEGIN TRANSFORMER DATA");
+  }
 
   // Transformer Data
   for (const t of c.transformers) {
     lines.push(
-      `${t.i}, ${t.j}, ${t.k}, '${t.ckt}', ${t.cw}, ${t.cm}, ${t.mag1.toFixed(5)}, ${t.mag2.toFixed(5)}, ${t.nmetr}, '${t.name}', ${t.stat}`,
+      `${t.i}, ${t.j}, ${t.k}, '${t.ckt}', ${t.cw}, ${t.cz ?? 1}, ${t.cm}, ${t.mag1.toFixed(5)}, ${t.mag2.toFixed(5)}, ${t.nmetr}, '${t.name}', ${t.stat}`,
     );
-    lines.push(`${t.r12.toFixed(5)}, ${t.x12.toFixed(5)}, ${t.sbase12.toFixed(2)}`);
+    if (t.k !== 0) {
+      lines.push(
+        `${t.r12.toFixed(5)}, ${t.x12.toFixed(5)}, ${t.sbase12.toFixed(2)}, ${(t.r23 ?? 0).toFixed(5)}, ${(t.x23 ?? 0).toFixed(5)}, ${(t.sbase23 ?? t.sbase12).toFixed(2)}, ${(t.r31 ?? 0).toFixed(5)}, ${(t.x31 ?? 0).toFixed(5)}, ${(t.sbase31 ?? t.sbase12).toFixed(2)}, ${(t.vmstar ?? 1).toFixed(4)}, ${(t.anstar ?? 0).toFixed(4)}`,
+      );
+    } else {
+      lines.push(`${t.r12.toFixed(5)}, ${t.x12.toFixed(5)}, ${t.sbase12.toFixed(2)}`);
+    }
     lines.push(
       `${t.windv1.toFixed(4)}, ${t.nomv1.toFixed(2)}, ${t.ang1.toFixed(2)}, ${t.rata1.toFixed(2)}, ${t.ratb1.toFixed(2)}, ${t.ratc1.toFixed(2)}, ${t.cod1}, ${t.cont1}, ${t.rma1.toFixed(4)}, ${t.rmi1.toFixed(4)}, ${t.vma1.toFixed(4)}, ${t.vmi1.toFixed(4)}, ${t.ntp1}, ${t.tab1}, ${t.cr1.toFixed(5)}, ${t.cx1.toFixed(5)}, ${t.cnxa1.toFixed(2)}`,
     );
-    lines.push(`${t.windv2.toFixed(4)}, ${t.nomv2.toFixed(2)}`);
+    if (t.k !== 0) {
+      lines.push(
+        `${t.windv2.toFixed(4)}, ${t.nomv2.toFixed(2)}, ${(t.ang2 ?? 0).toFixed(2)}, ${(t.rata2 ?? 0).toFixed(2)}, ${(t.ratb2 ?? 0).toFixed(2)}, ${(t.ratc2 ?? 0).toFixed(2)}`,
+      );
+      lines.push(
+        `${(t.windv3 ?? 1).toFixed(4)}, ${(t.nomv3 ?? 0).toFixed(2)}, ${(t.ang3 ?? 0).toFixed(2)}, ${(t.rata3 ?? 0).toFixed(2)}, ${(t.ratb3 ?? 0).toFixed(2)}, ${(t.ratc3 ?? 0).toFixed(2)}`,
+      );
+    } else {
+      lines.push(`${t.windv2.toFixed(4)}, ${t.nomv2.toFixed(2)}`);
+    }
   }
-  lines.push("0 / END OF TRANSFORMER DATA");
+  lines.push("0 / END OF TRANSFORMER DATA, BEGIN AREA DATA");
 
   // Area Interchange Data
   for (const a of c.areas) {
     lines.push(`${a.i}, ${a.isw}, ${a.pdes.toFixed(3)}, ${a.ptol.toFixed(3)}, '${a.arname}'`);
   }
-  lines.push("0 / END OF AREA DATA");
+  lines.push("0 / END OF AREA DATA, BEGIN TWO-TERMINAL DC DATA");
 
   // Two-Terminal DC Data
   for (const dc of c.twoTerminalDc) {
@@ -860,13 +1084,13 @@ export function writeRaw(c: PsseCase): string {
       `${dc.i}, ${dc.mdc}, ${dc.rdc.toFixed(4)}, ${dc.setvl.toFixed(2)}, ${dc.vschd.toFixed(2)}, ${dc.vcmod.toFixed(2)}, ${dc.rcomp.toFixed(4)}, ${dc.deltm.toFixed(2)}`,
     );
   }
-  lines.push("0 / END OF TWO-TERMINAL DC DATA");
+  lines.push("0 / END OF TWO-TERMINAL DC DATA, BEGIN VSC DC DATA");
 
   // VSC DC Data
   for (const vsc of c.vscDc) {
     lines.push(`'${vsc.name}', ${vsc.mdc}, ${vsc.rdc.toFixed(4)}`);
   }
-  lines.push("0 / END OF VSC DC DATA");
+  lines.push("0 / END OF VSC DC DATA, BEGIN SWITCHED SHUNT DATA");
 
   // Switched Shunt Data
   for (const sw of c.switchedShunts) {
@@ -876,7 +1100,7 @@ export function writeRaw(c: PsseCase): string {
   }
   lines.push("0 / END OF SWITCHED SHUNT DATA");
 
-  if (c.substations && c.substations.length > 0) {
+  if (rev >= 34 && c.substations && c.substations.length > 0) {
     lines.push("0 / BEGIN SUBSTATION DATA");
     for (const sub of c.substations) {
       lines.push(`${sub.is}, '${sub.name}', ${sub.lati.toFixed(4)}, ${sub.long.toFixed(4)}, ${sub.sgr.toFixed(4)}`);
@@ -902,6 +1126,7 @@ export function writeRaw(c: PsseCase): string {
     lines.push("0 / END OF SUBSTATION DATA");
   }
 
+  lines.push("Q");
   return lines.join("\n") + "\n";
 }
 
