@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { getPscadDefinitionLocation } from "@modelscript/pscad";
-import { scanStepEntities, splitStepArgs } from "@modelscript/step";
+import {
+  findStepEntityDefSpanInDocuments,
+  findStepLocalEntityDefSpan,
+  findStepProductDefSpanInDocuments,
+} from "@modelscript/step";
 import { Connection, Definition, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
@@ -11,17 +14,12 @@ import {
   extractLeafSymbolName,
   extractQualifiedTokenAtOffset,
   extractWordAtOffset,
-  isDigitCode,
   parseStepReferenceToken,
 } from "../utils/lexical-utils.js";
 import { symbolEntryToLocation } from "../utils/lsp-utils.js";
 
 function isStepDocument(document: TextDocument): boolean {
   return document.languageId === "step" || /\.(step|stp|p21)$/i.test(document.uri);
-}
-
-function isPscadDocument(document: TextDocument): boolean {
-  return document.languageId === "pscad" || /\.(pscx|pslx|pswx|psmx)$/i.test(document.uri);
 }
 
 /**
@@ -118,6 +116,19 @@ export function findCrossLanguageDefinition(
     validationService?.workspaceManager?.queryEngine ??
     globalLanguageRegistry.getAllPlugins().find((p: any) => p.queryEngine)?.queryEngine;
 
+  const collectStepDocs = (): { uri: string; text: string }[] => {
+    const out: { uri: string; text: string }[] = [];
+    if (documents) {
+      for (const d of documents.all()) {
+        if (isStepDocument(d)) out.push({ uri: d.uri, text: d.getText() });
+      }
+    }
+    for (const [tUri, tTree] of documentTrees.entries()) {
+      if (/\.(step|stp|p21)$/i.test(tUri) && tTree?.text) out.push({ uri: tUri, text: tTree.text });
+    }
+    return out;
+  };
+
   // A. Check candidates for STEP entity or CAD reference
   for (const cand of uniqueCandidates) {
     const stepRef = parseStepReferenceToken(cand);
@@ -125,38 +136,12 @@ export function findCrossLanguageDefinition(
     const entityNum = stepRef?.entityNum;
 
     if (entityNum) {
-      const stepDocs: { uri: string; text: string }[] = [];
-      if (documents) {
-        for (const d of documents.all()) {
-          if (isStepDocument(d)) {
-            stepDocs.push({ uri: d.uri, text: d.getText() });
-          }
-        }
-      }
-      for (const [tUri, tTree] of documentTrees.entries()) {
-        if (/\.(step|stp|p21)$/i.test(tUri) && tTree?.text) {
-          stepDocs.push({ uri: tUri, text: tTree.text });
-        }
-      }
-
-      // Prioritize document matching target filename if provided
-      const sortedStepDocs = targetFile
-        ? [...stepDocs].sort((a, b) => (b.uri.includes(targetFile) ? 1 : 0) - (a.uri.includes(targetFile) ? 1 : 0))
-        : stepDocs;
-
-      const wantedId = `#${entityNum}`;
-      for (const sDoc of sortedStepDocs) {
-        if (sDoc.uri === document.uri) continue;
-        const entity = scanStepEntities(sDoc.text).find((e) => e.id === wantedId);
-        if (entity) {
-          const eqIdx = sDoc.text.indexOf("=", entity.startOffset);
-          const defEnd = eqIdx !== -1 ? eqIdx + 1 : entity.startOffset + wantedId.length;
-          const positions = new PositionIndex(sDoc.text);
-          return {
-            uri: sDoc.uri,
-            range: positions.rangeFromOffsets(entity.startOffset, defEnd),
-          };
-        }
+      const hit = findStepEntityDefSpanInDocuments(collectStepDocs(), document.uri, entityNum, targetFile);
+      if (hit) {
+        return {
+          uri: hit.uri,
+          range: new PositionIndex(hit.text).rangeFromOffsets(hit.startOffset, hit.endOffset),
+        };
       }
     }
 
@@ -183,39 +168,12 @@ export function findCrossLanguageDefinition(
     }
 
     // Fallback: search open STEP documents directly for CAD Product/Shape name definition
-    const stepDocs: { uri: string; text: string }[] = [];
-    if (documents) {
-      for (const d of documents.all()) {
-        if (isStepDocument(d)) {
-          stepDocs.push({ uri: d.uri, text: d.getText() });
-        }
-      }
-    }
-    for (const [tUri, tTree] of documentTrees.entries()) {
-      if (/\.(step|stp|p21)$/i.test(tUri) && tTree?.text) {
-        stepDocs.push({ uri: tUri, text: tTree.text });
-      }
-    }
-    const candLower = cand.toLowerCase();
-    for (const sDoc of stepDocs) {
-      if (sDoc.uri === document.uri) continue;
-      for (const entity of scanStepEntities(sDoc.text)) {
-        if (entity.type.toUpperCase() !== "PRODUCT") continue;
-        const firstArg = splitStepArgs(entity.args)[0]?.trim();
-        if (!firstArg || !firstArg.startsWith("'") || !firstArg.endsWith("'")) continue;
-        const productName = firstArg.slice(1, -1).replaceAll("''", "'");
-        if (productName.toLowerCase() === candLower) {
-          const quoteEnd = sDoc.text.indexOf(firstArg, entity.startOffset);
-          const spanEnd = quoteEnd !== -1 ? quoteEnd + firstArg.length : entity.endOffset;
-          const prodOffset = sDoc.text.toUpperCase().indexOf("PRODUCT", entity.startOffset);
-          const spanStart = prodOffset !== -1 ? prodOffset : entity.startOffset;
-          const positions = new PositionIndex(sDoc.text);
-          return {
-            uri: sDoc.uri,
-            range: positions.rangeFromOffsets(spanStart, spanEnd),
-          };
-        }
-      }
+    const prodHit = findStepProductDefSpanInDocuments(collectStepDocs(), document.uri, cand);
+    if (prodHit) {
+      return {
+        uri: prodHit.uri,
+        range: new PositionIndex(prodHit.text).rangeFromOffsets(prodHit.startOffset, prodHit.endOffset),
+      };
     }
   }
 
@@ -372,32 +330,17 @@ export function registerDefinitionProvider(
         const stepCustom = activePlugin.customHandlers.definition(offset, docText, document.uri);
         if (stepCustom) return stepCustom;
       }
-      const text = docText;
-      let start = offset;
-      while (start > 0 && isDigitCode(text.charCodeAt(start - 1))) start--;
-      if (start > 0 && text[start - 1] === "#") start--;
-      let end = offset;
-      if (text[end] === "#") end++;
-      while (end < text.length && isDigitCode(text.charCodeAt(end))) end++;
-
-      const token = text.slice(start, end);
-      let localDefSpan: { start: number; end: number } | null = null;
-      if (token.startsWith("#") && token.length > 1) {
-        const entity = scanStepEntities(text).find((e) => e.id === token);
-        if (entity) {
-          const eqIdx = text.indexOf("=", entity.startOffset);
-          const defEnd = eqIdx !== -1 ? eqIdx + 1 : entity.startOffset + token.length;
-          localDefSpan = { start: entity.startOffset, end: defEnd };
-          const isAtDefinition = offset >= localDefSpan.start && offset <= localDefSpan.end;
-          if (!isAtDefinition) {
-            return {
-              uri: document.uri,
-              range: {
-                start: document.positionAt(localDefSpan.start),
-                end: document.positionAt(localDefSpan.end),
-              },
-            };
-          }
+      const localDefSpan = findStepLocalEntityDefSpan(docText, offset);
+      if (localDefSpan) {
+        const isAtDefinition = offset >= localDefSpan.start && offset <= localDefSpan.end;
+        if (!isAtDefinition) {
+          return {
+            uri: document.uri,
+            range: {
+              start: document.positionAt(localDefSpan.start),
+              end: document.positionAt(localDefSpan.end),
+            },
+          };
         }
       }
 
@@ -426,31 +369,10 @@ export function registerDefinitionProvider(
       return null;
     }
 
-    // ── PSCAD-specific go-to-definition (.pscx / .pslx) ──
-    if (isPscadDocument(document)) {
-      if (activePlugin?.customHandlers?.definition) {
-        const pscadCustom = activePlugin.customHandlers.definition(offset, docText, document.uri);
-        if (pscadCustom) return pscadCustom as Definition;
-      }
-      const pscadDocs: Array<{ uri: string; text: string }> = [];
-      for (const d of documents.all()) {
-        if (isPscadDocument(d)) {
-          pscadDocs.push({ uri: d.uri, text: d.getText() });
-        }
-      }
-      for (const [tUri, tTree] of documentTrees.entries()) {
-        if (/\.(pscx|pslx|pswx|psmx)$/i.test(tUri) && tTree?.text && !pscadDocs.some((d) => d.uri === tUri)) {
-          pscadDocs.push({ uri: tUri, text: tTree.text });
-        }
-      }
-      const pscadLoc = getPscadDefinitionLocation(
-        docText,
-        offset,
-        document.uri,
-        pscadDocs,
-        validationService?.workspaceManager?.unifiedWorkspace,
-      );
-      if (pscadLoc) return pscadLoc as Definition;
+    // ── Language-plugin custom go-to-definition (PSCAD, PSS/E, STEP, etc.) ──
+    if (activePlugin?.customHandlers?.definition) {
+      const customDef = activePlugin.customHandlers.definition(offset, docText, document.uri);
+      if (customDef) return customDef as Definition;
     }
 
     // ── Standard polyglot go-to-definition ──

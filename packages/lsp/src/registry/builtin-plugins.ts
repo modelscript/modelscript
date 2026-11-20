@@ -1,7 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { adamsLanguage, getAdamsDocumentSymbols, getAdamsHover, validateAdams } from "@modelscript/adams";
-import { amplLanguage, getAmplDocumentSymbols, getAmplHover, validateAmpl } from "@modelscript/ampl";
+import {
+  adamsLanguage,
+  createAdamsActionHandlers,
+  getAdamsDocumentSymbols,
+  getAdamsHover,
+  validateAdams,
+} from "@modelscript/adams";
+import {
+  amplActionHandlers,
+  amplLanguage,
+  getAmplDocumentSymbols,
+  getAmplHover,
+  validateAmpl,
+} from "@modelscript/ampl";
 import {
   antimonyLanguage,
   getAntimonyDocumentSymbols,
@@ -9,7 +21,13 @@ import {
   validateAntimony,
 } from "@modelscript/antimony";
 import { asmLanguage, getAsmDiagnostics, getAsmDocumentSymbols } from "@modelscript/asm";
-import { aspenLanguage, getAspenDocumentSymbols, getAspenHover, validateAspen } from "@modelscript/aspen";
+import {
+  aspenActionHandlers,
+  aspenLanguage,
+  getAspenDocumentSymbols,
+  getAspenHover,
+  validateAspen,
+} from "@modelscript/aspen";
 import { atpLanguage, getAtpDiagnostics, getAtpDocumentSymbols } from "@modelscript/atp";
 import {
   automationMLLanguage,
@@ -17,35 +35,94 @@ import {
   getAutomationMLHover,
   validateAutomationML,
 } from "@modelscript/automationml";
-import { autosarLanguage, getAutosarDocumentSymbols, getAutosarHover, validateAutosar } from "@modelscript/autosar";
+import {
+  autosarActionHandlers,
+  autosarLanguage,
+  getAutosarDocumentSymbols,
+  getAutosarHover,
+  validateAutosar,
+} from "@modelscript/autosar";
 import { bnglLanguage, getBnglDocumentSymbols, getBnglHover, validateBngl } from "@modelscript/bngl";
-import { cLanguage } from "@modelscript/c";
+import { cActionHandlers, cLanguage } from "@modelscript/c";
 import { c37118Language, getC37118Diagnostics, getC37118DocumentSymbols } from "@modelscript/c37118";
-import { canteraLanguage, getCanteraDocumentSymbols, getCanteraHover, validateCantera } from "@modelscript/cantera";
-import { ccsdsLanguage, getCcsdsDocumentSymbols, getCcsdsHover, validateCcsds } from "@modelscript/ccsds";
+import {
+  canteraLanguage,
+  extractCanteraTheoryConstraints,
+  getCanteraDocumentSymbols,
+  getCanteraHover,
+  validateCantera,
+} from "@modelscript/cantera";
+import {
+  ccsdsActionHandlers,
+  ccsdsLanguage,
+  getCcsdsDocumentSymbols,
+  getCcsdsHover,
+  validateCcsds,
+} from "@modelscript/ccsds";
 import { cellmlLanguage, getCellmlDocumentSymbols, getCellmlHover, validateCellml } from "@modelscript/cellml";
-import { cfdLanguage, getCfdDocumentSymbols, getCfdHover, validateCfd } from "@modelscript/cfd";
+import {
+  cfdActionHandlers,
+  cfdLanguage,
+  computeCfdSemanticTokensData,
+  getCfdCodeLenses,
+  getCfdDocumentSymbols,
+  getCfdHover,
+  validateCfd,
+} from "@modelscript/cfd";
 import { cgmesLanguage, lintCgmesModel, parseCgmesRdf } from "@modelscript/cgmes";
 import { comtradeLanguage, getComtradeDiagnostics, getComtradeDocumentSymbols } from "@modelscript/comtrade";
 import csvLangFallback from "@modelscript/csv/language";
 import { cymeLanguage, getCymeDiagnostics, getCymeDocumentSymbols } from "@modelscript/cyme";
 import { dicomRtLanguage, getDicomRtDocumentSymbols, getDicomRtHover, validateDicomRt } from "@modelscript/dicom-rt";
 import { dnp3Language, getDnp3Diagnostics, getDnp3DocumentSymbols } from "@modelscript/dnp3";
-import { easy5Language, getEasy5DocumentSymbols, getEasy5Hover, validateEasy5 } from "@modelscript/easy5";
-import { eclipseLanguage, getEclipseDocumentSymbols, getEclipseHover, validateEclipse } from "@modelscript/eclipse";
 import {
+  easy5ActionHandlers,
+  easy5Language,
+  getEasy5DocumentSymbols,
+  getEasy5Hover,
+  validateEasy5,
+} from "@modelscript/easy5";
+import {
+  eclipseActionHandlers,
+  eclipseLanguage,
+  getEclipseDocumentSymbols,
+  getEclipseHover,
+  validateEclipse,
+} from "@modelscript/eclipse";
+import {
+  energyplusActionHandlers,
   energyplusLanguage,
   getEnergyPlusDocumentSymbols,
   getEnergyPlusHover,
   validateEnergyPlus,
 } from "@modelscript/energyplus";
-import { epanetLanguage, getEpanetDocumentSymbols, getEpanetHover, validateEpanet } from "@modelscript/epanet";
-import { feaLanguage, getFeaDocumentSymbols, getFeaHover, validateFea } from "@modelscript/fea";
+import {
+  epanetActionHandlers,
+  epanetLanguage,
+  getEpanetDocumentSymbols,
+  getEpanetHover,
+  validateEpanet,
+} from "@modelscript/epanet";
+import {
+  computeFeaSemanticTokensData,
+  feaActionHandlers,
+  feaLanguage,
+  getFeaCodeLenses,
+  getFeaDocumentSymbols,
+  getFeaHover,
+  validateFea,
+} from "@modelscript/fea";
 import { febioLanguage, getFebioDocumentSymbols, getFebioHover, validateFebio } from "@modelscript/febio";
 import { fiberLanguage } from "@modelscript/fiber";
-import { fortranLanguage } from "@modelscript/fortran";
+import { computeFortranSemanticTokensData, fortranActionHandlers, fortranLanguage } from "@modelscript/fortran";
 import { genbankLanguage, getGenbankDocumentSymbols, getGenbankHover, validateGenbank } from "@modelscript/genbank";
-import { gensysLanguage, getGensysDocumentSymbols, getGensysHover, validateGensys } from "@modelscript/gensys";
+import {
+  createGensysActionHandlers,
+  gensysLanguage,
+  getGensysDocumentSymbols,
+  getGensysHover,
+  validateGensys,
+} from "@modelscript/gensys";
 import { getGpromsDocumentSymbols, getGpromsHover, gpromsLanguage, validateGproms } from "@modelscript/gproms";
 import {
   getGridlabdDiagnostics,
@@ -54,26 +131,50 @@ import {
   gridlabdLanguage,
 } from "@modelscript/gridlabd";
 import { getGtfsDocumentSymbols, getGtfsHover, gtfsLanguage, validateGtfs } from "@modelscript/gtfs";
-import { getGtsuiteDocumentSymbols, getGtsuiteHover, gtsuiteLanguage, validateGtsuite } from "@modelscript/gtsuite";
+import {
+  getGtsuiteDocumentSymbols,
+  getGtsuiteHover,
+  gtsuiteActionHandlers,
+  gtsuiteLanguage,
+  validateGtsuite,
+} from "@modelscript/gtsuite";
 import {
   getDiagnostics as getHecHmsDiagnostics,
   getDocumentSymbols as getHecHmsDocumentSymbols,
   hecHmsLanguage,
 } from "@modelscript/hec-hms";
 import { getHecRasDocumentSymbols, getHecRasHover, hecRasLanguage, validateHecRas } from "@modelscript/hec-ras";
-import { getIbisDocumentSymbols, getIbisHover, ibisLanguage, validateIbis } from "@modelscript/ibis";
+import {
+  getIbisDocumentSymbols,
+  getIbisHover,
+  ibisActionHandlers,
+  ibisLanguage,
+  validateIbis,
+} from "@modelscript/ibis";
 import { getIec104Diagnostics, getIec104DocumentSymbols, iec104Language } from "@modelscript/iec104";
 import { getIgtlDocumentSymbols, getIgtlHover, igtlLanguage, validateIgtl } from "@modelscript/igtl";
-import { getJsbsimDocumentSymbols, getJsbsimHover, jsbsimLanguage, validateJsbsim } from "@modelscript/jsbsim";
+import {
+  getJsbsimDocumentSymbols,
+  getJsbsimHover,
+  jsbsimActionHandlers,
+  jsbsimLanguage,
+  validateJsbsim,
+} from "@modelscript/jsbsim";
 import { getLandgemDocumentSymbols, getLandgemHover, landgemLanguage, validateLandgem } from "@modelscript/landgem";
 import lasLangFallback from "@modelscript/las/language";
-import { getLpsDocumentSymbols, getLpsHover, lpsLanguage, validateLps } from "@modelscript/lps";
+import { getLpsDocumentSymbols, getLpsHover, lpsActionHandlers, lpsLanguage, validateLps } from "@modelscript/lps";
 import {
+  extractMatpowerTheoryConstraints,
   getDiagnostics as getMatpowerDiagnostics,
   getDocumentSymbols as getMatpowerDocumentSymbols,
   matpowerLanguage,
 } from "@modelscript/matpower";
-import { modelicaActionHandlers, modelicaLanguage } from "@modelscript/modelica";
+import {
+  formatModelicaTree,
+  getModelicaCodeLenses,
+  modelicaActionHandlers,
+  modelicaLanguage,
+} from "@modelscript/modelica";
 import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import modelscriptLangFallback from "@modelscript/modelscript/language";
@@ -81,49 +182,83 @@ import { getModflowDocumentSymbols, getModflowHover, modflowLanguage, validateMo
 import { getNiftiDocumentSymbols, getNiftiHover, niftiLanguage, validateNifti } from "@modelscript/nifti";
 import { getNmtranDocumentSymbols, getNmtranHover, nmtranLanguage, validateNmtran } from "@modelscript/nmtran";
 import { getOcppDocumentSymbols, getOcppHover, ocppLanguage, validateOcpp } from "@modelscript/ocpp";
-import { getOlgaDocumentSymbols, getOlgaHover, olgaLanguage, validateOlga } from "@modelscript/olga";
+import {
+  getOlgaCodeLenses,
+  getOlgaDocumentSymbols,
+  getOlgaHover,
+  getOlgaQuickFixes,
+  olgaActionHandlers,
+  olgaLanguage,
+  validateOlga,
+} from "@modelscript/olga";
 import { getOneLinerDiagnostics, getOneLinerDocumentSymbols, onelinerLanguage } from "@modelscript/oneliner";
 import { getOpenAdrDocumentSymbols, getOpenAdrHover, openadrLanguage, validateOpenAdr } from "@modelscript/openadr";
 import {
   getOpenDriveDocumentSymbols,
   getOpenDriveHover,
+  opendriveActionHandlers,
   opendriveLanguage,
   validateOpenDrive,
 } from "@modelscript/opendrive";
-import { getOpenDssDocumentSymbols, getOpenDssHover, openDssLanguage, validateOpenDss } from "@modelscript/opendss";
+import {
+  getOpenDssDocumentSymbols,
+  getOpenDssHover,
+  opendssActionHandlers,
+  openDssLanguage,
+  validateOpenDss,
+} from "@modelscript/opendss";
 import {
   getOpenScenarioDocumentSymbols,
   getOpenScenarioHover,
+  openscenarioActionHandlers,
   openScenarioLanguage,
   validateOpenScenario,
 } from "@modelscript/openscenario";
 import { getOpenSimDocumentSymbols, getOpenSimHover, openSimLanguage, validateOpenSim } from "@modelscript/opensim";
 import { lintOpticalTopology, opticalLanguage, parseOpenRoadmTopology } from "@modelscript/optical";
 import { getOscalDocumentSymbols, getOscalHover, oscalLanguage, validateOscal } from "@modelscript/oscal";
+import { computeOwl2SemanticTokensData } from "@modelscript/owl2";
 import { createOWL2QueryEngine } from "@modelscript/owl2/factory";
 import owl2LangFallback from "@modelscript/owl2/language";
 import { getPdbDocumentSymbols, getPdbHover, pdbLanguage, validatePdb } from "@modelscript/pdb";
 import { getPhreeqcDocumentSymbols, getPhreeqcHover, phreeqcLanguage, validatePhreeqc } from "@modelscript/phreeqc";
-import { getPlcopenDocumentSymbols, getPlcopenHover, plcopenLanguage, validatePlcopen } from "@modelscript/plcopen";
+import {
+  getPlcopenDocumentSymbols,
+  getPlcopenHover,
+  plcopenActionHandlers,
+  plcopenLanguage,
+  validatePlcopen,
+} from "@modelscript/plcopen";
 import { getPlsCaddDiagnostics, getPlsCaddDocumentSymbols, plscaddLanguage } from "@modelscript/plscadd";
 import { lintPowerFactoryModel, parsePowerFactoryXml, powerFactoryLanguage } from "@modelscript/powerfactory";
 import { getPowerWorldDiagnostics, getPowerWorldDocumentSymbols, powerworldLanguage } from "@modelscript/powerworld";
 import {
+  createPscadActionHandlers,
+  getPscadCodeLenses,
   getPscadCompletions,
   getPscadDefinitionLocation,
   getPscadDocumentSymbols,
+  getPscadFoldingRanges,
   getPscadHover,
+  getPscadInlayHints,
+  getPscadQuickFixes,
   getPscadReferences,
+  getPscadRenameEdits,
   pscadLanguage,
 } from "@modelscript/pscad";
 import { lintPslfDyd, lintPslfEpc, parsePslfDyd, parsePslfEpc, pslfLanguage } from "@modelscript/pslf";
 import {
-  getMergedPsseCase,
+  createPsseActionHandlers,
+  extractPsseTheoryConstraints,
+  formatPsseDocument,
+  getPsseCodeActions,
   getPsseCompletions,
   getPsseDefinition,
   getPsseDocumentSymbols,
   getPsseHover,
+  getPsseInlayHints,
   getPsseReferences,
+  getPsseRenameEdits,
   psseLanguage,
   validatePsse,
 } from "@modelscript/psse";
@@ -137,37 +272,92 @@ import {
   validateQif,
 } from "@modelscript/qif";
 import { lintAntennaPatternDeck, parseNsmaAdf, parsePlanetPat, ranLanguage } from "@modelscript/ran";
-import { getRelap5DocumentSymbols, getRelap5Hover, relap5Language, validateRelap5 } from "@modelscript/relap5";
+import {
+  getRelap5DocumentSymbols,
+  getRelap5Hover,
+  relap5ActionHandlers,
+  relap5Language,
+  validateRelap5,
+} from "@modelscript/relap5";
 import {
   getReqifDefinition,
   getReqifDocumentSymbols,
   getReqifHover,
   getReqifReferences,
+  reqifActionHandlers,
   reqifLanguage,
   validateReqif,
 } from "@modelscript/reqif";
-import { getRocetsDocumentSymbols, getRocetsHover, rocetsLanguage, validateRocets } from "@modelscript/rocets";
+import {
+  getRocetsDocumentSymbols,
+  getRocetsHover,
+  rocetsActionHandlers,
+  rocetsLanguage,
+  validateRocets,
+} from "@modelscript/rocets";
 import { getRtdsDiagnostics, getRtdsDocumentSymbols, rtdsLanguage } from "@modelscript/rtds";
-import { getSbmlDocumentSymbols, getSbmlHover, sbmlLanguage, validateSbml } from "@modelscript/sbml";
+import {
+  getSbmlDocumentSymbols,
+  getSbmlHover,
+  sbmlActionHandlers,
+  sbmlLanguage,
+  validateSbml,
+} from "@modelscript/sbml";
 import { getSbolDocumentSymbols, getSbolHover, sbolLanguage, validateSbol } from "@modelscript/sbol";
-import { getScadDefinition, getScadReferences } from "@modelscript/scad";
+import { getScadCodeLenses, getScadDefinition, getScadReferences } from "@modelscript/scad";
 import scadLangFallback from "@modelscript/scad/language";
 import { getSclDiagnostics, getSclDocumentSymbols, sclLanguage } from "@modelscript/scl";
 import { getSedmlDocumentSymbols, getSedmlHover, sedmlLanguage, validateSedml } from "@modelscript/sedml";
 import { getSELDiagnostics, getSELDocumentSymbols, selLanguage } from "@modelscript/sel";
-import { getSimaDocumentSymbols, getSimaHover, simaLanguage, validateSima } from "@modelscript/sima";
-import { getSimpackDocumentSymbols, getSimpackHover, simpackLanguage, validateSimpack } from "@modelscript/simpack";
+import {
+  getSimaDocumentSymbols,
+  getSimaHover,
+  simaActionHandlers,
+  simaLanguage,
+  validateSima,
+} from "@modelscript/sima";
+import {
+  createSimpackActionHandlers,
+  getSimpackDocumentSymbols,
+  getSimpackHover,
+  simpackLanguage,
+  validateSimpack,
+} from "@modelscript/simpack";
 import {
   getSimulinkDocumentSymbols,
   getSimulinkHover,
+  simulinkActionHandlers,
   simulinkLanguage,
   validateSimulink,
 } from "@modelscript/simulink";
 import { getSmilesDocumentSymbols, getSmilesHover, smilesLanguage, validateSmiles } from "@modelscript/smiles";
-import { getSpiceDocumentSymbols, getSpiceHover, spiceLanguage, validateSpice } from "@modelscript/spice";
+import {
+  extractSpiceTheoryConstraints,
+  getSpiceDocumentSymbols,
+  getSpiceHover,
+  spiceActionHandlers,
+  spiceLanguage,
+  validateSpice,
+} from "@modelscript/spice";
 import { sspLanguage } from "@modelscript/ssp";
-import { getStepDefinition, getStepReferences, stepLanguage } from "@modelscript/step";
-import { getSwmmDocumentSymbols, getSwmmHover, swmmLanguage, validateSwmm } from "@modelscript/swmm";
+import {
+  computeStepSemanticTokensData,
+  formatStepDocument,
+  getStepCodeLenses,
+  getStepDefinition,
+  getStepHover,
+  getStepReferences,
+  getStepSignatureHelp,
+  stepLanguage,
+} from "@modelscript/step";
+import {
+  getSwmmDocumentSymbols,
+  getSwmmHover,
+  swmmActionHandlers,
+  swmmLanguage,
+  validateSwmm,
+} from "@modelscript/swmm";
+import { computeSysML2SemanticTokensData, formatSysmlSource, getSysml2CodeLenses } from "@modelscript/sysml2";
 import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import { getThreeMfDocumentSymbols, getThreeMfHover, threeMfLanguage, validateThreeMf } from "@modelscript/three-mf";
@@ -175,16 +365,25 @@ import { getTopasDocumentSymbols, getTopasHover, topasLanguage, validateTopas } 
 import {
   getTouchstoneDocumentSymbols,
   getTouchstoneHover,
+  touchstoneActionHandlers,
   touchstoneLanguage,
   validateTouchstone,
 } from "@modelscript/touchstone";
 import { getToughDocumentSymbols, getToughHover, toughLanguage, validateTough } from "@modelscript/tough";
-import { getUrdfDocumentSymbols, getUrdfHover, urdfLanguage, validateUrdf } from "@modelscript/urdf";
+import {
+  extractUrdfTheoryConstraints,
+  getUrdfDocumentSymbols,
+  getUrdfHover,
+  urdfActionHandlers,
+  urdfLanguage,
+  validateUrdf,
+} from "@modelscript/urdf";
 import { extractUsdCadComponents, usdLanguage, UsdLspService } from "@modelscript/usd";
 import {
   getVerilogADocumentSymbols,
   getVerilogAHover,
   validateVerilogA,
+  verilogAActionHandlers,
   verilogALanguage,
 } from "@modelscript/verilog-a";
 import { getWaterMlDiagnostics, getWaterMlDocumentSymbols, watermlLanguage } from "@modelscript/waterml";
@@ -206,8 +405,85 @@ export interface BuiltinPluginsOptions {
     | undefined;
 }
 
+function docText(doc: any): string {
+  return typeof doc === "string" ? doc : typeof doc?.getText === "function" ? doc.getText() : String(doc ?? "");
+}
+
+function treeText(treeWrapper: any): string {
+  return typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+}
+
+function offsetToPos(text: string, offset: number): { line: number; character: number } {
+  const lines = text.slice(0, offset).split("\n");
+  return { line: lines.length - 1, character: lines[lines.length - 1]!.length };
+}
+
+async function simulateDaeHelper(dae: any, opts: { startTime: number; stopTime: number; step: number }) {
+  const [{ initBltWasm }, { simulateArena }] = await Promise.all([
+    import("@modelscript/runtime"),
+    import("@modelscript/simulate"),
+  ]);
+  await initBltWasm();
+  return simulateArena(dae, opts);
+}
+
+interface StandardPluginSpec {
+  id: string;
+  name: string;
+  extensions: string[];
+  languageDef: any;
+  symbols?: (text: string) => any;
+  hoverPos?: (text: string, pos: { line: number; character: number }) => any;
+  hoverOffset?: (text: string, offset: number) => any;
+  validate?: (text: string) => any;
+  validateWithTree?: (text: string, cstTree?: any) => any;
+  customHandlers?: Record<string, any>;
+  actionHandlers?: Record<string, any>;
+  extractTheoryConstraints?: (text: string) => any;
+  workspaceIndex?: any;
+  handlers?: any;
+  disposables?: any[];
+}
+
+function registerStandardPlugin(spec: StandardPluginSpec): void {
+  const customHandlers: Record<string, any> = {};
+  if (spec.symbols) {
+    const fn = spec.symbols;
+    customHandlers["symbols"] = (treeWrapper: any) => fn(treeText(treeWrapper));
+  }
+  if (spec.hoverPos) {
+    const fn = spec.hoverPos;
+    customHandlers["hover"] = (offset: number, text: string) => fn(text, offsetToPos(text, offset));
+  } else if (spec.hoverOffset) {
+    const fn = spec.hoverOffset;
+    customHandlers["hover"] = (offset: number, text: string) => fn(text, offset);
+  }
+  if (spec.validateWithTree) {
+    const fn = spec.validateWithTree;
+    customHandlers["validate"] = (doc: any, cstTree?: any) => fn(docText(doc), cstTree);
+  } else if (spec.validate) {
+    const fn = spec.validate;
+    customHandlers["validate"] = (doc: any) => fn(docText(doc));
+  }
+  if (spec.customHandlers) {
+    Object.assign(customHandlers, spec.customHandlers);
+  }
+  globalLanguageRegistry.register({
+    id: spec.id,
+    name: spec.name,
+    extensions: spec.extensions,
+    languageDef: spec.languageDef,
+    ...(spec.workspaceIndex !== undefined ? { workspaceIndex: spec.workspaceIndex } : {}),
+    ...(spec.handlers !== undefined ? { handlers: spec.handlers } : {}),
+    ...(spec.extractTheoryConstraints !== undefined ? { extractTheoryConstraints: spec.extractTheoryConstraints } : {}),
+    ...(Object.keys(customHandlers).length > 0 ? { customHandlers } : {}),
+    ...(spec.actionHandlers !== undefined ? { actionHandlers: spec.actionHandlers } : {}),
+    disposables: spec.disposables ?? [],
+  });
+}
+
 /**
- * Registers all 44 built-in domain language plugins and their associated workspace
+ * Registers all built-in domain language plugins and their associated workspace
  * indexes in `workspaceManager` and `globalLanguageRegistry`.
  */
 export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): void {
@@ -223,408 +499,319 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     return ws as T;
   }
 
+  function registerParserBackedPlugin(
+    plugin: any,
+    opts?: { parserKey?: string; queryEngineKey?: string | false },
+  ): void {
+    const parserKey = opts?.parserKey ?? plugin.id;
+    const descriptors: PropertyDescriptorMap = {
+      parser: {
+        enumerable: true,
+        configurable: true,
+        get() {
+          return parserService?.getParser(parserKey);
+        },
+        set(val: any) {
+          if (parserService && parserService.getParser(parserKey) !== val) {
+            parserService.registerParser(parserKey, val);
+          }
+        },
+      },
+      facade: {
+        enumerable: true,
+        configurable: true,
+        get() {
+          return parserService?.getFacade(parserKey);
+        },
+        set(val: any) {
+          if (parserService && parserService.getFacade(parserKey) !== val) {
+            parserService.registerParser(parserKey, parserService.getParser(parserKey), val);
+          }
+        },
+      },
+    };
+    if (opts?.queryEngineKey !== false && opts?.queryEngineKey !== undefined) {
+      const qeKey = opts.queryEngineKey;
+      descriptors["queryEngine"] = {
+        enumerable: true,
+        configurable: true,
+        get() {
+          return workspaceManager.getQueryEngine(qeKey) ?? undefined;
+        },
+        set(val: any) {
+          workspaceManager.setQueryEngine(qeKey, val ?? null);
+        },
+      };
+    }
+    Object.defineProperties(plugin, descriptors);
+    globalLanguageRegistry.register(plugin);
+  }
+
   // 1. Core Systems & Modeling Languages
   ensureWorkspaceIndex("modelica", () => workspaceManager.getWorkspaceIndex("modelica"), modelicaLangFallback);
   ensureWorkspaceIndex("sysml2", () => workspaceManager.getWorkspaceIndex("sysml2"), sysml2LangFallback);
   ensureWorkspaceIndex("sysml", () => workspaceManager.getWorkspaceIndex("sysml2"), sysml2LangFallback);
   ensureWorkspaceIndex("owl2", () => workspaceManager.getWorkspaceIndex("owl2"), owl2LangFallback);
 
-  globalLanguageRegistry.register({
-    id: "modelica",
-    name: "Modelica",
-    extensions: [".mo", ".mos", ".msim"],
-    get parser() {
-      return parserService?.getParser("modelica");
-    },
-    set parser(val: any) {
-      if (parserService && parserService.getParser("modelica") !== val) {
-        parserService.registerParser("modelica", val);
-      }
-    },
-    get facade() {
-      return parserService?.getFacade("modelica");
-    },
-    set facade(val: any) {
-      if (parserService && parserService.getFacade("modelica") !== val) {
-        parserService.registerParser("modelica", parserService.getParser("modelica"), val);
-      }
-    },
-    workspaceIndex: workspaceManager.getWorkspaceIndex("modelica"),
-    get queryEngine() {
-      return workspaceManager.getQueryEngine("modelica") ?? undefined;
-    },
-    set queryEngine(val) {
-      workspaceManager.setQueryEngine("modelica", val ?? null);
-    },
-    createQueryEngine: (idx: any, tree?: any) => createModelicaQueryEngine(idx, tree),
-    languageDef: modelicaLanguage,
-    handlers: modelicaLanguage.lsp?.handlers,
-    actionHandlers: modelicaActionHandlers,
-  });
+  const fullDocReplaceEdit = (doc: any, newText: string) => {
+    const lastLine = doc.lineCount - 1;
+    const lastChar = doc.getText().length - doc.offsetAt({ line: lastLine, character: 0 });
+    return [{ range: { start: { line: 0, character: 0 }, end: { line: lastLine, character: lastChar } }, newText }];
+  };
 
-  globalLanguageRegistry.register({
-    id: "sysml",
-    name: "SysML v2",
-    extensions: [".sysml", ".sysml2"],
-    get parser() {
-      return parserService?.getParser("sysml2");
+  registerParserBackedPlugin(
+    {
+      id: "modelica",
+      name: "Modelica",
+      extensions: [".mo", ".mos", ".msim"],
+      workspaceIndex: workspaceManager.getWorkspaceIndex("modelica"),
+      createQueryEngine: (idx: any, tree?: any) => createModelicaQueryEngine(idx, tree),
+      languageDef: modelicaLanguage,
+      handlers: modelicaLanguage.lsp?.handlers,
+      customHandlers: {
+        codeLens: (doc: any, ctx?: any) => getModelicaCodeLenses(doc, ctx),
+        format: (doc: any, _options?: any, ctx?: any) => {
+          if (ctx?.isParserReady && !ctx.isParserReady()) return [];
+          const tree = ctx?.getDocumentTree?.(doc.uri);
+          if (!tree) return [];
+          return fullDocReplaceEdit(doc, formatModelicaTree(tree, doc.getText()));
+        },
+      },
+      actionHandlers: modelicaActionHandlers,
     },
-    set parser(val: any) {
-      if (parserService && parserService.getParser("sysml2") !== val) {
-        parserService.registerParser("sysml2", val);
-      }
-    },
-    get facade() {
-      return parserService?.getFacade("sysml2");
-    },
-    set facade(val: any) {
-      if (parserService && parserService.getFacade("sysml2") !== val) {
-        parserService.registerParser("sysml2", parserService.getParser("sysml2"), val);
-      }
-    },
-    workspaceIndex: workspaceManager.getWorkspaceIndex("sysml2"),
-    get queryEngine() {
-      return workspaceManager.getQueryEngine("sysml2") ?? undefined;
-    },
-    set queryEngine(val) {
-      workspaceManager.setQueryEngine("sysml2", val ?? null);
-    },
-    createQueryEngine: (idx: any, tree?: any) => createSysML2QueryEngine(idx, tree),
-    languageDef: sysml2LangFallback,
-  });
+    { queryEngineKey: "modelica" },
+  );
 
-  globalLanguageRegistry.register({
-    id: "sysml2",
-    name: "SysML v2",
-    extensions: [".sysml", ".sysml2"],
-    get parser() {
-      return parserService?.getParser("sysml2");
-    },
-    set parser(val: any) {
-      if (parserService && parserService.getParser("sysml2") !== val) {
-        parserService.registerParser("sysml2", val);
-      }
-    },
-    get facade() {
-      return parserService?.getFacade("sysml2");
-    },
-    set facade(val: any) {
-      if (parserService && parserService.getFacade("sysml2") !== val) {
-        parserService.registerParser("sysml2", parserService.getParser("sysml2"), val);
-      }
-    },
-    workspaceIndex: workspaceManager.getWorkspaceIndex("sysml2"),
-    get queryEngine() {
-      return workspaceManager.getQueryEngine("sysml2") ?? undefined;
-    },
-    set queryEngine(val) {
-      workspaceManager.setQueryEngine("sysml2", val ?? null);
-    },
-    createQueryEngine: (idx: any, tree?: any) => createSysML2QueryEngine(idx, tree),
-    languageDef: sysml2LangFallback,
-  });
+  for (const sysmlId of ["sysml", "sysml2"] as const) {
+    registerParserBackedPlugin(
+      {
+        id: sysmlId,
+        name: "SysML v2",
+        extensions: [".sysml", ".sysml2", ".kerml"],
+        workspaceIndex: workspaceManager.getWorkspaceIndex("sysml2"),
+        createQueryEngine: (idx: any, tree?: any) => createSysML2QueryEngine(idx, tree),
+        languageDef: sysml2LangFallback,
+        customHandlers: {
+          codeLens: (doc: any, ctx?: any) =>
+            getSysml2CodeLenses(ctx?.text ?? docText(doc), ctx?.uri ?? doc?.uri ?? "", ctx),
+          format: (doc: any, options?: any) =>
+            fullDocReplaceEdit(
+              doc,
+              formatSysmlSource(doc.getText(), {
+                tabSize: options?.tabSize,
+                insertSpaces: options?.insertSpaces,
+              }),
+            ),
+          rangeFormat: (doc: any, range: any, options?: any) =>
+            fullDocReplaceEdit(
+              doc,
+              formatSysmlSource(doc.getText(), {
+                tabSize: options?.tabSize,
+                insertSpaces: options?.insertSpaces,
+                startLine: range?.start?.line,
+                endLine: range?.end?.line,
+              }),
+            ),
+          semanticTokens: (doc: any, tree?: any) =>
+            computeSysML2SemanticTokensData(docText(doc), tree, parserService?.getParser("sysml2")),
+        },
+      },
+      { parserKey: "sysml2", queryEngineKey: "sysml2" },
+    );
+  }
 
-  globalLanguageRegistry.register({
-    id: "step",
-    name: "STEP",
-    extensions: [".step", ".stp", ".p21"],
-    get parser() {
-      return parserService?.getParser("step");
+  registerParserBackedPlugin(
+    {
+      id: "step",
+      name: "STEP",
+      extensions: [".step", ".stp", ".p21"],
+      languageDef: stepLanguage,
+      handlers: stepLanguage.lsp?.handlers,
+      customHandlers: {
+        definition: (offset: number, text: string, uri?: string) =>
+          getStepDefinition(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
+        references: (offset: number, text: string, uri?: string) =>
+          getStepReferences(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
+        hover: (offset: number, text: string, uri?: string) => getStepHover(offset, text, uri),
+        signatureHelp: (doc: any, position: any) => getStepSignatureHelp(doc, position),
+        format: (doc: any) => formatStepDocument(doc),
+        codeLens: (doc: any, ctx?: any) =>
+          getStepCodeLenses(ctx?.text ?? docText(doc), ctx?.uri ?? doc?.uri ?? "", ctx),
+        semanticTokens: (doc: any, tree?: any) => computeStepSemanticTokensData(docText(doc), tree),
+      },
     },
-    set parser(val: any) {
-      if (parserService && parserService.getParser("step") !== val) {
-        parserService.registerParser("step", val);
-      }
-    },
-    get facade() {
-      return parserService?.getFacade("step");
-    },
-    set facade(val: any) {
-      if (parserService && parserService.getFacade("step") !== val) {
-        parserService.registerParser("step", parserService.getParser("step"), val);
-      }
-    },
-    get queryEngine() {
-      return workspaceManager.getQueryEngine("step") ?? undefined;
-    },
-    set queryEngine(val) {
-      workspaceManager.setQueryEngine("step", val ?? null);
-    },
-    languageDef: stepLanguage,
-    handlers: stepLanguage.lsp?.handlers,
-    customHandlers: {
-      definition: (offset: number, text: string, uri?: string) =>
-        getStepDefinition(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
-      references: (offset: number, text: string, uri?: string) =>
-        getStepReferences(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
-    },
-  });
+    { queryEngineKey: "step" },
+  );
 
-  globalLanguageRegistry.register({
-    id: "owl2",
-    name: "OWL2",
-    extensions: [".owl", ".owl2", ".ttl", ".ofn", ".fss"],
-    get parser() {
-      return parserService?.getParser("owl2");
+  registerParserBackedPlugin(
+    {
+      id: "owl2",
+      name: "OWL2",
+      extensions: [".owl", ".owl2", ".ttl", ".ofn", ".fss", ".owx"],
+      get workspaceIndex() {
+        return workspaceManager.getWorkspaceIndex("owl2");
+      },
+      createQueryEngine: (idx: any, tree?: any) => createOWL2QueryEngine(idx, tree),
+      languageDef: owl2LangFallback,
+      customHandlers: {
+        codeLens: (_doc: any, ctx?: any) => ({
+          appendUniversal: true,
+          lenses: ctx?.flags?.showVerification
+            ? [
+                {
+                  range: ctx.headerRange ?? { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+                  command: {
+                    title: "✓ Verify Ontology Consistency (Description Logic Tableau)",
+                    command: "modelscript.openContractExplorer",
+                    arguments: [ctx?.uri ?? ""],
+                  },
+                },
+              ]
+            : [],
+        }),
+        semanticTokens: (doc: any, tree?: any) => computeOwl2SemanticTokensData(docText(doc), tree, doc?.uri),
+      },
     },
-    set parser(val: any) {
-      if (parserService && parserService.getParser("owl2") !== val) {
-        parserService.registerParser("owl2", val);
-      }
-    },
-    get facade() {
-      return parserService?.getFacade("owl2");
-    },
-    set facade(val: any) {
-      if (parserService && parserService.getFacade("owl2") !== val) {
-        parserService.registerParser("owl2", parserService.getParser("owl2"), val);
-      }
-    },
-    get workspaceIndex() {
-      return workspaceManager.getWorkspaceIndex("owl2");
-    },
-    get queryEngine() {
-      return workspaceManager.getQueryEngine("owl2") ?? undefined;
-    },
-    set queryEngine(val) {
-      workspaceManager.setQueryEngine("owl2", val ?? null);
-    },
-    createQueryEngine: (idx: any, tree?: any) => createOWL2QueryEngine(idx, tree),
-    languageDef: owl2LangFallback,
-  });
+    { queryEngineKey: "owl2" },
+  );
 
-  globalLanguageRegistry.register({
+  registerParserBackedPlugin({
     id: "csv",
     name: "CSV",
     extensions: [".csv"],
-    get parser() {
-      return parserService?.getParser("csv");
-    },
-    set parser(val: any) {
-      if (parserService && parserService.getParser("csv") !== val) {
-        parserService.registerParser("csv", val);
-      }
-    },
-    get facade() {
-      return parserService?.getFacade("csv");
-    },
-    set facade(val: any) {
-      if (parserService && parserService.getFacade("csv") !== val) {
-        parserService.registerParser("csv", parserService.getParser("csv"), val);
-      }
-    },
     languageDef: csvLangFallback,
     customHandlers: {
+      codeLens: (_doc: any, ctx?: any) => ({
+        appendUniversal: true,
+        lenses: ctx?.flags?.showSimulate
+          ? [
+              {
+                range: ctx.headerRange ?? { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+                command: {
+                  title: "📊 Plot CSV Telemetry Series",
+                  command: "modelscript.openSimulationView",
+                  arguments: [ctx?.uri ?? ""],
+                },
+              },
+            ]
+          : [],
+      }),
       validate: async (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
         const { lintCsv } = await import("@modelscript/csv/csv-parser");
-        return lintCsv(text);
+        return lintCsv(docText(doc));
       },
     },
   });
 
-  globalLanguageRegistry.register({
+  registerParserBackedPlugin({
     id: "las",
     name: "LAS Well Log",
     extensions: [".las"],
-    get parser() {
-      return parserService?.getParser("las");
-    },
-    set parser(val: unknown) {
-      if (parserService && parserService.getParser("las") !== val) {
-        parserService.registerParser("las", val);
-      }
-    },
-    get facade() {
-      return parserService?.getFacade("las");
-    },
-    set facade(val: unknown) {
-      if (parserService && parserService.getFacade("las") !== val) {
-        parserService.registerParser("las", parserService.getParser("las"), val);
-      }
-    },
     languageDef: lasLangFallback,
     customHandlers: {
       validate: async (doc: { getText?(): string } | string) => {
-        const text = typeof doc === "string" ? doc : typeof doc?.getText === "function" ? doc.getText() : String(doc);
         const { lintLas } = await import("@modelscript/las/las-parser");
-        return lintLas(text);
+        return lintLas(docText(doc));
       },
     },
   });
 
-  globalLanguageRegistry.register({
+  registerParserBackedPlugin({
     id: "scad",
     name: "OpenSCAD",
     extensions: [".scad"],
-    get parser() {
-      return parserService?.getParser("scad");
-    },
-    set parser(val: any) {
-      if (parserService && parserService.getParser("scad") !== val) {
-        parserService.registerParser("scad", val);
-      }
-    },
-    get facade() {
-      return parserService?.getFacade("scad");
-    },
-    set facade(val: any) {
-      if (parserService && parserService.getFacade("scad") !== val) {
-        parserService.registerParser("scad", parserService.getParser("scad"), val);
-      }
-    },
     languageDef: scadLangFallback,
     customHandlers: {
       definition: (offset: number, text: string, uri?: string) =>
         getScadDefinition(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
       references: (offset: number, text: string, uri?: string) =>
         getScadReferences(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
+      codeLens: (doc: any, ctx?: any) => getScadCodeLenses(ctx?.text ?? docText(doc), ctx?.uri ?? doc?.uri ?? "", ctx),
     },
   });
 
-  globalLanguageRegistry.register({
-    id: "modelscript",
-    name: "ModelScript",
-    extensions: [".modelscript", ".msx"],
-    get parser() {
-      return parserService?.getParser("modelscript");
+  registerParserBackedPlugin(
+    {
+      id: "modelscript",
+      name: "ModelScript",
+      extensions: [".modelscript", ".msx"],
+      workspaceIndex: workspaceManager.getWorkspaceIndex("modelscript"),
+      languageDef: modelscriptLangFallback,
+      handlers: modelscriptLangFallback.lsp?.handlers,
+      customHandlers: {
+        codeLens: (_doc: any, ctx?: any) => {
+          const range = ctx?.headerRange ?? { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
+          const uri = ctx?.uri ?? "";
+          const out: any[] = [];
+          if (ctx?.flags?.showSimulate) {
+            out.push({
+              range,
+              command: {
+                title: "▶ Simulate ModelScript Study",
+                command: "modelscript.action.simulate",
+                arguments: [uri],
+              },
+            });
+          }
+          if (ctx?.flags?.showVerification) {
+            out.push({
+              range,
+              command: {
+                title: "✓ Verify Formal Contracts",
+                command: "modelscript.openContractExplorer",
+                arguments: [uri],
+              },
+            });
+          }
+          return { appendUniversal: true, lenses: out };
+        },
+      },
     },
-    set parser(val: any) {
-      if (parserService && parserService.getParser("modelscript") !== val) {
-        parserService.registerParser("modelscript", val);
-      }
-    },
-    get facade() {
-      return parserService?.getFacade("modelscript");
-    },
-    set facade(val: any) {
-      if (parserService && parserService.getFacade("modelscript") !== val) {
-        parserService.registerParser("modelscript", parserService.getParser("modelscript"), val);
-      }
-    },
-    workspaceIndex: workspaceManager.getWorkspaceIndex("modelscript"),
-    get queryEngine() {
-      return workspaceManager.getQueryEngine("modelscript") ?? undefined;
-    },
-    set queryEngine(val) {
-      workspaceManager.setQueryEngine("modelscript", val ?? null);
-    },
-    languageDef: modelscriptLangFallback,
-    handlers: modelscriptLangFallback.lsp?.handlers,
-  });
+    { queryEngineKey: "modelscript" },
+  );
 
   // 2. CFD & FEA
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "cfd",
     name: "CFD",
     extensions: [".cfd", ".cfg", ".cfgt", ".su2", ".foam"],
     languageDef: cfdLanguage,
+    symbols: getCfdDocumentSymbols,
+    hoverPos: getCfdHover,
+    validate: validateCfd,
     customHandlers: {
-      symbols: (treeWrapper: any) => {
-        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
-        return getCfdDocumentSymbols(text);
+      codeLens: (doc: any, ctx?: any) => {
+        const text = ctx?.text ?? (typeof doc?.getText === "function" ? doc.getText() : String(doc ?? ""));
+        const uri = ctx?.uri ?? doc?.uri ?? "";
+        return getCfdCodeLenses(text, uri, ctx);
       },
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        const line = lines.length - 1;
-        const character = lines[lines.length - 1]!.length;
-        return getCfdHover(text, { line, character });
-      },
-      validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
-        return validateCfd(text);
+      semanticTokens: (doc: any, tree?: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc ?? "");
+        return computeCfdSemanticTokensData(text, tree, doc?.uri);
       },
     },
-    actionHandlers: {
-      lint_cfd_model: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseCfdConfig, lintCfdModel } = await import("@modelscript/cfd");
-        const model = parseCfdConfig(text);
-        return lintCfdModel(model);
-      },
-      export_cfd_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseCfdConfig, cfdToDae } = await import("@modelscript/cfd");
-        const model = parseCfdConfig(text);
-        const dae = cfdToDae(model);
-        return {
-          variables: dae.varCount,
-          equations: dae.eqCount,
-        };
-      },
-      export_cfd_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseCfdConfig, cfdToModelica } = await import("@modelscript/cfd");
-        const model = parseCfdConfig(text);
-        return cfdToModelica(model);
-      },
-      solve_cfd: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { executeCfdAction } = await import("@modelscript/cfd");
-        return executeCfdAction("solve", { content: text });
-      },
-    },
-    disposables: [],
+    actionHandlers: cfdActionHandlers,
   });
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "fea",
     name: "FEA",
     extensions: [".fea", ".inp", ".inpt", ".bdf", ".dat"],
     languageDef: feaLanguage,
+    symbols: getFeaDocumentSymbols,
+    hoverPos: getFeaHover,
+    validate: validateFea,
     customHandlers: {
-      symbols: (treeWrapper: any) => {
-        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
-        return getFeaDocumentSymbols(text);
+      codeLens: (doc: any, ctx?: any) => {
+        const text = ctx?.text ?? (typeof doc?.getText === "function" ? doc.getText() : String(doc ?? ""));
+        const uri = ctx?.uri ?? doc?.uri ?? "";
+        return getFeaCodeLenses(text, uri, ctx);
       },
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        const line = lines.length - 1;
-        const character = lines[lines.length - 1]!.length;
-        return getFeaHover(text, { line, character });
-      },
-      validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
-        return validateFea(text);
+      semanticTokens: (doc: any, tree?: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc ?? "");
+        return computeFeaSemanticTokensData(text, tree, doc?.uri);
       },
     },
-    actionHandlers: {
-      lint_fea_model: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseFeaDeck, lintFeaModel } = await import("@modelscript/fea");
-        const model = parseFeaDeck(text);
-        return lintFeaModel(model);
-      },
-      export_fea_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseFeaDeck, feaToDae } = await import("@modelscript/fea");
-        const model = parseFeaDeck(text);
-        const dae = feaToDae(model);
-        return {
-          variables: dae.varCount,
-          equations: dae.eqCount,
-        };
-      },
-      export_fea_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseFeaDeck, feaToModelica } = await import("@modelscript/fea");
-        const model = parseFeaDeck(text);
-        return feaToModelica(model);
-      },
-      solve_fea: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { executeFeaAction } = await import("@modelscript/fea");
-        return executeFeaAction("solve", { content: text });
-      },
-    },
-    disposables: [],
+    actionHandlers: feaActionHandlers,
   });
 
   // 3. PSCAD
@@ -643,51 +830,51 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".pscx", ".pslx", ".pswx", ".psmx"],
     languageDef: pscadLanguage,
     customHandlers: {
-      symbols: (treeWrapper: any) => {
-        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
+      symbols: (treeWrapper: any, textArg?: string) => {
+        const text = textArg ?? (typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? ""));
         return getPscadDocumentSymbols(text);
       },
-      hover: (offset: number, text: string) => getPscadHover(text, offset),
+      folding: (_tree: any, textArg?: string) => getPscadFoldingRanges(textArg ?? ""),
+      hover: (offset: number, text: string) => {
+        const h = getPscadHover(text, offset);
+        return h ? { contents: { kind: "markdown", value: h.contents } } : null;
+      },
       complete: (offset: number, text: string) => getPscadCompletions(text, offset),
       definition: (offset: number, text: string, uri?: string) =>
         getPscadDefinitionLocation(text, offset, uri ?? "", collectPscadDocs(), workspaceManager.unifiedWorkspace),
       references: (offset: number, text: string, uri?: string) =>
         getPscadReferences(text, offset, uri ?? "", collectPscadDocs(), workspaceManager.unifiedWorkspace),
+      inlayHints: (doc: any, range?: any) =>
+        getPscadInlayHints(docText(doc), range).map((h) => ({
+          position: { line: h.position.line, character: h.position.character },
+          label: h.label,
+          kind: h.kind === "parameter" ? 2 : 1,
+          paddingLeft: h.paddingLeft ?? true,
+        })),
+      rename: (doc: any, position: any, newName: string) => {
+        const text = docText(doc);
+        const offset = typeof doc?.offsetAt === "function" ? doc.offsetAt(position) : 0;
+        const changes = getPscadRenameEdits(text, offset, newName, doc?.uri ?? "", collectPscadDocs());
+        return changes ? { changes } : null;
+      },
+      codeActions: (doc: any) =>
+        getPscadQuickFixes(docText(doc), doc?.uri ?? "").map((fix) => ({
+          title: fix.title,
+          kind: "quickfix",
+          edit: fix.edit,
+        })),
+      codeLens: (doc: any, ctx?: any) => getPscadCodeLenses(ctx?.text ?? docText(doc), ctx?.uri ?? doc?.uri ?? "", ctx),
     },
-    actionHandlers: {
-      lint_pscad_project: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parsePscx, lintPscx } = await import("@modelscript/pscad");
-        const project = parsePscx(text);
-        return lintPscx(project);
-      },
-      analyze_pscad_signal_ranges: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parsePscx, analyzePscadSignalRanges } = await import("@modelscript/pscad");
-        return analyzePscadSignalRanges(parsePscx(text));
-      },
-      inspect_pscad_schematic: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parsePscx, extractEmtNetlist } = await import("@modelscript/pscad");
+    actionHandlers: createPscadActionHandlers({
+      buildDiagram: async (project, definitionName) => {
         const { buildPscadDiagram } = await import("@modelscript/diagram");
-        const project = parsePscx(text);
-        return {
-          netlist: extractEmtNetlist(project),
-          diagram: buildPscadDiagram(project, params?.definitionName),
-        };
+        return buildPscadDiagram(project, definitionName);
       },
-      simulate_hybrid_emt: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { runPscadSimulationPipeline } = await import("@modelscript/pscad");
-        let solverRunner: ((circuit: any, options: any) => any) | undefined;
+      getEmtSolverRunner: async () => {
         try {
           const simMod: any = await import("@modelscript/simulate" as string);
           if (simMod?.EmtSolver) {
-            solverRunner = (circuit, options) => {
+            return (circuit: any, options: any) => {
               const solver = new simMod.EmtSolver(circuit, {
                 timeStepSec: options.timeStepSec,
                 durationSec: options.durationSec,
@@ -699,192 +886,34 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
             };
           }
         } catch {}
-        const strictNetlist = params?.allowSyntheticFallback ? false : (params?.strictNetlist ?? true);
-        return runPscadSimulationPipeline({
-          documentText: text,
-          runSimulation: true,
-          strictNetlist,
-          strict: params?.strict,
-          durationSec: params?.durationSec,
-          timeStepSec: params?.timeStepSec,
-          verifyIeee2800: Boolean(params?.verifyIeee2800),
-          exportComtrade: params?.exportComtrade ?? true,
-          exportOut: params?.exportOut ?? true,
-          solverRunner,
-        });
+        return undefined;
       },
-      run_mrun_sweep: async (
-        ctx: { documentText?: string },
-        params?: { documentText?: string } & import("@modelscript/pscad").MultipleRunOptions,
-      ) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parsePscx, extractEmtNetlist, runMultipleRunSweep } = await import("@modelscript/pscad");
-        const project = parsePscx(text);
-        const netlist = extractEmtNetlist(project);
-        return runMultipleRunSweep(netlist, params);
-      },
-    },
+    }),
     disposables: [],
   });
 
   // 4. EASY5
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "easy5",
     name: "EASY5",
     extensions: [".ez5", ".ezm", ".ezd", ".eas"],
     languageDef: easy5Language,
-    customHandlers: {
-      symbols: (treeWrapper: string | { text?: string }) => {
-        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
-        return getEasy5DocumentSymbols(text);
-      },
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        const line = lines.length - 1;
-        const character = lines[lines.length - 1]!.length;
-        return getEasy5Hover(text, { line, character });
-      },
-      validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
-        return validateEasy5(text);
-      },
-    },
-    actionHandlers: {
-      lint_easy5_model: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseEasy5, lintEasy5 } = await import("@modelscript/easy5");
-        return lintEasy5(parseEasy5(text));
-      },
-      linearize_easy5_model: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseEasy5, linearizeEasy5 } = await import("@modelscript/easy5");
-        return linearizeEasy5(parseEasy5(text), params?.operatingPoint);
-      },
-      inspect_easy5_bode: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseEasy5, linearizeEasy5, computeEasy5FrequencyResponse } = await import("@modelscript/easy5");
-        const model = parseEasy5(text);
-        const sys = linearizeEasy5(model, params?.operatingPoint);
-        return computeEasy5FrequencyResponse(sys, params?.options);
-      },
-      export_easy5_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseEasy5, easy5ToModelica } = await import("@modelscript/easy5");
-        return easy5ToModelica(parseEasy5(text));
-      },
-      export_easy5_ssp: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseEasy5, easy5ToSsp } = await import("@modelscript/easy5");
-        return easy5ToSsp(parseEasy5(text));
-      },
-      export_easy5_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseEasy5, easy5ToDae } = await import("@modelscript/easy5");
-        const dae = easy5ToDae(parseEasy5(text));
-        return { varCount: dae.varCount, eqCount: dae.eqCount };
-      },
-      inspect_easy5_diagram: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseEasy5, buildEasy5DiagramData, renderEasy5SvgDiagram } = await import("@modelscript/easy5");
-        const model = parseEasy5(text);
-        return {
-          graphData: buildEasy5DiagramData(model),
-          svg: renderEasy5SvgDiagram(model),
-        };
-      },
-    },
-    disposables: [],
+    symbols: getEasy5DocumentSymbols,
+    hoverPos: getEasy5Hover,
+    validate: validateEasy5,
+    actionHandlers: easy5ActionHandlers,
   });
 
   // 5. ROCETS
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "rocets",
     name: "ROCETS",
     extensions: [".roc", ".deck"],
     languageDef: rocetsLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) => {
-        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
-        return getRocetsDocumentSymbols(text);
-      },
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        const line = lines.length - 1;
-        const character = lines[lines.length - 1]!.length;
-        return getRocetsHover(text, { line, character });
-      },
-      validate: (doc: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
-        return validateRocets(text);
-      },
-    },
-    actionHandlers: {
-      lint_rocets_deck: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseRocetsDeck, lintRocets } = await import("@modelscript/rocets");
-        const model = parseRocetsDeck(text);
-        return lintRocets(model);
-      },
-      solve_rocets_balance: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseRocetsDeck, solveRocetsBalance } = await import("@modelscript/rocets");
-        const model = parseRocetsDeck(text);
-        return solveRocetsBalance(model, params?.options);
-      },
-      simulate_rocets_transient: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseRocetsDeck, simulateRocetsTransient } = await import("@modelscript/rocets");
-        const model = parseRocetsDeck(text);
-        return simulateRocetsTransient(model, params?.options);
-      },
-      export_rocets_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseRocetsDeck, rocetsToModelica } = await import("@modelscript/rocets");
-        const model = parseRocetsDeck(text);
-        return rocetsToModelica(model);
-      },
-      export_rocets_ssp: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseRocetsDeck, rocetsToSsp } = await import("@modelscript/rocets");
-        const model = parseRocetsDeck(text);
-        return rocetsToSsp(model);
-      },
-      export_rocets_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseRocetsDeck, rocetsToDae } = await import("@modelscript/rocets");
-        const model = parseRocetsDeck(text);
-        const dae = rocetsToDae(model);
-        return {
-          varCount: dae.varCount,
-          eqCount: dae.eqCount,
-        };
-      },
-      inspect_rocets_diagram: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseRocetsDeck, buildRocetsDiagramData, renderRocetsPidSvg } = await import("@modelscript/rocets");
-        const model = parseRocetsDeck(text);
-        return {
-          graphData: buildRocetsDiagramData(model),
-          svg: renderRocetsPidSvg(model),
-        };
-      },
-    },
-    disposables: [],
+    symbols: getRocetsDocumentSymbols,
+    hoverPos: getRocetsHover,
+    validate: validateRocets,
+    actionHandlers: rocetsActionHandlers,
   });
 
   // 6. PSSE
@@ -897,57 +926,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     get workspaceIndex() {
       return workspaceManager.unifiedWorkspace;
     },
-    extractTheoryConstraints: async (text: string) => {
-      const { parseRaw } = await import("@modelscript/psse");
-      const c = parseRaw(text);
-      const ns = `PSSE::${c.header?.sbase ?? 100}MVA`;
-      const parameters: any[] = [];
-      const ports: any[] = [];
-      if (Number.isFinite(c.header?.sbase)) {
-        parameters.push({
-          name: "SBASE",
-          fqn: `${ns}::SBASE`,
-          value: c.header.sbase,
-          rawValueText: String(c.header.sbase),
-          unit: "MVA",
-          line: 1,
-          startCol: 1,
-          endCol: 6,
-        });
-      }
-      for (const bus of c.buses.values()) {
-        const bName = `bus_${bus.i}`;
-        if (Number.isFinite(bus.baseKv)) {
-          parameters.push({
-            name: `${bName}_baseKv`,
-            fqn: `${ns}::${bName}.baseKv`,
-            value: bus.baseKv,
-            rawValueText: String(bus.baseKv),
-            unit: "kV",
-            line: 1,
-            startCol: 1,
-            endCol: 1 + bName.length,
-          });
-        }
-        ports.push({ name: bName, kind: "PowerBus", line: 1 });
-      }
-      for (const gen of c.generators) {
-        const gName = `gen_${gen.i}_${gen.id}`;
-        if (Number.isFinite(gen.pg)) {
-          parameters.push({
-            name: `${gName}_pg`,
-            fqn: `${ns}::${gName}.pg`,
-            value: gen.pg,
-            rawValueText: String(gen.pg),
-            unit: "MW",
-            line: 1,
-            startCol: 1,
-            endCol: 1 + gName.length,
-          });
-        }
-      }
-      return { namespaceFqn: ns, parameters, ports };
-    },
+    extractTheoryConstraints: extractPsseTheoryConstraints,
     customHandlers: {
       symbols: (treeWrapper: any) => {
         const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
@@ -961,7 +940,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         return getPsseHover(text, { line, character }, uri ?? "", workspaceManager.unifiedWorkspace);
       },
       validate: (doc: any, tree?: unknown) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         const uri = typeof doc?.uri === "string" ? doc.uri : "model.raw";
         return validatePsse(text, uri, tree);
       },
@@ -983,279 +962,113 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const character = lines[lines.length - 1]!.length;
         return getPsseCompletions(text, { line, character }, uri ?? "");
       },
+      inlayHints: (doc: any, range?: any) => {
+        const text = docText(doc);
+        const uri = typeof doc?.uri === "string" ? doc.uri : "model.raw";
+        return getPsseInlayHints(text, uri)
+          .filter((h) => !range || (h.position.line >= range.start.line && h.position.line <= range.end.line))
+          .map((h) => ({
+            position: { line: h.position.line, character: h.position.character },
+            label: h.label,
+            kind: h.kind === 2 ? 2 : 1,
+            paddingLeft: h.paddingLeft ?? false,
+            paddingRight: h.paddingRight ?? true,
+          }));
+      },
+      rename: (doc: any, position: any, newName: string) => {
+        const text = docText(doc);
+        return getPsseRenameEdits(
+          text,
+          position,
+          newName,
+          doc?.uri ?? "",
+          workspaceManager.unifiedWorkspace as unknown as Parameters<typeof getPsseRenameEdits>[4],
+        );
+      },
+      codeActions: (doc: any, range: any, diagnostics: any[]) =>
+        getPsseCodeActions(
+          docText(doc),
+          range,
+          diagnostics as unknown as Parameters<typeof getPsseCodeActions>[2],
+          doc?.uri ?? "",
+        ).map((fix) => ({
+          title: fix.title,
+          kind: "quickfix",
+          edit: fix.edit,
+          ...(fix.isPreferred !== undefined ? { isPreferred: fix.isPreferred } : {}),
+        })),
+      format: (doc: any) => {
+        const formatted = formatPsseDocument(doc.getText(), doc.uri);
+        const lastLine = doc.lineCount - 1;
+        const lastChar = doc.getText().length - doc.offsetAt({ line: lastLine, character: 0 });
+        return [
+          {
+            range: {
+              start: { line: 0, character: 0 },
+              end: { line: lastLine, character: lastChar },
+            },
+            newText: formatted,
+          },
+        ];
+      },
+      codeLens: (_doc: any, ctx?: any) => ({
+        appendUniversal: true,
+        lenses: ctx?.flags?.showSimulate
+          ? [
+              {
+                range: ctx.headerRange ?? { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+                command: {
+                  title: "⊞ Open PSS/E Grid Workbench & Tables",
+                  command: "modelscript.openRawWorkbench",
+                  arguments: [ctx?.uri ?? ""],
+                },
+              },
+            ]
+          : [],
+      }),
     },
-    actionHandlers: {
-      simulate_psse_transient: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { simulatePsseTransient } = await import("@modelscript/psse");
-        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
-        return simulatePsseTransient(parsed, params);
-      },
-      analyze_n1_contingencies: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { analyzeN1Contingencies } = await import("@modelscript/psse");
-        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
-        const caseTitle = parsed.title1 || `PSS/E Grid (Rev ${parsed.header.rev})`;
-        return analyzeN1Contingencies(parsed, caseTitle);
-      },
-      solve_short_circuit: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { calculateShortCircuit } = await import("@modelscript/psse");
-        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
-        const caseTitle = parsed.title1 || `PSS/E Grid (Rev ${parsed.header.rev})`;
-        return calculateShortCircuit(parsed, caseTitle);
-      },
-      lint_psse_case: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { lintPsse } = await import("@modelscript/psse");
-        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
-        return lintPsse(parsed);
-      },
-      extract_powerflow_netlist: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { extractPowerFlowNetlist, serializePowerFlowNetlist } = await import("@modelscript/psse");
-        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
-        const netlist = extractPowerFlowNetlist(parsed);
-        const caseTitle = parsed.title1 || `PSS/E Grid (Rev ${parsed.header.rev})`;
-        return serializePowerFlowNetlist(netlist, caseTitle);
-      },
-      export_psse_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { psseToModelica } = await import("@modelscript/psse");
-        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
-        return psseToModelica(parsed);
-      },
-      export_psse_pscad: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { psseToEmtNetlist } = await import("@modelscript/psse");
-        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
-        return psseToEmtNetlist(parsed);
-      },
-      export_psse_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { lowerPsseToDae } = await import("@modelscript/psse");
-        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
-        const dae = lowerPsseToDae(parsed);
-        return { varCount: dae.varCount, eqCount: dae.eqCount };
-      },
-      solve_powerflow: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { solvePowerFlow, formatPowerFlowReport } = await import("@modelscript/psse");
-        const parsed = getMergedPsseCase(workspaceManager.unifiedWorkspace, ctx.uri ?? "", text);
-        const sol = solvePowerFlow(parsed, params);
-        const caseTitle = parsed.title1 || `PSS/E Grid (Rev ${parsed.header.rev})`;
-        return { ...sol, reportText: formatPowerFlowReport(sol, caseTitle) };
-      },
-    },
+    actionHandlers: createPsseActionHandlers(() => workspaceManager.unifiedWorkspace),
     disposables: [],
   });
 
   // 7. Aspen
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "aspen",
     name: "Aspen",
     extensions: [".in", ".inp", ".bkp"],
     languageDef: aspenLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getAspenDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getAspenHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: any) => validateAspen(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_aspen_flowsheet: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseAspen, lintAspen } = await import("@modelscript/aspen");
-        return lintAspen(parseAspen(text));
-      },
-      aspen_to_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseAspen, lowerAspenToDae } = await import("@modelscript/aspen");
-        const dae = lowerAspenToDae(parseAspen(text));
-        return {
-          modelName: "AspenFlowsheet",
-          variableCount: dae.variables().length,
-          equationCount: dae.equations().length,
-        };
-      },
-      aspen_to_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseAspen, aspenToModelica } = await import("@modelscript/aspen");
-        return aspenToModelica(parseAspen(text));
-      },
-      aspen_solve_flash: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseAspen, solveFlashRachfordRice } = await import("@modelscript/aspen");
-        const deck = parseAspen(text);
-        const streamId = params?.streamId ?? deck.streams.keys().next().value ?? "FEED";
-        const s = deck.streams.get(streamId);
-        const comps = Array.from(s?.moleFractions.keys() ?? deck.components.keys());
-        const fracs = comps.map((c) => s?.moleFractions.get(c) ?? 1.0 / comps.length);
-        return solveFlashRachfordRice({
-          temperature: s?.temperature ?? 75.0,
-          pressure: s?.pressure ?? 1.2,
-          components: comps,
-          moleFractions: fracs,
-          totalFlow: s?.moleFlow ?? 100.0,
-        });
-      },
-    },
-    disposables: [],
+    symbols: getAspenDocumentSymbols,
+    hoverPos: getAspenHover,
+    validate: validateAspen,
+    actionHandlers: aspenActionHandlers,
   });
 
   // 8. SWMM
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "swmm",
     name: "SWMM",
     extensions: [".inp"],
     languageDef: swmmLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getSwmmDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getSwmmHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: any) => validateSwmm(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_swmm_network: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseSwmm, lintSwmm } = await import("@modelscript/swmm");
-        return lintSwmm(parseSwmm(text));
-      },
-      swmm_to_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSwmm, lowerSwmmToDae } = await import("@modelscript/swmm");
-        const dae = lowerSwmmToDae(parseSwmm(text));
-        return {
-          modelName: "StormwaterNetwork",
-          variableCount: dae.variables().length,
-          equationCount: dae.equations().length,
-        };
-      },
-      swmm_to_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseSwmm, swmmToModelica } = await import("@modelscript/swmm");
-        return swmmToModelica(parseSwmm(text));
-      },
-      swmm_route_flow: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSwmm, routeNetworkFlow } = await import("@modelscript/swmm");
-        return routeNetworkFlow(parseSwmm(text));
-      },
-    },
-    disposables: [],
+    symbols: getSwmmDocumentSymbols,
+    hoverPos: getSwmmHover,
+    validate: validateSwmm,
+    actionHandlers: swmmActionHandlers,
   });
 
   // AMPL
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "ampl",
     name: "AMPL",
     extensions: [".mod", ".dat", ".ampl"],
     languageDef: amplLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getAmplDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getAmplHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: any) => validateAmpl(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      ampl_lint: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseAmplModel, lintAmpl } = await import("@modelscript/ampl");
-        return lintAmpl(parseAmplModel(text));
-      },
-      ampl_solve: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseAmplModel, instantiateAmpl, solveAmpl } = await import("@modelscript/ampl");
-        const problem = instantiateAmpl(parseAmplModel(text));
-        return solveAmpl(problem, params?.options);
-      },
-      ampl_to_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseAmplModel, instantiateAmpl, lowerAmplToDae } = await import("@modelscript/ampl");
-        const problem = instantiateAmpl(parseAmplModel(text));
-        const dae = lowerAmplToDae(problem);
-        return {
-          modelName: problem.name,
-          variableCount: dae.variables().length,
-          equationCount: dae.equations().length,
-        };
-      },
-      ampl_to_nl: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseAmplModel, instantiateAmpl, writeNlProblem } = await import("@modelscript/ampl");
-        const problem = instantiateAmpl(parseAmplModel(text));
-        return writeNlProblem(problem);
-      },
-      ampl_to_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseAmplModel, instantiateAmpl, amplToModelica } = await import("@modelscript/ampl");
-        const problem = instantiateAmpl(parseAmplModel(text));
-        return amplToModelica(problem);
-      },
-      ampl_inspect_geometry: async (
-        ctx: { documentText?: string },
-        params?: { documentText?: string; dataText?: string },
-      ) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { inspectAmplGeometry } = await import("@modelscript/ampl");
-        return inspectAmplGeometry(text, params?.dataText);
-      },
-      ampl_sweep: async (
-        ctx: { documentText?: string },
-        params: { documentText?: string } & Parameters<typeof import("@modelscript/ampl").sweepAmplParameter>[1],
-      ) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { sweepAmplParameter } = await import("@modelscript/ampl");
-        return sweepAmplParameter(text, params);
-      },
-      ampl_pareto: async (
-        ctx: { documentText?: string },
-        params: { documentText?: string } & Parameters<typeof import("@modelscript/ampl").computeAmplPareto>[1],
-      ) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { computeAmplPareto } = await import("@modelscript/ampl");
-        return computeAmplPareto(text, params);
-      },
-    },
-    disposables: [],
+    symbols: getAmplDocumentSymbols,
+    hoverPos: getAmplHover,
+    validate: validateAmpl,
+    actionHandlers: amplActionHandlers,
   });
 
   // 9. Touchstone
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "touchstone",
     name: "Touchstone",
     extensions: [
@@ -1276,371 +1089,109 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       ".ts2",
     ],
     languageDef: touchstoneLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getTouchstoneDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getTouchstoneHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: any) => validateTouchstone(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_touchstone: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseTouchstone, lintTouchstone } = await import("@modelscript/touchstone");
-        return lintTouchstone(parseTouchstone(text));
-      },
-      touchstone_passivity: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseTouchstone, verifyPassivity } = await import("@modelscript/touchstone");
-        return verifyPassivity(parseTouchstone(text));
-      },
-      touchstone_to_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseTouchstone, lowerTouchstoneToDae } = await import("@modelscript/touchstone");
-        const dae = lowerTouchstoneToDae(parseTouchstone(text));
-        return {
-          modelName: "NPortMacromodel",
-          variableCount: dae.variables().length,
-          equationCount: dae.equations().length,
-        };
-      },
-      touchstone_to_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseTouchstone, touchstoneToModelica } = await import("@modelscript/touchstone");
-        return touchstoneToModelica(parseTouchstone(text));
-      },
-      touchstone_fit_macromodel: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseTouchstone, fitStateSpaceModel } = await import("@modelscript/touchstone");
-        return fitStateSpaceModel(parseTouchstone(text));
-      },
-    },
-    disposables: [],
+    symbols: getTouchstoneDocumentSymbols,
+    hoverPos: getTouchstoneHover,
+    validate: validateTouchstone,
+    actionHandlers: touchstoneActionHandlers,
   });
 
   // 10. IBIS
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "ibis",
     name: "IBIS",
     extensions: [".ibs"],
     languageDef: ibisLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getIbisDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getIbisHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: any) => validateIbis(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_ibis: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseIbis, lintIbis } = await import("@modelscript/ibis");
-        return lintIbis(parseIbis(text));
-      },
-      ibis_to_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseIbis, lowerIbisToDae } = await import("@modelscript/ibis");
-        const dae = lowerIbisToDae(parseIbis(text));
-        return {
-          modelName: "IbisBufferModule",
-          variableCount: dae.variables().length,
-          equationCount: dae.equations().length,
-        };
-      },
-      ibis_to_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseIbis, ibisToModelica } = await import("@modelscript/ibis");
-        return ibisToModelica(parseIbis(text));
-      },
-      ibis_eval_buffer: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseIbis, calculateOutputResistance, evaluateBufferCurrent } = await import("@modelscript/ibis");
-        const deck = parseIbis(text);
-        const firstMod = deck.models.values().next().value;
-        if (!firstMod) return null;
-        return {
-          modelName: firstMod.name,
-          resistance: calculateOutputResistance(firstMod),
-          currentSample: evaluateBufferCurrent(firstMod, 1.5, 1),
-        };
-      },
-    },
-    disposables: [],
+    symbols: getIbisDocumentSymbols,
+    hoverPos: getIbisHover,
+    validate: validateIbis,
+    actionHandlers: ibisActionHandlers,
   });
 
   // 11. OLGA
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "olga",
     name: "OLGA",
     extensions: [".genkey", ".key", ".opi", ".olga", ".pvt", ".tab"],
     languageDef: olgaLanguage,
+    symbols: getOlgaDocumentSymbols,
+    hoverPos: getOlgaHover,
+    validate: validateOlga,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getOlgaDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getOlgaHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: any) => validateOlga(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      codeLens: (doc: any, ctx?: any) => getOlgaCodeLenses(ctx?.text ?? docText(doc), ctx?.uri ?? doc?.uri ?? "", ctx),
+      codeActions: (doc: any) =>
+        getOlgaQuickFixes(docText(doc), doc?.uri ?? "").map((fix) => ({
+          title: fix.title,
+          kind: "quickfix",
+          edit: fix.edit,
+          ...(fix.isPreferred !== undefined ? { isPreferred: fix.isPreferred } : {}),
+        })),
     },
-    actionHandlers: {
-      lint_olga_case: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseOlga, lintOlgaModel } = await import("@modelscript/olga");
-        return lintOlgaModel(parseOlga(text));
-      },
-      simulate_drift_flux: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseOlga, simulateDriftFlux } = await import("@modelscript/olga");
-        return simulateDriftFlux(parseOlga(text), { durationSeconds: params?.durationSeconds });
-      },
-      project_to_sysml2: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseOlga, olgaToSysml2 } = await import("@modelscript/olga");
-        return olgaToSysml2(parseOlga(text));
-      },
-      export_olga_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseOlga, lowerOlgaToDae } = await import("@modelscript/olga");
-        const dae = lowerOlgaToDae(parseOlga(text));
-        return { varCount: dae.varCount, eqCount: dae.eqCount };
-      },
-      verify_flow_assurance: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseOlga, simulateDriftFlux, verifyFlowAssuranceTrajectory } = await import("@modelscript/olga");
-        const trajectory = simulateDriftFlux(parseOlga(text));
-        return verifyFlowAssuranceTrajectory(trajectory);
-      },
-      inspect_olga_elevation_profile: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseOlga, simulateDriftFlux } = await import("@modelscript/olga");
-        const { renderOlgaElevationProfileSvg, renderOlgaSchematicSvg } = await import("@modelscript/diagram");
-        const model = parseOlga(text);
-        const trajectory = simulateDriftFlux(model, { durationSeconds: 60 });
-        return {
-          schematicSvg: renderOlgaSchematicSvg(model),
-          elevationProfileSvg: renderOlgaElevationProfileSvg(model, trajectory),
-        };
-      },
-    },
-    disposables: [],
+    actionHandlers: olgaActionHandlers,
   });
 
   // 12. LPS
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "lps",
     name: "PipelineStudio",
     extensions: [".lps", ".tgx", ".tlx", ".tgn", ".tln", ".psg", ".psl"],
     languageDef: lpsLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: string | { text?: string }) =>
-        getLpsDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getLpsHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateLps(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    actionHandlers: {
-      lint_lps_network: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseLps, lintLpsModel } = await import("@modelscript/lps");
-        return lintLpsModel(parseLps(text));
-      },
-      solve_lps_steady: async (ctx: any) => {
-        const text = ctx.documentText;
-        if (!text) return null;
-        const { parseLps, SteadyNetworkSolver, LinePackEngine, PipelineVerifier } = await import("@modelscript/lps");
-        const model = parseLps(text);
-        const steady = SteadyNetworkSolver.solve(model);
-        const analysis = LinePackEngine.analyze(model, steady);
-        const verification = PipelineVerifier.verifySteady(model, steady);
-        return { steady, analysis, verification };
-      },
-      simulate_lps_transient: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseLps, GasEulerDaeSolver } = await import("@modelscript/lps");
-        return GasEulerDaeSolver.simulate(parseLps(text), { durationSeconds: params?.durationSeconds });
-      },
-      project_lps_sysml2: async (ctx: any) => {
-        const text = ctx.documentText;
-        if (!text) return "";
-        const { parseLps, lpsToSysml2 } = await import("@modelscript/lps");
-        return lpsToSysml2(parseLps(text));
-      },
-      export_lps_modelica: async (ctx: any) => {
-        const text = ctx.documentText;
-        if (!text) return "";
-        const { parseLps, lpsToModelica } = await import("@modelscript/lps");
-        return lpsToModelica(parseLps(text));
-      },
-      export_lps_dae: async (ctx: any) => {
-        const text = ctx.documentText;
-        if (!text) return null;
-        const { parseLps, lowerLpsToDae } = await import("@modelscript/lps");
-        const dae = lowerLpsToDae(parseLps(text));
-        return { varCount: dae.varCount, eqCount: dae.eqCount };
-      },
-    },
-    disposables: [],
+    symbols: getLpsDocumentSymbols,
+    hoverPos: getLpsHover,
+    validateWithTree: validateLps,
+    actionHandlers: lpsActionHandlers,
   });
 
   // 13. GENSYS
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "gensys",
     name: "GENSYS",
     extensions: [".calc", ".run", ".sub", ".geom", ".trax", ".wheel", ".ins"],
     languageDef: gensysLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: string | { text?: string }) =>
-        getGensysDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getGensysHover(text, offset),
-      validate: (doc: any) =>
-        validateGensys(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_gensys_deck: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseGensysDeck, lintGensysModel } = await import("@modelscript/gensys");
-        return lintGensysModel(parseGensysDeck(text));
-      },
-      export_gensys_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseGensysDeck, gensysToModelica } = await import("@modelscript/gensys");
-        return gensysToModelica(parseGensysDeck(text));
-      },
-      evaluate_en14363: async (_ctx: any, params: any) => {
-        const { evaluateEn14363 } = await import("@modelscript/gensys");
-        return evaluateEn14363(params);
-      },
-      export_gensys_fmu: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseGensysDeck } = await import("@modelscript/gensys");
+    symbols: getGensysDocumentSymbols,
+    hoverOffset: getGensysHover,
+    validate: validateGensys,
+    actionHandlers: createGensysActionHandlers({
+      exportFmu: async (model, options) => {
         const { exportGensysFmu } = await import("@modelscript/exchange");
-        return exportGensysFmu(parseGensysDeck(text), params?.options);
+        return exportGensysFmu(
+          model as Parameters<typeof exportGensysFmu>[0],
+          options as Parameters<typeof exportGensysFmu>[1],
+        );
       },
-      simulate_gensys: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseGensysDeck, lowerGensysToDae } = await import("@modelscript/gensys");
-        const { initBltWasm } = await import("@modelscript/runtime");
-        const { simulateArena } = await import("@modelscript/simulate");
-        await initBltWasm();
-        const dae = lowerGensysToDae(parseGensysDeck(text));
-        return simulateArena(dae, {
-          startTime: params?.startTime ?? 0,
-          stopTime: params?.stopTime ?? 5.0,
-          step: params?.step ?? 0.005,
-        });
-      },
-    },
-    disposables: [],
+      simulateDae: simulateDaeHelper,
+    }),
   });
 
   // 14. SIMPACK
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "simpack",
     name: "SIMPACK",
     extensions: [".spck", ".sim", ".mbs"],
     languageDef: simpackLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: string | { text?: string }) =>
-        getSimpackDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getSimpackHover(text, offset),
-      validate: (doc: any) =>
-        validateSimpack(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_simpack_model: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseSpckXml, parseSimDeck, lintSimpackModel } = await import("@modelscript/simpack");
-        const isXml = text.trimStart().startsWith("<");
-        const model = isXml ? parseSpckXml(text) : parseSimDeck(text);
-        return lintSimpackModel(model);
-      },
-      analyze_mobility: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSpckXml, parseSimDeck, analyzeMobility } = await import("@modelscript/simpack");
-        const isXml = text.trimStart().startsWith("<");
-        const model = isXml ? parseSpckXml(text) : parseSimDeck(text);
-        return analyzeMobility(model);
-      },
-      export_simpack_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseSpckXml, parseSimDeck, simpackToModelica } = await import("@modelscript/simpack");
-        const isXml = text.trimStart().startsWith("<");
-        const model = isXml ? parseSpckXml(text) : parseSimDeck(text);
-        return simpackToModelica(model);
-      },
-      export_simpack_fmu: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSpckXml, parseSimDeck } = await import("@modelscript/simpack");
+    symbols: getSimpackDocumentSymbols,
+    hoverOffset: getSimpackHover,
+    validate: validateSimpack,
+    actionHandlers: createSimpackActionHandlers({
+      exportFmu: async (model, options) => {
         const { exportSimpackFmu } = await import("@modelscript/exchange");
-        const isXml = text.trimStart().startsWith("<");
-        const model = isXml ? parseSpckXml(text) : parseSimDeck(text);
-        return exportSimpackFmu(model, params?.options);
+        return exportSimpackFmu(
+          model as Parameters<typeof exportSimpackFmu>[0],
+          options as Parameters<typeof exportSimpackFmu>[1],
+        );
       },
-      simulate_simpack: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSpckXml, parseSimDeck, lowerSimpackToDae } = await import("@modelscript/simpack");
-        const { initBltWasm } = await import("@modelscript/runtime");
-        const { simulateArena } = await import("@modelscript/simulate");
-        await initBltWasm();
-        const isXml = text.trimStart().startsWith("<");
-        const model = isXml ? parseSpckXml(text) : parseSimDeck(text);
-        const dae = lowerSimpackToDae(model);
-        return simulateArena(dae, {
-          startTime: params?.startTime ?? 0,
-          stopTime: params?.stopTime ?? 5.0,
-          step: params?.step ?? 0.005,
-        });
-      },
-    },
-    disposables: [],
+      simulateDae: simulateDaeHelper,
+    }),
   });
 
   // 15. ReqIF
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "reqif",
     name: "ReqIF",
     extensions: [".reqif", ".reqifz"],
     languageDef: reqifLanguage,
+    symbols: getReqifDocumentSymbols,
+    validateWithTree: validateReqif,
     customHandlers: {
-      symbols: (treeWrapper: string | { text?: string }) =>
-        getReqifDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => {
         let line = 0;
         let lastLineStart = 0;
@@ -1656,111 +1207,20 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         getReqifDefinition(text, offset, uri ?? "file:///requirements.reqif", workspaceManager.unifiedWorkspace),
       references: (offset: number, text: string, uri?: string) =>
         getReqifReferences(text, offset, uri ?? "file:///requirements.reqif", workspaceManager.unifiedWorkspace),
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateReqif(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
     },
-    actionHandlers: {
-      lint_reqif: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseReqIf, lintReqIf } = await import("@modelscript/reqif");
-        return lintReqIf(parseReqIf(text));
-      },
-      verify_reqif_entailment: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseReqIf, verifyReqIfEntailment } = await import("@modelscript/reqif");
-        return verifyReqIfEntailment(parseReqIf(text));
-      },
-      export_reqif_sysml2: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseReqIf, reqifToSysml2 } = await import("@modelscript/reqif");
-        return reqifToSysml2(parseReqIf(text));
-      },
-      export_reqif_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseReqIf, reqifToModelicaVerifier } = await import("@modelscript/reqif");
-        return reqifToModelicaVerifier(parseReqIf(text));
-      },
-    },
-    disposables: [],
+    actionHandlers: reqifActionHandlers,
   });
 
   // 16. SPICE
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "spice",
     name: "SPICE",
     extensions: [".cir", ".sp", ".net", ".lib"],
     languageDef: spiceLanguage,
-    extractTheoryConstraints: async (text: string) => {
-      const { parseSpice, parseSpiceNumber } = await import("@modelscript/spice");
-      const circuit = parseSpice(text);
-      const sanitizeNs = (raw: string) => {
-        let out = "";
-        let prevWs = false;
-        for (let i = 0; i < raw.length; i++) {
-          const ch = raw.charCodeAt(i);
-          if (ch === 32 || ch === 9 || ch === 10 || ch === 13) {
-            if (!prevWs) {
-              out += "_";
-              prevWs = true;
-            }
-          } else {
-            out += raw[i]!;
-            prevWs = false;
-          }
-        }
-        return out;
-      };
-      const ns = circuit.title ? `SPICE::${sanitizeNs(circuit.title)}` : "SPICE::Circuit";
-      const parameters: any[] = [];
-      const seenNodes = new Set<string>();
-      const ports: any[] = [];
-      const unitForType = (t: string): string => {
-        const up = t.toUpperCase();
-        if (up === "R") return "Ohm";
-        if (up === "C") return "F";
-        if (up === "L") return "H";
-        if (up === "V" || up === "E") return "V";
-        if (up === "I" || up === "G") return "A";
-        return "";
-      };
-      for (const comp of circuit.components ?? []) {
-        const val =
-          typeof comp.value === "number"
-            ? comp.value
-            : comp.rawValueExpr
-              ? parseSpiceNumber(comp.rawValueExpr)
-              : Number.NaN;
-        if (Number.isFinite(val)) {
-          parameters.push({
-            name: comp.name,
-            fqn: `${ns}::${comp.name}`,
-            value: val,
-            rawValueText: String(comp.rawValueExpr ?? val),
-            unit: unitForType(String(comp.kind ?? "")),
-            line: (comp as any).line ?? 1,
-            startCol: 1,
-            endCol: 1 + comp.name.length,
-          });
-        }
-        for (const n of comp.nodes ?? []) {
-          if (n && !seenNodes.has(n)) {
-            seenNodes.add(n);
-            ports.push({ name: n, kind: "ElectricalNode", line: (comp as any).line ?? 1 });
-          }
-        }
-      }
-      return { namespaceFqn: ns, parameters, ports };
-    },
+    extractTheoryConstraints: extractSpiceTheoryConstraints,
+    symbols: getSpiceDocumentSymbols,
+    validate: validateSpice,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getSpiceDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => {
         let line = 0;
         let lastLineStart = 0;
@@ -1772,193 +1232,35 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         }
         return getSpiceHover(text, line, offset - lastLineStart);
       },
-      validate: (doc: any) =>
-        validateSpice(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
-    actionHandlers: {
-      spice_run_op: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSpice, solveOp } = await import("@modelscript/spice");
-        return solveOp(parseSpice(text));
-      },
-      spice_run_tran: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSpice, solveTran } = await import("@modelscript/spice");
-        return solveTran(parseSpice(text), params);
-      },
-      spice_run_ac: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSpice, solveAc } = await import("@modelscript/spice");
-        return solveAc(parseSpice(text), params);
-      },
-      export_spice_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseSpice, spiceToModelica } = await import("@modelscript/spice");
-        return spiceToModelica(parseSpice(text));
-      },
-      export_spice_ecad: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSpice, spiceToNetlistGraph } = await import("@modelscript/spice");
-        return spiceToNetlistGraph(parseSpice(text));
-      },
-    },
-    disposables: [],
+    actionHandlers: spiceActionHandlers,
   });
 
   // 17. Adams
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "adams",
     name: "MSC Adams",
     extensions: [".adm", ".cmd", ".acf"],
     languageDef: adamsLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getAdamsDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getAdamsHover(text, offset),
-      validate: (doc: any) =>
-        validateAdams(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_adams_model: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseAdams, lintAdamsModel } = await import("@modelscript/adams");
-        return lintAdamsModel(parseAdams(text));
-      },
-      analyze_adams_mobility: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseAdams, analyzeAdamsMobility } = await import("@modelscript/adams");
-        return analyzeAdamsMobility(parseAdams(text));
-      },
-      export_adams_simpack: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseAdams, adamsToSimpack } = await import("@modelscript/adams");
-        return adamsToSimpack(parseAdams(text));
-      },
-      export_adams_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseAdams, adamsToModelica } = await import("@modelscript/adams");
-        return adamsToModelica(parseAdams(text));
-      },
-      simulate_adams: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseAdams, lowerAdamsToDae } = await import("@modelscript/adams");
-        const { initBltWasm } = await import("@modelscript/runtime");
-        const { simulateArena } = await import("@modelscript/simulate");
-        await initBltWasm();
-        const dataset = parseAdams(text);
-        const dae = lowerAdamsToDae(dataset);
-        return simulateArena(dae, {
-          startTime: params?.startTime ?? 0,
-          stopTime: params?.stopTime ?? dataset.simulation?.endTime ?? 5.0,
-          step: params?.step ?? dataset.simulation?.dtOut ?? 0.005,
-        });
-      },
-    },
-    disposables: [],
+    symbols: getAdamsDocumentSymbols,
+    hoverOffset: getAdamsHover,
+    validate: validateAdams,
+    actionHandlers: createAdamsActionHandlers({ simulateDae: simulateDaeHelper }),
   });
 
   // 18. URDF
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "urdf",
     name: "ROS URDF & SDFormat",
     extensions: [".urdf", ".sdf", ".xacro"],
     languageDef: urdfLanguage,
-    extractTheoryConstraints: async (text: string) => {
-      const { parseUrdf } = await import("@modelscript/urdf");
-      const robot = parseUrdf(text);
-      const ns = `URDF::${robot.name || "Robot"}`;
-      const parameters: any[] = [];
-      const ports: any[] = [];
-      for (const link of robot.links.values()) {
-        if (link.inertial && Number.isFinite(link.inertial.mass)) {
-          parameters.push({
-            name: `${link.name}_mass`,
-            fqn: `${ns}::${link.name}.mass`,
-            value: link.inertial.mass,
-            rawValueText: String(link.inertial.mass),
-            unit: "kg",
-            line: 1,
-            startCol: 1,
-            endCol: 1 + link.name.length,
-          });
-        }
-      }
-      for (const joint of robot.joints.values()) {
-        if (joint.limits?.effort !== undefined && Number.isFinite(joint.limits.effort)) {
-          parameters.push({
-            name: `${joint.name}_effort`,
-            fqn: `${ns}::${joint.name}.effort`,
-            value: joint.limits.effort,
-            rawValueText: String(joint.limits.effort),
-            unit: "N*m",
-            line: 1,
-            startCol: 1,
-            endCol: 1 + joint.name.length,
-          });
-        }
-        ports.push({ name: joint.name, kind: `Joint:${joint.type}`, line: 1 });
-      }
-      return { namespaceFqn: ns, parameters, ports };
-    },
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getUrdfDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getUrdfHover(text, offset),
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateUrdf(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    actionHandlers: {
-      lint_urdf_robot: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseUrdf, lintUrdfRobot } = await import("@modelscript/urdf");
-        return lintUrdfRobot(parseUrdf(text));
-      },
-      compute_urdf_rnea: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseUrdf, computeInverseDynamicsRnea } = await import("@modelscript/urdf");
-        const robot = parseUrdf(text);
-        const q = new Map<string, number>(Object.entries(params?.q ?? {}));
-        const qd = new Map<string, number>(Object.entries(params?.qd ?? {}));
-        const qdd = new Map<string, number>(Object.entries(params?.qdd ?? {}));
-        const rnea = computeInverseDynamicsRnea(robot, q, qd, qdd, params?.gravity);
-        return Object.fromEntries(rnea.jointTorques);
-      },
-      export_urdf_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseUrdf, urdfToModelica } = await import("@modelscript/urdf");
-        return urdfToModelica(parseUrdf(text));
-      },
-      export_urdf_simpack: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseUrdf, urdfToSimpack } = await import("@modelscript/urdf");
-        return urdfToSimpack(parseUrdf(text));
-      },
-      export_urdf_adams: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseUrdf, urdfToAdams } = await import("@modelscript/urdf");
-        return urdfToAdams(parseUrdf(text));
-      },
-    },
+    extractTheoryConstraints: extractUrdfTheoryConstraints,
+    symbols: getUrdfDocumentSymbols,
+    hoverOffset: getUrdfHover,
+    validateWithTree: validateUrdf,
+    actionHandlers: urdfActionHandlers,
     handlers: {
-      "modelscript/getCadComponents": async (context, params) => {
+      "modelscript/getCadComponents": async (context: any, params: any) => {
         const text =
           params?.documentText ??
           params?.text ??
@@ -2001,643 +1303,161 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         });
       },
     },
-    disposables: [],
   });
 
   // 19. Verilog-A
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "verilog-a",
     name: "Verilog-A / Verilog-AMS",
     extensions: [".va", ".vams"],
     languageDef: verilogALanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getVerilogADocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getVerilogAHover(text, offset),
-      validate: (doc: any) =>
-        validateVerilogA(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_verilog_a: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { lintVerilogA, parseVerilogA } = await import("@modelscript/verilog-a");
-        return lintVerilogA(parseVerilogA(text));
-      },
-      export_verilog_a_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseVerilogA, verilogAToModelica } = await import("@modelscript/verilog-a");
-        const doc = parseVerilogA(text);
-        if (doc.modules.length === 0) return "";
-        return verilogAToModelica(doc.modules[0]!);
-      },
-      export_verilog_a_spice: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseVerilogA, verilogAToSpice } = await import("@modelscript/verilog-a");
-        const doc = parseVerilogA(text);
-        if (doc.modules.length === 0) return "";
-        return verilogAToSpice(doc.modules[0]!);
-      },
-      export_verilog_a_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseVerilogA, lowerVerilogAToDae } = await import("@modelscript/verilog-a");
-        const doc = parseVerilogA(text);
-        if (doc.modules.length === 0) return null;
-        const arena = lowerVerilogAToDae(doc.modules[0]!);
-        return {
-          title: doc.modules[0]!.name,
-          variableCount: arena.getVarCount(),
-          equationCount: arena.getEqCount(),
-        };
-      },
-    },
-    disposables: [],
+    symbols: getVerilogADocumentSymbols,
+    hoverOffset: getVerilogAHover,
+    validate: validateVerilogA,
+    actionHandlers: verilogAActionHandlers,
   });
 
   // 20. PLCopen
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "plcopen",
     name: "IEC 61131-3 PLCopen / Structured Text",
     extensions: [".xml", ".plcopen", ".st"],
     languageDef: plcopenLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getPlcopenDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getPlcopenHover(text, offset),
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validatePlcopen(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    actionHandlers: {
-      lint_plcopen: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { lintPlcProject, parsePlcopen } = await import("@modelscript/plcopen");
-        return lintPlcProject(parsePlcopen(text));
-      },
-      export_plcopen_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parsePlcopen, plcopenToModelica } = await import("@modelscript/plcopen");
-        return plcopenToModelica(parsePlcopen(text));
-      },
-      export_plcopen_sysml: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parsePlcopen, plcopenToSysML } = await import("@modelscript/plcopen");
-        return plcopenToSysML(parsePlcopen(text));
-      },
-      export_plcopen_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parsePlcopen, lowerPlcopenToDae } = await import("@modelscript/plcopen");
-        const arena = lowerPlcopenToDae(parsePlcopen(text));
-        return { variableCount: arena.getVarCount(), equationCount: arena.getEqCount() };
-      },
-      run_plcopen_scan: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parsePlcopen, VirtualPlc } = await import("@modelscript/plcopen");
-        const plc = new VirtualPlc(parsePlcopen(text));
-        const cycles = params?.cycles ?? 10;
-        const dtMs = params?.dtMs ?? 10;
-        return { cycles, dtMs, history: plc.runCycles(cycles, dtMs) };
-      },
-    },
-    disposables: [],
+    symbols: getPlcopenDocumentSymbols,
+    hoverOffset: getPlcopenHover,
+    validateWithTree: validatePlcopen,
+    actionHandlers: plcopenActionHandlers,
   });
 
   // 21. OpenDRIVE
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "opendrive",
     name: "ASAM OpenDRIVE",
     extensions: [".xodr", ".xml"],
     languageDef: opendriveLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getOpenDriveDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getOpenDriveHover(text, offset),
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateOpenDrive(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    actionHandlers: {
-      lint_opendrive: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { lintOpenDrive, parseOpenDrive } = await import("@modelscript/opendrive");
-        return lintOpenDrive(parseOpenDrive(text));
-      },
-      export_opendrive_gensys: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { opendriveToGensys, parseOpenDrive } = await import("@modelscript/opendrive");
-        return opendriveToGensys(parseOpenDrive(text), params?.step ?? 1.0);
-      },
-      export_opendrive_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { lowerOpenDriveToDae, parseOpenDrive } = await import("@modelscript/opendrive");
-        const arena = lowerOpenDriveToDae(parseOpenDrive(text));
-        return { variableCount: arena.getVarCount(), equationCount: arena.getEqCount() };
-      },
-      sample_opendrive_track: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseOpenDrive, sampleRoadTrack } = await import("@modelscript/opendrive");
-        const doc = parseOpenDrive(text);
-        const step = params?.step ?? 1.0;
-        return doc.roads.map((r) => ({ roadId: r.id, name: r.name, points: sampleRoadTrack(r, step) }));
-      },
-      render_opendrive_svg: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseOpenDrive, renderOpenDriveSvg } = await import("@modelscript/opendrive");
-        return renderOpenDriveSvg(parseOpenDrive(text), {
-          sampleStep: params?.step ?? 1.0,
-          theme: params?.theme ?? "dark",
-        });
-      },
-    },
-    disposables: [],
+    symbols: getOpenDriveDocumentSymbols,
+    hoverOffset: getOpenDriveHover,
+    validateWithTree: validateOpenDrive,
+    actionHandlers: opendriveActionHandlers,
   });
 
   // 22. OpenDSS
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "opendss",
     name: "OpenDSS",
     extensions: [".dss"],
     languageDef: openDssLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getOpenDssDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getOpenDssHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: any) =>
-        validateOpenDss(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_opendss: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseOpenDss, lintOpenDss } = await import("@modelscript/opendss");
-        return lintOpenDss(parseOpenDss(text));
-      },
-      opendss_powerflow: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseOpenDss, solveDistributionPowerFlow } = await import("@modelscript/opendss");
-        return solveDistributionPowerFlow(parseOpenDss(text));
-      },
-      opendss_to_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseOpenDss, lowerOpenDssToDae } = await import("@modelscript/opendss");
-        const dae = lowerOpenDssToDae(parseOpenDss(text));
-        return {
-          modelName: "DistributionGrid",
-          variableCount: dae.variables().length,
-          equationCount: dae.equations().length,
-        };
-      },
-      opendss_to_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseOpenDss, openDssToModelica } = await import("@modelscript/opendss");
-        return openDssToModelica(parseOpenDss(text));
-      },
-    },
-    disposables: [],
+    symbols: getOpenDssDocumentSymbols,
+    hoverPos: getOpenDssHover,
+    validate: validateOpenDss,
+    actionHandlers: opendssActionHandlers,
   });
 
   // 23. OpenSCENARIO
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "openscenario",
     name: "OpenSCENARIO",
     extensions: [".xosc", ".osc"],
     languageDef: openScenarioLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getOpenScenarioDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getOpenScenarioHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateOpenScenario(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    actionHandlers: {
-      lint_openscenario: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseOpenScenario, lintOpenScenario } = await import("@modelscript/openscenario");
-        return lintOpenScenario(parseOpenScenario(text));
-      },
-      openscenario_simulate: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseOpenScenario, simulateScenario } = await import("@modelscript/openscenario");
-        return simulateScenario(parseOpenScenario(text), params?.options);
-      },
-      openscenario_to_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseOpenScenario, lowerOpenScenarioToDae } = await import("@modelscript/openscenario");
-        const dae = lowerOpenScenarioToDae(parseOpenScenario(text));
-        return {
-          modelName: "ScenarioSimulation",
-          variableCount: dae.variables().length,
-          equationCount: dae.equations().length,
-        };
-      },
-      openscenario_to_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseOpenScenario, openScenarioToModelica } = await import("@modelscript/openscenario");
-        return openScenarioToModelica(parseOpenScenario(text), params?.modelName);
-      },
-    },
-    disposables: [],
+    symbols: getOpenScenarioDocumentSymbols,
+    hoverPos: getOpenScenarioHover,
+    validateWithTree: validateOpenScenario,
+    actionHandlers: openscenarioActionHandlers,
   });
 
   // 24. RELAP5
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "relap5",
     name: "RELAP5",
     extensions: [".i", ".inp", ".r5"],
     languageDef: relap5Language,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getRelap5DocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getRelap5Hover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: any) =>
-        validateRelap5(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_relap5: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseRelap5, lintRelap5 } = await import("@modelscript/relap5");
-        return lintRelap5(parseRelap5(text));
-      },
-      relap5_kinetics_solve: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseRelap5, solvePointKinetics } = await import("@modelscript/relap5");
-        return solvePointKinetics(parseRelap5(text), params?.options);
-      },
-      relap5_to_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseRelap5, lowerRelap5ToDae } = await import("@modelscript/relap5");
-        const dae = lowerRelap5ToDae(parseRelap5(text));
-        return {
-          modelName: "Relap5NuclearPlant",
-          variableCount: dae.variables().length,
-          equationCount: dae.equations().length,
-        };
-      },
-      relap5_to_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseRelap5, relap5ToModelica } = await import("@modelscript/relap5");
-        return relap5ToModelica(parseRelap5(text), params?.modelName);
-      },
-    },
-    disposables: [],
+    symbols: getRelap5DocumentSymbols,
+    hoverPos: getRelap5Hover,
+    validate: validateRelap5,
+    actionHandlers: relap5ActionHandlers,
   });
 
   // 25. ECLIPSE
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "eclipse",
     name: "ECLIPSE",
     extensions: [".data", ".dat", ".inc"],
     languageDef: eclipseLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getEclipseDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getEclipseHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: any) =>
-        validateEclipse(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_eclipse: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseEclipse, lintEclipse } = await import("@modelscript/eclipse");
-        return lintEclipse(parseEclipse(text));
-      },
-      eclipse_reservoir_solve: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseEclipse, solveReservoirDepletion } = await import("@modelscript/eclipse");
-        return solveReservoirDepletion(parseEclipse(text), params?.options);
-      },
-      eclipse_to_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseEclipse, lowerEclipseToDae } = await import("@modelscript/eclipse");
-        const dae = lowerEclipseToDae(parseEclipse(text));
-        return {
-          modelName: "EclipseReservoir",
-          variableCount: dae.variables().length,
-          equationCount: dae.equations().length,
-        };
-      },
-      eclipse_to_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseEclipse, eclipseToModelica } = await import("@modelscript/eclipse");
-        return eclipseToModelica(parseEclipse(text), params?.modelName);
-      },
-    },
-    disposables: [],
+    symbols: getEclipseDocumentSymbols,
+    hoverPos: getEclipseHover,
+    validate: validateEclipse,
+    actionHandlers: eclipseActionHandlers,
   });
 
   // 26. SBML
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "sbml",
     name: "SBML",
     extensions: [".sbml", ".xml"],
     languageDef: sbmlLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getSbmlDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getSbmlHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateSbml(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    actionHandlers: {
-      lint_sbml: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseSbml, lintSbml } = await import("@modelscript/sbml");
-        return lintSbml(parseSbml(text));
-      },
-      sbml_simulate: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSbml, solveReactions } = await import("@modelscript/sbml");
-        return solveReactions(parseSbml(text), params?.options);
-      },
-      sbml_to_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSbml, lowerSbmlToDae } = await import("@modelscript/sbml");
-        const dae = lowerSbmlToDae(parseSbml(text));
-        return { modelName: "SbmlModel", variableCount: dae.variables().length, equationCount: dae.equations().length };
-      },
-      sbml_to_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseSbml, sbmlToModelica } = await import("@modelscript/sbml");
-        return sbmlToModelica(parseSbml(text), params?.modelName);
-      },
-    },
-    disposables: [],
+    symbols: getSbmlDocumentSymbols,
+    hoverPos: getSbmlHover,
+    validateWithTree: validateSbml,
+    actionHandlers: sbmlActionHandlers,
   });
 
   // 27. JSBSim
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "jsbsim",
     name: "JSBSim Flight Dynamics",
     extensions: [".xml"],
     languageDef: jsbsimLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getJsbsimDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getJsbsimHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateJsbsim(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    actionHandlers: {
-      lint_jsbsim: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseJsbsim, lintJsbsim } = await import("@modelscript/jsbsim");
-        return lintJsbsim(parseJsbsim(text));
-      },
-      jsbsim_simulate: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseJsbsim, solveFlightDynamics } = await import("@modelscript/jsbsim");
-        return solveFlightDynamics(parseJsbsim(text), params?.options);
-      },
-      jsbsim_to_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseJsbsim, lowerJsbsimToDae } = await import("@modelscript/jsbsim");
-        const dae = lowerJsbsimToDae(parseJsbsim(text));
-        return {
-          modelName: "JsbsimModel",
-          variableCount: dae.variables().length,
-          equationCount: dae.equations().length,
-        };
-      },
-      jsbsim_to_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseJsbsim, jsbsimToModelica } = await import("@modelscript/jsbsim");
-        return jsbsimToModelica(parseJsbsim(text), params?.modelName);
-      },
-    },
-    disposables: [],
+    symbols: getJsbsimDocumentSymbols,
+    hoverPos: getJsbsimHover,
+    validateWithTree: validateJsbsim,
+    actionHandlers: jsbsimActionHandlers,
   });
 
   // 28. EnergyPlus
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "energyplus",
     name: "EnergyPlus",
     extensions: [".idf", ".epjson"],
     languageDef: energyplusLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getEnergyPlusDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getEnergyPlusHover(text, offset),
-      validate: (doc: any) =>
-        validateEnergyPlus(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_energyplus: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { lintEnergyPlus, parseEnergyPlus } = await import("@modelscript/energyplus");
-        return lintEnergyPlus(parseEnergyPlus(text));
-      },
-      export_energyplus_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { energyPlusToModelica, parseEnergyPlus } = await import("@modelscript/energyplus");
-        return energyPlusToModelica(parseEnergyPlus(text));
-      },
-      export_energyplus_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { lowerEnergyPlusToDae, parseEnergyPlus } = await import("@modelscript/energyplus");
-        const arena = lowerEnergyPlusToDae(parseEnergyPlus(text));
-        return { variableCount: arena.getVarCount(), equationCount: arena.getEqCount() };
-      },
-    },
-    disposables: [],
+    symbols: getEnergyPlusDocumentSymbols,
+    hoverOffset: getEnergyPlusHover,
+    validate: validateEnergyPlus,
+    actionHandlers: energyplusActionHandlers,
   });
 
   // 29. EPANET
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "epanet",
     name: "EPANET",
     extensions: [".inp"],
     languageDef: epanetLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getEpanetDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getEpanetHover(text, offset),
-      validate: (doc: any) =>
-        validateEpanet(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_epanet: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { lintEpanet, parseInp } = await import("@modelscript/epanet");
-        return lintEpanet(parseInp(text));
-      },
-      solve_epanet: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseInp, solveHydraulics } = await import("@modelscript/epanet");
-        const res = solveHydraulics(parseInp(text));
-        return {
-          converged: res.converged,
-          iterations: res.iterations,
-          maxFlowChange: res.maxFlowChange,
-          pressures: Object.fromEntries(res.nodePressures),
-          flows: Object.fromEntries(res.linkFlows),
-        };
-      },
-      export_epanet_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { epanetToModelica, parseInp } = await import("@modelscript/epanet");
-        return epanetToModelica(parseInp(text));
-      },
-      export_epanet_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { lowerEpanetToDae, parseInp } = await import("@modelscript/epanet");
-        const arena = lowerEpanetToDae(parseInp(text));
-        return { variableCount: arena.getVarCount(), equationCount: arena.getEqCount() };
-      },
-    },
-    disposables: [],
+    symbols: getEpanetDocumentSymbols,
+    hoverOffset: getEpanetHover,
+    validate: validateEpanet,
+    actionHandlers: epanetActionHandlers,
   });
 
   // 30. CCSDS
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "ccsds",
     name: "CCSDS",
     extensions: [".ccsds", ".oem", ".opm", ".omm", ".xtce"],
     languageDef: ccsdsLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getCcsdsDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getCcsdsHover(text, offset),
-      validate: (doc: any) =>
-        validateCcsds(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      ccsds_lint: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { lintCcsds, parseCcsds } = await import("@modelscript/ccsds");
-        return lintCcsds(parseCcsds(text));
-      },
-      lint_ccsds: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { lintCcsds, parseCcsds } = await import("@modelscript/ccsds");
-        return lintCcsds(parseCcsds(text));
-      },
-      ccsds_to_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { ccsdsToModelica, parseCcsds } = await import("@modelscript/ccsds");
-        return ccsdsToModelica(parseCcsds(text));
-      },
-      export_ccsds_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { ccsdsToModelica, parseCcsds } = await import("@modelscript/ccsds");
-        return ccsdsToModelica(parseCcsds(text));
-      },
-      ccsds_to_sysml: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { ccsdsToSysml, parseCcsds } = await import("@modelscript/ccsds");
-        return ccsdsToSysml(parseCcsds(text));
-      },
-      export_ccsds_sysml: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { ccsdsToSysml, parseCcsds } = await import("@modelscript/ccsds");
-        return ccsdsToSysml(parseCcsds(text));
-      },
-      ccsds_to_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { lowerCcsdsToDae, parseCcsds } = await import("@modelscript/ccsds");
-        const arena = lowerCcsdsToDae(parseCcsds(text));
-        return { variableCount: arena.getVarCount(), equationCount: arena.getEqCount() };
-      },
-      export_ccsds_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { lowerCcsdsToDae, parseCcsds } = await import("@modelscript/ccsds");
-        const arena = lowerCcsdsToDae(parseCcsds(text));
-        return { variableCount: arena.getVarCount(), equationCount: arena.getEqCount() };
-      },
-    },
-    disposables: [],
+    symbols: getCcsdsDocumentSymbols,
+    hoverOffset: getCcsdsHover,
+    validate: validateCcsds,
+    actionHandlers: ccsdsActionHandlers,
   });
 
   // 31. Simulink
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "simulink",
     name: "MATLAB Simulink",
     extensions: [".slx", ".mdl"],
     languageDef: simulinkLanguage,
+    symbols: getSimulinkDocumentSymbols,
+    validateWithTree: validateSimulink,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getSimulinkDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => {
         const lines = text.slice(0, offset).split("\n");
         return getSimulinkHover(
@@ -2646,109 +1466,20 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
           "model.mdl",
         );
       },
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateSimulink(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
     },
-    actionHandlers: {
-      simulink_lint: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseSimulink, lintSimulinkModel } = await import("@modelscript/simulink");
-        return lintSimulinkModel(parseSimulink(text));
-      },
-      lint_simulink_model: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseSimulink, lintSimulinkModel } = await import("@modelscript/simulink");
-        return lintSimulinkModel(parseSimulink(text));
-      },
-      simulink_to_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseSimulink, simulinkToModelica } = await import("@modelscript/simulink");
-        return simulinkToModelica(parseSimulink(text));
-      },
-      export_simulink_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseSimulink, simulinkToModelica } = await import("@modelscript/simulink");
-        return simulinkToModelica(parseSimulink(text));
-      },
-      simulink_to_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSimulink, lowerSimulinkToDae } = await import("@modelscript/simulink");
-        const dae = lowerSimulinkToDae(parseSimulink(text));
-        return { varCount: dae.varCount, eqCount: dae.eqCount };
-      },
-      export_simulink_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSimulink, lowerSimulinkToDae } = await import("@modelscript/simulink");
-        const dae = lowerSimulinkToDae(parseSimulink(text));
-        return { varCount: dae.varCount, eqCount: dae.eqCount };
-      },
-    },
-    disposables: [],
+    actionHandlers: simulinkActionHandlers,
   });
 
   // 32. AUTOSAR
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "autosar",
     name: "AUTOSAR Classic & Adaptive",
     extensions: [".arxml"],
     languageDef: autosarLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getAutosarDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getAutosarHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateAutosar(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    actionHandlers: {
-      lint_autosar_model: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseArxml, lintAutosarModel } = await import("@modelscript/autosar");
-        return lintAutosarModel(parseArxml(text));
-      },
-      export_autosar_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseArxml, autosarToModelica } = await import("@modelscript/autosar");
-        return autosarToModelica(parseArxml(text));
-      },
-      export_autosar_sysml: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseArxml, autosarToSysml } = await import("@modelscript/autosar");
-        return autosarToSysml(parseArxml(text));
-      },
-      export_autosar_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseArxml, lowerAutosarToDae } = await import("@modelscript/autosar");
-        const dae = lowerAutosarToDae(parseArxml(text));
-        return { varCount: dae.varCount, eqCount: dae.eqCount };
-      },
-      simulate_autosar_rte: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseArxml, VirtualRte } = await import("@modelscript/autosar");
-        const rte = new VirtualRte(parseArxml(text));
-        return rte.runUntil(params?.duration ?? 0.05, params?.step ?? 0.01);
-      },
-    },
-    disposables: [],
+    symbols: getAutosarDocumentSymbols,
+    hoverPos: getAutosarHover,
+    validateWithTree: validateAutosar,
+    actionHandlers: autosarActionHandlers,
   });
 
   // 33. Fortran
@@ -2759,73 +1490,16 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: fortranLanguage,
     customHandlers: {
       validate: async (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
-        const { lintFortran } = await import("@modelscript/fortran");
-        return lintFortran(text);
+        const text = docText(doc);
+        const { validateFortran } = await import("@modelscript/fortran");
+        return validateFortran(text);
+      },
+      semanticTokens: (doc: any, tree?: any) => {
+        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc ?? "");
+        return computeFortranSemanticTokensData(text, tree);
       },
     },
-    actionHandlers: {
-      lint_fortran_file: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { lintFortran } = await import("@modelscript/fortran");
-        return lintFortran(text);
-      },
-      simulate_fortran: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { simulateFortranRoutine } = await import("@modelscript/fortran");
-        return simulateFortranRoutine(text, {
-          startTime: params?.startTime ?? 0,
-          stopTime: params?.stopTime ?? 1.0,
-          dt: params?.dt ?? 0.01,
-        });
-      },
-      verify_fortran: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { verifyFortranSource } = await import("@modelscript/fortran");
-        return verifyFortranSource(text, params?.options);
-      },
-      lower_fortran_to_dae: async (ctx: any) => {
-        const text = ctx.documentText;
-        if (!text) return null;
-        const { lowerFortranToDae, preprocessFortranSegment, extractFortranSignature } =
-          await import("@modelscript/fortran");
-        const { DAEBuilder } = await import("@modelscript/runtime");
-        const prep = preprocessFortranSegment(text);
-        const sig = extractFortranSignature(text);
-        const builder = new DAEBuilder();
-        const lowered = lowerFortranToDae(builder, prep.lines, sig.name);
-        return {
-          routineName: sig.name,
-          equationCount: lowered.equationCount,
-          stateCount: lowered.stateVarIndices.length,
-          inputs: sig.inputs,
-          outputs: sig.outputs,
-          locals: sig.locals,
-        };
-      },
-      export_fortran_fmu: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { exportFortranFmu } = await import("@modelscript/fortran");
-        const fmu = exportFortranFmu(text, params?.options);
-        return {
-          modelIdentifier: fmu.modelIdentifier,
-          guid: fmu.guid,
-          files: fmu.files,
-          variableCount: fmu.variables.length,
-          equationCount: fmu.daeSummary.equationCount,
-          archiveByteLength: fmu.archive.byteLength,
-          modelDescription2Xml: fmu.modelDescription2Xml,
-          modelDescription3Xml: fmu.modelDescription3Xml,
-          cSources: fmu.cSources,
-          daeSummary: fmu.daeSummary,
-          formattedSummary: `Exported Fortran FMU '${fmu.modelIdentifier}.fmu' (${fmu.archive.byteLength} bytes, ${fmu.variables.length} FMI variables, ${fmu.files.length} bundled files).`,
-        };
-      },
-    },
+    actionHandlers: fortranActionHandlers,
     disposables: [],
   });
 
@@ -2837,155 +1511,37 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: cLanguage,
     customHandlers: {
       validate: async (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         const { lintC } = await import("@modelscript/c");
         return lintC(text);
       },
     },
-    actionHandlers: {
-      lint_c_file: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { lintC } = await import("@modelscript/c");
-        return lintC(text);
-      },
-    },
+    actionHandlers: cActionHandlers,
     disposables: [],
   });
 
   // 35. SIMA
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "sima",
     name: "SIMA",
     extensions: [".inp", ".sima", ".sys", ".hyd"],
     languageDef: simaLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getSimaDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getSimaHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: any) =>
-        validateSima(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_sima_model: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseSimaFile, lintSimaProject } = await import("@modelscript/sima");
-        return lintSimaProject(parseSimaFile(text, params?.uri));
-      },
-      verify_dnv_compliance: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSimaFile, verifyDnvMooringCompliance } = await import("@modelscript/sima");
-        return verifyDnvMooringCompliance(parseSimaFile(text, params?.uri), params?.consequenceClass ?? 2);
-      },
-      evaluate_offset_limits: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSimaFile, evaluateOffsetLimits } = await import("@modelscript/sima");
-        return evaluateOffsetLimits(parseSimaFile(text, params?.uri), params?.options);
-      },
-      project_sima_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseSimaFile, simaToModelica } = await import("@modelscript/sima");
-        return simaToModelica(parseSimaFile(text, params?.uri));
-      },
-      project_sima_ssp: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseSimaFile, simaToSsp } = await import("@modelscript/sima");
-        return simaToSsp(parseSimaFile(text, params?.uri));
-      },
-      project_sima_sysml2: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseSimaFile, simaToSysml2 } = await import("@modelscript/sima");
-        return simaToSysml2(parseSimaFile(text, params?.uri));
-      },
-      export_sima_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseSimaFile, lowerSimaToDae } = await import("@modelscript/sima");
-        const dae = lowerSimaToDae(parseSimaFile(text, params?.uri));
-        return { varCount: dae.varCount, eqCount: dae.eqCount };
-      },
-    },
-    disposables: [],
+    symbols: getSimaDocumentSymbols,
+    hoverPos: getSimaHover,
+    validate: validateSima,
+    actionHandlers: simaActionHandlers,
   });
 
   // 36. GT-SUITE
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "gtsuite",
     name: "GT-SUITE",
     extensions: [".gtm", ".gtd", ".gtx", ".gt"],
     languageDef: gtsuiteLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getGtsuiteDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        return getGtsuiteHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length });
-      },
-      validate: (doc: any) =>
-        validateGtsuite(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    actionHandlers: {
-      lint_gtsuite_model: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return [];
-        const { parseGtmModel, lintGtModel } = await import("@modelscript/gtsuite");
-        return lintGtModel(parseGtmModel(text, params?.uri));
-      },
-      simulate_gtsuite_transient: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseGtmModel, runGtSuiteSimulation } = await import("@modelscript/gtsuite");
-        return runGtSuiteSimulation(parseGtmModel(text, params?.uri), params?.options);
-      },
-      verify_gtsuite_gates: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseGtmModel, runGtSuiteSimulation, verifyEngineGates } = await import("@modelscript/gtsuite");
-        const simResult = await runGtSuiteSimulation(parseGtmModel(text, params?.uri), params?.options);
-        return verifyEngineGates(simResult, params?.gateOptions);
-      },
-      project_gtsuite_modelica: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseGtmModel, gtsuiteToModelica } = await import("@modelscript/gtsuite");
-        return gtsuiteToModelica(parseGtmModel(text, params?.uri));
-      },
-      project_gtsuite_sysml2: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseGtmModel, gtsuiteToSysml2 } = await import("@modelscript/gtsuite");
-        return gtsuiteToSysml2(parseGtmModel(text, params?.uri));
-      },
-      project_gtsuite_ssp: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseGtmModel, gtsuiteToSsp } = await import("@modelscript/gtsuite");
-        return gtsuiteToSsp(parseGtmModel(text, params?.uri));
-      },
-      export_gtsuite_dae: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return null;
-        const { parseGtmModel, gtsuiteToDae } = await import("@modelscript/gtsuite");
-        const dae = gtsuiteToDae(parseGtmModel(text, params?.uri));
-        return { varCount: dae.varCount, eqCount: dae.eqCount };
-      },
-      render_gtsuite_schematic: async (ctx: any, params: any) => {
-        const text = params?.documentText ?? ctx.documentText;
-        if (!text) return "";
-        const { parseGtmModel, renderGtSuiteSchematicSvg } = await import("@modelscript/gtsuite");
-        return renderGtSuiteSchematicSvg(parseGtmModel(text, params?.uri));
-      },
-    },
-    disposables: [],
+    symbols: getGtsuiteDocumentSymbols,
+    hoverPos: getGtsuiteHover,
+    validate: validateGtsuite,
+    actionHandlers: gtsuiteActionHandlers,
   });
 
   // 37. SSP (System Structure and Parameterization)
@@ -2996,7 +1552,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: sspLanguage,
     customHandlers: {
       validate: async (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         const uri = typeof doc?.uri === "string" ? doc.uri : "";
         const { lintSsd, lintSsv } = await import("@modelscript/ssp");
         const isSsv = uri.endsWith(".ssv") || text.includes("<ssv:ParameterSet");
@@ -3007,178 +1563,115 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
   });
 
   // 38. HEC-RAS (River Hydraulics & Floodplains)
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "hec-ras",
     name: "HEC-RAS",
     extensions: [".g01", ".g02", ".g03", ".rasgeo", ".u01", ".f01", ".prj"],
     languageDef: hecRasLanguage,
+    symbols: getHecRasDocumentSymbols,
+    hoverPos: getHecRasHover,
     customHandlers: {
-      symbols: (treeWrapper: any) => {
-        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
-        return getHecRasDocumentSymbols(text);
-      },
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        const line = lines.length - 1;
-        const character = lines[lines.length - 1]!.length;
-        return getHecRasHover(text, { line, character });
-      },
       validate: (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         return validateHecRas(text);
       },
     },
-    disposables: [],
   });
 
   // 39. OCPP (Electric Vehicle Smart Charging)
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "ocpp",
     name: "OCPP",
     extensions: [".ocpp", ".ocpp.json", ".cpo", ".evse"],
     languageDef: ocppLanguage,
+    symbols: getOcppDocumentSymbols,
+    hoverPos: getOcppHover,
     customHandlers: {
-      symbols: (treeWrapper: any) => {
-        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
-        return getOcppDocumentSymbols(text);
-      },
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        const line = lines.length - 1;
-        const character = lines[lines.length - 1]!.length;
-        return getOcppHover(text, { line, character });
-      },
       validate: (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         return validateOcpp(text);
       },
     },
-    disposables: [],
   });
 
   // 40. OpenADR (Automated Demand Response & Grid Flexibility)
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "openadr",
     name: "OpenADR",
     extensions: [".oadr", ".oadr.xml", ".oadr.json", ".oadr.yaml"],
     languageDef: openadrLanguage,
+    symbols: getOpenAdrDocumentSymbols,
+    hoverPos: getOpenAdrHover,
     customHandlers: {
-      symbols: (treeWrapper: any) => {
-        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
-        return getOpenAdrDocumentSymbols(text);
-      },
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        const line = lines.length - 1;
-        const character = lines[lines.length - 1]!.length;
-        return getOpenAdrHover(text, { line, character });
-      },
       validate: (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         return validateOpenAdr(text);
       },
     },
-    disposables: [],
   });
 
   // 41. TOUGH (Deep Geothermal Reservoir & Hydrothermal Flows)
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "tough",
     name: "TOUGH",
     extensions: [".tough", ".dat", ".tgh"],
     languageDef: toughLanguage,
+    symbols: getToughDocumentSymbols,
+    hoverPos: getToughHover,
     customHandlers: {
-      symbols: (treeWrapper: any) => {
-        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
-        return getToughDocumentSymbols(text);
-      },
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        const line = lines.length - 1;
-        const character = lines[lines.length - 1]!.length;
-        return getToughHover(text, { line, character });
-      },
       validate: (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         return validateTough(text);
       },
     },
-    disposables: [],
   });
 
   // 42. MODFLOW (Multi-Layer Groundwater Aquifers)
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "modflow",
     name: "MODFLOW",
     extensions: [".dis", ".dis6", ".npf", ".npf6", ".wel", ".wel6", ".riv", ".riv6", ".chd", ".chd6"],
     languageDef: modflowLanguage,
+    symbols: getModflowDocumentSymbols,
+    hoverPos: getModflowHover,
     customHandlers: {
-      symbols: (treeWrapper: any) => {
-        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
-        return getModflowDocumentSymbols(text);
-      },
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        const line = lines.length - 1;
-        const character = lines[lines.length - 1]!.length;
-        return getModflowHover(text, { line, character });
-      },
       validate: (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         return validateModflow(text);
       },
     },
-    disposables: [],
   });
 
   // 43. LandGEM (Landfill Gas & ADM1 Anaerobic Digestion)
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "landgem",
     name: "LandGEM",
     extensions: [".landgem", ".lfg", ".biogas"],
     languageDef: landgemLanguage,
+    symbols: getLandgemDocumentSymbols,
+    hoverPos: getLandgemHover,
     customHandlers: {
-      symbols: (treeWrapper: any) => {
-        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
-        return getLandgemDocumentSymbols(text);
-      },
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        const line = lines.length - 1;
-        const character = lines[lines.length - 1]!.length;
-        return getLandgemHover(text, { line, character });
-      },
       validate: (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         return validateLandgem(text);
       },
     },
-    disposables: [],
   });
 
   // 44. GTFS (Public Transit Electrification & Traction)
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "gtfs",
     name: "GTFS",
     extensions: [".gtfs", ".gtfs.txt", ".gtfs-rt"],
     languageDef: gtfsLanguage,
+    symbols: getGtfsDocumentSymbols,
+    hoverPos: getGtfsHover,
     customHandlers: {
-      symbols: (treeWrapper: any) => {
-        const text = typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "");
-        return getGtfsDocumentSymbols(text);
-      },
-      hover: (offset: number, text: string) => {
-        const lines = text.slice(0, offset).split("\n");
-        const line = lines.length - 1;
-        const character = lines[lines.length - 1]!.length;
-        return getGtfsHover(text, { line, character });
-      },
       validate: (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         return validateGtfs(text);
       },
     },
-    disposables: [],
   });
 
   // Helper to convert character offset to 0-based { line, character }
@@ -3191,115 +1684,65 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
   };
 
   // 45. Antimony
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "antimony",
     name: "Antimony",
     extensions: [".ant"],
     languageDef: antimonyLanguage,
+    symbols: getAntimonyDocumentSymbols,
+    validate: validateAntimony,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getAntimonyDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getAntimonyHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) =>
-        validateAntimony(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
-    disposables: [],
   });
 
   // 46. AutomationML
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "automationml",
     name: "AutomationML",
     extensions: [".aml", ".amlx"],
     languageDef: automationMLLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getAutomationMLDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getAutomationMLHover(text, offset),
-      validate: (doc: any) =>
-        validateAutomationML(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-        ),
-    },
-    disposables: [],
+    symbols: getAutomationMLDocumentSymbols,
+    hoverOffset: getAutomationMLHover,
+    validate: validateAutomationML,
   });
 
   // 47. BNGL
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "bngl",
     name: "BNGL",
     extensions: [".bngl"],
     languageDef: bnglLanguage,
+    symbols: getBnglDocumentSymbols,
+    validate: validateBngl,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getBnglDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getBnglHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) =>
-        validateBngl(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
-    disposables: [],
   });
 
   // 48. Cantera
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "cantera",
     name: "Cantera",
     extensions: [".cti", ".ctml"],
     languageDef: canteraLanguage,
-    extractTheoryConstraints: async (text: string) => {
-      const { parseCantera } = await import("@modelscript/cantera");
-      const doc = parseCantera(text);
-      const ns = `Cantera::${doc.mechanism?.name || "Mechanism"}`;
-      const parameters: any[] = [];
-      parameters.push({
-        name: "speciesCount",
-        fqn: `${ns}::speciesCount`,
-        value: doc.mechanism?.species?.size ?? 0,
-        rawValueText: String(doc.mechanism?.species?.size ?? 0),
-        unit: "",
-        line: 1,
-        startCol: 1,
-        endCol: 13,
-      });
-      parameters.push({
-        name: "reactionCount",
-        fqn: `${ns}::reactionCount`,
-        value: doc.mechanism?.reactions?.length ?? 0,
-        rawValueText: String(doc.mechanism?.reactions?.length ?? 0),
-        unit: "",
-        line: 1,
-        startCol: 1,
-        endCol: 14,
-      });
-      return { namespaceFqn: ns, parameters, ports: [] };
-    },
+    extractTheoryConstraints: extractCanteraTheoryConstraints,
+    symbols: getCanteraDocumentSymbols,
+    validate: validateCantera,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getCanteraDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getCanteraHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) =>
-        validateCantera(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
-    disposables: [],
   });
 
   // 49. CellML
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "cellml",
     name: "CellML",
     extensions: [".cellml"],
     languageDef: cellmlLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getCellmlDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getCellmlHover(text, offset),
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateCellml(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    disposables: [],
+    symbols: getCellmlDocumentSymbols,
+    hoverOffset: getCellmlHover,
+    validateWithTree: validateCellml,
   });
 
   // 50. CGMES
@@ -3310,7 +1753,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: cgmesLanguage,
     customHandlers: {
       validate: (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         const model = parseCgmesRdf(text);
         return lintCgmesModel(model);
       },
@@ -3319,41 +1762,25 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
   });
 
   // 51. DICOM-RT
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "dicom-rt",
     name: "DICOM-RT",
     extensions: [".dcm.json", ".dicom-rt", ".rtplan.json", ".rtdose.json", ".rtstruct.json"],
     languageDef: dicomRtLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getDicomRtDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getDicomRtHover(text, offset),
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateDicomRt(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    disposables: [],
+    symbols: getDicomRtDocumentSymbols,
+    hoverOffset: getDicomRtHover,
+    validateWithTree: validateDicomRt,
   });
 
   // 52. FEBio
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "febio",
     name: "FEBio",
     extensions: [".feb"],
     languageDef: febioLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getFebioDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getFebioHover(text, offset),
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateFebio(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    disposables: [],
+    symbols: getFebioDocumentSymbols,
+    hoverOffset: getFebioHover,
+    validateWithTree: validateFebio,
   });
 
   // 53. Fiber
@@ -3364,7 +1791,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: fiberLanguage,
     customHandlers: {
       validate: async (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         const { parseFiberGis, lintFiberNetwork } = await import("@modelscript/fiber");
         try {
           const network = parseFiberGis(text);
@@ -3400,105 +1827,75 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
   });
 
   // 54. GenBank
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "genbank",
     name: "GenBank",
     extensions: [".gb", ".gbk", ".genbank"],
     languageDef: genbankLanguage,
+    symbols: getGenbankDocumentSymbols,
+    validate: validateGenbank,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getGenbankDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getGenbankHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) =>
-        validateGenbank(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
-    disposables: [],
   });
 
   // 55. gPROMS
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "gproms",
     name: "gPROMS",
     extensions: [".gPROMS", ".gproms"],
     languageDef: gpromsLanguage,
+    symbols: getGpromsDocumentSymbols,
+    validate: validateGproms,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getGpromsDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getGpromsHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) =>
-        validateGproms(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
-    disposables: [],
   });
 
   // 56. OpenIGTLink (IGTL)
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "igtl",
     name: "OpenIGTLink",
     extensions: [".igtl", ".igtl.json"],
     languageDef: igtlLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getIgtlDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getIgtlHover(text, offset),
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateIgtl(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    disposables: [],
+    symbols: getIgtlDocumentSymbols,
+    hoverOffset: getIgtlHover,
+    validateWithTree: validateIgtl,
   });
 
   // 57. NIfTI
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "nifti",
     name: "NIfTI",
     extensions: [".nii", ".nii.json"],
     languageDef: niftiLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getNiftiDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getNiftiHover(text, offset),
-      validate: (doc: any) =>
-        validateNifti(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    disposables: [],
+    symbols: getNiftiDocumentSymbols,
+    hoverOffset: getNiftiHover,
+    validate: validateNifti,
   });
 
   // 58. NM-TRAN
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "nmtran",
     name: "NM-TRAN",
     extensions: [".ctl", ".nmtran"],
     languageDef: nmtranLanguage,
+    symbols: getNmtranDocumentSymbols,
+    validate: validateNmtran,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getNmtranDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getNmtranHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) =>
-        validateNmtran(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
-    disposables: [],
   });
 
   // 59. OpenSim
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "opensim",
     name: "OpenSim",
     extensions: [".osim"],
     languageDef: openSimLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getOpenSimDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getOpenSimHover(text, offset),
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateOpenSim(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    disposables: [],
+    symbols: getOpenSimDocumentSymbols,
+    hoverOffset: getOpenSimHover,
+    validateWithTree: validateOpenSim,
   });
 
   // 60. Optical
@@ -3509,7 +1906,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: opticalLanguage,
     customHandlers: {
       validate: (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         if (text.trim().startsWith("{")) {
           return lintOpticalTopology(parseOpenRoadmTopology(text));
         }
@@ -3520,54 +1917,40 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
   });
 
   // 61. OSCAL
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "oscal",
     name: "OSCAL",
     extensions: [".oscal", ".oscal.json", ".oscal.yaml", ".oscal.xml"],
     languageDef: oscalLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getOscalDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getOscalHover(text, offset),
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateOscal(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    disposables: [],
+    symbols: getOscalDocumentSymbols,
+    hoverOffset: getOscalHover,
+    validateWithTree: validateOscal,
   });
 
   // 62. PDB
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "pdb",
     name: "PDB",
     extensions: [".pdb", ".ent"],
     languageDef: pdbLanguage,
+    symbols: getPdbDocumentSymbols,
+    validate: validatePdb,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getPdbDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getPdbHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) =>
-        validatePdb(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
-    disposables: [],
   });
 
   // 63. PHREEQC
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "phreeqc",
     name: "PHREEQC",
     extensions: [".pqi", ".phreeqc"],
     languageDef: phreeqcLanguage,
+    symbols: getPhreeqcDocumentSymbols,
+    validate: validatePhreeqc,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getPhreeqcDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getPhreeqcHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) =>
-        validatePhreeqc(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
-    disposables: [],
   });
 
   // 64. PowerFactory
@@ -3578,7 +1961,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: powerFactoryLanguage,
     customHandlers: {
       validate: (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         if (text.trim().startsWith("<")) {
           return lintPowerFactoryModel(parsePowerFactoryXml(text));
         }
@@ -3596,7 +1979,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: pslfLanguage,
     customHandlers: {
       validate: (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         const uri = typeof doc?.uri === "string" ? doc.uri : "";
         if (uri.toLowerCase().endsWith(".dyd") || text.includes("models")) {
           return lintPslfDyd(parsePslfDyd(text));
@@ -3608,23 +1991,20 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
   });
 
   // 66. QIF
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "qif",
     name: "QIF",
     extensions: [".qif", ".qif.xml", ".qif.json"],
     languageDef: qifLanguage,
+    symbols: getQifDocumentSymbols,
+    hoverOffset: getQifHover,
+    validate: validateQif,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getQifDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getQifHover(text, offset),
       definition: (offset: number, text: string, uri?: string) =>
         getQifDefinition(text, offset, uri ?? "file:///document.qif", workspaceManager.unifiedWorkspace),
       references: (offset: number, text: string, uri?: string) =>
         getQifReferences(text, offset, uri ?? "file:///document.qif", workspaceManager.unifiedWorkspace),
-      validate: (doc: any) =>
-        validateQif(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
-    disposables: [],
   });
 
   // 67. RAN
@@ -3635,7 +2015,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: ranLanguage,
     customHandlers: {
       validate: (doc: any) => {
-        const text = typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc);
+        const text = docText(doc);
         const isNsma = text.includes("REVNUM:") || text.includes("MANUF:") || text.includes("NOFREQ:");
         const deck = isNsma ? parseNsmaAdf(text) : parsePlanetPat(text);
         return lintAntennaPatternDeck(deck);
@@ -3645,92 +2025,64 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
   });
 
   // 68. SBOL
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "sbol",
     name: "SBOL",
     extensions: [".sbol", ".sbol.xml"],
     languageDef: sbolLanguage,
+    symbols: getSbolDocumentSymbols,
+    validateWithTree: validateSbol,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getSbolDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getSbolHover(text, offsetToPosition(text, offset)),
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateSbol(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
     },
-    disposables: [],
   });
 
   // 69. SED-ML
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "sedml",
     name: "SED-ML",
     extensions: [".sedml"],
     languageDef: sedmlLanguage,
+    symbols: getSedmlDocumentSymbols,
+    validateWithTree: validateSedml,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getSedmlDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getSedmlHover(text, offsetToPosition(text, offset)),
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateSedml(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
     },
-    disposables: [],
   });
 
   // 70. SMILES
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "smiles",
     name: "SMILES",
     extensions: [".smi", ".smiles"],
     languageDef: smilesLanguage,
+    symbols: getSmilesDocumentSymbols,
+    validate: validateSmiles,
     customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getSmilesDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => getSmilesHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) =>
-        validateSmiles(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
     },
-    disposables: [],
   });
 
   // 71. 3MF
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "three-mf",
     name: "3MF",
     extensions: [".3mf", ".3mf.model"],
     languageDef: threeMfLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getThreeMfDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getThreeMfHover(text, offset),
-      validate: (doc: string | { getText?: () => string }, cstTree?: any) =>
-        validateThreeMf(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-          cstTree,
-        ),
-    },
-    disposables: [],
+    symbols: getThreeMfDocumentSymbols,
+    hoverOffset: getThreeMfHover,
+    validateWithTree: validateThreeMf,
   });
 
   // 72. TOPAS
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "topas",
     name: "TOPAS",
     extensions: [".topas", ".tps"],
     languageDef: topasLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getTopasDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => getTopasHover(text, offset),
-      validate: (doc: any) =>
-        validateTopas(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    disposables: [],
+    symbols: getTopasDocumentSymbols,
+    hoverOffset: getTopasHover,
+    validate: validateTopas,
   });
 
   // 73. OpenUSD
@@ -3744,7 +2096,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       symbols: (treeWrapper: any) =>
         usdLspService.getDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
       hover: (offset: number, text: string) => usdLspService.getHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) => usdLspService.validate(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
+      validate: (doc: any) => usdLspService.validate(docText(doc)),
     },
     handlers: {
       "modelscript/getCadComponents": (context: any, params: any) => {
@@ -3760,329 +2112,190 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
   });
 
   // 74. ASM (Activated Sludge Model)
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "asm",
     name: "ASM",
     extensions: [".asm", ".bsm", ".wrrf"],
     languageDef: asmLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getAsmDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: any) => getAsmDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    disposables: [],
+    symbols: getAsmDocumentSymbols,
+    validate: getAsmDiagnostics,
   });
 
   // 75. ATP-EMTP
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "atp",
     name: "ATP-EMTP",
     extensions: [".atp", ".dat"],
     languageDef: atpLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getAtpDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: any) => getAtpDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    disposables: [],
+    symbols: getAtpDocumentSymbols,
+    validate: getAtpDiagnostics,
   });
 
   // 76. COMTRADE
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "comtrade",
     name: "COMTRADE",
     extensions: [".cfg", ".dat", ".cff"],
     languageDef: comtradeLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getComtradeDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: any) => getComtradeDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    disposables: [],
+    symbols: getComtradeDocumentSymbols,
+    validate: getComtradeDiagnostics,
   });
 
   // 77. DNP3
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "dnp3",
     name: "DNP3",
     extensions: [".dnp3", ".xml", ".json"],
     languageDef: dnp3Language,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getDnp3DocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: any) => getDnp3Diagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    disposables: [],
+    symbols: getDnp3DocumentSymbols,
+    validate: getDnp3Diagnostics,
   });
 
   // 78. HEC-HMS
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "hec-hms",
     name: "HEC-HMS",
     extensions: [".basin", ".hms", ".met", ".control"],
     languageDef: hecHmsLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getHecHmsDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: any) => getHecHmsDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    disposables: [],
+    symbols: getHecHmsDocumentSymbols,
+    validate: getHecHmsDiagnostics,
   });
 
   // 79. MATPOWER
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "matpower",
     name: "MATPOWER",
     extensions: [".m", ".matpower"],
     languageDef: matpowerLanguage,
-    extractTheoryConstraints: async (text: string) => {
-      const { parseMatpowerCase } = await import("@modelscript/matpower");
-      const mpc = parseMatpowerCase(text);
-      const ns = `MATPOWER::${mpc.caseName || "Case"}`;
-      const parameters: any[] = [
-        {
-          name: "baseMVA",
-          fqn: `${ns}::baseMVA`,
-          value: mpc.baseMVA,
-          rawValueText: String(mpc.baseMVA),
-          unit: "MVA",
-          line: 1,
-          startCol: 1,
-          endCol: 8,
-        },
-      ];
-      const ports: any[] = [];
-      for (const b of mpc.bus) {
-        const bName = `bus_${b.bus_i}`;
-        if (Number.isFinite(b.baseKv)) {
-          parameters.push({
-            name: `${bName}_baseKV`,
-            fqn: `${ns}::${bName}.baseKV`,
-            value: b.baseKv,
-            rawValueText: String(b.baseKv),
-            unit: "kV",
-            line: 1,
-            startCol: 1,
-            endCol: 1 + bName.length,
-          });
-        }
-        ports.push({ name: bName, kind: "PowerBus", line: 1 });
-      }
-      for (let i = 0; i < mpc.gen.length; i++) {
-        const g = mpc.gen[i]!;
-        if (Number.isFinite(g.pg)) {
-          parameters.push({
-            name: `gen_${g.bus}_${i + 1}_Pg`,
-            fqn: `${ns}::gen_${g.bus}_${i + 1}.Pg`,
-            value: g.pg,
-            rawValueText: String(g.pg),
-            unit: "MW",
-            line: 1,
-            startCol: 1,
-            endCol: 12,
-          });
-        }
-      }
-      return { namespaceFqn: ns, parameters, ports };
-    },
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getMatpowerDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: any) => getMatpowerDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    disposables: [],
+    extractTheoryConstraints: extractMatpowerTheoryConstraints,
+    symbols: getMatpowerDocumentSymbols,
+    validate: getMatpowerDiagnostics,
   });
 
   // 80. ASPEN OneLiner
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "oneliner",
     name: "ASPEN OneLiner",
     extensions: [".olx", ".dxt"],
     languageDef: onelinerLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getOneLinerDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: any) => getOneLinerDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    disposables: [],
+    symbols: getOneLinerDocumentSymbols,
+    validate: getOneLinerDiagnostics,
   });
 
   // 81. IEC 61850 SCL
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "scl",
     name: "IEC 61850 SCL",
     extensions: [".scd", ".cid", ".icd", ".ssd", ".iid", ".scl"],
     languageDef: sclLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getSclDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: any) => getSclDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    disposables: [],
+    symbols: getSclDocumentSymbols,
+    validate: getSclDiagnostics,
   });
 
   // 82. SEL Protection
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "sel",
     name: "SEL Protection",
     extensions: [".rcf", ".rdb", ".sel", ".txt"],
     languageDef: selLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getSELDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: any) => getSELDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    disposables: [],
+    symbols: getSELDocumentSymbols,
+    validate: getSELDiagnostics,
   });
 
   // 83. WaterML
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "waterml",
     name: "WaterML",
     extensions: [".waterml", ".wml2", ".xml", ".json"],
     languageDef: watermlLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: any) =>
-        getWaterMlDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: any) => getWaterMlDiagnostics(typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    disposables: [],
+    symbols: getWaterMlDocumentSymbols,
+    validate: getWaterMlDiagnostics,
   });
 
   // 84. GridLAB-D
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "gridlabd",
     name: "GridLAB-D",
     extensions: [".glm"],
     languageDef: gridlabdLanguage,
+    symbols: getGridlabdDocumentSymbols,
+    validate: getGridlabdDiagnostics,
     customHandlers: {
-      symbols: (treeWrapper: string | { text?: string }) =>
-        getGridlabdDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: { getText?(): string } | string) =>
-        getGridlabdDiagnostics(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-        ),
       hover: (offset: number, text: string) => {
         const lines = text.slice(0, offset).split("\n");
         return getGridlabdHover(text, lines.length - 1);
       },
     },
-    disposables: [],
   });
 
   // 85. PowerWorld AUX
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "powerworld",
     name: "PowerWorld",
     extensions: [".aux"],
     languageDef: powerworldLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: string | { text?: string }) =>
-        getPowerWorldDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: { getText?(): string } | string) =>
-        getPowerWorldDiagnostics(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-        ),
-    },
-    disposables: [],
+    symbols: getPowerWorldDocumentSymbols,
+    validate: getPowerWorldDiagnostics,
   });
 
   // 86. IEC 60870-5-104
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "iec104",
     name: "IEC 60870-5-104",
     extensions: [".iec104", ".104"],
     languageDef: iec104Language,
-    customHandlers: {
-      symbols: (treeWrapper: string | { text?: string }) =>
-        getIec104DocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: { getText?(): string } | string) =>
-        getIec104Diagnostics(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-        ),
-    },
-    disposables: [],
+    symbols: getIec104DocumentSymbols,
+    validate: getIec104Diagnostics,
   });
 
   // 87. IEEE C37.118
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "c37118",
     name: "IEEE C37.118",
     extensions: [".c37118", ".pmu"],
     languageDef: c37118Language,
-    customHandlers: {
-      symbols: (treeWrapper: string | { text?: string }) =>
-        getC37118DocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: { getText?(): string } | string) =>
-        getC37118Diagnostics(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-        ),
-    },
-    disposables: [],
+    symbols: getC37118DocumentSymbols,
+    validate: getC37118Diagnostics,
   });
 
   // 88. PyPSA
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "pypsa",
     name: "PyPSA",
     extensions: [".pypsa", ".pypsa.json"],
     languageDef: pypsaLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: string | { text?: string }) =>
-        getPypsaDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: { getText?(): string } | string) =>
-        getPypsaDiagnostics(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-        ),
-    },
-    disposables: [],
+    symbols: getPypsaDocumentSymbols,
+    validate: getPypsaDiagnostics,
   });
 
   // 89. CYME
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "cyme",
     name: "CYME",
     extensions: [".sxst", ".cyme"],
     languageDef: cymeLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: string | { text?: string }) =>
-        getCymeDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: { getText?(): string } | string) =>
-        getCymeDiagnostics(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    disposables: [],
+    symbols: getCymeDocumentSymbols,
+    validate: getCymeDiagnostics,
   });
 
   // 90. RTDS
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "rtds",
     name: "RTDS",
     extensions: [".dft", ".rtds"],
     languageDef: rtdsLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: string | { text?: string }) =>
-        getRtdsDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: { getText?(): string } | string) =>
-        getRtdsDiagnostics(typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc)),
-    },
-    disposables: [],
+    symbols: getRtdsDocumentSymbols,
+    validate: getRtdsDiagnostics,
   });
 
   // 91. PLS-CADD
-  globalLanguageRegistry.register({
+  registerStandardPlugin({
     id: "plscadd",
     name: "PLS-CADD",
     extensions: [".pol", ".loa", ".plscadd"],
     languageDef: plscaddLanguage,
-    customHandlers: {
-      symbols: (treeWrapper: string | { text?: string }) =>
-        getPlsCaddDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      validate: (doc: { getText?(): string } | string) =>
-        getPlsCaddDiagnostics(
-          typeof doc !== "string" && typeof doc?.getText === "function" ? doc.getText() : String(doc),
-        ),
-    },
-    disposables: [],
+    symbols: getPlsCaddDocumentSymbols,
+    validate: getPlsCaddDiagnostics,
   });
 
   if (

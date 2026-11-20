@@ -2,12 +2,15 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DEFAULT_MORSEL_AI_SETTINGS, runMorselAiTurn } from "../src/components/morsel/util/morsel-ai-client.js";
+import {
+  DEFAULT_MORSEL_AI_SETTINGS,
+  runMorselAiTurn,
+} from "../../../packages/editor/src/workbench/util/morsel-ai-client.js";
 import {
   applyLineRangeEdit,
   executeMorselToolCall,
   type MorselToolHost,
-} from "../src/components/morsel/util/morsel-tool-bridge.js";
+} from "../../../packages/editor/src/workbench/util/morsel-tool-bridge.js";
 
 function createMockHost(initialCode: string): MorselToolHost & { getView: () => string } {
   let code = initialCode;

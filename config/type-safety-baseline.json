@@ -22,7 +22,7 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 885,
+      "explicitAny": 637,
       "tsComments": 0
     },
     "ee": {
@@ -69,8 +69,12 @@
       "explicitAny": 0,
       "tsComments": 0
     },
-    "languages/cantera": {
+    "languages/c37118": {
       "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/cantera": {
+      "explicitAny": 1,
       "tsComments": 0
     },
     "languages/ccsds": {
@@ -94,6 +98,10 @@
       "tsComments": 0
     },
     "languages/csv": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/cyme": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -149,6 +157,10 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/gridlabd": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/gtfs": {
       "explicitAny": 0,
       "tsComments": 0
@@ -169,6 +181,10 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/iec104": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/igtl": {
       "explicitAny": 0,
       "tsComments": 0
@@ -181,12 +197,16 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/las": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/lps": {
       "explicitAny": 0,
       "tsComments": 0
     },
     "languages/matpower": {
-      "explicitAny": 0,
+      "explicitAny": 2,
       "tsComments": 0
     },
     "languages/mlxtran": {
@@ -194,7 +214,7 @@
       "tsComments": 0
     },
     "languages/modelica": {
-      "explicitAny": 3285,
+      "explicitAny": 3241,
       "tsComments": 0
     },
     "languages/modelscript": {
@@ -273,12 +293,20 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/plscadd": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/powerfactory": {
       "explicitAny": 0,
       "tsComments": 0
     },
-    "languages/pscad": {
+    "languages/powerworld": {
       "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/pscad": {
+      "explicitAny": 19,
       "tsComments": 0
     },
     "languages/pslf": {
@@ -286,7 +314,11 @@
       "tsComments": 0
     },
     "languages/psse": {
-      "explicitAny": 0,
+      "explicitAny": 9,
+      "tsComments": 0
+    },
+    "languages/pypsa": {
+      "explicitAny": 1,
       "tsComments": 0
     },
     "languages/qif": {
@@ -306,6 +338,10 @@
       "tsComments": 0
     },
     "languages/rocets": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/rtds": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -342,7 +378,7 @@
       "tsComments": 0
     },
     "languages/simulink": {
-      "explicitAny": 0,
+      "explicitAny": 19,
       "tsComments": 0
     },
     "languages/smiles": {
@@ -366,7 +402,7 @@
       "tsComments": 0
     },
     "languages/sysml2": {
-      "explicitAny": 0,
+      "explicitAny": 21,
       "tsComments": 0
     },
     "languages/three-mf": {
@@ -386,7 +422,7 @@
       "tsComments": 0
     },
     "languages/urdf": {
-      "explicitAny": 0,
+      "explicitAny": 2,
       "tsComments": 0
     },
     "languages/usd": {
@@ -410,11 +446,15 @@
       "tsComments": 0
     },
     "packages/diagram": {
-      "explicitAny": 0,
+      "explicitAny": 4,
       "tsComments": 0
     },
     "packages/dsl": {
       "explicitAny": 3,
+      "tsComments": 0
+    },
+    "packages/editor": {
+      "explicitAny": 251,
       "tsComments": 0
     },
     "packages/embed": {
@@ -442,7 +482,7 @@
       "tsComments": 0
     },
     "packages/lsp": {
-      "explicitAny": 1829,
+      "explicitAny": 1258,
       "tsComments": 0
     },
     "packages/mcp": {
@@ -454,7 +494,7 @@
       "tsComments": 0
     },
     "packages/runtime": {
-      "explicitAny": 818,
+      "explicitAny": 817,
       "tsComments": 0
     },
     "packages/sdk": {

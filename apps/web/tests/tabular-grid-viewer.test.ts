@@ -145,16 +145,22 @@ describe("Tabular Grid Parser & Editor Helpers", () => {
   });
 
   it("wires CsvViewer into PolyglotDomainPanel, inspectors, and labels CSV tab as Table", () => {
-    const panelPath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/PolyglotDomainPanel.tsx");
+    const panelPath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/PolyglotDomainPanel.tsx",
+    );
     const powerPath = path.resolve(
       import.meta.dirname,
-      "../src/components/morsel/panels/inspectors/PowerGridInspector.tsx",
+      "../../../packages/editor/src/workbench/panels/inspectors/PowerGridInspector.tsx",
     );
     const biochemPath = path.resolve(
       import.meta.dirname,
-      "../src/components/morsel/panels/inspectors/BiochemInspector.tsx",
+      "../../../packages/editor/src/workbench/panels/inspectors/BiochemInspector.tsx",
     );
-    const subHeaderPath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselViewSubHeader.tsx");
+    const subHeaderPath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselViewSubHeader.tsx",
+    );
     const navbarPath = path.resolve(import.meta.dirname, "../src/pages/playground/components/PlaygroundNavbar.tsx");
 
     const panelSrc = fs.readFileSync(panelPath, "utf-8");

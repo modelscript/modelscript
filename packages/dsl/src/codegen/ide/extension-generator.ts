@@ -1123,6 +1123,62 @@ export function generatePackageJson(
         });
       }
     }
+
+    // 7. Declarative ui.toolbarButtons targeting VS Code (unified with Morsel/Ansatz topbar)
+    const declaredToolbarButtons = lang.options.ui?.toolbarButtons ?? [];
+    const registeredEditorTitleCmds = new Set<string>(editorTitleActions.map((a) => `modelscript.${lang.id}.${a.id}`));
+    const registeredCommandIds = new Set<string>(commands.map((c) => String(c["command"] ?? "")));
+    let hasPrimaryTitleSlot = Boolean(primaryTitleAction);
+
+    for (const btn of declaredToolbarButtons) {
+      const targets = btn.targets && btn.targets.length > 0 ? btn.targets : ["morsel", "vscode"];
+      if (!targets.includes("vscode")) continue;
+
+      const resolvedCommandId = btn.actionId
+        ? `modelscript.${lang.id}.${btn.actionId}`
+        : btn.command && !btn.command.startsWith("morsel:")
+          ? btn.command
+          : null;
+      if (!resolvedCommandId || registeredEditorTitleCmds.has(resolvedCommandId)) continue;
+      registeredEditorTitleCmds.add(resolvedCommandId);
+
+      const codicon = btn.icon ? (btn.icon.startsWith("$(") ? btn.icon : `$(${btn.icon})`) : "$(zap)";
+      if (!registeredCommandIds.has(resolvedCommandId)) {
+        registeredCommandIds.add(resolvedCommandId);
+        commands.push({
+          command: resolvedCommandId,
+          title: btn.label,
+          category: lang.displayName,
+          icon: codicon,
+        });
+      }
+
+      const baseWhen = `editorLangId == ${lang.id} || resourceLangId == ${lang.id}`;
+      const isPrimary = (btn.placement ?? "primary") === "primary" && !hasPrimaryTitleSlot;
+      if (isPrimary) {
+        hasPrimaryTitleSlot = true;
+        editorTitleMenus.push({
+          command: resolvedCommandId,
+          when: hasKnownWorkspaceLang
+            ? `(${baseWhen}) && config.modelscript.ui.editorTitleActions != 'none'`
+            : baseWhen,
+          group: `navigation@${btn.order ?? 1}`,
+        });
+      } else {
+        moreActionsLangIds.add(lang.id);
+        if (lang.id === "sysml2") moreActionsLangIds.add("sysml");
+        editorMoreActionsMenus.push({
+          command: resolvedCommandId,
+          when: baseWhen,
+          group: "3_other",
+        });
+        editorTitleMenus.push({
+          command: resolvedCommandId,
+          when: `(${baseWhen}) && config.modelscript.ui.editorTitleActions == 'all'`,
+          group: `navigation@${btn.order ?? 5}`,
+        });
+      }
+    }
   }
 
   if (moreActionsLangIds.size > 0) {

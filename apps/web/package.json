@@ -24,6 +24,7 @@
     "@modelscript/diagram": "*",
     "@modelscript/dicom-rt": "*",
     "@modelscript/dsl": "*",
+    "@modelscript/editor": "*",
     "@modelscript/embed": "*",
     "@modelscript/epanet": "*",
     "@modelscript/exchange": "*",

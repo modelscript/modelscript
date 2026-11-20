@@ -1102,10 +1102,14 @@ export function registerMiscEndpoints(context: LspContext) {
                 },
               );
               ctx.load(docText, targetUri);
-              const classMatches = Array.from(
-                docText.matchAll(/\b(?:model|block|class)\s+([A-Za-z_][A-Za-z0-9_]*)\b/g),
-              ) as RegExpExecArray[];
-              const targetClass = classMatches.length > 0 ? classMatches[classMatches.length - 1]![1]! : undefined;
+              const loadedSymbols = Array.from(
+                ((ctx as any).workspaceIndex?.getUnifiedIndex?.()?.symbols?.values?.() ?? []) as Array<{
+                  kind?: string;
+                  name?: string;
+                  resourceId?: string;
+                }>,
+              ).filter((s) => (s.kind === "Class" || s.kind === "Def") && s.name);
+              const targetClass = loadedSymbols.length > 0 ? loadedSymbols[loadedSymbols.length - 1]!.name : undefined;
               if (targetClass && typeof (ctx as { verifyFormal?: unknown }).verifyFormal === "function") {
                 const formalDiags = (
                   ctx as unknown as {
@@ -1271,38 +1275,9 @@ export function registerMiscEndpoints(context: LspContext) {
       crossWindUnloadingRatio?: number;
       equivalentConicity?: number;
     }) => {
-      const {
-        createHomologationReport,
-        exportHomologationHtml,
-        exportHomologationSarif,
-        exportHomologationJunit,
-        exportHomologationCtrf,
-      } = await import("@modelscript/gensys");
-
+      const { generateGensysMultibodyReport } = await import("@modelscript/gensys");
       const modelName = params.uri ? path.basename(params.uri, path.extname(params.uri)) : "MultibodyModel";
-      const report = createHomologationReport({
-        modelName,
-        maxNadalYOverQ: params.maxNadalYOverQ ?? 0.65,
-        maxLateralForceYKn: params.maxLateralForceYKn ?? 35.0,
-        nominalAxleLoadQ0Kn: params.nominalAxleLoadQ0Kn ?? 160.0,
-        sperlingVerticalWz: params.sperlingVerticalWz ?? 2.2,
-        sperlingHorizontalWz: params.sperlingHorizontalWz ?? 2.3,
-        crossWindUnloadingRatio: params.crossWindUnloadingRatio ?? 0.68,
-        equivalentConicity: params.equivalentConicity ?? 0.18,
-      });
-
-      const fmt = params.format ?? "html";
-      let content = "";
-      if (fmt === "sarif") content = exportHomologationSarif(report);
-      else if (fmt === "junit") content = exportHomologationJunit(report);
-      else if (fmt === "ctrf") content = exportHomologationCtrf(report);
-      else content = exportHomologationHtml(report);
-
-      return {
-        format: fmt,
-        report,
-        content,
-      };
+      return generateGensysMultibodyReport({ ...params, modelName });
     },
   );
 }

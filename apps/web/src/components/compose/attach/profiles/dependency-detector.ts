@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CURATED_ANSATZ_PACKAGES, type RegistryPackage } from "../../../morsel/componentGalleryCatalog";
+import { CURATED_ANSATZ_PACKAGES, type RegistryPackage } from "@modelscript/editor/workbench/componentGalleryCatalog";
 
 export interface ArtifactLibraryDependency {
   name: string;

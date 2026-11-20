@@ -17,16 +17,18 @@
  *   npm run playground --workspace=@modelscript/olga
  */
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import type { IncomingMessage } from "node:http";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createServer, type Plugin, type PluginOption } from "vite";
+import { createLogger, createServer, type Plugin, type PluginOption } from "vite";
 import {
   discoverSingleLanguage,
   type DiscoveredSingleLanguageResult,
 } from "../packages/dsl/src/codegen/ide/language-discovery.js";
+import { generateTextMate } from "../packages/dsl/src/codegen/parser/textmate.js";
+import { buildLanguagePluginFromModule, createLspRuntime, type LspRuntime } from "../packages/lsp/src/core/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,6 +43,7 @@ export interface PlaygroundCliArgs {
   mode: "workbench" | "inspector" | "artifact";
   theme: "dark" | "light";
   open: boolean;
+  morsel: boolean;
 }
 
 interface SampleFileEntry {
@@ -58,6 +61,7 @@ function parseCliArgs(argv: string[]): PlaygroundCliArgs {
     mode: "workbench",
     theme: "dark",
     open: false,
+    morsel: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -82,6 +86,8 @@ function parseCliArgs(argv: string[]): PlaygroundCliArgs {
       if (t === "dark" || t === "light") args.theme = t;
     } else if (tok === "--open") {
       args.open = true;
+    } else if (tok === "--morsel") {
+      args.morsel = true;
     } else if (!tok.startsWith("-") && !args.target) {
       args.target = tok;
     }
@@ -98,6 +104,7 @@ Usage:
 
 Examples:
   npm run playground -- olga
+  npm run playground -- modelica --morsel
   npm run playground -- psse --file languages/psse/testsuite/ieee14.raw
   npm run playground -- fea --mode inspector --theme light
   npm run playground -- epanet --port 5180
@@ -108,6 +115,7 @@ Options:
   --file, -f <path>                          Initial source file to load
   --mode, -m <workbench|inspector|artifact>  Initial host mode (default: workbench)
   --theme, -t <dark|light>                   Initial color theme (default: dark)
+  --morsel                                   Launch full Morsel web editor locked to this single language
   --open                                     Open browser automatically
   --help, -h                                 Show this help
 `);
@@ -439,78 +447,63 @@ function resolveLspModulePath(langDir: string): string | null {
   return candidates.find((p) => fs.existsSync(p)) ?? null;
 }
 
-async function dispatchPlaygroundLspRequest(
-  lspModulePath: string | null,
-  method: string,
-  params: unknown,
-  code: string,
-  documentUri: string,
-): Promise<{ handled: boolean; result?: unknown; note?: string; error?: string }> {
-  if (!lspModulePath) {
-    return { handled: false, note: "Language does not define src/lsp.ts" };
-  }
-
+async function loadWasmParserAndFacade(discovered: DiscoveredSingleLanguageResult): Promise<{
+  parser?: { parse: (input: string) => { rootNode: unknown } };
+  facade?: {
+    loadSource?: (text: string) => void;
+    getDiagnostics?: (rootPtr: number, a?: number, b?: number, text?: string) => unknown[];
+  };
+}> {
+  if (!discovered.wasmPath || !discovered.bindingsPath) return {};
+  if (!fs.existsSync(discovered.wasmPath) || !fs.existsSync(discovered.bindingsPath)) return {};
   try {
-    const mod = (await import(pathToFileURL(lspModulePath).href)) as Record<string, unknown>;
-    const fns = Object.entries(mod).filter(([, v]) => typeof v === "function") as [
-      string,
-      (...args: unknown[]) => unknown,
-    ][];
-
-    if (method === "textDocument/diagnostic" || method === "modelscript/validate") {
-      const validateFn = fns.find(([name]) => /^validate[A-Z]/.test(name) || name === "validate");
-      if (validateFn) {
-        const result = await validateFn[1](code, documentUri);
-        return { handled: true, result };
-      }
-      return { handled: false, note: "No validate*() export found in src/lsp.ts" };
+    const bindingsUrl = `${pathToFileURL(discovered.bindingsPath).href}?t=${Date.now()}`;
+    const bindingsMod = (await import(bindingsUrl)) as {
+      createWasmParser?: (wasmInput: Uint8Array) => Promise<{
+        parser: { parse: (input: string) => { rootNode: unknown } };
+        facade?: {
+          loadSource?: (text: string) => void;
+          getDiagnostics?: (rootPtr: number, a?: number, b?: number, text?: string) => unknown[];
+        };
+      }>;
+    };
+    if (typeof bindingsMod.createWasmParser === "function") {
+      const wasmBytes = new Uint8Array(fs.readFileSync(discovered.wasmPath));
+      const res = await bindingsMod.createWasmParser(wasmBytes);
+      return { parser: res.parser, ...(res.facade !== undefined ? { facade: res.facade } : {}) };
     }
-
-    if (method === "textDocument/documentSymbol") {
-      const symFn = fns.find(([name]) => /DocumentSymbols$/.test(name) || name === "getDocumentSymbols");
-      if (symFn) {
-        const result = await symFn[1](code, documentUri);
-        return { handled: true, result };
-      }
-      return { handled: false, note: "No get*DocumentSymbols() export found in src/lsp.ts" };
-    }
-
-    if (method === "textDocument/hover") {
-      const hoverFn = fns.find(([name]) => /Hover$/.test(name) || name === "getHover");
-      if (hoverFn) {
-        const p = (params ?? {}) as { position?: unknown };
-        const result = await hoverFn[1](code, p.position ?? { line: 0, character: 0 }, documentUri);
-        return { handled: true, result };
-      }
-      return { handled: false, note: "No get*Hover() export found in src/lsp.ts" };
-    }
-
-    // Custom action / command dispatch via execute*Action(action, args)
-    const executeActionFn = fns.find(([name]) => /^execute[A-Z].*Action$/.test(name) || name === "executeAction");
-    if (executeActionFn) {
-      const p = (params && typeof params === "object" ? params : {}) as Record<string, unknown>;
-      const actionName =
-        typeof p["command"] === "string"
-          ? p["command"]
-          : typeof p["action"] === "string"
-            ? p["action"]
-            : method.split("/").pop() || method;
-      const result = await executeActionFn[1](actionName, { code, content: code, uri: documentUri, ...p });
-      return { handled: true, result };
-    }
-
-    // Direct exported function match by method suffix
-    const suffix = method.split("/").pop() || method;
-    const direct = fns.find(([name]) => name === suffix);
-    if (direct) {
-      const result = await direct[1](code, params, documentUri);
-      return { handled: true, result };
-    }
-
-    return { handled: false, note: `No matching handler for '${method}' in src/lsp.ts` };
-  } catch (err) {
-    return { handled: false, error: err instanceof Error ? err.message : String(err) };
+  } catch {
+    return {};
   }
+  return {};
+}
+
+async function createPlaygroundLspRuntime(
+  discovered: DiscoveredSingleLanguageResult,
+  lspModulePath: string | null,
+): Promise<LspRuntime> {
+  let lspModule: Record<string, unknown> | null = null;
+  if (lspModulePath && fs.existsSync(lspModulePath)) {
+    try {
+      lspModule = (await import(pathToFileURL(lspModulePath).href)) as Record<string, unknown>;
+    } catch {
+      lspModule = null;
+    }
+  }
+
+  const { parser: wasmParser, facade: wasmFacade } = await loadWasmParserAndFacade(discovered);
+
+  const plugin = buildLanguagePluginFromModule({
+    id: discovered.language.id,
+    name: discovered.language.displayName,
+    extensions: discovered.language.fileExtensions,
+    languageDef: discovered.language.options,
+    lspModule,
+    parser: wasmParser,
+    facade: wasmFacade,
+  });
+
+  return createLspRuntime({ plugins: [plugin] });
 }
 
 function createPlaygroundPlugin(
@@ -519,6 +512,7 @@ function createPlaygroundPlugin(
   initial: { code: string; documentUri: string; samplePath: string },
   cliArgs: PlaygroundCliArgs,
   lspModulePath: string | null,
+  lspRuntime: LspRuntime,
 ): Plugin {
   const virtualId = "virtual:modelscript-playground-lang";
   const resolvedVirtualId = `\0${virtualId}`;
@@ -571,6 +565,37 @@ function createPlaygroundPlugin(
   }`);
       });
 
+      let highlightConfig: {
+        keywords: string[];
+        typeKeywords: string[];
+        operators: string[];
+        lineComment?: string | undefined;
+        blockComment?: { open: string; close: string } | undefined;
+      } = {
+        keywords: [],
+        typeKeywords: [],
+        operators: [],
+        lineComment: discovered.language.lineComment,
+        blockComment: discovered.language.blockComment,
+      };
+      try {
+        const { monarch } = generateTextMate(discovered.language.options);
+        const parsedMonarch = JSON.parse(monarch) as {
+          keywords?: unknown;
+          typeKeywords?: unknown;
+          operators?: unknown;
+        };
+        highlightConfig = {
+          keywords: Array.isArray(parsedMonarch.keywords) ? (parsedMonarch.keywords as string[]) : [],
+          typeKeywords: Array.isArray(parsedMonarch.typeKeywords) ? (parsedMonarch.typeKeywords as string[]) : [],
+          operators: Array.isArray(parsedMonarch.operators) ? (parsedMonarch.operators as string[]) : [],
+          lineComment: discovered.language.lineComment,
+          blockComment: discovered.language.blockComment,
+        };
+      } catch {
+        // Fallback to comment-only highlight config
+      }
+
       return `${imports.join("\n")}
 
 export const PLAYGROUND_LANG = {
@@ -583,12 +608,14 @@ export const PLAYGROUND_LANG = {
   hasWasm: ${JSON.stringify(Boolean(discovered.wasmPath))},
   hasBindings: ${JSON.stringify(Boolean(discovered.bindingsPath))},
   hasLsp: ${JSON.stringify(Boolean(lspModulePath))},
+  highlight: ${JSON.stringify(highlightConfig)},
   initialMode: ${JSON.stringify(cliArgs.mode)},
   initialTheme: ${JSON.stringify(cliArgs.theme)},
   initialDocumentUri: ${JSON.stringify(initial.documentUri)},
   initialCode: ${JSON.stringify(initial.code)},
   initialSamplePath: ${JSON.stringify(initial.samplePath)},
   stencils: ${JSON.stringify(discovered.ui.stencils)},
+  toolbarButtons: ${JSON.stringify(discovered.ui.toolbarButtons ?? [])},
   treeViews: ${JSON.stringify(discovered.ui.treeViews.map((t) => ({ id: t.id, name: t.name })))},
   samples: ${JSON.stringify(samples.map((s) => ({ label: s.label, path: s.path })))},
   panels: [
@@ -656,15 +683,13 @@ ${simCardEntries.join(",\n")}
           void readJsonBody(req)
             .then(async (body) => {
               const method = typeof body["method"] === "string" ? body["method"] : "";
-              const code = typeof body["code"] === "string" ? body["code"] : "";
-              const documentUri = typeof body["documentUri"] === "string" ? body["documentUri"] : initial.documentUri;
-              const result = await dispatchPlaygroundLspRequest(
-                lspModulePath,
-                method,
-                body["params"],
-                code,
-                documentUri,
-              );
+              const code = typeof body["code"] === "string" ? body["code"] : undefined;
+              const documentUri = typeof body["documentUri"] === "string" ? body["documentUri"] : undefined;
+              const params =
+                body["params"] && typeof body["params"] === "object"
+                  ? (body["params"] as Record<string, unknown>)
+                  : undefined;
+              const result = await lspRuntime.handleRequest({ method, params, code, documentUri });
               res.setHeader("Content-Type", "application/json");
               res.end(JSON.stringify(result));
             })
@@ -683,9 +708,23 @@ ${simCardEntries.join(",\n")}
             [buildScript, "--force"],
             { cwd: discovered.packageDir, timeout: 60_000 },
             (err, stdout, stderr) => {
-              res.setHeader("Content-Type", "application/json");
-              const output = [stdout, stderr].filter(Boolean).join("\n").trim();
-              res.end(JSON.stringify({ ok: !err, output: output || (err ? err.message : "OK") }));
+              const finish = () => {
+                res.setHeader("Content-Type", "application/json");
+                const output = [stdout, stderr].filter(Boolean).join("\n").trim();
+                res.end(JSON.stringify({ ok: !err, output: output || (err ? err.message : "OK") }));
+              };
+              if (!err) {
+                loadWasmParserAndFacade(discovered)
+                  .then(({ parser, facade }) => {
+                    if (parser) {
+                      lspRuntime.setParser(discovered.language.id, parser, facade);
+                    }
+                  })
+                  .catch(() => {})
+                  .finally(finish);
+              } else {
+                finish();
+              }
             },
           );
           return;
@@ -759,23 +798,86 @@ export async function startLanguagePlayground(argv: string[] = process.argv.slic
     process.exit(1);
   }
 
+  if (cliArgs.morsel) {
+    const webPort = cliArgs.port === 5179 ? 5173 : cliArgs.port;
+    const url = `http://localhost:${webPort}/playground?lang=${encodeURIComponent(discovered.language.id)}&single=1`;
+    console.log(`\n  ModelScript Single-Language Morsel Mode`);
+    console.log(`  Language : ${discovered.language.displayName} (${discovered.language.id})`);
+    console.log(`  URL      : ${url}\n`);
+    const child = spawn(
+      "npm",
+      [
+        "run",
+        "dev",
+        "--workspace=@modelscript/web",
+        "--",
+        "--port",
+        String(webPort),
+        ...(cliArgs.open ? ["--open", `/playground?lang=${encodeURIComponent(discovered.language.id)}&single=1`] : []),
+      ],
+      { cwd: REPO_ROOT, stdio: "inherit" },
+    );
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      child.on("error", rejectPromise);
+      child.on("exit", (code) => {
+        if (code && code !== 0) process.exitCode = code;
+        resolvePromise();
+      });
+    });
+    return;
+  }
+
   const samples = discoverSampleFiles(langDir, discovered.language.fileExtensions);
   const initial = getInitialCode(discovered, samples, cliArgs.file);
   const lspModulePath = resolveLspModulePath(discovered.packageDir);
+  const lspRuntime = await createPlaygroundLspRuntime(discovered, lspModulePath);
   const reactPlugin = await tryLoadReactPlugin();
 
-  const plugins: PluginOption[] = [createPlaygroundPlugin(discovered, samples, initial, cliArgs, lspModulePath)];
+  const plugins: PluginOption[] = [
+    createPlaygroundPlugin(discovered, samples, initial, cliArgs, lspModulePath, lspRuntime),
+  ];
   if (reactPlugin) plugins.unshift(reactPlugin);
+
+  const baseLogger = createLogger("info", { prefix: "[playground]" });
+  const customLogger: typeof baseLogger = {
+    ...baseLogger,
+    warn(msg, options) {
+      if (msg.includes("cannot be analyzed by Vite") && msg.includes("/packages/")) return;
+      baseLogger.warn(msg, options);
+    },
+  };
 
   const server = await createServer({
     root: PLAYGROUND_ROOT,
+    cacheDir: path.join(REPO_ROOT, "node_modules", ".vite-playground"),
+    publicDir: path.join(REPO_ROOT, "apps", "web", "public"),
     configFile: false,
     clearScreen: false,
-    esbuild: {
-      jsx: "automatic",
-    },
+    customLogger,
     resolve: {
       alias: [
+        { find: /^react$/, replacement: path.join(REPO_ROOT, "node_modules", "react", "index.js") },
+        {
+          find: /^react\/jsx-runtime$/,
+          replacement: path.join(REPO_ROOT, "node_modules", "react", "jsx-runtime.js"),
+        },
+        {
+          find: /^react\/jsx-dev-runtime$/,
+          replacement: path.join(REPO_ROOT, "node_modules", "react", "jsx-dev-runtime.js"),
+        },
+        { find: /^react-dom$/, replacement: path.join(REPO_ROOT, "node_modules", "react-dom", "index.js") },
+        {
+          find: /^react-dom\/client$/,
+          replacement: path.join(REPO_ROOT, "node_modules", "react-dom", "client.js"),
+        },
+        ...(fs.existsSync(path.join(REPO_ROOT, "packages", "diagram", "node_modules", "@antv", "x6"))
+          ? [
+              {
+                find: /^@antv\/x6$/,
+                replacement: path.join(REPO_ROOT, "packages", "diagram", "node_modules", "@antv", "x6"),
+              },
+            ]
+          : []),
         {
           find: /^@modelscript\/design-tokens\/tokens-web\.css$/,
           replacement: path.join(REPO_ROOT, "packages", "design-tokens", "src", "tokens-web.css"),
@@ -787,6 +889,18 @@ export async function startLanguagePlayground(argv: string[] = process.argv.slic
         {
           find: /^@modelscript\/design-tokens$/,
           replacement: path.join(REPO_ROOT, "packages", "design-tokens", "src", "tokens.css"),
+        },
+        {
+          find: /^@modelscript\/editor$/,
+          replacement: path.join(REPO_ROOT, "packages", "editor", "src", "index.ts"),
+        },
+        {
+          find: /^@modelscript\/editor\/workbench\/(.+)$/,
+          replacement: path.join(REPO_ROOT, "packages", "editor", "src", "workbench", "$1"),
+        },
+        {
+          find: /^@modelscript\/editor\/(.+)$/,
+          replacement: path.join(REPO_ROOT, "packages", "editor", "src", "$1.ts"),
         },
         {
           find: /^@modelscript\/react\/panel$/,
@@ -801,7 +915,46 @@ export async function startLanguagePlayground(argv: string[] = process.argv.slic
           find: new RegExp(`^${escapeRegExp(discovered.packageName)}$`),
           replacement: path.join(discovered.packageDir, "src", "index.ts"),
         },
+        { find: /^node:url$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-url-shim.ts") },
+        { find: /^url$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-url-shim.ts") },
+        {
+          find: /^node:child_process$/,
+          replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts"),
+        },
+        { find: /^child_process$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        {
+          find: /^node:fs\/promises$/,
+          replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts"),
+        },
+        { find: /^fs\/promises$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^node:fs$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^fs$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^node:os$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^os$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^node:path$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^path$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        {
+          find: /^node:readline\/promises$/,
+          replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts"),
+        },
+        {
+          find: /^readline\/promises$/,
+          replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts"),
+        },
+        { find: /^node:readline$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^readline$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^node:zlib$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^zlib$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^node:crypto$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^crypto$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^node:net$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^net$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^node:events$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^events$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^node:module$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
+        { find: /^module$/, replacement: path.join(REPO_ROOT, "apps", "web", "src", "util", "node-shims.ts") },
       ],
+      dedupe: ["react", "react-dom", "styled-components", "@primer/react", "three"],
     },
     server: {
       host: cliArgs.host,
@@ -811,8 +964,49 @@ export async function startLanguagePlayground(argv: string[] = process.argv.slic
         allow: [REPO_ROOT],
       },
     },
+    define: {
+      "process.env": {},
+      "process.browser": true,
+      "process.versions": {},
+      __AVAILABLE_FILE_ICONS__: JSON.stringify({}),
+    },
     optimizeDeps: {
-      include: ["react", "react-dom", "react-dom/client"],
+      include: [
+        "react",
+        "react/jsx-runtime",
+        "react/jsx-dev-runtime",
+        "react-dom",
+        "react-dom/client",
+        "styled-components",
+        "monaco-editor",
+        "@monaco-editor/react",
+        "@primer/react",
+        "@primer/octicons-react",
+        "@antv/layout",
+        "@antv/x6",
+        "@react-three/drei",
+        "@react-three/fiber",
+        "three",
+        "pako",
+        "recharts",
+        "dompurify",
+        "fflate",
+        "lodash/debounce",
+        "papaparse",
+        "parse-data-url",
+        "react-dropzone",
+        "react-markdown",
+      ],
+      exclude: [
+        "@modelscript/runtime",
+        "@modelscript/dsl",
+        "@modelscript/lsp",
+        "@modelscript/diagram",
+        "@modelscript/simulate",
+        "@modelscript/cad",
+        "@modelscript/exchange",
+        discovered.packageName,
+      ],
     },
     plugins,
   });

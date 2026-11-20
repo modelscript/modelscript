@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getLsp } from "@modelscript/editor/workbench/util/lsp-worker";
 import type { WebGPUSimulationRunner } from "@modelscript/simulate";
 import { Label, Text } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Box from "../Box";
-import { getLsp } from "../morsel/util/lsp-worker";
 
 export interface ZeroCopyWebGPUViewerProps {
   // If runner is provided, run in main thread (for VS Code Webview fallback)

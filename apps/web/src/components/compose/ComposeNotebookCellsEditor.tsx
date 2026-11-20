@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getLanguageInfo, useVisibleMorselLanguages } from "@modelscript/editor/workbench/constants";
 import {
   AlertIcon,
   ArrowDownIcon,
@@ -21,7 +22,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useFeatureFlag } from "../../FeatureFlagContext";
 import type { NotebookCell } from "../../util/notebook";
 import ArtifactViewCard from "../artifacts/ArtifactViewCard";
-import { getLanguageInfo, useVisibleMorselLanguages } from "../morsel/constants";
 import {
   analyzeSnippetDiagnostics,
   formatLanguageFileHeader,

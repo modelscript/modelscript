@@ -68,6 +68,19 @@ export const modelicaLanguage = language({
   writeback: modelicaWriteback,
 
   ui: {
+    panels: [
+      {
+        id: "modelicaStudio",
+        viewType: "modelscript.modelicaStudio",
+        title: "Modelica Studio",
+        shortTitle: "Modelica",
+        selector: ["*.mo"],
+        priority: "option",
+        targets: ["vscode", "morsel", "artifact"],
+        entry: "./src/ui/ModelicaPanel.tsx",
+        artifactViewTypes: ["modelica", "mo"],
+      },
+    ],
     stencils: [
       {
         label: "Resistor",
@@ -115,6 +128,43 @@ export const modelicaLanguage = language({
         label: "3D Torus",
         className: "Modelica.Mechanics.MultiBody.Visualizers.Torus",
         snippet: "  Modelica.Mechanics.MultiBody.Visualizers.Torus torus_new(ri=0.5, ro=0.1, color={0, 180, 120});\n",
+      },
+    ],
+    toolbarButtons: [
+      {
+        id: "autoLayout",
+        label: "Auto-Layout Diagram",
+        tooltip: "Re-run automatic schematic layout on the current diagram",
+        icon: "flowchart",
+        views: ["diagram"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        command: "morsel:autoLayout",
+      },
+      {
+        id: "flatten",
+        label: "Flatten Model to DAE",
+        shortLabel: "Flatten",
+        tooltip: "Flatten the active Modelica class into its DAE equations",
+        icon: "stack",
+        views: ["code", "inspector"],
+        targets: ["morsel", "vscode"],
+        placement: "primary",
+        order: 20,
+        actionId: "flatten",
+        command: "morsel:flatten",
+      },
+      {
+        id: "runLints",
+        label: "Run Formal & Compiler Lints",
+        tooltip: "Run on-demand formal verification and CST compiler lints",
+        icon: "shield-check",
+        views: ["*"],
+        targets: ["morsel"],
+        placement: "overflow",
+        order: 30,
+        command: "morsel:runLints",
       },
     ],
   },

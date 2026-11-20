@@ -20,6 +20,8 @@ export * from "./catalog/fmu-dyr-linker.js";
 export * from "./catalog/wasm-dyr-loader.js";
 export * from "./compliance/nerc-auditor.js";
 export * from "./compliance/protection-auditor.js";
+export * from "./diagram-backend.js";
+export * from "./lsp-actions.js";
 export * from "./lsp.js";
 export * from "./netlist/collector-equivalencer.js";
 export * from "./netlist/node-breaker.js";

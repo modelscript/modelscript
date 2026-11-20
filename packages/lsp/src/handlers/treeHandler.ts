@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { loadPrebakedMslIcons } from "@modelscript/modelica/diagram";
 import type { TreeNodeInfo } from "@modelscript/runtime";
 import { LspContext } from "../lsp-context.js";
 import {
@@ -8,7 +9,6 @@ import {
   mountedLibraryMetadata,
   normalizeLibraryName,
 } from "../utils/hierarchy-utils.js";
-import { loadPrebakedMslIcons } from "../utils/msl-icons-loader.js";
 
 export interface ProjectTreeNodeInfo {
   id: string;
@@ -85,7 +85,7 @@ export function registerTreeHandlers(context: LspContext) {
         params.parentId?.startsWith("Modelica") ||
         !params.parentId
       ) {
-        await loadPrebakedMslIcons((globalThis as any).serverDistBase ?? params.uri);
+        await loadPrebakedMslIcons(iconCache, (globalThis as any).serverDistBase ?? params.uri);
       }
 
       const nodes = await getTreeChildrenFast(unifiedIndex, params.parentId, uw);
@@ -246,7 +246,7 @@ export function registerTreeHandlers(context: LspContext) {
       Boolean(uri) && (uri!.startsWith("sysml2:") || /\.(sysml|sysml2|kerml|owl|ttl|rdf|reqif|step|stp)$/i.test(uri!));
 
     if (!isNonModelicaUri && (cleanName.startsWith("Modelica.") || cleanName === "Modelica" || iconCache.size === 0)) {
-      await loadPrebakedMslIcons((globalThis as any).serverDistBase ?? uri);
+      await loadPrebakedMslIcons(iconCache, (globalThis as any).serverDistBase ?? uri);
       const afterMsl = getCachedClassIcon(cleanName) ?? getCachedClassIcon(className);
       if (afterMsl !== undefined) {
         return afterMsl || null;

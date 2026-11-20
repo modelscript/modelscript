@@ -1,5 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { extractStepGdtOverlay, type GdtOverlayPayload, type Verification3DOverlayPayload } from "@modelscript/cad";
+import type { CadComponent } from "@modelscript/editor/workbench/cad-viewer/CadViewer";
+import {
+  CadEdgeOverlay,
+  ensureGeometryBrushedUvs,
+  Gdt3dOverlay,
+  HeroStudioEnvironment,
+  resolveHeroAlloyConfig,
+  SplitSectionGeometryPasses,
+  StencilSectionCapQuad,
+} from "@modelscript/editor/workbench/cad-viewer/HeroCadMaterials";
+import { tessellateScadSource } from "@modelscript/editor/workbench/hooks/useMorselEngine";
+import { getCadComponents } from "@modelscript/editor/workbench/util/lsp-bridge";
 import { CheckIcon, CopyIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import { Html, useProgress } from "@react-three/drei";
@@ -14,18 +26,6 @@ import { useTheme } from "../../theme";
 import { buildEditorUrlForArtifact } from "../../util/editor-routing";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
-import type { CadComponent } from "../morsel/cad-viewer/CadViewer";
-import {
-  CadEdgeOverlay,
-  ensureGeometryBrushedUvs,
-  Gdt3dOverlay,
-  HeroStudioEnvironment,
-  resolveHeroAlloyConfig,
-  SplitSectionGeometryPasses,
-  StencilSectionCapQuad,
-} from "../morsel/cad-viewer/HeroCadMaterials";
-import { tessellateScadSource } from "../morsel/hooks/useMorselEngine";
-import { getCadComponents } from "../morsel/util/lsp-bridge";
 import Spinner from "../Spinner";
 import { useToast } from "../ToastContext";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";

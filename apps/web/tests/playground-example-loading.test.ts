@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { extractPrimaryModelicaClassName } from "../src/components/morsel/util/lsp-bridge.js";
+import { extractPrimaryModelicaClassName } from "../../../packages/editor/src/workbench/util/lsp-bridge.js";
 
 describe("Playground Example Loading & Diagram Synchronization", () => {
   it("extracts primary class name from Modelica models and library examples", () => {
@@ -27,7 +27,7 @@ end RLC;`;
   });
 
   it("verifies loadClass in Morsel.tsx updates selectedTreeClassName and propagates onCodeChange", () => {
-    const morselPath = path.resolve(import.meta.dirname, "../src/components/morsel/Morsel.tsx");
+    const morselPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Morsel.tsx");
     const content = fs.readFileSync(morselPath, "utf-8");
 
     // loadClass must extract the primary class name and set selectedTreeClassName
@@ -52,7 +52,7 @@ end RLC;`;
   });
 
   it("verifies Diagram.tsx always dispatches onRenderComplete in finally block", () => {
-    const diagramPath = path.resolve(import.meta.dirname, "../src/components/morsel/Diagram.tsx");
+    const diagramPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Diagram.tsx");
     const content = fs.readFileSync(diagramPath, "utf-8");
 
     assert.ok(
@@ -107,7 +107,7 @@ end RLC;`;
   });
 
   it("verifies Tree.tsx double-click loads simulation models while ignoring package/library container nodes", () => {
-    const treePath = path.resolve(import.meta.dirname, "../src/components/morsel/Tree.tsx");
+    const treePath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Tree.tsx");
     const content = fs.readFileSync(treePath, "utf-8");
 
     assert.ok(
@@ -123,8 +123,11 @@ end RLC;`;
   });
 
   it("verifies Morsel.tsx loadClass works even before Monaco mounts (Diagram view) and avoids false-positive dirty freezes", () => {
-    const morselPath = path.resolve(import.meta.dirname, "../src/components/morsel/Morsel.tsx");
-    const modalsPath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselModals.tsx");
+    const morselPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Morsel.tsx");
+    const modalsPath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselModals.tsx",
+    );
     const pagePath = path.resolve(import.meta.dirname, "../src/pages/PlaygroundPage.tsx");
     const morselContent = fs.readFileSync(morselPath, "utf-8");
     const modalsContent = fs.readFileSync(modalsPath, "utf-8");

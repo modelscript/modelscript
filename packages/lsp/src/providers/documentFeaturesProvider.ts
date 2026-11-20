@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { getPscadDocumentSymbols, getPscadFoldingRanges } from "@modelscript/pscad";
 import { Connection, DocumentHighlightKind, DocumentSymbol, FoldingRange, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
@@ -122,15 +121,21 @@ export function registerDocumentFeaturesProvider(
         return undefined;
       };
 
-      if (/\.(pscx|pslx|pswx|psmx)$/i.test(params.textDocument.uri)) {
+      const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
+      if (plugin?.customHandlers?.symbols) {
         const doc = getDoc(params.textDocument.uri);
         const text = doc ? doc.getText() : getDocumentTree(params.textDocument.uri)?.text;
         if (text) {
-          return sanitizeDocumentSymbols(getPscadDocumentSymbols(text));
+          const customSymbols = plugin.customHandlers.symbols(
+            getDocumentTree(params.textDocument.uri) ?? text,
+            text,
+            params.textDocument.uri,
+          );
+          if (Array.isArray(customSymbols) && customSymbols.length > 0) {
+            return sanitizeDocumentSymbols(customSymbols);
+          }
         }
       }
-
-      const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
       const isModelicaUri = !plugin || plugin.id === "modelica";
       const isSysmlUri = plugin?.id === "sysml2" || plugin?.id === "sysml";
       const isTargetParserReady = () => {
@@ -377,11 +382,13 @@ export function registerDocumentFeaturesProvider(
     const document = documents.get(uri);
     if (!document) return [];
 
-    if (/\.(pscx|pslx|pswx|psmx)$/i.test(uri)) {
-      return getPscadFoldingRanges(document.getText()) as InternalFoldingRange[];
-    }
-
     const plugin = globalLanguageRegistry.getPluginForUri(uri);
+    if (plugin?.customHandlers?.folding) {
+      const customFolding = plugin.customHandlers.folding(getDocumentTree(document.uri), document.getText(), uri);
+      if (Array.isArray(customFolding) && customFolding.length > 0) {
+        return customFolding as InternalFoldingRange[];
+      }
+    }
     const parser = plugin?.parser ?? (isParserReady() ? (validationService as any)?.parserService?.parser : undefined);
 
     const treeWrapper = getDocumentTree(document.uri);

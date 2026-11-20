@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  DslArtifactPanelWrapper,
+  hasArtifactLanguagePanel,
+} from "@modelscript/editor/workbench/util/LanguagePanelHost";
 import React, { Suspense } from "react";
 import styledImport from "styled-components";
 import Box from "../../Box";
-import { DslArtifactPanelWrapper, hasArtifactLanguagePanel } from "../../morsel/util/LanguagePanelHost";
 import Spinner from "../../Spinner";
 import LazyHeavyViewer from "../LazyHeavyViewer";
 import type { AnySpatialPin } from "../spatial-pin";

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { didChange, didOpen, simulate as simulateViaLsp } from "@modelscript/editor/workbench/util/lsp-bridge";
 import {
   ModelicaSurrogateEmitter,
   trainWamResidual,
@@ -21,7 +22,6 @@ import { Button, SegmentedControl, Text } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
 import Box from "../Box";
-import { didChange, didOpen, simulate as simulateViaLsp } from "../morsel/util/lsp-bridge";
 import MultibodyViewport3D, { type MultibodyLink3D, type MultibodyNode3D } from "./MultibodyViewport3D";
 import type { WamWorkerResponse } from "./wam/wamLab.worker";
 import {

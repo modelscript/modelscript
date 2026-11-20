@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  dispatchEditorToolbarAction,
+  getActiveToolbarContext,
+  getEditorLanguageUi,
+  resolveLanguageToolbarButtons,
+} from "@modelscript/editor";
+import { resolveToolbarIcon } from "@modelscript/editor/workbench/panels/LanguageToolbarButtons";
+import {
   BellIcon,
   BookIcon,
   BookmarkIcon,
@@ -617,8 +624,31 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       location.pathname.startsWith("/morsel") ||
       location.pathname.startsWith("/render-artifact");
 
+    const activeToolbarCtx = getActiveToolbarContext();
+    const languageToolbarItems: CommandItem[] = activeToolbarCtx
+      ? resolveLanguageToolbarButtons(
+          getEditorLanguageUi().toolbarButtons[activeToolbarCtx.languageId],
+          activeToolbarCtx.view,
+          { target: "morsel" },
+        ).all.map((btn) => {
+          const IconComp = resolveToolbarIcon(btn.icon);
+          return {
+            id: `action-lang-toolbar-${activeToolbarCtx.languageId}-${btn.id}`,
+            category: "Actions" as const,
+            title: btn.shortcut ? `${btn.label} (${btn.shortcut})` : btn.label,
+            subtitle: btn.tooltip || `${activeToolbarCtx.languageId} • ${activeToolbarCtx.view} view`,
+            icon: <IconComp size={16} />,
+            action: () => {
+              onClose();
+              dispatchEditorToolbarAction(btn, activeToolbarCtx);
+            },
+          };
+        })
+      : [];
+
     const engineeringActionItems: CommandItem[] = isEngineeringRoute
       ? [
+          ...languageToolbarItems,
           {
             id: "action-eng-simulate",
             category: "Actions",

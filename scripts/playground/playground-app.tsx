@@ -1,13 +1,71 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { PanelBltView, type BltAnalysisData } from "@modelscript/design-tokens/panel";
+import { createHttpLspTransport, EditorHostProvider, registerEditorLanguageUi } from "@modelscript/editor";
 import type {
   LanguagePanelHost,
   LanguagePanelMode,
   LanguagePanelNotifyLevel,
   LanguagePanelProps,
 } from "@modelscript/react";
-import React, { Component, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  CodeIcon,
+  ColumnsIcon,
+  DownloadIcon,
+  GraphIcon,
+  MoonIcon,
+  PlayIcon,
+  StackIcon,
+  SunIcon,
+  TableIcon,
+  WorkflowIcon,
+} from "@primer/octicons-react";
+import { BaseStyles, Button, IconButton, SegmentedControl, ThemeProvider } from "@primer/react";
+import React, { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PLAYGROUND_LANG, type PlaygroundPanelEntry } from "virtual:modelscript-playground-lang";
+import {
+  EditorArea,
+  NavCenter,
+  NavDivider,
+  NavLeft,
+  NavRight,
+  PlaygroundContainer,
+  PlaygroundNavbar,
+  SplitToggleButton,
+} from "../../apps/web/src/pages/playground/styles.ts";
+import { MonacoPlaygroundEditor } from "./monaco-playground-editor.tsx";
+
+const LazyMorselEditor = lazy(() => import("@modelscript/editor/workbench/Morsel"));
+
+// Register this single language's UI panels, stencils, and toolbar buttons into @modelscript/editor
+{
+  const firstPanel = PLAYGROUND_LANG.panels[0];
+  registerEditorLanguageUi({
+    ...(firstPanel
+      ? {
+          morselPanels: {
+            [PLAYGROUND_LANG.id]: async () => ({ default: firstPanel.Component }),
+          },
+          artifactPanels: Object.fromEntries(
+            PLAYGROUND_LANG.panels.map((p) => [p.viewType, async () => ({ default: p.Component })]),
+          ),
+        }
+      : {}),
+    simulationCards: PLAYGROUND_LANG.simulationCards.map((c) => ({
+      id: c.id,
+      languageId: PLAYGROUND_LANG.id,
+      title: c.title,
+      standards: c.standards,
+      load: async () => ({ default: c.Component as unknown as React.ComponentType<any> }),
+    })),
+    stencils: {
+      [PLAYGROUND_LANG.id]: PLAYGROUND_LANG.stencils,
+    },
+    toolbarButtons: {
+      [PLAYGROUND_LANG.id]: PLAYGROUND_LANG.toolbarButtons ?? [],
+    },
+  });
+}
 
 interface HostEventEntry {
   id: number;
@@ -33,6 +91,8 @@ interface CstParseSummary {
 interface PlaygroundDiagnostic {
   line: number;
   character: number;
+  endLine?: number;
+  endCharacter?: number;
   severity: number;
   code?: string | number;
   message: string;
@@ -56,10 +116,15 @@ class PanelErrorBoundary extends Component<{ panelId: string; children: React.Re
 
   override render(): React.ReactNode {
     if (this.state.error) {
+      const errMsg = this.state.error.message || String(this.state.error);
+      const errStack = this.state.error.stack ?? "";
+      const details = errStack.includes(errMsg) ? errStack : `${errMsg}\n\n${errStack}`.trim();
       return (
-        <div className="pg-empty">
+        <div className="pg-empty" style={{ maxWidth: 960, margin: "24px auto", textAlign: "left" }}>
           <h3>Panel Render Error ({this.props.panelId})</h3>
-          <pre>{this.state.error.stack || this.state.error.message}</pre>
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: "60vh", overflow: "auto" }}>
+            {details}
+          </pre>
           <button className="pg-btn" onClick={() => this.setState({ error: null })}>
             Retry Render
           </button>
@@ -172,7 +237,7 @@ export const PlaygroundApp: React.FC = () => {
       (PLAYGROUND_LANG.simulationCards.length > 0 ? "__sim_cards__" : ""),
   );
   const [drawerTab, setDrawerTab] = useState<"cst" | "diagnostics" | "events">("cst");
-  const [highlightedLine, setHighlightedLine] = useState<number | null>(null);
+  const [revealRequest, setRevealRequest] = useState<{ line: number; nonce: number } | null>(null);
   const [events, setEvents] = useState<HostEventEntry[]>([]);
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const [diagnostics, setDiagnostics] = useState<PlaygroundDiagnostic[]>([]);
@@ -184,8 +249,6 @@ export const PlaygroundApp: React.FC = () => {
   });
 
   const parserRef = useRef<{ parse: (input: string) => { rootNode: unknown } } | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const gutterRef = useRef<HTMLDivElement | null>(null);
   const eventIdRef = useRef(1);
   const codeRef = useRef(code);
   const documentUriRef = useRef(documentUri);
@@ -194,8 +257,9 @@ export const PlaygroundApp: React.FC = () => {
 
   useEffect(() => {
     document.documentElement.dataset["theme"] = colorMode;
+    document.documentElement.setAttribute("data-color-mode", colorMode);
     document.documentElement.dataset["tokens"] = tokenPreset;
-    document.title = `${PLAYGROUND_LANG.displayName} — ModelScript Playground`;
+    document.title = `${PLAYGROUND_LANG.displayName} — Ansatz`;
   }, [colorMode, tokenPreset]);
 
   const handleModeChange = (nextMode: LanguagePanelMode) => {
@@ -220,19 +284,83 @@ export const PlaygroundApp: React.FC = () => {
   const revealLineInEditor = useCallback(
     (line: number, identifier?: string) => {
       setActiveFile("__main__");
-      setHighlightedLine(line);
+      setRevealRequest({ line, nonce: eventIdRef.current++ });
       pushEvent("onRevealLine", `line ${line}${identifier ? ` (${identifier})` : ""}`);
-      if (textareaRef.current) {
-        const lineHeight = 19;
-        const targetScroll = Math.max(0, (line - 4) * lineHeight);
-        textareaRef.current.scrollTop = targetScroll;
-        if (gutterRef.current) gutterRef.current.scrollTop = targetScroll;
-        textareaRef.current.focus();
-      }
-      window.setTimeout(() => setHighlightedLine((cur) => (cur === line ? null : cur)), 2000);
     },
     [pushEvent],
   );
+
+  const [shellMode, setShellMode] = useState<"studio" | "morsel">(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("shell") === "studio"
+      ? "studio"
+      : "morsel",
+  );
+  const [morselView, setMorselView] = useState<"diagram" | "simulation" | "3d" | "inspector" | "code">("diagram");
+  const [morselSplit, setMorselSplit] = useState<boolean>(true);
+  const [sidebarLayout, setSidebarLayout] = useState<{ visible: boolean; width: number }>({
+    visible: true,
+    width: 300,
+  });
+  const [simulateTriggerCount, setSimulateTriggerCount] = useState<number>(0);
+  const [isSimulating, setIsSimulating] = useState<boolean>(false);
+  const httpLspTransport = useMemo(() => createHttpLspTransport("/__playground/lsp"), []);
+  const morselHostConfig = useMemo(
+    () => ({
+      theme: colorMode,
+      toggleTheme: () => setColorMode((c) => (c === "dark" ? "light" : "dark")),
+      lspTransport: httpLspTransport,
+      singleLanguageId: PLAYGROUND_LANG.id,
+      notify: (msg: string, level?: "info" | "success" | "warning" | "error") => {
+        pushToast(level === "error" ? "error" : level === "warning" ? "warning" : "info", msg);
+      },
+    }),
+    [colorMode, httpLspTransport, pushToast],
+  );
+
+  const [bltState, setBltState] = useState<{ supported: boolean; data: BltAnalysisData | null }>({
+    supported: false,
+    data: null,
+  });
+
+  const sendEditorLspRequest = useCallback(
+    async (method: string, params?: Record<string, unknown>): Promise<unknown> => {
+      try {
+        const resp = await fetch("/__playground/lsp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            method,
+            params,
+            code: codeRef.current,
+            documentUri: documentUriRef.current,
+          }),
+        });
+        if (!resp.ok) return null;
+        const data = (await resp.json()) as { handled?: boolean; result?: unknown };
+        return data.handled ? data.result : null;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      const res = (await sendEditorLspRequest("modelscript/analyzeBlt")) as {
+        supported?: boolean;
+        data?: BltAnalysisData | null;
+      } | null;
+      if (!cancelled && res) {
+        setBltState({ supported: Boolean(res.supported), data: res.data ?? null });
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [code, documentUri, sendEditorLspRequest]);
 
   // Load WASM parser when available
   useEffect(() => {
@@ -312,9 +440,8 @@ export const PlaygroundApp: React.FC = () => {
     return () => window.clearTimeout(handle);
   }, [code, cstSummary.status === "ready", parserVersion]);
 
-  // Live single-language LSP diagnostics when src/lsp.ts exists
+  // Live single-language @modelscript/lsp/core diagnostics (WASM CST + src/lsp.ts)
   useEffect(() => {
-    if (!PLAYGROUND_LANG.hasLsp) return;
     let cancelled = false;
     const handle = window.setTimeout(async () => {
       try {
@@ -331,10 +458,18 @@ export const PlaygroundApp: React.FC = () => {
         const data = (await resp.json()) as { handled?: boolean; result?: unknown };
         if (cancelled || !data.handled || !Array.isArray(data.result)) return;
         const normalized: PlaygroundDiagnostic[] = data.result.map((d: Record<string, unknown>) => {
-          const range = d["range"] as { start?: { line?: number; character?: number } } | undefined;
+          const range = d["range"] as
+            | { start?: { line?: number; character?: number }; end?: { line?: number; character?: number } }
+            | undefined;
+          const startLine = (range?.start?.line ?? (typeof d["line"] === "number" ? d["line"] - 1 : 0)) + 1;
+          const startChar = (range?.start?.character ?? 0) + 1;
+          const endLine = (range?.end?.line ?? startLine - 1) + 1;
+          const endChar = (range?.end?.character ?? startChar) + 1;
           return {
-            line: (range?.start?.line ?? (typeof d["line"] === "number" ? d["line"] - 1 : 0)) + 1,
-            character: (range?.start?.character ?? 0) + 1,
+            line: startLine,
+            character: startChar,
+            endLine,
+            endCharacter: endChar,
             severity: typeof d["severity"] === "number" ? d["severity"] : 2,
             ...(typeof d["code"] === "string" || typeof d["code"] === "number" ? { code: d["code"] } : {}),
             message: typeof d["message"] === "string" ? d["message"] : String(d["message"] ?? ""),
@@ -344,7 +479,7 @@ export const PlaygroundApp: React.FC = () => {
       } catch {
         // Ignore transient dev server errors
       }
-    }, 250);
+    }, 200);
     return () => {
       cancelled = true;
       window.clearTimeout(handle);
@@ -470,7 +605,6 @@ export const PlaygroundApp: React.FC = () => {
     }
   };
 
-  const lineCount = useMemo(() => activeText.split("\n").length, [activeText]);
   const isSimCardsTab = activePanelId === "__sim_cards__";
   const activePanel: PlaygroundPanelEntry | undefined = isSimCardsTab
     ? undefined
@@ -512,6 +646,223 @@ export const PlaygroundApp: React.FC = () => {
     host,
   };
 
+  if (shellMode === "morsel") {
+    const morselFiles: Record<string, string> = {
+      [documentUri]: code,
+      ...projectFiles,
+    };
+    const morselActiveFile = activeFile === "__main__" ? documentUri : activeFile;
+    const extLabel = PLAYGROUND_LANG.fileExtensions[0] ?? `.${PLAYGROUND_LANG.id}`;
+    const viewOrder: Array<"diagram" | "simulation" | "3d" | "inspector" | "code"> = [
+      "diagram",
+      "simulation",
+      "3d",
+      "inspector",
+      "code",
+    ];
+    return (
+      <PanelErrorBoundary panelId="morsel-workbench">
+        <ThemeProvider colorMode={colorMode === "dark" ? "night" : "day"}>
+          <BaseStyles
+            style={{
+              backgroundColor: "transparent",
+              fontFamily: "var(--ms-font-sans)",
+              color: "var(--ms-text-1)",
+              minHeight: "100vh",
+            }}
+          >
+            <div id="portal-root" />
+            <EditorHostProvider host={morselHostConfig}>
+              <PlaygroundContainer>
+                <PlaygroundNavbar style={{ left: sidebarLayout.visible ? sidebarLayout.width + 24 : 12, right: 12 }}>
+                  <NavLeft>
+                    <img
+                      src={colorMode === "dark" ? "/brand-dark.png" : "/brand.png"}
+                      alt="Ansatz"
+                      height={22}
+                      style={{ height: 22, width: "auto", flexShrink: 0, display: "block" }}
+                    />
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                        height: 26,
+                        padding: "0 9px",
+                        borderRadius: 999,
+                        border: "1px solid var(--ms-border)",
+                        background: "var(--ms-bg-soft)",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "var(--ms-text-1)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {PLAYGROUND_LANG.displayName}
+                      <span style={{ opacity: 0.65, fontWeight: 500, fontFamily: "var(--ms-font-mono)" }}>
+                        {extLabel}
+                      </span>
+                    </span>
+                    {PLAYGROUND_LANG.samples.length > 0 && (
+                      <select
+                        value={selectedSample}
+                        onChange={(e) => void handleLoadSample(e.target.value)}
+                        title="Open sample file"
+                        style={{
+                          height: 28,
+                          maxWidth: 210,
+                          padding: "0 8px",
+                          borderRadius: 8,
+                          border: "1px solid var(--ms-border)",
+                          background: "var(--ms-bg)",
+                          color: "var(--ms-text-1)",
+                          fontSize: 12,
+                          outline: "none",
+                        }}
+                      >
+                        <option value="">Samples ({PLAYGROUND_LANG.samples.length})…</option>
+                        {PLAYGROUND_LANG.samples.map((s) => (
+                          <option key={s.path} value={s.path}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </NavLeft>
+
+                  <NavCenter>
+                    <SegmentedControl
+                      aria-label="Editor view"
+                      size="small"
+                      onChange={(idx) => {
+                        const next = viewOrder[idx];
+                        if (next) setMorselView(next);
+                      }}
+                    >
+                      <SegmentedControl.Button selected={morselView === "diagram"} leadingIcon={WorkflowIcon}>
+                        Diagram
+                      </SegmentedControl.Button>
+                      <SegmentedControl.Button selected={morselView === "simulation"} leadingIcon={GraphIcon}>
+                        Simulation
+                      </SegmentedControl.Button>
+                      <SegmentedControl.Button selected={morselView === "3d"} leadingIcon={StackIcon}>
+                        3D
+                      </SegmentedControl.Button>
+                      <SegmentedControl.Button selected={morselView === "inspector"} leadingIcon={TableIcon}>
+                        Inspector
+                      </SegmentedControl.Button>
+                      <SegmentedControl.Button selected={morselView === "code"} leadingIcon={CodeIcon}>
+                        Code
+                      </SegmentedControl.Button>
+                    </SegmentedControl>
+                    {morselView !== "code" && (
+                      <>
+                        <NavDivider />
+                        <SplitToggleButton
+                          type="button"
+                          $active={morselSplit}
+                          onClick={() => setMorselSplit((s) => !s)}
+                          title={morselSplit ? "Close split code view" : "Open split code view"}
+                          aria-label={morselSplit ? "Close split code view" : "Open split code view"}
+                        >
+                          <ColumnsIcon size={14} />
+                          <span>Split</span>
+                        </SplitToggleButton>
+                      </>
+                    )}
+                  </NavCenter>
+
+                  <NavRight>
+                    <Button
+                      variant="primary"
+                      size="small"
+                      leadingVisual={PlayIcon}
+                      disabled={isSimulating}
+                      onClick={() => setSimulateTriggerCount((c) => c + 1)}
+                    >
+                      {isSimulating ? "Running…" : "Simulate"}
+                    </Button>
+                    <IconButton
+                      icon={DownloadIcon}
+                      aria-label="Download active file"
+                      size="small"
+                      variant="invisible"
+                      onClick={() => triggerDownload(morselActiveFile, morselFiles[morselActiveFile] ?? code)}
+                    />
+                    <IconButton
+                      icon={colorMode === "dark" ? SunIcon : MoonIcon}
+                      aria-label={colorMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                      size="small"
+                      variant="invisible"
+                      onClick={() => setColorMode((c) => (c === "dark" ? "light" : "dark"))}
+                    />
+                  </NavRight>
+                </PlaygroundNavbar>
+
+                <EditorArea>
+                  <Suspense fallback={<div className="pg-empty">Loading Ansatz Editor…</div>}>
+                    <LazyMorselEditor
+                      dataUrl={null}
+                      initialCode={code}
+                      initialDialect={PLAYGROUND_LANG.id as never}
+                      initialView={morselView}
+                      isSplit={morselSplit && morselView !== "code"}
+                      canSplit={true}
+                      embed={false}
+                      hideFloatingDock={true}
+                      hideCenterFloatingToolbar={true}
+                      sidebarFullHeight={true}
+                      onSidebarLayoutChange={setSidebarLayout}
+                      simulateTriggerCount={simulateTriggerCount}
+                      projectFiles={morselFiles}
+                      activeFileName={morselActiveFile}
+                      onViewChange={(nextView) => {
+                        if (nextView === "split") {
+                          setMorselSplit(true);
+                        } else {
+                          setMorselView(nextView);
+                        }
+                      }}
+                      onToggleSplit={() => setMorselSplit((s) => !s)}
+                      onSimulationStatus={(status: { status?: string } | string | null | undefined) => {
+                        const s = typeof status === "string" ? status : status?.status;
+                        setIsSimulating(s === "pending" || s === "processing");
+                      }}
+                      onSelectProjectFile={(fileName: string) => {
+                        setActiveFile(fileName === documentUri ? "__main__" : fileName);
+                      }}
+                      onAddProjectFile={(fileName: string, initialContent = "") => {
+                        setProjectFiles((prev) => ({ ...prev, [fileName]: initialContent }));
+                        setActiveFile(fileName);
+                      }}
+                      onRemoveProjectFile={(fileName: string) => {
+                        if (fileName === documentUri) return;
+                        setProjectFiles((prev) =>
+                          Object.fromEntries(Object.entries(prev).filter(([key]) => key !== fileName)),
+                        );
+                        if (activeFile === fileName) setActiveFile("__main__");
+                      }}
+                      onUpdateProjectFile={(fileName: string, nextContent: string) => {
+                        if (fileName === documentUri) {
+                          setCode(nextContent);
+                        } else {
+                          setProjectFiles((prev) => ({ ...prev, [fileName]: nextContent }));
+                        }
+                      }}
+                      onCodeChange={(next: string) => {
+                        if (typeof next === "string") setCode(next);
+                      }}
+                    />
+                  </Suspense>
+                </EditorArea>
+              </PlaygroundContainer>
+            </EditorHostProvider>
+          </BaseStyles>
+        </ThemeProvider>
+      </PanelErrorBoundary>
+    );
+  }
+
   return (
     <div className="pg-root">
       <header className="pg-topbar">
@@ -549,6 +900,20 @@ export const PlaygroundApp: React.FC = () => {
         </div>
 
         <div className="pg-spacer" />
+
+        <div
+          className="pg-segmented"
+          role="group"
+          aria-label="Playground shell"
+          title="Switch between lightweight Dev Studio and standalone Ansatz Editor"
+        >
+          <button data-active={true} onClick={() => setShellMode("studio")}>
+            Dev Studio
+          </button>
+          <button data-active={false} onClick={() => setShellMode("morsel")}>
+            Ansatz Editor
+          </button>
+        </div>
 
         <div className="pg-segmented" role="group" aria-label="Host mode">
           {(["workbench", "inspector", "artifact"] as const).map((m) => (
@@ -629,30 +994,17 @@ export const PlaygroundApp: React.FC = () => {
           )}
 
           <div className="pg-editor-wrap">
-            <div className="pg-gutter" ref={gutterRef}>
-              {Array.from({ length: lineCount }, (_, idx) => {
-                const lineNum = idx + 1;
-                return (
-                  <div
-                    key={lineNum}
-                    className="pg-gutter-line"
-                    data-highlighted={activeFile === "__main__" && highlightedLine === lineNum}
-                  >
-                    {lineNum}
-                  </div>
-                );
-              })}
-            </div>
-            <textarea
-              ref={textareaRef}
-              className="pg-textarea"
-              spellCheck={false}
+            <MonacoPlaygroundEditor
+              languageId={PLAYGROUND_LANG.id}
+              fileExtensions={PLAYGROUND_LANG.fileExtensions}
               value={activeText}
-              onChange={(e) => setActiveText(e.target.value)}
-              onScroll={(e) => {
-                if (gutterRef.current) gutterRef.current.scrollTop = e.currentTarget.scrollTop;
-              }}
-              placeholder={`Enter ${PLAYGROUND_LANG.displayName} source code…`}
+              documentUri={activeFile === "__main__" ? documentUri : activeFile}
+              colorMode={colorMode}
+              highlight={PLAYGROUND_LANG.highlight}
+              diagnostics={activeFile === "__main__" ? diagnostics : []}
+              revealRequest={activeFile === "__main__" ? revealRequest : null}
+              onChange={setActiveText}
+              lspRequest={sendEditorLspRequest}
             />
           </div>
 
@@ -664,15 +1016,13 @@ export const PlaygroundApp: React.FC = () => {
                   ? `(${cstSummary.parseMs.toFixed(1)}ms${cstSummary.errorCount ? `, ${cstSummary.errorCount} err` : ""})`
                   : ""}
               </button>
-              {PLAYGROUND_LANG.hasLsp && (
-                <button
-                  className="pg-tab"
-                  data-active={drawerTab === "diagnostics"}
-                  onClick={() => setDrawerTab("diagnostics")}
-                >
-                  Diagnostics ({diagnostics.length})
-                </button>
-              )}
+              <button
+                className="pg-tab"
+                data-active={drawerTab === "diagnostics"}
+                onClick={() => setDrawerTab("diagnostics")}
+              >
+                Diagnostics ({diagnostics.length})
+              </button>
               <button className="pg-tab" data-active={drawerTab === "events"} onClick={() => setDrawerTab("events")}>
                 Host Events ({events.length})
               </button>
@@ -744,23 +1094,37 @@ export const PlaygroundApp: React.FC = () => {
               <button
                 key={panel.id}
                 className="pg-tab"
-                data-active={!isSimCardsTab && activePanel?.id === panel.id}
+                data-active={
+                  activePanelId !== "__sim_cards__" && activePanelId !== "__blt__" && activePanel?.id === panel.id
+                }
                 onClick={() => setActivePanelId(panel.id)}
                 title={`Targets: ${panel.targets.join(", ")} | ViewType: ${panel.viewType}`}
               >
                 {panel.shortTitle || panel.title}
               </button>
             ))}
+            {bltState.supported && (
+              <button
+                className="pg-tab"
+                data-active={activePanelId === "__blt__"}
+                onClick={() => setActivePanelId("__blt__")}
+                title="Shared Polyglot BLT Incidence & Block Ordering"
+              >
+                BLT
+              </button>
+            )}
             {PLAYGROUND_LANG.simulationCards.length > 0 && (
               <button className="pg-tab" data-active={isSimCardsTab} onClick={() => setActivePanelId("__sim_cards__")}>
                 Sim Cards ({PLAYGROUND_LANG.simulationCards.length})
               </button>
             )}
-            {PLAYGROUND_LANG.panels.length === 0 && PLAYGROUND_LANG.simulationCards.length === 0 && (
-              <span className="pg-tab" data-active="true">
-                UI Panel
-              </span>
-            )}
+            {PLAYGROUND_LANG.panels.length === 0 &&
+              !bltState.supported &&
+              PLAYGROUND_LANG.simulationCards.length === 0 && (
+                <span className="pg-tab" data-active="true">
+                  UI Panel
+                </span>
+              )}
             {PLAYGROUND_LANG.treeViews.length > 0 && (
               <span
                 className="pg-pill"
@@ -773,7 +1137,9 @@ export const PlaygroundApp: React.FC = () => {
           </div>
 
           <div className="pg-panel-host">
-            {isSimCardsTab ? (
+            {activePanelId === "__blt__" && bltState.supported ? (
+              <PanelBltView data={bltState.data} onRevealLine={revealLineInEditor} />
+            ) : isSimCardsTab ? (
               <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 14 }}>
                 <details>
                   <summary style={{ cursor: "pointer", fontWeight: 600, color: "var(--ms-text-2)" }}>

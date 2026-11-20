@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getLanguageInfo } from "@modelscript/editor/workbench/constants";
+import MorselEditor from "@modelscript/editor/workbench/Morsel";
+import { decompressMorselPayload, resolveMorselShortlink } from "@modelscript/editor/workbench/util/permalink";
 import { LinkExternalIcon } from "@primer/octicons-react";
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import styled from "styled-components";
 import { getArtifactView } from "../api";
-import { getLanguageInfo } from "../components/morsel/constants";
-import MorselEditor from "../components/morsel/Morsel";
-import { decompressMorselPayload, resolveMorselShortlink } from "../components/morsel/util/permalink";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import {
   buildEditorUrlForArtifact,
@@ -489,6 +489,8 @@ export const EmbedPlaygroundPage: React.FC = () => {
   const isMac = typeof navigator !== "undefined" && navigator.platform.toUpperCase().indexOf("MAC") >= 0;
   const searchParams = new URLSearchParams(location.search);
   const showRibbon = searchParams.get("controls") !== "none";
+  const singleLangLocked =
+    searchParams.get("single") === "1" || searchParams.get("single") === "true" || searchParams.get("lockLang") === "1";
   const resolvedDialect =
     payload?.lang ||
     searchParams.get("lang") ||
@@ -496,25 +498,33 @@ export const EmbedPlaygroundPage: React.FC = () => {
     searchParams.get("language") ||
     undefined;
 
+  const editorNode = (
+    <MorselEditor
+      dataUrl={null}
+      initialCode={currentCode}
+      projectFiles={payload?.files}
+      activeFileName={payload?.activeFile}
+      embed={true}
+      showParameterRibbon={showRibbon}
+      initialDialect={resolvedDialect as any}
+      initialView={payload?.view || (searchParams.get("view") as any) || "diagram"}
+      initialAnchor={payload?.anchor}
+      simulateTriggerCount={simulateTriggerCount}
+      externalParams={externalParams ?? payload?.params}
+      onCodeChange={handleCodeChange}
+      onUpdateProjectFile={handleUpdateProjectFile}
+      onAnchorClick={handleAnchorClick}
+      onSimulationStatus={handleSimulationStatus}
+    />
+  );
+
   return (
-    <EmbedContainer ref={containerRef} onWheel={handleWheel}>
-      <MorselEditor
-        dataUrl={null}
-        initialCode={currentCode}
-        projectFiles={payload?.files}
-        activeFileName={payload?.activeFile}
-        embed={true}
-        showParameterRibbon={showRibbon}
-        initialDialect={resolvedDialect as any}
-        initialView={payload?.view || (searchParams.get("view") as any) || "diagram"}
-        initialAnchor={payload?.anchor}
-        simulateTriggerCount={simulateTriggerCount}
-        externalParams={externalParams ?? payload?.params}
-        onCodeChange={handleCodeChange}
-        onUpdateProjectFile={handleUpdateProjectFile}
-        onAnchorClick={handleAnchorClick}
-        onSimulationStatus={handleSimulationStatus}
-      />
+    <EmbedContainer
+      ref={containerRef}
+      onWheel={handleWheel}
+      data-single-lang={singleLangLocked ? resolvedDialect : undefined}
+    >
+      {editorNode}
       <ScrollHintBadge $visible={showScrollHint}>{isMac ? "Hold ⌘ to zoom" : "Hold Ctrl to zoom"}</ScrollHintBadge>
       <WatermarkPill
         href={targetInfo.url}

@@ -9,7 +9,7 @@ import { describe, it } from "node:test";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { computeModelicaComponentDropEdits } from "../src/cross-language-drop.js";
 import { GenericDSLDiagramBackend } from "../src/diagramApi.js";
-import { createSimulinkDiagramBackend } from "../src/diagrams/simulink-backend.js";
+import { createSimulinkDiagramBackend } from "../src/diagrams/index.js";
 import { registerPolyglotEndpoints } from "../src/handlers/polyglotEndpoints.js";
 import { registerBuiltinLanguagePlugins } from "../src/registry/builtin-plugins.js";
 import { globalLanguageRegistry } from "../src/registry/LanguageRegistry.js";

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { getPscadHover } from "@modelscript/pscad";
 import { getSymbolDomain, LanguageDomainId } from "@modelscript/runtime";
-import { scanStepEntities, STEP_SCHEMA } from "@modelscript/step";
 import { Connection, Hover, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { resolveFeatureFlags, type LspContext } from "../lsp-context.js";
@@ -12,36 +10,9 @@ import {
   extractQualifiedTokenAtOffset,
   extractWordAtOffset,
   hasBiomedicalContext,
-  isDigitCode,
   stripNamespacePrefix,
   uriBasename,
 } from "../utils/lexical-utils.js";
-
-function isUpperAsciiOrDigitOrUnderscore(code: number): boolean {
-  return (code >= 65 && code <= 90) || isDigitCode(code) || code === 95;
-}
-
-function isStepEntityIdToken(token: string): boolean {
-  if (!token.startsWith("#") || token.length < 2) return false;
-  for (let i = 1; i < token.length; i++) {
-    if (!isDigitCode(token.charCodeAt(i))) return false;
-  }
-  return true;
-}
-
-function isUpperStepTypeToken(token: string): boolean {
-  if (!token) return false;
-  const c0 = token.charCodeAt(0);
-  if (c0 < 65 || c0 > 90) return false;
-  for (let i = 1; i < token.length; i++) {
-    if (!isUpperAsciiOrDigitOrUnderscore(token.charCodeAt(i))) return false;
-  }
-  return true;
-}
-
-function isStepDocument(document: TextDocument): boolean {
-  return document.languageId === "step" || /\.(step|stp|p21)$/i.test(document.uri);
-}
 
 function getDomainName(domainId: number, resourceId?: string): string {
   switch (domainId) {
@@ -353,75 +324,6 @@ export function registerHoverProvider(
     const text = document.getText();
     const offset = document.offsetAt(params.position);
 
-    // ── STEP-specific hover (does NOT require an LSPBridge) ────────────
-    if (isStepDocument(document)) {
-      // Expand token boundaries to include # for entity IDs and uppercase for type names
-      let start = offset;
-      while (start > 0 && (isUpperAsciiOrDigitOrUnderscore(text.charCodeAt(start - 1)) || text[start - 1] === "#")) {
-        start--;
-      }
-      let end = offset;
-      while (end < text.length && isUpperAsciiOrDigitOrUnderscore(text.charCodeAt(end))) {
-        end++;
-      }
-
-      const token = text.slice(start, end);
-
-      // Hover over entity ID reference (#123) → show its definition line
-      if (isStepEntityIdToken(token)) {
-        const entity = scanStepEntities(text).find((e) => e.id === token);
-        if (entity) {
-          let stepHover = ["```step", text.slice(entity.startOffset, entity.endOffset).trim(), "```"].join("\n");
-          stepHover = enhanceWithDigitalThreadTwin(
-            stepHover,
-            token,
-            text,
-            offset,
-            document.uri,
-            undefined,
-            validationService,
-          );
-          return {
-            contents: {
-              kind: "markdown" as const,
-              value: stepHover,
-            },
-            range: {
-              start: document.positionAt(start),
-              end: document.positionAt(end),
-            },
-          };
-        }
-        return null; // It's an entity ref but not found — don't fall through to bridge
-      }
-
-      // Hover over STEP entity type name (e.g. ORIENTED_EDGE) → show schema info
-      if (isUpperStepTypeToken(token)) {
-        const schema = STEP_SCHEMA[token];
-        if (schema) {
-          return {
-            contents: {
-              kind: "markdown" as const,
-              value: [
-                `**${token}**`,
-                "",
-                schema.description,
-                "",
-                "**Parameters:**",
-                ...schema.parameters.map((p: any, i: number) => `${i + 1}. \`${p.name}\` — \`${p.type}\``),
-              ].join("\n"),
-            },
-            range: {
-              start: document.positionAt(start),
-              end: document.positionAt(end),
-            },
-          };
-        }
-      }
-
-      return null; // STEP file but nothing to hover on — don't fall through
-    }
-
     // ── CFD (SU2) and FEA (CalculiX) Domain Hovers ──
     const targetUri = params.textDocument.uri;
     if (/\.(cfg|cfgt|su2|cfd)$/i.test(targetUri)) {
@@ -513,16 +415,7 @@ export function registerHoverProvider(
       }
     }
 
-    if (/\.(pscx|pslx|pswx|psmx)$/i.test(targetUri)) {
-      const pscadHover = getPscadHover(text, offset);
-      if (pscadHover) {
-        return {
-          contents: { kind: "markdown", value: pscadHover.contents },
-        };
-      }
-    }
-
-    // ── Custom plugin hover (PSS/E, CFD, FEA, etc.) ──
+    // ── Custom plugin hover (PSCAD, PSS/E, CFD, FEA, etc.) ──
     const pluginForHover = globalLanguageRegistry.getPluginForUri(params.textDocument.uri);
     if (pluginForHover?.customHandlers?.hover) {
       const customHover = pluginForHover.customHandlers.hover(offset, text, params.textDocument.uri);

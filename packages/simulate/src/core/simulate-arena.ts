@@ -5423,16 +5423,21 @@ export class ArenaSimulator {
       throw new Error("WASM simulation loop requires valid flat bytecode without system blocks");
     }
 
+    // Copy source TypedArrays before atomicChunkAlloc() because memory.grow() detaches prior WASM ArrayBuffer views.
+    const envValuesCopy = new Float64Array(valuesByStringId);
+
     // Ensure WASM linear memory buffers for bytecode are allocated
     if (flatBc.bcPtr === 0 && typeof wasmExports.atomicChunkAlloc === "function") {
-      const bcBytes = flatBc.bytecode.byteLength;
+      const bcCopy = new Int32Array(flatBc.bytecode);
+      const bcBytes = bcCopy.byteLength;
       flatBc.bcPtr = wasmExports.atomicChunkAlloc(bcBytes);
-      new Int32Array(mem.buffer, flatBc.bcPtr, flatBc.bytecode.length).set(flatBc.bytecode);
+      new Int32Array(mem.buffer, flatBc.bcPtr, bcCopy.length).set(bcCopy);
 
-      const litBytes = flatBc.litArray.byteLength;
+      const litCopy = new Float64Array(flatBc.litArray);
+      const litBytes = litCopy.byteLength;
       flatBc.litPtr = litBytes > 0 ? wasmExports.atomicChunkAlloc(litBytes) : 0;
       if (flatBc.litPtr && litBytes > 0) {
-        new Float64Array(mem.buffer, flatBc.litPtr, flatBc.litArray.length).set(flatBc.litArray);
+        new Float64Array(mem.buffer, flatBc.litPtr, litCopy.length).set(litCopy);
       }
     }
 
@@ -5441,10 +5446,10 @@ export class ArenaSimulator {
     const totalRows = steps + 1;
 
     // 1. Allocate environment in WASM linear memory
-    const envSize = Math.max(this.arena.interner.size + 256, valuesByStringId.length, 4096);
+    const envSize = Math.max(this.arena.interner.size + 256, envValuesCopy.length, 4096);
     const envBytes = envSize * 8;
     const envPtr = wasmExports.atomicChunkAlloc(envBytes);
-    new Float64Array(mem.buffer, envPtr, valuesByStringId.length).set(valuesByStringId);
+    new Float64Array(mem.buffer, envPtr, envValuesCopy.length).set(envValuesCopy);
 
     // 2. Allocate and populate stateIds, derivIds, and outIds
     const stateIdsBytes = Math.max(n * 4, 4);

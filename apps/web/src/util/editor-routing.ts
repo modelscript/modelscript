@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { encodeMorselPermalink } from "../components/morsel/util/permalink";
+import { encodeMorselPermalink } from "@modelscript/editor/workbench/util/permalink";
 import { safeJsonParse } from "./json";
 
 export const MULTI_FILE_VIEW_TYPES = new Set([

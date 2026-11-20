@@ -659,3 +659,171 @@ export type CollabMessage =
   | { type: "selectionLock"; lock: SelectionLock }
   | { type: "comment"; comment: DiagramComment }
   | { type: "peerLeave"; peerId: string };
+
+// ── Shared Diagram Backend Interface & TextEdit Helpers ──
+
+export interface DiagramTextEdit {
+  range: {
+    start: { line: number; character: number };
+    end: { line: number; character: number };
+  };
+  newText: string;
+}
+
+/**
+ * Language-specific diagram backend contract. Implemented directly inside
+ * each language package (`languages/<lang>/`) without depending on `@modelscript/lsp`.
+ */
+export interface DiagramBackend {
+  /** Build diagram data for a class/document */
+  getData(params: DiagramGetDataParams): Promise<DiagramData | null> | DiagramData | null;
+
+  /** Get component properties on-demand */
+  getComponentProperties(
+    params: DiagramGetComponentPropertiesParams,
+  ): Promise<ComponentPropertyData | null> | ComponentPropertyData | null;
+
+  /** Apply a batch of edit actions, returning a unified result */
+  applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> | DiagramApplyEditsResult;
+
+  /** Stencil palette items for the palette panel */
+  getPalette?(params: DiagramGetPaletteParams): Promise<DiagramPalette | null> | DiagramPalette | null;
+
+  /** Drill-down navigation into sub-diagram */
+  drillDown?(params: DiagramDrillDownParams): Promise<DiagramDrillDownResult | null> | DiagramDrillDownResult | null;
+}
+
+/**
+ * Minimal host dependency surface passed by `@modelscript/lsp` (or standalone hosts)
+ * to language-owned diagram backends.
+ */
+export interface DiagramBackendHost {
+  /** Read in-memory document text for a URI if currently open. */
+  getDocumentText?: ((uri: string) => string | undefined) | undefined;
+  /** Optional unified workspace symbol index for cross-file lookups. */
+  getUnifiedIndex?: (() => any) | undefined;
+  /** Optional legacy dispatch bag (for backwards-compatible call sites). */
+  generic?:
+    | (Partial<DiagramBackend> & {
+        deps?: { getDocumentText?: (uri: string) => string | undefined; getUnifiedIndex?: () => any };
+      })
+    | undefined;
+  modelica?:
+    | (Partial<DiagramBackend> & {
+        deps?: { getDocumentText?: (uri: string) => string | undefined; getUnifiedIndex?: () => any };
+      })
+    | undefined;
+  /** Optional cross-language drop helpers supplied by the polyglot LSP host. */
+  crossLanguageDrop?:
+    | {
+        createDropBatchState?: () => any;
+        mergeCoincidentInsertEdits?: (edits: DiagramTextEdit[]) => DiagramTextEdit[];
+        computeSpiceComponentDropEdits?: (...args: any[]) => DiagramTextEdit[];
+        computeSimulinkComponentDropEdits?: (...args: any[]) => DiagramTextEdit[];
+        computePscadComponentDropEdits?: (...args: any[]) => DiagramTextEdit[];
+        resolveCrossLanguageComponentDrop?: (...args: any[]) => any;
+      }
+    | undefined;
+}
+
+/**
+ * Helper for language diagram backends to read document text from the host's
+ * in-memory buffer (supporting both `host.getDocumentText` and legacy `generic`/`modelica` deps).
+ */
+export function getHostDocumentText(host: DiagramBackendHost | undefined, uri: string): string | undefined {
+  if (!host) return undefined;
+  const direct = host.getDocumentText?.(uri);
+  if (typeof direct === "string") return direct;
+  const fromGeneric = host.generic?.deps?.getDocumentText?.(uri);
+  if (typeof fromGeneric === "string") return fromGeneric;
+  const fromModelica = host.modelica?.deps?.getDocumentText?.(uri);
+  if (typeof fromModelica === "string") return fromModelica;
+  return undefined;
+}
+
+/**
+ * Deduplicates and sorts LSP `TextEdit`s in ascending document order,
+ * dropping overlapping edits so sequential application is safe.
+ */
+export function deduplicateAndSort<T extends DiagramTextEdit>(edits: T[]): T[] {
+  edits.sort((a, b) => {
+    if (a.range.start.line !== b.range.start.line) return a.range.start.line - b.range.start.line;
+    if (a.range.start.character !== b.range.start.character) return a.range.start.character - b.range.start.character;
+    if (a.range.end.line !== b.range.end.line) return a.range.end.line - b.range.end.line;
+    return a.range.end.character - b.range.end.character;
+  });
+
+  const accepted: T[] = [];
+  for (const edit of edits) {
+    if (accepted.length === 0) {
+      accepted.push(edit);
+      continue;
+    }
+    const prev = accepted[accepted.length - 1]!;
+    const isPrevInsert =
+      prev.range.start.line === prev.range.end.line && prev.range.start.character === prev.range.end.character;
+    const isCurrInsert =
+      edit.range.start.line === edit.range.end.line && edit.range.start.character === edit.range.end.character;
+
+    if (
+      edit.range.start.line < prev.range.end.line ||
+      (edit.range.start.line === prev.range.end.line && edit.range.start.character < prev.range.end.character)
+    ) {
+      continue;
+    }
+    if (
+      !isPrevInsert &&
+      !isCurrInsert &&
+      edit.range.start.line === prev.range.start.line &&
+      edit.range.start.character === prev.range.start.character
+    ) {
+      continue;
+    }
+    if (
+      isPrevInsert &&
+      isCurrInsert &&
+      edit.range.start.line === prev.range.start.line &&
+      edit.range.start.character === prev.range.start.character &&
+      edit.newText === prev.newText
+    ) {
+      continue;
+    }
+    accepted.push(edit);
+  }
+  return accepted;
+}
+
+function offsetToLspPosition(src: string, off: number): { line: number; character: number } {
+  let line = 0;
+  let lastNl = -1;
+  for (let i = 0; i < off; i++) {
+    if (src.charCodeAt(i) === 10) {
+      line++;
+      lastNl = i;
+    }
+  }
+  return { line, character: off - lastNl - 1 };
+}
+
+/**
+ * Computes a single minimal common-prefix/common-suffix `TextEdit` between `origText` and `nextText`,
+ * returning `null` when both strings are identical. Avoids full-document `0..EOF` replacements.
+ */
+export function computeMinimalTextEdit(origText: string, nextText: string): DiagramTextEdit | null {
+  if (origText === nextText) return null;
+  let prefix = 0;
+  const minLen = Math.min(origText.length, nextText.length);
+  while (prefix < minLen && origText.charCodeAt(prefix) === nextText.charCodeAt(prefix)) {
+    prefix++;
+  }
+  let oldEnd = origText.length;
+  let newEnd = nextText.length;
+  while (oldEnd > prefix && newEnd > prefix && origText.charCodeAt(oldEnd - 1) === nextText.charCodeAt(newEnd - 1)) {
+    oldEnd--;
+    newEnd--;
+  }
+  return {
+    range: { start: offsetToLspPosition(origText, prefix), end: offsetToLspPosition(origText, oldEnd) },
+    newText: nextText.slice(prefix, newEnd),
+  };
+}

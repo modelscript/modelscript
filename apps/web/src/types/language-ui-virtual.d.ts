@@ -29,6 +29,24 @@ declare module "virtual:modelscript-language-ui" {
     load: () => Promise<{ default: React.ComponentType<LanguageSimulationCardProps> }>;
   }
 
+  export interface LanguageToolbarButtonEntry {
+    languageId: string;
+    id: string;
+    label: string;
+    shortLabel?: string;
+    tooltip?: string;
+    icon?: string;
+    views: ("diagram" | "icon" | "3d" | "simulation" | "inspector" | "code" | "*")[];
+    targets: ("vscode" | "morsel" | "artifact")[];
+    placement: "primary" | "overflow";
+    order: number;
+    kind: "action" | "toggle";
+    actionId?: string;
+    command?: string;
+    shortcut?: string;
+    featureFlag?: string;
+  }
+
   export type LanguagePanelLoader = () => Promise<{ default: React.ComponentType<LanguagePanelProps> }>;
 
   export const LANGUAGE_PANEL_META: LanguagePanelMetaEntry[];
@@ -36,4 +54,5 @@ declare module "virtual:modelscript-language-ui" {
   export const ARTIFACT_PANEL_LOADERS: Record<string, LanguagePanelLoader>;
   export const LANGUAGE_STENCILS: Record<string, LanguageStencilEntry[]>;
   export const LANGUAGE_SIMULATION_CARDS: LanguageSimulationCardEntry[];
+  export const LANGUAGE_TOOLBAR_BUTTONS: Record<string, LanguageToolbarButtonEntry[]>;
 }

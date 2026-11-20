@@ -44,7 +44,7 @@ describe("Playground View Switching Synchronization & Anti-Flicker Architecture"
   });
 
   it("verifies MorselEditor eliminates cyclic view mutation effects and tracks lastNotifiedViewRef", () => {
-    const morselPath = path.resolve(import.meta.dirname, "../src/components/morsel/Morsel.tsx");
+    const morselPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Morsel.tsx");
     const content = fs.readFileSync(morselPath, "utf-8");
 
     assert.ok(
@@ -103,7 +103,7 @@ describe("Playground View Switching Synchronization & Anti-Flicker Architecture"
       "PlaygroundPage must pass splitOrientation to MorselEditor",
     );
 
-    const morselPath = path.resolve(import.meta.dirname, "../src/components/morsel/Morsel.tsx");
+    const morselPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Morsel.tsx");
     const morselContent = fs.readFileSync(morselPath, "utf-8");
 
     // MorselVisualizerPane should appear before Code Editor in the split container
@@ -122,7 +122,7 @@ describe("Playground View Switching Synchronization & Anti-Flicker Architecture"
 
     const visualizerPath = path.resolve(
       import.meta.dirname,
-      "../src/components/morsel/panels/MorselVisualizerPane.tsx",
+      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
     );
     const visualizerContent = fs.readFileSync(visualizerPath, "utf-8");
     assert.ok(
@@ -148,7 +148,7 @@ describe("Playground View Switching Synchronization & Anti-Flicker Architecture"
       "Playground styles must collapse segmented control button text at narrower widths",
     );
 
-    const morselPath = path.resolve(import.meta.dirname, "../src/components/morsel/Morsel.tsx");
+    const morselPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Morsel.tsx");
     const morselContent = fs.readFileSync(morselPath, "utf-8");
 
     assert.ok(

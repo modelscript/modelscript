@@ -155,7 +155,7 @@ PUMP1 J1 J2 HEAD 1
   describe("3. Regulatory Compliance Cards", () => {
     it("instantiates AwiaRiskResilienceCard with custom report", async () => {
       const { AwiaRiskResilienceCard } =
-        await import("../src/components/morsel/simulation-results/components/AwiaRiskResilienceCard.js");
+        await import("../../../packages/editor/src/workbench/simulation-results/components/AwiaRiskResilienceCard.js");
       assert.ok(AwiaRiskResilienceCard, "AwiaRiskResilienceCard must be exported");
 
       const customReport = {
@@ -190,7 +190,7 @@ PUMP1 J1 J2 HEAD 1
 
     it("instantiates AwwaM36WaterLossCard with custom report", async () => {
       const { AwwaM36WaterLossCard } =
-        await import("../src/components/morsel/simulation-results/components/AwwaM36WaterLossCard.js");
+        await import("../../../packages/editor/src/workbench/simulation-results/components/AwwaM36WaterLossCard.js");
       assert.ok(AwwaM36WaterLossCard, "AwwaM36WaterLossCard must be exported");
 
       const customReport = {
@@ -226,7 +226,7 @@ PUMP1 J1 J2 HEAD 1
 
     it("instantiates LcriComplianceCard with custom report", async () => {
       const { LcriComplianceCard } =
-        await import("../src/components/morsel/simulation-results/components/LcriComplianceCard.js");
+        await import("../../../packages/editor/src/workbench/simulation-results/components/LcriComplianceCard.js");
       assert.ok(LcriComplianceCard, "LcriComplianceCard must be exported");
 
       const customReport = {
@@ -273,7 +273,7 @@ PUMP1 J1 J2 HEAD 1
 
     it("instantiates CsoNpdesComplianceCard with custom report", async () => {
       const { CsoNpdesComplianceCard } =
-        await import("../src/components/morsel/simulation-results/components/CsoNpdesComplianceCard.js");
+        await import("../../../packages/editor/src/workbench/simulation-results/components/CsoNpdesComplianceCard.js");
       assert.ok(CsoNpdesComplianceCard, "CsoNpdesComplianceCard must be exported");
 
       const customReport = {
@@ -351,9 +351,8 @@ OF1 500.0 100.0
 
   describe("5. Polyglot Utility Inspectors", () => {
     it("instantiates OpenChannelHydraulicsInspector with HEC-RAS cross-sections", async () => {
-      const { OpenChannelHydraulicsInspector } = await import(
-        "../src/components/morsel/panels/inspectors/OpenChannelHydraulicsInspector.js"
-      );
+      const { OpenChannelHydraulicsInspector } =
+        await import("../../../packages/editor/src/workbench/panels/inspectors/OpenChannelHydraulicsInspector.js");
       assert.ok(OpenChannelHydraulicsInspector, "OpenChannelHydraulicsInspector must be exported");
 
       const hecRasCode = `Type RM = 1000\nMann = 0.035\nInvert = 120.0\nType RM = 800\nMann = 0.035\nInvert = 117.2\nType RM = 600\nMann = 0.035\nInvert = 114.5\n`;
@@ -370,9 +369,8 @@ OF1 500.0 100.0
     });
 
     it("instantiates TransitCockpitInspector with GTFS schedule", async () => {
-      const { TransitCockpitInspector } = await import(
-        "../src/components/morsel/panels/inspectors/TransitCockpitInspector.js"
-      );
+      const { TransitCockpitInspector } =
+        await import("../../../packages/editor/src/workbench/panels/inspectors/TransitCockpitInspector.js");
       assert.ok(TransitCockpitInspector, "TransitCockpitInspector must be exported");
 
       const gtfsCode = `trip_id,route_id,service_id,trip_headsign\nTRIP_38R_01,Route-38R,WEEKDAY,Outbound\nTRIP_38R_02,Route-38R,WEEKDAY,Outbound\n`;

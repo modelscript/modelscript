@@ -1,0 +1,167 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import {
+  deduplicateAndSort,
+  getHostDocumentText,
+  type ComponentPropertyData,
+  type DiagramApplyEditsParams,
+  type DiagramApplyEditsResult,
+  type DiagramBackend,
+  type DiagramBackendHost,
+  type DiagramData,
+  type DiagramGetComponentPropertiesParams,
+  type DiagramGetDataParams,
+  type DiagramPalette,
+  type PropertyFieldConfig,
+} from "@modelscript/diagram/protocol";
+import { applySspDiagramEdits, buildSspDiagramData, getSspPaletteCategories } from "./diagram.js";
+import { parseSsd } from "./ssd-parser.js";
+
+export function createSspDiagramBackend(backends: DiagramBackendHost): DiagramBackend {
+  const readSsdSource = async (targetUri: string): Promise<string | null> => {
+    const memText = getHostDocumentText(backends, targetUri);
+    if (typeof memText === "string") return memText;
+    try {
+      const fs = await import("node:fs");
+      const { fileURLToPath } = await import("node:url");
+      const filePath = targetUri.startsWith("file://") ? fileURLToPath(targetUri) : targetUri;
+      if (fs.existsSync(filePath)) {
+        if (filePath.endsWith(".ssp")) {
+          const { defaultContainerToolkit } = await import("@modelscript/runtime");
+          const bytes = new Uint8Array(fs.readFileSync(filePath));
+          return defaultContainerToolkit.zip.readText(bytes, "SystemStructure.ssd") ?? null;
+        }
+        return fs.readFileSync(filePath, "utf-8");
+      }
+    } catch {
+      // ignore fs errors
+    }
+    return null;
+  };
+
+  return {
+    async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
+      try {
+        const text = params.documentText ?? (await readSsdSource(params.uri));
+        if (!text) return null;
+        return buildSspDiagramData(text) as unknown as DiagramData;
+      } catch {
+        return null;
+      }
+    },
+
+    async getComponentProperties(params: DiagramGetComponentPropertiesParams): Promise<ComponentPropertyData | null> {
+      try {
+        const text = await readSsdSource(params.uri);
+        if (!text) return null;
+        const system = parseSsd(text);
+        const cmp = system.components.find((c) => c.name === params.componentName);
+        if (cmp) {
+          const parameters: ComponentPropertyData["parameters"] = [
+            { name: "source", value: cmp.source, description: "FMU archive path", group: "FMU Resource" },
+            ...(cmp.type ? [{ name: "type", value: cmp.type, description: "MIME type", group: "FMU Resource" }] : []),
+          ];
+          const fields: PropertyFieldConfig[] = [
+            { key: "source", label: "FMU Source", kind: "string", defaultValue: cmp.source },
+            {
+              key: "type",
+              label: "Component Type",
+              kind: "string",
+              defaultValue: cmp.type ?? "application/x-fmu-sharedlibrary",
+            },
+          ];
+          const values: Record<string, unknown> = {
+            source: cmp.source,
+            type: cmp.type ?? "application/x-fmu-sharedlibrary",
+          };
+
+          for (const b of system.parameterBindings || []) {
+            if (!b.prefix || b.prefix === cmp.name) {
+              for (const pv of b.values) {
+                const shortKey = pv.name.startsWith(`${cmp.name}.`) ? pv.name.slice(cmp.name.length + 1) : pv.name;
+                parameters.push({
+                  name: shortKey,
+                  value: String(pv.value),
+                  description: `SSP bound parameter (${pv.type})`,
+                  group: "Parameters",
+                });
+                fields.push({
+                  key: shortKey,
+                  label: shortKey,
+                  kind:
+                    pv.type === "Real" || pv.type === "Integer"
+                      ? "number"
+                      : pv.type === "Boolean"
+                        ? "boolean"
+                        : "string",
+                  defaultValue: pv.value,
+                });
+                values[shortKey] = pv.value;
+              }
+            }
+          }
+
+          return {
+            classKind: "component",
+            className: cmp.type || "FMUComponent",
+            name: cmp.name,
+            description: cmp.source,
+            parameters,
+            schema: {
+              title: `SSP Component (${cmp.name})`,
+              tabs: [
+                {
+                  id: "general",
+                  label: "General",
+                  groups: [{ id: "fmu", label: "Configuration", fields }],
+                },
+              ],
+            },
+            values,
+          };
+        }
+      } catch {
+        return null;
+      }
+      return null;
+    },
+
+    async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
+      try {
+        const cleanUri = (params.uri || "").split("?")[0]!.toLowerCase();
+        const hasMemText = typeof getHostDocumentText(backends, params.uri) === "string";
+        if (cleanUri.endsWith(".ssp") && !hasMemText) {
+          // Binary .ssp ZIP archive: never emit plain-text XML TextEdits against the ZIP file itself
+          return { seq: params.seq, edits: [], renderHint: "none" };
+        }
+        const text = await readSsdSource(params.uri);
+        if (!text) return { seq: params.seq, edits: [], renderHint: "none" };
+        const rawEdits = applySspDiagramEdits(
+          text,
+          params.actions as unknown as Parameters<typeof applySspDiagramEdits>[1],
+        );
+        const hasStructural = params.actions.some(
+          (a) =>
+            a.type === "connect" ||
+            a.type === "disconnect" ||
+            a.type === "addComponent" ||
+            a.type === "deleteComponents" ||
+            a.type === "updateName",
+        );
+        return {
+          seq: params.seq,
+          edits: deduplicateAndSort(rawEdits),
+          renderHint: hasStructural ? "immediate" : "none",
+        };
+      } catch {
+        return { seq: params.seq, edits: [], renderHint: "none" };
+      }
+    },
+
+    async getPalette(): Promise<DiagramPalette> {
+      return {
+        categories: getSspPaletteCategories(),
+      };
+    },
+  };
+}

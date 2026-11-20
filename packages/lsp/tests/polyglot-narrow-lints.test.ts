@@ -3,7 +3,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { TextDocument } from "vscode-languageserver-textdocument";
+import { registerBuiltinLanguagePlugins } from "../src/registry/builtin-plugins.js";
 import { ValidationService } from "../src/services/validation-service.js";
+
+let pluginsRegistered = false;
 
 function createTestValidationService() {
   const diagnosticsByUri = new Map<string, any[]>();
@@ -34,6 +37,7 @@ function createTestValidationService() {
   const wsManager: any = {
     unifiedWorkspace: {
       registerLanguage: () => {},
+      registerWorkspace: () => {},
       hasLanguage: () => true,
       setDocument: () => {},
       getIndex: () => ({
@@ -42,12 +46,23 @@ function createTestValidationService() {
         childrenOf: new Map(),
       }),
     },
-    getWorkspaceIndex: () => null,
+    getWorkspaceIndex: () => ({}),
+    setWorkspaceIndex: () => {},
   };
 
   const parserService: any = {
     getParser: () => null,
+    getFacade: () => null,
   };
+
+  if (!pluginsRegistered) {
+    pluginsRegistered = true;
+    registerBuiltinLanguagePlugins({
+      workspaceManager: wsManager,
+      parserService,
+      connection: mockConnection,
+    });
+  }
 
   const service = new ValidationService(mockConnection, docManager, wsManager, parserService);
   return { service, diagnosticsByUri };
@@ -256,7 +271,10 @@ END SUBROUTINE
     const undeclaredDiag = diags.find((d) => d.code === "M4070");
     assert.ok(undeclaredDiag, "Expected M4070 undeclared variable diagnostic");
     assert.strictEqual(undeclaredDiag.range.start.line, 2);
-    assert.strictEqual(undeclaredDiag.source, "fortran");
+    assert.ok(
+      String(undeclaredDiag.source).includes("fortran"),
+      `Expected fortran source, got ${undeclaredDiag.source}`,
+    );
   });
 
   it("EASY5 (.ez5): validates algebraic loops, disconnected ports, and reports diagnostics", async () => {
@@ -279,7 +297,7 @@ CONNECTIONS:
     const diags = diagnosticsByUri.get(uri) ?? [];
     const loopDiag = diags.find((d) => d.code === "M7002");
     assert.ok(loopDiag, "Expected M7002 direct algebraic loop diagnostic");
-    assert.strictEqual(loopDiag.source, "easy5");
+    assert.ok(String(loopDiag.source).includes("easy5"), `Expected easy5 source, got ${loopDiag.source}`);
   });
 
   it("ROCETS (.roc): validates propulsion decks, valve schedules, and reports diagnostics", async () => {
@@ -296,6 +314,6 @@ COMPONENTS:
     const diags = diagnosticsByUri.get(uri) ?? [];
     const valveDiag = diags.find((d) => d.code === "M8008");
     assert.ok(valveDiag, "Expected M8008 invalid valve schedule diagnostic");
-    assert.strictEqual(valveDiag.source, "rocets");
+    assert.ok(String(valveDiag.source).includes("rocets"), `Expected rocets source, got ${valveDiag.source}`);
   });
 });

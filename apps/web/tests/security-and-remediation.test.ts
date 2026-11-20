@@ -3,8 +3,8 @@
 import { JSDOM } from "jsdom";
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
+import { clearPlacement, movePlacementGhost, startPlacement } from "../../../packages/editor/src/workbench/placement";
 import { getClusterStatus, getUserWallet } from "../src/api";
-import { clearPlacement, movePlacementGhost, startPlacement } from "../src/components/morsel/placement";
 
 describe("Web App Security Hardening & Remediation Verification", () => {
   let dom: JSDOM;

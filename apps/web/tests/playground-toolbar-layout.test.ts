@@ -65,7 +65,10 @@ describe("Playground Toolbar & Canvas Sub-Header Architecture", () => {
   });
 
   it("verifies MorselVisualizerPane omits secondary MorselViewSubHeader and provides canvas tools", () => {
-    const panePath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx");
+    const panePath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+    );
     const content = fs.readFileSync(panePath, "utf-8");
 
     assert.ok(
@@ -81,7 +84,10 @@ describe("Playground Toolbar & Canvas Sub-Header Architecture", () => {
   });
 
   it("verifies MorselLeftSidebar provides a collapse button in the Libraries header", () => {
-    const sidebarPath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselLeftSidebar.tsx");
+    const sidebarPath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselLeftSidebar.tsx",
+    );
     const content = fs.readFileSync(sidebarPath, "utf-8");
 
     assert.ok(

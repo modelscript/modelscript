@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getLanguageInfo } from "@modelscript/editor/workbench/constants";
+import { LanguageToolbarButtons } from "@modelscript/editor/workbench/panels/LanguageToolbarButtons";
 import {
   AlertIcon,
   BookmarkIcon,
@@ -29,7 +31,6 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../AuthContext";
 import { MorselIcon } from "../../../components/icons";
-import { getLanguageInfo } from "../../../components/morsel/constants";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
 import { getExtensionForDialect } from "../../../util/editor-routing";
@@ -51,6 +52,7 @@ export interface PlaygroundNavbarProps {
   fromArtifactParam: string | null;
   currentTitle: string;
   currentLang?: string;
+  lockedLanguage?: string | undefined;
   currentView?: string;
   diagramType?: string;
   isSplit?: boolean;
@@ -88,6 +90,7 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
   fromArtifactParam,
   currentTitle: _currentTitle,
   currentLang = "modelica",
+  lockedLanguage,
   currentView = "diagram",
   diagramType = "diagram",
   isSplit = false,
@@ -324,7 +327,11 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
         <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", minWidth: 0, flexShrink: 1 }}>
           <span
             data-testid="morsel-language-badge"
-            title={`Active language: ${currentLangOption.label} (${currentLangOption.ext})`}
+            title={
+              lockedLanguage
+                ? `Single-language mode: ${currentLangOption.label} (${currentLangOption.ext})`
+                : `Active language: ${currentLangOption.label} (${currentLangOption.ext})`
+            }
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -422,6 +429,8 @@ export const PlaygroundNavbar: React.FC<PlaygroundNavbarProps> = ({
               <span>Split</span>
             </SplitToggleButton>
           )}
+
+          <LanguageToolbarButtons languageId={currentLang} activeView={activeTabId} className="nav-hide-sm" />
         </NavCenter>
       )}
 

@@ -7,18 +7,18 @@ import { describe, it } from "node:test";
 import {
   type CompileStepFromSourcesMorselParams,
   type StepMeshMorselResult,
-} from "../src/components/morsel/util/lsp-bridge.js";
+} from "../../../packages/editor/src/workbench/util/lsp-bridge.js";
 import {
   buildMorselEmbedHtmlPage,
   compressMorselPayload,
   decompressMorselPayload,
-} from "../src/components/morsel/util/permalink.js";
+} from "../../../packages/editor/src/workbench/util/permalink.js";
 import {
   buildMorselEffectiveFileMap,
   compileMorselOptionAAssembly,
   resolveSpoolRulesForMorsel,
   stepMeshesToCadComponents,
-} from "../src/components/morsel/util/step-pairing.js";
+} from "../../../packages/editor/src/workbench/util/step-pairing.js";
 
 const CROSS_FOLDER_SCAD = `// @qif_source: ../qa/inspection.qif
 // @step_output: ../build/rotor.step

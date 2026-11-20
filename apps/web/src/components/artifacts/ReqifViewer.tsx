@@ -8,6 +8,7 @@ import {
   type TabularMutationRequest,
   type TabularRow,
 } from "@modelscript/dsl/dsl";
+import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
 import { buildReqIfDiagram, renderReqIfDiagramSvg } from "@modelscript/reqif/diagram";
 import {
   applyReqIfTabularMutation,
@@ -39,7 +40,6 @@ import { updateArtifactView } from "../../api/artifacts";
 import { useAuth } from "../../AuthContext";
 import { useTheme } from "../../theme";
 import { DraftingTriangleIcon } from "../icons";
-import { compressMorselPayload } from "../morsel/util/permalink";
 import { useToast } from "../ToastContext";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 

@@ -1,5 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  getOntologyCategoryNodes,
+  getOntologyDisplayName,
+  getOntologyRootNodes,
+  getOwlClassTreeNodes,
+  getOwlIndividualTreeNodes,
+  getOwlPropertyTreeNodes,
+  getShortLabel,
+} from "@modelscript/owl2";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
@@ -10,15 +19,6 @@ import {
   isTreeVisible,
   mountedLibraryMetadata,
 } from "../src/utils/hierarchy-utils.js";
-import {
-  getOntologyCategoryNodes,
-  getOntologyDisplayName,
-  getOntologyRootNodes,
-  getOwlClassTreeNodes,
-  getOwlIndividualTreeNodes,
-  getOwlPropertyTreeNodes,
-  getShortLabel,
-} from "../src/utils/owl2-tree-utils.js";
 
 describe("LSP Tree Hierarchy & OWL 2 Tree Utilities", () => {
   describe("OWL2 IRI and Label Formatting", () => {

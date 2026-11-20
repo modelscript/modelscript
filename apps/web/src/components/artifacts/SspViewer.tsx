@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
 import {
   CheckIcon,
   CodeIcon,
@@ -19,7 +20,6 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
-import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { adaptSvgMarkupForTheme, highlightPolyglotLine } from "./PolyglotArtifactViewer";
 import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";

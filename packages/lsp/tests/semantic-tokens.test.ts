@@ -8,8 +8,18 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { legend, registerSemanticTokensProvider } from "../src/providers/semanticTokensProvider.js";
+import { registerBuiltinLanguagePlugins } from "../src/registry/builtin-plugins.js";
 
 test("LSP Semantic Tokens Test Suite", async (t) => {
+  registerBuiltinLanguagePlugins({
+    workspaceManager: {
+      getWorkspaceIndex: () => ({}),
+      setWorkspaceIndex: () => {},
+      unifiedWorkspace: { registerWorkspace: () => {} },
+    },
+    parserService: {},
+    connection: { console: { info() {}, log() {}, warn() {}, error() {} } },
+  } as any);
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
   const wasmPath = path.resolve(repoRoot, "languages/modelica/dist/parser.wasm");
   const { parser } = await createWasmParser(wasmPath);

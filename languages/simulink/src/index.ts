@@ -5,10 +5,13 @@
  */
 
 export * from "./dae/index.js";
+export * from "./diagram-backend.js";
 export * from "./diagram/index.js";
+export * from "./drop-edits.js";
 export * from "./indexing.js";
 export * from "./language.js";
 export * from "./lints/index.js";
+export * from "./lsp-actions.js";
 export * from "./lsp.js";
 export * from "./parser/index.js";
 export * from "./projections/index.js";

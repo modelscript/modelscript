@@ -104,6 +104,50 @@ export interface LanguageTreeViewDeclaration {
   exportName?: string | undefined;
 }
 
+export type LanguageToolbarView = "diagram" | "icon" | "3d" | "simulation" | "inspector" | "code" | "*";
+
+export type LanguageToolbarButtonPlacement = "primary" | "overflow";
+
+export type LanguageToolbarButtonKind = "action" | "toggle";
+
+export interface LanguageToolbarButtonDeclaration {
+  /** Unique button identifier within the language (e.g. "autoLayout", "solvePowerFlow"). */
+  id: string;
+  /** Human-readable label shown in tooltips, overflow menus, and command palette. */
+  label: string;
+  /** Optional concise inline label when rendered as a compact topbar pill. */
+  shortLabel?: string | undefined;
+  /** Optional tooltip/description override (defaults to `label`). */
+  tooltip?: string | undefined;
+  /**
+   * Canonical icon token mapped to Octicons in Morsel/Ansatz and Codicons in VS Code
+   * (e.g. "flowchart", "pulse", "stack", "shield-check", "play", or "$(pulse)").
+   */
+  icon?: string | undefined;
+  /** Which workbench views display this button (default: ["*"]). */
+  views?: LanguageToolbarView[] | undefined;
+  /** Host surfaces where this button should appear (default: ["morsel", "vscode"]). */
+  targets?: LanguageUiTarget[] | undefined;
+  /**
+   * "primary" renders inline in the topbar (hosts cap inline buttons, e.g. max 2,
+   * folding excess into the overflow menu); "overflow" always lives in the compact menu.
+   * Default: "primary".
+   */
+  placement?: LanguageToolbarButtonPlacement | undefined;
+  /** Ascending sort order within its placement bucket (default: 100). */
+  order?: number | undefined;
+  /** Button interaction kind (default: "action"). */
+  kind?: LanguageToolbarButtonKind | undefined;
+  /** Optional declared `LanguageAction.id` to execute when clicked. */
+  actionId?: string | undefined;
+  /** Optional typed workbench/panel command string (e.g. "morsel:autoLayout", "morsel:flatten"). */
+  command?: string | undefined;
+  /** Optional display keyboard shortcut hint (e.g. "Shift+L"). */
+  shortcut?: string | undefined;
+  /** Optional feature flag key gating visibility in Morsel/Ansatz. */
+  featureFlag?: string | undefined;
+}
+
 export interface LanguageUiConfig {
   /** Cross-host visual editors, inspector panes, and artifact viewers. */
   panels?: LanguagePanelDeclaration[] | undefined;
@@ -113,4 +157,6 @@ export interface LanguageUiConfig {
   simulationCards?: LanguageSimulationCardDeclaration[] | undefined;
   /** Optional VS Code sidebar tree views. */
   treeViews?: LanguageTreeViewDeclaration[] | undefined;
+  /** Declarative per-language / per-view editor topbar buttons. */
+  toolbarButtons?: LanguageToolbarButtonDeclaration[] | undefined;
 }

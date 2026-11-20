@@ -10,6 +10,7 @@ import { renderQifMbdHeatmapSvg } from "@modelscript/diagram/qif-diagram-builder
 import { parseSimulinkTextToSystem, renderSimulinkSvg } from "@modelscript/diagram/simulink-diagram-builder";
 import { renderPolyglotDiagramToSvg } from "@modelscript/diagram/svg";
 import { parseDicomRt } from "@modelscript/dicom-rt/parser";
+import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
 import { parseIgtl } from "@modelscript/igtl/parser";
 import { parseOpenSim } from "@modelscript/opensim/parser";
 import { parseOscal } from "@modelscript/oscal";
@@ -22,18 +23,15 @@ import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
-import { ensureMonacoThemesDefined, getMonacoThemeName } from "../../util/monaco-theme";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
-import { registerAllModelscriptLanguages } from "../morsel/util/monaco-lsp-adapter";
-import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import QifViewer from "./QifViewer";
 import ReqifViewer from "./ReqifViewer";
 import StudyTemplateViewer from "./StudyTemplateViewer";
 import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";
 
-const MonacoEditor = React.lazy(() => import("@monaco-editor/react"));
+const MorselEditorLazy = React.lazy(() => import("@modelscript/editor/workbench/Morsel"));
 const CadStepViewer = React.lazy(() => import("./CadStepViewer"));
 
 export interface PolyglotArtifactViewerProps {
@@ -1700,27 +1698,18 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
             fallback={
               <Box display="flex" alignItems="center" justifyContent="center" height="100%" gap={2}>
                 <Spinner size="small" />
-                <Text style={{ fontSize: 12, color: "var(--color-fg-muted)" }}>Loading Monaco editor…</Text>
+                <Text style={{ fontSize: 12, color: "var(--color-fg-muted)" }}>Loading interactive editor…</Text>
               </Box>
             }
           >
-            <MonacoEditor
-              height="100%"
-              language={dialect}
-              theme={getMonacoThemeName(isDark ? "dark" : "light")}
-              value={rawCode}
-              beforeMount={(m) => {
-                ensureMonacoThemesDefined(m);
-                registerAllModelscriptLanguages(m);
-              }}
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                lineNumbers: "on",
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                fontSize: 12,
-              }}
+            <MorselEditorLazy
+              dataUrl={null}
+              initialCode={rawCode}
+              initialDialect={dialect as never}
+              initialView={effectiveViewMode === "code" ? "code" : "diagram"}
+              embed={true}
+              hideFloatingDock={true}
+              hideCenterFloatingToolbar={!isFullScreen}
             />
           </Suspense>
         ) : (

@@ -17,6 +17,7 @@ export * from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";
 
+export * from "./lsp-actions.js";
 export * from "./parser/index.js";
 export * from "./projections/lps-to-modelica.js";
 export * from "./projections/lps-to-sysml2.js";

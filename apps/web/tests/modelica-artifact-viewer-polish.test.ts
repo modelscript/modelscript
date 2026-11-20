@@ -54,7 +54,7 @@ end RLC;`;
 
   it("ensures MorselVisualizerPane suppresses empty state modal when code is present or in embedded mode", () => {
     const paneSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx"),
+      path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx"),
       "utf8",
     );
     assert.ok(
@@ -71,7 +71,7 @@ end RLC;`;
 
   it("ensures duplicate floating corner Diagram/Icon switcher is removed from MorselVisualizerPane", () => {
     const paneSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx"),
+      path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx"),
       "utf8",
     );
     assert.ok(

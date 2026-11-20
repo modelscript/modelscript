@@ -9,8 +9,8 @@ import {
   getLanguageExtension,
   getLanguageInfo,
   MORSEL_LANGUAGES,
-} from "../src/components/morsel/constants.js";
-import { decompressMorselPayload } from "../src/components/morsel/util/permalink.js";
+} from "../../../packages/editor/src/workbench/constants.js";
+import { decompressMorselPayload } from "../../../packages/editor/src/workbench/util/permalink.js";
 import {
   ALL_PLAYGROUND_LANGUAGES,
   DEFAULT_EMPTY_MODELICA_CODE,

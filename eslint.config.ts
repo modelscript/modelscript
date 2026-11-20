@@ -350,7 +350,11 @@ export default defineConfig([
     },
   },
   {
-    files: ["apps/web/src/components/morsel/**/*.{ts,tsx}"],
+    files: [
+      "apps/web/src/components/morsel/**/*.{ts,tsx}",
+      "packages/editor/src/workbench/**/*.{ts,tsx}",
+      "packages/editor/src/internal/**/*.{ts,tsx}",
+    ],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "react-hooks/refs": "off",
@@ -374,6 +378,8 @@ export default defineConfig([
       "packages/**/tests/**/*.{ts,js,cjs,mjs}",
       "languages/**/tests/**/*.{ts,js,cjs,mjs}",
       "packages/examples/**/*.{ts,js,cjs,mjs}",
+      "packages/editor/src/workbench/**/*.{ts,tsx}",
+      "packages/editor/src/internal/**/*.{ts,tsx}",
     ],
     languageOptions: {
       parserOptions: {
@@ -470,6 +476,30 @@ export default defineConfig([
             {
               group: ["**/apps/web/**", "**/packages/ide/**"],
               message: "Language UI panels must not depend on apps/web or packages/ide host internals.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  // @modelscript/lsp/core isolation guardrail: never statically import @modelscript/<lang> packages
+  {
+    files: ["packages/lsp/src/core/**/*.ts", "packages/lsp/src/registry/LanguageRegistry.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [
+                "@modelscript/*",
+                "!@modelscript/dsl",
+                "!@modelscript/dsl/*",
+                "!@modelscript/runtime",
+                "!@modelscript/runtime/*",
+              ],
+              message:
+                "@modelscript/lsp/core must remain language-agnostic; load language plugins dynamically instead.",
             },
           ],
         },

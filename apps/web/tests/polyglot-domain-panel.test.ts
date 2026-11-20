@@ -4,14 +4,17 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { computeInspectorSubTabs, PolyglotDomainPanel } from "../src/components/morsel/panels/PolyglotDomainPanel.js";
-import { analyzeModelBlt } from "../src/components/morsel/panels/blt-analysis.js";
-import { analyzeBiochemStoichiometry } from "../src/components/morsel/panels/inspectors/BiochemInspector.js";
-import { analyzeCaeContinuum } from "../src/components/morsel/panels/inspectors/CaeContinuumInspector.js";
-import { analyzeDaePhysics } from "../src/components/morsel/panels/inspectors/DaeAdvancedInspector.js";
-import { analyzeMultibodyKinematics } from "../src/components/morsel/panels/inspectors/MultibodyInspector.js";
-import { PowerGridInspector } from "../src/components/morsel/panels/inspectors/PowerGridInspector.js";
-import { indexLocalSymbolLines } from "../src/components/morsel/panels/modelica-scanner.js";
+import {
+  computeInspectorSubTabs,
+  PolyglotDomainPanel,
+} from "../../../packages/editor/src/workbench/panels/PolyglotDomainPanel.js";
+import { analyzeModelBlt } from "../../../packages/editor/src/workbench/panels/blt-analysis.js";
+import { analyzeBiochemStoichiometry } from "../../../packages/editor/src/workbench/panels/inspectors/BiochemInspector.js";
+import { analyzeCaeContinuum } from "../../../packages/editor/src/workbench/panels/inspectors/CaeContinuumInspector.js";
+import { analyzeDaePhysics } from "../../../packages/editor/src/workbench/panels/inspectors/DaeAdvancedInspector.js";
+import { analyzeMultibodyKinematics } from "../../../packages/editor/src/workbench/panels/inspectors/MultibodyInspector.js";
+import { PowerGridInspector } from "../../../packages/editor/src/workbench/panels/inspectors/PowerGridInspector.js";
+import { indexLocalSymbolLines } from "../../../packages/editor/src/workbench/panels/modelica-scanner.js";
 
 describe("PolyglotDomainPanel Render & Variable Scope Integrity", () => {
   it("renders without reference errors for general dialects", () => {

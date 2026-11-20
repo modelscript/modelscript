@@ -98,7 +98,8 @@ describe("Modelica Dependency Detector", () => {
   });
 
   it("preserves dependencies in encodeMorselPermalink and decompressMorselPayload", async () => {
-    const { compressMorselPayload, decompressMorselPayload } = await import("../src/components/morsel/util/permalink");
+    const { compressMorselPayload, decompressMorselPayload } =
+      await import("../../../packages/editor/src/workbench/util/permalink");
     const original = {
       code: "model M end M;",
       title: "M with deps",

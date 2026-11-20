@@ -124,3 +124,4 @@ export async function parseC(source: string): Promise<SyntaxNode | null> {
 }
 
 export * from "./lints/workspace.js";
+export * from "./lsp-actions.js";

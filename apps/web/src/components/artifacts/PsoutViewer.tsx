@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
 import { readPscadPsout } from "@modelscript/pscad";
 import type { IndexedDataset } from "@modelscript/simulate/charts";
 import { CodeIcon, PulseIcon } from "@primer/octicons-react";
@@ -9,7 +10,6 @@ import { useNavigate } from "react-router-dom";
 import styled from "styled-components";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
-import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import IndexedCanvasPlot from "./IndexedCanvasPlot";
 import { highlightPolyglotLine } from "./PolyglotArtifactViewer";

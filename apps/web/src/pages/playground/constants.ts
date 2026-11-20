@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { isLanguageFlagEnabled } from "@modelscript/editor/workbench/constants";
 import { useMemo } from "react";
 import { getLanguageFlagKey, isLanguageEnabledInFlags, useFeatureFlags } from "../../FeatureFlagContext";
-import { isLanguageFlagEnabled } from "../../components/morsel/constants";
 
 export interface HeroExample {
   id: string;

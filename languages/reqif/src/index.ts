@@ -4,6 +4,7 @@ export * from "./diagram.js";
 export * from "./indexing.js";
 export * from "./language.js";
 export * from "./lints/index.js";
+export * from "./lsp-actions.js";
 export * from "./lsp.js";
 export * from "./parser/reqif-parser.js";
 export * from "./projections/index.js";

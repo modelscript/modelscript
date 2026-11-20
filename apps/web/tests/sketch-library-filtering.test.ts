@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 
 describe("Sketch / Playground Single-File Library Filtering & Lazy Loading", () => {
   it("lsp-worker scopes projectDependencies based on initialLanguageId", () => {
-    const lspWorkerFile = path.resolve(__dirname, "../src/components/morsel/util/lsp-worker.ts");
+    const lspWorkerFile = path.resolve(__dirname, "../../../packages/editor/src/workbench/util/lsp-worker.ts");
     const content = fs.readFileSync(lspWorkerFile, "utf-8");
 
     assert.ok(
@@ -40,7 +40,7 @@ describe("Sketch / Playground Single-File Library Filtering & Lazy Loading", () 
   });
 
   it("MorselLeftSidebar receives dialect as language prop", () => {
-    const morselFile = path.resolve(__dirname, "../src/components/morsel/Morsel.tsx");
+    const morselFile = path.resolve(__dirname, "../../../packages/editor/src/workbench/Morsel.tsx");
     const content = fs.readFileSync(morselFile, "utf-8");
 
     assert.ok(
@@ -50,7 +50,7 @@ describe("Sketch / Playground Single-File Library Filtering & Lazy Loading", () 
   });
 
   it("Tree.tsx filters standard libraries by compatible document language", () => {
-    const treeFile = path.resolve(__dirname, "../src/components/morsel/Tree.tsx");
+    const treeFile = path.resolve(__dirname, "../../../packages/editor/src/workbench/Tree.tsx");
     const content = fs.readFileSync(treeFile, "utf-8");
 
     assert.ok(content.includes("isLanguageCompatible"), "Tree.tsx must implement isLanguageCompatible");

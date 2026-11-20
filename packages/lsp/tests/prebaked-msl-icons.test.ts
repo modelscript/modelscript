@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { loadPrebakedMslIcons, padIconViewBox } from "@modelscript/modelica/diagram";
 import assert from "assert";
 import test from "node:test";
 import { iconCache, registerTreeHandlers } from "../src/handlers/treeHandler.js";
-import { loadPrebakedMslIcons, padIconViewBox } from "../src/utils/msl-icons-loader.js";
 
 test("test-prebaked-msl-icons-loader", async () => {
   iconCache.clear();
   assert.strictEqual(iconCache.size, 0, "iconCache should be initially empty");
 
   const t0 = performance.now();
-  const count = await loadPrebakedMslIcons();
+  const count = await loadPrebakedMslIcons(iconCache);
   const elapsedMs = performance.now() - t0;
 
   console.log(`Loaded ${count} prebaked MSL icons into iconCache in ${elapsedMs.toFixed(2)}ms`);

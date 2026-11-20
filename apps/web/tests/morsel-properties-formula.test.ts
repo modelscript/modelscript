@@ -2,7 +2,11 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { formatChoiceLabel, isFormula, tryEvaluateFormula } from "../src/components/morsel/util/formula.js";
+import {
+  formatChoiceLabel,
+  isFormula,
+  tryEvaluateFormula,
+} from "../../../packages/editor/src/workbench/util/formula.js";
 
 describe("Morsel Formula Evaluator & Utilities", () => {
   it("detects formulas vs plain numbers or booleans", () => {

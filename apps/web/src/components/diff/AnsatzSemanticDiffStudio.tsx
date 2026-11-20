@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getSemanticDiff, type FlatSemanticEdit } from "@modelscript/editor/workbench/util/lsp-bridge";
 import { DiffEditor } from "@monaco-editor/react";
 import {
   AlertIcon,
@@ -21,7 +22,6 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 import { ensureMonacoThemesDefined, getMonacoThemeName } from "../../util/monaco-theme";
 import { analyzeSemanticDiff, type SemanticDiffItem, type SemanticDiffReport } from "../../util/semantic-diff-engine";
-import { getSemanticDiff, type FlatSemanticEdit } from "../morsel/util/lsp-bridge";
 
 export type SemanticStudioLens = "code" | "equations" | "schematic" | "merge";
 

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./actions.js";
+export * from "./code-lens.js";
 export * from "./connections.js";
+export * from "./cosim-graph.js";
 export { modelicaLanguage } from "./language.js";
 export * from "./modifications.js";
 
@@ -11,7 +13,9 @@ export * from "./diagnostic-reconciliation.js";
 export * from "./errors.js";
 export * from "./factory.js";
 export * from "./flattener.js";
+export * from "./formatter.js";
 export * from "./lints/index.js";
+export * from "./lsp-formal-validator.js";
 export * from "./types.js";
 export * from "./units.js";
 

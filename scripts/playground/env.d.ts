@@ -40,6 +40,24 @@ declare module "virtual:modelscript-playground-lang" {
     name: string;
   }
 
+  export interface PlaygroundToolbarButtonEntry {
+    languageId: string;
+    id: string;
+    label: string;
+    shortLabel?: string;
+    tooltip?: string;
+    icon?: string;
+    views: ("diagram" | "icon" | "3d" | "simulation" | "inspector" | "code" | "*")[];
+    targets: ("vscode" | "morsel" | "artifact")[];
+    placement: "primary" | "overflow";
+    order: number;
+    kind: "action" | "toggle";
+    actionId?: string;
+    command?: string;
+    shortcut?: string;
+    featureFlag?: string;
+  }
+
   export const PLAYGROUND_LANG: {
     id: string;
     name: string;
@@ -50,12 +68,20 @@ declare module "virtual:modelscript-playground-lang" {
     hasWasm: boolean;
     hasBindings: boolean;
     hasLsp: boolean;
+    highlight: {
+      keywords: string[];
+      typeKeywords: string[];
+      operators: string[];
+      lineComment?: string;
+      blockComment?: { open: string; close: string };
+    };
     initialMode: LanguagePanelMode;
     initialTheme: "dark" | "light";
     initialDocumentUri: string;
     initialCode: string;
     initialSamplePath: string;
     stencils: PlaygroundStencilEntry[];
+    toolbarButtons: PlaygroundToolbarButtonEntry[];
     treeViews: PlaygroundTreeViewEntry[];
     samples: PlaygroundSampleEntry[];
     panels: PlaygroundPanelEntry[];

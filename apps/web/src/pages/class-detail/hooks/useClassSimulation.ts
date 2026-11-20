@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import type { ClassDetail } from "../../../api";
 import {
   didClose,
   didOpen,
@@ -10,7 +7,10 @@ import {
   installDependency,
   simulate,
   type SimulateResult,
-} from "../../../components/morsel/util/lsp-bridge";
+} from "@modelscript/editor/workbench/util/lsp-bridge";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import type { ClassDetail } from "../../../api";
 import { extractParametersFromCode, type ParameterRibbonItem } from "../../../util/modelica-params";
 
 export interface ExperimentConfig {

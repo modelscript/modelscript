@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { CodeEditorHandle } from "@modelscript/editor/workbench/Code";
+import { getLanguageInfo, useVisibleMorselLanguages } from "@modelscript/editor/workbench/constants";
 import {
   AlertIcon,
   CheckCircleIcon,
@@ -16,8 +18,6 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import { createArtifactView } from "../../api";
 import type { NotebookCell } from "../../util/notebook";
 import Box from "../Box";
-import type { CodeEditorHandle } from "../morsel/Code";
-import { getLanguageInfo, useVisibleMorselLanguages } from "../morsel/constants";
 import Spinner from "../Spinner";
 import {
   analyzeSnippetDiagnostics,
@@ -29,7 +29,7 @@ import {
   type SnippetDiagnostic,
 } from "./snippet-diagnostics";
 
-const LazyCodeEditor = React.lazy(() => import("../morsel/Code"));
+const LazyCodeEditor = React.lazy(() => import("@modelscript/editor/workbench/Code"));
 
 export type SnippetEmbedMode = "markdown" | "artifact";
 

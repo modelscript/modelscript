@@ -7,6 +7,7 @@
  * contextual hover assistance with intrinsic procedure specs, and intelligent code completions for Fortran 90/95/2003/2008.
  */
 
+import { verifyFortranSource } from "./formal/verifier.js";
 import { lintFortranSource, type FortranDiagnostic } from "./lints/index.js";
 
 export interface LspPosition {
@@ -116,6 +117,42 @@ export function validateFortran(source: string): LspDiagnostic[] {
       source: "fortran-linter",
       message: lint.message,
     });
+  }
+
+  // Run formal CFG abstract interpretation & DAE reachability verification
+  try {
+    const verification = verifyFortranSource(source);
+    for (const check of verification.checks) {
+      if (check.verdict !== "definite_bug" && check.verdict !== "potential_bug") continue;
+      const line0 = Math.max(0, (check.astNodeId ?? 1) - 1);
+      const alreadyReportedOnLine = diags.some(
+        (d) =>
+          d.range.start.line === line0 &&
+          ((check.category === "division_by_zero" && String(d.code).includes("4072")) ||
+            (check.category === "math_domain" && String(d.code).includes("4084")) ||
+            (check.category === "array_out_of_bounds" && String(d.code).includes("4073"))),
+      );
+      if (!alreadyReportedOnLine) {
+        const lineText = lines[line0] ?? "";
+        let startChar = 0;
+        while (startChar < lineText.length && (lineText[startChar] === " " || lineText[startChar] === "\t")) {
+          startChar++;
+        }
+        if (startChar >= lineText.length) startChar = 0;
+        diags.push({
+          severity: check.verdict === "definite_bug" ? 1 : 2,
+          range: {
+            start: { line: line0, character: startChar },
+            end: { line: line0, character: Math.max(startChar + 1, lineText.length) },
+          },
+          code: "M4085",
+          message: `[M4085] Formal Verifier (${check.category}): ${check.description}`,
+          source: "fortran-verifier",
+        });
+      }
+    }
+  } catch {
+    // Formal verifier is best-effort on incomplete/invalid source
   }
 
   return diags;

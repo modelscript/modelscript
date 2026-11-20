@@ -10,6 +10,7 @@ import {
   putSalsaIndexCache,
 } from "./browser-file-system.js";
 
+import { loadPrebakedMslIcons } from "@modelscript/modelica/diagram";
 import { globalLibraryRegistry, type ModelscriptLibraryManifest } from "@modelscript/runtime";
 import type { FederatedQueryCacheStore } from "@modelscript/runtime/wasm_cache_store.js";
 import { strFromU8, unzipSync } from "fflate";
@@ -29,7 +30,6 @@ import {
   extractSysmlAtAnnotationDeps,
   trimOuterChars,
 } from "../utils/lexical-utils.js";
-import { loadPrebakedMslIcons } from "../utils/msl-icons-loader.js";
 import { findCuratedPackageFallback } from "./curated-package-fallbacks.js";
 import { ingestSalsaIndex } from "./salsa-index-ingester.js";
 
@@ -1028,7 +1028,7 @@ export async function loadMSL(
     }
     ctx.logger.log(`MSL loaded: ${fileCount} files`);
     try {
-      await loadPrebakedMslIcons(serverDistBase);
+      await loadPrebakedMslIcons(iconCache, serverDistBase);
     } catch {
       // non-fatal
     }

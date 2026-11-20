@@ -60,6 +60,7 @@ import {
   preprocessFortranSegment,
   type PreprocessedFortran,
 } from "./preprocessor.js";
+export { buildFortranDiagramFromCst, maskFortranFixedCommentsAndPreprocessor } from "./diagram-builder.js";
 
 export {
   buildFortranCFG,
@@ -91,6 +92,7 @@ export {
 };
 
 export * from "./lsp.js";
+export * from "./semantic-tokens.js";
 
 export type {
   CompiledFortranComponent,
@@ -161,3 +163,4 @@ export async function parseFortran(source: string): Promise<SyntaxNode | null> {
 }
 
 export * from "./lints/workspace.js";
+export * from "./lsp-actions.js";

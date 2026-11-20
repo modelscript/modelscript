@@ -590,24 +590,25 @@ export async function buildDiagramData(
         Boolean(classPrefix?.includes("type")) ||
         Boolean(classPrefix?.includes("function")) ||
         Boolean(classPrefix?.includes("record"));
-      const isPrimitive =
-        !componentClassInstance ||
-        (componentClassInstance?.name &&
-          [
-            "Real",
-            "Integer",
-            "Boolean",
-            "String",
-            "ExternalObject",
-            "Voltage",
-            "Current",
-            "Resistance",
-            "Frequency",
-            "Angle",
-            "Inductance",
-            "Capacitance",
-            "Power",
-          ].includes(componentClassInstance.name));
+      const resolvedTypeName = componentClassInstance?.name ?? (component as { typeName?: string }).typeName;
+      const isPrimitive = Boolean(
+        resolvedTypeName &&
+        [
+          "Real",
+          "Integer",
+          "Boolean",
+          "String",
+          "ExternalObject",
+          "Voltage",
+          "Current",
+          "Resistance",
+          "Frequency",
+          "Angle",
+          "Inductance",
+          "Capacitance",
+          "Power",
+        ].includes(resolvedTypeName),
+      );
 
       if (isOuter || isParam || isExcludedKind || isPrimitive) {
         continue;

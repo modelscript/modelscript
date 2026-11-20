@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  buildCaeSimulationModel,
+  CaePostProcessDrawer,
+  CaeSimulationTree,
+  ScalarColorbarLegend,
+  type CaeSimulationRunEntry,
+} from "@modelscript/editor/workbench/cad-viewer";
+import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
 import { CodeIcon, EyeIcon, VersionsIcon, WorkflowIcon, ZapIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
 import { Html } from "@react-three/drei";
@@ -12,14 +20,6 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
-import {
-  buildCaeSimulationModel,
-  CaePostProcessDrawer,
-  CaeSimulationTree,
-  ScalarColorbarLegend,
-  type CaeSimulationRunEntry,
-} from "../morsel/cad-viewer";
-import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";

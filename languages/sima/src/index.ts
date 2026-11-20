@@ -6,6 +6,7 @@ export { simaLanguage } from "./language.js";
 export { SimaErrorCode, lintSimaProject, type SimaDiagnostic } from "./lints/index.js";
 
 export * from "./indexing.js";
+export * from "./lsp-actions.js";
 export {
   executeSimaAction,
   getSimaDocumentSymbols,

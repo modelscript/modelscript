@@ -355,3 +355,128 @@ export async function executeCfdAction(action: string, args: Record<string, unkn
       throw new Error(`Unknown CFD action: ${action}`);
   }
 }
+
+export interface CfdCodeLensContext {
+  uri?: string | undefined;
+  flags?: {
+    showVerification?: boolean | undefined;
+    showPolyglotLinks?: boolean | undefined;
+    showCadMetrics?: boolean | undefined;
+    showDiagram?: boolean | undefined;
+  };
+  workspaceManager?: {
+    getThreadsForUri?: (uri: string) => Array<{ domain?: string; meta?: { properties?: Record<string, unknown> } }>;
+    findAlignedElementsBySlot?: (slot: unknown) => unknown[];
+  };
+}
+
+export interface LspCodeLens {
+  range: LspRange;
+  command?: {
+    title: string;
+    command: string;
+    arguments?: unknown[] | undefined;
+  };
+}
+
+/**
+ * Generates CodeLens actions for CFD configurations (.cfg, .cfgt, .su2, .cfd, .foam).
+ */
+export function getCfdCodeLenses(text: string, uri: string, ctx: CfdCodeLensContext = {}): LspCodeLens[] {
+  const lenses: LspCodeLens[] = [];
+  if (!text) return lenses;
+
+  const showPolyglotLinks = ctx.flags?.showPolyglotLinks ?? false;
+  const showCadMetrics = ctx.flags?.showCadMetrics ?? false;
+  const showDiagram = ctx.flags?.showDiagram ?? false;
+
+  const headerRange: LspRange = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
+  const threadEntries =
+    showCadMetrics || showPolyglotLinks ? (ctx.workspaceManager?.getThreadsForUri?.(uri) ?? []) : [];
+  const cfdThread = threadEntries.find((e) => e.domain === "cfd") ?? threadEntries[0];
+  const cfdProps = cfdThread?.meta?.properties;
+
+  const aeroDragCoeff = cfdProps?.["aeroDragCoeff"];
+  const frontalArea = cfdProps?.["frontalArea"];
+
+  if (aeroDragCoeff !== undefined && frontalArea !== undefined) {
+    if (showCadMetrics) {
+      lenses.push({
+        range: headerRange,
+        command: {
+          title: `🌪️ CFD Aerodynamics: Cd = ${Number(aeroDragCoeff).toFixed(2)}, A_ref = ${Number(frontalArea).toFixed(3)} m² | Cruise Airspeed = 10.0 m/s`,
+          command: "modelscript.openThreadExplorer",
+          arguments: [uri],
+        },
+      });
+    }
+    if (showPolyglotLinks) {
+      let moName = "Modelica";
+      if (cfdThread && ctx.workspaceManager?.findAlignedElementsBySlot) {
+        const aligned = ctx.workspaceManager.findAlignedElementsBySlot(
+          (cfdThread as { slot?: unknown }).slot,
+        ) as Array<{ domain?: string; name?: string }>;
+        const moPeer = aligned.find((p) => p.domain?.toLowerCase() === "modelica");
+        const peerName = moPeer?.name;
+        if (peerName) {
+          const trimmed = String(peerName).trim();
+          moName = trimmed.toLowerCase().startsWith("model ") ? trimmed.slice(6).trim() : trimmed;
+        }
+      }
+      lenses.push({
+        range: headerRange,
+        command: {
+          title: `🔗 Transfer Aerodynamic Drag to Modelica ${moName}.Cd`,
+          command: "modelscript.syncDigitalThreadParams",
+          arguments: [uri],
+        },
+      });
+    }
+  } else if (showCadMetrics) {
+    const cfdDialect = uri.split(/[?#]/, 1)[0]!.toLowerCase().endsWith(".foam") ? "openfoam" : "su2";
+    const cfdData = parseCfdConfig(text, cfdDialect);
+    const solver = cfdData.rawDirectives.get("SOLVER") || cfdData.directives.get("SOLVER") || "CFD";
+    const rawRefArea = cfdData.rawDirectives.get("REF_AREA") || cfdData.directives.get("REF_AREA");
+    const refArea = rawRefArea?.trim() || undefined;
+    lenses.push({
+      range: headerRange,
+      command: {
+        title: `🌪️ CFD Configuration: ${solver}${refArea ? ` | A_ref = ${refArea} m²` : ""}`,
+        command: "modelscript.openThreadExplorer",
+        arguments: [uri],
+      },
+    });
+  }
+
+  if (showDiagram) {
+    lenses.push({
+      range: headerRange,
+      command: {
+        title: "⊞ Open Interactive Diagram",
+        command: "modelscript.openDiagram",
+        arguments: [uri],
+      },
+    });
+  }
+
+  if (showPolyglotLinks && frontalArea !== undefined) {
+    const cfdDialect = uri.split(/[?#]/, 1)[0]!.toLowerCase().endsWith(".foam") ? "openfoam" : "su2";
+    const cfdData = parseCfdConfig(text, cfdDialect);
+    const refAreaLine = cfdData.directiveLines?.get("REF_AREA");
+    if (refAreaLine !== undefined && refAreaLine >= 1) {
+      const lineIdx = refAreaLine - 1;
+      const lines = text.split("\n").map((l) => (l.endsWith("\r") ? l.slice(0, -1) : l));
+      const line = lines[lineIdx] ?? "";
+      lenses.push({
+        range: { start: { line: lineIdx, character: 0 }, end: { line: lineIdx, character: line.length } },
+        command: {
+          title: `📐 Parity Check: Ref Area matches OpenSCAD Frontal Area (${Number(frontalArea).toFixed(3)} m²)`,
+          command: "modelscript.openThreadExplorer",
+          arguments: [uri],
+        },
+      });
+    }
+  }
+
+  return lenses;
+}

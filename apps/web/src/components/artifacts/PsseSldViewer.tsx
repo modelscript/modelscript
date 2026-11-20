@@ -12,6 +12,7 @@ import {
   type PsseTransformerLike,
   renderPsseSldSvg,
 } from "@modelscript/diagram";
+import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
 import { type PowerFlowResult, type PsseCase, parseRaw, solvePowerFlow, solvePowerFlowAsync } from "@modelscript/psse";
 import { CheckIcon, CodeIcon, CopyIcon, DownloadIcon, ZapIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
@@ -21,12 +22,11 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
-import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 const SimulationResults = React.lazy(() =>
-  import("../morsel/SimulationResults.js").then((m) => ({ default: m.SimulationResults })),
+  import("@modelscript/editor/workbench/SimulationResults.js").then((m) => ({ default: m.SimulationResults })),
 );
 
 export interface PsseSldViewerProps {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import assert from "node:assert";
-import { getAvailableFileIcons, getFileIconPath } from "../src/components/morsel/util/file-icons";
+import { getAvailableFileIcons, getFileIconPath } from "../../../packages/editor/src/workbench/util/file-icons";
 
 const available = getAvailableFileIcons();
 assert.ok(available.has("modelica"), "Expected modelica.svg to be discovered in public/file-icons");

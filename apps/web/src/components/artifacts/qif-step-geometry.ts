@@ -63,7 +63,7 @@ export async function stepTextToGeometry(
   name: string,
   scaleFactor = 1.0,
 ): Promise<StepGeometry | null> {
-  const { tessellateStepSource } = await import("../morsel/hooks/useMorselEngine");
+  const { tessellateStepSource } = await import("@modelscript/editor/workbench/hooks/useMorselEngine");
   // Keep native STEP coordinates: QIF feature locations are in the same (millimeter) frame.
   const { stlBuffer } = tessellateStepSource(stepText, { normalize: false });
   return parseBinaryStl(stlBuffer, name, scaleFactor);

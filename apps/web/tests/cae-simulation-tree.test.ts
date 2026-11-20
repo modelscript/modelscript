@@ -2,14 +2,14 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildCaeSimulationModel } from "../src/components/morsel/cad-viewer/CaeSimulationTree";
-import { computeRk4Streamlines, sampleVtkCutLine } from "../src/components/morsel/cad-viewer/VtkRenderer";
+import { buildCaeSimulationModel } from "../../../packages/editor/src/workbench/cad-viewer/CaeSimulationTree";
+import { computeRk4Streamlines, sampleVtkCutLine } from "../../../packages/editor/src/workbench/cad-viewer/VtkRenderer";
 import {
   generateFluidEnclosureMesh,
   generateLocalTetMesh,
   runLocalCfdStudy,
   runLocalFeaStudy,
-} from "../src/components/morsel/util/cae-local-runner";
+} from "../../../packages/editor/src/workbench/util/cae-local-runner";
 
 describe("CaeSimulationTree — buildCaeSimulationModel", () => {
   it("extracts SimScale-style tree sections from a CalculiX/Abaqus FEA .inp deck", () => {

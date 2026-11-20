@@ -1,5 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getDefaultLanguageView, getLanguageInfo, MORSEL_LANGUAGE_MAP } from "@modelscript/editor/workbench/constants";
+import MorselEditor from "@modelscript/editor/workbench/Morsel";
+import { getLatestPsseStudySnapshot } from "@modelscript/editor/workbench/panels/inspectors/PowerGridInspector";
+import {
+  extractPrimaryModelicaClassName,
+  installDependency,
+  unloadAllMountedLibraries,
+} from "@modelscript/editor/workbench/util/lsp-bridge";
+import {
+  buildMorselEmbedHtmlPage,
+  compressMorselPayload,
+  decompressMorselPayload,
+  resolveMorselShortlink,
+} from "@modelscript/editor/workbench/util/permalink";
 import { AlertIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -9,20 +23,6 @@ import { useAuth } from "../AuthContext";
 import { analyzeSnippetDiagnostics } from "../components/compose/snippet-diagnostics";
 import { ComposeContext } from "../components/ComposeContext";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { getDefaultLanguageView, getLanguageInfo, MORSEL_LANGUAGE_MAP } from "../components/morsel/constants";
-import MorselEditor from "../components/morsel/Morsel";
-import { getLatestPsseStudySnapshot } from "../components/morsel/panels/inspectors/PowerGridInspector";
-import {
-  extractPrimaryModelicaClassName,
-  installDependency,
-  unloadAllMountedLibraries,
-} from "../components/morsel/util/lsp-bridge";
-import {
-  buildMorselEmbedHtmlPage,
-  compressMorselPayload,
-  decompressMorselPayload,
-  resolveMorselShortlink,
-} from "../components/morsel/util/permalink";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/ToastContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
@@ -133,6 +133,12 @@ export const PlaygroundPage: React.FC = () => {
   const startTimeParam = searchParams.get("startTime");
   const stopTimeParam = searchParams.get("stopTime");
   const langParam = searchParams.get("lang") || searchParams.get("dialect") || searchParams.get("language");
+  const singleLangLocked = Boolean(
+    langParam &&
+    (searchParams.get("single") === "1" ||
+      searchParams.get("single") === "true" ||
+      searchParams.get("lockLang") === "1"),
+  );
   const titleParam = searchParams.get("title");
   const editPostIdParam = searchParams.get("editPostId");
   const replyToPostIdParam = searchParams.get("replyToPostId");
@@ -926,6 +932,7 @@ export const PlaygroundPage: React.FC = () => {
 
   const handleSelectLang = (nextLang: string) => {
     if (nextLang === currentLang) return;
+    if (singleLangLocked) return;
     const nextStarter = HERO_EXAMPLES.find((ex) => ex.lang === nextLang);
     const langInfo = MORSEL_LANGUAGE_MAP.get(nextLang.toLowerCase());
     const langOpt = PLAYGROUND_LANGUAGES.find((l) => l.id === nextLang);
@@ -1624,6 +1631,7 @@ export const PlaygroundPage: React.FC = () => {
         fromArtifactParam={resolvedFromArtifact}
         currentTitle={currentTitle}
         currentLang={currentLang}
+        lockedLanguage={singleLangLocked ? currentLang : undefined}
         currentView={currentView}
         diagramType={diagramType}
         onSelectDiagramType={(nextType) => {
@@ -2008,6 +2016,7 @@ export const PlaygroundPage: React.FC = () => {
           }
         }}
         currentLang={currentLang}
+        lockedLanguage={singleLangLocked ? currentLang : undefined}
         requireChoice={isTemplateChoiceRequired}
       />
 

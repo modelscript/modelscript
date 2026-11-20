@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getLanguageInfo, useVisibleMorselLanguages } from "@modelscript/editor/workbench/constants";
+import MorselEditor from "@modelscript/editor/workbench/Morsel";
+import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
 import { LinkExternalIcon, ScreenFullIcon, ScreenNormalIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, Dialog, IconButton, Text } from "@primer/react";
 import React, { useState } from "react";
 import styled from "styled-components";
 import { createArtifactView } from "../api";
 import { HERO_EXAMPLES } from "../pages/playground/constants";
-import { getLanguageInfo, useVisibleMorselLanguages } from "./morsel/constants";
-import MorselEditor from "./morsel/Morsel";
-import { compressMorselPayload } from "./morsel/util/permalink";
 
 const ModalBody = styled.div<{ $isFullScreen: boolean }>`
   flex: 1;

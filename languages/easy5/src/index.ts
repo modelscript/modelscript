@@ -25,6 +25,7 @@ export {
   type TrimResult,
 } from "./linear/index.js";
 export { Easy5ErrorCode, lintEasy5, type Easy5Diagnostic } from "./lints/index.js";
+export * from "./lsp-actions.js";
 export {
   executeEasy5Action,
   getEasy5DocumentSymbols,

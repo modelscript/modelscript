@@ -7,4 +7,5 @@
  */
 
 export * from "./components/LanguagePanelPrimitives.js";
+export * from "./components/PanelBltView.js";
 export * from "./panel-contract.js";

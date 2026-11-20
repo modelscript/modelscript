@@ -7,7 +7,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { getLanguageInfo } from "../src/components/morsel/constants.js";
+import { getLanguageInfo } from "../../../packages/editor/src/workbench/constants.js";
 
 registerHooks({
   load(url, context, nextLoad) {
@@ -18,7 +18,7 @@ registerHooks({
   },
 });
 
-const { MorselMobileTabBar } = await import("../src/components/morsel/panels/MorselMobileTabBar.js");
+const { MorselMobileTabBar } = await import("../../../packages/editor/src/workbench/panels/MorselMobileTabBar.js");
 
 describe("Morsel Language Capability Tab Hiding", () => {
   const noop = () => {};
@@ -88,7 +88,10 @@ describe("Morsel Language Capability Tab Hiding", () => {
   });
 
   it("verifies MorselVisualizerPane redirects away from unsupported diagram view", () => {
-    const panePath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx");
+    const panePath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+    );
     const content = fs.readFileSync(panePath, "utf-8");
 
     assert.ok(
@@ -115,7 +118,7 @@ describe("Morsel Language Capability Tab Hiding", () => {
   });
 
   it("resolves per-language defaultView and defaultSplit via getDefaultLanguageView", async () => {
-    const { getDefaultLanguageView } = await import("../src/components/morsel/constants.js");
+    const { getDefaultLanguageView } = await import("../../../packages/editor/src/workbench/constants.js");
 
     // Modelica has 2D diagram support -> defaults to diagram + code split
     assert.deepEqual(getDefaultLanguageView(getLanguageInfo("modelica")), {
@@ -162,7 +165,7 @@ describe("Morsel Language Capability Tab Hiding", () => {
   });
 
   it("uses narrower default code editor split ratio and per-language defaults in Morsel and PlaygroundPage", () => {
-    const morselPath = path.resolve(import.meta.dirname, "../src/components/morsel/Morsel.tsx");
+    const morselPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Morsel.tsx");
     const morselSrc = fs.readFileSync(morselPath, "utf-8");
     assert.ok(morselSrc.includes("DEFAULT_SPLIT_RATIO = 0.62"), "Morsel.tsx should default splitRatio to 0.62");
     assert.ok(

@@ -36,6 +36,10 @@
       "types": "./dist/lsp-context.d.ts",
       "default": "./dist/lsp-context.js"
     },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "default": "./dist/core/index.js"
+    },
     "./services": {
       "types": "./dist/services/index.d.ts",
       "default": "./dist/services/index.js"

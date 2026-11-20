@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import * as modelicaDiagramOps from "@modelscript/modelica/diagram";
+import { applyIconEditActions, parseIconPrimitive } from "@modelscript/modelica/diagram";
 import modelicaLanguage from "@modelscript/modelica/language";
 import { reqifLanguage } from "@modelscript/reqif";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { ModelicaDiagramBackend } from "../src/diagramApi.js";
-import { applyIconEditActions, parseIconPrimitive } from "../src/icon-annotation-edits.js";
 import { globalLanguageRegistry } from "../src/registry/LanguageRegistry.js";
 import { computeWritebackEdit } from "../src/services/writeback-service.js";
 

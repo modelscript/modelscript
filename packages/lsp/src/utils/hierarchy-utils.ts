@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
-  globalLibraryRegistry,
-  type ClassHierarchyNode,
-  type ComponentTreeNode,
-  type TreeNodeInfo,
-} from "@modelscript/runtime";
-import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
-import {
   getOntologyCategoryNodes,
   getOntologyRootNodes,
   getOwlClassTreeNodes,
   getOwlIndividualTreeNodes,
   getOwlPropertyTreeNodes,
   getOwlSubPropertyTreeNodes,
-} from "./owl2-tree-utils.js";
+} from "@modelscript/owl2";
+import {
+  globalLibraryRegistry,
+  type ClassHierarchyNode,
+  type ComponentTreeNode,
+  type TreeNodeInfo,
+} from "@modelscript/runtime";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 
 export const CLASS_KIND_KEYWORDS = [
   "class",

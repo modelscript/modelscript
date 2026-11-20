@@ -702,7 +702,20 @@ export function flattenModelicaForCosim(text: string, uri: string, className?: s
   try {
     const ctx = new ModelicaContext(new BrowserFileSystem());
     ctx.load(text, uri);
-    const target = className || text.match(/^\s*model\s+([A-Za-z_]\w*)/m)?.[1];
+    let target = className;
+    if (!target) {
+      const syms = Array.from(
+        ((ctx as any).workspaceIndex?.getUnifiedIndex?.()?.symbols?.values?.() ?? []) as Array<{
+          kind?: string;
+          name?: string;
+          metadata?: { classKind?: string };
+        }>,
+      );
+      const modelSym =
+        syms.find((s) => (s.kind === "Class" || s.kind === "Def") && s.metadata?.classKind === "model") ??
+        syms.find((s) => (s.kind === "Class" || s.kind === "Def") && s.name);
+      target = modelSym?.name;
+    }
     if (!target) return null;
     return ctx.flattenArena(target, undefined, uri);
   } catch {

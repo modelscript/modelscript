@@ -20,6 +20,7 @@ export { rocetsLanguage } from "./language.js";
 export { RocetsErrorCode, lintRocets, type RocetsDiagnostic } from "./lints/index.js";
 
 export * from "./indexing.js";
+export * from "./lsp-actions.js";
 export {
   executeRocetsAction,
   getRocetsDocumentSymbols,

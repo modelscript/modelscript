@@ -4,11 +4,7 @@ import assert from "node:assert";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
-import {
-  analyzeSemanticDiff,
-  defaultPhysicsSimplexConsensus,
-  reconstructTextsFromUnifiedPatch,
-} from "../src/util/semantic-diff-engine.js";
+import { analyzeSemanticDiff, defaultPhysicsSimplexConsensus } from "../src/util/semantic-diff-engine.js";
 
 describe("Ansatz Semantic Diff Studio - Grade-A Maturity Verification", () => {
   const baseModel = `
@@ -182,12 +178,15 @@ end ComplexActuatorSystem;
   });
 
   it("5. Verifies LSP bridge exports getSemanticDiff and FlatSemanticEdit for native WASM worker delegation", () => {
-    const bridgePath = path.resolve(import.meta.dirname, "../src/components/morsel/util/lsp-bridge.ts");
+    const bridgePath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/util/lsp-bridge.ts");
     assert.ok(fs.existsSync(bridgePath), "lsp-bridge.ts must exist");
     const bridgeSrc = fs.readFileSync(bridgePath, "utf-8");
 
     assert.ok(bridgeSrc.includes("export async function getSemanticDiff"), "Must export getSemanticDiff");
-    assert.ok(bridgeSrc.includes("modelscript/getSemanticDiff"), "Must dispatch modelscript/getSemanticDiff request to LSP");
+    assert.ok(
+      bridgeSrc.includes("modelscript/getSemanticDiff"),
+      "Must dispatch modelscript/getSemanticDiff request to LSP",
+    );
     assert.ok(bridgeSrc.includes("regulatoryImpact"), "Must support ISO 14971 / IEC 62304 regulatoryImpact data");
   });
 
@@ -210,7 +209,10 @@ end ComplexActuatorSystem;
 
     assert.ok(prSrc.includes("hasFullBlobs"), "PullRequestsTab must prioritize full file blobs");
     assert.ok(prSrc.includes("ancestorCode={file.ancestor_content}"), "PullRequestsTab must forward ancestorCode");
-    assert.ok(ecoSrc.includes("ancestorCode={activeDiffFile.ancestorContent}"), "SpaceChangeControlTab must forward ancestorCode");
+    assert.ok(
+      ecoSrc.includes("ancestorCode={activeDiffFile.ancestorContent}"),
+      "SpaceChangeControlTab must forward ancestorCode",
+    );
   });
 
   it("8. Verifies One-Click Simplex Parameter Reconciliation updates file buffer and supports Diagram Workbench launcher", () => {
@@ -220,9 +222,15 @@ end ComplexActuatorSystem;
     const studioSrc = fs.readFileSync(studioPath, "utf-8");
     const ecoSrc = fs.readFileSync(ecoPath, "utf-8");
 
-    assert.ok(studioSrc.includes("onOpenDiagramWorkbench"), "AnsatzSemanticDiffStudio must declare onOpenDiagramWorkbench prop");
+    assert.ok(
+      studioSrc.includes("onOpenDiagramWorkbench"),
+      "AnsatzSemanticDiffStudio must declare onOpenDiagramWorkbench prop",
+    );
     assert.ok(studioSrc.includes("⚡ Diagram Workbench"), "Lens 3 must render Diagram Workbench launcher button");
-    assert.ok(ecoSrc.includes("Reconciled '${paramName}' to ${val}"), "SpaceChangeControlTab must report parameter reconciliation");
+    assert.ok(
+      ecoSrc.includes("Reconciled '${paramName}' to ${val}"),
+      "SpaceChangeControlTab must report parameter reconciliation",
+    );
     assert.ok(ecoSrc.includes("Applied to buffer"), "SpaceChangeControlTab must record buffer application");
   });
 
@@ -231,9 +239,14 @@ end ComplexActuatorSystem;
     assert.ok(fs.existsSync(lspMiscPath), "miscEndpoints.ts must exist");
     const lspSrc = fs.readFileSync(lspMiscPath, "utf-8");
 
-    assert.ok(lspSrc.includes("globalLanguageRegistry.getPluginForLanguageIdOrUri"), "Must query globalLanguageRegistry for language plugins");
-    assert.ok(lspSrc.includes("getParserForUri"), "Must query parserService.getParserForUri for polyglot parser support");
+    assert.ok(
+      lspSrc.includes("globalLanguageRegistry.getPluginForLanguageIdOrUri"),
+      "Must query globalLanguageRegistry for language plugins",
+    );
+    assert.ok(
+      lspSrc.includes("getParserForUri"),
+      "Must query parserService.getParserForUri for polyglot parser support",
+    );
     assert.ok(lspSrc.includes("createWsIndex"), "Must dynamically create workspace index for polyglot languages");
   });
 });
-

@@ -119,3 +119,17 @@ export function symbolEntryToLocation(
   const positions = new PositionIndex(text);
   return { uri, range: positions.rangeFromOffsets(startOff, endOff) };
 }
+
+/**
+ * Normalizes scheme slashes on a document URI (e.g. `file:/foo` -> `file:///foo`).
+ */
+export function normalizeUri(uri: string): string {
+  return uri ? uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///") : "";
+}
+
+/**
+ * Case-insensitive normalized URI for map/equality comparisons across Windows & POSIX paths.
+ */
+export function normalizeUriLower(uri: string | undefined): string {
+  return uri ? normalizeUri(uri).toLowerCase() : "";
+}

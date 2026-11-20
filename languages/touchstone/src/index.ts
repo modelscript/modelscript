@@ -5,6 +5,7 @@ export * from "./errors.js";
 export * from "./indexing.js";
 export * from "./language.js";
 export * from "./lints/index.js";
+export * from "./lsp-actions.js";
 export * from "./lsp.js";
 export * from "./parser/touchstone-parser.js";
 export * from "./projections/touchstone-to-modelica.js";

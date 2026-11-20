@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { globalClassIconCache } from "../src/components/morsel/util/lsp-bridge";
+import { globalClassIconCache } from "../../../packages/editor/src/workbench/util/lsp-bridge";
 import {
   buildLibraryClassPathClient,
   clearRegistryStreamCache,
@@ -12,7 +12,7 @@ import {
   mergeLocalAndStreamedComponents,
   streamRegistryComponents,
   streamRegistryModels,
-} from "../src/components/morsel/util/registry-stream";
+} from "../../../packages/editor/src/workbench/util/registry-stream";
 
 describe("Morsel Ansatz Registry Streaming Client", () => {
   const originalFetch = globalThis.fetch;

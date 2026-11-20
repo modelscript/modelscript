@@ -15,13 +15,13 @@ import {
   parseSimulinkTextToSystem,
   renderSimulinkSvg,
 } from "@modelscript/diagram/simulink-diagram-builder";
-import { resolveThumbnailUrls } from "../src/components/artifacts/card/utils.js";
-import { adaptSvgMarkupForTheme } from "../src/components/artifacts/svg-theme.js";
 import {
   extractCadComponents,
   parseSourceCadVariables,
-} from "../src/components/morsel/cad-viewer/parse-cad-annotations.js";
-import { applyLspTextEditsToString } from "../src/components/morsel/util/text-edits.js";
+} from "../../../packages/editor/src/workbench/cad-viewer/parse-cad-annotations.js";
+import { applyLspTextEditsToString } from "../../../packages/editor/src/workbench/util/text-edits.js";
+import { resolveThumbnailUrls } from "../src/components/artifacts/card/utils.js";
+import { adaptSvgMarkupForTheme } from "../src/components/artifacts/svg-theme.js";
 
 describe("Embedded Artifact Viewers UX/UI & Diagram Editing Regression Suite", () => {
   describe("1. Diagram-Only Editing Without Mounted Monaco Editor (applyLspTextEditsToString)", () => {
@@ -232,7 +232,7 @@ Model {
 
     it("assigns unique LSP document URIs per Morsel instance and allows diagram-only edits", () => {
       const morselSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../src/components/morsel/Morsel.tsx"),
+        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Morsel.tsx"),
         "utf8",
       );
       assert.ok(
@@ -314,7 +314,8 @@ Model {
     });
 
     it("extracts primary simulatable Modelica class and ensures LSP parser readiness before simulation", async () => {
-      const { extractPrimaryModelicaClassName } = await import("../src/components/morsel/util/lsp-bridge.js");
+      const { extractPrimaryModelicaClassName } =
+        await import("../../../packages/editor/src/workbench/util/lsp-bridge.js");
       const multiClassSnippet = [
         "connector Pin",
         "  Real v;",
@@ -373,8 +374,8 @@ Model {
         "../src/components/artifacts/ArtifactViewCard.tsx",
         "../src/components/artifacts/card/CardFooter.tsx",
         "../src/components/artifacts/card/StudioHeader.tsx",
-        "../src/components/morsel/panels/MorselFloatingDock.tsx",
-        "../src/components/morsel/panels/MorselVisualizerPane.tsx",
+        "../../../packages/editor/src/workbench/panels/MorselFloatingDock.tsx",
+        "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
       ];
       for (const relPath of gatedFiles) {
         const src = fs.readFileSync(path.resolve(import.meta.dirname, relPath), "utf8");
@@ -478,7 +479,7 @@ Model {
 
     it("supports multi-file maps, stateful view permalinks, and ?morsel=<id> parity across Playground and Embed", async () => {
       const { compressMorselPayload, decompressMorselPayload, resolveMorselShortlink } =
-        await import("../src/components/morsel/util/permalink");
+        await import("../../../packages/editor/src/workbench/util/permalink");
       assert.strictEqual(typeof resolveMorselShortlink, "function");
 
       const multiFilePayload = {
@@ -514,7 +515,7 @@ Model {
         "Both PlaygroundPage and EmbedPlaygroundPage must share resolveMorselShortlink for ?morsel=<id> parity",
       );
       const sidebarSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselLeftSidebar.tsx"),
+        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/MorselLeftSidebar.tsx"),
         "utf8",
       );
       assert.ok(
@@ -709,7 +710,7 @@ Model {
       );
 
       const morselCadSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../src/components/morsel/cad-viewer/CadViewer.tsx"),
+        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/cad-viewer/CadViewer.tsx"),
         "utf8",
       );
       assert.ok(
@@ -846,7 +847,7 @@ end DoublePendulum3D;
 
     it("wires procedural meshes, quaternion transforms, and 3D preview tabs across CadViewer, Morsel, and Post-Artifact Viewers", () => {
       const cadViewerSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../src/components/morsel/cad-viewer/CadViewer.tsx"),
+        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/cad-viewer/CadViewer.tsx"),
         "utf8",
       );
       assert.ok(
@@ -857,7 +858,7 @@ end DoublePendulum3D;
       );
 
       const instancedSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../src/components/morsel/cad-viewer/InstancedCadAssembly.tsx"),
+        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/cad-viewer/InstancedCadAssembly.tsx"),
         "utf8",
       );
       assert.ok(
@@ -866,7 +867,7 @@ end DoublePendulum3D;
       );
 
       const engineSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../src/components/morsel/hooks/useMorselEngine.ts"),
+        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/hooks/useMorselEngine.ts"),
         "utf8",
       );
       assert.ok(
@@ -897,7 +898,7 @@ end DoublePendulum3D;
       );
 
       const visualizerPaneSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx"),
+        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx"),
         "utf8",
       );
       assert.ok(

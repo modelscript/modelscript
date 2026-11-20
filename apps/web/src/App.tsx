@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { MorselLoadingScreen } from "@modelscript/editor/workbench/MorselLoadingScreen";
 import { BaseStyles, ThemeProvider } from "@primer/react";
 import React, { Suspense } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -13,12 +14,12 @@ import EnterpriseUpgradeModal from "./components/EnterpriseUpgradeModal";
 import ErrorBoundary from "./components/ErrorBoundary";
 import KeyboardShortcutsModal from "./components/KeyboardShortcutsModal";
 import MaintenanceExperienceHost from "./components/MaintenanceExperienceHost";
-import { MorselLoadingScreen } from "./components/morsel/MorselLoadingScreen";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { RealtimeNotificationListener } from "./components/RealtimeNotificationListener";
 import RequireAuth from "./components/RequireAuth";
 import ScrollToTop, { scrollToTop } from "./components/ScrollToTop";
 import { ToastProvider } from "./components/ToastContext";
+import { WebEditorHostBridge } from "./components/WebEditorHostBridge";
 import { FeatureFlagProvider, useFeatureFlag } from "./FeatureFlagContext";
 import { InstanceBrandingProvider } from "./InstanceBrandingContext";
 import { ModelingPreferencesProvider } from "./ModelingPreferencesContext";
@@ -603,252 +604,263 @@ function App() {
             <MaintenanceExperienceHost />
             <GlobalModals />
             <RealtimeNotificationListener />
-            <ErrorBoundary>
-              <Suspense fallback={<PageLoadingFallback />}>
-                <Routes>
-                  <Route
-                    path="/"
-                    element={
-                      isLoading ? (
-                        <PageLoadingFallback />
-                      ) : (
-                        <Navigate to={user ? "/home" : justLoggedOut ? "/logout" : "/explore"} replace />
-                      )
-                    }
-                  />
-                  <Route path="/setup" element={<SetupWizardPage onLoginSuccess={setSession} />} />
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route path="/logout" element={<LogoutPage />} />
-                  <Route path="/signup" element={<SignupPage />} />
-                  <Route path="/onboarding" element={<Navigate to="/home?tour=1" replace />} />
-                  <Route path="/terms" element={<TermsPage />} />
-                  <Route path="/privacy" element={<PrivacyPage />} />
-                  <Route path="/cookies" element={<CookiesPage />} />
-                  <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
-                  <Route path="/verify-email" element={<VerifyEmailPage />} />
-                  <Route path="/reset-password" element={<ResetPasswordPage />} />
-                  <Route path="/render-artifact/:id" element={<RenderArtifactPage />} />
-                  <Route path="/embed/editor" element={<EmbedPlaygroundPage />} />
-                  <Route path="/embed/morsel" element={<PreserveParamsNavigate to="/embed/editor" />} />
-                  <Route path="/embed/sketch" element={<PreserveParamsNavigate to="/embed/editor" />} />
-                  <Route path="/embed/playground" element={<PreserveParamsNavigate to="/embed/editor" />} />
-                  <Route path="/editor" element={<PlaygroundPage />} />
-                  <Route path="/morsel" element={<PreserveParamsNavigate to="/editor" />} />
-                  <Route path="/sketch" element={<PreserveParamsNavigate to="/editor" />} />
-                  <Route path="/playground" element={<PreserveParamsNavigate to="/editor" />} />
-                  <Route path="/solutions/:username/:slug" element={<SolutionPage />} />
-
-                  {/* Social shell routes */}
-                  <Route element={<AppShell />}>
+            <WebEditorHostBridge>
+              <ErrorBoundary>
+                <Suspense fallback={<PageLoadingFallback />}>
+                  <Routes>
+                    <Route
+                      path="/"
+                      element={
+                        isLoading ? (
+                          <PageLoadingFallback />
+                        ) : (
+                          <Navigate to={user ? "/home" : justLoggedOut ? "/logout" : "/explore"} replace />
+                        )
+                      }
+                    />
+                    <Route path="/setup" element={<SetupWizardPage onLoginSuccess={setSession} />} />
+                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/logout" element={<LogoutPage />} />
+                    <Route path="/signup" element={<SignupPage />} />
+                    <Route path="/onboarding" element={<Navigate to="/home?tour=1" replace />} />
+                    <Route path="/terms" element={<TermsPage />} />
+                    <Route path="/privacy" element={<PrivacyPage />} />
+                    <Route path="/cookies" element={<CookiesPage />} />
+                    <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+                    <Route path="/verify-email" element={<VerifyEmailPage />} />
+                    <Route path="/reset-password" element={<ResetPasswordPage />} />
+                    <Route path="/render-artifact/:id" element={<RenderArtifactPage />} />
+                    <Route path="/embed/editor" element={<EmbedPlaygroundPage />} />
+                    <Route path="/embed/morsel" element={<PreserveParamsNavigate to="/embed/editor" />} />
+                    <Route path="/embed/sketch" element={<PreserveParamsNavigate to="/embed/editor" />} />
+                    <Route path="/embed/playground" element={<PreserveParamsNavigate to="/embed/editor" />} />
                     <Route path="/editor" element={<PlaygroundPage />} />
                     <Route path="/morsel" element={<PreserveParamsNavigate to="/editor" />} />
                     <Route path="/sketch" element={<PreserveParamsNavigate to="/editor" />} />
                     <Route path="/playground" element={<PreserveParamsNavigate to="/editor" />} />
-                    <Route
-                      path="/home"
-                      element={
-                        user ? <HomeFeedPage /> : <Navigate to={justLoggedOut ? "/logout" : "/explore"} replace />
-                      }
-                    />
-                    <Route path="/feed" element={<Navigate to="/home" replace />} />
-                    <Route path="/explore" element={<ExplorePage />} />
-                    <Route
-                      path="/spaces"
-                      element={hasSpaces ? <SpacesExplorePage /> : <Navigate to="/explore" replace />}
-                    />
-                    <Route
-                      path="/chat"
-                      element={
-                        hasSpaceChat ? (
-                          <RequireAuth feature="Space Chat">
-                            <SpaceChatPage />
+                    <Route path="/solutions/:username/:slug" element={<SolutionPage />} />
+
+                    {/* Social shell routes */}
+                    <Route element={<AppShell />}>
+                      <Route path="/editor" element={<PlaygroundPage />} />
+                      <Route path="/morsel" element={<PreserveParamsNavigate to="/editor" />} />
+                      <Route path="/sketch" element={<PreserveParamsNavigate to="/editor" />} />
+                      <Route path="/playground" element={<PreserveParamsNavigate to="/editor" />} />
+                      <Route
+                        path="/home"
+                        element={
+                          user ? <HomeFeedPage /> : <Navigate to={justLoggedOut ? "/logout" : "/explore"} replace />
+                        }
+                      />
+                      <Route path="/feed" element={<Navigate to="/home" replace />} />
+                      <Route path="/explore" element={<ExplorePage />} />
+                      <Route
+                        path="/spaces"
+                        element={hasSpaces ? <SpacesExplorePage /> : <Navigate to="/explore" replace />}
+                      />
+                      <Route
+                        path="/chat"
+                        element={
+                          hasSpaceChat ? (
+                            <RequireAuth feature="Space Chat">
+                              <SpaceChatPage />
+                            </RequireAuth>
+                          ) : (
+                            <Navigate to={hasSpaces ? "/spaces" : "/explore"} replace />
+                          )
+                        }
+                      />
+                      <Route path="/orgs/:slug" element={<OrganizationPage />} />
+                      <Route path="/s/:namespace/:spaceSlug" element={<SpacePage />} />
+                      <Route
+                        path="/inbox"
+                        element={
+                          <RequireAuth feature="your inbox">
+                            <NotificationsPage />
                           </RequireAuth>
-                        ) : (
-                          <Navigate to={hasSpaces ? "/spaces" : "/explore"} replace />
-                        )
-                      }
-                    />
-                    <Route path="/orgs/:slug" element={<OrganizationPage />} />
-                    <Route path="/s/:namespace/:spaceSlug" element={<SpacePage />} />
-                    <Route
-                      path="/inbox"
-                      element={
-                        <RequireAuth feature="your inbox">
-                          <NotificationsPage />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/notifications"
-                      element={
-                        <RequireAuth feature="your notifications">
-                          <NotificationsPage />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/bookmarks"
-                      element={
-                        <RequireAuth feature="your bookmarks">
-                          <NotificationsPage initialView="saved" />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/bookmarks/feed"
-                      element={
-                        <RequireAuth feature="your bookmarks">
-                          <BookmarksPage />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/feeds"
-                      element={
-                        hasFeeds ? (
-                          <RequireAuth feature="your RSS feeds">
-                            <FeedsPage />
+                        }
+                      />
+                      <Route
+                        path="/notifications"
+                        element={
+                          <RequireAuth feature="your notifications">
+                            <NotificationsPage />
                           </RequireAuth>
-                        ) : (
-                          <Navigate to={user ? "/home" : "/explore"} replace />
-                        )
-                      }
-                    />
+                        }
+                      />
+                      <Route
+                        path="/bookmarks"
+                        element={
+                          <RequireAuth feature="your bookmarks">
+                            <NotificationsPage initialView="saved" />
+                          </RequireAuth>
+                        }
+                      />
+                      <Route
+                        path="/bookmarks/feed"
+                        element={
+                          <RequireAuth feature="your bookmarks">
+                            <BookmarksPage />
+                          </RequireAuth>
+                        }
+                      />
+                      <Route
+                        path="/feeds"
+                        element={
+                          hasFeeds ? (
+                            <RequireAuth feature="your RSS feeds">
+                              <FeedsPage />
+                            </RequireAuth>
+                          ) : (
+                            <Navigate to={user ? "/home" : "/explore"} replace />
+                          )
+                        }
+                      />
 
-                    {/* Package browser (unscoped & @scope/name) */}
-                    <Route path="/packages" element={<LibraryListPage />} />
-                    <Route path="/packages/:name" element={<LibraryVersionPage />} />
-                    <Route path="/packages/:first/:second" element={<PackageDetailPage />} />
-                    <Route path="/packages/:scope/:name/:version" element={<PackageDetailPage />} />
-                    <Route path="/packages/:name/:version/classes/:className" element={<PackageDetailPage />} />
-                    <Route path="/packages/:scope/:name/:version/classes/:className" element={<PackageDetailPage />} />
+                      {/* Package browser (unscoped & @scope/name) */}
+                      <Route path="/packages" element={<LibraryListPage />} />
+                      <Route path="/packages/:name" element={<LibraryVersionPage />} />
+                      <Route path="/packages/:first/:second" element={<PackageDetailPage />} />
+                      <Route path="/packages/:scope/:name/:version" element={<PackageDetailPage />} />
+                      <Route path="/packages/:name/:version/classes/:className" element={<PackageDetailPage />} />
+                      <Route
+                        path="/packages/:scope/:name/:version/classes/:className"
+                        element={<PackageDetailPage />}
+                      />
 
-                    {/* Studio */}
-                    <Route path="/studio" element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />} />
-                    <Route
-                      path="/studio/:templateId"
-                      element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />}
-                    />
-                    <Route path="/ide" element={<PreserveParamsNavigate to="/studio" />} />
-                    <Route path="/ide/:templateId" element={<PreserveParamsNavigate to="/studio" />} />
+                      {/* Studio */}
+                      <Route path="/studio" element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />} />
+                      <Route
+                        path="/studio/:templateId"
+                        element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />}
+                      />
+                      <Route path="/ide" element={<PreserveParamsNavigate to="/studio" />} />
+                      <Route path="/ide/:templateId" element={<PreserveParamsNavigate to="/studio" />} />
 
-                    {/* Repositories */}
-                    <Route
-                      path="/repos"
-                      element={hasRepos ? <RepositoryListPage /> : <Navigate to="/packages" replace />}
-                    />
-                    <Route
-                      path="/repos/:provider/:namespace/:project/studio"
-                      element={hasRepos && hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />}
-                    />
-                    <Route
-                      path="/repos/:provider/:namespace/:project/ide"
-                      element={hasRepos && hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />}
-                    />
-                    <Route
-                      path="/repos/:provider/:namespace/:project/*"
-                      element={hasRepos ? <WorkspacePage /> : <Navigate to="/packages" replace />}
-                    />
+                      {/* Repositories */}
+                      <Route
+                        path="/repos"
+                        element={hasRepos ? <RepositoryListPage /> : <Navigate to="/packages" replace />}
+                      />
+                      <Route
+                        path="/repos/:provider/:namespace/:project/studio"
+                        element={hasRepos && hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />}
+                      />
+                      <Route
+                        path="/repos/:provider/:namespace/:project/ide"
+                        element={hasRepos && hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />}
+                      />
+                      <Route
+                        path="/repos/:provider/:namespace/:project/*"
+                        element={hasRepos ? <WorkspacePage /> : <Navigate to="/packages" replace />}
+                      />
 
-                    {/* Scholarly Reference Manager & Source URN Resolver */}
-                    <Route
-                      path="/references"
-                      element={hasReferences ? <ReferencesPage /> : <Navigate to="/packages" replace />}
-                    />
-                    <Route
-                      path="/sources/:identifier"
-                      element={hasReferences ? <SourceDetailPage /> : <Navigate to="/packages" replace />}
-                    />
-                    <Route
-                      path="/sources/*"
-                      element={hasReferences ? <SourceDetailPage /> : <Navigate to="/packages" replace />}
-                    />
+                      {/* Scholarly Reference Manager & Source URN Resolver */}
+                      <Route
+                        path="/references"
+                        element={hasReferences ? <ReferencesPage /> : <Navigate to="/packages" replace />}
+                      />
+                      <Route
+                        path="/sources/:identifier"
+                        element={hasReferences ? <SourceDetailPage /> : <Navigate to="/packages" replace />}
+                      />
+                      <Route
+                        path="/sources/*"
+                        element={hasReferences ? <SourceDetailPage /> : <Navigate to="/packages" replace />}
+                      />
 
-                    {/* Cloud Jobs & HPC Queue */}
-                    <Route path="/jobs" element={hasCae ? <ScriptsListPage /> : <Navigate to="/packages" replace />} />
-                    <Route
-                      path="/jobs/templates/:id"
-                      element={hasCae ? <TemplateDetailPage /> : <Navigate to="/packages" replace />}
-                    />
-                    <Route
-                      path="/jobs/:id"
-                      element={hasCae ? <ScriptDetailPage /> : <Navigate to="/packages" replace />}
-                    />
+                      {/* Cloud Jobs & HPC Queue */}
+                      <Route
+                        path="/jobs"
+                        element={hasCae ? <ScriptsListPage /> : <Navigate to="/packages" replace />}
+                      />
+                      <Route
+                        path="/jobs/templates/:id"
+                        element={hasCae ? <TemplateDetailPage /> : <Navigate to="/packages" replace />}
+                      />
+                      <Route
+                        path="/jobs/:id"
+                        element={hasCae ? <ScriptDetailPage /> : <Navigate to="/packages" replace />}
+                      />
 
-                    {/* Legacy /scripts alias routes */}
-                    <Route
-                      path="/scripts"
-                      element={hasCae ? <Navigate to="/jobs" replace /> : <Navigate to="/packages" replace />}
-                    />
-                    <Route
-                      path="/scripts/templates/:id"
-                      element={hasCae ? <TemplateDetailPage /> : <Navigate to="/packages" replace />}
-                    />
-                    <Route
-                      path="/scripts/:id"
-                      element={hasCae ? <ScriptDetailPage /> : <Navigate to="/packages" replace />}
-                    />
+                      {/* Legacy /scripts alias routes */}
+                      <Route
+                        path="/scripts"
+                        element={hasCae ? <Navigate to="/jobs" replace /> : <Navigate to="/packages" replace />}
+                      />
+                      <Route
+                        path="/scripts/templates/:id"
+                        element={hasCae ? <TemplateDetailPage /> : <Navigate to="/packages" replace />}
+                      />
+                      <Route
+                        path="/scripts/:id"
+                        element={hasCae ? <ScriptDetailPage /> : <Navigate to="/packages" replace />}
+                      />
 
-                    {/* Instance Administration */}
-                    <Route
-                      path="/admin/*"
-                      element={
-                        <AdminRoute>
-                          <AdminPage />
-                        </AdminRoute>
-                      }
-                    />
+                      {/* Instance Administration */}
+                      <Route
+                        path="/admin/*"
+                        element={
+                          <AdminRoute>
+                            <AdminPage />
+                          </AdminRoute>
+                        }
+                      />
 
-                    <Route
-                      path="/settings"
-                      element={
-                        <RequireAuth feature="your settings">
-                          <SettingsPage />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/settings/profile"
-                      element={
-                        <RequireAuth feature="your profile settings">
-                          <EditProfilePage />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route
-                      path="/settings/:tab"
-                      element={
-                        <RequireAuth feature="your settings">
-                          <SettingsPage />
-                        </RequireAuth>
-                      }
-                    />
-                    <Route path="/p/:id" element={<PostDetailPage />} />
-                    <Route path="/posts/:id" element={<PostDetailPage />} />
-                    {/* Backward-compatible redirects: /users/:username -> /@:username */}
-                    <Route path="/users/:username" element={<LegacyUserRedirect />} />
-                    <Route path="/users/:username/about" element={<LegacyUserRedirect />} />
-                    <Route path="/users/:username/status/:id" element={<LegacyUserRedirect />} />
-                    <Route path="/users/:username/status/:id/activity" element={<LegacyUserRedirect />} />
-                    <Route path="/users/:username/followers" element={<LegacyUserRedirect />} />
-                    <Route path="/users/:username/following" element={<LegacyUserRedirect />} />
+                      <Route
+                        path="/settings"
+                        element={
+                          <RequireAuth feature="your settings">
+                            <SettingsPage />
+                          </RequireAuth>
+                        }
+                      />
+                      <Route
+                        path="/settings/profile"
+                        element={
+                          <RequireAuth feature="your profile settings">
+                            <EditProfilePage />
+                          </RequireAuth>
+                        }
+                      />
+                      <Route
+                        path="/settings/:tab"
+                        element={
+                          <RequireAuth feature="your settings">
+                            <SettingsPage />
+                          </RequireAuth>
+                        }
+                      />
+                      <Route path="/p/:id" element={<PostDetailPage />} />
+                      <Route path="/posts/:id" element={<PostDetailPage />} />
+                      {/* Backward-compatible redirects: /users/:username -> /@:username */}
+                      <Route path="/users/:username" element={<LegacyUserRedirect />} />
+                      <Route path="/users/:username/about" element={<LegacyUserRedirect />} />
+                      <Route path="/users/:username/status/:id" element={<LegacyUserRedirect />} />
+                      <Route path="/users/:username/status/:id/activity" element={<LegacyUserRedirect />} />
+                      <Route path="/users/:username/followers" element={<LegacyUserRedirect />} />
+                      <Route path="/users/:username/following" element={<LegacyUserRedirect />} />
 
-                    {/* Canonical user profile, org container, and space routes with '@' guard */}
-                    <Route path="/:username" element={<UserRootRouteGuard element={<ProfilePage />} />} />
-                    <Route path="/:username/about" element={<UserRootRouteGuard element={<AboutAccountPage />} />} />
-                    <Route path="/:username/status/:id" element={<UserRootRouteGuard element={<PostDetailPage />} />} />
-                    <Route
-                      path="/:username/status/:id/activity"
-                      element={<UserRootRouteGuard element={<PostActivityPage />} />}
-                    />
-                    <Route path="/:username/followers" element={<UserRootRouteGuard element={<FollowersPage />} />} />
-                    <Route path="/:username/following" element={<UserRootRouteGuard element={<FollowingPage />} />} />
-                    <Route path="/:namespace/:spaceSlug" element={<UserRootRouteGuard element={<SpacePage />} />} />
-                    <Route path="*" element={<NotFoundPage />} />
-                  </Route>
-                </Routes>
-              </Suspense>
-            </ErrorBoundary>
+                      {/* Canonical user profile, org container, and space routes with '@' guard */}
+                      <Route path="/:username" element={<UserRootRouteGuard element={<ProfilePage />} />} />
+                      <Route path="/:username/about" element={<UserRootRouteGuard element={<AboutAccountPage />} />} />
+                      <Route
+                        path="/:username/status/:id"
+                        element={<UserRootRouteGuard element={<PostDetailPage />} />}
+                      />
+                      <Route
+                        path="/:username/status/:id/activity"
+                        element={<UserRootRouteGuard element={<PostActivityPage />} />}
+                      />
+                      <Route path="/:username/followers" element={<UserRootRouteGuard element={<FollowersPage />} />} />
+                      <Route path="/:username/following" element={<UserRootRouteGuard element={<FollowingPage />} />} />
+                      <Route path="/:namespace/:spaceSlug" element={<UserRootRouteGuard element={<SpacePage />} />} />
+                      <Route path="*" element={<NotFoundPage />} />
+                    </Route>
+                  </Routes>
+                </Suspense>
+              </ErrorBoundary>
+            </WebEditorHostBridge>
           </BrowserRouter>
         </ToastProvider>
       </BaseStyles>

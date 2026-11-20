@@ -157,6 +157,31 @@ export const sysml2Language = language({
         snippet: "\naction def ExecuteControl {\n  in item sensorIn;\n  out item actuatorOut;\n}\n",
       },
     ],
+    toolbarButtons: [
+      {
+        id: "autoLayout",
+        label: "Auto-Layout SysML Diagram",
+        tooltip: "Re-run automatic schematic layout on the current SysML v2 diagram",
+        icon: "flowchart",
+        views: ["diagram"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 10,
+        command: "morsel:autoLayout",
+      },
+      {
+        id: "verifyRequirements",
+        label: "Verify SysML Requirements & Constraints",
+        shortLabel: "Verify",
+        tooltip: "Run formal verification and requirement traceability checks",
+        icon: "shield-check",
+        views: ["diagram", "inspector", "code"],
+        targets: ["morsel"],
+        placement: "primary",
+        order: 20,
+        command: "morsel:runFormalLints",
+      },
+    ],
   },
 
   lsp: {

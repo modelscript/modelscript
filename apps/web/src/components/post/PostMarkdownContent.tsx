@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import React, { useEffect, useRef, useState } from "react";
@@ -9,7 +10,6 @@ import styled from "styled-components";
 import { transformTextualCitationsToMarkdownLinks } from "../../util/citations";
 import { slugifyHeading } from "../../util/notebook";
 import { renderSourceToDiagramSvg } from "../artifacts/PolyglotArtifactViewer";
-import { compressMorselPayload } from "../morsel/util/permalink";
 import ProfileHoverCard from "../ProfileHoverCard";
 
 const MarkdownContainer = styled.div<{ $isLongForm?: boolean | undefined }>`

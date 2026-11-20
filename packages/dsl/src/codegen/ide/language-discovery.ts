@@ -7,6 +7,10 @@ import type {
   LanguagePanelDeclaration,
   LanguageSimulationCardDeclaration,
   LanguageStencilDeclaration,
+  LanguageToolbarButtonDeclaration,
+  LanguageToolbarButtonKind,
+  LanguageToolbarButtonPlacement,
+  LanguageToolbarView,
   LanguageTreeViewDeclaration,
   LanguageUiTarget,
 } from "../../dsl/ui-types.js";
@@ -66,6 +70,24 @@ export interface DiscoveredUiTreeView {
   exportName: string;
 }
 
+export interface DiscoveredUiToolbarButton {
+  languageId: string;
+  id: string;
+  label: string;
+  shortLabel?: string | undefined;
+  tooltip?: string | undefined;
+  icon?: string | undefined;
+  views: LanguageToolbarView[];
+  targets: LanguageUiTarget[];
+  placement: LanguageToolbarButtonPlacement;
+  order: number;
+  kind: LanguageToolbarButtonKind;
+  actionId?: string | undefined;
+  command?: string | undefined;
+  shortcut?: string | undefined;
+  featureFlag?: string | undefined;
+}
+
 export interface DiscoveredLanguageManifestEntry {
   id: string;
   name: string;
@@ -93,6 +115,7 @@ export interface DiscoveredSingleLanguageResult {
     stencils: LanguageStencilDeclaration[];
     simulationCards: DiscoveredUiSimulationCard[];
     treeViews: DiscoveredUiTreeView[];
+    toolbarButtons: DiscoveredUiToolbarButton[];
   };
 }
 
@@ -105,6 +128,7 @@ export interface DiscoveredLanguagesResult {
     stencilsByLanguage: Record<string, LanguageStencilDeclaration[]>;
     simulationCards: DiscoveredUiSimulationCard[];
     treeViews: DiscoveredUiTreeView[];
+    toolbarButtonsByLanguage: Record<string, DiscoveredUiToolbarButton[]>;
   };
 }
 
@@ -260,11 +284,12 @@ export async function discoverSingleLanguage(langDir: string): Promise<Discovere
     }
   }
 
-  // 5. Discover declarative UI panels, stencils, simulation cards, and tree views
+  // 5. Discover declarative UI panels, stencils, simulation cards, tree views, and toolbar buttons
   const uiPanels: DiscoveredUiPanel[] = [];
   let stencils: LanguageStencilDeclaration[] = [];
   const uiSimulationCards: DiscoveredUiSimulationCard[] = [];
   const uiTreeViews: DiscoveredUiTreeView[] = [];
+  const uiToolbarButtons: DiscoveredUiToolbarButton[] = [];
 
   const uiConfig = langDef.ui;
   if (uiConfig) {
@@ -350,6 +375,32 @@ export async function discoverSingleLanguage(langDir: string): Promise<Discovere
         });
       }
     }
+
+    if (Array.isArray(uiConfig.toolbarButtons)) {
+      const seenIds = new Set<string>();
+      for (const btn of uiConfig.toolbarButtons as LanguageToolbarButtonDeclaration[]) {
+        if (!btn?.id || !btn?.label || seenIds.has(btn.id)) continue;
+        seenIds.add(btn.id);
+        uiToolbarButtons.push({
+          languageId: lang.id,
+          id: btn.id,
+          label: btn.label,
+          shortLabel: btn.shortLabel,
+          tooltip: btn.tooltip,
+          icon: btn.icon,
+          views: btn.views && btn.views.length > 0 ? btn.views : ["*"],
+          targets: btn.targets && btn.targets.length > 0 ? btn.targets : ["morsel", "vscode"],
+          placement: btn.placement ?? "primary",
+          order: typeof btn.order === "number" ? btn.order : 100,
+          kind: btn.kind ?? "action",
+          actionId: btn.actionId,
+          command: btn.command,
+          shortcut: btn.shortcut,
+          featureFlag: btn.featureFlag,
+        });
+      }
+      uiToolbarButtons.sort((a, b) => a.order - b.order);
+    }
   }
 
   const manifestEntry: DiscoveredLanguageManifestEntry = {
@@ -379,6 +430,7 @@ export async function discoverSingleLanguage(langDir: string): Promise<Discovere
       stencils,
       simulationCards: uiSimulationCards,
       treeViews: uiTreeViews,
+      toolbarButtons: uiToolbarButtons,
     },
   };
 }
@@ -399,13 +451,20 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
   const stencilsByLanguage: Record<string, LanguageStencilDeclaration[]> = {};
   const uiSimulationCards: DiscoveredUiSimulationCard[] = [];
   const uiTreeViews: DiscoveredUiTreeView[] = [];
+  const toolbarButtonsByLanguage: Record<string, DiscoveredUiToolbarButton[]> = {};
 
   if (!fs.existsSync(languagesDir)) {
     return {
       languages: [],
       wasmAssets: [],
       manifest: [],
-      ui: { panels: [], stencilsByLanguage: {}, simulationCards: [], treeViews: [] },
+      ui: {
+        panels: [],
+        stencilsByLanguage: {},
+        simulationCards: [],
+        treeViews: [],
+        toolbarButtonsByLanguage: {},
+      },
     };
   }
 
@@ -422,6 +481,9 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
     if (single.ui.stencils.length > 0) {
       stencilsByLanguage[single.language.id] = single.ui.stencils;
     }
+    if (single.ui.toolbarButtons.length > 0) {
+      toolbarButtonsByLanguage[single.language.id] = single.ui.toolbarButtons;
+    }
     uiSimulationCards.push(...single.ui.simulationCards);
     uiTreeViews.push(...single.ui.treeViews);
   }
@@ -435,6 +497,7 @@ export async function discoverWorkspaceLanguages(languagesDir: string): Promise<
       stencilsByLanguage,
       simulationCards: uiSimulationCards,
       treeViews: uiTreeViews,
+      toolbarButtonsByLanguage,
     },
   };
 }

@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspector", () => {
   const navbarPath = path.resolve(import.meta.dirname, "../src/pages/playground/components/PlaygroundNavbar.tsx");
   const stylesPath = path.resolve(import.meta.dirname, "../src/pages/playground/styles.ts");
-  const propertiesPath = path.resolve(import.meta.dirname, "../src/components/morsel/Properties.tsx");
+  const propertiesPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Properties.tsx");
 
   it("verifies Playground styles provide responsive icon-only collapse without abruptly hiding workbench view switcher", () => {
     const stylesContent = fs.readFileSync(stylesPath, "utf-8");
@@ -29,7 +29,10 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
       stylesContent.includes(".segmentedControl-text"),
       "Icon-only collapse must target .segmentedControl-text so icons remain visible",
     );
-    const subHeaderPath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselViewSubHeader.tsx");
+    const subHeaderPath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselViewSubHeader.tsx",
+    );
     assert.ok(
       fs.readFileSync(subHeaderPath, "utf-8").includes("aria-label={tab.label}"),
       "View tabs must set aria-label because display:none labels leave the accessibility tree",
@@ -124,7 +127,10 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
   });
 
   it("verifies MorselVisualizerPane handles Escape key globally to deselect components and close inspector", () => {
-    const panePath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx");
+    const panePath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+    );
     const paneContent = fs.readFileSync(panePath, "utf-8");
 
     assert.ok(
@@ -190,7 +196,10 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
   });
 
   it("verifies MorselVisualizerPane uses design tokens for model tabs, dividers, palettes, and breadcrumbs", () => {
-    const vizPath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx");
+    const vizPath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+    );
     const vizContent = fs.readFileSync(vizPath, "utf-8");
 
     assert.ok(vizContent.includes("var(--ms-brand,"), "Nested model switcher tabs must use --ms-brand token");
@@ -205,7 +214,10 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
   });
 
   it("verifies MorselFloatingDock and modals adopt design tokens for surfaces, borders, and dividers", () => {
-    const dockPath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselFloatingDock.tsx");
+    const dockPath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselFloatingDock.tsx",
+    );
     const galleryPath = path.resolve(
       import.meta.dirname,
       "../src/pages/playground/components/TemplateGalleryModal.tsx",
@@ -247,8 +259,11 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
   });
 
   it("verifies SimulationResults and PolyglotDomainPanel adopt design tokens", () => {
-    const simPath = path.resolve(import.meta.dirname, "../src/components/morsel/SimulationResults.tsx");
-    const domainPath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/PolyglotDomainPanel.tsx");
+    const simPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/SimulationResults.tsx");
+    const domainPath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/PolyglotDomainPanel.tsx",
+    );
     const simContent = fs.readFileSync(simPath, "utf-8");
     const domainContent = fs.readFileSync(domainPath, "utf-8");
 
@@ -295,8 +310,11 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
   });
 
   it("verifies Canvas Zoom Controls, preset levels, and DiagramEditor scale listeners", () => {
-    const diagramPath = path.resolve(import.meta.dirname, "../src/components/morsel/Diagram.tsx");
-    const panePath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx");
+    const diagramPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Diagram.tsx");
+    const panePath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+    );
     const diagramContent = fs.readFileSync(diagramPath, "utf-8");
     const paneContent = fs.readFileSync(panePath, "utf-8");
 
@@ -341,7 +359,7 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
         paneContent.includes("rgba(0, 0, 0, 0.06)"),
       "MorselVisualizerPane zoom controls and dropdown menu must include hover background styling",
     );
-    const cssPath = path.resolve(import.meta.dirname, "../src/components/morsel/morsel.css");
+    const cssPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/morsel.css");
     const cssContent = fs.readFileSync(cssPath, "utf-8");
     assert.ok(
       cssContent.includes(".morsel-menu-item:hover") && cssContent.includes(".morsel-toolbar-btn:hover"),
@@ -350,7 +368,10 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
   });
 
   it("verifies Undo / Redo visual history buttons and canvas keyboard shortcut wiring", () => {
-    const panePath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx");
+    const panePath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+    );
     const indexDiagramPath = path.resolve(import.meta.dirname, "../../../packages/diagram/src/index.ts");
     const paneContent = fs.readFileSync(panePath, "utf-8");
     const indexContent = fs.readFileSync(indexDiagramPath, "utf-8");
@@ -385,8 +406,11 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
   it("verifies Component Rotation via 'R' key, alignment HUD, and subheader button", () => {
     const alignPath = path.resolve(import.meta.dirname, "../../../packages/diagram/src/alignment.ts");
     const indexDiagramPath = path.resolve(import.meta.dirname, "../../../packages/diagram/src/index.ts");
-    const diagramPath = path.resolve(import.meta.dirname, "../src/components/morsel/Diagram.tsx");
-    const panePath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx");
+    const diagramPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Diagram.tsx");
+    const panePath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+    );
 
     const alignContent = fs.readFileSync(alignPath, "utf-8");
     const indexContent = fs.readFileSync(indexDiagramPath, "utf-8");
@@ -411,7 +435,10 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
   it("verifies Minimap HUD uses design tokens, toggle API, and subheader button", () => {
     const minimapPath = path.resolve(import.meta.dirname, "../../../packages/diagram/src/minimap.ts");
     const indexDiagramPath = path.resolve(import.meta.dirname, "../../../packages/diagram/src/index.ts");
-    const panePath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx");
+    const panePath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+    );
 
     const minimapContent = fs.readFileSync(minimapPath, "utf-8");
     const indexContent = fs.readFileSync(indexDiagramPath, "utf-8");
@@ -482,8 +509,11 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
 
   it("verifies Canvas Grid Display Modes and Snap-to-Grid Customization", () => {
     const indexDiagramPath = path.resolve(import.meta.dirname, "../../../packages/diagram/src/index.ts");
-    const diagramPath = path.resolve(import.meta.dirname, "../src/components/morsel/Diagram.tsx");
-    const panePath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselVisualizerPane.tsx");
+    const diagramPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Diagram.tsx");
+    const panePath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+    );
 
     const indexContent = fs.readFileSync(indexDiagramPath, "utf-8");
     const diagramContent = fs.readFileSync(diagramPath, "utf-8");

@@ -29,7 +29,7 @@ import {
 } from "./modelica-preview-mode.js";
 import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
-const MorselEditorLazy = React.lazy(() => import("../morsel/Morsel"));
+const MorselEditorLazy = React.lazy(() => import("@modelscript/editor/workbench/Morsel"));
 
 export type { ModelicaPreviewMetadata, ModelicaPreviewMode } from "./modelica-preview-mode.js";
 
@@ -760,7 +760,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
       )}
 
       <EditorContainer ref={containerRef} $isFullScreen={isFullScreen}>
-        {viewMode === "code" && !isFullScreen && (
+        {viewMode === "code" && !interactive && !isFullScreen && (
           <Box
             py={2}
             height="100%"
@@ -800,7 +800,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
             style={{
               width: "100%",
               height: "100%",
-              display: viewMode === "code" && !isFullScreen ? "none" : "block",
+              display: "block",
             }}
           >
             {isFetchingCode && !inlineCode && !fetchedCode && !editedCode ? (
@@ -824,6 +824,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
                   initialSimulationVariables={initialSimVars}
                   initialStartTime={initialStartTime}
                   initialStopTime={initialStopTime}
+                  hideFloatingDock={true}
                   hideCenterFloatingToolbar={!isFullScreen}
                   defaultRibbonExpanded={Boolean(isFullScreen && (viewMode === "simulation" || viewMode === "3d"))}
                   simulateTriggerCount={simTriggerCount > 0 ? simTriggerCount : undefined}

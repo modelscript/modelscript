@@ -16,7 +16,7 @@ const styled: typeof styledImport =
   (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
 
 const SimulationResults = React.lazy(() =>
-  import("../../../components/morsel/SimulationResults").then((m) => ({ default: m.SimulationResults })),
+  import("@modelscript/editor/workbench/SimulationResults").then((m) => ({ default: m.SimulationResults })),
 );
 
 const Container = styled.div`

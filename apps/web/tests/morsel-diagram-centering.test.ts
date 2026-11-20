@@ -6,12 +6,12 @@ import path from "node:path";
 import { describe, it } from "node:test";
 
 describe("Morsel Diagram Coordinate Grid Centering on Load Completion", () => {
-  const diagramEditorPath = path.resolve(import.meta.dirname, "../src/components/morsel/Diagram.tsx");
+  const diagramEditorPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Diagram.tsx");
   const visualizerPanePath = path.resolve(
     import.meta.dirname,
-    "../src/components/morsel/panels/MorselVisualizerPane.tsx",
+    "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
   );
-  const morselPath = path.resolve(import.meta.dirname, "../src/components/morsel/Morsel.tsx");
+  const morselPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Morsel.tsx");
   const diagramPkgPath = path.resolve(import.meta.dirname, "../../../packages/diagram/src/index.ts");
 
   it("verifies Diagram.tsx measures parent element and resizes X6 graph before centering", () => {

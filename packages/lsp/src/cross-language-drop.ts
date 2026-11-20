@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { appendChildSplice, parseXmlSync, type Splice, type XmlElement } from "@modelscript/dsl/xml";
+import { type XmlElement } from "@modelscript/dsl/xml";
+import {
+  buildModelicaComponentDropEdits,
+  deriveModelNameFromUri,
+  parseIconCoordinateSystemFromSource,
+  type IconCoordSys,
+} from "@modelscript/modelica/diagram";
+import { buildPscadComponentDropEdits } from "@modelscript/pscad";
 import type { SymbolEntry, SymbolIndex } from "@modelscript/runtime";
-import { parseSpice } from "@modelscript/spice";
+import { buildSimulinkComponentDropEdits } from "@modelscript/simulink";
+import { buildSpiceComponentDropEdits } from "@modelscript/spice";
 import { TextEdit } from "vscode-languageserver";
 
 /**
@@ -96,14 +104,6 @@ function isWordTokenChar(ch: string): boolean {
   return isIdentStartChar(ch) || (c >= 48 && c <= 57);
 }
 
-function isSimpleAsciiIdent(s: string): boolean {
-  if (!s || !isIdentStartChar(s[0]!)) return false;
-  for (let i = 1; i < s.length; i++) {
-    if (!isWordTokenChar(s[i]!)) return false;
-  }
-  return true;
-}
-
 function isDigitsOnly(s: string): boolean {
   if (!s) return false;
   for (let i = 0; i < s.length; i++) {
@@ -128,28 +128,6 @@ function hasWordMatch(text: string, word: string): boolean {
   return false;
 }
 
-function tokenizeAsciiWords(text: string, fromIndex = 0, maxTokens = Number.MAX_SAFE_INTEGER): string[] {
-  const tokens: string[] = [];
-  let i = fromIndex;
-  while (i < text.length && tokens.length < maxTokens) {
-    const ch = text[i]!;
-    if (isWsChar(ch)) {
-      i++;
-      continue;
-    }
-    if (isWordTokenChar(ch)) {
-      const start = i;
-      i++;
-      while (i < text.length && isWordTokenChar(text[i]!)) i++;
-      tokens.push(text.slice(start, i));
-    } else {
-      tokens.push(ch);
-      i++;
-    }
-  }
-  return tokens;
-}
-
 function splitPathDelimiters(value: string): string[] {
   const out: string[] = [];
   let start = 0;
@@ -171,22 +149,6 @@ function splitLanguagePrefix(rawClassName: string): string | null {
     if (!isWordTokenChar(ch) && ch !== "-") return null;
   }
   return rawClassName.slice(0, sep);
-}
-
-function stripHashCommentOutsideQuotes(line: string): string {
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]!;
-    if (inQuotes) {
-      if (ch === "\\" && i + 1 < line.length) i++;
-      else if (ch === '"') inQuotes = false;
-    } else if (ch === '"') {
-      inQuotes = true;
-    } else if (ch === "#") {
-      return line.slice(0, i);
-    }
-  }
-  return line;
 }
 
 function findTrailingContainerCloseSuffix(text: string, tagNames: string[]): string | null {
@@ -500,181 +462,7 @@ export function generateUniqueNameInText(docText: string, baseName: string): str
   return allocateUniqueIdentifier(docText, baseName);
 }
 
-const MODELICA_CLASS_QUALIFIERS = new Set(["partial", "encapsulated", "replaceable"]);
-const MODELICA_CLASS_KEYWORDS = new Set(["model", "class", "block", "record", "package", "connector", "type"]);
-
-function matchModelicaClassHeaderIndent(line: string, targetClassName?: string): string | null {
-  let i = 0;
-  while (i < line.length && isWsChar(line[i]!)) i++;
-  const baseIndent = line.slice(0, i);
-  const tokens = tokenizeAsciiWords(line, i, 6);
-  let tokIdx = 0;
-  while (tokIdx < tokens.length && MODELICA_CLASS_QUALIFIERS.has(tokens[tokIdx]!)) {
-    tokIdx++;
-  }
-  const kw = tokens[tokIdx];
-  if (!kw) return null;
-  const validKw = MODELICA_CLASS_KEYWORDS.has(kw) || (targetClassName !== undefined && kw === "function");
-  if (!validKw) return null;
-  const nameTok = tokens[tokIdx + 1];
-  if (!nameTok) return null;
-  if (targetClassName !== undefined) {
-    return nameTok === targetClassName ? baseIndent : null;
-  }
-  return isSimpleAsciiIdent(nameTok) ? baseIndent : null;
-}
-
-function countUnescapedDoubleQuotes(line: string): number {
-  let count = 0;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]!;
-    if (ch === "\\" && i + 1 < line.length) {
-      i++;
-      continue;
-    }
-    if (ch === '"') count++;
-  }
-  return count;
-}
-
-/**
- * Finds the line index immediately after the class header (and optional description string)
- * inside a Modelica source buffer so `import` / nested stubs can be inserted cleanly.
- */
-function findModelicaClassHeaderEndLine(lines: string[], className?: string): { line: number; indent: string } | null {
-  for (let i = 0; i < lines.length; i++) {
-    const baseIndent = matchModelicaClassHeaderIndent(lines[i]!, className);
-    if (baseIndent === null) continue;
-    const bodyIndent = `${baseIndent}  `;
-    let afterLine = i;
-    // Skip optional Modelica description string immediately following class header
-    if (i + 1 < lines.length && lines[i + 1]!.trimStart().startsWith('"')) {
-      afterLine = i + 1;
-      let quoteCount = countUnescapedDoubleQuotes(lines[afterLine]!);
-      while (quoteCount % 2 === 1 && afterLine + 1 < lines.length) {
-        afterLine++;
-        quoteCount += countUnescapedDoubleQuotes(lines[afterLine]!);
-      }
-    }
-    return { line: afterLine, indent: bodyIndent };
-  }
-  return null;
-}
-
-function indentMultiline(block: string, indent: string): string {
-  return block
-    .split("\n")
-    .map((l) => (l.trim().length > 0 ? `${indent}${l}` : ""))
-    .join("\n");
-}
-
-interface IconCoordSys {
-  extent?: [[number, number], [number, number]] | undefined;
-  initialScale?: number | undefined;
-}
-
-function findMatchingCloseParen(text: string, openIdx: number): number {
-  let depth = 0;
-  let inString: string | null = null;
-  for (let i = openIdx; i < text.length; i++) {
-    const ch = text[i]!;
-    if (inString) {
-      if (ch === "\\") i++;
-      else if (ch === inString) inString = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      inString = ch;
-    } else if (ch === "/" && text[i + 1] === "/") {
-      const nl = text.indexOf("\n", i + 2);
-      if (nl === -1) break;
-      i = nl;
-    } else if (ch === "/" && text[i + 1] === "*") {
-      const end = text.indexOf("*/", i + 2);
-      if (end === -1) break;
-      i = end + 1;
-    } else if (ch === "(") {
-      depth++;
-    } else if (ch === ")") {
-      depth--;
-      if (depth === 0) return i;
-    }
-  }
-  return -1;
-}
-
-/**
- * Extracts `Icon(coordinateSystem(extent={{x1,y1},{x2,y2}}, initialScale=...))` from a Modelica class slice.
- */
-export function parseIconCoordinateSystemFromSource(classSlice: string): IconCoordSys | null {
-  if (!classSlice || !classSlice.includes("Icon")) return null;
-  const iconRe = /\bIcon\s*\(/g;
-  let match: RegExpExecArray | null;
-  while ((match = iconRe.exec(classSlice)) !== null) {
-    const openIdx = match.index + match[0].length - 1;
-    const closeIdx = findMatchingCloseParen(classSlice, openIdx);
-    if (closeIdx === -1) continue;
-    const iconInner = classSlice.slice(openIdx + 1, closeIdx);
-    const csRe = /\bcoordinateSystem\s*\(/g;
-    const csMatch = csRe.exec(iconInner);
-    if (!csMatch) continue;
-    const csOpen = csMatch.index + csMatch[0].length - 1;
-    const csClose = findMatchingCloseParen(iconInner, csOpen);
-    if (csClose === -1) continue;
-    const csInner = iconInner.slice(csOpen + 1, csClose);
-    const extMatch = csInner.match(
-      /extent\s*=\s*\{\s*\{\s*([-+]?\d*\.?\d+)\s*,\s*([-+]?\d*\.?\d+)\s*\}\s*,\s*\{\s*([-+]?\d*\.?\d+)\s*,\s*([-+]?\d*\.?\d+)\s*\}\s*\}/,
-    );
-    const scaleMatch = csInner.match(/initialScale\s*=\s*([-+]?\d*\.?\d+)/);
-    const extent: [[number, number], [number, number]] | undefined = extMatch
-      ? [
-          [Number(extMatch[1]), Number(extMatch[2])],
-          [Number(extMatch[3]), Number(extMatch[4])],
-        ]
-      : undefined;
-    const initialScale = scaleMatch ? Number(scaleMatch[1]) : undefined;
-    if (extent || (initialScale !== undefined && Number.isFinite(initialScale))) {
-      return { extent, initialScale };
-    }
-  }
-  return null;
-}
-
-function formatPlacementAnnotation(x: number, y: number, iconCoord?: IconCoordSys | null): string {
-  const rx = Math.round(x);
-  const ry = Math.round(y);
-  const scale =
-    iconCoord?.initialScale && Number.isFinite(iconCoord.initialScale) && iconCoord.initialScale > 0
-      ? iconCoord.initialScale
-      : 0.1;
-  const extent = iconCoord?.extent;
-  let width = 200;
-  let height = 200;
-  if (extent && extent.length >= 2 && extent[0] && extent[1]) {
-    const extW = Math.abs(extent[1][0] - extent[0][0]);
-    const extH = Math.abs(extent[1][1] - extent[0][1]);
-    if (extW > 0 && Number.isFinite(extW)) width = extW;
-    if (extH > 0 && Number.isFinite(extH)) height = extH;
-  }
-  const halfW = (width * scale) / 2;
-  const halfH = (height * scale) / 2;
-  return `annotation(Placement(transformation(origin={${rx},${ry}}, extent={{-${halfW},-${halfH}},{${halfW},${halfH}}})))`;
-}
-
-/**
- * Derives a valid Modelica identifier from a document URI for scaffolding empty `.mo` files.
- */
-export function deriveModelNameFromUri(uri: string): string {
-  const rawName = decodeURIComponent(uri.split("/").pop() || "Model");
-  const strippedExt = rawName.toLowerCase().endsWith(".mo") ? rawName.slice(0, -3) : rawName;
-  let fileName = "";
-  for (let i = 0; i < strippedExt.length; i++) {
-    const ch = strippedExt[i]!;
-    fileName += isWordTokenChar(ch) ? ch : "_";
-  }
-  if (!fileName) return "Model";
-  return isIdentStartChar(fileName[0]!) ? fileName : `M_${fileName}`;
-}
+export { deriveModelNameFromUri, parseIconCoordinateSystemFromSource };
 
 /**
  * Computes atomic `TextEdit[]` for dropping a same-language or cross-language component onto a Modelica file,
@@ -733,61 +521,18 @@ export function computeModelicaComponentDropEdits<
     }
   }
 
-  // Empty .mo file scaffold
-  if (!docText || docText.trim().length === 0 || !classInstance) {
-    const modelName = deriveModelNameFromUri(uri);
-    const bodyLines: string[] = [];
-    if (resolved.importPath && !hasModelicaImport(docText, resolved.importPath)) {
-      bodyLines.push(`  import ${resolved.importPath};`);
-    }
-    if (resolved.stubBlock) {
-      bodyLines.push(indentMultiline(resolved.stubBlock, "  "));
-    }
-    bodyLines.push(`  ${resolved.className} ${compName} ${formatPlacementAnnotation(x, y, effectiveIconCoord)};`);
-    const scaffold = `model ${modelName}\n${bodyLines.join("\n")}\nequation\nend ${modelName};\n`;
-    return [TextEdit.insert({ line: 0, character: 0 }, scaffold)];
-  }
-
-  const compEdits: TextEdit[] = computeComponentInsert
-    ? computeComponentInsert(classInstance, resolved.className, compName, x, y, docText, effectiveIconCoord)
-    : [];
-
-  const needsImport = Boolean(resolved.importPath && !hasModelicaImport(docText, resolved.importPath));
-  const importLine = needsImport ? `import ${resolved.importPath};` : undefined;
-  const preambleChunks: string[] = [];
-  if (importLine) preambleChunks.push(importLine);
-  if (resolved.stubBlock) preambleChunks.push(resolved.stubBlock);
-
-  if (preambleChunks.length === 0) {
-    return compEdits;
-  }
-
-  const lines = docText.split("\n");
-  const headerPos = findModelicaClassHeaderEndLine(lines, classInstance?.name);
-  if (!headerPos) {
-    const topPreamble = preambleChunks.map((c) => c).join("\n") + "\n";
-    return [TextEdit.insert({ line: 0, character: 0 }, topPreamble), ...compEdits];
-  }
-
-  const preambleText = preambleChunks.map((c) => indentMultiline(c, headerPos.indent)).join("\n");
-  const headerLine = headerPos.line;
-  const conflictsWithCompEdit = compEdits.some(
-    (e) => e.range.start.line <= headerLine && e.range.end.line >= headerLine,
-  );
-
-  if (!conflictsWithCompEdit) {
-    const endCol = lines[headerLine]?.length ?? 0;
-    return [TextEdit.insert({ line: headerLine, character: endCol }, `\n${preambleText}`), ...compEdits];
-  }
-
-  // Merge cleanly onto the first component edit when the class is on a single line
-  if (compEdits.length > 0) {
-    const first = compEdits[0]!;
-    return [TextEdit.replace(first.range, `${preambleText}\n${first.newText}`), ...compEdits.slice(1)];
-  }
-
-  const endCol = lines[headerLine]?.length ?? 0;
-  return [TextEdit.insert({ line: headerLine, character: endCol }, `\n${preambleText}`)];
+  return buildModelicaComponentDropEdits({
+    docText,
+    uri,
+    x,
+    y,
+    classInstance,
+    resolved,
+    compName,
+    effectiveIconCoord,
+    hasImport: Boolean(resolved.importPath && hasModelicaImport(docText, resolved.importPath)),
+    computeComponentInsert,
+  }) as TextEdit[];
 }
 
 export interface DropBatchState {
@@ -825,10 +570,6 @@ interface ResolvedForeignDrop {
   symbol: SymbolEntry | null;
   ports: DropPortMember[];
   params: DropParamMember[];
-}
-
-function escapeXmlAttr(text: string): string {
-  return text.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 function normalizeLanguagePrefix(prefix: string): string {
@@ -983,37 +724,8 @@ function allocateUniqueIdentifier(docText: string, baseName: string, batchState?
   return candidate;
 }
 
-function findAllXmlElements(root: XmlElement | null, predicate: (el: XmlElement) => boolean): XmlElement[] {
-  const out: XmlElement[] = [];
-  const visit = (el: XmlElement) => {
-    if (predicate(el)) out.push(el);
-    for (const ch of el.children) visit(ch);
-  };
-  if (root) visit(root);
-  return out;
-}
-
 function getXmlAttr(el: XmlElement, name: string): string | undefined {
   return el.attributes.find((a) => a.name.toLowerCase() === name.toLowerCase())?.value;
-}
-
-function xmlSpliceToTextEdit(docText: string, splice: Splice): TextEdit {
-  const lineStarts = [0];
-  for (let i = 0; i < docText.length; i++) {
-    if (docText[i] === "\n") lineStarts.push(i + 1);
-  }
-  const toPos = (offset: number) => {
-    let lo = 0;
-    let hi = lineStarts.length - 1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      if (lineStarts[mid]! <= offset) lo = mid + 1;
-      else hi = mid - 1;
-    }
-    const line = hi;
-    return { line, character: offset - lineStarts[line]! };
-  };
-  return TextEdit.replace({ start: toPos(splice.start), end: toPos(splice.end) }, splice.text);
 }
 
 function allocateUniqueNumericId(xmlRoot: XmlElement | null, seed: number, batchState?: DropBatchState): number {
@@ -1087,206 +799,21 @@ export interface PscadForeignDropOptions {
  * Returns `null` when the drop targets a native PSCAD master or local user component.
  */
 export function computePscadComponentDropEdits(opts: PscadForeignDropOptions): TextEdit[] | null {
-  const {
-    docText,
-    rawClassName,
-    x,
-    y,
-    instanceName,
-    section,
-    hasNativeSchema,
-    schematicEndLine,
-    unifiedIndex,
-    batchState,
-  } = opts;
-  if (hasNativeSchema) return null;
-
-  const info = resolveForeignDropInfo(unifiedIndex, rawClassName);
-  if (info.sourceLanguage === "pscad") return null;
-
-  const xmlDoc = parseXmlSync(docText);
-  const defElements = findAllXmlElements(xmlDoc.root, (el) => el.name.toLowerCase() === "definition");
-  const existingDefs: Array<{ name: string; body: string }> = [];
-  for (const defEl of defElements) {
-    const defName = getXmlAttr(defEl, "name");
-    if (defName) {
-      existingDefs.push({ name: defName, body: docText.slice(defEl.openEnd, defEl.closeStart) });
-    }
-  }
-
-  // If the drop name matches a native user definition without a @twin marker and we didn't find a foreign symbol, defer to native
-  const directNativeDef = existingDefs.find((d) => d.name === info.cleanName || d.name === info.shortName);
-  if (
-    directNativeDef &&
-    !directNativeDef.body.includes("@twin") &&
-    !info.explicitLanguage &&
-    info.sourceLanguage === "unknown"
-  ) {
-    return null;
-  }
-
-  if (info.sourceLanguage === "unknown" && !info.explicitLanguage && !info.cleanName.includes(".")) {
-    return null;
-  }
-
-  const edits: TextEdit[] = [];
-  const defnRef = info.explicitLanguage ? info.cleanName.replace(/^[^:]+::/, "") : info.cleanName;
-
-  const baseInstName = info.shortName.charAt(0).toLowerCase() + info.shortName.slice(1);
-  const instName = instanceName
-    ? sanitizeIdentifier(instanceName, "cmp")
-    : allocateUniqueIdentifier(docText, baseInstName, batchState);
-  const instId = allocateUniqueNumericId(xmlDoc.root, 100100, batchState);
-
-  const paramEntries = info.params
-    .map((p) => `<param name="${escapeXmlAttr(p.name)}" value="${escapeXmlAttr(p.defaultValue)}" />`)
-    .join("");
-  const userXml =
-    `<User classid="UserCmp" id="${instId}" name="${escapeXmlAttr(defnRef)}" defn="${escapeXmlAttr(defnRef)}" ` +
-    `x="${Math.round(x)}" y="${Math.round(y)}" w="60" h="60" z="0" orient="0" link="-1" q="4" disable="false">` +
-    `<paramlist><param name="Name" value="${escapeXmlAttr(instName)}" />${paramEntries}</paramlist></User>`;
-
-  let targetSchematic: XmlElement | null = null;
-  if (section) {
-    const secDef = defElements.find((d) => getXmlAttr(d, "name") === section);
-    targetSchematic = secDef?.children.find((c) => c.name.toLowerCase() === "schematic") ?? null;
-  }
-  if (!targetSchematic) {
-    const schematics = findAllXmlElements(xmlDoc.root, (el) => el.name.toLowerCase() === "schematic");
-    targetSchematic = schematics[schematics.length - 1] ?? null;
-  }
-
-  if (targetSchematic) {
-    edits.push(xmlSpliceToTextEdit(docText, appendChildSplice(targetSchematic, userXml, docText)));
-  } else {
-    edits.push(TextEdit.insert({ line: schematicEndLine, character: 0 }, `      ${userXml}\n`));
-  }
-  return edits;
-}
-
-const SIMULINK_NATIVE_BLOCK_TYPES = new Set<string>([
-  "Inport",
-  "Outport",
-  "Constant",
-  "Integrator",
-  "UnitDelay",
-  "Gain",
-  "Sum",
-  "Product",
-  "TransferFcn",
-  "DiscreteFilter",
-  "StateSpace",
-  "SubSystem",
-  "BusCreator",
-  "BusSelector",
-  "Mux",
-  "Demux",
-  "Math",
-  "RelationalOperator",
-  "LogicalOperator",
-  "Switch",
-  "Scope",
-  "Lookup_nD",
-  "Ground",
-  "Terminator",
-]);
-
-function findSimulinkTargetSystemInsertLine(docText: string, section?: string): number {
-  const lines = docText.split("\n");
-  const stack: Array<{ kind: string; name?: string; openLine: number }> = [];
-  let rootSystemCloseLine = -1;
-  let sectionSystemCloseLine = -1;
-  let pendingNameTarget = false;
-  let lastWord = "";
-
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i]!;
-    const stripped = stripHashCommentOutsideQuotes(raw);
-    let j = 0;
-    let inQuotes = false;
-    let token = "";
-
-    const flushToken = () => {
-      if (!token) return;
-      lastWord = token;
-      if (pendingNameTarget && stack.length > 0 && !stack[stack.length - 1]!.name) {
-        // Ignore bare unquoted Name token keyword itself
-      } else if (token === "Name") {
-        pendingNameTarget = true;
-      } else {
-        pendingNameTarget = false;
-      }
-      token = "";
-    };
-
-    while (j < stripped.length) {
-      const ch = stripped[j]!;
-      if (inQuotes) {
-        if (ch === "\\" && j + 1 < stripped.length) {
-          j += 2;
-          continue;
-        }
-        if (ch === '"') {
-          if (pendingNameTarget && stack.length > 0) {
-            stack[stack.length - 1]!.name = token;
-            pendingNameTarget = false;
-          }
-          token = "";
-          lastWord = "";
-          inQuotes = false;
-        } else {
-          token += ch;
-        }
-        j++;
-        continue;
-      }
-
-      if (ch === '"') {
-        flushToken();
-        inQuotes = true;
-        token = "";
-        j++;
-        continue;
-      }
-      if (ch === "{") {
-        const blockKind = token.trim() || lastWord || "Block";
-        token = "";
-        lastWord = "";
-        pendingNameTarget = false;
-        stack.push({ kind: blockKind, openLine: i });
-        j++;
-        continue;
-      }
-      if (ch === "}") {
-        flushToken();
-        const popped = stack.pop();
-        if (popped && popped.kind.toLowerCase() === "system") {
-          const parent = stack[stack.length - 1];
-          if (parent && parent.kind.toLowerCase() === "model" && rootSystemCloseLine === -1) {
-            rootSystemCloseLine = i;
-          }
-          if (section && popped.name === section) {
-            sectionSystemCloseLine = i;
-          }
-        }
-        j++;
-        continue;
-      }
-      if (isWsChar(ch)) {
-        flushToken();
-      } else {
-        token += ch;
-      }
-      j++;
-    }
-    if (!inQuotes) {
-      flushToken();
-    }
-  }
-
-  if (sectionSystemCloseLine !== -1) return sectionSystemCloseLine;
-  if (rootSystemCloseLine !== -1) return rootSystemCloseLine;
-  return Math.max(0, lines.length - 1);
+  const info = resolveForeignDropInfo(opts.unifiedIndex, opts.rawClassName);
+  return buildPscadComponentDropEdits({
+    docText: opts.docText,
+    info,
+    x: opts.x,
+    y: opts.y,
+    instanceName: opts.instanceName,
+    section: opts.section,
+    hasNativeSchema: opts.hasNativeSchema,
+    schematicEndLine: opts.schematicEndLine,
+    batchState: opts.batchState,
+    sanitizeIdentifier,
+    allocateUniqueIdentifier,
+    allocateUniqueNumericId,
+  }) as TextEdit[] | null;
 }
 
 export interface SimulinkDropOptions {
@@ -1305,137 +832,18 @@ export interface SimulinkDropOptions {
  * `SubSystem` `@twin` black-box stub preserving the foreign symbol's ports and parameters.
  */
 export function computeSimulinkComponentDropEdits(opts: SimulinkDropOptions): TextEdit[] {
-  const { docText, rawClassName, x, y, instanceName, section, unifiedIndex, batchState } = opts;
-  const info = resolveForeignDropInfo(unifiedIndex, rawClassName);
-
-  const nativeMatch = Array.from(SIMULINK_NATIVE_BLOCK_TYPES).find(
-    (bt) => bt.toLowerCase() === info.shortName.toLowerCase(),
-  );
-  const isForeign =
-    info.sourceLanguage !== "simulink" &&
-    (info.symbol !== null ||
-      info.explicitLanguage !== null ||
-      (info.sourceLanguage !== "unknown" && !nativeMatch) ||
-      (!nativeMatch && info.cleanName.includes(".")));
-
-  const instName = instanceName
-    ? sanitizeIdentifier(instanceName, "blk")
-    : allocateUniqueIdentifier(docText, info.shortName, batchState);
-
-  const rx = Math.round(x);
-  const ry = Math.round(y);
-  const insertLine = findSimulinkTargetSystemInsertLine(docText, section);
-
-  if (!isForeign && nativeMatch) {
-    const paramLine =
-      nativeMatch === "Gain" ? `      Gain "1"\n` : nativeMatch === "Constant" ? `      Value "1"\n` : "";
-    const blockText = [
-      `    Block {`,
-      `      BlockType ${nativeMatch}`,
-      `      Name "${instName}"`,
-      `      Position [${rx}, ${ry}, ${rx + 80}, ${ry + 40}]`,
-      ...(paramLine ? [paramLine.trimEnd()] : []),
-      `    }`,
-    ].join("\n");
-    return [TextEdit.insert({ line: insertLine, character: 0 }, `${blockText}\n`)];
-  }
-
-  // Foreign component -> SubSystem stub with internal matching Inport / Outport definitions
-  const inPorts: DropPortMember[] = [];
-  const outPorts: DropPortMember[] = [];
-  for (const p of info.ports) {
-    if (p.direction === "out") outPorts.push(p);
-    else if (p.direction === "in") inPorts.push(p);
-    else {
-      // Treat bidirectional physical connector as both an input/output pair or balanced port
-      if (inPorts.length <= outPorts.length) inPorts.push(p);
-      else outPorts.push(p);
-    }
-  }
-
-  const innerLines: string[] = [`        Name "${instName}"`];
-  let rowY = 40;
-  inPorts.forEach((p, idx) => {
-    innerLines.push(
-      `        Block {`,
-      `          BlockType Inport`,
-      `          Name "${p.name}"`,
-      `          Port "${idx + 1}"`,
-      `          Position [40, ${rowY}, 70, ${rowY + 20}]`,
-      `        }`,
-    );
-    rowY += 50;
-  });
-
-  rowY = 40;
-  outPorts.forEach((p, idx) => {
-    innerLines.push(
-      `        Block {`,
-      `          BlockType Outport`,
-      `          Name "${p.name}"`,
-      `          Port "${idx + 1}"`,
-      `          Position [260, ${rowY}, 290, ${rowY + 20}]`,
-      `        }`,
-    );
-    rowY += 50;
-  });
-
-  // Wire each internal Outport so M7201 never flags internal stub Outports as unconnected
-  if (outPorts.length > 0) {
-    if (inPorts.length > 0) {
-      outPorts.forEach((op, idx) => {
-        const srcIn = inPorts[Math.min(idx, inPorts.length - 1)]!;
-        innerLines.push(
-          `        Line {`,
-          `          SrcBlock "${srcIn.name}"`,
-          `          SrcPort 1`,
-          `          DstBlock "${op.name}"`,
-          `          DstPort 1`,
-          `        }`,
-        );
-      });
-    } else {
-      innerLines.push(
-        `        Block {`,
-        `          BlockType Constant`,
-        `          Name "${instName}_src"`,
-        `          Value "0"`,
-        `          Position [120, 40, 150, 70]`,
-        `        }`,
-      );
-      for (const op of outPorts) {
-        innerLines.push(
-          `        Line {`,
-          `          SrcBlock "${instName}_src"`,
-          `          SrcPort 1`,
-          `          DstBlock "${op.name}"`,
-          `          DstPort 1`,
-          `        }`,
-        );
-      }
-    }
-  }
-
-  const paramAttrs = info.params
-    .slice(0, 8)
-    .map((p) => `      ${sanitizeIdentifier(p.name, "Param")} "${p.defaultValue.replaceAll('"', "'")}"`);
-
-  const subBlock = [
-    `    # @twin ${info.cleanName} (${info.sourceLanguage})`,
-    `    Block {`,
-    `      BlockType SubSystem`,
-    `      Name "${instName}"`,
-    `      Tag "@twin ${info.cleanName}"`,
-    `      Ports [${inPorts.length}, ${outPorts.length}]`,
-    `      Position [${rx}, ${ry}, ${rx + 110}, ${ry + 64}]`,
-    ...paramAttrs,
-    `      System {`,
-    ...innerLines,
-    `      }`,
-    `    }`,
-  ].join("\n");
-
-  return [TextEdit.insert({ line: insertLine, character: 0 }, `${subBlock}\n`)];
+  const info = resolveForeignDropInfo(opts.unifiedIndex, opts.rawClassName);
+  return buildSimulinkComponentDropEdits({
+    docText: opts.docText,
+    info,
+    x: opts.x,
+    y: opts.y,
+    instanceName: opts.instanceName,
+    section: opts.section,
+    batchState: opts.batchState,
+    sanitizeIdentifier,
+    allocateUniqueIdentifier,
+  }) as TextEdit[];
 }
 
 export interface SpiceDropOptions {
@@ -1446,128 +854,20 @@ export interface SpiceDropOptions {
   batchState?: DropBatchState | undefined;
 }
 
-const SPICE_NATIVE_CATEGORY_MAP: Record<string, { prefix: string; defaultVal: string; pins: number }> = {
-  R: { prefix: "R", defaultVal: "1k", pins: 2 },
-  RESISTOR: { prefix: "R", defaultVal: "1k", pins: 2 },
-  C: { prefix: "C", defaultVal: "1u", pins: 2 },
-  CAPACITOR: { prefix: "C", defaultVal: "1u", pins: 2 },
-  L: { prefix: "L", defaultVal: "1m", pins: 2 },
-  INDUCTOR: { prefix: "L", defaultVal: "1m", pins: 2 },
-  V: { prefix: "V", defaultVal: "DC 5", pins: 2 },
-  VOLTAGESOURCE: { prefix: "V", defaultVal: "DC 5", pins: 2 },
-  I: { prefix: "I", defaultVal: "DC 1m", pins: 2 },
-  CURRENTSOURCE: { prefix: "I", defaultVal: "DC 1m", pins: 2 },
-};
-
-function findSpiceInsertPoint(
-  docText: string,
-  directives?: ReadonlyArray<{ kind: string; span?: { startLine: number } | undefined }>,
-): { line: number; character: number; prefixNewline: string } {
-  if (directives) {
-    for (let i = directives.length - 1; i >= 0; i--) {
-      const d = directives[i]!;
-      if (d.kind === ".END" && d.span && d.span.startLine > 0) {
-        return { line: d.span.startLine - 1, character: 0, prefixNewline: "" };
-      }
-    }
-  }
-  const lines = docText.split("\n");
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (lines[i]!.trim().toUpperCase() === ".END") {
-      return { line: i, character: 0, prefixNewline: "" };
-    }
-  }
-  const lastLine = Math.max(0, lines.length - 1);
-  const lastCol = lines[lastLine]?.length ?? 0;
-  const prefixNewline = docText.length > 0 && !docText.endsWith("\n") ? "\n" : "";
-  return { line: lastLine, character: lastCol, prefixNewline };
-}
-
 /**
  * Generates SPICE `.SUBCKT` stub + `X<inst>` call (or native passive/source line)
  * inserted cleanly prior to `.END`, ensuring pin counts and passives pass SPICE linting.
  */
 export function computeSpiceComponentDropEdits(opts: SpiceDropOptions): TextEdit[] {
-  const { docText, rawClassName, instanceName, unifiedIndex, batchState } = opts;
-  const info = resolveForeignDropInfo(unifiedIndex, rawClassName);
-  const spiceCircuit = parseSpice(docText);
-  const pt = findSpiceInsertPoint(docText, spiceCircuit.directives);
-
-  const upperShort = info.shortName.toUpperCase();
-  const nativeSpec = SPICE_NATIVE_CATEGORY_MAP[upperShort];
-  const isForeign =
-    info.sourceLanguage !== "spice" &&
-    (info.symbol !== null ||
-      info.explicitLanguage !== null ||
-      (info.sourceLanguage !== "unknown" && !nativeSpec) ||
-      (!nativeSpec && info.cleanName.includes(".")));
-
-  if (!isForeign && nativeSpec) {
-    let devName: string;
-    if (instanceName) {
-      const sanitized = sanitizeIdentifier(instanceName, "1");
-      const suffix = sanitized.length > 0 && isAsciiLetter(sanitized[0]!) ? sanitized.slice(1) : sanitized;
-      devName = `${nativeSpec.prefix}${suffix}`;
-    } else {
-      devName = allocateUniqueIdentifier(docText, `${nativeSpec.prefix}`, batchState);
-    }
-    const nodes = Array.from({ length: nativeSpec.pins }, () => "0").join(" ");
-    return [
-      TextEdit.insert(
-        { line: pt.line, character: pt.character },
-        `${pt.prefixNewline}${devName} ${nodes} ${nativeSpec.defaultVal}\n`,
-      ),
-    ];
-  }
-
-  // Reuse parsed .SUBCKT definitions from @modelscript/spice parser
-  const existingSubckts = new Map<string, { name: string; portCount: number }>();
-  for (const sub of spiceCircuit.subcircuits.values()) {
-    existingSubckts.set(sub.name.toUpperCase(), { name: sub.name, portCount: sub.ports.length });
-  }
-
-  const candidateSubName = sanitizeIdentifier(info.shortName, "STUB").toUpperCase();
-  const existingMatch = existingSubckts.get(candidateSubName);
-  const subName = existingMatch?.name ?? candidateSubName;
-  const subKey = `spice:${subName.toUpperCase()}`;
-
-  const rawPorts = info.ports.map((p) => sanitizeIdentifier(p.name, "pin").toUpperCase());
-  const effectivePorts = rawPorts.length > 0 ? rawPorts : ["IN", "OUT"];
-  const pinCount = existingMatch ? existingMatch.portCount : effectivePorts.length;
-
-  const numericParams = info.params
-    .map((p) => {
-      const n = Number(p.defaultValue);
-      return Number.isFinite(n) ? { name: sanitizeIdentifier(p.name, "P").toUpperCase(), val: String(n) } : null;
-    })
-    .filter((p): p is { name: string; val: string } => p !== null);
-
-  const paramSuffix =
-    numericParams.length > 0 ? ` PARAMS: ${numericParams.map((p) => `${p.name}=${p.val}`).join(" ")}` : "";
-
-  const chunks: string[] = [];
-  if (!existingMatch && !batchState?.emittedDefs.has(subKey)) {
-    batchState?.emittedDefs.add(subKey);
-    const bodyLines = effectivePorts.map((pin, idx) => `R_stub${idx + 1} ${pin} 0 1k`);
-    chunks.push(
-      `* @twin ${info.cleanName} (${info.sourceLanguage})`,
-      `.SUBCKT ${subName} ${effectivePorts.join(" ")}${paramSuffix}`,
-      ...bodyLines,
-      `.ENDS ${subName}`,
-    );
-  }
-
-  const rawXName = instanceName
-    ? instanceName.toUpperCase().startsWith("X")
-      ? sanitizeIdentifier(instanceName, "X1")
-      : `X_${sanitizeIdentifier(instanceName, "cmp")}`
-    : allocateUniqueIdentifier(docText, `X_${info.shortName.toLowerCase()}`, batchState);
-
-  const instNodes = Array.from({ length: pinCount }, () => "0").join(" ");
-  const nodePart = instNodes ? ` ${instNodes}` : "";
-  chunks.push(`${rawXName}${nodePart} ${subName}${paramSuffix}`);
-
-  return [TextEdit.insert({ line: pt.line, character: pt.character }, `${pt.prefixNewline}${chunks.join("\n")}\n`)];
+  const info = resolveForeignDropInfo(opts.unifiedIndex, opts.rawClassName);
+  return buildSpiceComponentDropEdits({
+    docText: opts.docText,
+    info,
+    instanceName: opts.instanceName,
+    batchState: opts.batchState,
+    sanitizeIdentifier,
+    allocateUniqueIdentifier,
+  }) as TextEdit[];
 }
 
 export interface GenericDropResolution {

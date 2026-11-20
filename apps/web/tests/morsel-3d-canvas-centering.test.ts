@@ -8,10 +8,16 @@ import { describe, it } from "node:test";
 describe("Morsel 3D Canvas Fullscreen & Visible-Area Centering", () => {
   const visualizerPanePath = path.resolve(
     import.meta.dirname,
-    "../src/components/morsel/panels/MorselVisualizerPane.tsx",
+    "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
   );
-  const cadViewerPath = path.resolve(import.meta.dirname, "../src/components/morsel/cad-viewer/CadViewer.tsx");
-  const timelinePath = path.resolve(import.meta.dirname, "../src/components/morsel/cad-viewer/AnimationTimeline.tsx");
+  const cadViewerPath = path.resolve(
+    import.meta.dirname,
+    "../../../packages/editor/src/workbench/cad-viewer/CadViewer.tsx",
+  );
+  const timelinePath = path.resolve(
+    import.meta.dirname,
+    "../../../packages/editor/src/workbench/cad-viewer/AnimationTimeline.tsx",
+  );
 
   it("renders the 3D CAD Viewer pane fullscreen without outer floating-layout padding and passes fitInsets", () => {
     const src = fs.readFileSync(visualizerPanePath, "utf-8");

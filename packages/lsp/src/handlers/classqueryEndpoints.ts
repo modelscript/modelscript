@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { Context } from "@modelscript/modelica";
-import { computeComponentInsert } from "@modelscript/modelica/diagram";
+import { computeComponentInsert, loadPrebakedMslIcons } from "@modelscript/modelica/diagram";
 import {
   globalLibraryRegistry,
   type ClassHierarchyNode,
@@ -23,7 +23,6 @@ import {
   mountedLibraryMetadata,
 } from "../utils/hierarchy-utils.js";
 import { findModelicaClassKeywordOffset, isAsciiUpperCode } from "../utils/lexical-utils.js";
-import { loadPrebakedMslIcons } from "../utils/msl-icons-loader.js";
 import { iconCache } from "./treeHandler.js";
 
 function findClassStartOffsetInCst(root: CstNodeLike, className: string): number {
@@ -271,7 +270,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
       const limit = params.limit ?? 60;
       try {
         const distBase = (globalThis as any).serverDistBase ?? context.parserService?.getServerDistBase?.();
-        await loadPrebakedMslIcons(distBase);
+        await loadPrebakedMslIcons(iconCache, distBase);
       } catch {
         // Prebaked icon index optional in minimal unit-test harnesses
       }
@@ -365,7 +364,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
     async (): Promise<{ components: CatalogComponentInfo[] }> => {
       try {
         const distBase = (globalThis as any).serverDistBase ?? context.parserService?.getServerDistBase?.();
-        await loadPrebakedMslIcons(distBase);
+        await loadPrebakedMslIcons(iconCache, distBase);
       } catch {
         // Prebaked icon index optional in minimal unit-test harnesses
       }

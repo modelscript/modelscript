@@ -477,6 +477,7 @@ export const MORSEL_PANEL_LOADERS = {\n  ${morselLoaderEntries.join(",\n  ")}\n}
 export const ARTIFACT_PANEL_LOADERS = {\n  ${artifactLoaderEntries.join(",\n  ")}\n};
 export const LANGUAGE_STENCILS = ${JSON.stringify(discovered.ui.stencilsByLanguage, null, 2)};
 export const LANGUAGE_SIMULATION_CARDS = [${simCardEntries.join(",\n")}];
+export const LANGUAGE_TOOLBAR_BUTTONS = ${JSON.stringify(discovered.ui.toolbarButtonsByLanguage ?? {}, null, 2)};
 `;
       } catch (err) {
         console.warn("[modelscript-language-ui] Discovery fallback (empty registry):", err);
@@ -486,6 +487,7 @@ export const MORSEL_PANEL_LOADERS = {};
 export const ARTIFACT_PANEL_LOADERS = {};
 export const LANGUAGE_STENCILS = {};
 export const LANGUAGE_SIMULATION_CARDS = [];
+export const LANGUAGE_TOOLBAR_BUTTONS = {};
 `;
       }
     },

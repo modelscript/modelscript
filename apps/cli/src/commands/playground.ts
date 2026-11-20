@@ -107,6 +107,11 @@ export const Playground: CommandModule = {
         type: "boolean",
         default: false,
         describe: "Open browser automatically",
+      })
+      .option("morsel", {
+        type: "boolean",
+        default: false,
+        describe: "Launch the full Morsel web editor locked to this single language (?lang=<id>&single=1)",
       }),
   handler: async (argv) => {
     const langArg = typeof argv["lang"] === "string" ? argv["lang"] : null;
@@ -127,6 +132,7 @@ export const Playground: CommandModule = {
       if (typeof argv["mode"] === "string") forwardArgs.push("--mode", argv["mode"]);
       if (typeof argv["theme"] === "string") forwardArgs.push("--theme", argv["theme"]);
       if (argv["open"]) forwardArgs.push("--open");
+      if (argv["morsel"]) forwardArgs.push("--morsel");
 
       await new Promise<void>((resolvePromise, rejectPromise) => {
         const child = spawn("npx", forwardArgs, { stdio: "inherit", cwd: process.cwd() });

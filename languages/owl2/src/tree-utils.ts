@@ -1,0 +1,491 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import type { TreeNodeInfo } from "@modelscript/runtime";
+import { TableauReasoner } from "@modelscript/runtime/wasm_ontology.js";
+
+export function getShortLabel(iri: string): string {
+  if (!iri) return "";
+  const hashIdx = iri.lastIndexOf("#");
+  if (hashIdx !== -1 && hashIdx < iri.length - 1) {
+    return iri.slice(hashIdx + 1);
+  }
+  const slashIdx = iri.lastIndexOf("/");
+  if (slashIdx !== -1 && slashIdx < iri.length - 1) {
+    return iri.slice(slashIdx + 1);
+  }
+  const colonIdx = iri.indexOf(":");
+  if (colonIdx !== -1 && !iri.startsWith("http://") && !iri.startsWith("https://")) {
+    return iri.slice(colonIdx + 1);
+  }
+  return iri;
+}
+
+export function getOntologyDisplayName(uri: string): string {
+  if (!uri) return "Ontology";
+  const slashIdx = uri.lastIndexOf("/");
+  if (slashIdx !== -1 && slashIdx < uri.length - 1) {
+    return uri.slice(slashIdx + 1);
+  }
+  const colonIdx = uri.lastIndexOf(":");
+  if (colonIdx !== -1 && colonIdx < uri.length - 1) {
+    return uri.slice(colonIdx + 1);
+  }
+  return uri;
+}
+
+function normalizeOntologyUri(uri: string): string {
+  return uri.replace(/^([a-z0-9+-]+):\/(?!\/)/i, "$1:///");
+}
+
+export type Owl2AxiomLike = Parameters<TableauReasoner["loadOntology"]>[0][number];
+
+export interface Owl2OntologyStoreLike {
+  axioms?: readonly Owl2AxiomLike[];
+  axiomsBySource?: ReadonlyMap<string, readonly unknown[]>;
+}
+
+export interface Owl2WorkspaceLike {
+  documents?: Map<string, { language?: string }>;
+  workspaces?: Map<string, { documents?: Map<string, unknown> }>;
+}
+
+/**
+ * Returns top-level ontology container nodes found in workspace or owl2Store.
+ */
+export function getOntologyRootNodes(
+  workspace?: Owl2WorkspaceLike | null,
+  store?: Owl2OntologyStoreLike | null,
+): TreeNodeInfo[] {
+  const nodes: TreeNodeInfo[] = [];
+  const seenUris = new Set<string>();
+
+  // 1. Check registered documents in workspace for OWL2 files
+  if (workspace?.documents) {
+    for (const [uri, doc] of workspace.documents) {
+      const ext = uri.slice(uri.lastIndexOf(".")).toLowerCase();
+      const isOwlExt = ext === ".owl" || ext === ".ofn" || ext === ".ttl" || ext === ".owl2";
+      const canonicalUri = normalizeOntologyUri(uri);
+      if ((isOwlExt || doc?.language === "owl2") && !seenUris.has(canonicalUri)) {
+        seenUris.add(canonicalUri);
+        nodes.push({
+          id: `__ONTOLOGY__:${canonicalUri}`,
+          name: getOntologyDisplayName(canonicalUri),
+          compositeName: canonicalUri,
+          classKind: "ontology",
+          icon: "symbol-namespace",
+          hasChildren: true,
+          language: "owl2",
+        });
+      }
+    }
+  }
+
+  // 2. Check owl2 language workspace index if available
+  const owlWs = workspace?.workspaces?.get ? workspace.workspaces.get("owl2") : null;
+  if (owlWs?.documents) {
+    for (const [uri] of owlWs.documents) {
+      const canonicalUri = normalizeOntologyUri(uri);
+      if (!seenUris.has(canonicalUri)) {
+        seenUris.add(canonicalUri);
+        nodes.push({
+          id: `__ONTOLOGY__:${canonicalUri}`,
+          name: getOntologyDisplayName(canonicalUri),
+          compositeName: canonicalUri,
+          classKind: "ontology",
+          icon: "symbol-namespace",
+          hasChildren: true,
+          language: "owl2",
+        });
+      }
+    }
+  }
+
+  // 3. Fallback: if user axioms exist in owl2Store but no specific document was found
+  if (nodes.length === 0 && store?.axioms && store.axioms.length > 0) {
+    let hasUserAxioms = true;
+    if (store.axiomsBySource instanceof Map) {
+      const nonBfo = Array.from(store.axiomsBySource.keys()).filter((k) => k !== "bfo-core" && k !== "bfo");
+      hasUserAxioms = nonBfo.length > 0 && nonBfo.some((k) => (store.axiomsBySource?.get(k)?.length ?? 0) > 0);
+    }
+    if (hasUserAxioms) {
+      const fallbackId = "__ONTOLOGY__:workspace-ontology";
+      nodes.push({
+        id: fallbackId,
+        name: "Workspace Ontology",
+        compositeName: "workspace-ontology",
+        classKind: "ontology",
+        icon: "symbol-namespace",
+        hasChildren: true,
+        language: "owl2",
+      });
+    }
+  }
+
+  return nodes;
+}
+
+/**
+ * Returns the structural category folder nodes under an ontology.
+ */
+export function getOntologyCategoryNodes(
+  ontologyParentId: string,
+  store?: Owl2OntologyStoreLike | null,
+): TreeNodeInfo[] {
+  const uri = ontologyParentId.substring("__ONTOLOGY__:".length);
+  const categories: TreeNodeInfo[] = [
+    {
+      id: `__OWL_CLASSES__:${uri}`,
+      name: "Classes",
+      compositeName: `${uri}#Classes`,
+      classKind: "folder",
+      icon: "symbol-class",
+      hasChildren: true,
+      language: "owl2",
+    },
+    {
+      id: `__OWL_OBJ_PROPS__:${uri}`,
+      name: "Object Properties",
+      compositeName: `${uri}#ObjectProperties`,
+      classKind: "folder",
+      icon: "symbol-property",
+      hasChildren: true,
+      language: "owl2",
+    },
+    {
+      id: `__OWL_DATA_PROPS__:${uri}`,
+      name: "Data Properties",
+      compositeName: `${uri}#DataProperties`,
+      classKind: "folder",
+      icon: "symbol-field",
+      hasChildren: true,
+      language: "owl2",
+    },
+  ];
+
+  // Only show Individuals folder if individuals exist
+  const hasIndividuals = store?.axioms?.some(
+    (ax) =>
+      ax.type === "IndividualDeclaration" ||
+      (ax.type as string) === "NamedIndividualDeclaration" ||
+      ax.type === "ClassAssertion" ||
+      ax.type === "ObjectPropertyAssertion" ||
+      ax.type === "DataPropertyAssertion",
+  );
+
+  if (hasIndividuals) {
+    categories.push({
+      id: `__OWL_INDIVIDUALS__:${uri}`,
+      name: "Individuals",
+      compositeName: `${uri}#Individuals`,
+      classKind: "folder",
+      icon: "symbol-misc",
+      hasChildren: true,
+      language: "owl2",
+    });
+  }
+
+  return categories;
+}
+
+const owl2TaxonomyCache = new WeakMap<
+  object,
+  {
+    axiomsRef: readonly Owl2AxiomLike[];
+    axiomsLen: number;
+    taxonomy: ReturnType<TableauReasoner["getTaxonomy"]>;
+    taxMap: Map<string, ReturnType<TableauReasoner["getTaxonomy"]>[0]>;
+  }
+>();
+
+export async function getCachedOwl2Taxonomy(store?: Owl2OntologyStoreLike | null): Promise<{
+  taxonomy: ReturnType<TableauReasoner["getTaxonomy"]>;
+  taxMap: Map<string, ReturnType<TableauReasoner["getTaxonomy"]>[0]>;
+}> {
+  if (!store?.axioms || store.axioms.length === 0) {
+    return { taxonomy: [], taxMap: new Map() };
+  }
+  const cached = owl2TaxonomyCache.get(store);
+  if (cached && cached.axiomsRef === store.axioms && cached.axiomsLen === store.axioms.length) {
+    return { taxonomy: cached.taxonomy, taxMap: cached.taxMap };
+  }
+  const reasoner = new TableauReasoner();
+  await reasoner.init();
+  reasoner.loadOntology(store.axioms as Parameters<TableauReasoner["loadOntology"]>[0]);
+  reasoner.classify();
+  const taxonomy = reasoner.getTaxonomy();
+  const taxMap = new Map<string, (typeof taxonomy)[0]>();
+  for (const node of taxonomy) {
+    taxMap.set(node.iri, node);
+  }
+  owl2TaxonomyCache.set(store, {
+    axiomsRef: store.axioms,
+    axiomsLen: store.axioms.length,
+    taxonomy,
+    taxMap,
+  });
+  return { taxonomy, taxMap };
+}
+
+/**
+ * Returns class nodes for the taxonomy subsumption hierarchy.
+ */
+export async function getOwlClassTreeNodes(
+  store: Owl2OntologyStoreLike | null | undefined,
+  parentIri: string | null,
+): Promise<TreeNodeInfo[]> {
+  if (!store?.axioms || store.axioms.length === 0) return [];
+
+  const { taxonomy, taxMap } = await getCachedOwl2Taxonomy(store);
+
+  const definedClasses = new Set<string>();
+  for (const ax of store.axioms) {
+    if (ax.type === "EquivalentClasses" && ax.classIris.length > 1) {
+      for (const c of ax.classIris) definedClasses.add(c);
+    }
+  }
+
+  const isValidClassLabel = (label: string): boolean => {
+    if (!label || label.startsWith("'") || label.startsWith('"') || /[\r\n]/.test(label) || /^\s/.test(label)) {
+      return false;
+    }
+    return true;
+  };
+
+  if (!parentIri) {
+    // Top-level root classes (no superclasses, or superclass is only owl:Thing)
+    const roots: TreeNodeInfo[] = [];
+    for (const node of taxonomy) {
+      if (node.iri === "owl:Thing") continue;
+      const label = getShortLabel(node.iri);
+      if (!isValidClassLabel(label)) continue;
+      const equivSet = new Set(node.equivalentClasses);
+      const filteredSupers = node.directSuperClasses.filter((s) => s !== "owl:Thing" && !equivSet.has(s));
+      if (filteredSupers.length === 0) {
+        const isDefined = definedClasses.has(node.iri);
+        roots.push({
+          id: `__OWL_CLASS__:${node.iri}`,
+          name: label,
+          compositeName: node.iri,
+          classKind: isDefined ? "owl2-defined-class" : "owl2-class",
+          icon: "symbol-class",
+          description: isDefined ? "≡ defined" : "",
+          hasChildren: node.directSubClasses.length > 0,
+          language: "owl2",
+        });
+      }
+    }
+    roots.sort((a, b) => a.name.localeCompare(b.name));
+    return roots;
+  }
+
+  // Children of parentIri
+  const parentNode = taxMap.get(parentIri);
+  if (!parentNode) return [];
+
+  const children: TreeNodeInfo[] = [];
+  for (const subIri of parentNode.directSubClasses) {
+    const label = getShortLabel(subIri);
+    if (!isValidClassLabel(label)) continue;
+    const subNode = taxMap.get(subIri);
+    const isDefined = definedClasses.has(subIri);
+    children.push({
+      id: `__OWL_CLASS__:${subIri}`,
+      name: label,
+      compositeName: subIri,
+      classKind: isDefined ? "owl2-defined-class" : "owl2-class",
+      icon: "symbol-class",
+      description: isDefined ? "≡ defined" : "",
+      hasChildren: (subNode?.directSubClasses.length ?? 0) > 0,
+      language: "owl2",
+    });
+  }
+  children.sort((a, b) => a.name.localeCompare(b.name));
+  return children;
+}
+
+/**
+ * Returns property nodes for Object or Data properties.
+ */
+export function getOwlPropertyTreeNodes(
+  store: Owl2OntologyStoreLike | null | undefined,
+  propertyType: "object" | "data",
+): TreeNodeInfo[] {
+  if (!store?.axioms || store.axioms.length === 0) return [];
+
+  const objProps = new Set<string>();
+  const dataProps = new Set<string>();
+  const characteristicsMap = new Map<string, Set<string>>();
+  const inverseMap = new Map<string, string>();
+  const rangesMap = new Map<string, Set<string>>();
+  const subPropertyMap = new Map<string, string[]>();
+  const childProperties = new Set<string>();
+
+  for (const ax of store.axioms) {
+    if (ax.type === "ObjectPropertyDeclaration") objProps.add(ax.iri);
+    if (ax.type === "DataPropertyDeclaration") dataProps.add(ax.iri);
+    if (ax.type === "TransitiveObjectProperty") {
+      const s = characteristicsMap.get(ax.propertyIri) ?? new Set();
+      s.add("Transitive");
+      characteristicsMap.set(ax.propertyIri, s);
+    }
+    if (ax.type === "FunctionalObjectProperty") {
+      const s = characteristicsMap.get(ax.propertyIri) ?? new Set();
+      s.add("Functional");
+      characteristicsMap.set(ax.propertyIri, s);
+    }
+    if (ax.type === "FunctionalDataProperty") {
+      const s = characteristicsMap.get(ax.propertyIri) ?? new Set();
+      s.add("Functional");
+      characteristicsMap.set(ax.propertyIri, s);
+    }
+    if (ax.type === "SymmetricObjectProperty") {
+      const s = characteristicsMap.get(ax.propertyIri) ?? new Set();
+      s.add("Symmetric");
+      characteristicsMap.set(ax.propertyIri, s);
+    }
+    if (ax.type === "AsymmetricObjectProperty") {
+      const s = characteristicsMap.get(ax.propertyIri) ?? new Set();
+      s.add("Asymmetric");
+      characteristicsMap.set(ax.propertyIri, s);
+    }
+    if (ax.type === "InverseObjectProperty") {
+      inverseMap.set(ax.propertyIri, ax.inversePropertyIri);
+      inverseMap.set(ax.inversePropertyIri, ax.propertyIri);
+    }
+    if (ax.type === "DataPropertyRange") {
+      const rng = (ax as { range?: string; rangeIri?: string }).range ?? (ax as { rangeIri?: string }).rangeIri;
+      if (rng) {
+        const r = rangesMap.get(ax.propertyIri) ?? new Set();
+        r.add(rng);
+        rangesMap.set(ax.propertyIri, r);
+      }
+    }
+    if (ax.type === "SubObjectPropertyOf" || ax.type === "SubDataPropertyOf") {
+      const sub = ax.subPropertyIri ?? (ax as { subProperty?: string }).subProperty;
+      const sup = ax.superPropertyIri ?? (ax as { superProperty?: string }).superProperty;
+      if (sub && sup) {
+        childProperties.add(sub);
+        const list = subPropertyMap.get(sup) ?? [];
+        list.push(sub);
+        subPropertyMap.set(sup, list);
+      }
+    }
+  }
+
+  const result: TreeNodeInfo[] = [];
+
+  if (propertyType === "object") {
+    for (const iri of objProps) {
+      if (childProperties.has(iri)) continue;
+      const chars = Array.from(characteristicsMap.get(iri) ?? []);
+      const inv = inverseMap.get(iri);
+      const descParts: string[] = [];
+      if (chars.length > 0) descParts.push(chars.join(", "));
+      if (inv) descParts.push(`⇆ ${getShortLabel(inv)}`);
+
+      const subs = subPropertyMap.get(iri) ?? [];
+      result.push({
+        id: `__OWL_OBJ_PROP__:${iri}`,
+        name: getShortLabel(iri),
+        compositeName: iri,
+        classKind: "owl2-object-property",
+        icon: "symbol-property",
+        description: descParts.join(" · "),
+        hasChildren: subs.length > 0,
+        language: "owl2",
+      });
+    }
+  } else {
+    for (const iri of dataProps) {
+      if (childProperties.has(iri)) continue;
+      const ranges = Array.from(rangesMap.get(iri) ?? []);
+      const chars = Array.from(characteristicsMap.get(iri) ?? []);
+      const descParts: string[] = [];
+      if (ranges.length > 0) descParts.push(ranges.join(", "));
+      if (chars.length > 0) descParts.push(chars.join(", "));
+
+      const subs = subPropertyMap.get(iri) ?? [];
+      result.push({
+        id: `__OWL_DATA_PROP__:${iri}`,
+        name: getShortLabel(iri),
+        compositeName: iri,
+        classKind: "owl2-data-property",
+        icon: "symbol-field",
+        description: descParts.join(" · "),
+        hasChildren: subs.length > 0,
+        language: "owl2",
+      });
+    }
+  }
+
+  result.sort((a, b) => a.name.localeCompare(b.name));
+  return result;
+}
+
+/**
+ * Returns individual nodes.
+ */
+export function getOwlIndividualTreeNodes(store?: Owl2OntologyStoreLike | null): TreeNodeInfo[] {
+  if (!store?.axioms || store.axioms.length === 0) return [];
+
+  const individualTypes = new Map<string, string>();
+  for (const ax of store.axioms) {
+    if (ax.type === "IndividualDeclaration" || (ax.type as string) === "NamedIndividualDeclaration") {
+      const iri = (ax as { iri?: string }).iri;
+      if (iri && !individualTypes.has(iri)) {
+        individualTypes.set(iri, "");
+      }
+    } else if (ax.type === "ClassAssertion") {
+      const indIri = ax.individualIri ?? (ax as { individual?: string }).individual;
+      const classIri = ax.classIri ?? (ax as { classExpr?: string }).classExpr;
+      if (indIri && classIri) {
+        individualTypes.set(indIri, `:${getShortLabel(classIri)}`);
+      }
+    }
+  }
+
+  const result: TreeNodeInfo[] = [];
+  for (const [iri, typeDesc] of individualTypes) {
+    result.push({
+      id: `__OWL_INDIVIDUAL__:${iri}`,
+      name: getShortLabel(iri),
+      compositeName: iri,
+      classKind: "owl2-individual",
+      icon: "symbol-misc",
+      description: typeDesc,
+      hasChildren: false,
+      language: "owl2",
+    });
+  }
+
+  result.sort((a, b) => a.name.localeCompare(b.name));
+  return result;
+}
+
+/**
+ * Returns child sub-property nodes for a given parent property.
+ */
+export function getOwlSubPropertyTreeNodes(
+  store: Owl2OntologyStoreLike | null | undefined,
+  parentIri: string,
+  propertyType: "object" | "data",
+): TreeNodeInfo[] {
+  if (!store?.axioms || store.axioms.length === 0) return [];
+
+  const subProperties: string[] = [];
+  const axiomType = propertyType === "object" ? "SubObjectPropertyOf" : "SubDataPropertyOf";
+
+  for (const ax of store.axioms) {
+    if (ax.type === axiomType) {
+      const sup = ax.superPropertyIri ?? (ax as { superProperty?: string }).superProperty;
+      const sub = ax.subPropertyIri ?? (ax as { subProperty?: string }).subProperty;
+      if (sup === parentIri && sub) {
+        subProperties.push(sub);
+      }
+    }
+  }
+
+  const allProps = getOwlPropertyTreeNodes(store, propertyType);
+  const subSet = new Set(subProperties);
+  return allProps.filter((p) => subSet.has(p.compositeName ?? ""));
+}

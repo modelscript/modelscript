@@ -28,6 +28,7 @@ import { scadLanguage } from "./language.js";
 import { lintScadCst, type ScadDiagnostic, type ScadLintOptions } from "./linter.js";
 import { ScadPatcher, type ScadCstNode, type ScadCstTree } from "./patcher.js";
 
+export { buildScadDiagramFromCst } from "./diagram-builder.js";
 export * from "./indexing.js";
 export { evaluateScad, lintScadCst, parseScadSource, ScadErrorCode, ScadEvaluator, scadLanguage, ScadPatcher };
 export type {
@@ -278,4 +279,6 @@ export async function compileScadToUsdz(
   return compileToUsdz(solid, options);
 }
 
+export * from "./lsp-validator.js";
+export * from "./step-compiler.js";
 export * from "./workspace-lint.js";

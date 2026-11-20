@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import { lowerOlgaToDae } from "./dae/olga-to-dae.js";
 import { getOlgaQuickFixes, lintOlgaModel, type OlgaDiagnostic, type OlgaQuickFix } from "./lints/index.js";
 import { parseOlga } from "./parser/index.js";
@@ -305,3 +306,154 @@ export async function executeOlgaAction(action: string, args: Record<string, unk
 }
 
 export { getOlgaQuickFixes, type OlgaQuickFix };
+
+export interface OlgaCodeLensContext {
+  uri?: string | undefined;
+  flags?: {
+    showSimulate?: boolean | undefined;
+    showVerification?: boolean | undefined;
+    showDiagram?: boolean | undefined;
+  };
+}
+
+function computeOlgaLineOffsets(text: string): number[] {
+  const offsets = [0];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "\n") offsets.push(i + 1);
+  }
+  return offsets;
+}
+
+function olgaOffsetToPosition(offset: number, lineOffsets: number[]): LspPosition {
+  let low = 0;
+  let high = lineOffsets.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (lineOffsets[mid]! <= offset) low = mid + 1;
+    else high = mid - 1;
+  }
+  const line = Math.max(0, low - 1);
+  return { line, character: offset - (lineOffsets[line] ?? 0) };
+}
+
+function getOlgaXmlAttr(el: XmlElement, ...names: string[]): string | undefined {
+  for (const name of names) {
+    const lower = name.toLowerCase();
+    for (const a of el.attributes) {
+      if (a.name.toLowerCase() === lower) return a.value;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Generates CodeLens actions for OLGA multiphase pipeline decks (.opi, .olga, .genkey).
+ */
+export function getOlgaCodeLenses(
+  text: string,
+  uri: string,
+  ctx: OlgaCodeLensContext = {},
+): Array<{ range: LspRange; command?: { title: string; command: string; arguments?: unknown[] } }> {
+  const lenses: Array<{ range: LspRange; command?: { title: string; command: string; arguments?: unknown[] } }> = [];
+  if (!text) return lenses;
+
+  const showSimulate = ctx.flags?.showSimulate ?? false;
+  const showVerification = ctx.flags?.showVerification ?? false;
+  const showDiagram = ctx.flags?.showDiagram ?? false;
+
+  const headerRange: LspRange = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
+  if (showSimulate) {
+    lenses.push({
+      range: headerRange,
+      command: {
+        title: "▶ Simulate Multiphase Flow (Drift-Flux DAE)",
+        command: "modelscript.olga.simulate_drift_flux",
+        arguments: [uri],
+      },
+    });
+  }
+  if (showVerification) {
+    lenses.push({
+      range: headerRange,
+      command: {
+        title: "✓ Verify Flow Assurance (WAT, Hydrates, Slugging)",
+        command: "modelscript.olga.verify_flow_assurance",
+        arguments: [uri],
+      },
+    });
+  }
+  if (showDiagram) {
+    lenses.push({
+      range: headerRange,
+      command: {
+        title: "⊞ Open Interactive Diagram",
+        command: "modelscript.openDiagram",
+        arguments: [uri],
+      },
+    });
+  }
+
+  const xmlDoc = parseXmlSync(text);
+  if (xmlDoc.root) {
+    const lineOffsets = computeOlgaLineOffsets(text);
+    const walkOlga = (el: XmlElement): void => {
+      const tag = (el.name.includes(":") ? el.name.slice(el.name.indexOf(":") + 1) : el.name).toLowerCase();
+      if (tag === "flowpath" && showVerification) {
+        const name = getOlgaXmlAttr(el, "name", "id");
+        if (name) {
+          const pos = olgaOffsetToPosition(el.start, lineOffsets);
+          const col = text.indexOf(name, el.start);
+          const namePos = col !== -1 && col < el.end ? olgaOffsetToPosition(col, lineOffsets) : pos;
+          lenses.push({
+            range: { start: namePos, end: { line: namePos.line, character: namePos.character + name.length } },
+            command: {
+              title: `🌊 Flowpath '${name}' | Verify Multiphase Limits (WAT, Hydrates, Slug Surge)`,
+              command: "modelscript.olga.verify_flow_assurance",
+              arguments: [uri, name],
+            },
+          });
+        }
+      } else if (tag === "valve" && showSimulate) {
+        const name = getOlgaXmlAttr(el, "name", "id");
+        if (name) {
+          const openVal = getOlgaXmlAttr(el, "opening");
+          const opening = openVal ? `${(parseFloat(openVal) * 100).toFixed(0)}%` : "100%";
+          const pos = olgaOffsetToPosition(el.start, lineOffsets);
+          const col = text.indexOf(name, el.start);
+          const namePos = col !== -1 && col < el.end ? olgaOffsetToPosition(col, lineOffsets) : pos;
+          lenses.push({
+            range: { start: namePos, end: { line: namePos.line, character: namePos.character + name.length } },
+            command: {
+              title: `🎛️ Choke '${name}' (Opening: ${opening}) | What-If Perturbation Sweep`,
+              command: "modelscript.olga.whatIfChoke",
+              arguments: [uri, name],
+            },
+          });
+        }
+      } else if (tag === "pipe" && showSimulate) {
+        const name = getOlgaXmlAttr(el, "label", "name");
+        if (name) {
+          const lenVal = getOlgaXmlAttr(el, "length");
+          const diamVal = getOlgaXmlAttr(el, "diameter");
+          const len = lenVal ? `${lenVal}m` : "";
+          const diam = diamVal ? `Ø${diamVal}m` : "";
+          const pos = olgaOffsetToPosition(el.start, lineOffsets);
+          const col = text.indexOf(name, el.start);
+          const namePos = col !== -1 && col < el.end ? olgaOffsetToPosition(col, lineOffsets) : pos;
+          lenses.push({
+            range: { start: namePos, end: { line: namePos.line, character: namePos.character + name.length } },
+            command: {
+              title: `📏 Pipe '${name}' [${len} ${diam}] | Inspect Pressure & Holdup Profile`,
+              command: "modelscript.olga.inspect_olga_elevation_profile",
+              arguments: [uri, name],
+            },
+          });
+        }
+      }
+      for (const child of el.children) walkOlga(child);
+    };
+    walkOlga(xmlDoc.root);
+  }
+
+  return lenses;
+}

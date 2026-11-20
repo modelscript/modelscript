@@ -18,8 +18,8 @@ describe("Morsel Editor UX & Stability Regressions", () => {
   });
 
   it("Tree.tsx calls clearPlacement on onDragEnd instead of dispatching window Escape", () => {
-    const treeSrc = fs.readFileSync(path.join(webRoot, "components/morsel/Tree.tsx"), "utf-8");
-    const diagramSrc = fs.readFileSync(path.join(webRoot, "components/morsel/Diagram.tsx"), "utf-8");
+    const treeSrc = fs.readFileSync(path.join(repoRoot, "packages/editor/src/workbench/Tree.tsx"), "utf-8");
+    const diagramSrc = fs.readFileSync(path.join(repoRoot, "packages/editor/src/workbench/Diagram.tsx"), "utf-8");
 
     assert.ok(treeSrc.includes("clearPlacement()"), "Tree.tsx onDragEnd must call clearPlacement()");
     assert.ok(
@@ -33,10 +33,16 @@ describe("Morsel Editor UX & Stability Regressions", () => {
   });
 
   it("Libraries panel, ComponentList, Properties, and AddLibraryModal handle Primer night colorMode & explicit colorMode", () => {
-    const treeSrc = fs.readFileSync(path.join(webRoot, "components/morsel/Tree.tsx"), "utf-8");
-    const compListSrc = fs.readFileSync(path.join(webRoot, "components/morsel/ComponentList.tsx"), "utf-8");
-    const propsSrc = fs.readFileSync(path.join(webRoot, "components/morsel/Properties.tsx"), "utf-8");
-    const addLibSrc = fs.readFileSync(path.join(webRoot, "components/morsel/AddLibraryModal.tsx"), "utf-8");
+    const treeSrc = fs.readFileSync(path.join(repoRoot, "packages/editor/src/workbench/Tree.tsx"), "utf-8");
+    const compListSrc = fs.readFileSync(
+      path.join(repoRoot, "packages/editor/src/workbench/ComponentList.tsx"),
+      "utf-8",
+    );
+    const propsSrc = fs.readFileSync(path.join(repoRoot, "packages/editor/src/workbench/Properties.tsx"), "utf-8");
+    const addLibSrc = fs.readFileSync(
+      path.join(repoRoot, "packages/editor/src/workbench/AddLibraryModal.tsx"),
+      "utf-8",
+    );
 
     for (const [name, src] of [
       ["Tree.tsx", treeSrc],
@@ -56,7 +62,10 @@ describe("Morsel Editor UX & Stability Regressions", () => {
   });
 
   it("MorselLeftSidebar vertically stacks Libraries above Components on desktop and passes colorMode", () => {
-    const sidebarSrc = fs.readFileSync(path.join(webRoot, "components/morsel/panels/MorselLeftSidebar.tsx"), "utf-8");
+    const sidebarSrc = fs.readFileSync(
+      path.join(repoRoot, "packages/editor/src/workbench/panels/MorselLeftSidebar.tsx"),
+      "utf-8",
+    );
 
     assert.ok(
       !sidebarSrc.includes("desktopTab"),
@@ -100,14 +109,17 @@ describe("Morsel Editor UX & Stability Regressions", () => {
   });
 
   it("tessellateStepSource attributes shell faces per MANIFOLD_SOLID_BREP and skips inner hole polygon fill", () => {
-    const engineSrc = fs.readFileSync(path.join(webRoot, "components/morsel/hooks/useMorselEngine.ts"), "utf-8");
+    const engineSrc = fs.readFileSync(
+      path.join(repoRoot, "packages/editor/src/workbench/hooks/useMorselEngine.ts"),
+      "utf-8",
+    );
     assert.ok(engineSrc.includes("CLOSED_SHELL") && engineSrc.includes("solidMeshes"));
     assert.ok(engineSrc.includes("hasExplicitOuter && entry && !entry.isOuter"));
   });
 
   it("tessellateStepSource tessellates curved STEP surfaces (CYLINDRICAL_SURFACE, SPHERICAL_SURFACE) and holed plates", async () => {
     const { box, cylinder, sphere, compileToStep, subtract, translate } = await import("@modelscript/cad");
-    const { tessellateStepSource } = await import("../src/components/morsel/hooks/useMorselEngine.ts");
+    const { tessellateStepSource } = await import("../../../packages/editor/src/workbench/hooks/useMorselEngine.ts");
 
     const holed = subtract(
       box({ width: 20, height: 15, depth: 8, name: "Plate" }),
@@ -133,7 +145,7 @@ describe("Morsel Editor UX & Stability Regressions", () => {
   });
 
   it("tessellateScadSource evaluates nested difference/intersection/rotate CSG trees via ManifoldWorker", async () => {
-    const { tessellateScadSource } = await import("../src/components/morsel/hooks/useMorselEngine.ts");
+    const { tessellateScadSource } = await import("../../../packages/editor/src/workbench/hooks/useMorselEngine.ts");
 
     const solidCube = tessellateScadSource("cube([20, 20, 10], center=true);");
     const holedCube = tessellateScadSource(`
@@ -157,8 +169,11 @@ describe("Morsel Editor UX & Stability Regressions", () => {
   });
 
   it("Morsel unifies .layout sidecar undo/redo with diagram Undo/Redo and clears spatial cooldown", () => {
-    const morselSrc = fs.readFileSync(path.join(webRoot, "components/morsel/Morsel.tsx"), "utf-8");
-    const paneSrc = fs.readFileSync(path.join(webRoot, "components/morsel/panels/MorselVisualizerPane.tsx"), "utf-8");
+    const morselSrc = fs.readFileSync(path.join(repoRoot, "packages/editor/src/workbench/Morsel.tsx"), "utf-8");
+    const paneSrc = fs.readFileSync(
+      path.join(repoRoot, "packages/editor/src/workbench/panels/MorselVisualizerPane.tsx"),
+      "utf-8",
+    );
     assert.ok(morselSrc.includes("sidecarHistoryRef"), "Morsel.tsx must track sidecarHistoryRef stack");
     assert.ok(
       morselSrc.includes("persistSidecarToProjectFiles"),

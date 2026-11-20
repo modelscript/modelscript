@@ -26,6 +26,7 @@ export {
 } from "./engine/index.js";
 export { gtsuiteLanguage } from "./language.js";
 export { GtSuiteErrorCode, lintGtModel } from "./lints/index.js";
+export * from "./lsp-actions.js";
 export {
   executeGtsuiteAction,
   getGtsuiteDocumentSymbols,

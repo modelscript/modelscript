@@ -145,9 +145,15 @@ describe("Primer Standard CodeSquareIcon & Playground Integration", () => {
   });
 
   it("renders authentic Ansatz header brand icon in loading modal", () => {
-    const modalsPath = path.resolve(import.meta.dirname, "../src/components/morsel/panels/MorselModals.tsx");
+    const modalsPath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/panels/MorselModals.tsx",
+    );
     const modalsSrc = fs.readFileSync(modalsPath, "utf-8");
-    const loaderPath = path.resolve(import.meta.dirname, "../src/components/morsel/MorselLoadingScreen.tsx");
+    const loaderPath = path.resolve(
+      import.meta.dirname,
+      "../../../packages/editor/src/workbench/MorselLoadingScreen.tsx",
+    );
     const loaderSrc = fs.readFileSync(loaderPath, "utf-8");
 
     assert.ok(modalsSrc.includes("<MorselLoadingScreen"), "MorselModals.tsx must render MorselLoadingScreen");

@@ -3,6 +3,7 @@
 import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Connection } from "vscode-languageserver";
+import { resolveCrossLanguageComponentDrop } from "../cross-language-drop.js";
 import {
   GenericDSLDiagramBackend,
   ModelicaDiagramBackend,
@@ -457,6 +458,7 @@ export class DiagramService {
 
       const sysmlOps = getSysML2DiagramOps(this);
       const sysml2Backend = new SysML2DiagramBackend({
+        resolveCrossLanguageDrop: resolveCrossLanguageComponentDrop,
         getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
         getLayout: (uri) => {
           let layout = this.sysml2Layouts.get(uri);

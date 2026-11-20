@@ -1,53 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { STEP_SCHEMA } from "@modelscript/step";
 import { Connection, ParameterInformation, SignatureInformation } from "vscode-languageserver";
+import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import type { SyntaxNode } from "../utils/cst-facade.js";
-import { isDigitCode, isWsCode } from "../utils/lexical-utils.js";
-
-function isStepUpperChar(code: number): boolean {
-  return (code >= 65 && code <= 90) || isDigitCode(code) || code === 95;
-}
-
-function findEnclosingStepCall(textBefore: string): { entityName: string; argsStr: string } | undefined {
-  let depth = 0;
-  let inStr = false;
-  for (let i = textBefore.length - 1; i >= 0; i--) {
-    const ch = textBefore[i]!;
-    if (ch === "'") {
-      inStr = !inStr;
-      continue;
-    }
-    if (inStr) continue;
-    if (ch === ")") {
-      depth++;
-    } else if (ch === "(") {
-      if (depth > 0) {
-        depth--;
-        continue;
-      }
-      let nameEnd = i;
-      while (nameEnd > 0 && isWsCode(textBefore.charCodeAt(nameEnd - 1))) nameEnd--;
-      let nameStart = nameEnd;
-      while (nameStart > 0 && isStepUpperChar(textBefore.charCodeAt(nameStart - 1))) nameStart--;
-      if (nameStart < nameEnd) {
-        const c0 = textBefore.charCodeAt(nameStart);
-        if (c0 >= 65 && c0 <= 90) {
-          return {
-            entityName: textBefore.slice(nameStart, nameEnd),
-            argsStr: textBefore.slice(i + 1),
-          };
-        }
-      }
-      return undefined;
-    }
-  }
-  return undefined;
-}
-
-function isStepDocument(document: any): boolean {
-  return document.languageId === "step" || /\.(step|stp|p21)$/i.test(document.uri);
-}
 
 export function registerSignatureHelpProvider(
   connection: Connection,
@@ -58,49 +13,22 @@ export function registerSignatureHelpProvider(
   getParser: () => any,
   getLineIndexForDoc: any,
 ) {
-  connection.onSignatureHelp((params) => {
+  connection.onSignatureHelp(async (params) => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return null;
 
-    const text = document.getText();
-    const offset = document.offsetAt(params.position);
-
-    // ── STEP-specific signature help (does NOT require bridge or parser) ──
-    if (isStepDocument(document)) {
-      const searchStart = Math.max(0, offset - 2000);
-      const textBefore = text.slice(searchStart, offset);
-      const call = findEnclosingStepCall(textBefore);
-      if (call) {
-        const { entityName, argsStr } = call;
-        const schema = STEP_SCHEMA[entityName];
-        if (schema) {
-          let activeParameter = 0;
-          let depth = 0;
-          let inStr = false;
-          for (const ch of argsStr) {
-            if (ch === "'") inStr = !inStr;
-            else if (!inStr && ch === "(") depth++;
-            else if (!inStr && ch === ")") depth--;
-            else if (!inStr && depth === 0 && ch === ",") activeParameter++;
-          }
-
-          return {
-            signatures: [
-              SignatureInformation.create(
-                `${entityName}(${schema.parameters.map((p) => p.name).join(", ")})`,
-                schema.description,
-                ...schema.parameters.map((p) => ParameterInformation.create(p.name, `Type: ${p.type}`)),
-              ),
-            ],
-            activeSignature: 0,
-            activeParameter,
-          };
-        }
+    // ── Language-plugin custom signature help (e.g. STEP, etc.) ──
+    const plugin = globalLanguageRegistry.getPluginForUri(document.uri);
+    if (plugin?.customHandlers?.signatureHelp) {
+      const customSig = await plugin.customHandlers.signatureHelp(document, params.position);
+      if (customSig) return customSig;
+      if (plugin.id !== "modelica" && plugin.id !== "modelscript" && plugin.id !== "sysml2") {
+        return null;
       }
-      return null; // STEP file — don't fall through to Modelica logic
     }
 
     // ── Standard Modelica/SysML signature help (requires parser + bridge) ──
+    const text = document.getText();
     if (!isParserReady() || !getParser()) return null;
     const tree = getDocumentTree(document.uri);
     if (!tree) return null;

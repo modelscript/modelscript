@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ChevronRightIcon, PackageIcon, PlusIcon, SearchIcon, XIcon } from "@primer/octicons-react";
-import { IconButton, useTheme } from "@primer/react";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { sanitizeSvgMarkup } from "../../../components/artifacts/PolyglotArtifactViewer";
-import { DOMAIN_FILTERS, type EngineeringDomainId } from "../../../components/morsel/componentGalleryCatalog";
-import { getLanguageInfo } from "../../../components/morsel/constants";
-import { buildEquationFallbackPreviewSvg } from "../../../components/morsel/openModelCatalog";
+import { DOMAIN_FILTERS, type EngineeringDomainId } from "@modelscript/editor/workbench/componentGalleryCatalog";
+import { getLanguageInfo } from "@modelscript/editor/workbench/constants";
+import { buildEquationFallbackPreviewSvg } from "@modelscript/editor/workbench/openModelCatalog";
 import {
   getClassSource,
   getDiagramPreviewSvgs,
@@ -15,12 +10,17 @@ import {
   installDependency,
   type DiagramPreviewResultItem,
   type MountedLibraryEntry,
-} from "../../../components/morsel/util/lsp-bridge";
+} from "@modelscript/editor/workbench/util/lsp-bridge";
 import {
   fetchRegistryClassSource,
   streamRegistryModels,
   type StreamedRegistryModelItem,
-} from "../../../components/morsel/util/registry-stream";
+} from "@modelscript/editor/workbench/util/registry-stream";
+import { ChevronRightIcon, PackageIcon, PlusIcon, SearchIcon, XIcon } from "@primer/octicons-react";
+import { IconButton, useTheme } from "@primer/react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { sanitizeSvgMarkup } from "../../../components/artifacts/PolyglotArtifactViewer";
 import {
   DEFAULT_EMPTY_MODELICA_CODE,
   HERO_EXAMPLES,
@@ -38,6 +38,7 @@ export interface TemplateGalleryModalProps {
   onSelectPendingTemplate?: ((title: string, loadTemplate: () => Promise<HeroExample | null>) => void) | undefined;
   currentTemplateId?: string | undefined;
   currentLang?: string | undefined;
+  lockedLanguage?: string | undefined;
   requireChoice?: boolean | undefined;
 }
 
@@ -89,13 +90,21 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
   onSelectPendingTemplate,
   currentTemplateId,
   currentLang = "modelica",
+  lockedLanguage,
   requireChoice = false,
 }) => {
   const { colorMode: themeMode, resolvedColorMode } = useTheme();
   const isDark = (resolvedColorMode || themeMode) !== "day";
-  const visiblePlaygroundLanguages = useVisiblePlaygroundLanguages();
+  const allVisiblePlaygroundLanguages = useVisiblePlaygroundLanguages();
+  const visiblePlaygroundLanguages = useMemo(
+    () =>
+      lockedLanguage
+        ? allVisiblePlaygroundLanguages.filter((l) => l.id.toLowerCase() === lockedLanguage.toLowerCase())
+        : allVisiblePlaygroundLanguages,
+    [allVisiblePlaygroundLanguages, lockedLanguage],
+  );
 
-  const [selectedLang, setSelectedLang] = useState<string>(currentLang || "modelica");
+  const [selectedLang, setSelectedLang] = useState<string>(lockedLanguage || currentLang || "modelica");
   const [langSearch, setLangSearch] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDomain, setSelectedDomain] = useState<EngineeringDomainId>("all");

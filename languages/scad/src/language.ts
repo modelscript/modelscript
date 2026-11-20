@@ -181,6 +181,32 @@ export const scadLanguage = language({
         artifactViewTypes: ["scad", "openscad"],
       },
     ],
+    toolbarButtons: [
+      {
+        id: "previewCsg",
+        label: "Compile 3D CSG Geometry",
+        shortLabel: "Compile 3D",
+        tooltip: "Evaluate OpenSCAD CSG tree and refresh 3D mesh",
+        icon: "stack",
+        views: ["3d", "code"],
+        targets: ["morsel", "vscode"],
+        placement: "primary",
+        order: 10,
+        actionId: "preview_csg",
+      },
+      {
+        id: "exportStep",
+        label: "Export ISO 10303 STEP",
+        shortLabel: "Export STEP",
+        tooltip: "Export evaluated solid geometry as an ISO 10303 STEP AP242 file",
+        icon: "download",
+        views: ["3d"],
+        targets: ["morsel", "vscode"],
+        placement: "primary",
+        order: 20,
+        actionId: "export_step",
+      },
+    ],
   },
 
   // Bidirectional writeback handler for updating SCAD source dimensions and transforms from 3D gizmos

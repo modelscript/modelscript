@@ -121,7 +121,7 @@ end Test;
   describe("3. IEEE 2800 Verification Card Component", () => {
     it("instantiates Ieee2800VerificationCard with custom report", async () => {
       const { Ieee2800VerificationCard } =
-        await import("../src/components/morsel/simulation-results/components/Ieee2800VerificationCard.js");
+        await import("../../../packages/editor/src/workbench/simulation-results/components/Ieee2800VerificationCard.js");
       assert.ok(Ieee2800VerificationCard, "Ieee2800VerificationCard must be exported");
 
       const customReport = {

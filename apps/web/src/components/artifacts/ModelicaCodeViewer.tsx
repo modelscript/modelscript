@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
 import { CheckIcon, CodeIcon, CopyIcon, GraphIcon, StackIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -7,13 +8,12 @@ import styled from "styled-components";
 import { useTheme } from "../../theme";
 import { ensureMonacoThemesDefined, getMonacoThemeName } from "../../util/monaco-theme";
 import { DraftingTriangleIcon } from "../icons";
-import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFooterSlot } from "./card/CardFooterSlot";
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 const MonacoEditor = React.lazy(() => import("@monaco-editor/react"));
-const MorselEditor = React.lazy(() => import("../morsel/Morsel"));
+const MorselEditor = React.lazy(() => import("@modelscript/editor/workbench/Morsel"));
 
 interface ModelicaCodeViewerProps {
   viewConfig: any;
@@ -389,6 +389,7 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
                   simulateTriggerCount={viewMode === "simulate" || viewMode === "3d" ? 1 : undefined}
                   showParameterRibbon={true}
                   hideFloatingDock={true}
+                  hideCenterFloatingToolbar={!isFullScreen}
                 />
               </Suspense>
             )}

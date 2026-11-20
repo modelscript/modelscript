@@ -6,7 +6,7 @@ import {
   buildEquationFallbackPreviewSvg,
   CURATED_OPEN_MODELS,
   inferModelDomain,
-} from "../src/components/morsel/openModelCatalog.js";
+} from "../../../packages/editor/src/workbench/openModelCatalog.js";
 
 describe("Morsel Open Model Catalog & Schematic Fallbacks", () => {
   it("provides curated multi-domain connected models with valid schematic SVGs and runnable fallback code", () => {

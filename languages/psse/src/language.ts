@@ -68,6 +68,31 @@ export const psseLanguage = language({
         snippet: "   99,'1 ',1,   1,   1,    50.000,    15.000,     0.000,     0.000,     0.000,     0.000,   1,1,0\n",
       },
     ],
+    toolbarButtons: [
+      {
+        id: "solvePowerFlow",
+        label: "Solve AC Power Flow (Newton-Raphson)",
+        shortLabel: "Power Flow",
+        tooltip: "Solve steady-state AC power flow for the active PSS/E case",
+        icon: "pulse",
+        views: ["diagram", "inspector"],
+        targets: ["morsel", "vscode"],
+        placement: "primary",
+        order: 10,
+        actionId: "solve_powerflow",
+      },
+      {
+        id: "n1Contingencies",
+        label: "Run N-1 Contingency Analysis",
+        tooltip: "Evaluate N-1 line and transformer outage contingencies",
+        icon: "shield-check",
+        views: ["diagram", "inspector"],
+        targets: ["morsel", "vscode"],
+        placement: "overflow",
+        order: 20,
+        actionId: "analyze_n1_contingencies",
+      },
+    ],
   },
 
   // Surgical writeback for cell and attribute mutations

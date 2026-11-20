@@ -5,11 +5,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { formatChoiceLabel, tryEvaluateFormula } from "../src/components/morsel/util/formula.js";
+import { formatChoiceLabel, tryEvaluateFormula } from "../../../packages/editor/src/workbench/util/formula.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const propertiesPath = path.resolve(__dirname, "../src/components/morsel/Properties.tsx");
+const propertiesPath = path.resolve(__dirname, "../../../packages/editor/src/workbench/Properties.tsx");
 const propertiesSource = fs.readFileSync(propertiesPath, "utf-8");
 
 describe("Morsel Properties Panel UI/UX Enhancements", () => {

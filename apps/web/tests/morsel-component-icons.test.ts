@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { getClassIcon, globalClassIconCache } from "../src/components/morsel/util/lsp-bridge.js";
+import { getClassIcon, globalClassIconCache } from "../../../packages/editor/src/workbench/util/lsp-bridge.js";
 
 describe("Morsel General Component & Library Icon Resolution", () => {
   it("strips __LIB__: prefix and caches resolved icons in globalClassIconCache", async () => {
@@ -71,7 +71,7 @@ describe("Morsel General Component & Library Icon Resolution", () => {
   });
 
   it("normalizeSvgForIcon sets 100% width/height on outer svg without corrupting stroke-width or child element dimensions", async () => {
-    const { normalizeSvgForIcon } = await import("../src/components/morsel/util/x6.js");
+    const { normalizeSvgForIcon } = await import("../../../packages/editor/src/workbench/util/x6.js");
 
     const sampleSineVoltage = `<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="-100 -100 200 200">
     <g>

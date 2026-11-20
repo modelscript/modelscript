@@ -6,9 +6,28 @@ import { CodeActionKind, DiagnosticSeverity } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { registerCodeLensProvider } from "../src/providers/codeLensProvider.js";
 import { registerWorkspaceFeaturesProvider } from "../src/providers/workspaceFeaturesProvider.js";
+import { registerBuiltinLanguagePlugins } from "../src/registry/builtin-plugins.js";
 import { LanguageRegistry } from "../src/registry/LanguageRegistry.js";
 
+let builtinsRegistered = false;
+function ensureBuiltinsRegistered() {
+  if (builtinsRegistered) return;
+  builtinsRegistered = true;
+  registerBuiltinLanguagePlugins({
+    workspaceManager: {
+      getWorkspaceIndex: () => ({}),
+      setWorkspaceIndex: () => {},
+      getQueryEngine: () => null,
+      setQueryEngine: () => {},
+      unifiedWorkspace: { registerWorkspace: () => {} },
+    } as any,
+    parserService: { getParser: () => null, getFacade: () => null } as any,
+    connection: { console: { info() {}, log() {}, warn() {}, error() {} } } as any,
+  });
+}
+
 test("LSP Formal Verification: CodeLens & QuickFix Integration", async (t) => {
+  ensureBuiltinsRegistered();
   await t.test(
     "should enforce clean Stable channel defaults and support Dev channel CodeLens actions for SysML v2",
     async () => {

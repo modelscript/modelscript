@@ -6,8 +6,8 @@ import path from "node:path";
 import { describe, it } from "node:test";
 
 describe("Morsel Properties Panel Zero-Flicker & Smooth Synchronization", () => {
-  const morselPath = path.resolve(import.meta.dirname, "../src/components/morsel/Morsel.tsx");
-  const propertiesPath = path.resolve(import.meta.dirname, "../src/components/morsel/Properties.tsx");
+  const morselPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Morsel.tsx");
+  const propertiesPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Properties.tsx");
   const diagramIndexPath = path.resolve(import.meta.dirname, "../../../packages/diagram/src/index.ts");
 
   it("verifies Morsel.tsx maintains refs for selectedComponent and selectedComponentProperties", () => {

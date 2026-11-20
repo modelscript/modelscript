@@ -8,6 +8,7 @@ export * from "./dae/matpower-to-dae.js";
 export * from "./language.js";
 export { default, matpowerLanguage } from "./language.js";
 export * from "./lints/index.js";
+export * from "./lsp-actions.js";
 export * from "./lsp.js";
 export * from "./parser/matpower-parser.js";
 export * from "./parser/matpower-writer.js";

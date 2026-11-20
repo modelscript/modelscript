@@ -2,7 +2,103 @@
 
 import type { LanguageAction, LanguageOptions, WritebackConfig, WritebackHandler } from "@modelscript/dsl";
 import type { QueryEngine } from "@modelscript/runtime";
-import type { Disposable } from "vscode-languageserver";
+import type {
+  CodeAction,
+  CodeLens,
+  CompletionItem,
+  Diagnostic,
+  Disposable,
+  DocumentSymbol,
+  Hover,
+  InlayHint,
+  Location,
+  Position,
+  Range,
+  SignatureHelp,
+  TextEdit,
+  WorkspaceEdit,
+} from "vscode-languageserver";
+
+/** Minimal document shape accepted by plugin custom handlers (compatible with TextDocument and raw strings). */
+export type PluginDocumentLike =
+  | string
+  | {
+      uri?: string;
+      languageId?: string;
+      lineCount?: number;
+      getText?: () => string;
+      positionAt?: (offset: number) => Position;
+      offsetAt?: (position: Position) => number;
+    };
+
+export interface PluginCodeLensContext {
+  uri: string;
+  text: string;
+  headerRange?: Range;
+  flags?: Record<string, unknown>;
+  workspaceManager?: unknown;
+  documentManager?: unknown;
+  validationService?: unknown;
+  cadMetricsService?: unknown;
+  connection?: unknown;
+}
+
+export interface PluginFormatContext {
+  getDocumentTree?: (uri: string) => unknown;
+  isParserReady?: () => boolean;
+}
+
+export interface PluginCustomHandlers {
+  validate?: ((doc: any, cstTree?: any) => Promise<Diagnostic[] | any[]> | Diagnostic[] | any[]) | undefined;
+  postValidate?: ((doc: any, context: any, diagnostics: Diagnostic[]) => Promise<void> | void) | undefined;
+  complete?: ((offset: number, text: string, uri?: string) => CompletionItem[] | any[]) | undefined;
+  hover?: ((offset: number, text: string, uri?: string) => Hover | any | null) | undefined;
+  definition?: ((offset: number, text: string, uri?: string) => Location | Location[] | any | null) | undefined;
+  references?: ((offset: number, text: string, uri?: string) => Location[] | any[]) | undefined;
+  symbols?: ((tree: any, text?: string, uri?: string) => DocumentSymbol[] | any[]) | undefined;
+  folding?: ((tree: any, text?: string, uri?: string) => any[]) | undefined;
+  codeActions?:
+    | ((doc: any, range: any, diagnostics: any[]) => Promise<CodeAction[] | any[]> | CodeAction[] | any[])
+    | undefined;
+  inlayHints?: ((doc: any, range?: any) => Promise<InlayHint[] | any[]> | InlayHint[] | any[]) | undefined;
+  codeLens?:
+    | ((
+        doc: any,
+        context?: PluginCodeLensContext,
+      ) =>
+        | Promise<CodeLens[] | { lenses: CodeLens[]; appendUniversal?: boolean } | any>
+        | CodeLens[]
+        | { lenses: CodeLens[]; appendUniversal?: boolean }
+        | any)
+    | undefined;
+  rename?:
+    | ((
+        doc: any,
+        position: any,
+        newName: string,
+      ) => Promise<WorkspaceEdit | null | undefined> | WorkspaceEdit | null | undefined)
+    | undefined;
+  semanticTokens?: ((doc: any, tree?: any) => Promise<number[]> | number[]) | undefined;
+  format?:
+    | ((doc: any, options?: any, context?: PluginFormatContext) => Promise<TextEdit[] | any[]> | TextEdit[] | any[])
+    | undefined;
+  rangeFormat?:
+    | ((
+        doc: any,
+        range: any,
+        options?: any,
+        context?: PluginFormatContext,
+      ) => Promise<TextEdit[] | any[]> | TextEdit[] | any[])
+    | undefined;
+  buildDiagram?: ((text: string, params: any) => Promise<unknown> | unknown) | undefined;
+  signatureHelp?:
+    | ((doc: any, position: any) => Promise<SignatureHelp | any | null> | SignatureHelp | any | null)
+    | undefined;
+  analyzeBlt?: ((doc: any) => Promise<any | null> | any | null) | undefined;
+  getDiagramData?: ((doc: any, params?: any) => Promise<any | null> | any | null) | undefined;
+  applyDiagramEdits?: ((doc: any, params?: any) => Promise<any | null> | any | null) | undefined;
+  getComponentProperties?: ((doc: any, params?: any) => Promise<any | null> | any | null) | undefined;
+}
 
 /**
  * Descriptor and runtime handle for a registered language in ModelScript LSP.
@@ -33,18 +129,7 @@ export interface LanguagePlugin {
   /** WebAssembly linear memory reference */
   memory?: WebAssembly.Memory | undefined;
   /** Custom language-specific handler overrides */
-  customHandlers?:
-    | {
-        validate?: ((doc: any) => Promise<any[]> | any[]) | undefined;
-        postValidate?: ((doc: any, context: any, diagnostics: any[]) => Promise<void> | void) | undefined;
-        complete?: ((offset: number, text: string, uri?: string) => any[]) | undefined;
-        hover?: ((offset: number, text: string, uri?: string) => any | null) | undefined;
-        definition?: ((offset: number, text: string, uri?: string) => any | null) | undefined;
-        references?: ((offset: number, text: string, uri?: string) => any[]) | undefined;
-        symbols?: ((tree: any) => any[]) | undefined;
-        folding?: ((tree: any) => any[]) | undefined;
-      }
-    | undefined;
+  customHandlers?: PluginCustomHandlers | undefined;
   /** Full language definition options from @modelscript/dsl */
   languageDef?: LanguageOptions | any;
   /** First-class declarative language actions (commands, toolbar buttons, LLM tools) */

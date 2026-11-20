@@ -1,8 +1,49 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-export { createOpenDriveDiagramBackend } from "./opendrive-backend.js";
-export { createPscadDiagramBackend } from "./pscad-backend.js";
-export { createPsseDiagramBackend } from "./psse-backend.js";
-export { createSimulinkDiagramBackend } from "./simulink-backend.js";
-export { createSpiceDiagramBackend } from "./spice-backend.js";
-export { createSspDiagramBackend } from "./ssp-backend.js";
+import { createOpenDriveDiagramBackend } from "@modelscript/opendrive";
+import { createPscadDiagramBackend as createPscadDiagramBackendCore } from "@modelscript/pscad";
+import { createPsseDiagramBackend as createPsseDiagramBackendCore } from "@modelscript/psse";
+import { createSimulinkDiagramBackend as createSimulinkDiagramBackendCore } from "@modelscript/simulink";
+import { createSpiceDiagramBackend as createSpiceDiagramBackendCore } from "@modelscript/spice";
+import { createSspDiagramBackend } from "@modelscript/ssp";
+import {
+  computePscadComponentDropEdits,
+  computeSimulinkComponentDropEdits,
+  computeSpiceComponentDropEdits,
+  createDropBatchState,
+  mergeCoincidentInsertEdits,
+  resolveCrossLanguageComponentDrop,
+} from "../cross-language-drop.js";
+import type { DiagramBackendHost } from "../diagramProtocol.js";
+
+const lspCrossLanguageDrop = {
+  createDropBatchState,
+  mergeCoincidentInsertEdits,
+  computeSpiceComponentDropEdits,
+  computeSimulinkComponentDropEdits,
+  computePscadComponentDropEdits: (...args: Parameters<typeof computePscadComponentDropEdits>) =>
+    computePscadComponentDropEdits(...args) ?? [],
+  resolveCrossLanguageComponentDrop,
+};
+
+function withCrossLanguageDrop(backends: DiagramBackendHost): DiagramBackendHost {
+  return backends.crossLanguageDrop ? backends : { ...backends, crossLanguageDrop: lspCrossLanguageDrop };
+}
+
+export { createOpenDriveDiagramBackend, createSspDiagramBackend };
+
+export function createPscadDiagramBackend(backends: DiagramBackendHost) {
+  return createPscadDiagramBackendCore(withCrossLanguageDrop(backends));
+}
+
+export function createPsseDiagramBackend(backends: DiagramBackendHost) {
+  return createPsseDiagramBackendCore(withCrossLanguageDrop(backends));
+}
+
+export function createSimulinkDiagramBackend(backends: DiagramBackendHost) {
+  return createSimulinkDiagramBackendCore(withCrossLanguageDrop(backends));
+}
+
+export function createSpiceDiagramBackend(backends: DiagramBackendHost) {
+  return createSpiceDiagramBackendCore(withCrossLanguageDrop(backends));
+}

@@ -5,9 +5,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { PolyglotDomainPanel } from "../../../packages/editor/src/workbench/panels/PolyglotDomainPanel.js";
+import { decompressMorselPayload } from "../../../packages/editor/src/workbench/util/permalink.js";
 import { buildMorselHandoffUrl } from "../../docs/docs/.vitepress/theme/util/polyglot-paste-detector.js";
-import { PolyglotDomainPanel } from "../src/components/morsel/panels/PolyglotDomainPanel.js";
-import { decompressMorselPayload } from "../src/components/morsel/util/permalink.js";
 
 describe("Polyglot Paste Auto-Detection, Fault Injection & Docs-to-Morsel Handoff", () => {
   it("detects core and specialized engineering dialects from pasted content and filenames", () => {

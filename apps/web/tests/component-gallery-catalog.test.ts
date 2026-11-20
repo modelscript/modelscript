@@ -10,7 +10,7 @@ import {
   DOMAIN_FILTERS,
   GALLERY_COMPONENTS,
   inferDomainForFqn,
-} from "../src/components/morsel/componentGalleryCatalog";
+} from "../../../packages/editor/src/workbench/componentGalleryCatalog";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,7 +28,7 @@ describe("Morsel Component Gallery Catalog & Full MSL Hydration", () => {
   });
 
   it("hydrates the full component catalog via getComponentCatalog and batches SVG icons via getClassIcons", () => {
-    const modalPath = path.resolve(__dirname, "../src/components/morsel/AddLibraryModal.tsx");
+    const modalPath = path.resolve(__dirname, "../../../packages/editor/src/workbench/AddLibraryModal.tsx");
     const src = fs.readFileSync(modalPath, "utf-8");
 
     assert.ok(src.includes("getComponentCatalog()"), "AddLibraryModal must hydrate full catalog from LSP");

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { getPscadCompletions } from "@modelscript/pscad";
 import { CompletionItem, CompletionItemKind, Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge } from "../lsp-bridge.js";
@@ -22,13 +21,9 @@ export function registerCompletionProvider(
     const text = document.getText();
     const offset = document.offsetAt(params.position);
 
-    if (/\.(pscx|pslx|pswx|psmx)$/i.test(params.textDocument.uri)) {
-      return getPscadCompletions(text, offset) as unknown as CompletionItem[];
-    }
-
     const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri, text);
     if (plugin?.customHandlers?.complete) {
-      const customItems = plugin.customHandlers.complete(offset, text);
+      const customItems = plugin.customHandlers.complete(offset, text, params.textDocument.uri);
       if (customItems && customItems.length > 0) {
         return customItems;
       }

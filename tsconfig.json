@@ -54,6 +54,8 @@
       "@modelscript/mcp/*": ["./packages/mcp/src/*"],
       "@modelscript/design-tokens": ["./packages/design-tokens/src/index.ts"],
       "@modelscript/design-tokens/*": ["./packages/design-tokens/src/*"],
+      "@modelscript/editor": ["./packages/editor/src/index.ts"],
+      "@modelscript/editor/*": ["./packages/editor/src/*"],
       "@modelscript/ide-client": ["./packages/ide/src/browser-client-main.ts"],
       "@modelscript/ide-client/*": ["./packages/ide/src/*"],
       "@modelscript/sdk": ["./packages/sdk/src/index.ts"],
@@ -280,5 +282,6 @@
       "@modelscript/*": ["./packages/*/src/index.ts", "./languages/*/src/index.ts", "./languages/*/language.ts"]
     }
   },
-  "include": ["scripts/**/*", "eslint.config.ts"]
+  "include": ["scripts/**/*", "eslint.config.ts"],
+  "exclude": ["scripts/playground/**"]
 }

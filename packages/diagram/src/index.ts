@@ -873,7 +873,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
   if (placeholder) placeholder.style.display = "none";
 
   const bgColor = isDark ? "#121214" : "#f8fafc";
-  const gridColor = isDark ? "rgba(255, 255, 255, 0.055)" : "rgba(15, 23, 42, 0.06)";
+  const gridColor = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.12)";
 
   const existingInst = containerInstances.get(container);
   if (existingInst && !existingInst.graph.disposed) {
@@ -1815,6 +1815,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         y: y - height / 2,
         width,
         height,
+        zIndex: 9999,
         imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(placementData.iconSvg)}`,
         attrs: {
           image: {
@@ -6364,7 +6365,7 @@ export function setDiagramGrid(mode: DiagramGridMode, g?: Graph | null): void {
   const opts = getOptionsForGraph(targetGraph);
   const bgColor = (targetGraph.options as { background?: { color?: string } } | undefined)?.background?.color;
   const isDark = opts?.isDark !== undefined ? opts.isDark : bgColor !== "#ffffff" && bgColor !== "#f8fafc";
-  const gridColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(15, 23, 42, 0.08)";
+  const gridColor = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.12)";
   if (mode === "dot") {
     targetGraph.drawGrid({
       type: "dot",

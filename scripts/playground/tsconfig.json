@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "types": ["vite/client"],
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "incremental": false,
+    "jsx": "react-jsx",
+    "noPropertyAccessFromIndexSignature": false,
+    "exactOptionalPropertyTypes": false,
+    "baseUrl": "../..",
+    "paths": {
+      "@modelscript/editor": ["./packages/editor/src/index.ts"],
+      "@modelscript/editor/*": ["./packages/editor/src/*"],
+      "@modelscript/design-tokens": ["./packages/design-tokens/src/index.ts"],
+      "@modelscript/design-tokens/*": ["./packages/design-tokens/src/*"],
+      "@modelscript/react": ["./packages/react/src/index.ts"],
+      "@modelscript/react/*": ["./packages/react/src/*"]
+    }
+  },
+  "include": ["."]
+}

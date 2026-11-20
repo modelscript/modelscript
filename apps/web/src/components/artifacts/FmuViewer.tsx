@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
 import { CheckIcon, CopyIcon, PlayIcon, SearchIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, Heading, Text, TextInput } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -9,7 +10,6 @@ import api from "../../api";
 import { useTheme } from "../../theme";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
-import { compressMorselPayload } from "../morsel/util/permalink";
 import Spinner from "../Spinner";
 
 export interface FmuScalarVariable {
