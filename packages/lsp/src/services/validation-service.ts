@@ -84,6 +84,7 @@ interface EngineLintDiagnosticLike {
 
 type ValidationQueryEngine = QueryEngine & {
   preflight?: (symbolIds: number[], phases: string[]) => Promise<void> | void;
+  setCancellationChecker?: (fn: (() => boolean) | null, pollInterval?: number) => void;
   runAllLintsAsync?: (
     uri: string,
     shouldYield: () => Promise<boolean>,
@@ -1629,10 +1630,22 @@ export class ValidationService {
 
     const rawMax = this.diagnosticsConfig.maxProblems ?? this.diagnosticsConfig.maxNumberOfProblems;
     const limit = typeof rawMax === "number" && rawMax > 0 ? Math.floor(rawMax) : 1000;
-    if (filtered.length > limit) {
-      return filtered.slice(0, limit);
-    }
-    return filtered;
+    const capped = filtered.length > limit ? filtered.slice(0, limit) : filtered;
+    return capped.map((d) => {
+      if (d.codeDescription || d.code === undefined || d.code === null || d.code === "") return d;
+      const codeStr = typeof d.code === "number" ? `M${d.code}` : String(d.code);
+      if (
+        /^(M\d{4}|S\d{4}|X\d{4}|THREAD_[A-Z_]+|POLYGLOT_TWIN_DRIFT|division_by_zero|div_by_zero|math_domain|array_out_of_bounds)$/i.test(
+          codeStr,
+        )
+      ) {
+        return {
+          ...d,
+          codeDescription: { href: `https://modelscript.org/docs/diagnostics#${encodeURIComponent(codeStr)}` },
+        };
+      }
+      return d;
+    });
   }
 
   public async validateTextDocument(
@@ -2419,7 +2432,17 @@ export class ValidationService {
       const semanticLineIndex = new SemanticDiagnosticLineIndex(newSemanticDiagnostics);
       if (!skipHeavyLints && vEngine && typeof vEngine.runAllLintsAsync === "function") {
         const viewportRange = this.documentViewports.get(uri) ?? undefined;
-        const engineDiags = await vEngine.runAllLintsAsync(effectiveUri, yieldAndCheckStale, viewportRange);
+        let engineDiags: EngineLintDiagnosticLike[];
+        if (typeof vEngine.setCancellationChecker === "function") {
+          vEngine.setCancellationChecker(isStale, 64);
+        }
+        try {
+          engineDiags = await vEngine.runAllLintsAsync(effectiveUri, yieldAndCheckStale, viewportRange);
+        } finally {
+          if (typeof vEngine.setCancellationChecker === "function") {
+            vEngine.setCancellationChecker(null);
+          }
+        }
         if (isStale()) return;
         capturedEngineDiags = Array.isArray(engineDiags) ? engineDiags : [];
 
@@ -2649,6 +2672,23 @@ export class ValidationService {
           }
         }
 
+        const relatedInformation = alignedElements
+          .filter((el: any) => el?.uri && el.uri !== uri)
+          .map((el: any) => {
+            const relLine = Math.max(0, (el.line ?? 1) - 1);
+            const relCol = Math.max(0, (el.column ?? 1) - 1);
+            return {
+              location: {
+                uri: el.uri as string,
+                range: {
+                  start: { line: relLine, character: relCol },
+                  end: { line: relLine, character: relCol + Math.max(1, (el.name || "").length) },
+                },
+              },
+              message: `Aligned ${String(el.domain || "domain").toUpperCase()} element '${el.name || td.elementName}'`,
+            };
+          });
+
         diagnostics.push({
           range: {
             start: { line: startLine, character: startCol },
@@ -2663,6 +2703,7 @@ export class ValidationService {
           code: td.code || "THREAD_CONFLICT",
           source: td.source || "modelscript-digital-thread",
           message: td.message,
+          ...(relatedInformation.length > 0 ? { relatedInformation } : {}),
           data: {
             threadId: td.threadId ?? record?.id ?? slot,
             slot,

@@ -1217,6 +1217,29 @@ export function compileTGGRules(
           code += `      graph.model.setProperty<${propTy}>(sourceNodeId, ${srcPropHash} as u32, __eqVal_bprop_${idx}_${cIdx});\n`;
           code += `    }\n`;
         }
+      } else if (c.kind === "invertible") {
+        const [fwd, bwd] = c.args;
+        const tgtDefaultProp = Object.keys(tgtBindings)[0] || "value";
+        const inv = invertExpression(String(fwd || ""), tgtDefaultProp);
+        const srcProp = findBoundProperty(srcBindings, inv.sourceVar || Object.keys(srcBindings)[0], "value");
+        const tgtProp = findBoundProperty(tgtBindings, inv.targetVar || tgtDefaultProp, "value");
+        const srcPropHash = getDJB2Hash(srcProp) as u32;
+        const tgtPropHash = getDJB2Hash(tgtProp) as u32;
+        const bwdExprRaw = bwd ? String(bwd) : inv.invertedExpr;
+        if (bwdExprRaw && inv.kind !== "prefix") {
+          const bwdBoundMap = buildBoundVarExprMap(
+            tgtBindings,
+            "targetNodeId",
+            tgtProp,
+            `__invTgt_bprop_${idx}_${cIdx}`,
+          );
+          const asExpr = compileAlgebraicExprToAS(bwdExprRaw, `__invTgt_bprop_${idx}_${cIdx}`, bwdBoundMap);
+          code += `    let __invTgt_bprop_${idx}_${cIdx} = graph.model.getProperty<f64>(targetNodeId, ${tgtPropHash} as u32);\n`;
+          code += `    if (!isNaN(__invTgt_bprop_${idx}_${cIdx})) {\n`;
+          code += `      let __invSrc_bprop_${idx}_${cIdx}: f64 = ${asExpr};\n`;
+          code += `      graph.model.setProperty<f64>(sourceNodeId, ${srcPropHash} as u32, __invSrc_bprop_${idx}_${cIdx});\n`;
+          code += `    }\n`;
+        }
       }
     }
     code += `  } else {\n`;

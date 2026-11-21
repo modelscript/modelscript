@@ -590,7 +590,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
 
   // 2. Generic Regex DFA Fallback
   lexerCode += `\n  // --- Regex DFA Patterns ---\n`;
-  const regexList: { pattern: string; tokenName: string }[] = [];
+  const regexList: { pattern: string; tokenName: string; flags?: string }[] = [];
   for (const [key, val] of regexTokens.entries()) {
     const mappedInt = normalized.symToInt.get(key);
     if (!mappedInt) continue;
@@ -612,10 +612,13 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     }
 
     let patternStr = val;
+    let flagsStr = "";
     if (val.startsWith("/") && val.lastIndexOf("/") > 0) {
-      patternStr = val.substring(1, val.lastIndexOf("/"));
+      const lastSlash = val.lastIndexOf("/");
+      patternStr = val.substring(1, lastSlash);
+      flagsStr = val.substring(lastSlash + 1);
     }
-    regexList.push({ pattern: patternStr, tokenName: safeName });
+    regexList.push({ pattern: patternStr, tokenName: safeName, flags: flagsStr });
   }
 
   if (regexList.length > 0) {

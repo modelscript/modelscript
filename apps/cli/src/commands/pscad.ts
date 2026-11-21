@@ -20,12 +20,17 @@ import {
   EmtSolver,
   extractEmtNetlist,
   extractPscadLibraryPackage,
+  formatHarmonicsStudyHtml,
+  formatInsulationStudyHtml,
   lintPscx,
   parsePscx,
   pscadToModelica,
   pscadToSsd,
   readPscadPsout,
   registerPscadSource,
+  runHarmonicsStudy,
+  runInsulationStudy,
+  runSsciScreening,
   verifyIeee2800Compliance,
   writeComtrade,
   writeComtradeBinary,
@@ -58,6 +63,9 @@ const PSCAD_ACTIONS = [
   "extract",
   "build-fmu",
   "benchmark",
+  "insulation",
+  "harmonics",
+  "ssci",
 ] as const;
 
 export const PscadCommand: CommandModule<Record<string, unknown>, Record<string, unknown>> = {
@@ -568,6 +576,56 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
         const outPath = (args["out"] as string) ?? `${project.name.replace(/[^a-zA-Z0-9_]/g, "_")}.ssd`;
         fs.writeFileSync(path.resolve(process.cwd(), outPath), ssdXml, "utf-8");
         console.log(`✓ SSP SystemStructure written to: ${outPath} (${ssdXml.length} bytes)`);
+        break;
+      }
+
+      case "insulation": {
+        const netlist = extractEmtNetlist(project);
+        const report = runInsulationStudy(netlist, { numRuns: Number(args["runs"] ?? 20) });
+        console.log(report.summary);
+        const outArg = args["out"] as string | undefined;
+        if (outArg) {
+          const outPath = path.resolve(process.cwd(), outArg);
+          fs.mkdirSync(path.dirname(outPath), { recursive: true });
+          fs.writeFileSync(
+            outPath,
+            outArg.endsWith(".html") ? formatInsulationStudyHtml(report) : JSON.stringify(report, null, 2),
+            "utf-8",
+          );
+          console.log(`✓ Insulation study report written to: ${outArg}`);
+        }
+        break;
+      }
+
+      case "harmonics": {
+        const netlist = extractEmtNetlist(project);
+        const report = runHarmonicsStudy(netlist);
+        console.log(report.summary);
+        const outArg = args["out"] as string | undefined;
+        if (outArg) {
+          const outPath = path.resolve(process.cwd(), outArg);
+          fs.mkdirSync(path.dirname(outPath), { recursive: true });
+          fs.writeFileSync(
+            outPath,
+            outArg.endsWith(".html") ? formatHarmonicsStudyHtml(report) : JSON.stringify(report, null, 2),
+            "utf-8",
+          );
+          console.log(`✓ Harmonics study report written to: ${outArg}`);
+        }
+        break;
+      }
+
+      case "ssci": {
+        const netlist = extractEmtNetlist(project);
+        const report = runSsciScreening(netlist);
+        console.log(report.summary);
+        const outArg = args["out"] as string | undefined;
+        if (outArg) {
+          const outPath = path.resolve(process.cwd(), outArg);
+          fs.mkdirSync(path.dirname(outPath), { recursive: true });
+          fs.writeFileSync(outPath, JSON.stringify(report, null, 2), "utf-8");
+          console.log(`✓ SSCI screening report written to: ${outArg}`);
+        }
         break;
       }
 

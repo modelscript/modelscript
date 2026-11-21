@@ -22,6 +22,7 @@ export interface WasmPolyglotExports {
   ) => number;
   tgg_retract_dispatch?: (sourceNodeTypeHash: number, sourceNodeId: number, corr: number, arena: number) => number;
   tgg_propagate_all_stale?: (corr: number, stringPoolPtr?: number, direction?: number) => number;
+  __setArgumentsLength?: (n: number) => void;
   // WASM CorrespondenceIndex exports
   createCorrespondenceIndex?: (initialCapacity: number) => number;
   corr_addLink?: (

@@ -998,12 +998,151 @@ export function evaluateConstantArenaExpression(
       return i === 0 ? arena.getExprLeft(exprId) : arena.getExprLeft(exprId + i);
     };
 
-    // 5c. Special-case `String(EnumLiteral)`, `linspace`, type casts (`Real`/`Integer`), and `cardinality(connector)`.
-    if (funcName === "String" && argCount === 1) {
+    // 5c. Special-case `String(...)`, `linspace`, type casts (`Real`/`Integer`), and `cardinality(connector)`.
+    if (funcName === "String" && argCount >= 1) {
       const a0 = getCallArg(0);
-      if (arena.getExprKind(a0) === ExprKind.EnumLiteral) {
+      const a0Kind = arena.getExprKind(a0);
+      if (a0Kind === ExprKind.EnumLiteral) {
         const enumPath = arena.interner.resolve(arena.getExprLeft(a0));
         return enumPath.includes(".") ? enumPath.split(".").pop()! : enumPath;
+      }
+      const v0 = evaluateConstantArenaExpression(
+        arena,
+        a0,
+        paramMap,
+        nameToIdx,
+        visitedDepth + 1,
+        db,
+        scopeId,
+        onlyConstants,
+      );
+      if (typeof v0 === "boolean" || typeof v0 === "number") {
+        let minLen = 0;
+        let leftJust = true;
+        let sigDigits = 6;
+        const isRealArg = a0Kind === ExprKind.RealLiteral || (typeof v0 === "number" && argCount === 4);
+        if (isRealArg && typeof v0 === "number") {
+          if (argCount === 2) {
+            const a1 = evaluateConstantArenaExpression(
+              arena,
+              getCallArg(1),
+              paramMap,
+              nameToIdx,
+              visitedDepth + 1,
+              db,
+              scopeId,
+              onlyConstants,
+            );
+            if (typeof a1 === "string") {
+              const m = a1.match(/^([-+ #0]*)(\d+)?(?:\.(\d+))?([deEfFgGs])$/);
+              if (m) {
+                const flags = m[1] ?? "";
+                const width = m[2] ? parseInt(m[2], 10) : 0;
+                const prec = m[3] !== undefined ? parseInt(m[3], 10) : 6;
+                const spec = m[4]!;
+                let out: string;
+                if (spec === "f" || spec === "F") out = v0.toFixed(prec);
+                else if (spec === "e") out = v0.toExponential(prec);
+                else if (spec === "E") out = v0.toExponential(prec).toUpperCase();
+                else if (spec === "d") out = String(Math.trunc(v0));
+                else {
+                  out = Number(v0.toPrecision(Math.max(1, prec))).toString();
+                  if (spec === "G") out = out.toUpperCase();
+                }
+                if (flags.includes("+") && v0 >= 0 && !out.startsWith("+")) out = "+" + out;
+                else if (flags.includes(" ") && v0 >= 0 && !out.startsWith("-")) out = " " + out;
+                if (width > out.length) {
+                  const padChar = flags.includes("0") && !flags.includes("-") ? "0" : " ";
+                  out = flags.includes("-") ? out.padEnd(width, " ") : out.padStart(width, padChar);
+                }
+                return out;
+              }
+              return null;
+            }
+            if (typeof a1 === "number" && a1 >= 1) sigDigits = Math.trunc(a1);
+            else return null;
+          } else if (argCount >= 3) {
+            const sd = evaluateConstantArenaExpression(
+              arena,
+              getCallArg(1),
+              paramMap,
+              nameToIdx,
+              visitedDepth + 1,
+              db,
+              scopeId,
+              onlyConstants,
+            );
+            if (typeof sd === "number" && sd >= 1) sigDigits = Math.trunc(sd);
+            else return null;
+            const ml = evaluateConstantArenaExpression(
+              arena,
+              getCallArg(2),
+              paramMap,
+              nameToIdx,
+              visitedDepth + 1,
+              db,
+              scopeId,
+              onlyConstants,
+            );
+            if (typeof ml === "number") minLen = Math.trunc(ml);
+            else return null;
+            if (argCount >= 4) {
+              const lj = evaluateConstantArenaExpression(
+                arena,
+                getCallArg(3),
+                paramMap,
+                nameToIdx,
+                visitedDepth + 1,
+                db,
+                scopeId,
+                onlyConstants,
+              );
+              if (typeof lj === "boolean") leftJust = lj;
+              else return null;
+            }
+          }
+        } else {
+          if (argCount >= 2) {
+            const ml = evaluateConstantArenaExpression(
+              arena,
+              getCallArg(1),
+              paramMap,
+              nameToIdx,
+              visitedDepth + 1,
+              db,
+              scopeId,
+              onlyConstants,
+            );
+            if (typeof ml === "number") minLen = Math.trunc(ml);
+            else return null;
+          }
+          if (argCount >= 3) {
+            const lj = evaluateConstantArenaExpression(
+              arena,
+              getCallArg(2),
+              paramMap,
+              nameToIdx,
+              visitedDepth + 1,
+              db,
+              scopeId,
+              onlyConstants,
+            );
+            if (typeof lj === "boolean") leftJust = lj;
+            else return null;
+          }
+        }
+        let s: string;
+        if (typeof v0 === "boolean") {
+          s = v0 ? "true" : "false";
+        } else if (isRealArg) {
+          s = Number(v0.toPrecision(sigDigits)).toString();
+        } else {
+          s = String(Math.trunc(v0));
+        }
+        if (minLen > s.length) {
+          s = leftJust ? s.padEnd(minLen, " ") : s.padStart(minLen, " ");
+        }
+        return s;
       }
     }
 
@@ -1078,9 +1217,14 @@ export function evaluateConstantArenaExpression(
     }
 
     if (funcName === "/*Integer*/" || funcName === "Integer") {
+      const arg0 = getCallArg(0);
+      if (arg0 >= 0 && arena.getExprKind(arg0) === ExprKind.EnumLiteral) {
+        const ord = arena.getExprData1(arg0);
+        if (ord > 0) return ord;
+      }
       const val = evaluateConstantArenaExpression(
         arena,
-        getCallArg(0),
+        arg0,
         paramMap,
         nameToIdx,
         visitedDepth + 1,
@@ -1455,26 +1599,33 @@ export function evaluateConstantArenaExpression(
       return null;
     }
 
-    if (allArgsConst && argCount >= 1 && getCallArg(0) >= 0) {
-      const arg1 = callArgs[0];
-      if (Array.isArray(arg1) && argCount === 1) {
-        const flat = (arg1 as any[]).flat(Infinity) as number[];
-        if (flat.length === 0) return null;
-        if (funcName === "max") return Math.max(...flat);
-        if (funcName === "min") return Math.min(...flat);
-        if (funcName === "sum") return flat.reduce((a, b) => a + b, 0);
-        if (funcName === "product") return flat.reduce((a, b) => a * b, 1);
-      }
-      if (typeof arg1 === "number") {
-        let arg2 = 0.0;
-        if (argCount >= 2) {
-          const arg2Val = callArgs[1];
-          if (typeof arg2Val !== "number") return null;
-          arg2 = arg2Val;
+    if (allArgsConst) {
+      if (argCount >= 1 && getCallArg(0) >= 0) {
+        const arg1 = callArgs[0];
+        if (Array.isArray(arg1) && argCount === 1) {
+          const flat = (arg1 as unknown[]).flat(Infinity) as number[];
+          if (flat.length > 0) {
+            if (funcName === "max") return Math.max(...flat);
+            if (funcName === "min") return Math.min(...flat);
+            if (funcName === "sum") return flat.reduce((a, b) => a + b, 0);
+            if (funcName === "product") return flat.reduce((a, b) => a * b, 1);
+          }
         }
-        if (argCount <= 2) {
-          const mathRes = evalMathBuiltin(funcName, arg1, arg2);
-          if (mathRes !== null) return mathRes;
+        if (typeof arg1 === "number" && argCount <= 2) {
+          let arg2 = 0.0;
+          let bothNumeric = true;
+          if (argCount === 2) {
+            const arg2Val = callArgs[1];
+            if (typeof arg2Val === "number") {
+              arg2 = arg2Val;
+            } else {
+              bothNumeric = false;
+            }
+          }
+          if (bothNumeric) {
+            const mathRes = evalMathBuiltin(funcName, arg1, arg2);
+            if (mathRes !== null) return mathRes;
+          }
         }
       }
 
@@ -1514,23 +1665,33 @@ export function simplifyArenaIfElse(
   exprId: number,
   paramMap?: Map<string, number>,
   nameToIdx?: Map<string, number>,
+  onlyConstants = false,
 ): number {
   if (exprId < 0 || exprId >= arena.exprCount) return exprId;
   const kind = arena.getExprKind(exprId);
   switch (kind) {
     case ExprKind.IfElse: {
       const condId = arena.getExprData1(exprId);
-      const condVal = evaluateConstantArenaExpression(arena, condId, paramMap, nameToIdx);
+      const condVal = evaluateConstantArenaExpression(
+        arena,
+        condId,
+        paramMap,
+        nameToIdx,
+        0,
+        undefined,
+        undefined,
+        onlyConstants,
+      );
       if (condVal !== null) {
         const isTrue = typeof condVal === "boolean" ? condVal : condVal !== 0;
         const branchId = isTrue ? arena.getExprLeft(exprId) : arena.getExprRight(exprId);
-        return simplifyArenaIfElse(arena, branchId, paramMap, nameToIdx);
+        return simplifyArenaIfElse(arena, branchId, paramMap, nameToIdx, onlyConstants);
       }
-      const newCond = simplifyArenaIfElse(arena, condId, paramMap, nameToIdx);
+      const newCond = simplifyArenaIfElse(arena, condId, paramMap, nameToIdx, onlyConstants);
       const leftId = arena.getExprLeft(exprId);
       const rightId = arena.getExprRight(exprId);
-      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx);
-      const newRight = simplifyArenaIfElse(arena, rightId, paramMap, nameToIdx);
+      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx, onlyConstants);
+      const newRight = simplifyArenaIfElse(arena, rightId, paramMap, nameToIdx, onlyConstants);
       if (newCond !== condId || newLeft !== leftId || newRight !== rightId) {
         return arena.addIfElseExpr(newCond, newLeft, newRight);
       }
@@ -1539,20 +1700,20 @@ export function simplifyArenaIfElse(
     case ExprKind.Unary: {
       const op = arena.getExprData1(exprId);
       const leftId = arena.getExprLeft(exprId);
-      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx);
+      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx, onlyConstants);
       return newLeft !== leftId ? arena.addUnaryExpr(op, newLeft) : exprId;
     }
     case ExprKind.Negate: {
       const leftId = arena.getExprLeft(exprId);
-      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx);
+      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx, onlyConstants);
       return newLeft !== leftId ? arena.addExpression(ExprKind.Negate, 0, newLeft) : exprId;
     }
     case ExprKind.Binary: {
       const op = arena.getExprData1(exprId);
       const leftId = arena.getExprLeft(exprId);
       const rightId = arena.getExprRight(exprId);
-      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx);
-      const newRight = simplifyArenaIfElse(arena, rightId, paramMap, nameToIdx);
+      const newLeft = simplifyArenaIfElse(arena, leftId, paramMap, nameToIdx, onlyConstants);
+      const newRight = simplifyArenaIfElse(arena, rightId, paramMap, nameToIdx, onlyConstants);
       return newLeft !== leftId || newRight !== rightId ? arena.addBinaryExpr(op, newLeft, newRight) : exprId;
     }
     case ExprKind.Call: {
@@ -1562,7 +1723,7 @@ export function simplifyArenaIfElse(
       const args: number[] = [];
       for (let i = 0; i < argCount; i++) {
         const argId = i === 0 ? arena.getExprLeft(exprId) : arena.getExprLeft(exprId + i);
-        const newArg = simplifyArenaIfElse(arena, argId, paramMap, nameToIdx);
+        const newArg = simplifyArenaIfElse(arena, argId, paramMap, nameToIdx, onlyConstants);
         if (newArg !== argId) changed = true;
         args.push(newArg);
       }
@@ -1575,12 +1736,12 @@ export function simplifyArenaIfElse(
     case ExprKind.Subscript: {
       const baseId = arena.getExprData1(exprId);
       const subCount = arena.getExprRight(exprId);
-      const newBase = simplifyArenaIfElse(arena, baseId, paramMap, nameToIdx);
+      const newBase = simplifyArenaIfElse(arena, baseId, paramMap, nameToIdx, onlyConstants);
       let changed = newBase !== baseId;
       const subs: number[] = [];
       for (let i = 0; i < subCount; i++) {
         const subId = i === 0 ? arena.getExprLeft(exprId) : arena.getExprLeft(exprId + i);
-        const newSub = simplifyArenaIfElse(arena, subId, paramMap, nameToIdx);
+        const newSub = simplifyArenaIfElse(arena, subId, paramMap, nameToIdx, onlyConstants);
         if (newSub !== subId) changed = true;
         subs.push(newSub);
       }
@@ -1594,7 +1755,7 @@ export function simplifyArenaIfElse(
       const elems: number[] = [];
       for (let i = 0; i < count; i++) {
         const elemId = i === 0 ? arena.getExprLeft(exprId) : arena.getExprLeft(baseId + i);
-        const newElem = simplifyArenaIfElse(arena, elemId, paramMap, nameToIdx);
+        const newElem = simplifyArenaIfElse(arena, elemId, paramMap, nameToIdx, onlyConstants);
         if (newElem !== elemId) changed = true;
         elems.push(newElem);
       }
@@ -1983,7 +2144,7 @@ export function substituteArenaConstants(
     case ExprKind.Subscript: {
       const baseExprId = arena.getExprData1(exprId);
       const subCount = arena.getExprRight(exprId);
-      const newBase = substituteArenaConstants(arena, baseExprId, constMap, nameToIdx);
+      let newBase = substituteArenaConstants(arena, baseExprId, constMap, nameToIdx);
       let anyChanged = newBase !== baseExprId;
       const newSubs: number[] = [];
       for (let i = 0; i < subCount; i++) {
@@ -1992,8 +2153,58 @@ export function substituteArenaConstants(
         newSubs.push(newSub);
         if (newSub !== subId) anyChanged = true;
       }
+      if (subCount === 1 && nameToIdx && newBase === baseExprId && arena.getExprKind(baseExprId) === ExprKind.Name) {
+        const baseName = arena.interner.resolve(arena.getExprData1(baseExprId));
+        if (baseName) {
+          const firstIdx = nameToIdx.get(`${baseName}[1]`);
+          if (firstIdx !== undefined && arena.getVarVariability(firstIdx) === Variability.Constant) {
+            const elemIds: number[] = [];
+            let k = 1;
+            let allConst = true;
+            while (k <= 256) {
+              const elemVarIdx = nameToIdx.get(`${baseName}[${k}]`);
+              if (elemVarIdx === undefined) break;
+              if (arena.getVarVariability(elemVarIdx) !== Variability.Constant) {
+                allConst = false;
+                break;
+              }
+              const elemBind = arena.getVarExpression(elemVarIdx);
+              if (elemBind === undefined || elemBind < 0) {
+                allConst = false;
+                break;
+              }
+              const ek = arena.getExprKind(elemBind);
+              if (
+                ek !== ExprKind.RealLiteral &&
+                ek !== ExprKind.IntLiteral &&
+                ek !== ExprKind.BoolLiteral &&
+                ek !== ExprKind.StringLiteral &&
+                ek !== ExprKind.EnumLiteral
+              ) {
+                allConst = false;
+                break;
+              }
+              elemIds.push(elemBind);
+              k++;
+            }
+            if (allConst && elemIds.length > 0) {
+              newBase = arena.addArrayCtorExpr(elemIds);
+              anyChanged = true;
+            }
+          }
+        }
+      }
       const subExprId = anyChanged ? arena.addSubscriptExpr(newBase, newSubs) : exprId;
-      const folded = evaluateConstantArenaExpression(arena, subExprId, constMap, nameToIdx);
+      const folded = evaluateConstantArenaExpression(
+        arena,
+        subExprId,
+        constMap,
+        nameToIdx,
+        0,
+        undefined,
+        undefined,
+        true,
+      );
       if (typeof folded === "number" && Number.isFinite(folded)) {
         return arena.addRealLiteral(folded);
       }
@@ -2335,15 +2546,20 @@ export function foldArenaConstants(
         ? (arena as any).getExplicitVarExpression(i)
         : arena.getVarExpression(i);
       if (exprId >= 0) {
+        const isFinalParamNewInst =
+          omcCompatibility &&
+          v === Variability.Parameter &&
+          arena.isVarFinal(i) &&
+          !arena.extensionMetadata?.["isOldFrontend"];
         const evalVal = evaluateConstantArenaExpression(
           arena,
           exprId,
-          omcCompatibility ? constMap : paramMap,
+          isFinalParamNewInst ? finalParamOrConstMap : omcCompatibility ? constMap : paramMap,
           nameToIdx,
           0,
           db,
           scopeId,
-          omcCompatibility,
+          isFinalParamNewInst ? false : omcCompatibility,
         );
         if (evalVal !== null) {
           let foldedValue: number | boolean | string | any[] | null = evalVal;
@@ -2364,11 +2580,13 @@ export function foldArenaConstants(
             }
           }
           if (typeof foldedValue === "number") {
-            if (arena.getVarType(i) !== VarType.Enumeration) {
+            const vType = arena.getVarType(i);
+            if (vType === VarType.Boolean) {
+              const litId = arena.addExpression(ExprKind.BoolLiteral, foldedValue !== 0 ? 1 : 0);
+              arena.setVarExpression(i, litId);
+            } else if (vType !== VarType.Enumeration) {
               const litId =
-                arena.getVarType(i) === VarType.Integer
-                  ? arena.addIntLiteral(foldedValue)
-                  : arena.addRealLiteral(foldedValue);
+                vType === VarType.Integer ? arena.addIntLiteral(foldedValue) : arena.addRealLiteral(foldedValue);
               arena.setVarExpression(i, litId);
             }
             if (arena.getVarStartValue(i) !== foldedValue) {
@@ -2401,6 +2619,12 @@ export function foldArenaConstants(
             if (v === Variability.Constant || (v === Variability.Parameter && arena.isVarFinal(i))) {
               finalParamOrConstMap.set(arena.getVarName(i), foldedValue);
             }
+          }
+        } else if (arena.getExprKind(exprId) === ExprKind.Subscript) {
+          const subbed = substituteArenaConstants(arena, exprId, constMap, nameToIdx);
+          if (subbed !== exprId) {
+            arena.setVarExpression(i, subbed);
+            changed = true;
           }
         }
       }
@@ -2519,7 +2743,12 @@ export function foldArenaConstants(
 
   // 3. Fold equations once after variable parameters/constants have converged
   const eqFoldMap = omcCompatibility ? constMap : paramMap;
-  const ifElseFoldMap = omcCompatibility ? constMap : paramMap;
+  const evalParamsSet = arena.extensionMetadata?.["evaluatedParams"] as Set<string> | undefined;
+  const ifElseFoldMap = omcCompatibility
+    ? evalParamsSet && evalParamsSet.size > 0
+      ? new Map<string, any>([...constMap, ...[...paramMap.entries()].filter(([k]) => evalParamsSet.has(k))])
+      : constMap
+    : paramMap;
   for (let eq = 0; eq < arena.eqCount; eq++) {
     const eqKind = arena.getEqKind(eq);
     if (eqKind === EqKind.Simple || eqKind === EqKind.InitialSimple || eqKind === EqKind.Array) {
@@ -2584,6 +2813,76 @@ export function foldArenaConstants(
             } else {
               continue;
             }
+          } else if (lhsKind === ExprKind.Tuple && isCall && Array.isArray(foldedRhs)) {
+            const tupleCount = arena.getExprData1(lhsExpr);
+            if (tupleCount > 0 && foldedRhs.length === tupleCount) {
+              const outElems: number[] = [];
+              let allValid = true;
+              for (let ti = 0; ti < tupleCount; ti++) {
+                const lhsElem = arena.getExprLeft(lhsExpr + ti);
+                let elemType = VarType.Real;
+                if (lhsElem >= 0 && arena.getExprKind(lhsElem) === ExprKind.Name) {
+                  const elemName = arena.interner.resolve(arena.getExprData1(lhsElem));
+                  if (elemName && elemName !== "_") {
+                    const eIdx = nameToIdx
+                      ? (nameToIdx.get(elemName) ??
+                        nameToIdx.get(`${elemName}[1]`) ??
+                        nameToIdx.get(`${elemName}[1,1]`))
+                      : arena.getVarIdxByName(elemName) >= 0
+                        ? arena.getVarIdxByName(elemName)
+                        : arena.getVarIdxByName(`${elemName}[1]`);
+                    if (eIdx !== undefined && eIdx >= 0) {
+                      elemType = arena.getVarType(eIdx);
+                    }
+                  }
+                }
+                const fv = foldedRhs[ti];
+                if (Array.isArray(fv)) {
+                  outElems.push(arrayValueToArenaExpr(arena, fv, elemType));
+                } else if (elemType === VarType.Boolean && typeof fv === "boolean") {
+                  outElems.push(arena.addBoolLiteral(fv));
+                } else if (elemType === VarType.Integer && typeof fv === "number" && Number.isFinite(fv)) {
+                  outElems.push(arena.addIntLiteral(Math.trunc(fv)));
+                } else if (elemType === VarType.String || typeof fv === "string") {
+                  outElems.push(arena.addStringLiteral(String(fv)));
+                } else if (typeof fv === "number" && Number.isFinite(fv)) {
+                  outElems.push(arena.addRealLiteral(fv));
+                } else if (typeof fv === "boolean") {
+                  outElems.push(arena.addBoolLiteral(fv));
+                } else {
+                  allValid = false;
+                  break;
+                }
+              }
+              if (allValid && outElems.length === tupleCount) {
+                let nonWildcardIdx = -1;
+                let nonWildcardCount = 0;
+                for (let ti = 0; ti < tupleCount; ti++) {
+                  const lhsElem = arena.getExprLeft(lhsExpr + ti);
+                  let isWild = lhsElem < 0;
+                  if (!isWild && arena.getExprKind(lhsElem) === ExprKind.Name) {
+                    const elemName = arena.interner.resolve(arena.getExprData1(lhsElem));
+                    if (!elemName || elemName === "_") isWild = true;
+                  }
+                  if (!isWild) {
+                    nonWildcardIdx = ti;
+                    nonWildcardCount++;
+                  }
+                }
+                if (nonWildcardCount === 1 && nonWildcardIdx >= 0) {
+                  const singleLhs = arena.getExprLeft(lhsExpr + nonWildcardIdx);
+                  const singleRhs = outElems[nonWildcardIdx]!;
+                  arena.setEqLhs(eq, singleLhs);
+                  arena.setEqRhs(eq, singleRhs);
+                  rhsExpr = singleRhs;
+                } else {
+                  const tupleRhs = arena.addTupleExpr(outElems);
+                  arena.setEqRhs(eq, tupleRhs);
+                  rhsExpr = tupleRhs;
+                }
+              }
+            }
+            continue;
           } else if (lhsKind !== ExprKind.Subscript) {
             continue;
           }
@@ -2618,22 +2917,26 @@ export function foldArenaConstants(
       }
 
       if (rhsExpr >= 0 && rhsKind !== ExprKind.EnumLiteral && lhsKind !== ExprKind.EnumLiteral) {
-        const simplifiedRhs = simplifyArenaIfElse(arena, rhsExpr, ifElseFoldMap, nameToIdx);
+        const simplifiedRhs = simplifyArenaIfElse(arena, rhsExpr, ifElseFoldMap, nameToIdx, omcCompatibility);
         if (simplifiedRhs !== rhsExpr) {
           arena.setEqRhs(eq, simplifiedRhs);
           rhsExpr = simplifiedRhs;
         }
-        const constSubRhs = substituteArenaConstants(arena, rhsExpr, constMap, nameToIdx);
+        const eqSubMap = (arena as { extensionMetadata?: { evaluateAllParameters?: boolean } }).extensionMetadata
+          ?.evaluateAllParameters
+          ? finalParamOrConstMap
+          : constMap;
+        const constSubRhs = substituteArenaConstants(arena, rhsExpr, eqSubMap, nameToIdx);
         if (constSubRhs !== rhsExpr) {
           arena.setEqRhs(eq, constSubRhs);
         }
         if (lhsKind !== ExprKind.Name && lhsKind !== ExprKind.Der) {
-          const simplifiedLhs = simplifyArenaIfElse(arena, lhsExpr, ifElseFoldMap, nameToIdx);
+          const simplifiedLhs = simplifyArenaIfElse(arena, lhsExpr, ifElseFoldMap, nameToIdx, omcCompatibility);
           if (simplifiedLhs !== lhsExpr) {
             arena.setEqLhs(eq, simplifiedLhs);
             lhsExpr = simplifiedLhs;
           }
-          const constSubLhs = substituteArenaConstants(arena, lhsExpr, constMap, nameToIdx);
+          const constSubLhs = substituteArenaConstants(arena, lhsExpr, eqSubMap, nameToIdx);
           if (constSubLhs !== lhsExpr) {
             arena.setEqLhs(eq, constSubLhs);
           }
@@ -2658,7 +2961,7 @@ export function foldArenaConstants(
           if (typeof foldedCond === "boolean" && !isExprAlreadyLiteral(arena, cur, foldedCond)) {
             cur = arena.addBoolLiteral(foldedCond);
           }
-          const simplified = simplifyArenaIfElse(arena, cur, ifElseFoldMap, nameToIdx);
+          const simplified = simplifyArenaIfElse(arena, cur, ifElseFoldMap, nameToIdx, omcCompatibility);
           if (simplified !== cur) cur = simplified;
           const subbed = substituteArenaConstants(arena, cur, constMap, nameToIdx);
           if (subbed !== cur) cur = subbed;
@@ -2711,7 +3014,13 @@ export function foldArenaConstants(
                 }
               }
 
-              const simplifiedRhs = simplifyArenaIfElse(arena, bodyEq.rhsExprId, ifElseFoldMap, nameToIdx);
+              const simplifiedRhs = simplifyArenaIfElse(
+                arena,
+                bodyEq.rhsExprId,
+                ifElseFoldMap,
+                nameToIdx,
+                omcCompatibility,
+              );
               if (simplifiedRhs !== bodyEq.rhsExprId) {
                 bodyEq.rhsExprId = simplifiedRhs;
               }
@@ -2796,7 +3105,13 @@ export function foldArenaConstants(
                 }
               }
 
-              const simplifiedRhs = simplifyArenaIfElse(arena, bodyEq.rhsExprId, ifElseFoldMap, nameToIdx);
+              const simplifiedRhs = simplifyArenaIfElse(
+                arena,
+                bodyEq.rhsExprId,
+                ifElseFoldMap,
+                nameToIdx,
+                omcCompatibility,
+              );
               if (simplifiedRhs !== bodyEq.rhsExprId) {
                 bodyEq.rhsExprId = simplifiedRhs;
               }
@@ -2854,6 +3169,58 @@ export function foldArenaConstants(
           }
         };
         foldForEqList(meta.bodyEquations);
+      }
+    }
+  }
+
+  // Fold constant function calls and constant array constructors in algorithm assignment statements
+  for (const sec of arena.algorithmSections) {
+    const end = sec.start + sec.count;
+    for (let s = sec.start; s < end; s++) {
+      if (arena.getStmtKind(s) !== StmtKind.Assignment) continue;
+      const lhsExpr = arena.getStmtData1(s);
+      const rhsExpr = arena.getStmtLeft(s);
+      if (lhsExpr < 0 || rhsExpr < 0) continue;
+      const rhsKind = arena.getExprKind(rhsExpr);
+      if (rhsKind !== ExprKind.Call && rhsKind !== ExprKind.ArrayCtor) continue;
+      const lhsKind = arena.getExprKind(lhsExpr);
+      if (lhsKind !== ExprKind.Name && lhsKind !== ExprKind.Subscript) continue;
+      const foldedRhs = evaluateConstantArenaExpression(
+        arena,
+        rhsExpr,
+        eqFoldMap,
+        nameToIdx,
+        0,
+        db,
+        scopeId,
+        omcCompatibility,
+      );
+      if (foldedRhs === null || isExprAlreadyLiteral(arena, rhsExpr, foldedRhs)) continue;
+      let varType = VarType.Real;
+      if (lhsKind === ExprKind.Name) {
+        const varName = arena.interner.resolve(arena.getExprData1(lhsExpr));
+        const varIdx = nameToIdx.get(varName) ?? nameToIdx.get(`${varName}[1]`) ?? nameToIdx.get(`${varName}[1,1]`);
+        if (varIdx !== undefined && varIdx >= 0) {
+          varType = arena.getVarType(varIdx);
+        }
+      }
+      if (varType === VarType.Enumeration) continue;
+      let newRhs = rhsExpr;
+      if (Array.isArray(foldedRhs)) {
+        newRhs = arrayValueToArenaExpr(arena, foldedRhs, varType);
+      } else if (varType === VarType.Boolean && typeof foldedRhs === "boolean") {
+        newRhs = arena.addBoolLiteral(foldedRhs);
+      } else if (varType === VarType.Integer && typeof foldedRhs === "number" && Number.isFinite(foldedRhs)) {
+        newRhs = arena.addIntLiteral(Math.trunc(foldedRhs));
+      } else if (varType === VarType.String || typeof foldedRhs === "string") {
+        newRhs = arena.addStringLiteral(String(foldedRhs));
+      } else if (typeof foldedRhs === "number" && Number.isFinite(foldedRhs)) {
+        newRhs = arena.addRealLiteral(foldedRhs);
+      } else if (typeof foldedRhs === "boolean") {
+        newRhs = arena.addBoolLiteral(foldedRhs);
+      }
+      if (newRhs !== rhsExpr) {
+        arena.setStmtLeft(s, newRhs);
       }
     }
   }

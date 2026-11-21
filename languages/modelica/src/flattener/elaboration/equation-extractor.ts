@@ -3310,8 +3310,25 @@ export function extractClassEquations(
                 return;
               }
 
-              const isR0Outside = prefix !== "" && !r0Raw.includes(".");
-              const isR1Outside = prefix !== "" && !r1Raw.includes(".");
+              const isOwnConnectorRef = (rawRef: string): boolean => {
+                if (!rawRef.includes(".")) return true;
+                const firstSeg = rawRef.slice(0, rawRef.indexOf(".")).replace(/\[.*$/, "").trim();
+                const scopeId = flattener.currentClassId;
+                if (!firstSeg || !scopeId || !flattener.db) return false;
+                const resolveSimple = flattener.db.query("resolveSimpleName", scopeId) as
+                  | ((n: string) => SymbolEntry | null)
+                  | undefined;
+                const resolveFull = flattener.db.query("resolveName", scopeId) as
+                  | ((n: string) => SymbolEntry | null)
+                  | undefined;
+                const compSym = resolveSimple?.(firstSeg) ?? resolveFull?.(firstSeg);
+                if (!compSym || compSym.kind !== "Component") return false;
+                const compClassId = flattener.db.query("classInstance", compSym.id) as SymbolId | null | undefined;
+                if (!compClassId) return false;
+                return Boolean(flattener.db.query("isConnector", compClassId));
+              };
+              const isR0Outside = prefix !== "" && isOwnConnectorRef(r0Raw);
+              const isR1Outside = prefix !== "" && isOwnConnectorRef(r1Raw);
               const connFlags = (isR0Outside ? 1 : 0) | (isR1Outside ? 2 : 0);
 
               // Plug-compatibility check: compare connector types and dimensions

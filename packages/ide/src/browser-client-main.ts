@@ -249,9 +249,17 @@ export async function activate(context: vscode.ExtensionContext) {
   safeRegisterCommand("modelscript.collectWorkspaceSnapshot", () => hostBridgeService.collectWorkspaceSnapshot());
 
   // 11. Start Language Server Client & Notification Handlers
-  const { VerificationStatusDecorator } = await import("./services/verification-status-decorator.js");
+  const [{ VerificationStatusDecorator }, { VerificationGatesTreeProvider }] = await Promise.all([
+    import("./services/verification-status-decorator.js"),
+    import("./verification-gates-tree-provider.js"),
+  ]);
   const verificationStatusDecorator = new VerificationStatusDecorator();
-  context.subscriptions.push(verificationStatusDecorator);
+  const verificationGatesTreeProvider = new VerificationGatesTreeProvider();
+  context.subscriptions.push(
+    verificationStatusDecorator,
+    verificationGatesTreeProvider,
+    vscode.window.registerTreeDataProvider("modelscript.verificationGatesView", verificationGatesTreeProvider),
+  );
   let isScmRegistered = false;
   lspManager.onBindNotifications((targetClient) => {
     targetClient.onNotification(
@@ -290,6 +298,7 @@ export async function activate(context: vscode.ExtensionContext) {
       "modelscript/verificationStatus",
       (payload: import("./services/verification-status-decorator.js").VerificationStatusPayload) => {
         verificationStatusDecorator.updateStatus(payload);
+        verificationGatesTreeProvider.updateVerificationStatus(payload);
       },
     );
 

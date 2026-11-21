@@ -4,9 +4,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   deserializeMemo,
+  Durability,
   LanguageDomainId,
   makePolyglotSymbolId,
+  MemoryQueryCacheStore,
+  QueryCancelledError,
   serializeMemo,
+  stableMemoCacheKey,
   WasmQueryEngine,
   type Memo,
   type QueryHooks,
@@ -366,5 +370,222 @@ describe("WasmQueryEngine correctness & hardening regressions", () => {
     qe.updateIndex(makeIndex([e1Updated]));
 
     assert.equal(qe.query("getVar", 1), "parameter");
+  });
+
+  it("memoKey is collision-free across all 256 domains, >1000 query names, large localSeq, and virtual IDs", () => {
+    const qe = new WasmQueryEngine(makeIndex([makeEntry(1, "A")]), new Map());
+    const seen = new Set<number>();
+
+    // All 256 domains with identical localSeq = 42
+    for (let d = 0; d < 256; d++) {
+      const symId = makePolyglotSymbolId(d, 42);
+      const k = qe.memoKey("resolveType", symId);
+      assert.ok(!seen.has(k), `Collision for domain ${d}`);
+      seen.add(k);
+    }
+
+    // >1,000 distinct query names on same symbol
+    for (let q = 0; q < 1200; q++) {
+      const k = qe.memoKey(`q_${q}`, 1);
+      assert.ok(!seen.has(k), `Collision for query q_${q}`);
+      seen.add(k);
+    }
+
+    // Large localSeq > 2_000_000 vs small localSeq and negative virtual IDs
+    const kSmall = qe.memoKey("resolveType", 1);
+    const kLarge = qe.memoKey("resolveType", 2_000_001);
+    const kVirt = qe.memoKey("resolveType", -1);
+    assert.notEqual(kSmall, kLarge);
+    assert.notEqual(kSmall, kVirt);
+    assert.notEqual(kLarge, kVirt);
+  });
+
+  it("verifies High-durability stdlib queries in O(1) without deepVerify on Low-durability user edits", () => {
+    const stdlibA = makeEntry(1, "MSL_Base", { resourceId: "file:///msl/Base.mo", metadata: { val: 100 } });
+    const stdlibB = makeEntry(2, "MSL_Derived", { resourceId: "file:///msl/Base.mo" });
+    const userSym = makeEntry(3, "UserModel", { resourceId: "file:///user/Main.mo", metadata: { x: 1 } });
+    const index = makeIndex([stdlibA, stdlibB, userSym]);
+
+    const hooks = new Map<string, QueryHooks>([
+      [
+        "class_definition",
+        {
+          baseVal: (db, self) => db.symbol(self.id)?.metadata?.["val"],
+          derivedVal: (db) => Number(db.query("baseVal", 1)) * 2,
+          userVal: (db, self) => Number(db.symbol(self.id)?.metadata?.["x"] ?? 0) + Number(db.query("derivedVal", 2)),
+        },
+      ],
+    ]);
+
+    const qe = new WasmQueryEngine(index, hooks);
+    qe.setResourceDurability("file:///msl/Base.mo", Durability.High);
+
+    assert.equal(qe.query("userVal", 3), 201);
+    qe.resetStats();
+
+    // Edit Low-durability user symbol
+    index.symbols.set(3, makeEntry(3, "UserModel", { resourceId: "file:///user/Main.mo", metadata: { x: 5 } }));
+    qe.invalidate([3]);
+
+    // Querying High-durability derivedVal must hit O(1) durability fast path (0 deepVerifyHits, 0 recomputes)
+    assert.equal(qe.query("derivedVal", 2), 200);
+    const statsAfterLowEdit = qe.getStats();
+    assert.equal(statsAfterLowEdit.durabilityHits, 1, "High-durability query must short-circuit via durabilityHits");
+    assert.equal(statsAfterLowEdit.deepVerifyHits, 0, "Should skip deepVerify entirely");
+    assert.equal(statsAfterLowEdit.recomputes, 0);
+
+    // Editing High-durability stdlib symbol MUST invalidate derivedVal
+    index.symbols.set(1, makeEntry(1, "MSL_Base", { resourceId: "file:///msl/Base.mo", metadata: { val: 250 } }));
+    qe.invalidate([1]);
+    assert.equal(qe.query("derivedVal", 2), 500);
+  });
+
+  it("supports mid-query cooperative cancellation without corrupting engine state", () => {
+    const entries = [makeEntry(1, "A"), makeEntry(2, "B"), makeEntry(3, "C")];
+    const index = makeIndex(entries);
+    const hooks = new Map<string, QueryHooks>([
+      [
+        "class_definition",
+        {
+          step3: (_db, self) => self.name,
+          step2: (db) => db.query("step3", 3),
+          step1: (db) => db.query("step2", 2),
+        },
+      ],
+    ]);
+
+    const qe = new WasmQueryEngine(index, hooks);
+    let calls = 0;
+    qe.setCancellationChecker(() => ++calls >= 2, 1);
+
+    assert.throws(() => qe.query("step1", 1), QueryCancelledError);
+
+    // Clearing cancellation checker must allow subsequent queries to succeed cleanly
+    qe.setCancellationChecker(null);
+    assert.equal(qe.query("step1", 1), "C");
+  });
+
+  it("preserves High-durability stdlib memos over Low-durability memos during eviction", () => {
+    const entries = [
+      makeEntry(1, "Stdlib", { resourceId: "file:///msl/Std.mo" }),
+      makeEntry(2, "User1", { resourceId: "file:///u1.mo" }),
+      makeEntry(3, "User2", { resourceId: "file:///u2.mo" }),
+    ];
+    const hooks = new Map<string, QueryHooks>([
+      [
+        "class_definition",
+        {
+          info: (_db, self) => self.name,
+        },
+      ],
+    ]);
+
+    const qe = new WasmQueryEngine(makeIndex(entries), hooks, { maxMemos: 2 });
+    qe.setInputDurability(1, Durability.High);
+
+    qe.query("info", 1); // High durability (oldest)
+    qe.query("info", 2); // Low durability
+    qe.query("info", 3); // Triggers eviction — must evict Low-durability (2), preserving High-durability (1)
+
+    assert.ok(qe.getMemoFor("info", 1), "High-durability stdlib memo should be preserved over Low-durability memo");
+    assert.equal(qe.getMemoFor("info", 2), undefined, "Low-durability memo should be evicted first");
+    assert.ok(qe.getMemoFor("info", 3));
+  });
+
+  it("invalidates queries that called db.allEntries() when a new symbol is added", () => {
+    const index = makeIndex([makeEntry(1, "A")]);
+    const hooks = new Map<string, QueryHooks>([
+      [
+        "class_definition",
+        {
+          countAll: (db) => db.allEntries().length,
+        },
+      ],
+    ]);
+
+    const qe = new WasmQueryEngine(index, hooks);
+    assert.equal(qe.query("countAll", 1), 1);
+
+    // Add a brand-new symbol 2
+    const e2 = makeEntry(2, "B");
+    index.symbols.set(2, e2);
+    index.byName.set("B", [2]);
+    qe.invalidate([2]);
+
+    assert.equal(qe.query("countAll", 1), 2);
+  });
+
+  it("handles cyclic queries deterministically without poisoning non-head participants", () => {
+    const eA = makeEntry(1, "A");
+    const eB = makeEntry(2, "B");
+    const makeCycleHooks = () =>
+      new Map<string, QueryHooks>([
+        [
+          "class_definition",
+          {
+            cycleVal: {
+              execute: (db, self) => {
+                const other = self.id === 1 ? 2 : 1;
+                const next = db.query<string>("cycleVal", other);
+                return `${self.name}->${next}`;
+              },
+              recovery: (_db, self) => `CYCLE(${self.name})`,
+            },
+          },
+        ],
+      ]);
+
+    // Engine 1: query A first, then B
+    const qe1 = new WasmQueryEngine(makeIndex([eA, eB]), makeCycleHooks());
+    const aFirst = qe1.query<string>("cycleVal", 1);
+    const bAfterA = qe1.query<string>("cycleVal", 2);
+
+    // Engine 2: query B first, then A
+    const qe2 = new WasmQueryEngine(makeIndex([eA, eB]), makeCycleHooks());
+    const bFirst = qe2.query<string>("cycleVal", 2);
+    const aAfterB = qe2.query<string>("cycleVal", 1);
+
+    // Results must be order-independent: B must not be poisoned by A having run first
+    assert.equal(aFirst, "A->B->CYCLE(A)");
+    assert.equal(bAfterA, bFirst, "Querying B after A must match querying B directly");
+    assert.equal(aAfterB, aFirst, "Querying A after B must match querying A directly");
+  });
+
+  it("auto-classifies stdlib resource URIs as Durability.High without manual registration", () => {
+    const stdlibSym = makeEntry(1, "ScalarValues", { resourceId: "sysml2://stdlib/ScalarValues.sysml" });
+    const userSym = makeEntry(2, "MyPart", { resourceId: "file:///workspace/MyPart.sysml" });
+    const qe = new WasmQueryEngine(makeIndex([stdlibSym, userSym]), new Map());
+
+    assert.equal(qe.getInputDurability(1), Durability.High);
+    assert.equal(qe.getInputDurability(2), Durability.Low);
+  });
+
+  it("preflights cross-engine memos deterministically via stableMemoCacheKey regardless of query order", async () => {
+    const cache = new MemoryQueryCacheStore();
+    const hooks = new Map<string, QueryHooks>([
+      [
+        "class_definition",
+        {
+          qAlpha: (_db, self) => `alpha:${self.name}`,
+          qBeta: (_db, self) => `beta:${self.name}`,
+        },
+      ],
+    ]);
+
+    // Engine 1 executes qAlpha then qBeta and persists under stableMemoCacheKey
+    const qe1 = new WasmQueryEngine(makeIndex([makeEntry(1, "Node")]), hooks);
+    assert.equal(qe1.query("qAlpha", 1), "alpha:Node");
+    assert.equal(qe1.query("qBeta", 1), "beta:Node");
+    for (const memo of qe1.dumpMemos().values()) {
+      const stableKey = stableMemoCacheKey(memo.queryName!, memo.symbolId!, memo.argsHash);
+      await cache.setMemo(stableKey, deserializeMemo(JSON.parse(JSON.stringify(serializeMemo(memo)))));
+    }
+
+    // Engine 2 registers/preflights in opposite order (qBeta first) and must hydrate without recomputing
+    const qe2 = new WasmQueryEngine(makeIndex([makeEntry(1, "Node")]), hooks, { cacheStore: cache });
+    await qe2.preflight([1], ["qBeta", "qAlpha"]);
+    assert.equal(qe2.getStats().recomputes, 0, "Preflight must hydrate both memos from stableMemoCacheKey");
+    assert.equal(qe2.query("qBeta", 1), "beta:Node");
+    assert.equal(qe2.query("qAlpha", 1), "alpha:Node");
   });
 });

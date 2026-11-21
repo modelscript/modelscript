@@ -31,6 +31,7 @@ export * from "./formal-linter.js";
 export { verifyHighIndexParametricDae, verifySpatialEnvelopesFormal } from "./formal-linter.js";
 export * from "./formatter.js";
 export * from "./fuml-bridge.js";
+export * from "./hybrid-cosim-orchestrator.js";
 export * from "./hybrid-flowpipe-bridge.js";
 export * from "./language.js";
 export { default, default as sysml2Language } from "./language.js";

@@ -481,3 +481,133 @@ test("Frequency-adaptive DFT eliminates magnitude and phase error at off-nominal
     `Expected fixed 60 Hz DFT to exhibit significant phase slip (>0.1 rad), got ${fixedPhaseErr}`,
   );
 });
+
+test("Complex-conjugate pole FDNE accurately fits a sharp 300 Hz RLC resonance and Dommel companion matches steady-state admittance", async () => {
+  const { fitFdneRational, evaluateFdneModel, FdneDommelCompanion } = await import("../src/cosim/fdne-fitter.js");
+  // Series RLC resonant branch (f_res = 300 Hz, Q ~ 8) in parallel with RL feeder
+  const rRes = 4.0;
+  const lRes = 0.017;
+  const cRes = 1.0 / ((2 * Math.PI * 300.0) ** 2 * lRes);
+  const rFeed = 2.0;
+  const lFeed = 0.05;
+
+  const yTrue = (f: number) => {
+    const w = 2 * Math.PI * f;
+    const d1 = rFeed * rFeed + (w * lFeed) ** 2;
+    const y1Re = rFeed / d1;
+    const y1Im = (-w * lFeed) / d1;
+    const xRes = w * lRes - 1.0 / (w * cRes);
+    const d2 = rRes * rRes + xRes * xRes;
+    const y2Re = rRes / d2;
+    const y2Im = -xRes / d2;
+    return { re: y1Re + y2Re, im: y1Im + y2Im };
+  };
+
+  const samples = Array.from({ length: 60 }, (_, k) => {
+    const freqHz = 20.0 * Math.pow(1500.0 / 20.0, k / 59);
+    return { freqHz, ySiemens: yTrue(freqHz) };
+  });
+
+  const model = fitFdneRational(samples, {
+    numPoles: 2,
+    numComplexPairs: 2,
+    iterations: 8,
+    includeCapacitiveTerm: false,
+    enforcePassivity: true,
+  });
+
+  assert.ok(model.isPassive, "Complex-pole FDNE must be globally passive");
+  assert.ok((model.complexPoles?.length ?? 0) >= 1, "Expected at least one complex-conjugate pole pair");
+  assert.ok(
+    model.rmsRelError < 0.05,
+    `Expected complex-pole RMS error < 5%, got ${(model.rmsRelError * 100).toFixed(2)}%`,
+  );
+
+  // Verify accuracy right at the 300 Hz resonant peak
+  const y300True = yTrue(300.0);
+  const y300Fit = evaluateFdneModel(model, 300.0);
+  const peakErr = Math.hypot(y300Fit.re - y300True.re, y300Fit.im - y300True.im) / Math.hypot(y300True.re, y300True.im);
+  assert.ok(peakErr < 0.05, `Expected 300 Hz resonant peak error < 5%, got ${(peakErr * 100).toFixed(2)}%`);
+
+  // Time-domain Dommel companion verification at 300 Hz excitation + rollback
+  const dt = 25e-6;
+  const comp = new FdneDommelCompanion(model, dt, 1);
+  const gEq = comp.getConductanceSiemens();
+  const vPeak = 1000.0;
+  let maxI = 0.0;
+  for (let k = 0; k < 2000; k++) {
+    const t = k * dt;
+    const v = vPeak * Math.sin(2 * Math.PI * 300.0 * t);
+    const st = comp.stampCompanion(t, dt);
+    const iNow = gEq * v - st.iHist[0]!;
+    if (k > 1500) maxI = Math.max(maxI, Math.abs(iNow));
+    comp.doStep(t, dt, [v]);
+  }
+  const expectedPeakI = Math.hypot(y300Fit.re, y300Fit.im) * vPeak;
+  const tdErr = Math.abs(maxI - expectedPeakI) / expectedPeakI;
+  assert.ok(tdErr < 0.03, `Expected time-domain 300 Hz resonant current within 3%, got ${(tdErr * 100).toFixed(2)}%`);
+
+  // Verify captureState/restoreState exact rollback
+  const snap = comp.captureState();
+  const stBefore = comp.stampCompanion(0.05, dt).iHist[0]!;
+  comp.doStep(0.05, dt, [500.0]);
+  comp.restoreState(snap);
+  const stAfter = comp.stampCompanion(0.05, dt).iHist[0]!;
+  assert.ok(Math.abs(stAfter - stBefore) < 1e-12, "Expected exact complex-pole state rollback");
+});
+
+test("Multi-port 2x2 Matrix FDNE enforces Hermitian passivity and supports coupled Dommel companion rollback", async () => {
+  const { fitMatrixFdneRational, evaluateMatrixFdneModel, MatrixFdneDommelCompanion } =
+    await import("../src/cosim/fdne-fitter.js");
+  const rS = 3.0;
+  const lS = 0.03;
+  const rG = 5.0;
+  const lG = 0.06;
+
+  const samples = Array.from({ length: 40 }, (_, k) => {
+    const freqHz = 10.0 * Math.pow(2000.0 / 10.0, k / 39);
+    const w = 2 * Math.PI * freqHz;
+    const dS = rS * rS + (w * lS) ** 2;
+    const ySRe = rS / dS;
+    const ySIm = (-w * lS) / dS;
+    const dG = rG * rG + (w * lG) ** 2;
+    const yGRe = rG / dG;
+    const yGIm = (-w * lG) / dG;
+    const ySelf = { re: ySRe + yGRe, im: ySIm + yGIm };
+    const yMut = { re: -ySRe, im: -ySIm };
+    return { freqHz, yMatrixSiemens: [ySelf, yMut, yMut, ySelf] };
+  });
+
+  const matModel = fitMatrixFdneRational(2, samples, {
+    numPoles: 3,
+    numComplexPairs: 1,
+    iterations: 6,
+    enforcePassivity: true,
+  });
+
+  assert.equal(matModel.numPorts, 2);
+  assert.ok(matModel.isPassive, "2x2 Matrix FDNE must be globally passive");
+  assert.ok(matModel.minEigenvalue >= -1e-9, `Expected non-negative min eigenvalue, got ${matModel.minEigenvalue}`);
+  assert.ok(
+    matModel.rmsRelError < 0.03,
+    `Expected 2x2 Matrix FDNE RMS error < 3%, got ${(matModel.rmsRelError * 100).toFixed(2)}%`,
+  );
+
+  const y60 = evaluateMatrixFdneModel(matModel, 60.0);
+  assert.ok(Math.abs(y60[1]!.re - y60[2]!.re) < 1e-12 && Math.abs(y60[1]!.im - y60[2]!.im) < 1e-12);
+
+  const comp = new MatrixFdneDommelCompanion(matModel, 50e-6, 3);
+  const gMat = comp.getConductanceMatrixPerPhase();
+  assert.equal(gMat.length, 4);
+  assert.ok(gMat[0]! > 0 && gMat[3]! > 0, "Diagonal port conductances must be positive");
+  assert.ok(Math.abs(gMat[1]! - gMat[2]!) < 1e-12, "Off-diagonal mutual conductance must be symmetric");
+  assert.ok(gMat[1]! < 0, "Mutual conductance between ports 1 and 2 must be negative");
+
+  const snap = comp.captureState();
+  comp.doStep([1000, 500, -500, -250, -500, -250]);
+  const h1 = comp.stampCompanion().iHist[0]!;
+  assert.ok(Math.abs(h1) > 0, "Expected non-zero history current after step");
+  comp.restoreState(snap);
+  const hRestored = comp.stampCompanion().iHist[0]!;
+  assert.equal(hRestored, 0.0, "Expected exact MatrixFdneDommelCompanion rollback to zero state");
+});

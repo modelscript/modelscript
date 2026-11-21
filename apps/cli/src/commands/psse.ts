@@ -13,19 +13,30 @@
 import { renderPsseSvg } from "@modelscript/diagram/psse-diagram-builder";
 import { parsePsseSld, renderSldSvg } from "@modelscript/diagram/psse-sld-parser";
 import {
+  analyzeN11Contingencies,
   analyzeN1Contingencies,
   analyzeSmallSignalStability,
   auditNercCompliance,
+  calculateFcitc,
   calculateShortCircuit,
+  evaluateBreakerDuty,
   executeIdv,
   extractPowerFlowNetlist,
+  formatCpfStudyReport,
+  formatModalStudyReport,
+  formatN1StudyReport,
+  formatPowerFlowStudyReport,
+  formatShortCircuitStudyReport,
   lintPsse,
   lowerPsseToDae,
   parseDyr,
   parseRaw,
+  parseSubFile,
   psseToModelica,
+  searchCriticalClearingTime,
   solveContinuationPowerFlow,
   solvePowerFlow,
+  type StudyReportFormat,
 } from "@modelscript/psse";
 import { solveAcOpf, solveDcOpf } from "@modelscript/simulate/opf";
 import fs from "node:fs";
@@ -56,6 +67,10 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
           "fault",
           "modes",
           "n1",
+          "n11",
+          "fcitc",
+          "breaker-duty",
+          "cct",
           "cpf",
           "sld",
           "idv",
@@ -84,6 +99,13 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
         alias: ["o", "output"],
         description: "Output file path (e.g. for SVG diagram or report)",
         type: "string",
+      })
+      .option("format", {
+        alias: "f",
+        description: "Report output format: 'text', 'json', 'csv', or 'html'",
+        type: "string",
+        choices: ["text", "json", "csv", "html"],
+        default: "text",
       })
       .option("raw", {
         description: "Associated PSS/E RAW power flow base case file",
@@ -784,6 +806,20 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
           if (solution.buses.length > 10) {
             console.log(`  ... and ${solution.buses.length - 10} more buses.`);
           }
+          const pfFmt = (argv["format"] as string | undefined) ?? "text";
+          if (pfFmt !== "text" || out) {
+            const fmt: StudyReportFormat =
+              pfFmt === "json" || pfFmt === "csv" || pfFmt === "html"
+                ? pfFmt
+                : out?.endsWith(".csv")
+                  ? "csv"
+                  : out?.endsWith(".html")
+                    ? "html"
+                    : "json";
+            const formatted = formatPowerFlowStudyReport(solution, fmt, path.basename(file));
+            if (out) fs.writeFileSync(path.resolve(process.cwd(), out), formatted);
+            else if (pfFmt !== "text") console.log(formatted);
+          }
           break;
         }
 
@@ -806,9 +842,14 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
         case "fault": {
           console.log(`[psse] Running IEC 60909 / ANSI C37 short-circuit analysis on ${path.basename(file)}...`);
           const sc = calculateShortCircuit(parsed);
-          console.log(sc.reportText);
+          const fmt = argv["format"] as string | undefined;
+          const output =
+            fmt === "json" || fmt === "csv" || fmt === "html"
+              ? formatShortCircuitStudyReport(sc, fmt, path.basename(file))
+              : sc.reportText;
+          console.log(output);
           if (out) {
-            fs.writeFileSync(path.resolve(process.cwd(), out), sc.reportText);
+            fs.writeFileSync(path.resolve(process.cwd(), out), output);
           }
           break;
         }
@@ -816,9 +857,14 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
         case "modes": {
           console.log(`[psse] Running small-signal stability modal analysis on ${path.basename(file)}...`);
           const modal = analyzeSmallSignalStability(parsed);
-          console.log(modal.reportText);
+          const fmt = argv["format"] as string | undefined;
+          const output =
+            fmt === "json" || fmt === "csv" || fmt === "html"
+              ? formatModalStudyReport(modal, fmt, path.basename(file))
+              : modal.reportText;
+          console.log(output);
           if (out) {
-            fs.writeFileSync(path.resolve(process.cwd(), out), modal.reportText);
+            fs.writeFileSync(path.resolve(process.cwd(), out), output);
           }
           break;
         }
@@ -826,9 +872,63 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
         case "n1": {
           console.log(`[psse] Running N-1 contingency security screening on ${path.basename(file)}...`);
           const n1 = analyzeN1Contingencies(parsed);
-          console.log(n1.reportText);
+          const fmt = argv["format"] as string | undefined;
+          const output =
+            fmt === "json" || fmt === "csv" || fmt === "html"
+              ? formatN1StudyReport(n1, fmt, path.basename(file))
+              : n1.reportText;
+          console.log(output);
           if (out) {
-            fs.writeFileSync(path.resolve(process.cwd(), out), n1.reportText);
+            fs.writeFileSync(path.resolve(process.cwd(), out), output);
+          }
+          break;
+        }
+
+        case "n11": {
+          console.log(`[psse] Running Sequential N-1-1 contingency study on ${path.basename(file)}...`);
+          const n11 = analyzeN11Contingencies(parsed);
+          console.log(n11.summary);
+          if (out) {
+            fs.writeFileSync(path.resolve(process.cwd(), out), JSON.stringify(n11, null, 2));
+          }
+          break;
+        }
+
+        case "fcitc": {
+          console.log(`[psse] Computing FCITC transfer capability on ${path.basename(file)}...`);
+          const subPath = argv["sub"] as string | undefined;
+          const subFile = subPath
+            ? parseSubFile(fs.readFileSync(path.resolve(process.cwd(), subPath), "utf-8"))
+            : parseSubFile(`SUBSYSTEM 'SOURCE'\nAREA 1\nEND\nSUBSYSTEM 'SINK'\nAREA 2\nEND\n`);
+          const sourceSub = (argv["source"] as string | undefined) ?? "SOURCE";
+          const sinkSub = (argv["sink"] as string | undefined) ?? "SINK";
+          const fcitc = calculateFcitc(parsed, { sourceSubsystem: sourceSub, sinkSubsystem: sinkSub, subFile });
+          console.log(fcitc.summary);
+          if (out) {
+            fs.writeFileSync(path.resolve(process.cwd(), out), JSON.stringify(fcitc, null, 2));
+          }
+          break;
+        }
+
+        case "breaker-duty": {
+          console.log(`[psse] Evaluating ANSI C37 / IEC 60909 circuit breaker duty on ${path.basename(file)}...`);
+          const std = (argv["standard"] as "ansi-c37" | "iec-60909" | undefined) ?? "ansi-c37";
+          const bd = evaluateBreakerDuty(parsed, { standard: std });
+          console.log(bd.summary);
+          if (out) {
+            fs.writeFileSync(path.resolve(process.cwd(), out), JSON.stringify(bd, null, 2));
+          }
+          break;
+        }
+
+        case "cct": {
+          const defaultBus = parsed.buses.keys().next().value ?? 1;
+          const faultBus = Number(argv["fault-bus"] ?? defaultBus);
+          console.log(`[psse] Running CCT binary search + SOS Lyapunov certificate at Bus ${faultBus}...`);
+          const cct = searchCriticalClearingTime(parsed, { faultBus });
+          console.log(cct.summary);
+          if (out) {
+            fs.writeFileSync(path.resolve(process.cwd(), out), JSON.stringify(cct, null, 2));
           }
           break;
         }
@@ -836,9 +936,14 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
         case "cpf": {
           console.log(`[psse] Running Continuation Power Flow (CPF) P-V curve tracing on ${path.basename(file)}...`);
           const cpf = solveContinuationPowerFlow(parsed);
-          console.log(cpf.reportText);
+          const fmt = argv["format"] as string | undefined;
+          const output =
+            fmt === "json" || fmt === "csv" || fmt === "html"
+              ? formatCpfStudyReport(cpf, fmt, path.basename(file))
+              : cpf.reportText;
+          console.log(output);
           if (out) {
-            fs.writeFileSync(path.resolve(process.cwd(), out), cpf.reportText);
+            fs.writeFileSync(path.resolve(process.cwd(), out), output);
           }
           break;
         }

@@ -296,7 +296,7 @@ export function materializeDyrCaseFromSoa(soa: PsseDyrSoaTables): PsseDyrCase {
       }
       if (hasStringIcon || rawCount >= mIcons + nParams) {
         iconSplitCount = Math.min(mIcons, rawCount);
-      } else if (rawCount > nParams) {
+      } else if (rawCount > nParams || (rawCount > checkLen && soa.paramIsInt[pStart + checkLen] === 0)) {
         let firstMInt = true;
         for (let k = 0; k < checkLen; k++) {
           if (soa.paramIsInt[pStart + k] === 0) {

@@ -2,9 +2,11 @@
 
 import {
   collectWorkspaceDocuments,
+  type PolyglotModelSource,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { verifyPssePolyglotDrift } from "../analysis/advanced-formal-checks.js";
 import { PsseErrorCode } from "../errors.js";
 import { isLikelyConContent, parseCon, parseMon, parseSub } from "../parser/con-parser.js";
 import { isLikelyDyrContent, parseDyr } from "../parser/dyr-parser.js";
@@ -548,6 +550,33 @@ export function lintPsseWorkspace(
         ),
         line: activeFaultLine.lineNo,
       });
+    }
+  }
+
+  // Formal tier: Cross-file parameter drift check (P8010) when multiple .raw cases exist in the workspace
+  if (options?.tier === "formal" && rawCase && rawUri) {
+    const extraRawSources: PolyglotModelSource[] = [];
+    for (const [uri, text] of entries) {
+      if (uri === rawUri || !uri.toLowerCase().endsWith(".raw")) continue;
+      const otherCase = parseRaw(text);
+      for (const br of otherCase.branches) {
+        const comp = `branch_${br.i}_${br.j}_${br.ckt.trim() || "1"}`;
+        extraRawSources.push(
+          { lang: "psse_alt", uri, component: comp, param: "r", value: br.r },
+          { lang: "psse_alt", uri, component: comp, param: "x", value: br.x },
+        );
+      }
+    }
+    if (extraRawSources.length > 0) {
+      for (const d of verifyPssePolyglotDrift(rawCase, extraRawSources)) {
+        diagnostics.push({
+          uri: rawUri,
+          code: d.code,
+          rule: PsseErrorCode.POLYGLOT_PARAMETER_DRIFT.rule,
+          severity: d.severity,
+          message: d.message,
+        });
+      }
     }
   }
 

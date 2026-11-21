@@ -1454,6 +1454,13 @@ export class ArenaDAEPrinter {
         const meta = a.getIfEquationMeta(idx);
         if (meta) {
           if ((meta as any).hasResolvedConnectionQuery) {
+            const evalConstNum = (id: number): number | null => {
+              if (id < 0) return null;
+              const k = a.getExprKind(id);
+              if (k === ExprKind.IntLiteral) return a.getExprData1(id);
+              if (k === ExprKind.RealLiteral) return a.getExprRealValue(id);
+              return null;
+            };
             const evalConstBool = (id: number): boolean | null => {
               if (id < 0) return null;
               const k = a.getExprKind(id);
@@ -1477,6 +1484,16 @@ export class ArenaDAEPrinter {
                   const r = evalConstBool(a.getExprRight(id));
                   if (r === true) return true;
                   return l === false && r === false ? false : null;
+                }
+                const ln = evalConstNum(a.getExprLeft(id));
+                const rn = evalConstNum(a.getExprRight(id));
+                if (ln !== null && rn !== null) {
+                  if (op === BinOp.Eq) return ln === rn;
+                  if (op === BinOp.Neq) return ln !== rn;
+                  if (op === BinOp.Lt) return ln < rn;
+                  if (op === BinOp.Lte) return ln <= rn;
+                  if (op === BinOp.Gt) return ln > rn;
+                  if (op === BinOp.Gte) return ln >= rn;
                 }
               }
               return null;

@@ -508,6 +508,41 @@ export const PsseErrorCode = {
     message: (entityDesc: string, axiomDetail: string) =>
       `Formal ontology compliance gap for ${entityDesc}: ${axiomDetail}.`,
   },
+  DISCRETE_CONTROL_CHATTERING: {
+    code: "P8006",
+    rule: "discrete-control-zeno-chattering",
+    severity: "error" as const,
+    message: (elementDesc: string, detail: string) =>
+      `Hybrid mode verifier detected discrete control chattering/overlap on ${elementDesc}: ${detail}.`,
+  },
+  RAS_UNBOUNDED_SAFETY_VIOLATION: {
+    code: "P8007",
+    rule: "ras-unbounded-ic3-violation",
+    severity: "error" as const,
+    message: (schemeDesc: string, depth: number) =>
+      `IC3/PDR unbounded safety proof failed for RAS/SPS transition system '${schemeDesc}' at depth ${depth}; conflicting trip/close state is reachable.`,
+  },
+  POWERFLOW_NLSAT_INSOLVABLE: {
+    code: "P8008",
+    rule: "powerflow-nlsat-insolvable",
+    severity: "error" as const,
+    message: (busId: number, detail: string) =>
+      `NLSAT exact algebraic proof certified power-flow insolvability at bus ${busId}: ${detail}.`,
+  },
+  STOCHASTIC_RENEWABLE_RISK: {
+    code: "P8009",
+    rule: "stochastic-renewable-barrier-risk",
+    severity: "warning" as const,
+    message: (probPct: number, tolPct: number) =>
+      `Stochastic martingale barrier estimates ${probPct.toFixed(2)}% probability of frequency/voltage limit breach under renewable uncertainty (tolerance ${tolPct.toFixed(2)}%).`,
+  },
+  POLYGLOT_PARAMETER_DRIFT: {
+    code: "P8010",
+    rule: "polyglot-parameter-drift",
+    severity: "warning" as const,
+    message: (component: string, param: string, diffPct: number) =>
+      `Cross-language parameter drift detected for '${component}.${param}' (${diffPct.toFixed(2)}% relative discrepancy across models).`,
+  },
 } as const;
 
 export type PsseErrorCodeKey = keyof typeof PsseErrorCode;

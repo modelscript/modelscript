@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import {
   buildParser,
   codec,
+  compileRegexToDFA,
   createRuntimeBinaryCodec,
   defineBinaryCodec,
   emitAssemblyScriptCodec,
@@ -568,7 +569,7 @@ describe("Binary Codec DSL & Emitters (@modelscript/dsl)", () => {
     assert.ok(tsSrc.includes("variant: number | string | undefined;"));
     assert.ok(tsSrc.includes("tag: string; value: number | string | Uint8Array"));
 
-    // AssemblyScript codegen supports BinaryExpr in when() and sized()
+    // AssemblyScript codegen supports BinaryExpr in when() and sized(), and auto-syncs countField
     const asExprDef = defineBinaryCodec({
       name: "as_expr_sized",
       endian: "le",
@@ -577,10 +578,51 @@ describe("Binary Codec DSL & Emitters (@modelscript/dsl)", () => {
         boxLen: codec.u32(),
         optVal: codec.when(codec.expr.bitAnd("flags", 2), "!=", 0, codec.u32()),
         boxed: codec.sized("boxLen", codec.u32()),
+        rowCount: codec.u32(),
+        rows: codec.soaTable("rows", { x: codec.f64() }, { countField: "rowCount" }),
       }),
     });
     const asSrc = emitAssemblyScriptCodec(asExprDef);
     assert.ok(asSrc.includes("if ((hdr_flags & 2) != 0)"));
     assert.ok(asSrc.includes("const sLen: i32 = i32(hdr_boxLen);"));
+    assert.ok(asSrc.includes("hdr_rowCount = u32(tbl_rows_count);"));
+  });
+
+  it("handles regex /i and /s flags, empty groups/alternations, and rejects malformed regexes cleanly", () => {
+    const runDfa = (dfa: ReturnType<typeof compileRegexToDFA>, input: string): string[] | null => {
+      const getClass = (cp: number) => {
+        for (const r of dfa.classRanges) {
+          if (cp >= r.s && cp <= r.e) return r.c;
+        }
+        return -1;
+      };
+      let state = 0;
+      for (let i = 0; i < input.length; i++) {
+        const cls = getClass(input.charCodeAt(i));
+        if (cls < 0) return null;
+        const next = dfa.table[state * dfa.numClasses + cls];
+        if (next === undefined || next < 0) return null;
+        state = next;
+      }
+      return dfa.accepts[state] ?? null;
+    };
+
+    const ciDfa = compileRegexToDFA([{ pattern: "model", tokenName: "KW_MODEL", flags: "i" }]);
+    assert.deepEqual(runDfa(ciDfa, "MODEL"), ["KW_MODEL"]);
+    assert.deepEqual(runDfa(ciDfa, "MoDeL"), ["KW_MODEL"]);
+    assert.equal(runDfa(ciDfa, "other"), null);
+
+    const dotAllDfa = compileRegexToDFA([{ pattern: "a.b", tokenName: "DOTALL", flags: "s" }]);
+    assert.deepEqual(runDfa(dotAllDfa, "a\nb"), ["DOTALL"]);
+
+    // Empty group & empty alternation must not throw
+    const emptyAltDfa = compileRegexToDFA([{ pattern: "a(|b)", tokenName: "OPT_B" }]);
+    assert.deepEqual(runDfa(emptyAltDfa, "a"), ["OPT_B"]);
+    assert.deepEqual(runDfa(emptyAltDfa, "ab"), ["OPT_B"]);
+
+    // Malformed patterns must throw SyntaxError instead of hanging or truncating
+    assert.throws(() => compileRegexToDFA([{ pattern: "\\u{1234", tokenName: "BAD_U" }]), SyntaxError);
+    assert.throws(() => compileRegexToDFA([{ pattern: "foo)bar", tokenName: "BAD_PAREN" }]), SyntaxError);
+    assert.throws(() => compileRegexToDFA([{ pattern: "foo\\", tokenName: "BAD_BS" }]), SyntaxError);
   });
 });

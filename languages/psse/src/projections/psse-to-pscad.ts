@@ -479,3 +479,436 @@ export function extractEmtBufferZone(
     externalWardEquivalent,
   };
 }
+
+// ============================================================================
+// PSCAD `.pscx` Schematic Auto-Layout & XML Generator (E-TRAN Tier 3)
+// ============================================================================
+
+export interface PscxLayoutPoint {
+  x: number;
+  y: number;
+}
+
+export interface PscxLayoutBus {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  layer: number;
+  phaseCount: number;
+  baseKv: number;
+}
+
+export interface PscxLayoutComponent {
+  id: string;
+  definitionName: string;
+  instanceName: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  parameters: Record<string, string | number>;
+}
+
+export interface PscxLayoutWire {
+  id: string;
+  vertices: PscxLayoutPoint[];
+}
+
+export interface PscxAutoLayoutResult {
+  buses: PscxLayoutBus[];
+  components: PscxLayoutComponent[];
+  wires: PscxLayoutWire[];
+  bounds: { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number };
+  layerCount: number;
+}
+
+export interface PsseToPscxSchematicOptions extends PsseToEmtOptions {
+  /** PSCAD project name (default: `"PSSE_AutoLayout"`). */
+  projectName?: string | undefined;
+  /** PSCAD XML version attribute (default: `"5.0"`). */
+  pscadVersion?: string | undefined;
+  /** Simulation duration in seconds (default: `0.5`). */
+  durationSec?: number | undefined;
+  /** Horizontal spacing between topological bus layers in px (snapped to 18 px grid; default: `360`). */
+  layerSpacingX?: number | undefined;
+  /** Vertical spacing between buses in the same layer in px (snapped to 18 px grid; default: `216`). */
+  busSpacingY?: number | undefined;
+  /** Origin X coordinate in px (default: `180`). */
+  originX?: number | undefined;
+  /** Origin Y coordinate in px (default: `180`). */
+  originY?: number | undefined;
+}
+
+function snap18(v: number): number {
+  return Math.round(v / 18) * 18;
+}
+
+function escapePscxAttr(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function routeOrthogonal(p1: PscxLayoutPoint, p2: PscxLayoutPoint): PscxLayoutPoint[] {
+  const x1 = snap18(p1.x);
+  const y1 = snap18(p1.y);
+  const x2 = snap18(p2.x);
+  const y2 = snap18(p2.y);
+  if (x1 === x2 || y1 === y2) {
+    return [
+      { x: x1, y: y1 },
+      { x: x2, y: y2 },
+    ];
+  }
+  const xMid = snap18(0.5 * (x1 + x2));
+  return [
+    { x: x1, y: y1 },
+    { x: xMid, y: y1 },
+    { x: xMid, y: y2 },
+    { x: x2, y: y2 },
+  ];
+}
+
+/**
+ * Converts a PSS/E `.raw` (+ optional `.dyr`) case into a visually laid-out PSCAD v4/v5
+ * `.pscx` XML schematic with layered BFS bus placement, barycenter crossing reduction,
+ * parallel-circuit offset, 18-pixel grid snapping, and orthogonal Manhattan wire routing.
+ */
+export function psseToPscxSchematic(
+  psseCase: PsseCase,
+  options: PsseToPscxSchematicOptions = {},
+): { pscxXml: string; layout: PscxAutoLayoutResult; netlist: PsseEmtNetlist } {
+  const netlist = psseToEmtNetlist(psseCase, options);
+  const projectName = options.projectName ?? "PSSE_AutoLayout";
+  const pscadVersion = options.pscadVersion ?? "5.0";
+  const dtUs = Math.round((options.dtEmtSec ?? 50e-6) * 1e6);
+  const durationSec = options.durationSec ?? 0.5;
+  const layerSpacingX = snap18(Math.max(180, options.layerSpacingX ?? 360));
+  const busSpacingY = snap18(Math.max(108, options.busSpacingY ?? 216));
+  const originX = snap18(options.originX ?? 180);
+  const originY = snap18(options.originY ?? 180);
+
+  // 1. Build undirected bus adjacency for layered BFS placement
+  const busIds = Array.from(netlist.buses.keys());
+  const adj = new Map<string, Set<string>>();
+  for (const id of busIds) adj.set(id, new Set());
+  const addEdge = (u: string, v: string) => {
+    if (adj.has(u) && adj.has(v) && u !== v) {
+      adj.get(u)!.add(v);
+      adj.get(v)!.add(u);
+    }
+  };
+  for (const br of netlist.branches) addEdge(br.fromBus, br.toBus);
+  for (const tl of netlist.transmissionLines) addEdge(tl.fromBus, tl.toBus);
+  for (const tf of netlist.transformers) addEdge(tf.fromBus, tf.toBus);
+
+  // Seed BFS with slack/source buses so generation sits cleanly on the left (layer 0)
+  const layerOf = new Map<string, number>();
+  const seeds: string[] = [];
+  for (const src of netlist.sources) {
+    if (netlist.buses.has(src.bus) && !seeds.includes(src.bus)) seeds.push(src.bus);
+  }
+  if (seeds.length === 0 && busIds.length > 0) seeds.push(busIds[0]!);
+
+  const queue: string[] = [];
+  for (const s of seeds) {
+    layerOf.set(s, 0);
+    queue.push(s);
+  }
+  let qHead = 0;
+  while (qHead < queue.length) {
+    const u = queue[qHead++]!;
+    const lu = layerOf.get(u)!;
+    for (const v of adj.get(u) ?? []) {
+      if (!layerOf.has(v)) {
+        layerOf.set(v, lu + 1);
+        queue.push(v);
+      }
+    }
+  }
+  // Place any disconnected islands in a trailing layer
+  let maxLayer = 0;
+  for (const l of layerOf.values()) maxLayer = Math.max(maxLayer, l);
+  for (const id of busIds) {
+    if (!layerOf.has(id)) {
+      layerOf.set(id, maxLayer + 1);
+    }
+  }
+  for (const l of layerOf.values()) maxLayer = Math.max(maxLayer, l);
+
+  const layers: string[][] = Array.from({ length: maxLayer + 1 }, () => []);
+  for (const id of busIds) {
+    layers[layerOf.get(id)!]!.push(id);
+  }
+
+  // 2. Barycenter ordering per layer to minimize edge crossings
+  const yOrderOf = new Map<string, number>();
+  for (let l = 0; l < layers.length; l++) {
+    const row = layers[l]!;
+    if (l === 0) {
+      row.sort();
+    } else {
+      row.sort((a, b) => {
+        const bary = (id: string) => {
+          let sum = 0;
+          let cnt = 0;
+          for (const nb of adj.get(id) ?? []) {
+            if ((layerOf.get(nb) ?? 0) < l && yOrderOf.has(nb)) {
+              sum += yOrderOf.get(nb)!;
+              cnt++;
+            }
+          }
+          return cnt > 0 ? sum / cnt : 0;
+        };
+        return bary(a) - bary(b) || a.localeCompare(b);
+      });
+    }
+    for (let idx = 0; idx < row.length; idx++) {
+      yOrderOf.set(row[idx]!, idx);
+    }
+  }
+
+  // 3. Assign snapped 18-px canvas coordinates to each bus
+  const layoutBuses: PscxLayoutBus[] = [];
+  const busPos = new Map<string, PscxLayoutPoint>();
+  for (let l = 0; l < layers.length; l++) {
+    const row = layers[l]!;
+    for (let idx = 0; idx < row.length; idx++) {
+      const id = row[idx]!;
+      const bus = netlist.buses.get(id)!;
+      const x = snap18(originX + l * layerSpacingX);
+      const y = snap18(originY + idx * busSpacingY);
+      busPos.set(id, { x, y });
+      layoutBuses.push({
+        id: bus.id,
+        name: bus.name,
+        x,
+        y,
+        layer: l,
+        phaseCount: bus.phaseCount,
+        baseKv: bus.baseKv,
+      });
+    }
+  }
+
+  const components: PscxLayoutComponent[] = [];
+  const wires: PscxLayoutWire[] = [];
+  let compSeq = 1;
+  let wireSeq = 1;
+  const nextCompId = (prefix: string) => `${prefix}_${compSeq++}`;
+  const nextWireId = () => `W_${wireSeq++}`;
+
+  // Track parallel edge offsets between the same pair of buses
+  const pairCounts = new Map<string, number>();
+  const nextEdgeOffset = (u: string, v: string): number => {
+    const key = u < v ? `${u}|${v}` : `${v}|${u}`;
+    const idx = pairCounts.get(key) ?? 0;
+    pairCounts.set(key, idx + 1);
+    if (idx === 0) return 0;
+    const mag = Math.ceil(idx / 2) * 54;
+    return idx % 2 === 1 ? -mag : mag;
+  };
+
+  // 4. Place series transmission lines
+  for (const tl of netlist.transmissionLines) {
+    const pFrom = busPos.get(tl.fromBus);
+    const pTo = busPos.get(tl.toBus);
+    if (!pFrom || !pTo) continue;
+    const yOff = nextEdgeOffset(tl.fromBus, tl.toBus);
+    const xMid = snap18(0.5 * (pFrom.x + pTo.x));
+    const yMid = snap18(0.5 * (pFrom.y + pTo.y) + yOff);
+    const defn = tl.modelType === "bergeron" ? "master:tline" : "master:pi_section";
+    components.push({
+      id: nextCompId("TL"),
+      definitionName: defn,
+      instanceName: tl.id,
+      x: xMid,
+      y: yMid,
+      width: 72,
+      height: 36,
+      parameters: {
+        Model: tl.modelType,
+        Length: Number(tl.lengthKm.toFixed(4)),
+        R: Number((tl.rPerKm * tl.lengthKm).toFixed(6)),
+        L: Number((tl.lPerKm * tl.lengthKm).toFixed(6)),
+        C: Number((tl.cPerKm * tl.lengthKm).toFixed(9)),
+      },
+    });
+    wires.push({ id: nextWireId(), vertices: routeOrthogonal(pFrom, { x: xMid - 36, y: yMid }) });
+    wires.push({ id: nextWireId(), vertices: routeOrthogonal({ x: xMid + 36, y: yMid }, pTo) });
+  }
+
+  // 5. Place series transformers
+  for (const tf of netlist.transformers) {
+    const pFrom = busPos.get(tf.fromBus);
+    const pTo = busPos.get(tf.toBus);
+    if (!pFrom || !pTo) continue;
+    const yOff = nextEdgeOffset(tf.fromBus, tf.toBus);
+    const xMid = snap18(0.5 * (pFrom.x + pTo.x));
+    const yMid = snap18(0.5 * (pFrom.y + pTo.y) + yOff);
+    components.push({
+      id: nextCompId("XFMR"),
+      definitionName: "master:xfmr-3p2w",
+      instanceName: tf.id,
+      x: xMid,
+      y: yMid,
+      width: 72,
+      height: 54,
+      parameters: {
+        Tmva: Number(tf.mvaRating.toFixed(3)),
+        f: netlist.frequencyHz,
+        V1: Number(tf.primaryKv.toFixed(3)),
+        V2: Number(tf.secondaryKv.toFixed(3)),
+        Xl: Number(tf.leakageReactancePu.toFixed(6)),
+        Winding: tf.windingConnection,
+      },
+    });
+    wires.push({ id: nextWireId(), vertices: routeOrthogonal(pFrom, { x: xMid - 36, y: yMid }) });
+    wires.push({ id: nextWireId(), vertices: routeOrthogonal({ x: xMid + 36, y: yMid }, pTo) });
+  }
+
+  // 6. Place sources / generators to the left of their buses
+  const srcCountPerBus = new Map<string, number>();
+  for (const src of netlist.sources) {
+    const pBus = busPos.get(src.bus);
+    if (!pBus) continue;
+    const idx = srcCountPerBus.get(src.bus) ?? 0;
+    srcCountPerBus.set(src.bus, idx + 1);
+    const xSrc = snap18(pBus.x - 108);
+    const ySrc = snap18(pBus.y - idx * 72);
+    const vRmsLLKv = (src.vPeakKv * Math.sqrt(3.0)) / Math.SQRT2;
+    components.push({
+      id: nextCompId("SRC"),
+      definitionName: "master:source_3",
+      instanceName: src.name,
+      x: xSrc,
+      y: ySrc,
+      width: 54,
+      height: 54,
+      parameters: {
+        Vm: Number(vRmsLLKv.toFixed(4)),
+        F: src.frequencyHz,
+        Ph: Number(((src.phaseRad * 180.0) / Math.PI).toFixed(4)),
+        R1s: Number((src.rSourceOhm ?? 1.0).toFixed(6)),
+        L1s: Number((src.lSourceH ?? 0.05).toFixed(6)),
+      },
+    });
+    wires.push({ id: nextWireId(), vertices: routeOrthogonal({ x: xSrc + 36, y: ySrc }, pBus) });
+  }
+
+  // 7. Place shunt loads + ground below their buses
+  const loadCountPerBus = new Map<string, number>();
+  for (const ld of netlist.loads) {
+    const pBus = busPos.get(ld.fromBus);
+    if (!pBus) continue;
+    const idx = loadCountPerBus.get(ld.fromBus) ?? 0;
+    loadCountPerBus.set(ld.fromBus, idx + 1);
+    const xLd = snap18(pBus.x + idx * 72);
+    const yLd = snap18(pBus.y + 72);
+    components.push({
+      id: nextCompId("LOAD"),
+      definitionName: "master:fixed_load",
+      instanceName: ld.id,
+      x: xLd,
+      y: yLd,
+      width: 54,
+      height: 54,
+      parameters: {
+        R: Number(ld.resistanceOhm.toFixed(4)),
+        L: Number(ld.inductanceH.toFixed(6)),
+        C: Number(ld.capacitanceF.toFixed(9)),
+      },
+    });
+    const yGnd = snap18(yLd + 54);
+    components.push({
+      id: nextCompId("GND"),
+      definitionName: "master:ground",
+      instanceName: `GND_${ld.id}`,
+      x: xLd,
+      y: yGnd,
+      width: 36,
+      height: 36,
+      parameters: {},
+    });
+    wires.push({ id: nextWireId(), vertices: routeOrthogonal(pBus, { x: xLd, y: yLd - 18 }) });
+    wires.push({ id: nextWireId(), vertices: routeOrthogonal({ x: xLd, y: yLd + 18 }, { x: xLd, y: yGnd }) });
+  }
+
+  // 8. Compute schematic bounding box
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const expand = (x: number, y: number) => {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  };
+  for (const b of layoutBuses) expand(b.x, b.y);
+  for (const c of components) expand(c.x, c.y);
+  for (const w of wires) for (const pt of w.vertices) expand(pt.x, pt.y);
+  if (!Number.isFinite(minX)) {
+    minX = 0;
+    minY = 0;
+    maxX = 0;
+    maxY = 0;
+  }
+
+  // 9. Serialize to PSCAD v4/v5-compatible `.pscx` XML
+  const xmlLines: string[] = [
+    `<?xml version="1.0" encoding="utf-8"?>`,
+    `<project name="${escapePscxAttr(projectName)}" version="${escapePscxAttr(pscadVersion)}" type="case">`,
+    `  <paramlist name="Settings">`,
+    `    <param name="time_step" value="${dtUs}" />`,
+    `    <param name="time_duration" value="${durationSec}" />`,
+    `    <param name="StartType" value="0" />`,
+    `    <param name="Frequency" value="${netlist.frequencyHz}" />`,
+    `  </paramlist>`,
+    `  <definitions>`,
+    `  <Definition classid="Station" name="Main" id="Main">`,
+    `    <schematic classid="UserCanvas">`,
+  ];
+  for (const b of layoutBuses) {
+    xmlLines.push(
+      `      <Bus id="${escapePscxAttr(b.id)}" name="${escapePscxAttr(b.name)}" x="${b.x}" y="${b.y}" phases="${b.phaseCount}" basekv="${b.baseKv}" />`,
+    );
+  }
+  for (const c of components) {
+    const params = Object.entries(c.parameters);
+    if (params.length === 0) {
+      xmlLines.push(
+        `      <User classid="UserCmp" id="${escapePscxAttr(c.id)}" defn="${escapePscxAttr(c.definitionName)}" x="${c.x}" y="${c.y}" name="${escapePscxAttr(c.instanceName)}" w="${c.width}" h="${c.height}" />`,
+      );
+    } else {
+      xmlLines.push(
+        `      <User classid="UserCmp" id="${escapePscxAttr(c.id)}" defn="${escapePscxAttr(c.definitionName)}" x="${c.x}" y="${c.y}" name="${escapePscxAttr(c.instanceName)}" w="${c.width}" h="${c.height}">`,
+      );
+      xmlLines.push(`        <paramlist>`);
+      for (const [k, v] of params) {
+        xmlLines.push(`          <param name="${escapePscxAttr(k)}" value="${escapePscxAttr(String(v))}" />`);
+      }
+      xmlLines.push(`        </paramlist>`);
+      xmlLines.push(`      </User>`);
+    }
+  }
+  for (const w of wires) {
+    const pts = w.vertices.map((pt) => `<vertex x="${pt.x}" y="${pt.y}" />`).join("");
+    xmlLines.push(`      <Wire classid="WireOrthogonal" id="${escapePscxAttr(w.id)}" x="0" y="0">${pts}</Wire>`);
+  }
+  xmlLines.push(`    </schematic>`);
+  xmlLines.push(`  </Definition>`);
+  xmlLines.push(`  </definitions>`);
+  xmlLines.push(`</project>`);
+
+  return {
+    pscxXml: xmlLines.join("\n"),
+    layout: {
+      buses: layoutBuses,
+      components,
+      wires,
+      bounds: { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY },
+      layerCount: layers.length,
+    },
+    netlist,
+  };
+}

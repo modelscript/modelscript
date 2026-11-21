@@ -914,6 +914,7 @@ export class GLRTable {
 }
 
 type AST =
+  | { type: "EMPTY" }
   | { type: "CHAR"; char: number }
   | { type: "CLASS"; ranges: [number, number][]; invert: boolean }
   | { type: "CONCAT"; left: AST; right: AST }
@@ -921,6 +922,20 @@ type AST =
   | { type: "STAR"; child: AST }
   | { type: "PLUS"; child: AST }
   | { type: "OPT"; child: AST };
+
+function expandIgnoreCaseRanges(ranges: [number, number][]): [number, number][] {
+  const out: [number, number][] = [];
+  for (const [s, e] of ranges) {
+    out.push([s, e]);
+    const uLo = Math.max(s, 65);
+    const uHi = Math.min(e, 90);
+    if (uLo <= uHi) out.push([uLo + 32, uHi + 32]);
+    const lLo = Math.max(s, 97);
+    const lHi = Math.min(e, 122);
+    if (lLo <= lHi) out.push([lLo - 32, lHi - 32]);
+  }
+  return out;
+}
 
 function invertRanges(ranges: [number, number][]): [number, number][] {
   const sorted = ranges
@@ -956,7 +971,34 @@ function invertRanges(ranges: [number, number][]): [number, number][] {
   return inverted;
 }
 
-function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
+function parseRegex(pattern: string, tokenName: string = "unknown", flags: string = ""): AST {
+  const ignoreCase = flags.includes("i");
+  const dotAll = flags.includes("s");
+
+  const makeChar = (cp: number): AST => {
+    if (ignoreCase) {
+      if (cp >= 65 && cp <= 90)
+        return {
+          type: "CLASS",
+          ranges: [
+            [cp, cp],
+            [cp + 32, cp + 32],
+          ],
+          invert: false,
+        };
+      if (cp >= 97 && cp <= 122)
+        return {
+          type: "CLASS",
+          ranges: [
+            [cp - 32, cp - 32],
+            [cp, cp],
+          ],
+          invert: false,
+        };
+    }
+    return { type: "CHAR", char: cp };
+  };
+
   // Safely strip standard regex anchors as DFAs inherently match from current pos
   let stripped = false;
   if (pattern.startsWith("^")) {
@@ -992,7 +1034,7 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
       if (left) left = { type: "CONCAT", left, right };
       else left = right;
     }
-    if (!left) throw new Error("Empty concat");
+    if (!left) return { type: "EMPTY" };
     return left;
   }
 
@@ -1041,7 +1083,7 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
                 else result = { type: "CONCAT", left: result, right: { type: "OPT", child } };
               }
             }
-            if (!result) throw new Error("Quantifier {0} not supported in DFA engine");
+            if (!result) return { type: "EMPTY" };
             return result;
           }
         }
@@ -1055,7 +1097,7 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
     if (ch === "(") {
       if (pattern[pos] === "?" && pattern[pos + 1] === ":") pos += 2;
       const inner = parseAlt();
-      if (pattern[pos++] !== ")") throw new Error("Unclosed (");
+      if (pattern[pos++] !== ")") throw new SyntaxError(`Unclosed '(' in regex /${pattern}/ for token '${tokenName}'`);
       return inner;
     } else if (ch === "[") {
       let invert = false;
@@ -1072,11 +1114,17 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
       } {
         if (pattern[pos] === "\\") {
           pos++;
+          if (pos >= pattern.length) {
+            throw new SyntaxError(`Trailing backslash in character class of regex /${pattern}/`);
+          }
           const esc = pattern[pos++]!;
           if (esc === "u") {
             if (pattern[pos] === "{") {
               pos++;
               const endPos = pattern.indexOf("}", pos);
+              if (endPos === -1) {
+                throw new SyntaxError(`Unterminated \\u{...} escape in regex /${pattern}/`);
+              }
               const cp = parseInt(pattern.slice(pos, endPos), 16);
               pos = endPos + 1;
               return { isClass: false, char: cp };
@@ -1169,30 +1217,37 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
           }
         }
       }
-      if (pattern[pos++] !== "]") throw new Error("Unclosed [");
+      if (pattern[pos++] !== "]") throw new SyntaxError(`Unclosed '[' in regex /${pattern}/ for token '${tokenName}'`);
+      const finalRanges = ignoreCase ? expandIgnoreCaseRanges(ranges) : ranges;
       if (invert) {
-        return { type: "CLASS", ranges: invertRanges(ranges), invert: false };
+        return { type: "CLASS", ranges: invertRanges(finalRanges), invert: false };
       }
-      return { type: "CLASS", ranges, invert: false };
+      return { type: "CLASS", ranges: finalRanges, invert: false };
     } else if (ch === "\\") {
+      if (pos >= pattern.length) {
+        throw new SyntaxError(`Trailing backslash in regex /${pattern}/ for token '${tokenName}'`);
+      }
       const esc = pattern[pos++]!;
       if (esc === "u") {
         if (pattern[pos] === "{") {
           pos++;
           const endPos = pattern.indexOf("}", pos);
+          if (endPos === -1) {
+            throw new SyntaxError(`Unterminated \\u{...} escape in regex /${pattern}/`);
+          }
           const cp = parseInt(pattern.slice(pos, endPos), 16);
           pos = endPos + 1;
-          return { type: "CHAR", char: cp };
+          return makeChar(cp);
         } else {
           const cp = parseInt(pattern.slice(pos, pos + 4), 16);
           pos += 4;
-          return { type: "CHAR", char: cp };
+          return makeChar(cp);
         }
       }
       if (esc === "x") {
         const cp = parseInt(pattern.slice(pos, pos + 2), 16);
         pos += 2;
-        return { type: "CHAR", char: cp };
+        return makeChar(cp);
       }
       if (esc === "d") return { type: "CLASS", ranges: [[48, 57]], invert: false };
       if (esc === "D") return { type: "CLASS", ranges: invertRanges([[48, 57]]), invert: false };
@@ -1247,26 +1302,34 @@ function parseRegex(pattern: string, tokenName: string = "unknown"): AST {
       if (esc === "f") return { type: "CHAR", char: 12 };
       if (esc === "v") return { type: "CHAR", char: 11 };
       if (esc === "b") return { type: "CHAR", char: 8 };
-      return { type: "CHAR", char: esc.codePointAt(0)! };
+      return makeChar(esc.codePointAt(0)!);
     } else if (ch === ".") {
       return {
         type: "CLASS",
-        ranges: [
-          [0, 9],
-          [11, 12],
-          [14, 0x10ffff],
-        ],
+        ranges: dotAll
+          ? [[0, 0x10ffff]]
+          : [
+              [0, 9],
+              [11, 12],
+              [14, 0x10ffff],
+            ],
         invert: false,
-      }; // Standard JS: excludes \n and \r
+      };
     } else {
       const prevPos = pos - 1;
       const cp = pattern.codePointAt(prevPos)!;
       if (cp > 0xffff) pos++;
-      return { type: "CHAR", char: cp };
+      return makeChar(cp);
     }
   }
 
-  return parseAlt();
+  const ast = parseAlt();
+  if (pos < pattern.length) {
+    throw new SyntaxError(
+      `Unexpected '${pattern[pos]}' at position ${pos} in regex /${pattern}/ for token '${tokenName}'`,
+    );
+  }
+  return ast;
 }
 
 /** Internal representation of a Non-Deterministic Finite Automaton state. */
@@ -1283,9 +1346,9 @@ interface NFAState {
  * Uses Thompson's construction to build an NFA, performs subset construction
  * to convert to DFA, and finally applies Hopcroft's algorithm for minimization.
  */
-export function compileRegexToDFA(regexes: { pattern: string; tokenName: string }[]) {
+export function compileRegexToDFA(regexes: { pattern: string; tokenName: string; flags?: string }[]) {
   const parsed = regexes.map((r) => ({
-    ast: parseRegex(r.pattern, r.tokenName),
+    ast: parseRegex(r.pattern, r.tokenName, r.flags ?? ""),
     tokenName: r.tokenName,
   }));
 
@@ -1293,6 +1356,7 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
   const cutPoints = new Set<number>([0, 0x10ffff + 1]);
 
   function collectCutPoints(node: AST) {
+    if (node.type === "EMPTY") return;
     if (node.type === "CHAR") {
       cutPoints.add(node.char);
       if (node.char + 1 <= 0x10ffff + 1) cutPoints.add(node.char + 1);
@@ -1342,7 +1406,9 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
   }
 
   function buildNFA(ast: AST, start: NFAState, end: NFAState) {
-    if (ast.type === "CHAR") {
+    if (ast.type === "EMPTY") {
+      addEpsilon(start, end);
+    } else if (ast.type === "CHAR") {
       addTrans(start, end, findInterval(ast.char));
     } else if (ast.type === "CLASS") {
       for (const [s, e] of ast.ranges) {
@@ -1477,22 +1543,36 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
     P.push(pGroup);
   }
 
-  const W = [...P];
-  const allActiveChars = new Set<number>();
+  const W: Set<number>[] = [...P];
+  const inW = new Set<Set<number>>(W);
+  const invTrans = new Map<number, Map<number, number[]>>();
   for (const s of dfaStates) {
-    for (const ch of s.transitions.keys()) {
-      allActiveChars.add(ch);
+    for (const [ch, to] of s.transitions.entries()) {
+      let byTarget = invTrans.get(ch);
+      if (!byTarget) {
+        byTarget = new Map();
+        invTrans.set(ch, byTarget);
+      }
+      let preds = byTarget.get(to);
+      if (!preds) {
+        preds = [];
+        byTarget.set(to, preds);
+      }
+      preds.push(s.id);
     }
   }
 
   while (W.length > 0) {
-    const A = W.shift()!;
-    for (const ch of allActiveChars) {
+    const A = W.pop()!;
+    inW.delete(A);
+    for (const byTarget of invTrans.values()) {
       const X = new Set<number>();
-      for (const s of dfaStates) {
-        const to = s.transitions.get(ch);
-        if (to !== undefined && A.has(to)) {
-          X.add(s.id);
+      for (const target of A) {
+        const preds = byTarget.get(target);
+        if (preds) {
+          for (let i = 0; i < preds.length; i++) {
+            X.add(preds[i]!);
+          }
         }
       }
       if (X.size === 0) continue;
@@ -1508,13 +1588,17 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string 
 
         if (intersection.size > 0 && difference.size > 0) {
           newP.push(intersection, difference);
-          const idx = W.indexOf(Y);
-          if (idx !== -1) {
-            W.splice(idx, 1);
+          if (inW.has(Y)) {
+            inW.delete(Y);
+            const idx = W.indexOf(Y);
+            if (idx !== -1) W.splice(idx, 1);
             W.push(intersection, difference);
+            inW.add(intersection);
+            inW.add(difference);
           } else {
-            if (intersection.size <= difference.size) W.push(intersection);
-            else W.push(difference);
+            const smaller = intersection.size <= difference.size ? intersection : difference;
+            W.push(smaller);
+            inW.add(smaller);
           }
         } else {
           newP.push(Y);

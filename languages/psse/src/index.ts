@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./analysis/advanced-formal-checks.js";
 export * from "./analysis/formal-grid-checks.js";
 export * from "./builtins.js";
 export * from "./dae/index.js";
@@ -40,6 +41,7 @@ export * from "./parser/raw-soa.js";
 export * from "./parser/sav-parser.js";
 export * from "./parser/seq-parser.js";
 export * from "./parser/seq-serializer.js";
+export * from "./parser/sub-mon-parser.js";
 export * from "./parser/wasm-loader.js";
 export * from "./playback/pmu-smib-harness.js";
 export * from "./projections/fmu-to-psse.js";
@@ -47,8 +49,11 @@ export * from "./projections/psse-to-modelica.js";
 export * from "./projections/psse-to-p3743.js";
 export * from "./projections/psse-to-pscad.js";
 export * from "./psspy-shim.js";
+export * from "./reports/study-reporter.js";
 export * from "./schema/index.js";
 export * from "./solver/ac-powerflow.js";
+export * from "./solver/breaker-duty.js";
+export * from "./solver/cct-search.js";
 export * from "./solver/contingency-screener.js";
 export * from "./solver/continuation-powerflow.js";
 export * from "./solver/gic-solver.js";
@@ -56,6 +61,7 @@ export * from "./solver/helm-powerflow.js";
 export * from "./solver/island-solver.js";
 export * from "./solver/psse-phasor-participant.js";
 export * from "./solver/small-signal.js";
+export * from "./solver/transfer-capability.js";
 export * from "./solver/usr-dll-runner.js";
 export * from "./solver/webgpu-contingency-screener.js";
 export * from "./tgg.js";

@@ -10,6 +10,12 @@
 import { lintCSource } from "@modelscript/c";
 import { lintFortranSource, tokenizeFortran } from "@modelscript/fortran";
 import {
+  verifyControlBlocksLockoutIc3,
+  verifyControlLoopRelationalRobustness,
+  verifyPllAdversarialReachabilityHji,
+  verifySwitchingHybridConsistency,
+} from "../analysis/advanced-formal-emt.js";
+import {
   analyzeControlZonotopes,
   isBounded,
   outputLimits,
@@ -2741,6 +2747,20 @@ export function lintPscx(project: PscxProject, options?: PscadLintOptions): Psca
   ) {
     const reach = verifyConverterReachability(netlist);
     diagnostics.push(...reach.diagnostics);
+  }
+
+  // 37b. Formal tier: M6084 hybrid switching Zeno check, M6085 IC3 lockout, M6086 HJI adversarial PLL BRT, M6087 relational 2-safety
+  if (tier === "formal" && !isLibraryProject) {
+    const ctrlBlocks = netlist.controlBlocks ?? [];
+    diagnostics.push(...verifySwitchingHybridConsistency(netlist, ctrlBlocks));
+    if (ctrlBlocks.length > 0) {
+      diagnostics.push(...verifyControlBlocksLockoutIc3(ctrlBlocks));
+      diagnostics.push(...verifyControlLoopRelationalRobustness(ctrlBlocks));
+    }
+    if ((netlist.converterBridges?.length ?? 0) > 0 || netlist.fmuInstances.length > 0) {
+      const hji = verifyPllAdversarialReachabilityHji({ componentId: project.name });
+      diagnostics.push(...hji.diagnostics);
+    }
   }
 
   // 38. Formal tier: Galvanic isolation / missing ground-reference check (detects floating electrical islands)

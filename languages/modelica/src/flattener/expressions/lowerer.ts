@@ -6220,6 +6220,24 @@ function lowerPreBinaryCSTExpression(
                   actualDims = rawDims.map(() => -1);
                 }
               }
+              // Handle array-of-components field projection (e.g. `compositeStep.suspend.reset`
+              // where `suspend[nSuspend]` is an array and `reset` is a scalar field) before
+              // sibling components have been instantiated in `dae`.
+              if (actualDims.length === 0 && vName.includes(".") && dae.getVarIdxByName(vName) < 0) {
+                const segs = vName.split(".");
+                for (let si = segs.length - 2; si >= 0; si--) {
+                  const seg = segs[si]!;
+                  if (!seg || seg.includes("[")) continue;
+                  const segSym = resolver?.(seg) ?? flattener.db.byName(seg)?.find((s: any) => s.kind === "Component");
+                  if (segSym && segSym.kind === "Component") {
+                    const segDims = (flattener.db as any).query("arrayDimensions", segSym.id);
+                    if (Array.isArray(segDims) && segDims.length > 0) {
+                      actualDims = [...actualDims, ...segDims.map(() => -1)];
+                      if (actualDims.length >= expectedShape.length) break;
+                    }
+                  }
+                }
+              }
             }
             const isColonDim = (d: number) => d === -1;
             const shapeMatches =
@@ -9435,6 +9453,16 @@ function finishBinaryCSTExpression(
         const rightKind = dae.getExprKind(rightId);
         const isLeftLit = leftKind === ExprKind.IntLiteral || leftKind === ExprKind.RealLiteral;
         const isRightLit = rightKind === ExprKind.IntLiteral || rightKind === ExprKind.RealLiteral;
+        if (
+          !dae.extensionMetadata?.["isOldFrontend"] &&
+          !flattener.isOldFrontend &&
+          leftKind !== ExprKind.ArrayCtor &&
+          rightKind !== ExprKind.ArrayCtor &&
+          ((leftKind === ExprKind.RealLiteral && dae.getExprRealValue(leftId) === 0) ||
+            (rightKind === ExprKind.RealLiteral && dae.getExprRealValue(rightId) === 0))
+        ) {
+          return dae.addRealLiteral(0.0);
+        }
         if (
           Boolean(dae.extensionMetadata?.["isOldFrontend"]) &&
           isLeftLit &&

@@ -749,6 +749,7 @@ export const Cosim: CommandModule<{}, CosimArgs> = {
       .command(optimizeCosim)
       .command(tsEmt)
       .command(multiTsEmt)
+      .command(sysmlHybridCosim)
       .demandCommand(
         1,
         "Specify a cosim subcommand (status, sessions, participants, fmus, upload, replay, history, optimize, ts-emt, multi-ts-emt)",
@@ -903,6 +904,127 @@ const multiTsEmt: CommandModule<CosimArgs, MultiTsEmtArgs> = {
     if (args.out) {
       fs.writeFileSync(args.out, JSON.stringify(result.macroRecords, null, 2), "utf-8");
       console.log(`  Exported report to: ${args.out}`);
+    }
+  },
+};
+
+interface SysmlHybridCosimArgs extends CosimArgs {
+  model: string;
+  mode?: "direct" | "fmi" | undefined;
+  strict: boolean;
+  out?: string | undefined;
+}
+
+const sysmlHybridCosim: CommandModule<CosimArgs, SysmlHybridCosimArgs> = {
+  command: "sysml <model>",
+  describe: "Run polyglot Phasor <-> EMT hybrid co-simulation & requirement verification from a SysML v2 architecture",
+  builder: (yargs) =>
+    yargs
+      .positional("model", {
+        type: "string",
+        demandOption: true,
+        describe: "Path to SysML v2 (.sysml) architecture & requirements file",
+      })
+      .option("mode", {
+        type: "string",
+        choices: ["direct", "fmi"] as const,
+        describe: "Optional override for execution mode (direct | fmi)",
+      })
+      .option("strict", {
+        type: "boolean",
+        default: false,
+        describe: "Exit with code 1 if any SysML v2 requirement fails verification",
+      })
+      .option("out", {
+        type: "string",
+        describe: "Optional output JSON path for simulation & verification report",
+      }) as Argv<SysmlHybridCosimArgs>,
+  handler: async (args) => {
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const { runSysML2HybridCoSimulation } = await import("@modelscript/sysml2");
+
+    const modelPath = path.resolve(args.model);
+    const baseDir = path.dirname(modelPath);
+    const sysmlSource = fs.readFileSync(modelPath, "utf-8");
+
+    const res = await runSysML2HybridCoSimulation(sysmlSource, {
+      optionOverrides: args.mode ? { mode: args.mode } : undefined,
+      resolveParticipant: async (part) => {
+        const solver = (part.solver ?? "").toLowerCase();
+        const srcPath = part.source ? path.resolve(baseDir, part.source) : undefined;
+        if (solver === "psse") {
+          if (!srcPath) throw new Error(`SysML v2 part '${part.name}' (psse) missing 'source' attribute.`);
+          const { parseRaw, parseDyr, PssePhasorParticipant } = await import("@modelscript/psse");
+          const rawCase = parseRaw(fs.readFileSync(srcPath, "utf-8"));
+          const dyrCase = part.dyrSource
+            ? parseDyr(fs.readFileSync(path.resolve(baseDir, part.dyrSource), "utf-8"))
+            : undefined;
+          return new PssePhasorParticipant(rawCase, { id: part.name, dyrCase });
+        }
+        if (solver === "pscad") {
+          if (!srcPath) throw new Error(`SysML v2 part '${part.name}' (pscad) missing 'source' attribute.`);
+          const { parsePscx, extractEmtNetlist, PscadEmtParticipant } = await import("@modelscript/pscad");
+          const netlist = extractEmtNetlist(parsePscx(fs.readFileSync(srcPath, "utf-8")));
+          return new PscadEmtParticipant(netlist, { id: part.name });
+        }
+        if (solver === "atp") {
+          if (!srcPath) throw new Error(`SysML v2 part '${part.name}' (atp) missing 'source' attribute.`);
+          const { parseAtp, AtpEmtParticipant } = await import("@modelscript/atp");
+          return new AtpEmtParticipant(parseAtp(fs.readFileSync(srcPath, "utf-8")), { id: part.name });
+        }
+        if (solver === "pslf") {
+          if (!srcPath) throw new Error(`SysML v2 part '${part.name}' (pslf) missing 'source' attribute.`);
+          const { parsePslfEpc, PslfPhasorParticipant } = await import("@modelscript/pslf");
+          return new PslfPhasorParticipant(parsePslfEpc(fs.readFileSync(srcPath, "utf-8")), { id: part.name });
+        }
+        if (solver === "opendss") {
+          if (!srcPath) throw new Error(`SysML v2 part '${part.name}' (opendss) missing 'source' attribute.`);
+          const { parseOpenDss, OpenDssPhasorParticipant } = await import("@modelscript/opendss");
+          return new OpenDssPhasorParticipant(parseOpenDss(fs.readFileSync(srcPath, "utf-8")), { id: part.name });
+        }
+        if (solver === "spice") {
+          if (!srcPath) throw new Error(`SysML v2 part '${part.name}' (spice) missing 'source' attribute.`);
+          const { parseSpice, SpiceEmtParticipant } = await import("@modelscript/spice");
+          return new SpiceEmtParticipant(parseSpice(fs.readFileSync(srcPath, "utf-8")), { id: part.name });
+        }
+        throw new Error(`Unsupported solver '${part.solver ?? "unknown"}' for SysML v2 part '${part.name}'.`);
+      },
+    });
+
+    console.log(
+      `\nSysML v2 Polyglot Hybrid Co-Simulation: ${res.spec.systemName ?? res.spec.packageName ?? modelPath}`,
+    );
+    console.log(
+      `  Mode: ${res.simulation.mode} | Macro-Steps: ${res.simulation.totalMacroSteps} | EMT Sub-Steps: ${res.simulation.totalEmtSubSteps} | Wall: ${res.simulation.wallClockTimeMs} ms`,
+    );
+    console.log(
+      `\nRequirement Verification (${res.verification.report.allSatisfied ? "ALL PASS" : "VIOLATIONS DETECTED"}):`,
+    );
+    for (const r of res.verification.report.results) {
+      const badge = r.satisfied ? (r.vacuous ? "VACUOUS" : "PASS") : "FAIL";
+      console.log(`  [${badge}] ${r.name} (margin=${r.margin.toFixed(4)}): ${r.expression}`);
+    }
+
+    if (args.out) {
+      fs.writeFileSync(
+        args.out,
+        JSON.stringify(
+          {
+            spec: res.spec,
+            verification: res.verification,
+            macroRecords: res.simulation.macroRecords,
+          },
+          null,
+          2,
+        ),
+        "utf-8",
+      );
+      console.log(`\n  Exported report to: ${args.out}`);
+    }
+
+    if (args.strict && !res.verification.report.allSatisfied) {
+      process.exitCode = 1;
     }
   },
 };

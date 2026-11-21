@@ -278,6 +278,7 @@ export class PolyglotTransformer {
     parentSlot = 0xffffffff,
   ): number | null {
     if (!this.wasmTggExports?.tgg_forward_dispatch || !this.wasmTggCorrBridge) return null;
+    this.wasmTggExports.__setArgumentsLength?.(6);
     return this.wasmTggExports.tgg_forward_dispatch(
       sourceNodeTypeHash,
       sourceNodeId,
@@ -294,6 +295,7 @@ export class PolyglotTransformer {
    */
   public dispatchWasmRetract(sourceNodeTypeHash: number, sourceNodeId: number): number | null {
     if (!this.wasmTggExports?.tgg_retract_dispatch || !this.wasmTggCorrBridge) return null;
+    this.wasmTggExports.__setArgumentsLength?.(4);
     return this.wasmTggExports.tgg_retract_dispatch(
       sourceNodeTypeHash,
       sourceNodeId,
@@ -309,6 +311,7 @@ export class PolyglotTransformer {
    */
   public propagateWasmStale(direction: 0 | 1 = 0): number | null {
     if (!this.wasmTggExports?.tgg_propagate_all_stale || !this.wasmTggCorrBridge) return null;
+    this.wasmTggExports.__setArgumentsLength?.(3);
     return this.wasmTggExports.tgg_propagate_all_stale(
       this.wasmTggCorrBridge.ptr,
       this.wasmTggStringPoolPtr,

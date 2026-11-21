@@ -534,7 +534,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
               while (sib != 0 && sibCount < 4) {
                 sibCount++;
                 let sibStart = prevEnd + getNodePadding(sib);
-                if (sibStart >= g_editOldEnd && g_editOldEnd > 0) break;
+                if (t_editRangesCount <= 1 && sibStart >= g_editOldEnd && g_editOldEnd > 0) break;
                 if ((getNodeFlags(sib) & FLAG_IS_LIST) != 0) {
                   let sibEnd = sibStart + getNodeByteLength(sib);
                   if (isOldRangeEdited(sibStart, sibEnd)) {
@@ -580,7 +580,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
         }
 
         // 1. Suffix list splicing optimization (past the edited region):
-        if (pos >= g_editNewEnd && oldListRoot != 0 && (getNodeFlags(oldListRoot) & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED | FLAG_FRAGILE)) == 0) {
+        if ((t_editRangesCount > 1 || pos >= g_editNewEnd) && oldListRoot != 0 && (getNodeFlags(oldListRoot) & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED | FLAG_FRAGILE)) == 0) {
           let oldListEnd = oldListStart + getNodeByteLength(oldListRoot);
           if (oldSrcLexPos < oldListEnd && !isOldRangeEdited(oldSrcLexPos, oldListEnd)) {
             let newEndOfList: u32 = 0;
@@ -621,7 +621,7 @@ function parseLR(startPos: u32 = 0, startToken: i32 = -1, startPendingPad: u32 =
         }
 
         // 2. Prefix list splicing optimization (before the edited region):
-        if (oldSrcLexPos < g_editStart && oldListRoot != 0 && g_editStart > 0 && (getNodeFlags(oldListRoot) & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED | FLAG_FRAGILE)) == 0) {
+        if (t_editRangesCount <= 1 && oldSrcLexPos < g_editStart && oldListRoot != 0 && g_editStart > 0 && (getNodeFlags(oldListRoot) & (FLAG_HAS_ERROR | FLAG_IS_TAINED | FLAG_IS_INSERTED | FLAG_FRAGILE)) == 0) {
           let savedLexPos = lexPos;
           let savedSrcLexPos = srcLexPos;
           let savedLexLen = lexLen;
@@ -3638,14 +3638,16 @@ export function mapNewPosToOldPos(pos: u32): u32 {
   for (let i: u32 = 0; i < t_editRangesCount; i++) {
     let edit = TextEditRange.at(t_editRangesPtr, i);
     if (pos < edit.start) {
-      return (pos as i32 - delta) as u32;
+      let mapped: i32 = (pos as i32) - delta;
+      return mapped < 0 ? 0xffffffff : (mapped as u32);
     }
     if (pos >= edit.start && pos < edit.newEnd) {
       return 0xffffffff;
     }
-    delta += (edit.newEnd - edit.oldEnd) as i32;
+    delta += (edit.newEnd as i32) - (edit.oldEnd as i32);
   }
-  return (pos as i32 - delta) as u32;
+  let finalMapped: i32 = (pos as i32) - delta;
+  return finalMapped < 0 ? 0xffffffff : (finalMapped as u32);
 }
 
 /**
@@ -3662,13 +3664,19 @@ export function mapOldPosToNewPos(oldPos: u32): u32 {
   let prevDelta: i32 = 0;
   for (let i: u32 = 0; i < t_editRangesCount; i++) {
     let edit = TextEditRange.at(t_editRangesPtr, i);
-    let oldStart = (edit.start as i32 - prevDelta) as u32;
-    let oldEnd = (edit.oldEnd as i32 - prevDelta) as u32;
-    if (oldPos <= oldStart) return (oldPos as i32 + prevDelta) as u32;
+    let oldStartSigned: i32 = (edit.start as i32) - prevDelta;
+    let oldEndSigned: i32 = (edit.oldEnd as i32) - prevDelta;
+    let oldStart: u32 = oldStartSigned < 0 ? 0 : (oldStartSigned as u32);
+    let oldEnd: u32 = oldEndSigned < 0 ? 0 : (oldEndSigned as u32);
+    if (oldPos <= oldStart) {
+      let mapped: i32 = (oldPos as i32) + prevDelta;
+      return mapped < 0 ? 0xffffffff : (mapped as u32);
+    }
     if (oldPos < oldEnd) return 0xffffffff;
-    prevDelta += (edit.newEnd - edit.oldEnd) as i32;
+    prevDelta += (edit.newEnd as i32) - (edit.oldEnd as i32);
   }
-  return (oldPos as i32 + prevDelta) as u32;
+  let finalMapped: i32 = (oldPos as i32) + prevDelta;
+  return finalMapped < 0 ? 0xffffffff : (finalMapped as u32);
 }
 
 export function isOldRangeEdited(start: u32, end: u32): boolean {

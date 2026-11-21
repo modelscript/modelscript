@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { analyzeStructuralDaeIndex, sparseLuFactor, sparseLuSolve, SparseTripletBuilder } from "@modelscript/runtime";
+import { verifyDiscreteControlChattering } from "../analysis/advanced-formal-checks.js";
 import { verifyDyrProtectionCoordinationSmt } from "../analysis/formal-grid-checks.js";
 import { verifyGridOntologyCompliance } from "../analysis/grid-ontology-check.js";
 import { lowerPsseToDae } from "../dae/psse-to-dae.js";
@@ -1691,10 +1692,14 @@ export function lintPsse(c: PsseCase, options?: PsseLintOptions): PsseDiagnostic
     }
   }
 
-  // 19. Formal tier: automatic DYR protection relay SMT (P8001) & NERC/IEEE 2800 ontology compliance (P8005)
-  if (tier === "formal" && c.dyr && c.dyr.records.length > 0) {
-    diagnostics.push(...verifyDyrProtectionCoordinationSmt(c));
-    diagnostics.push(...verifyGridOntologyCompliance(c));
+  // 19. Formal tier: automatic DYR protection relay SMT (P8001), NERC/IEEE 2800 ontology compliance (P8005),
+  //     and hybrid discrete control Zeno/deadband chattering verification (P8006)
+  if (tier === "formal") {
+    diagnostics.push(...verifyDiscreteControlChattering(c));
+    if (c.dyr && c.dyr.records.length > 0) {
+      diagnostics.push(...verifyDyrProtectionCoordinationSmt(c));
+      diagnostics.push(...verifyGridOntologyCompliance(c));
+    }
   }
 
   return diagnostics;

@@ -37,6 +37,7 @@ import { TaxonomyIndex } from "@modelscript/dsl";
 import {
   type CSTTree,
   type DependencyKey,
+  Durability,
   type ExpressionEvaluator,
   getLanguageDomainId,
   getSymbolDomain,
@@ -55,6 +56,14 @@ import {
   type SymbolId,
   type SymbolIndex,
 } from "../runtime.js";
+import {
+  checkAlgebraicLoopsForSymbol,
+  checkEquationBalanceForSymbol,
+  computeGeometricShapeBinding,
+  computePhysicalQuantityParity,
+  type EquationHelperHost,
+} from "./query_domain_helpers.js";
+import { stableMemoCacheKey } from "./wasm_cache_store.js";
 
 // -- Public Types --
 
@@ -141,6 +150,20 @@ class DependencyTracker {
   public domains?: LanguageDomainId[] | undefined;
   private domainSet?: Set<LanguageDomainId> | undefined;
 
+  public durability: Durability = Durability.High;
+  public readsAllEntries = false;
+
+  /** Narrows this frame's durability to the minimum of its current durability and `d`. */
+  narrowDurability(d: Durability): void {
+    if (d < this.durability) this.durability = d;
+  }
+
+  /** Marks that this query enumerated all entries in the index (depends on global symbol additions/deletions). */
+  recordAllEntries(): void {
+    this.readsAllEntries = true;
+    this.durability = Durability.Low;
+  }
+
   /** Records a direct dependency on a symbol entry's input state without duplicate entries. */
   recordInput(symbolId: SymbolId): void {
     if (this.inputSet) {
@@ -206,6 +229,7 @@ class DependencyTracker {
 
   /** Records a deduplicated dependency on the global `byName` symbol resolution table. */
   recordByName(name: string): void {
+    this.durability = Durability.Low;
     if (!this.byNames) {
       this.byNames = [name];
       return;
@@ -424,37 +448,131 @@ export class WasmQueryEngine {
     return id;
   }
 
-  /** Per-instance intern table mapping `(symbolId, queryId)` to sequential `argsHash` IDs (`1..9999`). */
-  private argsIdsByTarget = new Map<number, Map<string, number>>();
-
-  /** Returns or assigns a compact sequential integer ID for `argsHash` scoped to `(symbolId, queryId)` (`0` if unparameterized). */
-  private getArgsId(argsHash?: string, symbolId: SymbolId = 0, queryId = 0): number {
-    if (!argsHash) return 0;
-    const targetKey = symbolId * 1000 + (queryId % 1000);
-    let map = this.argsIdsByTarget.get(targetKey);
-    if (!map) {
-      map = new Map<string, number>();
-      this.argsIdsByTarget.set(targetKey, map);
-    }
-    let id = map.get(argsHash);
-    if (id === undefined) {
-      id = map.size + 1;
-      map.set(argsHash, id);
-    }
-    return id;
-  }
+  /** Next sequential collision-free numeric memo key ID allocated by this engine instance. */
+  private nextMemoKeyId = 1;
+  /** Two-level collision-free intern table for unparameterized queries: `queryId -> symbolId -> memoKeyId`. */
+  private memoKeyByQuery = new Map<number, Map<SymbolId, number>>();
+  /** Three-level collision-free intern table for parameterized queries: `queryId -> symbolId -> argsHash -> memoKeyId`. */
+  private paramMemoKeyByQuery = new Map<number, Map<SymbolId, Map<string, number>>>();
+  /** O(1) reverse lookup from `memoKeyId` to exact `SymbolId` (Float64Array preserves both negative virtual IDs and unsigned 32-bit polyglot IDs). */
+  private keySymbolIds = new Float64Array(256);
 
   /** Optional persistent external cache store (e.g. IndexedDB / disk cache) for preflight memo hydration. */
   private cacheStore?: QueryCacheStore | undefined;
-  /** Maximum number of memoized query entries retained before FIFO eviction triggers. */
+  /** Maximum number of memoized query entries retained before eviction triggers. */
   private maxMemos: number;
+
+  /**
+   * 3-tier Salsa durability last-changed revision table (`[Low, Medium, High]`).
+   * `lastChangedAt[d]` is the latest global revision at which any input of durability `>= d` changed.
+   * When `lastChangedAt[memo.durability] <= memo.verified_at`, the memo verifies in O(1) without `deepVerify`.
+   */
+  private lastChangedAt: [Revision, Revision, Revision] = [0, 0, 0];
+  /** Per-symbol durability override table (defaults to `Durability.Low`). */
+  private inputDurabilities = new Map<SymbolId, Durability>();
+  /** Per-domain durability override table (defaults to `Durability.Low`). */
+  private domainDurabilities = new Map<LanguageDomainId, Durability>();
+  /** Global structure revision bumped whenever symbols are added or removed (tracks `db.allEntries()`). */
+  private globalStructureRevision: Revision = 0;
+  /** Set of active non-default polyglot domain IDs present in this workspace (avoids hardcoded 1..16 probing). */
+  private activeDomains = new Set<number>();
+
+  /** Optional synchronous cooperative cancellation check polled during `fetch` and `execute`. */
+  private cancelCheck: (() => boolean) | null = null;
+  private cancelPollCounter = 0;
+  private cancelPollInterval = 64;
+
+  /** Configures a synchronous cancellation predicate polled every `pollInterval` query steps (default 64). */
+  public setCancellationChecker(fn: (() => boolean) | null, pollInterval = 64): void {
+    this.cancelCheck = fn;
+    this.cancelPollInterval = Math.max(1, pollInterval);
+    this.cancelPollCounter = 0;
+  }
+
+  /** Polls the cooperative cancellation checker if configured, throwing `QueryCancelledError` when cancelled. */
+  private checkCancelled(): void {
+    if (this.cancelCheck && ++this.cancelPollCounter % this.cancelPollInterval === 0 && this.cancelCheck()) {
+      throw new QueryCancelledError();
+    }
+  }
+
+  /** Assigns a Salsa durability tier (`Low`, `Medium`, `High`) to a specific symbol input. */
+  public setInputDurability(symbolId: SymbolId, durability: Durability): void {
+    this.inputDurabilities.set(symbolId, durability);
+  }
+
+  /** Returns true when `resourceId` belongs to an immutable standard library or registry bundle. */
+  private static isStdlibResourceId(resourceId: string): boolean {
+    return (
+      resourceId.startsWith("modelscript-stdlib://") ||
+      resourceId.startsWith("modelscript-stdpack://") ||
+      resourceId.startsWith("sysml2://stdlib/") ||
+      resourceId.startsWith("dep-bundle:/") ||
+      resourceId.startsWith("library-bundle:") ||
+      resourceId.startsWith("modelica://") ||
+      resourceId.includes("/modelscript_registry/")
+    );
+  }
+
+  /** Returns the Salsa durability tier of a symbol input (auto-classifies stdlib resources as `High`). */
+  public getInputDurability(symbolId: SymbolId): Durability {
+    const explicit = this.inputDurabilities.get(symbolId);
+    if (explicit !== undefined) return explicit;
+    const entry = this.index.symbols.get(symbolId);
+    if (entry?.resourceId && WasmQueryEngine.isStdlibResourceId(entry.resourceId)) {
+      return Durability.High;
+    }
+    const dom = getSymbolDomain(symbolId);
+    if (dom !== LanguageDomainId.Default) {
+      return this.domainDurabilities.get(dom) ?? Durability.Low;
+    }
+    return Durability.Low;
+  }
+
+  /** Assigns a Salsa durability tier to all symbols belonging to `resourceId` (e.g. `Durability.High` for MSL). */
+  public setResourceDurability(resourceId: string, durability: Durability): void {
+    const byRes = this.index.symbolsByResource?.get(resourceId);
+    if (byRes) {
+      for (const id of byRes) {
+        this.inputDurabilities.set(id, durability);
+      }
+      return;
+    }
+    for (const [id, entry] of this.index.symbols) {
+      if (entry.resourceId === resourceId) {
+        this.inputDurabilities.set(id, durability);
+      }
+    }
+  }
+
+  /** Assigns a default Salsa durability tier to all symbols in a polyglot `LanguageDomainId`. */
+  public setDomainDurability(domain: LanguageDomainId, durability: Durability): void {
+    this.domainDurabilities.set(domain, durability);
+  }
+
+  /** Records that an input of durability `d` changed at `this.currentRevision`. */
+  private bumpDurabilityRevision(d: Durability): void {
+    for (let tier = Durability.Low; tier <= d; tier++) {
+      this.lastChangedAt[tier] = this.currentRevision;
+    }
+  }
+
+  /** Registers any non-default polyglot domain bit from `symbolId` in `activeDomains`. */
+  private registerSymbolDomain(symbolId: SymbolId): void {
+    if (symbolId > 0) {
+      const dom = getSymbolDomain(symbolId);
+      if (dom !== LanguageDomainId.Default) {
+        this.activeDomains.add(dom);
+      }
+    }
+  }
 
   /** Ontological taxonomy index for subtype and classification queries across polyglot domains. */
   public taxonomy: TaxonomyIndex = new TaxonomyIndex();
 
-  /** Reverse dependency graph mapping each input `SymbolId` to the set of packed memo keys that read it. */
+  /** Reverse dependency graph mapping each input `SymbolId` to the set of memo keys that read it. */
   private inputReverseDependencies = new Map<SymbolId, Set<number>>();
-  /** Reverse dependency graph mapping symbol names to the set of packed memo keys that queried `byName(name)`. */
+  /** Reverse dependency graph mapping symbol names to the set of memo keys that queried `byName(name)`. */
   private byNameReverseDependencies = new Map<string, Set<number>>();
   /** Revision table tracking when each symbol name's `byName` lookup set was last modified. */
   private byNameRevisions = new Map<string, Revision>();
@@ -476,6 +594,7 @@ export class WasmQueryEngine {
   /** Lightweight telemetry counters for Salsa cache performance and invalidation analysis. */
   private stats = {
     fastHits: 0,
+    durabilityHits: 0,
     deepVerifyHits: 0,
     backdateHits: 0,
     recomputes: 0,
@@ -486,6 +605,7 @@ export class WasmQueryEngine {
   /** Returns a snapshot of Salsa query engine telemetry counters. */
   public getStats(): {
     fastHits: number;
+    durabilityHits: number;
     deepVerifyHits: number;
     backdateHits: number;
     recomputes: number;
@@ -499,6 +619,7 @@ export class WasmQueryEngine {
   /** Resets Salsa telemetry counters to zero. */
   public resetStats(): void {
     this.stats.fastHits = 0;
+    this.stats.durabilityHits = 0;
     this.stats.deepVerifyHits = 0;
     this.stats.backdateHits = 0;
     this.stats.recomputes = 0;
@@ -827,6 +948,8 @@ export class WasmQueryEngine {
   public invalidateDomain(domain: LanguageDomainId): void {
     this.currentRevision++;
     this.incrementDomainRevision(domain);
+    this.bumpDurabilityRevision(this.domainDurabilities.get(domain) ?? Durability.Low);
+    this.globalStructureRevision = this.currentRevision;
     const domainDepKeys = this.domainReverseDependencies.get(domain);
     if (domainDepKeys) {
       this.markLintDirtyTransitive(domainDepKeys);
@@ -855,7 +978,13 @@ export class WasmQueryEngine {
   /** Currently active dependency tracker collecting inputs and sub-queries during `execute()`. */
   private activeTracker: DependencyTracker | null = null;
   /** Call stack of currently executing queries used to detect and recover from dependency cycles. */
-  private executionStack: { key: number; queryName: string; symbolId: SymbolId }[] = [];
+  private executionStack: {
+    key: number;
+    queryName: string;
+    symbolId: SymbolId;
+    inCycle: boolean;
+    isCycleHead: boolean;
+  }[] = [];
   /** Set of packed memo keys currently undergoing `deepVerify` to guard against verification cycles. */
   private activeVerifications = new Set<number>();
   /** Grammar rule name -> `QueryHooks` dispatch table registered for this language engine. */
@@ -908,6 +1037,30 @@ export class WasmQueryEngine {
     for (const [id, entry] of this.index.symbols.entries()) {
       this.inputRevisions.set(id, 0);
       this.symbolNames.set(id, entry.name);
+      this.registerSymbolDomain(id);
+    }
+  }
+
+  /**
+   * Evicts a single memo entry using durability-aware LRU: inspects up to 8 least-recently-used
+   * entries and prefers evicting `Low`/`Medium`-durability memos over `High`-durability stdlib memos.
+   */
+  private evictOneMemo(): void {
+    let victimKey: number | undefined;
+    let lowestDurability = Durability.High + 1;
+    let scanned = 0;
+    for (const [k, m] of this.memos) {
+      const dur = m.durability ?? Durability.Low;
+      if (dur < lowestDurability) {
+        lowestDurability = dur;
+        victimKey = k;
+        if (dur === Durability.Low) break;
+      }
+      if (++scanned >= 8) break;
+    }
+    if (victimKey !== undefined) {
+      this.deleteMemo(victimKey);
+      this.stats.evictions++;
     }
   }
 
@@ -962,11 +1115,7 @@ export class WasmQueryEngine {
       if (prevMemo) {
         this.unlinkMemoReverseDeps(key, prevMemo);
       } else if (this.memos.size >= this.maxMemos) {
-        const firstKey = this.memos.keys().next().value;
-        if (firstKey !== undefined) {
-          this.deleteMemo(firstKey);
-          this.stats.evictions++;
-        }
+        this.evictOneMemo();
       }
       this.memos.set(key, memo);
       this.linkMemoReverseDeps(key, memo);
@@ -979,33 +1128,64 @@ export class WasmQueryEngine {
     return this.memos.get(key);
   }
 
-  /**
-   * Packs a `(queryName, symbolId, argsHash)` tuple into a collision-free 53-bit safe integer key
-   * (conceptually analogous to `(queryIdx + 1) * 0x100000000 + symbolId`, extended with decimal
-   * bit-field slots to accommodate polyglot domain prefixes, parameterized `argsHash` IDs, and
-   * negative virtual symbol IDs within IEEE-754 double precision).
-   *
-   * Layout in decimal digits:
-   * - `[compactSym] * 100_000_000`: 5-bit language domain (`absSymbolId >>> 24`) * 2,000,000 + 24-bit local sequence
-   * - `(qId % 1000) * 100_000`: 3-digit interned query ID
-   * - `(aId % 10_000) * 10`: 4-digit interned `argsHash` ID
-   * - `signBit`: `1` if `symbolId < 0` (virtual specialized symbol), `0` otherwise
-   */
-  public memoKey(queryName: string, symbolId: SymbolId, argsHash?: string): number {
-    // Intern the query name and optional serialized arguments into small integer IDs.
-    const qId = this.getQueryId(queryName);
-    const aId = this.getArgsId(argsHash, symbolId, qId);
-    // Extract sign bit for virtual (negative) SymbolIds and fold 7-bit domain (up to 127 languages) + local seq.
-    // Max value: (127 * 500_000 + 499_999) * 100_000_000 + 99_999_999 = 6.4e15 < Number.MAX_SAFE_INTEGER (9.0e15).
-    const absSymbolId = Math.abs(symbolId);
-    const signBit = symbolId < 0 ? 1 : 0;
-    const compactSym = ((absSymbolId >>> 24) & 0x7f) * 500_000 + ((absSymbolId & 0x00ff_ffff) % 500_000);
-    // Combine all fields into a single 53-bit safe integer key for fast Map lookup without string allocation.
-    return compactSym * 100_000_000 + (qId % 1000) * 100_000 + (aId % 10_000) * 10 + signBit;
+  /** Allocates a fresh collision-free sequential numeric memo key ID and records its `symbolId`. */
+  private allocateMemoKeyId(symbolId: SymbolId): number {
+    const id = this.nextMemoKeyId++;
+    if (id >= this.keySymbolIds.length) {
+      const next = new Float64Array(this.keySymbolIds.length * 2);
+      next.set(this.keySymbolIds);
+      this.keySymbolIds = next;
+    }
+    this.keySymbolIds[id] = symbolId;
+    return id;
   }
 
-  /** Decodes and reconstructs the original `SymbolId` (including polyglot domain bits and sign) from a packed memo key. */
+  /**
+   * Returns a collision-free numeric key for `(queryName, symbolId, argsHash)` backed by
+   * a per-engine hierarchical intern table. Supports all 256 polyglot language domains,
+   * full 32-bit symbol IDs (including negative virtual IDs), unlimited query names, and
+   * unlimited parameterized argument hashes without hash collisions or modulo wraparound.
+   */
+  public memoKey(queryName: string, symbolId: SymbolId, argsHash?: string): number {
+    const qId = this.getQueryId(queryName);
+    if (!argsHash) {
+      let bySym = this.memoKeyByQuery.get(qId);
+      if (!bySym) {
+        bySym = new Map<SymbolId, number>();
+        this.memoKeyByQuery.set(qId, bySym);
+      }
+      let key = bySym.get(symbolId);
+      if (key === undefined) {
+        key = this.allocateMemoKeyId(symbolId);
+        bySym.set(symbolId, key);
+      }
+      return key;
+    }
+
+    let bySym = this.paramMemoKeyByQuery.get(qId);
+    if (!bySym) {
+      bySym = new Map<SymbolId, Map<string, number>>();
+      this.paramMemoKeyByQuery.set(qId, bySym);
+    }
+    let byArgs = bySym.get(symbolId);
+    if (!byArgs) {
+      byArgs = new Map<string, number>();
+      bySym.set(symbolId, byArgs);
+    }
+    let key = byArgs.get(argsHash);
+    if (key === undefined) {
+      key = this.allocateMemoKeyId(symbolId);
+      byArgs.set(argsHash, key);
+    }
+    return key;
+  }
+
+  /** Returns the exact `SymbolId` associated with `key` in O(1). */
   private symbolIdFromKey(key: number): SymbolId {
+    if (key > 0 && key < this.nextMemoKeyId) {
+      return this.keySymbolIds[key]!;
+    }
+    // Legacy fallback for externally hydrated packed numeric keys without queryName/symbolId metadata
     const compactSym = Math.floor(key / 100_000_000);
     const domain = Math.floor(compactSym / 500_000);
     const localSeq = compactSym % 500_000;
@@ -1263,7 +1443,7 @@ export class WasmQueryEngine {
       const keys: number[] = [];
       for (const id of symbolIds) {
         for (const q of queryNames) {
-          keys.push(this.memoKey(q, id));
+          keys.push(stableMemoCacheKey(q, id));
         }
       }
       try {
@@ -1314,25 +1494,10 @@ export class WasmQueryEngine {
 
     // Expand local un-prefixed SymbolIds to matching polyglot domain-prefixed SymbolIds when
     // the engine backs a merged UnifiedWorkspace whose per-language indices were remapped.
-    for (const id of rawIds) {
-      if (id > 0 && getSymbolDomain(id) === 0) {
-        for (let d = 1; d <= 127; d++) {
-          const polyId = makePolyglotSymbolId(d, id);
-          if (
-            this.index.symbols.has(polyId) ||
-            this.symbolNames.has(polyId) ||
-            this.inputRevisions.has(polyId) ||
-            this.inputReverseDependencies.has(polyId)
-          ) {
-            ids.add(polyId);
-          }
-        }
-      }
-    }
-    if (structuralChangedIds && structIds) {
-      for (const id of structuralChangedIds) {
+    if (this.activeDomains.size > 0) {
+      for (const id of rawIds) {
         if (id > 0 && getSymbolDomain(id) === 0) {
-          for (let d = 1; d <= 127; d++) {
+          for (const d of this.activeDomains) {
             const polyId = makePolyglotSymbolId(d, id);
             if (
               this.index.symbols.has(polyId) ||
@@ -1340,7 +1505,24 @@ export class WasmQueryEngine {
               this.inputRevisions.has(polyId) ||
               this.inputReverseDependencies.has(polyId)
             ) {
-              structIds.add(polyId);
+              ids.add(polyId);
+            }
+          }
+        }
+      }
+      if (structuralChangedIds && structIds) {
+        for (const id of structuralChangedIds) {
+          if (id > 0 && getSymbolDomain(id) === 0) {
+            for (const d of this.activeDomains) {
+              const polyId = makePolyglotSymbolId(d, id);
+              if (
+                this.index.symbols.has(polyId) ||
+                this.symbolNames.has(polyId) ||
+                this.inputRevisions.has(polyId) ||
+                this.inputReverseDependencies.has(polyId)
+              ) {
+                structIds.add(polyId);
+              }
             }
           }
         }
@@ -1370,10 +1552,15 @@ export class WasmQueryEngine {
       }
     }
 
-    // Step 1: Bump per-symbol input revisions, domain revisions, and invalidate `byName` reverse dependencies
-    // whenever a symbol is newly added, renamed, or deleted.
+    // Step 1: Bump per-symbol input revisions, durability revisions, domain revisions,
+    // and invalidate `byName` reverse dependencies whenever a symbol is newly added, renamed, or deleted.
+    let maxChangedDurability: Durability = Durability.Low;
+    let structureChanged = false;
     for (const id of ids) {
+      this.registerSymbolDomain(id);
       this.inputRevisions.set(id, this.currentRevision);
+      const idDur = this.getInputDurability(id);
+      if (idDur > maxChangedDurability) maxChangedDurability = idDur;
       const domain = getSymbolDomain(id);
       if (domain !== LanguageDomainId.Default) {
         this.incrementDomainRevision(domain);
@@ -1382,6 +1569,7 @@ export class WasmQueryEngine {
       const prevName = this.symbolNames.get(id);
       if (entry) {
         if (prevName === undefined) {
+          structureChanged = true;
           if (entry.name) this.invalidateByName(entry.name);
         } else if (prevName !== entry.name) {
           if (entry.name) this.invalidateByName(entry.name);
@@ -1389,9 +1577,17 @@ export class WasmQueryEngine {
         }
         this.symbolNames.set(id, entry.name);
       } else if (prevName) {
+        structureChanged = true;
         this.invalidateByName(prevName);
         this.symbolNames.delete(id);
       }
+    }
+
+    if (ids.size > 0 || (changedNames && changedNames.size > 0)) {
+      this.bumpDurabilityRevision(maxChangedDurability);
+    }
+    if (structureChanged) {
+      this.globalStructureRevision = this.currentRevision;
     }
 
     // Step 2: Invalidate any explicit symbol names reported by the caller.
@@ -1819,8 +2015,12 @@ export class WasmQueryEngine {
 
     // Bump revision once for the entire disposed document instead of once per symbol.
     const rev = ++this.currentRevision;
+    this.globalStructureRevision = rev;
+    let maxDur: Durability = Durability.Low;
     for (const [id, entry] of disposedEntries) {
       this.inputRevisions.set(id, rev);
+      const idDur = this.getInputDurability(id);
+      if (idDur > maxDur) maxDur = idDur;
       const dependentKeys = this.inputReverseDependencies.get(id);
       if (dependentKeys) {
         const keysCopy = Array.from(dependentKeys);
@@ -1837,6 +2037,17 @@ export class WasmQueryEngine {
         cacheDirtySet.add(id);
       }
     }
+    this.bumpDurabilityRevision(maxDur);
+  }
+
+  private getEquationHelperHost(): EquationHelperHost {
+    return {
+      index: this.index,
+      resolveEntry: (id) => this.resolveEntry(id),
+      getCstNode: (id) => this.getCstNode(id),
+      hasHook: (ruleName, queryName) => Boolean(this.hooksByRule.get(ruleName)?.[queryName]),
+      query: <T = unknown>(queryName: string, id: SymbolId) => this.fetch(queryName, id) as T,
+    };
   }
 
   /**
@@ -1849,330 +2060,19 @@ export class WasmQueryEngine {
     difference: number;
     status: "balanced" | "under-determined" | "over-determined";
   } {
-    const entry = this.resolveEntry(symbolId);
-    if (!entry) {
-      return { isBalanced: true, varCount: 0, eqCount: 0, difference: 0, status: "balanced" };
-    }
-
-    const { varNames, equations } = this.extractSymbolVarsAndEquations(symbolId);
-    const varCount = varNames.size;
-    const eqCount = equations.length;
-
-    const diff = eqCount - varCount;
-    return {
-      isBalanced: diff === 0,
-      varCount,
-      eqCount,
-      difference: diff,
-      status: diff === 0 ? "balanced" : diff < 0 ? "under-determined" : "over-determined",
-    };
+    return checkEquationBalanceForSymbol(this.getEquationHelperHost(), symbolId);
   }
 
   /**
    * Computes strongly connected components (algebraic loops) for equations in a symbol
-   * using maximum bipartite matching (Hopcroft-Karp / DFS augmenting paths) followed by
-   * Tarjan's strongly connected components algorithm.
+   * using maximum bipartite matching followed by Tarjan's strongly connected components algorithm.
    */
   public checkAlgebraicLoops(symbolId: SymbolId): {
     hasLoops: boolean;
     loopCount: number;
     loops: { size: number; vars: string[] }[];
   } {
-    const entry = this.resolveEntry(symbolId);
-    if (!entry) {
-      return { hasLoops: false, loopCount: 0, loops: [] };
-    }
-
-    const { varNames, equations } = this.extractSymbolVarsAndEquations(symbolId);
-    if (varNames.size === 0 || equations.length === 0) {
-      return { hasLoops: false, loopCount: 0, loops: [] };
-    }
-
-    const vars = Array.from(varNames);
-    const varToIdx = new Map<string, number>();
-    for (let i = 0; i < vars.length; i++) {
-      varToIdx.set(vars[i]!, i);
-    }
-
-    // Build equation-to-variable incidence lists (excluding der(x) state occurrences)
-    const stripDerCalls = (s: string): string => {
-      let result = "";
-      let i = 0;
-      while (i < s.length) {
-        if (s.startsWith("der", i) && (i === 0 || !/[A-Za-z0-9_]/.test(s[i - 1]!))) {
-          let j = i + 3;
-          while (j < s.length && /\s/.test(s[j]!)) j++;
-          if (j < s.length && s[j] === "(") {
-            let depth = 1;
-            j++;
-            while (j < s.length && depth > 0) {
-              if (s[j] === "(") depth++;
-              else if (s[j] === ")") depth--;
-              j++;
-            }
-            result += " ";
-            i = j;
-            continue;
-          }
-        }
-        result += s[i];
-        i++;
-      }
-      return result;
-    };
-
-    const eqVars: number[][] = [];
-    for (const eqText of equations) {
-      const strippedDer = stripDerCalls(eqText);
-      const idents = strippedDer.match(/\b[A-Za-z_][A-Za-z0-9_]*\b/g) ?? [];
-      const inc = new Set<number>();
-      for (const id of idents) {
-        const vIdx = varToIdx.get(id);
-        if (vIdx !== undefined) inc.add(vIdx);
-      }
-      eqVars.push(Array.from(inc));
-    }
-
-    // Maximum bipartite matching: match each equation e to an unknown variable v
-    const numVars = vars.length;
-    const numEqs = eqVars.length;
-    const varMatch = new Int32Array(numVars).fill(-1); // varIdx -> eqIdx
-    const eqMatch = new Int32Array(numEqs).fill(-1); // eqIdx -> varIdx
-
-    const augment = (eqIdx: number, visitedVars: Uint8Array): boolean => {
-      const candidates = eqVars[eqIdx]!;
-      for (let i = 0; i < candidates.length; i++) {
-        const v = candidates[i]!;
-        if (visitedVars[v]) continue;
-        visitedVars[v] = 1;
-        if (varMatch[v] === -1 || augment(varMatch[v]!, visitedVars)) {
-          varMatch[v] = eqIdx;
-          eqMatch[eqIdx] = v;
-          return true;
-        }
-      }
-      return false;
-    };
-
-    for (let e = 0; e < numEqs; e++) {
-      const visited = new Uint8Array(numVars);
-      augment(e, visited);
-    }
-
-    // Build directed dependency graph among matched variables:
-    // If equation e is matched to variable u, and variable v != u appears in e, add edge u -> v.
-    const adj: number[][] = Array.from({ length: numVars }, () => []);
-    for (let u = 0; u < numVars; u++) {
-      const e = varMatch[u]!;
-      if (e < 0) continue;
-      for (const v of eqVars[e]!) {
-        if (v !== u) {
-          adj[u]!.push(v);
-        }
-      }
-    }
-
-    // Tarjan's Strongly Connected Components algorithm
-    let index = 0;
-    const indices = new Int32Array(numVars).fill(-1);
-    const lowlink = new Int32Array(numVars).fill(-1);
-    const onStack = new Uint8Array(numVars);
-    const stack: number[] = [];
-    const loops: { size: number; vars: string[] }[] = [];
-
-    const strongConnect = (v: number): void => {
-      indices[v] = index;
-      lowlink[v] = index;
-      index++;
-      stack.push(v);
-      onStack[v] = 1;
-
-      for (const w of adj[v]!) {
-        if (indices[w] === -1) {
-          strongConnect(w);
-          if (lowlink[w]! < lowlink[v]!) lowlink[v] = lowlink[w]!;
-        } else if (onStack[w]) {
-          if (indices[w]! < lowlink[v]!) lowlink[v] = indices[w]!;
-        }
-      }
-
-      if (lowlink[v] === indices[v]) {
-        const scc: string[] = [];
-        while (stack.length > 0) {
-          const w = stack.pop()!;
-          onStack[w] = 0;
-          scc.push(vars[w]!);
-          if (w === v) break;
-        }
-        if (scc.length > 1) {
-          scc.reverse();
-          loops.push({ size: scc.length, vars: scc });
-        }
-      }
-    };
-
-    for (let v = 0; v < numVars; v++) {
-      if (indices[v] === -1) {
-        strongConnect(v);
-      }
-    }
-
-    return {
-      hasLoops: loops.length > 0,
-      loopCount: loops.length,
-      loops,
-    };
-  }
-
-  /**
-   * Helper that extracts unknown continuous/discrete variables and non-initial equation strings
-   * for a class/model `symbolId` (used by `checkEquationBalance` and `checkAlgebraicLoops`).
-   */
-  private extractSymbolVarsAndEquations(symbolId: SymbolId): {
-    varNames: Set<string>;
-    equations: string[];
-  } {
-    const varNames = new Set<string>();
-    const equations: string[] = [];
-
-    // 1. Collect non-parameter, non-constant child variables from symbol table
-    const children = this.index.childrenOf.get(symbolId) ?? [];
-    for (const cid of children) {
-      const centry = this.resolveEntry(cid);
-      if (!centry) continue;
-      if (
-        centry.kind === "Component" ||
-        centry.kind === "Variable" ||
-        centry.ruleName === "component_declaration" ||
-        centry.ruleName === "component_clause"
-      ) {
-        const queriedVar = this.hooksByRule.get(centry.ruleName)?.["variability"]
-          ? this.fetch("variability", cid)
-          : undefined;
-        const variability = String(queriedVar ?? centry.metadata?.["variability"] ?? "").toLowerCase();
-        const causality = String(centry.metadata?.["causality"] ?? "").toLowerCase();
-        const isParamOrConst =
-          variability === "parameter" ||
-          variability === "constant" ||
-          Boolean(centry.metadata?.["isParameter"]) ||
-          Boolean(centry.metadata?.["isConstant"]);
-        if (!isParamOrConst && causality !== "input" && centry.name) {
-          varNames.add(centry.name);
-        }
-      }
-    }
-
-    // 2. Collect equations from registered query hook if available
-    const queriedEqs = this.fetch("equations", symbolId);
-    if (Array.isArray(queriedEqs) && queriedEqs.length > 0) {
-      for (const eq of queriedEqs) {
-        if (typeof eq === "string") {
-          equations.push(eq);
-        } else if (eq && typeof eq === "object" && typeof (eq as any).text === "string") {
-          equations.push((eq as any).text);
-        } else {
-          equations.push(String(eq));
-        }
-      }
-    }
-
-    // 3. Otherwise inspect CST nodes or structured equation sections
-    const cst = this.getCstNode(symbolId) as any;
-    if (equations.length === 0 && cst) {
-      const eqNodeKinds = new Set([
-        "equation",
-        "simple_equation",
-        "connect_clause",
-        "if_equation",
-        "for_equation",
-        "when_equation",
-        "Equation",
-        "Constraint",
-      ]);
-      const visitNode = (node: any): void => {
-        if (!node || typeof node !== "object") return;
-        const kind = String(node.type ?? node.kind ?? node.ruleName ?? "");
-        if (kind === "initial_equation_section" || kind === "annotation" || kind === "comment") {
-          return;
-        }
-        if (eqNodeKinds.has(kind)) {
-          if (typeof node.text === "string" && node.text.trim().length > 0) {
-            equations.push(node.text.trim());
-          } else {
-            equations.push(kind);
-          }
-          return;
-        }
-        const nodeChildren = node.namedChildren ?? node.children;
-        if (Array.isArray(nodeChildren)) {
-          for (const ch of nodeChildren) visitNode(ch);
-        }
-      };
-      visitNode(cst);
-
-      // Fallback if CST only provides raw source text (e.g. unit-test mock CST)
-      if (equations.length === 0 && typeof cst.text === "string" && cst.text.length > 0) {
-        const cleanText = cst.text
-          .replace(/\/\/[^\n]*/g, "")
-          .replace(/\/\*[\s\S]*?\*\//g, "")
-          .replace(/"(?:\\.|[^"\\])*"/g, '""');
-
-        // Also discover component declarations if children were not indexed
-        if (varNames.size === 0) {
-          const declRegex = /\b(?:(parameter|constant|input)\s+)?(?:Real|Integer|Boolean)\s+([A-Za-z_][A-Za-z0-9_]*)/g;
-          let m: RegExpExecArray | null;
-          while ((m = declRegex.exec(cleanText)) !== null) {
-            const prefix = m[1];
-            const name = m[2];
-            if (!prefix && name) {
-              varNames.add(name);
-            }
-          }
-        }
-
-        // Extract statements inside non-initial `equation` sections, or top-level equations
-        const eqSectionRegex =
-          /\b(initial\s+)?equation\b([\s\S]*?)(?=\b(?:initial\s+equation|algorithm|initial\s+algorithm|end)\b|$)/g;
-        let secMatch: RegExpExecArray | null;
-        let foundSection = false;
-        while ((secMatch = eqSectionRegex.exec(cleanText)) !== null) {
-          if (secMatch[1]) continue;
-          foundSection = true;
-          const body = secMatch[2] ?? "";
-          const stmts = body
-            .split(";")
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0);
-          for (const stmt of stmts) {
-            const withoutRelOps = stmt.replace(/<=|>=|==|<>|:=/g, " ");
-            if (withoutRelOps.includes("=") || /^connect\s*\(/.test(stmt)) {
-              equations.push(stmt);
-            }
-          }
-        }
-
-        if (!foundSection) {
-          const stmts = String(cleanText)
-            .split(";")
-            .map((s: string) => s.trim())
-            .filter((s: string) => s.length > 0);
-          for (const stmt of stmts) {
-            if (/^\b(parameter|constant|model|class|block|connector|record|function|package|end)\b/.test(stmt)) {
-              continue;
-            }
-            const withoutRelOps = stmt.replace(/<=|>=|==|<>|:=/g, " ");
-            if (withoutRelOps.includes("=")) {
-              // Strip leading type specifier if it is a variable declaration with binding
-              if (!/^(?:Real|Integer|Boolean|String)\b/.test(stmt)) {
-                equations.push(stmt);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    return { varNames, equations };
+    return checkAlgebraicLoopsForSymbol(this.getEquationHelperHost(), symbolId);
   }
 
   // -- Salsa 3.0 Query Execution --
@@ -2187,6 +2087,7 @@ export class WasmQueryEngine {
    * 4. Slow path: invokes `execute()` to recompute the query, track dependencies, and potentially backdate `changed_at`.
    */
   private fetch(queryName: string, symbolId: SymbolId, argsHash?: string, args?: Record<string, unknown>): unknown {
+    this.checkCancelled();
     const key = this.memoKey(queryName, symbolId, argsHash);
 
     // Record this query invocation as a dependency of the parent query currently on the execution stack.
@@ -2198,13 +2099,34 @@ export class WasmQueryEngine {
 
     // Fast path: memo was already verified in the current global revision.
     if (memo && memo.verified_at === this.currentRevision) {
+      if (this.memos.size >= this.maxMemos * 0.75) {
+        this.memos.delete(key);
+        this.memos.set(key, memo);
+      }
       this.stats.fastHits++;
+      return memo.value;
+    }
+
+    // O(1) Durability fast path: if no input of durability >= memo.durability changed since
+    // memo.verified_at (e.g. a Low-durability user edit while this memo only depends on High-durability MSL),
+    // skip deepVerify entirely!
+    if (memo && memo.durability !== undefined && this.lastChangedAt[memo.durability] <= memo.verified_at) {
+      memo.verified_at = this.currentRevision;
+      if (this.memos.size >= this.maxMemos * 0.75) {
+        this.memos.delete(key);
+        this.memos.set(key, memo);
+      }
+      this.stats.durabilityHits++;
       return memo.value;
     }
 
     // Deep verification: recursively check if any input, byName, domain, or sub-query dependency changed.
     if (memo && this.deepVerify(memo, key)) {
       memo.verified_at = this.currentRevision;
+      if (this.memos.size >= this.maxMemos * 0.75) {
+        this.memos.delete(key);
+        this.memos.set(key, memo);
+      }
       this.stats.deepVerifyHits++;
       return memo.value;
     }
@@ -2230,6 +2152,11 @@ export class WasmQueryEngine {
     this.activeTracker = null;
     try {
       const verifiedAt = memo.verified_at;
+
+      // 0. Global structure check for queries that called `db.allEntries()`
+      if (memo.readsAllEntries && this.globalStructureRevision > verifiedAt) {
+        return false;
+      }
 
       // 1. Vectorized input check: tight contiguous integer loop over symbol IDs
       if (memo.inputs) {
@@ -2330,6 +2257,7 @@ export class WasmQueryEngine {
    * or returning `undefined` gracefully) and registers reverse dependencies for incremental invalidation.
    */
   private execute(queryName: string, symbolId: SymbolId, argsHash?: string, args?: Record<string, unknown>): unknown {
+    this.checkCancelled();
     const entry = this.resolveEntry(symbolId);
     if (!entry) return undefined;
 
@@ -2355,6 +2283,10 @@ export class WasmQueryEngine {
       const frame = this.executionStack[i]!;
       if (frame.key === key) {
         this.stats.cycles++;
+        frame.isCycleHead = true;
+        for (let j = i; j < this.executionStack.length; j++) {
+          this.executionStack[j]!.inCycle = true;
+        }
         const recoveryFn =
           typeof rawQuery === "object" && rawQuery !== null && typeof (rawQuery as any).recovery === "function"
             ? (rawQuery as any).recovery
@@ -2379,7 +2311,8 @@ export class WasmQueryEngine {
     }
 
     // Push execution frame and install a fresh DependencyTracker to record all inputs and sub-queries read.
-    this.executionStack.push({ key, queryName, symbolId });
+    const execFrame = { key, queryName, symbolId, inCycle: false, isCycleHead: false };
+    this.executionStack.push(execFrame);
     const prevTracker = this.activeTracker;
     const tracker = new DependencyTracker();
     this.activeTracker = tracker;
@@ -2393,14 +2326,21 @@ export class WasmQueryEngine {
       this.executionStack.pop();
     }
 
+    this.stats.recomputes++;
+
+    // Deterministic cycle handling: do not memoize cycle-participating frames, because their
+    // values depend on which participant broke the cycle. Non-cyclic callers outside the cycle
+    // are still memoized normally, and querying any cycle participant in any order is deterministic.
+    if (execFrame.inCycle) {
+      return result;
+    }
+
     // If a leaf query read `entry` (`self`) directly without invoking any tracked `db.*` methods,
     // record `symbolId` as its input dependency so edits to `symbolId` still invalidate it
     // without breaking early cut-off (backdating) for derived queries on the same symbol.
     if (!tracker.hasInputs() && !tracker.queries && !tracker.byNames && !tracker.domains) {
       tracker.recordInput(symbolId);
     }
-
-    this.stats.recomputes++;
 
     // Backdating: if the newly computed result is shallow-equal to the previous memoized value,
     // preserve `oldMemo.changed_at` so downstream dependent queries can short-circuit during `deepVerify`.
@@ -2412,10 +2352,44 @@ export class WasmQueryEngine {
     }
 
     const inputs = tracker.finishInputs();
+
+    // Compute transitive minimum durability across all recorded inputs, domains, and sub-queries.
+    let durability: Durability = tracker.durability;
+    if (durability > Durability.Low && inputs) {
+      for (let i = 0; i < inputs.length; i++) {
+        const d = this.getInputDurability(inputs[i]!);
+        if (d < durability) {
+          durability = d;
+          if (durability === Durability.Low) break;
+        }
+      }
+    }
+    if (durability > Durability.Low && tracker.domains) {
+      for (const dom of tracker.domains) {
+        const d = this.domainDurabilities.get(dom) ?? Durability.Low;
+        if (d < durability) {
+          durability = d;
+          if (durability === Durability.Low) break;
+        }
+      }
+    }
+    if (durability > Durability.Low && tracker.queries) {
+      for (const q of tracker.queries) {
+        const depKey = q.key ?? this.memoKey(q.queryName, q.symbolId, q.argsHash);
+        const depDur = this.memos.get(depKey)?.durability ?? Durability.Low;
+        if (depDur < durability) {
+          durability = depDur;
+          if (durability === Durability.Low) break;
+        }
+      }
+    }
+
     const memo: Memo = {
       value: result,
       verified_at: this.currentRevision,
       changed_at: changedAt,
+      durability,
+      readsAllEntries: tracker.readsAllEntries || undefined,
       queryName,
       symbolId,
       argsHash,
@@ -2425,18 +2399,14 @@ export class WasmQueryEngine {
       domains: tracker.domains,
     };
 
-    // Enforce bounded memo table capacity via FIFO eviction before storing the new memo,
+    // Enforce bounded memo table capacity via durability-aware LRU eviction before storing the new memo,
     // cleaning up reverse-dependency maps for replaced or evicted memos so they never leak.
     const prevMemo = this.memos.get(key);
     if (prevMemo) {
       this.unlinkMemoReverseDeps(key, prevMemo);
     }
     if (!prevMemo && this.memos.size >= this.maxMemos) {
-      const firstKey = this.memos.keys().next().value;
-      if (firstKey !== undefined) {
-        this.deleteMemo(firstKey);
-        this.stats.evictions++;
-      }
+      this.evictOneMemo();
     }
     this.memos.set(key, memo);
 
@@ -2644,6 +2614,7 @@ export class WasmQueryEngine {
         const t = engine.activeTracker;
         const entries = Array.from(engine.allEntries());
         if (t) {
+          t.recordAllEntries();
           for (const e of entries) t.recordInput(e.id);
         }
         return entries;
@@ -3067,76 +3038,7 @@ export class WasmQueryEngine {
    * and a SysML v2 attribute symbol, returning a detailed `ParityReport`.
    */
   public physicalQuantityParity(modelicaVarId: SymbolId, sysmlAttrId: SymbolId): ParityReport {
-    const mEntry = this.resolveEntry(modelicaVarId);
-    const sEntry = this.resolveEntry(sysmlAttrId);
-
-    if (!mEntry || !sEntry) {
-      return {
-        compatible: false,
-        reason: `Symbol not found: modelica=${Boolean(mEntry)}, sysml=${Boolean(sEntry)}`,
-      };
-    }
-
-    const mType = (mEntry.metadata?.["type"] || mEntry.ruleName || "").toString();
-    const mUnit = (mEntry.metadata?.["unit"] || "").toString();
-    const sType = (sEntry.metadata?.["type"] || sEntry.ruleName || "").toString();
-    const sUnit = (sEntry.metadata?.["unit"] || "").toString();
-
-    // Normalization helper for physical dimensions
-    const normalizeUnit = (u: string) => u.replace(/\*/g, ".").replace(/\s+/g, "").toLowerCase();
-
-    const normMUnit = normalizeUnit(mUnit);
-    const normSUnit = normalizeUnit(sUnit);
-
-    const isTorque = (t: string, u: string) =>
-      /torque/i.test(t) || u === "n.m" || u === "nm" || u === "n*m" || u === "kg.m2/s2";
-    const isMass = (t: string, u: string) => /mass/i.test(t) || u === "kg" || u === "g";
-    const isVoltage = (t: string, u: string) => /voltage|potential/i.test(t) || u === "v";
-    const isLength = (t: string, u: string) => /length|distance|radius|diameter/i.test(t) || u === "m" || u === "mm";
-
-    let compatible = false;
-    let reason: string | undefined;
-
-    if (normMUnit && normSUnit && normMUnit === normSUnit) {
-      compatible = true;
-    } else if (isTorque(mType, normMUnit) && isTorque(sType, normSUnit)) {
-      compatible = true;
-    } else if (isMass(mType, normMUnit) && isMass(sType, normSUnit)) {
-      compatible = true;
-    } else if (isVoltage(mType, normMUnit) && isVoltage(sType, normSUnit)) {
-      compatible = true;
-    } else if (isLength(mType, normMUnit) && isLength(sType, normSUnit)) {
-      compatible = true;
-    } else if (!mUnit && !sUnit) {
-      const isReal = (t: string) => /real|float|double/i.test(t);
-      const isInt = (t: string) => /int/i.test(t);
-      const isBool = (t: string) => /bool/i.test(t);
-      const isStr = (t: string) => /string/i.test(t);
-
-      if (
-        (isReal(mType) && isReal(sType)) ||
-        (isInt(mType) && isInt(sType)) ||
-        (isBool(mType) && isBool(sType)) ||
-        (isStr(mType) && isStr(sType))
-      ) {
-        compatible = true;
-      } else {
-        compatible = false;
-        reason = `Type mismatch between Modelica '${mType}' and SysML '${sType}'`;
-      }
-    } else {
-      compatible = false;
-      reason = `Unit mismatch: Modelica '${mUnit || mType}' vs SysML '${sUnit || sType}'`;
-    }
-
-    return {
-      compatible,
-      modelicaType: mType,
-      modelicaUnit: mUnit,
-      sysmlType: sType,
-      sysmlUnit: sUnit,
-      reason,
-    };
+    return computePhysicalQuantityParity(this.resolveEntry(modelicaVarId), this.resolveEntry(sysmlAttrId));
   }
 
   /**
@@ -3144,25 +3046,12 @@ export class WasmQueryEngine {
    * and an FEA mesh symbol (`surfaceArea`, `volume`, `meshElementCount`).
    */
   public geometricShapeBinding(cadSymbolId: SymbolId, feaMeshId: SymbolId): ShapeBinding {
-    const cadEntry = this.resolveEntry(cadSymbolId);
-    const feaEntry = this.resolveEntry(feaMeshId);
-
-    const bound = Boolean(cadEntry && feaEntry);
-    const cadMeta = cadEntry?.metadata || {};
-    const feaMeta = feaEntry?.metadata || {};
-
-    const asNum = (v: unknown): number | undefined =>
-      typeof v === "number" ? v : typeof v === "string" && !isNaN(Number(v)) ? Number(v) : undefined;
-
-    return {
-      bound,
+    return computeGeometricShapeBinding(
       cadSymbolId,
       feaMeshId,
-      shapeName: cadEntry?.name ?? undefined,
-      surfaceArea: asNum(cadMeta["surfaceArea"] ?? cadMeta["area"]),
-      volume: asNum(cadMeta["volume"]),
-      meshElementCount: asNum(feaMeta["elementCount"] ?? feaMeta["meshElementCount"] ?? feaMeta["nodeCount"]),
-    };
+      this.resolveEntry(cadSymbolId),
+      this.resolveEntry(feaMeshId),
+    );
   }
 
   // -- Standalone QueryDB Facade --

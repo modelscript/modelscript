@@ -2,10 +2,12 @@
 
 import {
   CdclSatSolver,
+  ConstrainedZonotope,
   Hc4Contractor,
   Interval,
   SosBarrierSynthesizer,
   StlMonitor,
+  TaylorModel,
   TseitinEncoder,
   Zonotope,
   ZonotopeReachabilitySolver,
@@ -265,6 +267,8 @@ export interface FrequencyNadirReachResult {
   safe: boolean;
   isCertifiedSafe: boolean;
   diagnostic?: PsseDiagnostic | undefined;
+  constrainedGovernorRangePu?: [number, number] | undefined;
+  taylorSinSwingRange?: [number, number] | undefined;
 }
 
 /**
@@ -373,11 +377,30 @@ export function analyzeFrequencyNadirReachability(
         column: c.header.span?.column,
       };
 
+  // Non-convex ConstrainedZonotope governor deadband/saturation clipping + TaylorModel sin(delta) swing envelope
+  const czGov = new ConstrainedZonotope(
+    [0.5 * (minPu + maxPu)],
+    [[Math.max(0.01, 0.5 * (maxPu - minPu))]],
+    [],
+    [],
+    [[1], [-1]],
+    [0.2, 0.2],
+  );
+  const czGovBox = czGov.toIntervals();
+  const constrainedGovernorRangePu: [number, number] = [czGovBox[0]?.lo ?? minPu, czGovBox[0]?.hi ?? maxPu];
+
+  const deltaMaxRad = Math.min(Math.PI / 2, Math.abs(minPu) * 2 * Math.PI * 1.5 + 0.15);
+  const tmDelta = TaylorModel.variable(0, [new Interval(-deltaMaxRad, deltaMaxRad)], 3, 0);
+  const sinRange = tmDelta.sin().evaluateRange();
+  const taylorSinSwingRange: [number, number] = [sinRange.lo, sinRange.hi];
+
   return {
     nadirRangeHz: [worstFreqHz, bestFreqHz],
     safe,
     isCertifiedSafe: res.isCertifiedSafe,
     diagnostic,
+    constrainedGovernorRangePu,
+    taylorSinSwingRange,
   };
 }
 

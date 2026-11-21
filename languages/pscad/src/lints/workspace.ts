@@ -4,11 +4,14 @@ import {
   collectWorkspaceDocuments,
   collectXmlElementsFromWasm,
   resolveRelativeUri,
+  type PolyglotModelSource,
   type WorkspaceDocumentInput,
   type WorkspaceLintDiagnostic,
 } from "@modelscript/runtime";
+import { verifyPscadPolyglotDrift } from "../analysis/advanced-formal-emt.js";
 import { getMasterComponentSchema } from "../catalog/master-library-schemas.js";
 import { registeredExternalDefinitions } from "../model/workspace-registry.js";
+import { extractEmtNetlist } from "../netlist/emt-netlist.js";
 import { parsePscx } from "../parser/pscx-parser.js";
 import { lintPscx } from "./index.js";
 
@@ -110,6 +113,42 @@ export function lintPscadWorkspace(
             message: `Component '${cmp.instanceName || cmp.id}' references definition '${defName}', which is not found in the project or loaded .pslx libraries.`,
           });
         }
+      }
+    }
+  }
+
+  // Formal tier: Cross-project parameter drift check (M6088) when multiple .pscx projects exist in the workspace
+  if (options?.tier === "formal" && pscxEntries.length >= 2) {
+    const [primaryUri, primaryXml] = pscxEntries[0]!;
+    const primaryNet = extractEmtNetlist(parsePscx(primaryXml));
+    const otherSources: PolyglotModelSource[] = [];
+    for (let i = 1; i < pscxEntries.length; i++) {
+      const [otherUri, otherXml] = pscxEntries[i]!;
+      const otherNet = extractEmtNetlist(parsePscx(otherXml));
+      for (const br of otherNet.branches ?? []) {
+        if (Number.isFinite(br.resistanceOhm)) {
+          otherSources.push({
+            lang: "pscad_alt",
+            uri: otherUri,
+            component: br.id,
+            param: "r",
+            value: br.resistanceOhm,
+          });
+        }
+        if (Number.isFinite(br.inductanceH)) {
+          otherSources.push({ lang: "pscad_alt", uri: otherUri, component: br.id, param: "l", value: br.inductanceH });
+        }
+      }
+    }
+    if (otherSources.length > 0) {
+      for (const d of verifyPscadPolyglotDrift(primaryNet, otherSources)) {
+        diagnostics.push({
+          uri: primaryUri,
+          code: d.code,
+          rule: d.rule,
+          severity: d.severity,
+          message: d.message,
+        });
       }
     }
   }

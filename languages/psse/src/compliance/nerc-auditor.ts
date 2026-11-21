@@ -10,6 +10,8 @@
  * - NERC TPL-001-4 / TPL-001-5.1: Transmission System Planning Performance (P0 normal & P1 contingency)
  */
 
+import type { DigitalThreadProofManifest } from "@modelscript/runtime";
+import { generatePsseProofManifest } from "../analysis/advanced-formal-checks.js";
 import { analyzeN1Contingencies, solvePowerFlow } from "../solver/ac-powerflow.js";
 import type { PsseCase, PsseDyrRecord } from "../types.js";
 
@@ -105,6 +107,7 @@ export interface NercComplianceAuditReport {
   tpl001: Tpl001PlanningResult;
   findings: NercFinding[];
   markdownReport: string;
+  proofManifest?: DigitalThreadProofManifest | undefined;
 }
 
 export interface NercAuditOptions {
@@ -586,6 +589,7 @@ export function auditNercCompliance(psseCase: PsseCase, options: NercAuditOption
   };
 
   report.markdownReport = formatNercMarkdownReport(report);
+  report.proofManifest = generatePsseProofManifest(caseTitle, baseSol, report);
   return report;
 }
 

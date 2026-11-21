@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { DigitalThreadProofManifest } from "@modelscript/runtime";
+import { generatePscadProofManifest } from "../analysis/advanced-formal-emt.js";
+
 /**
  * IEEE 2800-2022 & NERC PRC-029-1 Automated Grid Code Compliance Verification Engine.
  *
@@ -132,6 +135,8 @@ export interface Ieee2800ComplianceReport {
   sequencePhasors?: SequencePhasorTrajectory | undefined;
   /** Optional STL quantitative robustness margins (M6083) over voltage, active power, and frequency trajectories. */
   stlRobustness?: Ieee2800StlReport | undefined;
+  /** Optional proof-carrying compliance manifest generated via PowerGridTheoryOracle + ProofManifestGenerator. */
+  proofManifest?: DigitalThreadProofManifest | undefined;
   /** Multi-line human-readable summary of all evaluated clauses. */
   summary: string;
 }
@@ -940,7 +945,7 @@ export function verifyIeee2800Compliance(
       ? `\n  STL Formal Robustness (M6083): rho=${stlRobustness.overallRobustness.toFixed(4)} (${stlRobustness.satisfied ? "SATISFIED" : "VIOLATED"})`
       : "");
 
-  return {
+  const report: Ieee2800ComplianceReport = {
     projectName,
     overallStatus,
     evaluatedAt: new Date().toISOString(),
@@ -949,4 +954,6 @@ export function verifyIeee2800Compliance(
     stlRobustness,
     summary,
   };
+  report.proofManifest = generatePscadProofManifest(projectName, report);
+  return report;
 }

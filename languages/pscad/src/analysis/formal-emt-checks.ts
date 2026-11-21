@@ -2,9 +2,11 @@
 
 import {
   CdclSatSolver,
+  ConstrainedZonotope,
   DdeFlowpipeSolver,
   Interval,
   StlMonitor,
+  TaylorModel,
   TseitinEncoder,
   Zonotope,
   ZonotopeReachabilitySolver,
@@ -315,6 +317,8 @@ export interface ConverterReachabilityResult {
   isCertifiedSafe: boolean;
   peakCurrentPu: number;
   peakDcVoltagePu: number;
+  constrainedCurrentRangePu?: [number, number] | undefined;
+  taylorParkEnvelope?: { cosRange: [number, number]; sinRange: [number, number] } | undefined;
   diagnostics: PscadDiagnostic[];
 }
 
@@ -406,11 +410,34 @@ export function verifyConverterReachability(
     });
   }
 
+  // ConstrainedZonotope current-limiter clipping + TaylorModel Park abcdq0 (cos/sin) nonlinear envelope
+  const czI = new ConstrainedZonotope(
+    [1.0],
+    [[Math.max(0.05, maxDi)]],
+    [],
+    [],
+    [[1], [-1]],
+    [Math.max(0.05, iMax - 1.0), iMax + 1.0],
+  );
+  const czIBox = czI.toIntervals();
+  const constrainedCurrentRangePu: [number, number] = [czIBox[0]?.lo ?? 1.0 - maxDi, czIBox[0]?.hi ?? peakI];
+
+  const phaseErrMax = Math.min(Math.PI / 3, vStep * 0.8 + 0.05);
+  const tmTheta = TaylorModel.variable(0, [new Interval(-phaseErrMax, phaseErrMax)], 3, 0);
+  const cosRange = tmTheta.cos().evaluateRange();
+  const sinRange = tmTheta.sin().evaluateRange();
+  const taylorParkEnvelope = {
+    cosRange: [cosRange.lo, cosRange.hi] as [number, number],
+    sinRange: [sinRange.lo, sinRange.hi] as [number, number],
+  };
+
   return {
     safe,
     isCertifiedSafe: reach.isCertifiedSafe,
     peakCurrentPu: peakI,
     peakDcVoltagePu: peakV,
+    constrainedCurrentRangePu,
+    taylorParkEnvelope,
     diagnostics,
   };
 }

@@ -2396,13 +2396,42 @@ export class ModelicaPortBalancer {
                 const callExpr = dae.addCallExpr("assert", [condExpr, msgExpr]);
                 potentialEqs.push({ kind: EqKind.FunctionCall, lhs: callExpr, rhs: 0, str: dae.getVarName(potRoot) });
               } else {
-                const eqExpr = dae.addBinaryExpr(BinOp.Eq, rootExpr, vExpr);
-                const msgExpr = dae.addExpression(
-                  ExprKind.StringLiteral,
-                  dae.interner.intern("automatically generated from connect"),
-                );
-                const callExpr = dae.addCallExpr("assert", [eqExpr, msgExpr]);
-                potentialEqs.push({ kind: EqKind.FunctionCall, lhs: callExpr, rhs: 0, str: dae.getVarName(potRoot) });
+                const resolveIntParamVal = (vi: number): number | null => {
+                  let cur = vi;
+                  for (let hops = 0; hops < 6; hops++) {
+                    const e = dae.getVarExpression(cur);
+                    if (e === undefined || e < 0) return null;
+                    const k = dae.getExprKind(e);
+                    if (k === ExprKind.IntLiteral) return dae.getExprData1(e);
+                    if (k === ExprKind.Name) {
+                      const nm = dae.interner.resolve(dae.getExprData1(e));
+                      const nextVi = nm ? dae.getVarIdxByName(nm) : -1;
+                      if (nextVi < 0 || nextVi === cur) return null;
+                      cur = nextVi;
+                      continue;
+                    }
+                    return null;
+                  }
+                  return null;
+                };
+                const isEqualIntParamInNf =
+                  !options?.isOldFrontend &&
+                  dae.getVarType(potRoot) === VarType.Integer &&
+                  dae.getVarType(vIdx) === VarType.Integer &&
+                  (() => {
+                    const v1 = resolveIntParamVal(potRoot);
+                    const v2 = resolveIntParamVal(vIdx);
+                    return v1 !== null && v2 !== null && v1 === v2;
+                  })();
+                if (!isEqualIntParamInNf) {
+                  const eqExpr = dae.addBinaryExpr(BinOp.Eq, rootExpr, vExpr);
+                  const msgExpr = dae.addExpression(
+                    ExprKind.StringLiteral,
+                    dae.interner.intern("automatically generated from connect"),
+                  );
+                  const callExpr = dae.addCallExpr("assert", [eqExpr, msgExpr]);
+                  potentialEqs.push({ kind: EqKind.FunctionCall, lhs: callExpr, rhs: 0, str: dae.getVarName(potRoot) });
+                }
               }
             } else {
               let finalLhs = rootExpr;
@@ -2473,13 +2502,15 @@ export class ModelicaPortBalancer {
         const isGroupOutside = (vIdx: number) => {
           if (minDots === 1 && maxDots > 1 && countDots(dae.getVarName(vIdx)) === 1) return true;
           if (groupHasOutsideVar) return outsideVarSet.has(vIdx);
-          if (minDots < maxDots) return countDots(dae.getVarName(vIdx)) === minDots;
+          if (minDots < maxDots) return enclosingBoundaryVars.has(vIdx);
           return isOutsideOrOuter(dae.getVarName(vIdx), vIdx);
         };
         const hasOutside =
           groupHasOutsideVar ||
           ((options?.isOldFrontend || options?.omcCompatibility) &&
-            (minDots < maxDots || group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx), vIdx))));
+            ((minDots === 1 && maxDots > 1) ||
+              (minDots < maxDots && group.some((vIdx) => enclosingBoundaryVars.has(vIdx))) ||
+              group.some((vIdx) => isOutsideOrOuter(dae.getVarName(vIdx), vIdx))));
         const isWorldGroup =
           options?.omcCompatibility &&
           ((group.length > 2 && group.some((vIdx) => dae.getVarName(vIdx).startsWith("world."))) ||

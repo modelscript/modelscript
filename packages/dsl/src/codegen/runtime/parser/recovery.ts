@@ -108,7 +108,7 @@ export function wrapPoppedNodesInError(startHead: ParseHead, endHead: ParseHead,
   let count: u32 = 0;
   let curr: ParseHead | null = startHead;
   let totalBytes: u32 = 0;
-  let maxHops: u32 = MAX_SUMMARY_DEPTH * 2;
+  let maxHops: u32 = MAX_CHILD_NODES as u32;
 
   while (curr != null && curr != endHead && maxHops-- > 0) {
     let node = curr.astNode;
@@ -381,29 +381,20 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
     setFirstChild(tNode, childLeaf);
     lastChild = childLeaf;
   } else {
-    // Copy-on-write: `head.errorNode` is also `head.astNode` and is shared by every fork of
-    // this head (and by any GSS successor that shifted past it). Never grow it in place;
-    // allocate a fresh header with the extended length instead.
+    // O(1) Pure Copy-on-Write: wrap a shallow clone of `oldNode` as an invisible spine child
+    // alongside the new `childLeaf`, avoiding O(K^2) cloning across K consecutive skipped tokens
+    // while never mutating `oldNode` or any shared sibling pointers.
     let oldNode = tNode;
     let prevByteLen = getNodeByteLength(oldNode);
     tNode = allocNode(NODE_TYPE_ERROR, getNodePadding(oldNode), prevByteLen + pad + tLen, 0, false);
     setNodeFlags(tNode, getNodeFlags(tNode) | FLAG_HAS_ERROR);
+    let oldSpine = cloneNodeShallow(oldNode);
+    setNodePadding(oldSpine, 0);
+    setNodeFlags(oldSpine, getNodeFlags(oldSpine) | FLAG_INVISIBLE | FLAG_IS_LIST | FLAG_HAS_ERROR);
     let childLeaf = allocNode(childTokType, pad, tLen, 0, false);
     setNodeFlags(childLeaf, getNodeFlags(childLeaf) | FLAG_HAS_ERROR);
-    // Pure copy-on-write: clone the chain up to `lastChild` so each fork gets its own
-    // independent children list and no existing node or sibling pointer is mutated in-place.
-    let src = getNodeFirstChild(oldNode);
-    let tail: u32 = 0;
-    while (src != 0) {
-      let c = cloneNodeShallow(src);
-      if (tail == 0) setFirstChild(tNode, c);
-      else setNextSibling(tail, c);
-      tail = c;
-      if (src == lastChild) break;
-      src = getNodeNextSibling(src);
-    }
-    if (tail == 0) setFirstChild(tNode, childLeaf);
-    else setNextSibling(tail, childLeaf);
+    setFirstChild(tNode, oldSpine);
+    setNextSibling(oldSpine, childLeaf);
     lastChild = childLeaf;
   }
 

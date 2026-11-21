@@ -3186,6 +3186,8 @@ export function instantiateElements(
               !flattener.isOldFrontend
             ) {
               (state.evaluatedParams ??= new Set<string>()).add(name);
+              const extMeta = (dae.extensionMetadata ??= {});
+              ((extMeta["evaluatedParams"] ??= new Set<string>()) as Set<string>).add(name);
             }
 
             if (
@@ -7346,6 +7348,8 @@ export function instantiateElements(
           !flattener.isOldFrontend
         ) {
           (state.evaluatedParams ??= new Set<string>()).add(name);
+          const extMeta = (dae.extensionMetadata ??= {});
+          ((extMeta["evaluatedParams"] ??= new Set<string>()) as Set<string>).add(name);
         }
 
         let causality = Causality.Local;

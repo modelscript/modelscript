@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { tokenizeFortran } from "@modelscript/fortran";
+import { ArraySegmentState, NumericalInterval, ReducedProductState } from "@modelscript/runtime";
 import type { PscadDiagnostic } from "../types.js";
 
 export interface UdmCfgAnalysisResult {
@@ -168,9 +169,154 @@ export function analyzeUdmCfgStorage(raw: string): UdmCfgAnalysisResult {
   return { nstorfAdvance, nstoriAdvance, outOfBoundsAccesses, uninitializedReads };
 }
 
+export interface UdmLoopBoundsViolation {
+  array: "STORF" | "STORI";
+  loopVar: string;
+  loopLo: number;
+  loopHi: number;
+  allocatedLength: number;
+}
+
 /**
- * Emits `M6066` diagnostics (`rigor: "float-sound"`) for CFG-proven UDM storage OOB and
- * branch-uninitialized history reads.
+ * Analyzes Fortran `DO <var> = <lo>, <hi>` loops that index `STORF(NSTORF + <var>)` /
+ * `STORI(NSTORI + <var>)` using `@modelscript/runtime`'s `ArraySegmentState` abstract domain
+ * to prove loop-indexed out-of-bounds storage access.
+ */
+export function analyzeUdmLoopSegments(
+  raw: string,
+  nstorfAdvance: number,
+  nstoriAdvance: number,
+): UdmLoopBoundsViolation[] {
+  const violations: UdmLoopBoundsViolation[] = [];
+  const activeLoops = new Map<string, { lo: number; hi: number }>();
+
+  const storfSeg = new ArraySegmentState(new NumericalInterval(nstorfAdvance, nstorfAdvance));
+  const storiSeg = new ArraySegmentState(new NumericalInterval(nstoriAdvance, nstoriAdvance));
+
+  for (const rawLine of raw.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+    if (!trimmed || /^[cC*!]/.test(trimmed)) continue;
+    const upper = trimmed.toUpperCase();
+
+    const doMatch = /^DO\s+(?:\d+\s+)?([A-Z_][A-Z0-9_]*)\s*=\s*(-?\d+)\s*,\s*(-?\d+)/.exec(upper);
+    if (doMatch) {
+      activeLoops.set(doMatch[1]!, {
+        lo: Number.parseInt(doMatch[2]!, 10),
+        hi: Number.parseInt(doMatch[3]!, 10),
+      });
+      continue;
+    }
+    if (/^END\s*DO\b|^CONTINUE\b/.test(upper)) {
+      activeLoops.clear();
+      continue;
+    }
+
+    if (activeLoops.size === 0) continue;
+
+    const storRe = /\b(STOR[FI])\s*\(\s*(NSTOR[FI])\s*\+\s*([A-Z_][A-Z0-9_]*)\s*\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = storRe.exec(upper)) !== null) {
+      const arr = m[1]! as "STORF" | "STORI";
+      const loopVar = m[3]!;
+      const bounds = activeLoops.get(loopVar);
+      if (!bounds) continue;
+      const seg = arr === "STORF" ? storfSeg : storiSeg;
+      const allocHi = seg.length.high;
+      if (allocHi > 0 && (bounds.lo < 0 || bounds.hi >= allocHi)) {
+        violations.push({
+          array: arr,
+          loopVar,
+          loopLo: bounds.lo,
+          loopHi: bounds.hi,
+          allocatedLength: allocHi,
+        });
+      }
+    }
+  }
+
+  return violations;
+}
+
+export interface UdmNumericalHazard {
+  kind: "division_by_zero" | "negative_sqrt";
+  variable: string;
+  interval: [number, number];
+  lineOffset: number;
+}
+
+/**
+ * Static numerical safety abstract interpreter for Fortran UDM segments powered by
+ * `@modelscript/runtime`'s `ReducedProductState` (Intervals ⊗ Octagon DBM).
+ * Detects provable division-by-zero (`X / Y` where `0 ∈ [Y]`) and negative `SQRT(X)` (`X.low < 0`).
+ */
+export function analyzeUdmNumericalSafety(raw: string): UdmNumericalHazard[] {
+  const hazards: UdmNumericalHazard[] = [];
+  let state = ReducedProductState.topContinuous(32);
+  const lines = raw.split(/\r?\n/);
+
+  for (let idx = 0; idx < lines.length; idx++) {
+    const trimmed = lines[idx]!.trim();
+    if (!trimmed || /^[cC*!]/.test(trimmed)) continue;
+    const upper = trimmed.toUpperCase();
+
+    // Track scalar constant assignments: VAR = <number>
+    const assignMatch = /^([A-Z_][A-Z0-9_]*)\s*=\s*(-?\d+(?:\.\d+)?(?:[ED][+-]?\d+)?)\s*$/.exec(upper);
+    if (assignMatch) {
+      const v = assignMatch[1]!;
+      const num = Number.parseFloat(assignMatch[2]!.replace("D", "E"));
+      if (Number.isFinite(num)) {
+        const nextIntervals = state.intervals.set(v, new NumericalInterval(num, num));
+        state = new ReducedProductState(
+          nextIntervals,
+          state.octagon.clone(),
+          new Map(state.varIndices),
+          state.arraySegments,
+          false,
+          state.tvpi.clone(),
+        ).reduce();
+      }
+      continue;
+    }
+
+    // Check division by tracked zero-containing variable or literal 0.0
+    const divRe = /\/\s*([A-Z_][A-Z0-9_]*|0(?:\.0+)?(?:[ED][+-]?0+)?)\b/g;
+    let dm: RegExpExecArray | null;
+    while ((dm = divRe.exec(upper)) !== null) {
+      const denom = dm[1]!;
+      if (/^0(?:\.0+)?(?:[ED][+-]?0+)?$/.test(denom)) {
+        hazards.push({ kind: "division_by_zero", variable: denom, interval: [0, 0], lineOffset: idx });
+      } else {
+        const iv = state.intervals.get(denom);
+        if (iv && iv.low <= 0 && iv.high >= 0 && Number.isFinite(iv.low) && Number.isFinite(iv.high)) {
+          hazards.push({ kind: "division_by_zero", variable: denom, interval: [iv.low, iv.high], lineOffset: idx });
+        }
+      }
+    }
+
+    // Check SQRT(VAR) or SQRT(-const)
+    const sqrtRe = /\bSQRT\s*\(\s*([A-Z_][A-Z0-9_]*|-\d+(?:\.\d+)?)\s*\)/g;
+    let sm: RegExpExecArray | null;
+    while ((sm = sqrtRe.exec(upper)) !== null) {
+      const arg = sm[1]!;
+      if (arg.startsWith("-")) {
+        const val = Number.parseFloat(arg);
+        hazards.push({ kind: "negative_sqrt", variable: arg, interval: [val, val], lineOffset: idx });
+      } else {
+        const iv = state.intervals.get(arg);
+        if (iv && iv.high < 0) {
+          hazards.push({ kind: "negative_sqrt", variable: arg, interval: [iv.low, iv.high], lineOffset: idx });
+        }
+      }
+    }
+  }
+
+  return hazards;
+}
+
+/**
+ * Emits `M6066` diagnostics (`rigor: "float-sound"`) for CFG-proven UDM storage OOB,
+ * loop-indexed `ArraySegmentState` violations, `ReducedProductState` div-by-zero / NaN hazards,
+ * and branch-uninitialized history reads.
  */
 export function lintUdmCfgStorage(defName: string, segName: string, raw: string, baseLine?: number): PscadDiagnostic[] {
   const res = analyzeUdmCfgStorage(raw);
@@ -182,6 +328,26 @@ export function lintUdmCfgStorage(defName: string, segName: string, raw: string,
       severity: "error",
       message: `Definition '${defName}' ${segName} segment accesses ${oob.array}(N${oob.array}+${oob.offset}) outside allocated advance N${oob.array}+${oob.advance}, corrupting adjacent component storage.`,
       line: baseLine,
+      rigor: "float-sound",
+    });
+  }
+  for (const lv of analyzeUdmLoopSegments(raw, res.nstorfAdvance, res.nstoriAdvance)) {
+    diags.push({
+      code: "M6066",
+      rule: "fortran-udm-uninitialized-history-state",
+      severity: "error",
+      message: `Definition '${defName}' ${segName} loop '${lv.loopVar}=${lv.loopLo}..${lv.loopHi}' accesses ${lv.array}(N${lv.array}+${lv.loopVar}) outside ArraySegmentState budget [0, ${lv.allocatedLength - 1}].`,
+      line: baseLine,
+      rigor: "float-sound",
+    });
+  }
+  for (const hz of analyzeUdmNumericalSafety(raw)) {
+    diags.push({
+      code: "M6066",
+      rule: "fortran-udm-uninitialized-history-state",
+      severity: "error",
+      message: `Definition '${defName}' ${segName} segment has ${hz.kind === "division_by_zero" ? "division by zero" : "negative SQRT (NaN)"} on '${hz.variable}' ∈ [${hz.interval[0]}, ${hz.interval[1]}] (ReducedProductState).`,
+      line: baseLine !== undefined ? baseLine + hz.lineOffset : undefined,
       rigor: "float-sound",
     });
   }

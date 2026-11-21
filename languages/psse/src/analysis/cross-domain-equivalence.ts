@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { RelationalVerifier, type NonlinearConstraint } from "@modelscript/runtime";
 import type { PsseCase, PsseDiagnostic } from "../types.js";
 
 export interface PscadEquivalenceSnapshot {
@@ -13,6 +14,8 @@ export interface PscadEquivalenceSnapshot {
   underVoltageTripPu?: number | undefined;
   /** Optional over-voltage trip threshold in pu configured in PSCAD relay logic. */
   overVoltageTripPu?: number | undefined;
+  /** Optional IBR reactive current droop gain (k1 or Kqv) configured in PSCAD EMT controls. */
+  reactiveDroopGain?: number | undefined;
 }
 
 /**
@@ -97,6 +100,47 @@ export function verifyPssePscadEquivalence(
           severity: "warning",
           code: "X7003",
           message: `Cross-domain over-voltage protection drift at bus ${rec.ibus}: PSS/E '${rec.model}' VU=${vu} pu vs PSCAD=${pscad.overVoltageTripPu} pu.`,
+          startOffset: rec.span?.startOffset ?? 0,
+          endOffset: rec.span?.endOffset ?? 0,
+          line: rec.span?.line,
+          column: rec.span?.column,
+          rigor: "rigorous",
+        });
+      }
+    }
+  }
+
+  // X7004: Relational 2-safety droop gain equivalence (PSS/E REEC* Kqv vs PSCAD EMT reactive droop gain)
+  if (psseCase.dyr && pscad.reactiveDroopGain !== undefined && Number.isFinite(pscad.reactiveDroopGain)) {
+    const verifier = new RelationalVerifier();
+    for (const rec of psseCase.dyr.records) {
+      const m = rec.model.toUpperCase();
+      if (!m.startsWith("REEC")) continue;
+      if (poiBusId !== undefined && rec.ibus !== poiBusId) continue;
+      const kqv = rec.namedParams["KQV"] ?? rec.namedParams["Kqv"] ?? rec.con[16];
+      if (kqv === undefined || !Number.isFinite(kqv)) continue;
+      const gainDiff = Math.abs(kqv - pscad.reactiveDroopGain);
+      const diffConstraint: NonlinearConstraint[] = [
+        {
+          expr: {
+            kind: "sub",
+            left: { kind: "var", name: "dy" },
+            right: {
+              kind: "mul",
+              left: { kind: "const", value: gainDiff },
+              right: { kind: "var", name: "dv" },
+            },
+          },
+          rel: "==",
+          rhs: 0,
+        },
+      ];
+      const relRes = verifier.verifyLipschitz("dv", "dy", diffConstraint, 0.5, { min: -0.5, max: 0.5 });
+      if (relRes.status === "VIOLATED" || gainDiff > 0.5) {
+        diagnostics.push({
+          severity: "warning",
+          code: "X7004",
+          message: `Relational 2-safety droop divergence at bus ${rec.ibus} (${rec.model}): PSS/E Kqv=${kqv} vs PSCAD k1=${pscad.reactiveDroopGain} (|ΔK|=${gainDiff.toFixed(2)} > 0.50).`,
           startOffset: rec.span?.startOffset ?? 0,
           endOffset: rec.span?.endOffset ?? 0,
           line: rec.span?.line,

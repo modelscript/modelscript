@@ -110,6 +110,96 @@ export function emitIntegerRealBindingDiagnostic(
   return true;
 }
 
+/**
+ * Maps semantic `WasmBailReason` codes to their corresponding OpenModelica-compatible
+ * diagnostics when running in strict WASM mode, before falling back to generic `M1099`.
+ */
+export function emitWasmBailDiagnostic(
+  db: QueryDB,
+  dae: DAEBuilder,
+  rootClassId: SymbolId,
+  wasmErrorCode: number,
+  startByte: number,
+  endByte: number,
+): boolean {
+  if (wasmErrorCode === 3629) {
+    return emitIntegerRealBindingDiagnostic(db, dae, rootClassId, startByte, endByte);
+  }
+  const rootCst = cstOf(db, rootClassId);
+  if (!rootCst || startByte < 0 || endByte < startByte) return false;
+
+  if (wasmErrorCode === 3814) {
+    // WasmBailReason.WhenConditionNonDiscrete
+    const condNode =
+      findNodeAtByteRange(rootCst, startByte, endByte, ["expression", "simple_expression", "when_equation"]) ?? rootCst;
+    const condText = condNode.text.trim();
+    pushError(
+      dae,
+      5001,
+      "when-condition-non-discrete",
+      `When-condition '${condText}' is not a discrete-time expression.`,
+      condNode,
+    );
+    return true;
+  }
+
+  if (wasmErrorCode === 3812) {
+    // WasmBailReason.ConnectInDynamicIf
+    const connNode = findNodeAtByteRange(rootCst, startByte, endByte, ["connect_clause", "if_equation"]) ?? rootCst;
+    pushError(
+      dae,
+      5001,
+      "connect-in-dynamic-if",
+      "connect may not be used inside if-equations with non-parametric conditions.",
+      connNode,
+    );
+    return true;
+  }
+
+  if (wasmErrorCode === 3811) {
+    // WasmBailReason.ConnectInWhen
+    const connNode = findNodeAtByteRange(rootCst, startByte, endByte, ["connect_clause", "when_equation"]) ?? rootCst;
+    pushError(dae, 5001, "connect-in-when", "connect equations are not allowed in when-equations.", connNode);
+    return true;
+  }
+
+  if (wasmErrorCode === 3810) {
+    // WasmBailReason.WhenInInitialEquation
+    const whenNode = findNodeAtByteRange(rootCst, startByte, endByte, ["when_equation"]) ?? rootCst;
+    pushError(
+      dae,
+      5001,
+      "when-in-initial-equation",
+      "when-equations are not allowed in initial equation sections.",
+      whenNode,
+    );
+    return true;
+  }
+
+  if (wasmErrorCode === 3813) {
+    // WasmBailReason.InvalidWhenLhs
+    const lhsNode =
+      findNodeAtByteRange(rootCst, startByte, endByte, ["simple_expression", "expression", "equation"]) ?? rootCst;
+    pushError(
+      dae,
+      5001,
+      "invalid-when-lhs",
+      `Invalid left-hand side of when-equation: ${lhsNode.text.trim()}.`,
+      lhsNode,
+    );
+    return true;
+  }
+
+  if (wasmErrorCode === 3801) {
+    // WasmBailReason.AlgorithmReinit
+    const stmtNode = findNodeAtByteRange(rootCst, startByte, endByte, ["statement", "function_call"]) ?? rootCst;
+    pushError(dae, 5001, "reinit-in-algorithm", "reinit may only be used in the body of a when-equation.", stmtNode);
+    return true;
+  }
+
+  return false;
+}
+
 const PRIMITIVE_BUILTIN_TYPES = new Set(["Real", "Integer", "Boolean", "String"]);
 const NUMERIC_BUILTIN_TYPES = new Set(["Real", "Integer"]);
 const NON_REAL_BUILTIN_TYPES = new Set(["Integer", "Boolean", "String"]);

@@ -948,37 +948,17 @@ export function computePryceSignatureMatrix(
     collectOrders(arena.getEqRhs(eqIdx), 0, i);
   }
 
-  // Maximum-cardinality, maximum-weight bipartite matching
+  // Maximum-cardinality, maximum-weight bipartite matching via Busacker-Gowen successive
+  // shortest augmenting paths. Starting from an empty matching guarantees no negative-weight
+  // residual cycles exist at any step (avoiding Bellman-Ford parent cycles / infinite loops).
   const rowMatch = new Array<number>(M).fill(-1);
   const colMatch = new Array<number>(N).fill(-1);
   const W_MAX = 1000;
 
-  // 1. Greedy match highest-order edges first (O(E))
-  for (let i = 0; i < M; i++) {
-    const colMap = rowOrders[i]!;
-    let bestCol = -1;
-    let bestOrder = -Infinity;
-    for (const [col, order] of colMap) {
-      if (colMatch[col] === -1 && order > bestOrder) {
-        bestOrder = order;
-        bestCol = col;
-      }
-    }
-    if (bestCol !== -1) {
-      rowMatch[i] = bestCol;
-      colMatch[bestCol] = i;
-    }
-  }
+  let hasUnmatched = M > 0 && N > 0;
+  let maxAugments = Math.min(M, N);
 
-  let hasUnmatched = false;
-  for (let i = 0; i < M; i++) {
-    if (rowMatch[i] === -1) {
-      hasUnmatched = true;
-      break;
-    }
-  }
-
-  while (hasUnmatched) {
+  while (hasUnmatched && maxAugments-- > 0) {
     // Nodes: 0..M-1 (rows), M..M+N-1 (cols), M+N (sink)
     const totalNodes = M + N + 1;
     const SINK = M + N;
@@ -1036,11 +1016,15 @@ export function computePryceSignatureMatrix(
 
     if (dist[SINK] === Infinity) break;
 
-    // Augment along shortest path
+    // Augment along shortest path with cycle guard
     let cur = parent[SINK]!;
+    const visitedCols = new Set<number>();
     while (cur !== -1) {
+      if (visitedCols.has(cur)) break;
+      visitedCols.add(cur);
       const col = cur - M;
       const row = parent[cur]!;
+      if (row < 0 || row >= M) break;
       const prevColNode = parent[row]!;
       rowMatch[row] = col;
       colMatch[col] = row;

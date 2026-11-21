@@ -254,6 +254,20 @@ export function registerCodeLensProvider(context: LspContext) {
           },
         };
       }
+    } else if (data.kind === "digitalThread") {
+      const slot = (data as { slot?: number }).slot;
+      if (slot !== undefined && typeof context.workspaceManager?.findAlignedElementsBySlot === "function") {
+        const aligned = context.workspaceManager.findAlignedElementsBySlot(slot);
+        const domains = aligned.map((el: any) => String(el.domain || "").toUpperCase()).filter(Boolean);
+        return {
+          ...lens,
+          command: {
+            title: `⚡ Digital Thread: ${aligned.length} Domain(s) Linked (${domains.join(" + ")})`,
+            command: "modelscript.openThreadExplorer",
+            arguments: [data.uri, data.className],
+          },
+        };
+      }
     }
     return lens;
   });

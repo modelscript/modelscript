@@ -188,7 +188,9 @@ export async function lintPssePscadCrossDomain(
           rule: "psse-pscad-poi-thevenin-drift",
           severity: "warning",
           message: `RMS↔EMT frequency drift: PSCAD '${pc.project.name}' uses ${emtFreq} Hz while PSS/E '${rc.uri}' uses ${rmsFreq} Hz.`,
-        });
+          relatedUri: rc.uri,
+          relatedMessage: `PSS/E case '${rc.uri}' declares base frequency ${rmsFreq} Hz`,
+        } as WorkspaceLintDiagnostic);
       }
 
       // X7001: Compare named POI buses in PSS/E against PSCAD AC source bus base kV
@@ -334,7 +336,9 @@ export async function lintPssePscadCrossDomain(
               rule: "fmu-co-sim-port-unit-and-step-mismatch",
               severity: "warning",
               message: `FMU '${fmuUri}' DefaultExperiment stepSize=${fmuStepUs.toFixed(1)} us is incompatible with PSCAD time step Δt=${emtDtUs} us (must be an integer multiple >= Δt).`,
-            });
+              relatedUri: fmuUri,
+              relatedMessage: `FMU modelDescription declares stepSize=${fmuStepUs.toFixed(1)} us`,
+            } as WorkspaceLintDiagnostic);
           }
         }
       }
@@ -360,7 +364,9 @@ export async function lintPssePscadCrossDomain(
               rule: "fmu-co-sim-port-unit-and-step-mismatch",
               severity: "warning",
               message: `FMU variable '${varName}' (${causality}) declares SI unit '${unit}' contradicting per-unit signal naming.`,
-            });
+              relatedUri: fmuUri,
+              relatedMessage: `FMU ScalarVariable '${varName}' declared with unit='${unit}'`,
+            } as WorkspaceLintDiagnostic);
           }
         }
       }
@@ -425,7 +431,9 @@ export async function lintPssePscadCrossDomain(
               rule: "reqif-sysml-grid-requirement-unverified",
               severity: "warning",
               message: `Requirement (${clause.uri}) specifies ${reqFreq} Hz nominal frequency, violated by PSCAD '${pc.project.name}' (${pc.project.settings.frequencyHz} Hz).`,
-            });
+              relatedUri: clause.uri,
+              relatedMessage: `Source requirement specifying ${reqFreq} Hz`,
+            } as WorkspaceLintDiagnostic);
           }
         }
         for (const rc of rawCases) {
@@ -436,7 +444,9 @@ export async function lintPssePscadCrossDomain(
               rule: "reqif-sysml-grid-requirement-unverified",
               severity: "warning",
               message: `Requirement (${clause.uri}) specifies ${reqFreq} Hz nominal frequency, violated by PSS/E '${rc.uri}' (${rc.parsed.header.basfrq} Hz).`,
-            });
+              relatedUri: clause.uri,
+              relatedMessage: `Source requirement specifying ${reqFreq} Hz`,
+            } as WorkspaceLintDiagnostic);
           }
         }
       }
@@ -466,7 +476,9 @@ export async function lintPssePscadCrossDomain(
               message: Number.isFinite(minSrcScr)
                 ? `Requirement (${clause.uri}) requires SCR >= ${reqScr}, but PSCAD '${pc.project.name}' only achieves SCR=${minSrcScr.toFixed(2)}.`
                 : `Requirement (${clause.uri}) requires SCR >= ${reqScr}, but PSCAD '${pc.project.name}' sources omit explicit Thévenin impedance for verification.`,
-            });
+              relatedUri: clause.uri,
+              relatedMessage: `Source requirement requiring SCR >= ${reqScr}`,
+            } as WorkspaceLintDiagnostic);
           }
         }
       }
@@ -519,6 +531,8 @@ export async function runWorkspaceLinterForDocument(
     const endChar =
       d.endColumn !== undefined ? Math.max(endLine === startLine ? startChar : 0, d.endColumn - 1) : startChar;
 
+    const relUri = (d as { relatedUri?: string; relatedMessage?: string }).relatedUri;
+    const relMsg = (d as { relatedUri?: string; relatedMessage?: string }).relatedMessage;
     existingDiagnostics.push({
       severity: toDiagnosticSeverity(d.severity),
       range: {
@@ -528,6 +542,19 @@ export async function runWorkspaceLinterForDocument(
       code: d.code,
       message: d.message,
       source: langId,
+      ...(relUri
+        ? {
+            relatedInformation: [
+              {
+                location: {
+                  uri: relUri,
+                  range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+                },
+                message: relMsg || `Counterpart artifact '${relUri.split(/[\\/]/).pop() || relUri}'`,
+              },
+            ],
+          }
+        : {}),
     });
   }
 }

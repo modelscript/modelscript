@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./analysis/advanced-formal-emt.js";
 export * from "./analysis/control-intervals.js";
 export * from "./analysis/control-octagon.js";
 export * from "./analysis/dimensional-check.js";
@@ -46,6 +47,9 @@ export * from "./script/fortran-codegen.js";
 export * from "./script/fortran-preprocessor.js";
 export * from "./script/script-parser.js";
 export * from "./solver/index.js";
+export * from "./studies/harmonics-study.js";
+export * from "./studies/insulation-study.js";
+export * from "./studies/ssci-screener.js";
 export * from "./tgg/pscad-ieee-rules.js";
 export * from "./tgg/pscad-ieee-sync.js";
 export * from "./tgg/pscad-polyglot.js";

@@ -1615,6 +1615,10 @@ export function generatePackageJson(
         name: "Experiments & Studies",
       },
       {
+        id: "modelscript.verificationGatesView",
+        name: "Verification Gates",
+      },
+      {
         id: "modelscript.chat",
         name: "ModelScript AI Copilot",
         type: "webview",

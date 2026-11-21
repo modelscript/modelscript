@@ -9,7 +9,35 @@
  *  - FederatedQueryCacheStore: multi-endpoint remote query cache store
  */
 
-import type { Memo, QueryCacheStore } from "../runtime.js";
+import type { Memo, QueryCacheStore, SymbolId } from "../runtime.js";
+
+/**
+ * Computes a deterministic, process-independent 53-bit positive safe integer cache key
+ * for `(queryName, symbolId, argsHash)` using dual-lane FNV-1a hashing.
+ *
+ * Unlike per-engine sequential `memoKey()` IDs, this key is identical across Node, browser,
+ * SQLite exports, IndexedDB, and federated cache endpoints regardless of query registration order.
+ */
+export function stableMemoCacheKey(queryName: string, symbolId: SymbolId, argsHash?: string): number {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  const mix = (ch: number) => {
+    h1 ^= ch;
+    h1 = Math.imul(h1, 0x01000193) >>> 0;
+    h2 ^= ch + 0x9e3779b9;
+    h2 = Math.imul(h2, 0x85ebca6b) >>> 0;
+  };
+  for (let i = 0; i < queryName.length; i++) mix(queryName.charCodeAt(i));
+  mix(0x1f);
+  const symStr = String(symbolId);
+  for (let i = 0; i < symStr.length; i++) mix(symStr.charCodeAt(i));
+  if (argsHash) {
+    mix(0x1e);
+    for (let i = 0; i < argsHash.length; i++) mix(argsHash.charCodeAt(i));
+  }
+  // Combine top 21 bits of h2 with all 32 bits of h1 -> 53-bit positive safe integer (>= 1).
+  return (h2 & 0x1fffff) * 0x100000000 + (h1 >>> 0) || 1;
+}
 
 /**
  * An in-memory implementation of the QueryCacheStore.

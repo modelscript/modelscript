@@ -445,6 +445,21 @@ export type DependencyKey =
   | { kind: "domain"; domain: LanguageDomainId };
 
 /**
+ * Salsa durability tier for inputs and derived queries.
+ * - `Low` (0): Frequently edited user files (default).
+ * - `Medium` (1): Workspace dependencies / rarely edited project files.
+ * - `High` (2): Immutable standard libraries (e.g., MSL, SysML v2 stdlib).
+ *
+ * When a `Low`-durability file is edited, queries whose transitive dependencies are all
+ * `High`-durability verify in O(1) without walking their dependency graph.
+ */
+export enum Durability {
+  Low = 0,
+  Medium = 1,
+  High = 2,
+}
+
+/**
  * A memoized query result with Salsa-style revision metadata.
  *
  * The key insight: `changed_at` and `verified_at` serve different purposes.
@@ -460,6 +475,10 @@ export interface Memo {
   verified_at: Revision;
   /** The revision in which this memo's value last actually changed. */
   changed_at: Revision;
+  /** Minimum durability tier across all transitive dependencies of this memo. */
+  durability?: Durability | undefined;
+  /** True if this memo called `db.allEntries()` and depends on global symbol additions/deletions. */
+  readsAllEntries?: boolean | undefined;
   /** Optional query name stored for cross-process hydration and volatile flushing. */
   queryName?: string | undefined;
   /** Optional target symbol ID stored for cross-process hydration. */

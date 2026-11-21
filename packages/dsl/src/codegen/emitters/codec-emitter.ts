@@ -1494,6 +1494,14 @@ export function emitAssemblyScriptCodec(def: BinaryCodecDefinition): string {
 
   lines.push(`export function codec_encode(): i32 {`);
   lines.push(`  outPos = 0;`);
+  // Auto-sync root scalar countField headers from allocated SoA table row counts
+  const headerScalarMap = new Map(headerScalars.map((hs) => [hs.name, hs.scalar]));
+  for (const tbl of tables) {
+    if (typeof tbl.countField === "string" && headerScalarMap.has(tbl.countField)) {
+      const t = asTypeForScalar(headerScalarMap.get(tbl.countField)!);
+      lines.push(`  hdr_${tbl.countField} = ${t}(tbl_${tbl.name}_count);`);
+    }
+  }
   for (const f of def.root.fields) {
     emitEncodeField(f, "  ", def.endian);
   }
