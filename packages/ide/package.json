@@ -53,6 +53,9 @@
     "@modelscript/simulate": "workspace:*",
     "@modelscript/sysml2": "workspace:*",
     "@vscode/debugadapter": "^1.68.0",
+    "@vscode/debugprotocol": "^1.68.0",
+    "fflate": "^0.8.3",
+    "pako": "^2.1.0",
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {

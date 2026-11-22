@@ -118,11 +118,13 @@
     "fflate": "^0.8.3",
     "mqtt": "^5.10.0",
     "pako": "^2.1.0",
+    "pg": "^8.16.0",
     "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",
     "@types/pako": "^2.0.4",
+    "@types/pg": "^8.15.4",
     "@types/ws": "^8.18.0",
     "assemblyscript": "^0.28.19",
     "rimraf": "^6.1.0",

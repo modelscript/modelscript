@@ -38,7 +38,8 @@
     "@modelscript/runtime": "workspace:*",
     "@modelscript/step": "workspace:*",
     "@modelscript/sysml2": "workspace:*",
-    "@modelscript/urdf": "workspace:*"
+    "@modelscript/urdf": "workspace:*",
+    "wabt": "^1.0.39"
   },
   "devDependencies": {
     "rimraf": "^6.1.0",

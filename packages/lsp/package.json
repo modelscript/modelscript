@@ -232,6 +232,7 @@
     "@modelscript/usd": "workspace:*",
     "@modelscript/verilog-a": "workspace:*",
     "@modelscript/waterml": "workspace:*",
+    "fflate": "^0.8.3",
     "sql.js": "^1.14.2",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12"

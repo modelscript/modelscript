@@ -80,6 +80,7 @@
     "remark-gfm": "^4.0.1",
     "styled-components": "^6.3.11",
     "three": "^0.184.0",
+    "three-stdlib": "^2.36.1",
     "unist-util-visit": "^5.1.0",
     "vega": "^6.2.0",
     "vega-embed": "^7.1.0",

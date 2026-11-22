@@ -64,7 +64,8 @@
   "dependencies": {
     "@modelscript/diagram": "workspace:*",
     "@modelscript/dsl": "workspace:*",
-    "@modelscript/runtime": "workspace:*"
+    "@modelscript/runtime": "workspace:*",
+    "vscode-languageserver": "^9.0.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.7"

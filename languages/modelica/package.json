@@ -178,7 +178,9 @@
     "@modelscript/las": "workspace:*",
     "@modelscript/runtime": "workspace:*",
     "@modelscript/simulate": "workspace:*",
-    "vscode-languageserver": "^9.0.1"
+    "fflate": "^0.8.3",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-types": "^3.17.5"
   },
   "devDependencies": {
     "@types/react": "^19.2.7"
