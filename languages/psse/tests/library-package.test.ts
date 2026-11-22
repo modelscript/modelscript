@@ -41,10 +41,10 @@ CASE 1
 Q
 `;
 
-describe("@modelscript/psse — package.json Standard Library, AssemblyScript WASM & FMU Linking", () => {
-  it("loads @modelscript/psse-std-lib via package.json and steps SEXS + TGOV1 from runtime.wasm", async () => {
-    const pkgJsonPath = path.join(STD_LIB_DIR, "package.json");
-    assert.ok(fs.existsSync(pkgJsonPath), "Expected psse-std-lib/package.json");
+describe("@modelscript/psse — modelscript.yaml Standard Library, AssemblyScript WASM & FMU Linking", () => {
+  it("loads @modelscript/psse-std-lib via modelscript.yaml and steps SEXS + TGOV1 from runtime.wasm", async () => {
+    const manifestPath = path.join(STD_LIB_DIR, "modelscript.yaml");
+    assert.ok(fs.existsSync(manifestPath), "Expected psse-std-lib/modelscript.yaml");
 
     const pkg = await globalLibraryRegistry.loadLibraryFromDir(STD_LIB_DIR);
     assert.ok(pkg, "Expected loadLibraryFromDir to return loaded package");

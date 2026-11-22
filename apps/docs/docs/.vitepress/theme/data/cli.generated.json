@@ -1504,7 +1504,7 @@
           "ts-emt <raw> <pscx>"
         ],
         "aliases": [],
-        "describe": "Run multi-rate TS-EMT hybrid co-simulation between PSS/E and PSCAD",
+        "describe": "Run closed-loop multi-rate TS-EMT hybrid co-simulation between PSS/E and PSCAD (direct or FMI 3.0)",
         "positionals": [
           {
             "name": "raw",
@@ -1553,6 +1553,40 @@
             "default": 0.00005
           },
           {
+            "name": "mode",
+            "aliases": [],
+            "description": "Coupling engine mode: direct polyglot or FMI 3.0 (fmi-ls-rms/fmi-ls-emt)",
+            "choices": [
+              "direct",
+              "fmi"
+            ],
+            "default": "direct"
+          },
+          {
+            "name": "sequences",
+            "aliases": [],
+            "description": "Sequence coupling order (1 = balanced positive-seq, 3 = unbalanced pos/neg/zero)",
+            "choices": [
+              "1",
+              "3"
+            ],
+            "default": 1
+          },
+          {
+            "name": "fdne",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Enable Frequency-Dependent Network Equivalent (FDNE) vector fitting at boundary",
+            "default": false
+          },
+          {
+            "name": "max-iterations",
+            "aliases": [],
+            "type": "number",
+            "description": "Max Picard waveform-relaxation iterations per macro-step",
+            "default": 1
+          },
+          {
             "name": "out",
             "aliases": [
               "o"
@@ -1569,7 +1603,7 @@
           "multi-ts-emt <raw>"
         ],
         "aliases": [],
-        "describe": "Run concurrent multi-plant TS-EMT hybrid co-simulation (PSS/E transmission + multiple PSCAD plants)",
+        "describe": "Run closed-loop concurrent multi-plant TS-EMT hybrid co-simulation (PSS/E transmission + multiple PSCAD plants)",
         "positionals": [
           {
             "name": "raw",
@@ -1612,6 +1646,33 @@
             "default": 0.00005
           },
           {
+            "name": "mode",
+            "aliases": [],
+            "description": "Coupling engine mode: direct polyglot or FMI 3.0",
+            "choices": [
+              "direct",
+              "fmi"
+            ],
+            "default": "direct"
+          },
+          {
+            "name": "sequences",
+            "aliases": [],
+            "description": "Sequence coupling order (1 = balanced, 3 = unbalanced pos/neg/zero)",
+            "choices": [
+              "1",
+              "3"
+            ],
+            "default": 1
+          },
+          {
+            "name": "fdne",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Enable FDNE rational vector fitting at boundaries",
+            "default": false
+          },
+          {
             "name": "extrapolation",
             "aliases": [],
             "description": "Boundary voltage extrapolation mode",
@@ -1620,7 +1681,7 @@
               "linear",
               "quadratic"
             ],
-            "default": "quadratic"
+            "default": "linear"
           },
           {
             "name": "out",
@@ -1629,6 +1690,48 @@
             ],
             "type": "string",
             "description": "Output JSON report file path"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "sysml",
+        "specs": [
+          "sysml <model>"
+        ],
+        "aliases": [],
+        "describe": "Run polyglot Phasor <-> EMT hybrid co-simulation & requirement verification from a SysML v2 architecture",
+        "positionals": [
+          {
+            "name": "model",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to SysML v2 (.sysml) architecture & requirements file"
+          }
+        ],
+        "options": [
+          {
+            "name": "mode",
+            "aliases": [],
+            "type": "string",
+            "description": "Optional override for execution mode (direct | fmi)",
+            "choices": [
+              "direct",
+              "fmi"
+            ]
+          },
+          {
+            "name": "strict",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Exit with code 1 if any SysML v2 requirement fails verification",
+            "default": false
+          },
+          {
+            "name": "out",
+            "aliases": [],
+            "type": "string",
+            "description": "Optional output JSON path for simulation & verification report"
           }
         ],
         "subcommands": []
@@ -4780,7 +4883,7 @@
       "init [path]"
     ],
     "aliases": [],
-    "describe": "Initialize a ModelScript package.json for a Modelica/SysML project",
+    "describe": "Initialize a modelscript.yaml manifest for a ModelScript project",
     "positionals": [
       {
         "name": "path",
@@ -4913,7 +5016,7 @@
       "i",
       "add"
     ],
-    "describe": "Install a package from the Ansatz Package Registry into the local workspace",
+    "describe": "Install registry, archive, or ALM remote dependencies into .modelscript/packages/",
     "positionals": [
       {
         "name": "package",
@@ -5519,6 +5622,14 @@
     "positionals": [],
     "options": [
       {
+        "name": "host",
+        "aliases": [
+          "H"
+        ],
+        "type": "string",
+        "description": "External ALM host to store credentials for (e.g. 'elm.corp.com', 'corp.atlassian.net')"
+      },
+      {
         "name": "email",
         "aliases": [
           "e"
@@ -5568,6 +5679,14 @@
     "describe": "Log out from the Ansatz Package Registry & Platform",
     "positionals": [],
     "options": [
+      {
+        "name": "host",
+        "aliases": [
+          "H"
+        ],
+        "type": "string",
+        "description": "External ALM host to remove stored credentials for"
+      },
       {
         "name": "registry",
         "aliases": [
@@ -5733,6 +5852,86 @@
         "aliases": [],
         "type": "number",
         "description": "Run language server over a TCP port"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "magicdraw",
+    "specs": [
+      "magicdraw <action> <file>"
+    ],
+    "aliases": [],
+    "describe": "MagicDraw / Cameo (.mdzip, .mdxml, .xmi) inspection, linting, diagramming, and SysML v2/ReqIF/Modelica migration",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Operation to perform on the MagicDraw archive or XMI file",
+        "choices": [
+          "inspect",
+          "lint",
+          "to-sysml",
+          "to-reqif",
+          "to-modelica",
+          "render",
+          "diff",
+          "migrate"
+        ]
+      },
+      {
+        "name": "file",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to .mdzip, .mdxml, or .xmi file"
+      }
+    ],
+    "options": [
+      {
+        "name": "compare",
+        "aliases": [
+          "c"
+        ],
+        "type": "string",
+        "description": "Target .mdzip/.mdxml file to compare against (for the diff action)"
+      },
+      {
+        "name": "out",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Optional output file or directory path"
+      },
+      {
+        "name": "diagramId",
+        "aliases": [],
+        "type": "string",
+        "description": "Specific diagram xmi:id for the render action"
+      },
+      {
+        "name": "diagramKind",
+        "aliases": [],
+        "type": "string",
+        "description": "Diagram kind for the render action",
+        "choices": [
+          "BDD",
+          "IBD",
+          "REQ",
+          "PAR",
+          "STM",
+          "ACT",
+          "SEQ",
+          "PKG"
+        ]
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Emit structured JSON output",
+        "default": false
       }
     ],
     "subcommands": []
@@ -7443,8 +7642,78 @@
     ],
     "aliases": [],
     "describe": "Launch the dual-editor DSL workbench",
-    "positionals": [],
-    "options": [],
+    "positionals": [
+      {
+        "name": "lang",
+        "aliases": [],
+        "type": "string",
+        "description": "Language ID or directory (e.g. olga, psse, fea, epanet) to open in lightweight UI playground mode"
+      }
+    ],
+    "options": [
+      {
+        "name": "grammar",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Launch the legacy dual-editor grammar-DSL workbench",
+        "default": false
+      },
+      {
+        "name": "port",
+        "aliases": [
+          "p"
+        ],
+        "type": "number",
+        "description": "Dev server port (default: 5179 for language playground, 3002 for grammar workbench)"
+      },
+      {
+        "name": "file",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Initial source file to load in language playground mode"
+      },
+      {
+        "name": "mode",
+        "aliases": [
+          "m"
+        ],
+        "type": "string",
+        "description": "Initial host mode (workbench | inspector | artifact)",
+        "choices": [
+          "workbench",
+          "inspector",
+          "artifact"
+        ]
+      },
+      {
+        "name": "theme",
+        "aliases": [
+          "t"
+        ],
+        "type": "string",
+        "description": "Initial color theme (dark | light)",
+        "choices": [
+          "dark",
+          "light"
+        ]
+      },
+      {
+        "name": "open",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Open browser automatically",
+        "default": false
+      },
+      {
+        "name": "morsel",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Launch the full Morsel web editor locked to this single language (?lang=<id>&single=1)",
+        "default": false
+      }
+    ],
     "subcommands": []
   },
   {
@@ -7936,7 +8205,10 @@
           "psout",
           "extract",
           "build-fmu",
-          "benchmark"
+          "benchmark",
+          "insulation",
+          "harmonics",
+          "ssci"
         ]
       },
       {
@@ -8037,6 +8309,19 @@
         "type": "boolean",
         "description": "Include raw Fortran/Computations/Dsdyn/Dsout scripts in 'extract' (default: stripped)",
         "default": false
+      },
+      {
+        "name": "formal",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Enable deep formal verification lints (Star-set IBR FRT, DDE delay, SMT switch, IC3 lockout)",
+        "default": false
+      },
+      {
+        "name": "manifest",
+        "aliases": [],
+        "type": "string",
+        "description": "Optional output path for JSON formal proof manifest"
       }
     ],
     "subcommands": []
@@ -8116,6 +8401,10 @@
           "fault",
           "modes",
           "n1",
+          "n11",
+          "fcitc",
+          "breaker-duty",
+          "cct",
           "cpf",
           "sld",
           "idv",
@@ -8151,6 +8440,21 @@
         ],
         "type": "string",
         "description": "Output file path (e.g. for SVG diagram or report)"
+      },
+      {
+        "name": "format",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Report output format: 'text', 'json', 'csv', or 'html'",
+        "choices": [
+          "text",
+          "json",
+          "csv",
+          "html"
+        ],
+        "default": "text"
       },
       {
         "name": "raw",
@@ -8249,6 +8553,19 @@
         "aliases": [],
         "type": "string",
         "description": "Reference commercial PSS/E .out or CSV trajectory file for ground-truth verification"
+      },
+      {
+        "name": "formal",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Enable deep formal verification lints (SMT PRC-024, NLSAT collapse, SOS CCT, proof manifest)",
+        "default": false
+      },
+      {
+        "name": "manifest",
+        "aliases": [],
+        "type": "string",
+        "description": "Optional output path for JSON formal proof manifest"
       }
     ],
     "subcommands": []
@@ -8607,6 +8924,135 @@
       }
     ],
     "subcommands": []
+  },
+  {
+    "name": "remote",
+    "specs": [
+      "remote <subcommand>"
+    ],
+    "aliases": [],
+    "describe": "Manage protocol/API ALM remotes (DOORS Next, Jama, Codebeamer, Polarion, Jira) in modelscript.yaml",
+    "positionals": [],
+    "options": [],
+    "subcommands": [
+      {
+        "name": "add",
+        "specs": [
+          "add <name> <source>"
+        ],
+        "aliases": [],
+        "describe": "Add a protocol/API-based ALM remote dependency to modelscript.yaml",
+        "positionals": [
+          {
+            "name": "name",
+            "aliases": [],
+            "type": "string",
+            "description": "Package name for the remote (e.g. '@reqs/battery-safety', '@issues/jira-ev')"
+          },
+          {
+            "name": "source",
+            "aliases": [],
+            "type": "string",
+            "description": "Protocol URI (e.g. 'oslc+https://...', 'jama+https://...', 'codebeamer+https://...', 'polarion+https://...', 'jira+https://...')"
+          }
+        ],
+        "options": [
+          {
+            "name": "materialize",
+            "aliases": [
+              "m"
+            ],
+            "type": "string",
+            "description": "Optional Git-tracked relative directory to materialize projections into"
+          },
+          {
+            "name": "push",
+            "aliases": [],
+            "type": "array",
+            "description": "Authorized outbound push capabilities (verification, links, defects-on-fail, artifacts)"
+          },
+          {
+            "name": "query",
+            "aliases": [
+              "q"
+            ],
+            "type": "string",
+            "description": "Remote query filter (e.g. JQL for Jira or OSLC where clause)"
+          },
+          {
+            "name": "baseline",
+            "aliases": [
+              "b"
+            ],
+            "type": "string",
+            "description": "Remote baseline or configuration URI/ID"
+          },
+          {
+            "name": "working-set",
+            "aliases": [],
+            "type": "string",
+            "description": "Remote working-set or branch template (e.g. 'branch:${git.branch}')"
+          },
+          {
+            "name": "revision",
+            "aliases": [],
+            "type": "string",
+            "description": "Remote SVN/item revision pin (e.g. Polarion revision)"
+          },
+          {
+            "name": "format",
+            "aliases": [],
+            "description": "Materialized projection format",
+            "choices": [
+              "sysml2",
+              "modelscript",
+              "reqif"
+            ]
+          },
+          {
+            "name": "skip-check",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Skip live server discovery probe when adding the remote",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "list",
+        "specs": [
+          "list"
+        ],
+        "aliases": [
+          "ls"
+        ],
+        "describe": "List protocol/API remote dependencies declared in modelscript.yaml",
+        "positionals": [],
+        "options": [],
+        "subcommands": []
+      },
+      {
+        "name": "remove",
+        "specs": [
+          "remove <name>"
+        ],
+        "aliases": [
+          "rm"
+        ],
+        "describe": "Remove a remote dependency from modelscript.yaml",
+        "positionals": [
+          {
+            "name": "name",
+            "aliases": [],
+            "type": "string",
+            "description": "Package name of the remote dependency to remove"
+          }
+        ],
+        "options": [],
+        "subcommands": []
+      }
+    ]
   },
   {
     "name": "render",
@@ -10458,6 +10904,111 @@
     "subcommands": []
   },
   {
+    "name": "sync",
+    "specs": [
+      "sync <subcommand>"
+    ],
+    "aliases": [],
+    "describe": "Synchronize protocol/API ALM dependencies (pull, status, push)",
+    "positionals": [],
+    "options": [],
+    "subcommands": [
+      {
+        "name": "pull",
+        "specs": [
+          "pull [name]"
+        ],
+        "aliases": [],
+        "describe": "Pull latest deltas from remote ALM dependencies into local projections & modelscript.lock",
+        "positionals": [
+          {
+            "name": "name",
+            "aliases": [],
+            "type": "string",
+            "description": "Optional single remote dependency name to pull (defaults to all)"
+          }
+        ],
+        "options": [
+          {
+            "name": "conflict",
+            "aliases": [],
+            "description": "3-way conflict resolution strategy",
+            "choices": [
+              "fail",
+              "theirs",
+              "ours"
+            ],
+            "default": "fail"
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "status",
+        "specs": [
+          "status [name]"
+        ],
+        "aliases": [],
+        "describe": "Inspect local vs. remote ALM drift without modifying files",
+        "positionals": [
+          {
+            "name": "name",
+            "aliases": [],
+            "type": "string",
+            "description": "Optional single remote dependency name"
+          }
+        ],
+        "options": [
+          {
+            "name": "json",
+            "aliases": [],
+            "type": "boolean",
+            "description": "Output drift report as JSON",
+            "default": false
+          }
+        ],
+        "subcommands": []
+      },
+      {
+        "name": "push",
+        "specs": [
+          "push [name]"
+        ],
+        "aliases": [],
+        "describe": "Push authorized verification runs or trace links back to remote ALM systems",
+        "positionals": [
+          {
+            "name": "name",
+            "aliases": [],
+            "type": "string",
+            "description": "Optional single remote dependency name"
+          }
+        ],
+        "options": [
+          {
+            "name": "run-file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to JSON file containing AlmVerificationRun[] to publish"
+          },
+          {
+            "name": "links-file",
+            "aliases": [],
+            "type": "string",
+            "description": "Path to JSON file containing AlmLink[] to publish"
+          },
+          {
+            "name": "only",
+            "aliases": [],
+            "type": "string",
+            "description": "Comma-separated capabilities to push (verification,links,artifacts)"
+          }
+        ],
+        "subcommands": []
+      }
+    ]
+  },
+  {
     "name": "sysml",
     "specs": [
       "sysml <action>"
@@ -11626,6 +12177,12 @@
         "type": "boolean",
         "description": "alias for --sync; apply suggested digital thread fixes on disk",
         "default": false
+      },
+      {
+        "name": "publish-to",
+        "aliases": [],
+        "type": "string",
+        "description": "publish verification run evidence to a remote ALM dependency in modelscript.yaml (package name or 'all')"
       }
     ],
     "subcommands": []

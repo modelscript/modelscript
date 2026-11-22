@@ -1,0 +1,1189 @@
+[
+  {
+    "name": "eos1",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:eos1",
+    "exports": [
+      "pRef",
+      "tRef",
+      "compressibility",
+      "cpWater"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "EOS1: Pure Water / Steam (IAPWS-IF97)",
+      "category": "EOS Module",
+      "domain": "subsurface",
+      "description": "Non-isothermal single-component water and steam equation-of-state module for geothermal and hydrothermal reservoirs using IAPWS-IF97 thermodynamic formulations.",
+      "provenance": "Pruess, Oldenburg & Moridis (1999) LBNL-43134 TOUGH2 User's Guide; IAPWS-IF97 (Wagner et al. 2000)",
+      "aliases": [
+        "EOS1",
+        "EOS1_WATER",
+        "eos1_water",
+        "water"
+      ],
+      "parameters": [
+        {
+          "key": "pRef",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Reference pressure"
+        },
+        {
+          "key": "tRef",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "degC",
+          "description": "Reference temperature"
+        },
+        {
+          "key": "compressibility",
+          "type": "real",
+          "defaultValue": 4.5e-10,
+          "unit": "1/Pa",
+          "description": "Liquid water isothermal compressibility"
+        },
+        {
+          "key": "cpWater",
+          "type": "real",
+          "defaultValue": 4184,
+          "unit": "J/(kg*K)",
+          "description": "Reference liquid water specific heat"
+        }
+      ],
+      "wasmKernel": "eos1",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "eos2",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:eos2",
+    "exports": [
+      "henryCO2",
+      "molarMassCO2",
+      "tCritCO2",
+      "pCritCO2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "EOS2: Water + CO2 Non-Isothermal",
+      "category": "EOS Module",
+      "domain": "subsurface",
+      "description": "Two-component water and CO2 equation-of-state module for geothermal reservoirs with non-condensible CO2 gas, accounting for CO2 dissolution and real-gas enthalpy.",
+      "provenance": "Pruess (1991) LBL-29400; Pruess et al. (1999) LBNL-43134; Span & Wagner (1996) J. Phys. Chem. Ref. Data 25",
+      "aliases": [
+        "EOS2",
+        "EOS2_WATER_CO2",
+        "eos2_water_co2",
+        "water_co2"
+      ],
+      "parameters": [
+        {
+          "key": "henryCO2",
+          "type": "real",
+          "defaultValue": 165000000,
+          "unit": "Pa",
+          "description": "Henry's constant for CO2 in water at reference T"
+        },
+        {
+          "key": "molarMassCO2",
+          "type": "real",
+          "defaultValue": 0.04401,
+          "unit": "kg/mol",
+          "description": "Molar mass of CO2"
+        },
+        {
+          "key": "tCritCO2",
+          "type": "real",
+          "defaultValue": 304.1282,
+          "unit": "K",
+          "description": "Critical temperature of CO2 (Span-Wagner)"
+        },
+        {
+          "key": "pCritCO2",
+          "type": "real",
+          "defaultValue": 7377300,
+          "unit": "Pa",
+          "description": "Critical pressure of CO2 (Span-Wagner)"
+        }
+      ],
+      "wasmKernel": "eos2",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "eos3",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:eos3",
+    "exports": [
+      "henryAir",
+      "molarMassAir",
+      "diffVapor"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "EOS3: Water + Air Vadose / Saturated",
+      "category": "EOS Module",
+      "domain": "subsurface",
+      "description": "Two-phase non-isothermal water and air equation-of-state module for vadose zone hydrology, nuclear waste isolation, and unsaturated porous media.",
+      "provenance": "Pruess (1991) LBL-29400; Pruess, Oldenburg & Moridis (1999) LBNL-43134; IAPWS-IF97",
+      "aliases": [
+        "EOS3",
+        "EOS3_WATER_AIR",
+        "eos3_water_air",
+        "water_air"
+      ],
+      "parameters": [
+        {
+          "key": "henryAir",
+          "type": "real",
+          "defaultValue": 10000000000,
+          "unit": "Pa",
+          "description": "Henry's constant for air dissolution in water"
+        },
+        {
+          "key": "molarMassAir",
+          "type": "real",
+          "defaultValue": 0.02896,
+          "unit": "kg/mol",
+          "description": "Molar mass of dry air"
+        },
+        {
+          "key": "diffVapor",
+          "type": "real",
+          "defaultValue": 0.0000213,
+          "unit": "m^2/s",
+          "description": "Binary vapor-air diffusion coefficient at 0 degC"
+        }
+      ],
+      "wasmKernel": "eos3",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "eos4",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:eos4",
+    "exports": [
+      "henryAir",
+      "molarMassWater",
+      "pCapScale"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "EOS4: Water + Air with Vapor Pressure Lowering",
+      "category": "EOS Module",
+      "domain": "subsurface",
+      "description": "Water and air EOS incorporating Kelvin's equation for capillary vapor pressure lowering in strongly desiccated porous media.",
+      "provenance": "Pruess (1991) LBL-29400; Pruess et al. (1999) LBNL-43134; Edlefsen & Anderson (1943) Hilgardia 15",
+      "aliases": [
+        "EOS4",
+        "EOS4_VAPOR_LOWERING",
+        "eos4_vapor_lowering"
+      ],
+      "parameters": [
+        {
+          "key": "henryAir",
+          "type": "real",
+          "defaultValue": 10000000000,
+          "unit": "Pa",
+          "description": "Henry's constant for air in water"
+        },
+        {
+          "key": "molarMassWater",
+          "type": "real",
+          "defaultValue": 0.018015,
+          "unit": "kg/mol",
+          "description": "Molar mass of H2O for Kelvin equation"
+        },
+        {
+          "key": "pCapScale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Vapor pressure lowering scaling factor"
+        }
+      ],
+      "wasmKernel": "eos4",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "eos5",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:eos5",
+    "exports": [
+      "henryH2",
+      "molarMassH2",
+      "diffH2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "EOS5: Water + Hydrogen Gas",
+      "category": "EOS Module",
+      "domain": "subsurface",
+      "description": "Two-phase water and hydrogen equation-of-state module for underground hydrogen storage (UHS) and radioactive waste repository corrosion gas migration.",
+      "provenance": "Pruess (1991) LBL-29400; Pruess, Oldenburg & Moridis (1999) LBNL-43134; IAPWS-IF97",
+      "aliases": [
+        "EOS5",
+        "EOS5_WATER_H2",
+        "eos5_water_h2",
+        "water_h2"
+      ],
+      "parameters": [
+        {
+          "key": "henryH2",
+          "type": "real",
+          "defaultValue": 6800000000,
+          "unit": "Pa",
+          "description": "Henry's constant for H2 in water"
+        },
+        {
+          "key": "molarMassH2",
+          "type": "real",
+          "defaultValue": 0.002016,
+          "unit": "kg/mol",
+          "description": "Molar mass of H2"
+        },
+        {
+          "key": "diffH2",
+          "type": "real",
+          "defaultValue": 0.000061,
+          "unit": "m^2/s",
+          "description": "Binary H2-vapor diffusion coefficient"
+        }
+      ],
+      "wasmKernel": "eos5",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "eos7",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:eos7",
+    "exports": [
+      "rhoBrineRef",
+      "maxSalinity",
+      "henryAir"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "EOS7: Water + Brine + Air",
+      "category": "EOS Module",
+      "domain": "subsurface",
+      "description": "Three-component water, brine (NaCl), and air equation-of-state module with salinity-dependent aqueous density and viscosity.",
+      "provenance": "Pruess (1991) LBL-29400; Pruess et al. (1999) LBNL-43134; Herbert et al. (1988) Water Resour. Res. 24",
+      "aliases": [
+        "EOS7",
+        "EOS7_BRINE",
+        "eos7_brine",
+        "brine"
+      ],
+      "parameters": [
+        {
+          "key": "rhoBrineRef",
+          "type": "real",
+          "defaultValue": 1185.1,
+          "unit": "kg/m^3",
+          "description": "Reference saturated brine density at 25 degC"
+        },
+        {
+          "key": "maxSalinity",
+          "type": "real",
+          "defaultValue": 0.265,
+          "unit": "kg/kg",
+          "description": "Halite saturation mass fraction"
+        },
+        {
+          "key": "henryAir",
+          "type": "real",
+          "defaultValue": 10000000000,
+          "unit": "Pa",
+          "description": "Henry's constant for air in brine"
+        }
+      ],
+      "wasmKernel": "eos7",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "eos7c",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:eos7c",
+    "exports": [
+      "molarMassCH4",
+      "molarMassCO2",
+      "henryCH4",
+      "henryCO2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "EOS7C: Water + Brine + CH4 + CO2",
+      "category": "EOS Module",
+      "domain": "subsurface",
+      "description": "Multicomponent EOS for methane, carbon dioxide, water, and brine mixtures in enhanced gas recovery (CSEGR) and subsurface carbon storage.",
+      "provenance": "Oldenburg, Moridis, Spycher & Pruess (2004) LBNL-56589 EOS7C; Span & Wagner (1996)",
+      "aliases": [
+        "EOS7C",
+        "EOS7C_CH4_CO2",
+        "eos7c_ch4_co2"
+      ],
+      "parameters": [
+        {
+          "key": "molarMassCH4",
+          "type": "real",
+          "defaultValue": 0.01604,
+          "unit": "kg/mol",
+          "description": "Molar mass of CH4"
+        },
+        {
+          "key": "molarMassCO2",
+          "type": "real",
+          "defaultValue": 0.04401,
+          "unit": "kg/mol",
+          "description": "Molar mass of CO2"
+        },
+        {
+          "key": "henryCH4",
+          "type": "real",
+          "defaultValue": 4100000000,
+          "unit": "Pa",
+          "description": "Henry's constant for CH4 in water"
+        },
+        {
+          "key": "henryCO2",
+          "type": "real",
+          "defaultValue": 165000000,
+          "unit": "Pa",
+          "description": "Henry's constant for CO2 in water"
+        }
+      ],
+      "wasmKernel": "eos7c",
+      "archetypeId": 8
+    }
+  },
+  {
+    "name": "eos9",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:eos9",
+    "exports": [
+      "permeability",
+      "vgLambda",
+      "slr",
+      "sls",
+      "vgAlpha"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "EOS9: Richards Equation (Saturated / Unsaturated)",
+      "category": "EOS Module",
+      "domain": "subsurface",
+      "description": "Single-phase variably saturated isothermal water flow solver using Richards' equation with passive constant-pressure gas phase and Van Genuchten-Mualem hydraulic conductivity.",
+      "provenance": "Pruess, Oldenburg & Moridis (1999) LBNL-43134 EOS9; Richards (1931) Physics 1; van Genuchten (1980)",
+      "aliases": [
+        "EOS9",
+        "EOS9_RICHARDS",
+        "eos9_richards",
+        "richards"
+      ],
+      "parameters": [
+        {
+          "key": "permeability",
+          "type": "real",
+          "defaultValue": 1e-12,
+          "unit": "m^2",
+          "description": "Intrinsic rock permeability k"
+        },
+        {
+          "key": "vgLambda",
+          "type": "real",
+          "defaultValue": 0.457,
+          "unit": "1",
+          "description": "Van Genuchten m (= 1 - 1/n)"
+        },
+        {
+          "key": "slr",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "1",
+          "description": "Residual liquid saturation"
+        },
+        {
+          "key": "sls",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Saturated liquid saturation"
+        },
+        {
+          "key": "vgAlpha",
+          "type": "real",
+          "defaultValue": 0.0001,
+          "unit": "1/Pa",
+          "description": "Van Genuchten inverse air-entry pressure 1/P0"
+        }
+      ],
+      "wasmKernel": "eos9",
+      "archetypeId": 9
+    }
+  },
+  {
+    "name": "eco2n",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:eco2n",
+    "exports": [
+      "salinityRef",
+      "tCritCO2",
+      "pCritCO2",
+      "saltingOutCoeff"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ECO2N: Supercritical CO2 + Brine + Halite",
+      "category": "EOS Module",
+      "domain": "subsurface",
+      "description": "Thermodynamic fluid property module for geological sequestration of supercritical CO2 in deep saline aquifers with mutual H2O-CO2 solubility and halite salting-out.",
+      "provenance": "Pruess (2005) LBNL-57952 ECO2N; Spycher & Pruess (2005) Geochim. Cosmochim. Acta 69; Span & Wagner (1996)",
+      "aliases": [
+        "ECO2N",
+        "ECO2N_CO2_BRINE",
+        "eco2n_co2_brine",
+        "eco2n_v2"
+      ],
+      "parameters": [
+        {
+          "key": "salinityRef",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "kg/kg",
+          "description": "Reference NaCl brine mass fraction"
+        },
+        {
+          "key": "tCritCO2",
+          "type": "real",
+          "defaultValue": 304.1282,
+          "unit": "K",
+          "description": "Critical temperature of CO2 (Span-Wagner)"
+        },
+        {
+          "key": "pCritCO2",
+          "type": "real",
+          "defaultValue": 7377300,
+          "unit": "Pa",
+          "description": "Critical pressure of CO2 (Span-Wagner)"
+        },
+        {
+          "key": "saltingOutCoeff",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "kg/mol",
+          "description": "Setschenow salting-out coefficient for CO2 in NaCl brine"
+        }
+      ],
+      "wasmKernel": "eco2n",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "ewasg",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:ewasg",
+    "exports": [
+      "haliteDensity",
+      "salinitySat",
+      "permReductionExp"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "EWASG: Water + NaCl + Non-Condensible Gas",
+      "category": "EOS Module",
+      "domain": "subsurface",
+      "description": "Geothermal EOS for water, NaCl salt (including solid halite precipitation and porosity-permeability feedback), and non-condensible gas (CO2/CH4/N2).",
+      "provenance": "Battistelli, Calore & Pruess (1997) Geothermics 26; Pruess et al. (1999) LBNL-43134",
+      "aliases": [
+        "EWASG",
+        "EWASG_SALT_GAS",
+        "ewasg_salt_gas"
+      ],
+      "parameters": [
+        {
+          "key": "haliteDensity",
+          "type": "real",
+          "defaultValue": 2165,
+          "unit": "kg/m^3",
+          "description": "Solid halite crystal density"
+        },
+        {
+          "key": "salinitySat",
+          "type": "real",
+          "defaultValue": 0.265,
+          "unit": "kg/kg",
+          "description": "Halite solubility limit mass fraction"
+        },
+        {
+          "key": "permReductionExp",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "1",
+          "description": "Porosity-permeability reduction exponent"
+        }
+      ],
+      "wasmKernel": "ewasg",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "tmvoc",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:tmvoc",
+    "exports": [
+      "rhoNapl",
+      "molarMassVoc",
+      "vaporPressureVoc"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TMVOC: Three-Phase Water + Air + VOCs",
+      "category": "EOS Module",
+      "domain": "subsurface",
+      "description": "Three-phase non-isothermal multicomponent EOS for volatile organic compound (NAPL) contamination and thermal remediation in heterogeneous porous media.",
+      "provenance": "Pruess & Battistelli (2002) LBNL-49375 TMVOC User's Guide; Pruess et al. (1999) LBNL-43134",
+      "aliases": [
+        "TMVOC",
+        "TMVOC_VOC",
+        "tmvoc_voc"
+      ],
+      "parameters": [
+        {
+          "key": "rhoNapl",
+          "type": "real",
+          "defaultValue": 870,
+          "unit": "kg/m^3",
+          "description": "Reference NAPL / VOC liquid density"
+        },
+        {
+          "key": "molarMassVoc",
+          "type": "real",
+          "defaultValue": 0.09214,
+          "unit": "kg/mol",
+          "description": "Reference VOC molar mass (toluene)"
+        },
+        {
+          "key": "vaporPressureVoc",
+          "type": "real",
+          "defaultValue": 3800,
+          "unit": "Pa",
+          "description": "VOC saturation vapor pressure at 25 degC"
+        }
+      ],
+      "wasmKernel": "tmvoc",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "irp1",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:irp1",
+    "exports": [
+      "rp1",
+      "rp2",
+      "rp3",
+      "rp4"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IRP=1: Linear Relative Permeability",
+      "category": "Relative Permeability",
+      "domain": "subsurface",
+      "description": "Piecewise linear liquid and gas relative permeability functions over specified saturation intervals.",
+      "provenance": "Pruess (1991) LBL-29400; Pruess, Oldenburg & Moridis (1999) LBNL-43134 Table 10 (IRP=1)",
+      "aliases": [
+        "IRP1",
+        "IRP1_LINEAR",
+        "irp1_linear",
+        "linear_rp"
+      ],
+      "parameters": [
+        {
+          "key": "rp1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Liquid saturation where k_rl = 0"
+        },
+        {
+          "key": "rp2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Gas saturation where k_rg = 0"
+        },
+        {
+          "key": "rp3",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Liquid saturation where k_rl = 1"
+        },
+        {
+          "key": "rp4",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Gas saturation where k_rg = 1"
+        }
+      ],
+      "wasmKernel": "irp1",
+      "archetypeId": 101
+    }
+  },
+  {
+    "name": "irp3",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:irp3",
+    "exports": [
+      "slr",
+      "sgr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IRP=3: Corey (1954) Relative Permeability",
+      "category": "Relative Permeability",
+      "domain": "subsurface",
+      "description": "Classic Corey (1954) power-law two-phase relative permeability formulation: k_rl = S_hat^4, k_rg = (1 - S_hat)^2 * (1 - S_hat^2).",
+      "provenance": "Corey (1954) Producers Monthly 19(1):38-41; Pruess et al. (1999) LBNL-43134 Table 10 (IRP=3)",
+      "aliases": [
+        "IRP3",
+        "IRP3_COREY",
+        "irp3_corey",
+        "corey"
+      ],
+      "parameters": [
+        {
+          "key": "slr",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "1",
+          "description": "RP(1): Residual liquid saturation S_lr"
+        },
+        {
+          "key": "sgr",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "1",
+          "description": "RP(2): Residual gas saturation S_gr"
+        }
+      ],
+      "wasmKernel": "irp3",
+      "archetypeId": 103
+    }
+  },
+  {
+    "name": "irp4",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:irp4",
+    "exports": [
+      "slr",
+      "sgr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IRP=4: Grant (1977) Geothermal Relative Permeability",
+      "category": "Relative Permeability",
+      "domain": "subsurface",
+      "description": "Grant's (1977) fractured geothermal steam-water relative permeability curve where k_rl follows Corey and k_rg = 1 - k_rl.",
+      "provenance": "Grant (1977) Geothermics 6(1-2):9-29; Pruess et al. (1999) LBNL-43134 Table 10 (IRP=4)",
+      "aliases": [
+        "IRP4",
+        "IRP4_GRANT",
+        "irp4_grant",
+        "grant"
+      ],
+      "parameters": [
+        {
+          "key": "slr",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "1",
+          "description": "RP(1): Residual liquid saturation S_lr"
+        },
+        {
+          "key": "sgr",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "1",
+          "description": "RP(2): Residual gas saturation S_gr"
+        }
+      ],
+      "wasmKernel": "irp4",
+      "archetypeId": 104
+    }
+  },
+  {
+    "name": "irp7",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:irp7",
+    "exports": [
+      "lambda",
+      "slr",
+      "sls",
+      "sgr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IRP=7: Van Genuchten-Mualem Relative Permeability",
+      "category": "Relative Permeability",
+      "domain": "subsurface",
+      "description": "Van Genuchten-Mualem (1980) closed-form unsaturated liquid relative permeability with optional Corey gas permeability when S_gr > 0.",
+      "provenance": "van Genuchten (1980) Soil Sci. Soc. Am. J. 44:892-898; Mualem (1976); Pruess et al. (1999) LBNL-43134 (IRP=7)",
+      "aliases": [
+        "IRP7",
+        "IRP7_VANGENUCHTEN",
+        "irp7_vangenuchten",
+        "vangenuchten_rp",
+        "mualem"
+      ],
+      "parameters": [
+        {
+          "key": "lambda",
+          "type": "real",
+          "defaultValue": 0.457,
+          "unit": "1",
+          "description": "RP(1): Shape parameter m = 1 - 1/n"
+        },
+        {
+          "key": "slr",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "1",
+          "description": "RP(2): Residual liquid saturation S_lr"
+        },
+        {
+          "key": "sls",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "RP(3): Saturated liquid saturation S_ls"
+        },
+        {
+          "key": "sgr",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "1",
+          "description": "RP(4): Residual gas saturation S_gr"
+        }
+      ],
+      "wasmKernel": "irp7",
+      "archetypeId": 107
+    }
+  },
+  {
+    "name": "irp8",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:irp8",
+    "exports": [
+      "slr",
+      "sgr",
+      "a",
+      "b",
+      "c"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IRP=8: Verma (1985) Steam-Water Relative Permeability",
+      "category": "Relative Permeability",
+      "domain": "subsurface",
+      "description": "Verma et al. (1985) polynomial steam-water relative permeability correlation derived from two-phase geothermal core flood experiments.",
+      "provenance": "Verma, Pruess, Tsang & Witherspoon (1985) LBL-19148; Pruess et al. (1999) LBNL-43134 Table 10 (IRP=8)",
+      "aliases": [
+        "IRP8",
+        "IRP8_VERMA",
+        "irp8_verma",
+        "verma"
+      ],
+      "parameters": [
+        {
+          "key": "slr",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "RP(1): Residual liquid saturation S_lr"
+        },
+        {
+          "key": "sgr",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "1",
+          "description": "RP(2): Residual gas saturation S_gr"
+        },
+        {
+          "key": "a",
+          "type": "real",
+          "defaultValue": 1.259,
+          "unit": "1",
+          "description": "RP(3): Gas polynomial linear coefficient A"
+        },
+        {
+          "key": "b",
+          "type": "real",
+          "defaultValue": -1.7615,
+          "unit": "1",
+          "description": "RP(4): Gas polynomial quadratic coefficient B"
+        },
+        {
+          "key": "c",
+          "type": "real",
+          "defaultValue": 0.5089,
+          "unit": "1",
+          "description": "RP(5): Gas polynomial cubic coefficient C"
+        }
+      ],
+      "wasmKernel": "irp8",
+      "archetypeId": 108
+    }
+  },
+  {
+    "name": "irp11",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:irp11",
+    "exports": [
+      "slr",
+      "sgr",
+      "snr",
+      "nExp"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IRP=11: Stone (1970) Three-Phase Relative Permeability",
+      "category": "Relative Permeability",
+      "domain": "subsurface",
+      "description": "Modified Stone (1970) first three-phase relative permeability model for aqueous, gas, and NAPL/oil phases.",
+      "provenance": "Stone (1970) J. Pet. Technol. 22:214-218; Pruess et al. (1999) LBNL-43134 (IRP=11)",
+      "aliases": [
+        "IRP11",
+        "IRP11_STONE",
+        "irp11_stone",
+        "stone"
+      ],
+      "parameters": [
+        {
+          "key": "slr",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "RP(1): Residual water saturation S_lr"
+        },
+        {
+          "key": "sgr",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "1",
+          "description": "RP(2): Residual gas saturation S_gr"
+        },
+        {
+          "key": "snr",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1",
+          "description": "RP(3): Residual NAPL saturation S_nr"
+        },
+        {
+          "key": "nExp",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "1",
+          "description": "RP(4): Power-law exponent n"
+        }
+      ],
+      "wasmKernel": "irp11",
+      "archetypeId": 111
+    }
+  },
+  {
+    "name": "icp1",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:icp1",
+    "exports": [
+      "pMax",
+      "slMin",
+      "slMax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ICP=1: Linear Capillary Pressure",
+      "category": "Capillary Pressure",
+      "domain": "subsurface",
+      "description": "Piecewise linear capillary pressure ramp from -CP(1) at S_l <= CP(2) to 0 at S_l >= CP(3).",
+      "provenance": "Pruess (1991) LBL-29400; Pruess, Oldenburg & Moridis (1999) LBNL-43134 Table 11 (ICP=1)",
+      "aliases": [
+        "ICP1",
+        "ICP1_LINEAR",
+        "icp1_linear",
+        "linear_cp"
+      ],
+      "parameters": [
+        {
+          "key": "pMax",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "Pa",
+          "description": "CP(1): Maximum capillary pressure magnitude"
+        },
+        {
+          "key": "slMin",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1",
+          "description": "CP(2): Lower saturation cutoff"
+        },
+        {
+          "key": "slMax",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "CP(3): Upper saturation cutoff"
+        }
+      ],
+      "wasmKernel": "icp1",
+      "archetypeId": 201
+    }
+  },
+  {
+    "name": "icp3",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:icp3",
+    "exports": [
+      "p0",
+      "slr",
+      "sl0",
+      "xExp"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ICP=3: Pickens (1979) Capillary Pressure",
+      "category": "Capillary Pressure",
+      "domain": "subsurface",
+      "description": "Pickens et al. (1979) logarithmic soil-water retention capillary pressure function.",
+      "provenance": "Pickens, Gillham & Cameron (1979) Water Resour. Res. 15; Pruess et al. (1999) LBNL-43134 Table 11 (ICP=3)",
+      "aliases": [
+        "ICP3",
+        "ICP3_PICKENS",
+        "icp3_pickens",
+        "pickens"
+      ],
+      "parameters": [
+        {
+          "key": "p0",
+          "type": "real",
+          "defaultValue": 50000,
+          "unit": "Pa",
+          "description": "CP(1): Capillary pressure scale P0"
+        },
+        {
+          "key": "slr",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1",
+          "description": "CP(2): Residual liquid saturation S_lr"
+        },
+        {
+          "key": "sl0",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "CP(3): Maximum liquid saturation S_l0"
+        },
+        {
+          "key": "xExp",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "1",
+          "description": "CP(4): Shape exponent x"
+        }
+      ],
+      "wasmKernel": "icp3",
+      "archetypeId": 203
+    }
+  },
+  {
+    "name": "icp4",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:icp4",
+    "exports": [
+      "p0",
+      "slr",
+      "eta",
+      "pe"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ICP=4: TRUST / Narasimhan (1978) Capillary Pressure",
+      "category": "Capillary Pressure",
+      "domain": "subsurface",
+      "description": "Narasimhan et al. (1978) TRUST power-law soil moisture characteristic curve with air-entry pressure P_e.",
+      "provenance": "Narasimhan, Witherspoon & Edwards (1978) Water Resour. Res. 14; Pruess et al. (1999) LBNL-43134 (ICP=4)",
+      "aliases": [
+        "ICP4",
+        "ICP4_TRUST",
+        "icp4_trust",
+        "trust"
+      ],
+      "parameters": [
+        {
+          "key": "p0",
+          "type": "real",
+          "defaultValue": 10000,
+          "unit": "Pa",
+          "description": "CP(1): Capillary pressure scale P0"
+        },
+        {
+          "key": "slr",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1",
+          "description": "CP(2): Residual liquid saturation S_lr"
+        },
+        {
+          "key": "eta",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "CP(3): Power-law exponent eta"
+        },
+        {
+          "key": "pe",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "Pa",
+          "description": "CP(4): Air-entry pressure P_e"
+        }
+      ],
+      "wasmKernel": "icp4",
+      "archetypeId": 204
+    }
+  },
+  {
+    "name": "icp7",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:icp7",
+    "exports": [
+      "lambda",
+      "slr",
+      "alpha",
+      "pMax",
+      "sls"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ICP=7: Van Genuchten (1980) Capillary Pressure",
+      "category": "Capillary Pressure",
+      "domain": "subsurface",
+      "description": "Van Genuchten (1980) closed-form capillary pressure retention curve: P_cap = -(1/alpha) * [(S*)^(-1/m) - 1]^(1-m), bounded by -P_max.",
+      "provenance": "van Genuchten (1980) Soil Sci. Soc. Am. J. 44:892-898; Pruess, Oldenburg & Moridis (1999) LBNL-43134 Table 11 (ICP=7)",
+      "aliases": [
+        "ICP7",
+        "ICP7_VANGENUCHTEN",
+        "icp7_vangenuchten",
+        "vangenuchten_cp"
+      ],
+      "parameters": [
+        {
+          "key": "lambda",
+          "type": "real",
+          "defaultValue": 0.457,
+          "unit": "1",
+          "description": "CP(1): Shape parameter m = 1 - 1/n"
+        },
+        {
+          "key": "slr",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "1",
+          "description": "CP(2): Residual liquid saturation S_lr"
+        },
+        {
+          "key": "alpha",
+          "type": "real",
+          "defaultValue": 0.0001,
+          "unit": "1/Pa",
+          "description": "CP(3): Inverse air-entry pressure 1/P0"
+        },
+        {
+          "key": "pMax",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "Pa",
+          "description": "CP(4): Maximum capillary pressure magnitude"
+        },
+        {
+          "key": "sls",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "CP(5): Saturated liquid saturation S_ls"
+        }
+      ],
+      "wasmKernel": "icp7",
+      "archetypeId": 207
+    }
+  },
+  {
+    "name": "icp8",
+    "kind": "tough_constitutive_model",
+    "namePath": "tough:icp8",
+    "exports": [
+      "sigma",
+      "porosity",
+      "permeability",
+      "slr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ICP=8: Leverett (1941) J-Function Capillary Pressure",
+      "category": "Capillary Pressure",
+      "domain": "subsurface",
+      "description": "Leverett (1941) dimensionless J-function scaling capillary pressure by interfacial tension and sqrt(phi / k).",
+      "provenance": "Leverett (1941) Trans. AIME 142:152-169; Pruess et al. (1999) LBNL-43134 (ICP=8)",
+      "aliases": [
+        "ICP8",
+        "ICP8_LEVERETT",
+        "icp8_leverett",
+        "leverett"
+      ],
+      "parameters": [
+        {
+          "key": "sigma",
+          "type": "real",
+          "defaultValue": 0.072,
+          "unit": "N/m",
+          "description": "CP(1): Surface / interfacial tension sigma"
+        },
+        {
+          "key": "porosity",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "CP(2): Rock porosity phi"
+        },
+        {
+          "key": "permeability",
+          "type": "real",
+          "defaultValue": 1e-13,
+          "unit": "m^2",
+          "description": "CP(3): Intrinsic permeability k"
+        },
+        {
+          "key": "slr",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "1",
+          "description": "CP(4): Residual liquid saturation S_lr"
+        }
+      ],
+      "wasmKernel": "icp8",
+      "archetypeId": 208
+    }
+  }
+]

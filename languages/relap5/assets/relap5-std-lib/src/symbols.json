@@ -1,0 +1,1812 @@
+[
+  {
+    "name": "SNGLVOL",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:SNGLVOL",
+    "exports": [
+      "flowArea",
+      "length",
+      "volume",
+      "elevationChange",
+      "roughness",
+      "hydraulicDiameter",
+      "initialPressure",
+      "initialTemperature"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Single Volume (SNGLVOL)",
+      "category": "Hydrodynamic Volume",
+      "domain": "thermal-hydraulics",
+      "description": "Single thermal-hydraulic control volume with two-phase phasic mass and energy balance.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.1",
+      "aliases": [
+        "snglvol",
+        "snglv",
+        "single_volume"
+      ],
+      "parameters": [
+        {
+          "key": "flowArea",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "m^2",
+          "description": "Cross-sectional flow area"
+        },
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "m",
+          "description": "Volume hydrodynamic length"
+        },
+        {
+          "key": "volume",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m^3",
+          "description": "Control volume fluid capacity"
+        },
+        {
+          "key": "elevationChange",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Vertical elevation change dz"
+        },
+        {
+          "key": "roughness",
+          "type": "real",
+          "defaultValue": 0.000015,
+          "unit": "m",
+          "description": "Wall absolute surface roughness"
+        },
+        {
+          "key": "hydraulicDiameter",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "m",
+          "description": "Hydraulic diameter Dh"
+        },
+        {
+          "key": "initialPressure",
+          "type": "real",
+          "defaultValue": 15500000,
+          "unit": "Pa",
+          "description": "Initial pressure P0"
+        },
+        {
+          "key": "initialTemperature",
+          "type": "real",
+          "defaultValue": 573.15,
+          "unit": "K",
+          "description": "Initial fluid temperature T0"
+        }
+      ],
+      "wasmKernel": "SNGLVOL",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "TMDPVOL",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:TMDPVOL",
+    "exports": [
+      "boundaryPressure",
+      "boundaryTemperature",
+      "boundaryQuality"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Time-Dependent Volume (TMDPVOL)",
+      "category": "Hydrodynamic Volume",
+      "domain": "thermal-hydraulics",
+      "description": "Boundary-condition hydrodynamic volume prescribing time-dependent pressure, temperature, and quality.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.2",
+      "aliases": [
+        "tmdpvol",
+        "time_dependent_volume"
+      ],
+      "parameters": [
+        {
+          "key": "boundaryPressure",
+          "type": "real",
+          "defaultValue": 15500000,
+          "unit": "Pa",
+          "description": "Prescribed boundary pressure"
+        },
+        {
+          "key": "boundaryTemperature",
+          "type": "real",
+          "defaultValue": 565,
+          "unit": "K",
+          "description": "Prescribed boundary temperature"
+        },
+        {
+          "key": "boundaryQuality",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "-",
+          "description": "Prescribed static steam quality"
+        }
+      ],
+      "wasmKernel": "TMDPVOL",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "PIPE",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:PIPE",
+    "exports": [
+      "flowArea",
+      "length",
+      "volume",
+      "elevationChange",
+      "roughness",
+      "hydraulicDiameter",
+      "initialPressure",
+      "initialTemperature",
+      "nodeCount"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pipe Component (PIPE)",
+      "category": "Hydrodynamic Volume",
+      "domain": "thermal-hydraulics",
+      "description": "One-dimensional multi-node hydrodynamic pipe with Darcy-Weisbach wall friction and elevation head.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.3; Todreas & Kazimi Ch. 9",
+      "aliases": [
+        "pipe",
+        "multi_volume_pipe"
+      ],
+      "parameters": [
+        {
+          "key": "flowArea",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "m^2",
+          "description": "Cross-sectional flow area"
+        },
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "m",
+          "description": "Volume hydrodynamic length"
+        },
+        {
+          "key": "volume",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m^3",
+          "description": "Control volume fluid capacity"
+        },
+        {
+          "key": "elevationChange",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Vertical elevation change dz"
+        },
+        {
+          "key": "roughness",
+          "type": "real",
+          "defaultValue": 0.000015,
+          "unit": "m",
+          "description": "Wall absolute surface roughness"
+        },
+        {
+          "key": "hydraulicDiameter",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "m",
+          "description": "Hydraulic diameter Dh"
+        },
+        {
+          "key": "initialPressure",
+          "type": "real",
+          "defaultValue": 15500000,
+          "unit": "Pa",
+          "description": "Initial pressure P0"
+        },
+        {
+          "key": "initialTemperature",
+          "type": "real",
+          "defaultValue": 573.15,
+          "unit": "K",
+          "description": "Initial fluid temperature T0"
+        },
+        {
+          "key": "nodeCount",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "-",
+          "description": "Number of axial hydrodynamic volumes"
+        }
+      ],
+      "wasmKernel": "PIPE",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "ANNULUS",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:ANNULUS",
+    "exports": [
+      "flowArea",
+      "length",
+      "volume",
+      "elevationChange",
+      "roughness",
+      "hydraulicDiameter",
+      "initialPressure",
+      "initialTemperature",
+      "innerDiameter",
+      "outerDiameter"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Annulus Component (ANNULUS)",
+      "category": "Hydrodynamic Volume",
+      "domain": "thermal-hydraulics",
+      "description": "Annular flow channel specialized for reactor vessel downcomer counter-current flooding and entrainment.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.4",
+      "aliases": [
+        "annulus",
+        "downcomer"
+      ],
+      "parameters": [
+        {
+          "key": "flowArea",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "m^2",
+          "description": "Cross-sectional flow area"
+        },
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "m",
+          "description": "Volume hydrodynamic length"
+        },
+        {
+          "key": "volume",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m^3",
+          "description": "Control volume fluid capacity"
+        },
+        {
+          "key": "elevationChange",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Vertical elevation change dz"
+        },
+        {
+          "key": "roughness",
+          "type": "real",
+          "defaultValue": 0.000015,
+          "unit": "m",
+          "description": "Wall absolute surface roughness"
+        },
+        {
+          "key": "hydraulicDiameter",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "m",
+          "description": "Hydraulic diameter Dh"
+        },
+        {
+          "key": "initialPressure",
+          "type": "real",
+          "defaultValue": 15500000,
+          "unit": "Pa",
+          "description": "Initial pressure P0"
+        },
+        {
+          "key": "initialTemperature",
+          "type": "real",
+          "defaultValue": 573.15,
+          "unit": "K",
+          "description": "Initial fluid temperature T0"
+        },
+        {
+          "key": "innerDiameter",
+          "type": "real",
+          "defaultValue": 3.4,
+          "unit": "m",
+          "description": "Inner core barrel outer diameter"
+        },
+        {
+          "key": "outerDiameter",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "m",
+          "description": "Reactor vessel inner diameter"
+        }
+      ],
+      "wasmKernel": "ANNULUS",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "BRANCH",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:BRANCH",
+    "exports": [
+      "flowArea",
+      "length",
+      "volume",
+      "elevationChange",
+      "roughness",
+      "hydraulicDiameter",
+      "initialPressure",
+      "initialTemperature",
+      "junctionCount"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Branch Component (BRANCH)",
+      "category": "Hydrodynamic Volume",
+      "domain": "thermal-hydraulics",
+      "description": "Single hydrodynamic volume with up to nine attached junctions for plena, tees, and headers.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.5",
+      "aliases": [
+        "branch",
+        "plenum"
+      ],
+      "parameters": [
+        {
+          "key": "flowArea",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "m^2",
+          "description": "Cross-sectional flow area"
+        },
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "m",
+          "description": "Volume hydrodynamic length"
+        },
+        {
+          "key": "volume",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m^3",
+          "description": "Control volume fluid capacity"
+        },
+        {
+          "key": "elevationChange",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Vertical elevation change dz"
+        },
+        {
+          "key": "roughness",
+          "type": "real",
+          "defaultValue": 0.000015,
+          "unit": "m",
+          "description": "Wall absolute surface roughness"
+        },
+        {
+          "key": "hydraulicDiameter",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "m",
+          "description": "Hydraulic diameter Dh"
+        },
+        {
+          "key": "initialPressure",
+          "type": "real",
+          "defaultValue": 15500000,
+          "unit": "Pa",
+          "description": "Initial pressure P0"
+        },
+        {
+          "key": "initialTemperature",
+          "type": "real",
+          "defaultValue": 573.15,
+          "unit": "K",
+          "description": "Initial fluid temperature T0"
+        },
+        {
+          "key": "junctionCount",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "-",
+          "description": "Number of connected branch junctions"
+        }
+      ],
+      "wasmKernel": "BRANCH",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SNGLJUN",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:SNGLJUN",
+    "exports": [
+      "flowArea",
+      "forwardLoss",
+      "reverseLoss",
+      "dischargeCoeff",
+      "gamma",
+      "rhoRef"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Single Junction (SNGLJUN)",
+      "category": "Hydrodynamic Junction",
+      "domain": "thermal-hydraulics",
+      "description": "Single momentum junction connecting two hydrodynamic volumes with form losses and homogeneous choked flow.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.6",
+      "aliases": [
+        "sngljun",
+        "snglj",
+        "single_junction"
+      ],
+      "parameters": [
+        {
+          "key": "flowArea",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "m^2",
+          "description": "Junction throat flow area"
+        },
+        {
+          "key": "forwardLoss",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "-",
+          "description": "Forward form loss coefficient K_f"
+        },
+        {
+          "key": "reverseLoss",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Reverse form loss coefficient K_r"
+        },
+        {
+          "key": "dischargeCoeff",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "-",
+          "description": "Orifice / valve discharge coefficient Cd"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.3,
+          "unit": "-",
+          "description": "Isentropic expansion exponent for choked flow"
+        },
+        {
+          "key": "rhoRef",
+          "type": "real",
+          "defaultValue": 720,
+          "unit": "kg/m^3",
+          "description": "Reference upstream fluid density"
+        }
+      ],
+      "wasmKernel": "SNGLJUN",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "TMDPJUN",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:TMDPJUN",
+    "exports": [
+      "flowArea",
+      "forwardLoss",
+      "reverseLoss",
+      "dischargeCoeff",
+      "gamma",
+      "rhoRef",
+      "prescribedMassFlow"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Time-Dependent Junction (TMDPJUN)",
+      "category": "Hydrodynamic Junction",
+      "domain": "thermal-hydraulics",
+      "description": "Boundary-condition junction prescribing phasic mass flow rate or velocity as a function of time.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.7",
+      "aliases": [
+        "tmdpjun",
+        "tmdpj",
+        "time_dependent_junction"
+      ],
+      "parameters": [
+        {
+          "key": "flowArea",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "m^2",
+          "description": "Junction throat flow area"
+        },
+        {
+          "key": "forwardLoss",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "-",
+          "description": "Forward form loss coefficient K_f"
+        },
+        {
+          "key": "reverseLoss",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Reverse form loss coefficient K_r"
+        },
+        {
+          "key": "dischargeCoeff",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "-",
+          "description": "Orifice / valve discharge coefficient Cd"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.3,
+          "unit": "-",
+          "description": "Isentropic expansion exponent for choked flow"
+        },
+        {
+          "key": "rhoRef",
+          "type": "real",
+          "defaultValue": 720,
+          "unit": "kg/m^3",
+          "description": "Reference upstream fluid density"
+        },
+        {
+          "key": "prescribedMassFlow",
+          "type": "real",
+          "defaultValue": 4500,
+          "unit": "kg/s",
+          "description": "Prescribed boundary mass flow rate"
+        }
+      ],
+      "wasmKernel": "TMDPJUN",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "PUMP",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:PUMP",
+    "exports": [
+      "ratedHead",
+      "ratedFlow",
+      "ratedSpeed",
+      "momentOfInertia",
+      "rhoRef",
+      "efficiency"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Centrifugal Pump (PUMP)",
+      "category": "Turbomachinery / Valve",
+      "domain": "thermal-hydraulics",
+      "description": "Single- and two-phase centrifugal coolant pump with homologous head and torque curves.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.9",
+      "aliases": [
+        "pump",
+        "rcp"
+      ],
+      "parameters": [
+        {
+          "key": "ratedHead",
+          "type": "real",
+          "defaultValue": 85,
+          "unit": "m",
+          "description": "Rated pump head H_R"
+        },
+        {
+          "key": "ratedFlow",
+          "type": "real",
+          "defaultValue": 5.5,
+          "unit": "m^3/s",
+          "description": "Rated volumetric flow Q_R"
+        },
+        {
+          "key": "ratedSpeed",
+          "type": "real",
+          "defaultValue": 124,
+          "unit": "rad/s",
+          "description": "Rated angular speed omega_R"
+        },
+        {
+          "key": "momentOfInertia",
+          "type": "real",
+          "defaultValue": 5200,
+          "unit": "kg*m^2",
+          "description": "Pump-motor flywheel inertia I"
+        },
+        {
+          "key": "rhoRef",
+          "type": "real",
+          "defaultValue": 730,
+          "unit": "kg/m^3",
+          "description": "Reference coolant density"
+        },
+        {
+          "key": "efficiency",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "-",
+          "description": "Hydraulic efficiency"
+        }
+      ],
+      "wasmKernel": "PUMP",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "VALVE_TRIP",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:VALVE_TRIP",
+    "exports": [
+      "flowArea",
+      "forwardLoss",
+      "reverseLoss",
+      "dischargeCoeff",
+      "gamma",
+      "rhoRef",
+      "stemPosition"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Trip Valve (VALVE_TRIP)",
+      "category": "Turbomachinery / Valve",
+      "domain": "thermal-hydraulics",
+      "description": "Abruptly opening or closing trip-actuated isolation valve with homogeneous choked flow limit.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.8.1",
+      "aliases": [
+        "valve_trip",
+        "tripvlv",
+        "trpv"
+      ],
+      "parameters": [
+        {
+          "key": "flowArea",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "m^2",
+          "description": "Junction throat flow area"
+        },
+        {
+          "key": "forwardLoss",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "-",
+          "description": "Forward form loss coefficient K_f"
+        },
+        {
+          "key": "reverseLoss",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Reverse form loss coefficient K_r"
+        },
+        {
+          "key": "dischargeCoeff",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "-",
+          "description": "Orifice / valve discharge coefficient Cd"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.3,
+          "unit": "-",
+          "description": "Isentropic expansion exponent for choked flow"
+        },
+        {
+          "key": "rhoRef",
+          "type": "real",
+          "defaultValue": 720,
+          "unit": "kg/m^3",
+          "description": "Reference upstream fluid density"
+        },
+        {
+          "key": "stemPosition",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Normalized valve open fraction (0=closed, 1=open)"
+        }
+      ],
+      "wasmKernel": "VALVE_TRIP",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "VALVE_MOTOR",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:VALVE_MOTOR",
+    "exports": [
+      "flowArea",
+      "forwardLoss",
+      "reverseLoss",
+      "dischargeCoeff",
+      "gamma",
+      "rhoRef",
+      "stemPosition",
+      "strokeRate"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Motor-Operated Valve (VALVE_MOTOR)",
+      "category": "Turbomachinery / Valve",
+      "domain": "thermal-hydraulics",
+      "description": "Rate-limited motor-operated valve with linear stroke time and choked orifice flow.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.8.3",
+      "aliases": [
+        "valve_motor",
+        "mtrvlv",
+        "mov"
+      ],
+      "parameters": [
+        {
+          "key": "flowArea",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "m^2",
+          "description": "Junction throat flow area"
+        },
+        {
+          "key": "forwardLoss",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "-",
+          "description": "Forward form loss coefficient K_f"
+        },
+        {
+          "key": "reverseLoss",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Reverse form loss coefficient K_r"
+        },
+        {
+          "key": "dischargeCoeff",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "-",
+          "description": "Orifice / valve discharge coefficient Cd"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.3,
+          "unit": "-",
+          "description": "Isentropic expansion exponent for choked flow"
+        },
+        {
+          "key": "rhoRef",
+          "type": "real",
+          "defaultValue": 720,
+          "unit": "kg/m^3",
+          "description": "Reference upstream fluid density"
+        },
+        {
+          "key": "stemPosition",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Initial normalized stem position"
+        },
+        {
+          "key": "strokeRate",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/s",
+          "description": "Maximum stem opening/closing rate"
+        }
+      ],
+      "wasmKernel": "VALVE_MOTOR",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "VALVE_CHECK",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:VALVE_CHECK",
+    "exports": [
+      "flowArea",
+      "forwardLoss",
+      "reverseLoss",
+      "dischargeCoeff",
+      "gamma",
+      "rhoRef",
+      "crackingDp"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Check Valve (VALVE_CHECK)",
+      "category": "Turbomachinery / Valve",
+      "domain": "thermal-hydraulics",
+      "description": "Static/dynamic swing check valve permitting forward flow and blocking reverse backflow.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.8.2",
+      "aliases": [
+        "valve_check",
+        "chkvlv"
+      ],
+      "parameters": [
+        {
+          "key": "flowArea",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "m^2",
+          "description": "Junction throat flow area"
+        },
+        {
+          "key": "forwardLoss",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "-",
+          "description": "Forward form loss coefficient K_f"
+        },
+        {
+          "key": "reverseLoss",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Reverse form loss coefficient K_r"
+        },
+        {
+          "key": "dischargeCoeff",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "-",
+          "description": "Orifice / valve discharge coefficient Cd"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.3,
+          "unit": "-",
+          "description": "Isentropic expansion exponent for choked flow"
+        },
+        {
+          "key": "rhoRef",
+          "type": "real",
+          "defaultValue": 720,
+          "unit": "kg/m^3",
+          "description": "Reference upstream fluid density"
+        },
+        {
+          "key": "crackingDp",
+          "type": "real",
+          "defaultValue": 5000,
+          "unit": "Pa",
+          "description": "Minimum forward differential pressure to open"
+        }
+      ],
+      "wasmKernel": "VALVE_CHECK",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "VALVE_RELIEF",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:VALVE_RELIEF",
+    "exports": [
+      "flowArea",
+      "forwardLoss",
+      "reverseLoss",
+      "dischargeCoeff",
+      "gamma",
+      "rhoRef",
+      "setPressure",
+      "fullOpenPressure"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Safety / Relief Valve (VALVE_RELIEF)",
+      "category": "Turbomachinery / Valve",
+      "domain": "thermal-hydraulics",
+      "description": "Spring-loaded safety or power-operated relief valve opening above setpoint pressure with choked discharge.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.8.5",
+      "aliases": [
+        "valve_relief",
+        "srvvlv",
+        "porv"
+      ],
+      "parameters": [
+        {
+          "key": "flowArea",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "m^2",
+          "description": "Junction throat flow area"
+        },
+        {
+          "key": "forwardLoss",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "-",
+          "description": "Forward form loss coefficient K_f"
+        },
+        {
+          "key": "reverseLoss",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Reverse form loss coefficient K_r"
+        },
+        {
+          "key": "dischargeCoeff",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "-",
+          "description": "Orifice / valve discharge coefficient Cd"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.3,
+          "unit": "-",
+          "description": "Isentropic expansion exponent for choked flow"
+        },
+        {
+          "key": "rhoRef",
+          "type": "real",
+          "defaultValue": 720,
+          "unit": "kg/m^3",
+          "description": "Reference upstream fluid density"
+        },
+        {
+          "key": "setPressure",
+          "type": "real",
+          "defaultValue": 16200000,
+          "unit": "Pa",
+          "description": "Opening setpoint pressure"
+        },
+        {
+          "key": "fullOpenPressure",
+          "type": "real",
+          "defaultValue": 16700000,
+          "unit": "Pa",
+          "description": "Full-lift overpressure"
+        }
+      ],
+      "wasmKernel": "VALVE_RELIEF",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "TURBINE",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:TURBINE",
+    "exports": [
+      "efficiency",
+      "ratedMassFlow",
+      "deltaHIsentropic",
+      "reactionFraction"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Steam Turbine Stage (TURBINE)",
+      "category": "Turbomachinery / Valve",
+      "domain": "thermal-hydraulics",
+      "description": "Impulse/reaction steam turbine stage computing isentropic enthalpy drop and mechanical shaft power.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.12",
+      "aliases": [
+        "turbine",
+        "steam_turbine"
+      ],
+      "parameters": [
+        {
+          "key": "efficiency",
+          "type": "real",
+          "defaultValue": 0.86,
+          "unit": "-",
+          "description": "Stage isentropic efficiency"
+        },
+        {
+          "key": "ratedMassFlow",
+          "type": "real",
+          "defaultValue": 1500,
+          "unit": "kg/s",
+          "description": "Design steam mass flow rate"
+        },
+        {
+          "key": "deltaHIsentropic",
+          "type": "real",
+          "defaultValue": 320000,
+          "unit": "J/kg",
+          "description": "Nominal isentropic enthalpy drop"
+        },
+        {
+          "key": "reactionFraction",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "-",
+          "description": "Stage reaction fraction"
+        }
+      ],
+      "wasmKernel": "TURBINE",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "SEPARATOR",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:SEPARATOR",
+    "exports": [
+      "volume",
+      "carryOverLimit",
+      "carryUnderLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Steam-Water Separator (SEPARATOR)",
+      "category": "Hydrodynamic Volume",
+      "domain": "thermal-hydraulics",
+      "description": "Mechanistic steam-water separator partitioning two-phase inlet mixture into dry steam and saturated liquid return.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.10",
+      "aliases": [
+        "separator",
+        "separatr"
+      ],
+      "parameters": [
+        {
+          "key": "volume",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "m^3",
+          "description": "Separator volume"
+        },
+        {
+          "key": "carryOverLimit",
+          "type": "real",
+          "defaultValue": 0.0025,
+          "unit": "-",
+          "description": "Maximum liquid carryover quality fraction"
+        },
+        {
+          "key": "carryUnderLimit",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "-",
+          "description": "Maximum vapor carryunder void fraction"
+        }
+      ],
+      "wasmKernel": "SEPARATOR",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "ACCUM",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:ACCUM",
+    "exports": [
+      "totalVolume",
+      "liquidVolume0",
+      "initialPressure",
+      "polytropicExponent",
+      "surgeLineArea"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ECCS Accumulator (ACCUM)",
+      "category": "Hydrodynamic Volume",
+      "domain": "thermal-hydraulics",
+      "description": "Nitrogen-pressurized passive emergency core cooling accumulator with polytropic gas expansion.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I (RELAP5/MOD3.3 Code Manual), Section 3.13",
+      "aliases": [
+        "accum",
+        "accumulator"
+      ],
+      "parameters": [
+        {
+          "key": "totalVolume",
+          "type": "real",
+          "defaultValue": 42,
+          "unit": "m^3",
+          "description": "Total tank volume"
+        },
+        {
+          "key": "liquidVolume0",
+          "type": "real",
+          "defaultValue": 28,
+          "unit": "m^3",
+          "description": "Initial borated water volume"
+        },
+        {
+          "key": "initialPressure",
+          "type": "real",
+          "defaultValue": 4200000,
+          "unit": "Pa",
+          "description": "Initial nitrogen cover-gas pressure"
+        },
+        {
+          "key": "polytropicExponent",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "-",
+          "description": "Nitrogen expansion exponent n"
+        },
+        {
+          "key": "surgeLineArea",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "m^2",
+          "description": "Injection surge line flow area"
+        }
+      ],
+      "wasmKernel": "ACCUM",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "PRIZER",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:PRIZER",
+    "exports": [
+      "totalVolume",
+      "liquidVolume0",
+      "initialPressure",
+      "heaterPowerMax",
+      "sprayFlowMax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PWR Pressurizer (PRIZER)",
+      "category": "Hydrodynamic Volume",
+      "domain": "thermal-hydraulics",
+      "description": "Two-region non-equilibrium PWR pressurizer with proportional heaters, spray condensation, and surge line.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I; Todreas & Kazimi, Nuclear Systems I, Ch. 5",
+      "aliases": [
+        "prizer",
+        "pressurizer"
+      ],
+      "parameters": [
+        {
+          "key": "totalVolume",
+          "type": "real",
+          "defaultValue": 51,
+          "unit": "m^3",
+          "description": "Total pressurizer volume"
+        },
+        {
+          "key": "liquidVolume0",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "m^3",
+          "description": "Initial saturated liquid volume"
+        },
+        {
+          "key": "initialPressure",
+          "type": "real",
+          "defaultValue": 15500000,
+          "unit": "Pa",
+          "description": "Nominal primary system pressure"
+        },
+        {
+          "key": "heaterPowerMax",
+          "type": "real",
+          "defaultValue": 1800000,
+          "unit": "W",
+          "description": "Maximum electrical heater capacity"
+        },
+        {
+          "key": "sprayFlowMax",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "kg/s",
+          "description": "Maximum cold-leg spray flow rate"
+        }
+      ],
+      "wasmKernel": "PRIZER",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "HTSTR_FUEL_ROD",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:HTSTR_FUEL_ROD",
+    "exports": [
+      "pelletRadius",
+      "cladOuterRadius",
+      "activeLength",
+      "thermalCapacity",
+      "gapConductance",
+      "surfaceArea"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Nuclear Fuel Rod Heat Structure (HTSTR_FUEL_ROD)",
+      "category": "Heat Structure",
+      "domain": "thermal-hydraulics",
+      "description": "Cylindrical UO2 pellet, helium gap, and Zircaloy cladding radial heat conduction structure.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I, Section 4.1; Todreas & Kazimi, Nuclear Systems I, Ch. 8",
+      "aliases": [
+        "htstr_fuel_rod",
+        "fuel_rod",
+        "htstr_fuel"
+      ],
+      "parameters": [
+        {
+          "key": "pelletRadius",
+          "type": "real",
+          "defaultValue": 0.0041,
+          "unit": "m",
+          "description": "UO2 fuel pellet outer radius"
+        },
+        {
+          "key": "cladOuterRadius",
+          "type": "real",
+          "defaultValue": 0.00475,
+          "unit": "m",
+          "description": "Cladding outer radius"
+        },
+        {
+          "key": "activeLength",
+          "type": "real",
+          "defaultValue": 3.66,
+          "unit": "m",
+          "description": "Active heated core length"
+        },
+        {
+          "key": "thermalCapacity",
+          "type": "real",
+          "defaultValue": 2500,
+          "unit": "J/K",
+          "description": "Lumped rod thermal capacitance"
+        },
+        {
+          "key": "gapConductance",
+          "type": "real",
+          "defaultValue": 5678,
+          "unit": "W/(m^2*K)",
+          "description": "Pellet-to-clad gap heat transfer coefficient"
+        },
+        {
+          "key": "surfaceArea",
+          "type": "real",
+          "defaultValue": 0.109,
+          "unit": "m^2",
+          "description": "Outer cladding heat transfer surface area"
+        }
+      ],
+      "wasmKernel": "HTSTR_FUEL_ROD",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "HTSTR_SG_TUBE",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:HTSTR_SG_TUBE",
+    "exports": [
+      "innerRadius",
+      "outerRadius",
+      "tubeLength",
+      "thermalCapacity",
+      "wallConductivity",
+      "surfaceArea"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Steam Generator U-Tube Heat Structure (HTSTR_SG_TUBE)",
+      "category": "Heat Structure",
+      "domain": "thermal-hydraulics",
+      "description": "Inconel-690/600 steam generator U-tube wall conducting heat from primary RCS to secondary boiling side.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I, Section 4.1; Todreas & Kazimi, Nuclear Systems I, Ch. 8",
+      "aliases": [
+        "htstr_sg_tube",
+        "sg_tube",
+        "htstr_sg"
+      ],
+      "parameters": [
+        {
+          "key": "innerRadius",
+          "type": "real",
+          "defaultValue": 0.0084,
+          "unit": "m",
+          "description": "Tube inner radius"
+        },
+        {
+          "key": "outerRadius",
+          "type": "real",
+          "defaultValue": 0.0095,
+          "unit": "m",
+          "description": "Tube outer radius"
+        },
+        {
+          "key": "tubeLength",
+          "type": "real",
+          "defaultValue": 18,
+          "unit": "m",
+          "description": "Average U-tube length"
+        },
+        {
+          "key": "thermalCapacity",
+          "type": "real",
+          "defaultValue": 1800,
+          "unit": "J/K",
+          "description": "Lumped tube wall thermal capacitance"
+        },
+        {
+          "key": "wallConductivity",
+          "type": "real",
+          "defaultValue": 18.5,
+          "unit": "W/(m*K)",
+          "description": "Alloy 690 thermal conductivity"
+        },
+        {
+          "key": "surfaceArea",
+          "type": "real",
+          "defaultValue": 1.07,
+          "unit": "m^2",
+          "description": "Outer heat transfer surface area per tube"
+        }
+      ],
+      "wasmKernel": "HTSTR_SG_TUBE",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "CORR_DITTUS_BOELTER",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:CORR_DITTUS_BOELTER",
+    "exports": [
+      "coefficient",
+      "reExponent",
+      "prExponent"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Dittus-Boelter Convection Correlation (CORR_DITTUS_BOELTER)",
+      "category": "Boiling / CHF Correlation",
+      "domain": "thermal-hydraulics",
+      "description": "Turbulent single-phase forced convection correlation Nu = 0.023 * Re^0.8 * Pr^0.4 (heating) or Pr^0.3 (cooling).",
+      "provenance": "Dittus & Boelter (1930); Winterton (1998), Int. J. Heat Mass Transfer 41, 809-810; NUREG/CR-5535 Vol. IV",
+      "aliases": [
+        "corr_dittus_boelter",
+        "dittus_boelter"
+      ],
+      "parameters": [
+        {
+          "key": "coefficient",
+          "type": "real",
+          "defaultValue": 0.023,
+          "unit": "-",
+          "description": "Leading Nusselt correlation coefficient"
+        },
+        {
+          "key": "reExponent",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "-",
+          "description": "Reynolds number exponent"
+        },
+        {
+          "key": "prExponent",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "-",
+          "description": "Prandtl number exponent (0.4 heating, 0.3 cooling)"
+        }
+      ],
+      "wasmKernel": "CORR_DITTUS_BOELTER",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "CORR_CHEN_BOILING",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:CORR_CHEN_BOILING",
+    "exports": [
+      "reynoldsFactorF",
+      "suppressionFactorS",
+      "forsterZuberHmic",
+      "wallSuperheat"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Chen Saturated Boiling Correlation (CORR_CHEN_BOILING)",
+      "category": "Boiling / CHF Correlation",
+      "domain": "thermal-hydraulics",
+      "description": "Superposition of macroscopic forced convection (F * h_mac) and suppressed microscopic nucleate boiling (S * h_mic).",
+      "provenance": "Chen, J. C. (1966), Ind. Eng. Chem. Process Des. Dev. 5(3), 322-329; US NRC NUREG/CR-5535 Vol. IV",
+      "aliases": [
+        "corr_chen_boiling",
+        "chen_boiling"
+      ],
+      "parameters": [
+        {
+          "key": "reynoldsFactorF",
+          "type": "real",
+          "defaultValue": 2.35,
+          "unit": "-",
+          "description": "Two-phase Reynolds enhancement factor F"
+        },
+        {
+          "key": "suppressionFactorS",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "-",
+          "description": "Nucleate boiling suppression factor S"
+        },
+        {
+          "key": "forsterZuberHmic",
+          "type": "real",
+          "defaultValue": 15000,
+          "unit": "W/(m^2*K)",
+          "description": "Microscopic nucleate boiling base HTC"
+        },
+        {
+          "key": "wallSuperheat",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "K",
+          "description": "Wall superheat Tw - Tsat"
+        }
+      ],
+      "wasmKernel": "CORR_CHEN_BOILING",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "CORR_ZUBER_CHF",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:CORR_ZUBER_CHF",
+    "exports": [
+      "zuberConst",
+      "hfg",
+      "rhoLiquid",
+      "rhoVapor",
+      "surfaceTension",
+      "gravity"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Zuber Pool-Boiling CHF Correlation (CORR_ZUBER_CHF)",
+      "category": "Boiling / CHF Correlation",
+      "domain": "thermal-hydraulics",
+      "description": "Hydrodynamic Taylor/Helmholtz instability pool-boiling critical heat flux q''_CHF = 0.131 * h_fg * rho_g^0.5 * [sigma * g * (rho_f - rho_g)]^0.25.",
+      "provenance": "Zuber, N. (1959), Hydrodynamic Aspects of Boiling Heat Transfer, AECU-4439; Todreas & Kazimi Ch. 13",
+      "aliases": [
+        "corr_zuber_chf",
+        "zuber_chf"
+      ],
+      "parameters": [
+        {
+          "key": "zuberConst",
+          "type": "real",
+          "defaultValue": 0.131,
+          "unit": "-",
+          "description": "Zuber hydrodynamic constant (pi/24 ~ 0.131)"
+        },
+        {
+          "key": "hfg",
+          "type": "real",
+          "defaultValue": 2257000,
+          "unit": "J/kg",
+          "description": "Latent heat of vaporization h_fg"
+        },
+        {
+          "key": "rhoLiquid",
+          "type": "real",
+          "defaultValue": 958.4,
+          "unit": "kg/m^3",
+          "description": "Saturated liquid density rho_f"
+        },
+        {
+          "key": "rhoVapor",
+          "type": "real",
+          "defaultValue": 0.598,
+          "unit": "kg/m^3",
+          "description": "Saturated vapor density rho_g"
+        },
+        {
+          "key": "surfaceTension",
+          "type": "real",
+          "defaultValue": 0.0589,
+          "unit": "N/m",
+          "description": "Liquid-vapor surface tension sigma"
+        },
+        {
+          "key": "gravity",
+          "type": "real",
+          "defaultValue": 9.80665,
+          "unit": "m/s^2",
+          "description": "Gravitational acceleration g"
+        }
+      ],
+      "wasmKernel": "CORR_ZUBER_CHF",
+      "archetypeId": 42
+    }
+  },
+  {
+    "name": "CORR_GROENEVELD_CHF",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:CORR_GROENEVELD_CHF",
+    "exports": [
+      "qChfRef",
+      "refDiameter",
+      "diameterExponent",
+      "qualitySlope"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Groeneveld CHF Look-Up Correlation (CORR_GROENEVELD_CHF)",
+      "category": "Boiling / CHF Correlation",
+      "domain": "thermal-hydraulics",
+      "description": "AECL-UO Groeneveld critical heat flux correlation with diameter correction (8 mm reference tube) for PWR/BWR channels.",
+      "provenance": "Groeneveld, D. C. et al. (2007), Nuclear Engineering and Design 237, 1909-1922; NUREG/CR-5535 Vol. IV",
+      "aliases": [
+        "corr_groeneveld_chf",
+        "groeneveld_chf"
+      ],
+      "parameters": [
+        {
+          "key": "qChfRef",
+          "type": "real",
+          "defaultValue": 2500000,
+          "unit": "W/m^2",
+          "description": "Reference 8 mm tube CHF at nominal P, G, x"
+        },
+        {
+          "key": "refDiameter",
+          "type": "real",
+          "defaultValue": 0.008,
+          "unit": "m",
+          "description": "Look-up table reference tube diameter (8 mm)"
+        },
+        {
+          "key": "diameterExponent",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "-",
+          "description": "Tube diameter scaling exponent (D_ref/D)^n"
+        },
+        {
+          "key": "qualitySlope",
+          "type": "real",
+          "defaultValue": 1.8,
+          "unit": "-",
+          "description": "Local equilibrium quality sensitivity factor"
+        }
+      ],
+      "wasmKernel": "CORR_GROENEVELD_CHF",
+      "archetypeId": 43
+    }
+  },
+  {
+    "name": "POINT_KINETICS_6G",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:POINT_KINETICS_6G",
+    "exports": [
+      "promptGenTime",
+      "initialPower",
+      "beta1",
+      "beta2",
+      "beta3",
+      "beta4",
+      "beta5",
+      "beta6",
+      "lambda1",
+      "lambda2",
+      "lambda3",
+      "lambda4",
+      "lambda5",
+      "lambda6"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "6-Group Point Reactor Kinetics (POINT_KINETICS_6G)",
+      "category": "Reactor Kinetics",
+      "domain": "thermal-hydraulics",
+      "description": "Six-delayed-neutron-precursor-group point reactor kinetics equations integrated via 2nd-order Heun RK2.",
+      "provenance": "US NRC NUREG/CR-5535 Vol. I, Section 6.1; Keepin (1965) U-235 thermal fission delayed neutron constants",
+      "aliases": [
+        "point_kinetics_6g",
+        "pke6g",
+        "point_kinetics"
+      ],
+      "parameters": [
+        {
+          "key": "promptGenTime",
+          "type": "real",
+          "defaultValue": 0.00002,
+          "unit": "s",
+          "description": "Prompt neutron generation time Lambda"
+        },
+        {
+          "key": "initialPower",
+          "type": "real",
+          "defaultValue": 3000000000,
+          "unit": "W",
+          "description": "Initial steady-state thermal power P0"
+        },
+        {
+          "key": "beta1",
+          "type": "real",
+          "defaultValue": 0.000215,
+          "unit": "-",
+          "description": "Group 1 delayed neutron fraction"
+        },
+        {
+          "key": "beta2",
+          "type": "real",
+          "defaultValue": 0.001424,
+          "unit": "-",
+          "description": "Group 2 delayed neutron fraction"
+        },
+        {
+          "key": "beta3",
+          "type": "real",
+          "defaultValue": 0.001274,
+          "unit": "-",
+          "description": "Group 3 delayed neutron fraction"
+        },
+        {
+          "key": "beta4",
+          "type": "real",
+          "defaultValue": 0.002568,
+          "unit": "-",
+          "description": "Group 4 delayed neutron fraction"
+        },
+        {
+          "key": "beta5",
+          "type": "real",
+          "defaultValue": 0.000748,
+          "unit": "-",
+          "description": "Group 5 delayed neutron fraction"
+        },
+        {
+          "key": "beta6",
+          "type": "real",
+          "defaultValue": 0.000273,
+          "unit": "-",
+          "description": "Group 6 delayed neutron fraction"
+        },
+        {
+          "key": "lambda1",
+          "type": "real",
+          "defaultValue": 0.0124,
+          "unit": "1/s",
+          "description": "Group 1 precursor decay constant"
+        },
+        {
+          "key": "lambda2",
+          "type": "real",
+          "defaultValue": 0.0305,
+          "unit": "1/s",
+          "description": "Group 2 precursor decay constant"
+        },
+        {
+          "key": "lambda3",
+          "type": "real",
+          "defaultValue": 0.111,
+          "unit": "1/s",
+          "description": "Group 3 precursor decay constant"
+        },
+        {
+          "key": "lambda4",
+          "type": "real",
+          "defaultValue": 0.301,
+          "unit": "1/s",
+          "description": "Group 4 precursor decay constant"
+        },
+        {
+          "key": "lambda5",
+          "type": "real",
+          "defaultValue": 1.14,
+          "unit": "1/s",
+          "description": "Group 5 precursor decay constant"
+        },
+        {
+          "key": "lambda6",
+          "type": "real",
+          "defaultValue": 3.01,
+          "unit": "1/s",
+          "description": "Group 6 precursor decay constant"
+        }
+      ],
+      "wasmKernel": "POINT_KINETICS_6G",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "DECAY_HEAT_ANS79",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:DECAY_HEAT_ANS79",
+    "exports": [
+      "initialPower",
+      "operatingTime",
+      "actinideMultiplier"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ANS-5.1-1979 Decay Heat Model (DECAY_HEAT_ANS79)",
+      "category": "Reactor Kinetics",
+      "domain": "thermal-hydraulics",
+      "description": "Fission product decay heat power fraction P_d(t)/P_0 after reactor shutdown for U-235 thermal fission.",
+      "provenance": "ANSI/ANS-5.1-1979 (Decay Heat Power in Light Water Reactors); US NRC NUREG/CR-5535 Vol. I, Section 6.2",
+      "aliases": [
+        "decay_heat_ans79",
+        "ans79",
+        "decay_heat"
+      ],
+      "parameters": [
+        {
+          "key": "initialPower",
+          "type": "real",
+          "defaultValue": 3000000000,
+          "unit": "W",
+          "description": "Pre-shutdown steady operating thermal power P0"
+        },
+        {
+          "key": "operatingTime",
+          "type": "real",
+          "defaultValue": 31536000,
+          "unit": "s",
+          "description": "Prior full-power irradiation duration T_op (default 1 yr)"
+        },
+        {
+          "key": "actinideMultiplier",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Optional U-239/Np-239 actinide & uncertainty multiplier"
+        }
+      ],
+      "wasmKernel": "DECAY_HEAT_ANS79",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "STEAM_IAPWS_IF97",
+    "kind": "relap5_component_model",
+    "namePath": "relap5:STEAM_IAPWS_IF97",
+    "exports": [
+      "minPressure",
+      "maxPressure"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IAPWS-IF97 Water/Steam Saturation Table (STEAM_IAPWS_IF97)",
+      "category": "Fluid Properties",
+      "domain": "thermal-hydraulics",
+      "description": "Exact IAPWS-IF97 Region 4 backward saturation temperature T_sat(P) over 611.213 Pa to 22.064 MPa.",
+      "provenance": "IAPWS-IF97 (Wagner et al., J. Eng. Gas Turbines Power 122, 150-182, 2000), Region 4 Eq. (31)",
+      "aliases": [
+        "steam_iapws_if97",
+        "iapws_if97",
+        "steam_table"
+      ],
+      "parameters": [
+        {
+          "key": "minPressure",
+          "type": "real",
+          "defaultValue": 611.213,
+          "unit": "Pa",
+          "description": "Triple-point lower pressure bound"
+        },
+        {
+          "key": "maxPressure",
+          "type": "real",
+          "defaultValue": 22064000,
+          "unit": "Pa",
+          "description": "Critical-point upper pressure bound"
+        }
+      ],
+      "wasmKernel": "STEAM_IAPWS_IF97",
+      "archetypeId": 52
+    }
+  }
+]

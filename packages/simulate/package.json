@@ -79,6 +79,10 @@
       "types": "./dist/utils/index.d.ts",
       "default": "./dist/utils/index.js"
     },
+    "./verification": {
+      "types": "./dist/verification/index.d.ts",
+      "default": "./dist/verification/index.js"
+    },
     "./jit": {
       "types": "./dist/jit/index.d.ts",
       "default": "./dist/jit/index.js"
@@ -100,11 +104,14 @@
   "types": "./dist/index.d.ts",
   "files": [
     "src/**",
-    "dist/**"
+    "dist/**",
+    "build/*.wasm"
   ],
   "scripts": {
-    "build": "tsc && node scripts/copy-wasm.js",
-    "clean": "rimraf dist",
+    "asbuild": "node scripts/build-as.js",
+    "asbuild:force": "node scripts/build-as.js --force",
+    "build": "npm run asbuild && tsc && node scripts/copy-wasm.js",
+    "clean": "rimraf dist build",
     "lint": "eslint src tests --no-warn-ignored",
     "test": "node ../../scripts/test-runner.js --timeout=180000",
     "typecheck": "tsc --noEmit"
@@ -118,6 +125,7 @@
   "devDependencies": {
     "@types/node": "^25.3.2",
     "@webgpu/types": "^0.1.74",
+    "assemblyscript": "^0.28.19",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"
   },

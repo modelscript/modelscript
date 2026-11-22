@@ -5,10 +5,9 @@ import {
   RegionDecomposer,
   SosBarrierSynthesizer,
   TraceRecordNormalizer,
-  UnifiedVerifier,
   type CanonicalTraceRecord,
 } from "@modelscript/runtime";
-import { simulateArena } from "@modelscript/simulate";
+import { simulateArena, UnifiedVerifier } from "@modelscript/simulate";
 import {
   BoundaryTestSynthesizer,
   ContractAlgebra,
@@ -103,7 +102,12 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
             { flowpipes: true, flowpipeHorizon: tSpan[1], flowpipeDt: dt },
           );
           const fpStage = verifyReport.stages["flowpipes"];
-          const fpDetails = fpStage?.details;
+          const fpDetails = fpStage?.details as
+            | {
+                steps?: Array<{ tEnd?: number; t?: number; xEnclosure?: Array<{ lo?: number; hi?: number }> }>;
+                stateNames?: string[];
+              }
+            | undefined;
 
           let times: number[];
           let variableNames: string[];
@@ -264,15 +268,24 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
           try {
             const verifyReport = await UnifiedVerifier.verify({ uri: params.uri, arena }, { barriers: true });
             const barrierStage = verifyReport.stages["barriers"];
-            if (barrierStage?.details?.barrierCoefficients) {
+            const barrierDetails = barrierStage?.details as
+              | {
+                  barrierCoefficients?: unknown;
+                  candidateFound?: boolean;
+                  verdict?: string;
+                  barrierDegree?: number;
+                  stateNames?: string[];
+                }
+              | undefined;
+            if (barrierStage && barrierDetails?.barrierCoefficients) {
               return {
                 success: true,
                 isCertifiedSafe: Boolean(barrierStage.certified),
-                candidateFound: Boolean(barrierStage.details.candidateFound),
-                verdict: barrierStage.details.verdict,
+                candidateFound: Boolean(barrierDetails.candidateFound),
+                verdict: barrierDetails.verdict,
                 boundToModel: true,
-                degree: barrierStage.details.barrierDegree ?? 2,
-                stateNames: barrierStage.details.stateNames ?? [],
+                degree: barrierDetails.barrierDegree ?? 2,
+                stateNames: barrierDetails.stateNames ?? [],
                 summary: barrierStage.summary,
               };
             }

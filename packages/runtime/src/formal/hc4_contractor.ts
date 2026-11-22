@@ -28,6 +28,93 @@
  */
 
 import { Interval, outwardRoundInterval } from "../analysis/wasm_interval.js";
+import { wasmHc4Revise } from "../analysis/wasm_kernels_bridge.js";
+
+interface CompiledHc4 {
+  nodes: Int32Array;
+  consts: Float64Array;
+  varNames: string[];
+}
+
+const _hc4BytecodeCache = new WeakMap<ExprNode, CompiledHc4 | null>();
+
+function compileHc4Bytecode(root: ExprNode): CompiledHc4 | null {
+  const cached = _hc4BytecodeCache.get(root);
+  if (cached !== undefined) return cached;
+
+  const nodeBuf: number[] = [];
+  const constBuf: number[] = [];
+  const varNames: string[] = [];
+  const varMap = new Map<string, number>();
+
+  const emit = (node: ExprNode): number => {
+    switch (node.kind) {
+      case "const": {
+        const idx = constBuf.length;
+        constBuf.push(node.value);
+        const id = nodeBuf.length / 4;
+        nodeBuf.push(0, -1, -1, idx);
+        return id;
+      }
+      case "var": {
+        let idx = varMap.get(node.name);
+        if (idx === undefined) {
+          idx = varNames.length;
+          varNames.push(node.name);
+          varMap.set(node.name, idx);
+        }
+        const id = nodeBuf.length / 4;
+        nodeBuf.push(1, -1, -1, idx);
+        return id;
+      }
+      case "add": {
+        const l = emit(node.left);
+        const r = emit(node.right);
+        if (l < 0 || r < 0) return -1;
+        const id = nodeBuf.length / 4;
+        nodeBuf.push(2, l, r, 0);
+        return id;
+      }
+      case "sub": {
+        const l = emit(node.left);
+        const r = emit(node.right);
+        if (l < 0 || r < 0) return -1;
+        const id = nodeBuf.length / 4;
+        nodeBuf.push(3, l, r, 0);
+        return id;
+      }
+      case "neg": {
+        const c = emit(node.child);
+        if (c < 0) return -1;
+        const id = nodeBuf.length / 4;
+        nodeBuf.push(6, c, -1, 0);
+        return id;
+      }
+      case "sqr": {
+        const c = emit(node.child);
+        if (c < 0) return -1;
+        const id = nodeBuf.length / 4;
+        nodeBuf.push(7, c, -1, 0);
+        return id;
+      }
+      default:
+        return -1;
+    }
+  };
+
+  if (emit(root) < 0 || varNames.length === 0) {
+    _hc4BytecodeCache.set(root, null);
+    return null;
+  }
+
+  const compiled: CompiledHc4 = {
+    nodes: new Int32Array(nodeBuf),
+    consts: new Float64Array(constBuf),
+    varNames,
+  };
+  _hc4BytecodeCache.set(root, compiled);
+  return compiled;
+}
 
 export type ExprNode =
   | { kind: "var"; name: string }
@@ -474,6 +561,49 @@ export class Hc4Contractor {
    * Returns false if the constraint is definitively unsatisfiable.
    */
   public static revise(constraint: NonlinearConstraint, box: Map<string, Interval>): boolean {
+    if (constraint.rel !== "!=") {
+      const compiled = compileHc4Bytecode(constraint.expr);
+      if (compiled) {
+        const nv = compiled.varNames.length;
+        const varLo = new Float64Array(nv);
+        const varHi = new Float64Array(nv);
+        let hasInvalid = false;
+        for (let i = 0; i < nv; i++) {
+          const iv = box.get(compiled.varNames[i]!);
+          if (iv && (Number.isNaN(iv.lo) || Number.isNaN(iv.hi) || iv.lo > iv.hi)) {
+            hasInvalid = true;
+            break;
+          }
+          varLo[i] = iv ? iv.lo : -Infinity;
+          varHi[i] = iv ? iv.hi : Infinity;
+        }
+        if (hasInvalid) return false;
+
+        let tLo = -Infinity;
+        let tHi = Infinity;
+        if (constraint.rel === "<=") tHi = constraint.rhs;
+        else if (constraint.rel === "<") tHi = constraint.rhs - 1e-9;
+        else if (constraint.rel === ">=") tLo = constraint.rhs;
+        else if (constraint.rel === ">") tLo = constraint.rhs + 1e-9;
+        else if (constraint.rel === "==") {
+          tLo = constraint.rhs;
+          tHi = constraint.rhs;
+        }
+
+        const wasmOk = wasmHc4Revise(compiled.nodes, compiled.consts, varLo, varHi, tLo, tHi);
+        if (wasmOk !== undefined) {
+          if (!wasmOk) return false;
+          for (let i = 0; i < nv; i++) {
+            const name = compiled.varNames[i]!;
+            if (box.has(name) || Number.isFinite(varLo[i]!) || Number.isFinite(varHi[i]!)) {
+              box.set(name, new Interval(varLo[i]!, varHi[i]!));
+            }
+          }
+          return true;
+        }
+      }
+    }
+
     const exprInterval = Hc4Contractor.evalInterval(constraint.expr, box);
     if (Number.isNaN(exprInterval.lo) || Number.isNaN(exprInterval.hi) || exprInterval.lo > exprInterval.hi) {
       return false;

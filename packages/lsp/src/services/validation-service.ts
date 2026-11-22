@@ -18,6 +18,7 @@ import {
   reconcileModelicaCstDiagnostics,
   resolveModelicaTypeInWorkspace,
   resolveModelicaVariableInWorkspace,
+  runModelicaFastStaticLints,
 } from "@modelscript/modelica";
 import {
   type CorrespondenceDiagnostic,
@@ -38,6 +39,7 @@ import {
   VerificationRunner,
 } from "@modelscript/runtime";
 import { simulateArena } from "@modelscript/simulate";
+import { runSysML2FastStaticLints } from "@modelscript/sysml2";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { ThreadDiagnosticsProvider } from "../providers/threadDiagnosticsProvider.js";
 import { getArenaParameterInfo } from "../utils/arena-utils.js";
@@ -1778,7 +1780,7 @@ export class ValidationService {
             head.startsWith("<?xml") ||
             /^<!DOCTYPE\b/i.test(head) ||
             (head.startsWith("<") &&
-              (/\.(xml|reqif|reqifz|urdf|sdf|xacro|sbml|cellml|sedml|arxml|osim|aml|plcopen|xodr|xosc|qif|sbol|3mf|feb|scl|scd|icd|cid|pscx|owx|rdf)$/i.test(
+              (/\.(xml|reqif|reqifz|mdzip|mdxml|xmi|urdf|sdf|xacro|sbml|cellml|sedml|arxml|osim|aml|plcopen|xodr|xosc|qif|sbol|3mf|feb|scl|scd|icd|cid|pscx|owx|rdf)$/i.test(
                 uri,
               ) ||
                 Boolean((plugin.languageDef as { grammar?: { xmlRules?: unknown } } | undefined)?.grammar?.xmlRules)));
@@ -1791,6 +1793,7 @@ export class ValidationService {
               "igtl",
               "jsbsim",
               "lps",
+              "magicdraw",
               "opendrive",
               "openscenario",
               "opensim",
@@ -2131,12 +2134,45 @@ export class ValidationService {
           plugin,
         )
       : rawWasmLspDiags;
+    const fastStaticDiags: Diagnostic[] = [];
+    const mapSev = (s: string): DiagnosticSeverity =>
+      s === "error"
+        ? DiagnosticSeverity.Error
+        : s === "warning"
+          ? DiagnosticSeverity.Warning
+          : s === "info"
+            ? DiagnosticSeverity.Information
+            : DiagnosticSeverity.Hint;
+    if (isModelica) {
+      for (const fd of runModelicaFastStaticLints(text)) {
+        fastStaticDiags.push({
+          severity: mapSev(fd.severity),
+          range: Range.create(0, 0, 0, 1),
+          code: `M${fd.code}`,
+          source: "modelscript-fast-static",
+          message: fd.message,
+        });
+      }
+    } else if (langId === "sysml2" || langId === "sysml" || /\.(sysml|kerml)($|\?|#)/i.test(uri)) {
+      for (const fd of runSysML2FastStaticLints(text)) {
+        fastStaticDiags.push({
+          severity: mapSev(fd.severity),
+          range: Range.create(0, 0, 0, 1),
+          code: `S${fd.code}`,
+          source: "modelscript-fast-static",
+          message: fd.message,
+        });
+      }
+    }
     const prevPublished = this.lastSemanticDiagnostics.get(uri);
     const cachedSemantic = (prevPublished || []).filter(
-      (d) => d.source !== "sysml2-verifier" && (typeof d.code !== "number" || d.code < 1000 || d.code >= 6000),
+      (d) =>
+        d.source !== "sysml2-verifier" &&
+        d.source !== "modelscript-fast-static" &&
+        (typeof d.code !== "number" || d.code < 1000 || d.code >= 6000),
     );
     const initialDiags = this.applyDiagnosticFilters(
-      deduplicateAllDiagnostics([...syntaxDiags, ...wasmLspDiags, ...cachedSemantic]),
+      deduplicateAllDiagnostics([...syntaxDiags, ...wasmLspDiags, ...fastStaticDiags, ...cachedSemantic]),
     );
     const unchangedFromPrev =
       prevPublished !== undefined &&

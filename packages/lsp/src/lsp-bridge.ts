@@ -1472,6 +1472,7 @@ export class LSPBridge {
     if (uriLower.endsWith(".scad")) return "scad";
     if (uriLower.endsWith(".step") || uriLower.endsWith(".stp") || uriLower.endsWith(".p21")) return "step";
     if (uriLower.endsWith(".reqif") || uriLower.endsWith(".reqifz")) return "reqif";
+    if (uriLower.endsWith(".mdzip") || uriLower.endsWith(".mdxml") || uriLower.endsWith(".xmi")) return "magicdraw";
     if (uriLower.endsWith(".qif") || uriLower.endsWith(".qif.xml") || uriLower.endsWith(".qif.json")) return "qif";
     if (/\.(pscx|pslx|pswx|psmx)$/.test(uriLower)) return "pscad";
     if (/\.(raw|dyr|seq)$/.test(uriLower)) return "psse";
@@ -1495,6 +1496,7 @@ export class LSPBridge {
       parent.kind === "SourceFile" ||
       pr === "scad_file" ||
       pr === "reqif_specification" ||
+      pr === "magicdraw_model" ||
       pr === "step_product" ||
       pr === "pscad_library" ||
       pr === "pscad_project" ||

@@ -35,13 +35,27 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { DiscoveredModel, MslStage, RunnerOptions, WorkerResult, WorkerTask } from "./msl-types.js";
+import type {
+  DiscoveredModel,
+  FlattenerBackendOpt,
+  MslStage,
+  RunnerOptions,
+  WorkerResult,
+  WorkerTask,
+} from "./msl-types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../../..");
 
 function parseArgs(): RunnerOptions {
+  const envBackend = process.env.FLATTENER_BACKEND?.trim();
+  const normalizedEnvBackend =
+    envBackend === "js"
+      ? "ts"
+      : envBackend === "wasm" || envBackend === "ts" || envBackend === "hybrid" || envBackend === "diff"
+        ? envBackend
+        : undefined;
   const opts: RunnerOptions = {
     library: "Modelica",
     version: "4.0.0",
@@ -51,6 +65,7 @@ function parseArgs(): RunnerOptions {
     forceOmc: false,
     timeoutMs: 60_000,
     tolerance: 1e-3,
+    ...(normalizedEnvBackend ? { flattenerBackend: normalizedEnvBackend } : {}),
   };
 
   const args = process.argv.slice(2);
@@ -92,6 +107,9 @@ function parseArgs(): RunnerOptions {
       opts.forceOmc = true;
     } else if (arg.startsWith("--timeout=")) {
       opts.timeoutMs = parseInt(arg.split("=")[1].trim(), 10) * 1000;
+    } else if (arg.startsWith("--flattener=") || arg.startsWith("--backend=")) {
+      const rawB = arg.split("=")[1].trim();
+      opts.flattenerBackend = (rawB === "js" ? "ts" : rawB) as FlattenerBackendOpt;
     } else if (arg.startsWith("--report-json=")) {
       opts.reportJson = path.resolve(arg.split("=")[1].trim());
     } else if (arg.startsWith("--report-html=")) {
@@ -925,6 +943,7 @@ async function main() {
   console.log(`ModelScript vs OpenModelica Verification Suite (${rootPkgName} ${options.version})`);
   console.log(`================================================================================`);
   console.log(`Stage:           ${options.stage.toUpperCase()}`);
+  console.log(`Flattener:       ${options.flattenerBackend ?? "hybrid (default)"}`);
   console.log(`Models selected: ${selectedModels.length}`);
   console.log(`Workers:         ${options.jobs}`);
   console.log(`OMC caching:     ${options.forceOmc ? "Disabled (force re-run)" : "Enabled (.cache/)"}`);
@@ -954,6 +973,7 @@ async function main() {
           cacheDir,
           indexCachePath,
           stage: options.stage,
+          ...(options.flattenerBackend ? { flattenerBackend: options.flattenerBackend } : {}),
           forceOmc: options.forceOmc,
           simTolerance: options.tolerance,
           library: rootPkgName,
@@ -1042,6 +1062,12 @@ async function main() {
   console.log(`================================================================================`);
   console.log(`Total Models:   ${results.length}`);
   console.log(`MATCH:          ${matches.toString().padStart(5)} (${((matches / results.length) * 100).toFixed(1)}%)`);
+  if (omcErrors > 0 && results.length > omcErrors) {
+    const validOmc = results.length - omcErrors;
+    console.log(
+      `MATCH (OMC-ok): ${matches.toString().padStart(5)} / ${validOmc} (${((matches / validOmc) * 100).toFixed(1)}%)`,
+    );
+  }
   console.log(`DIFF:           ${diffs.toString().padStart(5)} (${((diffs / results.length) * 100).toFixed(1)}%)`);
   if (skipped > 0) {
     console.log(
@@ -1071,11 +1097,20 @@ async function main() {
     const jsonOutput = {
       version: options.version,
       stage: options.stage,
+      flattenerBackend: options.flattenerBackend ?? "hybrid",
       timestamp: new Date().toISOString(),
       durationSec: totalDurationSec,
       cpuSec: totalCpuSec,
       peakMemoryMB,
-      stats: { total: results.length, matches, diffs, msErrors, omcErrors, timeouts },
+      stats: {
+        total: results.length,
+        validOmc: results.length - omcErrors,
+        matches,
+        diffs,
+        msErrors,
+        omcErrors,
+        timeouts,
+      },
       results,
     };
     fs.mkdirSync(path.dirname(options.reportJson), { recursive: true });

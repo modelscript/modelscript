@@ -2166,6 +2166,60 @@ export const ModelicaErrorCode = {
     message: (contextExpr: string, lhsDim: string, rhsDim: string) =>
       `Inferred physical dimension mismatch in '${contextExpr}': '${lhsDim}' vs '${rhsDim}'.`,
   },
+  CFA_UNINITIALIZED_OR_DEAD_ALGORITHM: {
+    code: 7801,
+    rule: "cfa-uninitialized-or-dead-algorithm",
+    severity: "warning",
+    message: (target: string, detail: string) => `Algorithm control-flow hazard in '${target}': ${detail}.`,
+  },
+  SBG_ARRAY_EQUATION_IMBALANCE: {
+    code: 7802,
+    rule: "sbg-array-equation-imbalance",
+    severity: "error",
+    message: (arrayName: string, detail: string) =>
+      `Set-Based Graph symbolic slice imbalance on array '${arrayName}': ${detail}.`,
+  },
+  EGRAPH_DUPLICATE_OR_CONTRADICTORY_EQ: {
+    code: 7803,
+    rule: "egraph-duplicate-or-contradictory-equation",
+    severity: "error",
+    message: (eq1: string, eq2: string, detail: string) =>
+      `E-graph canonicalizer detected ${detail} between '${eq1}' and '${eq2}'.`,
+  },
+  HC4_PARAMETER_BOUND_INFEASIBLE: {
+    code: 7804,
+    rule: "hc4-parameter-bound-infeasible",
+    severity: "error",
+    message: (paramName: string, detail: string) =>
+      `HC4 interval contractor proved parameter/start infeasibility for '${paramName}': ${detail}.`,
+  },
+  DDE_DELAY_INSTABILITY: {
+    code: 7805,
+    rule: "dde-delay-instability",
+    severity: "warning",
+    message: (expr: string, detail: string) => `DDE delay-differential stability check flagged '${expr}': ${detail}.`,
+  },
+  HYBRID_WHEN_ZENO_OR_AMBIGUITY: {
+    code: 7806,
+    rule: "hybrid-when-zeno-or-ambiguity",
+    severity: "error",
+    message: (varName: string, detail: string) =>
+      `Hybrid event Star-Set verifier flagged 'when/reinit' hazard on '${varName}': ${detail}.`,
+  },
+  CHC_ALGORITHM_LOOP_UNBOUNDED: {
+    code: 7807,
+    rule: "chc-algorithm-loop-unbounded",
+    severity: "warning",
+    message: (funcName: string, detail: string) =>
+      `CHC inductive loop verifier flagged while-loop in '${funcName}': ${detail}.`,
+  },
+  HJI_DISTURBANCE_BARRIER_BREACH: {
+    code: 7808,
+    rule: "hji-disturbance-barrier-breach",
+    severity: "warning",
+    message: (varName: string, detail: string) =>
+      `HJI/Stochastic disturbance barrier indicates '${varName}' can breach safety bounds: ${detail}.`,
+  },
 } as const satisfies Record<string, ErrorCodeDef>;
 
 // Derive the union type of all error code keys

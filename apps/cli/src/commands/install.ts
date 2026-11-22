@@ -1,5 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  isRemoteDependency,
+  MANIFEST_FILENAME,
+  normalizeRemoteDependency,
+  PACKAGES_DIR,
+  parseModelScriptYaml,
+  upsertManifestDependency,
+  type ResolvedRemoteSpec,
+} from "@modelscript/runtime";
 import AdmZip from "adm-zip";
 import crypto from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -7,9 +16,16 @@ import path from "node:path";
 import type { Argv, CommandModule } from "yargs";
 import { DependencySolver, type PackageVersionProvider } from "../solver/solver.js";
 import { getApiUrl, getToken } from "../util/auth.js";
-import { computeBufferIntegrity, readLockfile, updateLockfilePackage, verifyIntegrity } from "../util/lockfile.js";
+import {
+  computeBufferIntegrity,
+  LOCKFILE_NAME,
+  readLockfile,
+  updateLockfilePackage,
+  verifyIntegrity,
+} from "../util/lockfile.js";
 import { parsePackageUses } from "../util/package-mo.js";
 import { defaultPackageStore } from "../util/store.js";
+import { syncPullRemoteSpecs } from "./sync.js";
 import type { VendorManifest } from "./vendor.js";
 
 interface InstallArgs {
@@ -26,7 +42,7 @@ interface InstallArgs {
   allowYanked?: boolean | undefined;
 }
 
-import { EXTENSION_TO_LANGUAGE_ID, detectAndAdaptArchiveManifest } from "@modelscript/exchange";
+import { detectAndAdaptArchiveManifest, EXTENSION_TO_LANGUAGE_ID } from "@modelscript/exchange";
 
 function extractDomainSummaryFromZip(zip: AdmZip): Record<string, { files: string[] }> {
   const domains: Record<string, { files: string[] }> = {};
@@ -80,9 +96,17 @@ export function installLocalArchive(
   for (const entry of zip.getEntries()) {
     if (entry.isDirectory) continue;
     const base = path.basename(entry.entryName).toLowerCase();
+    if (base === MANIFEST_FILENAME) {
+      try {
+        const parsed = parseModelScriptYaml(entry.getData().toString("utf-8"), entry.entryName);
+        if (!pkgName && parsed.name) pkgName = parsed.name;
+        if (parsed.version) pkgVersion = parsed.version;
+      } catch {
+        // ignore
+      }
+      continue;
+    }
     if (
-      base === "package.json" ||
-      base === "modelscript.json" ||
       base === ".meta.json" ||
       base === ".index.json" ||
       base === "package.mo" ||
@@ -103,12 +127,14 @@ export function installLocalArchive(
     }
   }
 
-  const adapted = detectAndAdaptArchiveManifest(textEntries, {
-    fallbackName: path.basename(archivePath),
-  });
-  if (adapted) {
-    if (!pkgName && adapted.name) pkgName = adapted.name;
-    if (adapted.version) pkgVersion = adapted.version;
+  if (!pkgName || pkgVersion === "0.0.0") {
+    const adapted = detectAndAdaptArchiveManifest(textEntries, {
+      fallbackName: path.basename(archivePath),
+    });
+    if (adapted) {
+      if (!pkgName && adapted.name) pkgName = adapted.name;
+      if (pkgVersion === "0.0.0" && adapted.version) pkgVersion = adapted.version;
+    }
   }
 
   if (!pkgName) {
@@ -126,8 +152,7 @@ export function installLocalArchive(
 
   const storePackageDir = defaultPackageStore.extractToStore(pkgName, pkgVersion, actualHash, buffer);
 
-  const targetDirName = pkgName.startsWith("@") ? pkgName.replace("/", "__") : pkgName;
-  const destDir = path.join(cwd, "libraries", targetDirName);
+  const destDir = path.join(cwd, PACKAGES_DIR, ...pkgName.split("/"));
   const linkResult = defaultPackageStore.linkToWorkspace(storePackageDir, destDir);
 
   console.log(
@@ -135,22 +160,21 @@ export function installLocalArchive(
   );
 
   if (save) {
-    const pkgJsonPath = path.join(cwd, "package.json");
-    if (existsSync(pkgJsonPath)) {
+    const manifestPath = path.join(cwd, MANIFEST_FILENAME);
+    if (existsSync(manifestPath)) {
       try {
-        const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-        pkgJson.dependencies = pkgJson.dependencies || {};
+        const rawYaml = readFileSync(manifestPath, "utf-8");
         const rel = path.relative(cwd, archivePath);
         const fileSpec = rel.startsWith(".") ? `file:${rel}` : `file:./${rel}`;
-        pkgJson.dependencies[pkgName] = fileSpec;
-        writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n", "utf-8");
-        console.log(`✓ Added "${pkgName}": "${fileSpec}" to package.json`);
+        const updated = upsertManifestDependency(rawYaml, pkgName, fileSpec);
+        writeFileSync(manifestPath, updated, "utf-8");
+        console.log(`✓ Added "${pkgName}": "${fileSpec}" to ${MANIFEST_FILENAME}`);
       } catch {
-        // Ignore failure to update package.json
+        // Ignore failure to update modelscript.yaml
       }
     }
 
-    // Update msx.lock
+    // Update modelscript.lock
     const domains = extractDomainSummaryFromZip(zip);
     updateLockfilePackage(cwd, pkgName, {
       version: pkgVersion,
@@ -158,7 +182,7 @@ export function installLocalArchive(
       integrity: actualHash,
       domains,
     });
-    console.log(`✓ Updated msx.lock with ${pkgName}@${pkgVersion}`);
+    console.log(`✓ Updated ${LOCKFILE_NAME} with ${pkgName}@${pkgVersion}`);
   }
 
   return { name: pkgName, version: pkgVersion };
@@ -276,34 +300,57 @@ export const Install: CommandModule<{}, InstallArgs> = {
 
       packagesToInstall.push({ name, version });
     } else {
-      const pkgJsonPath = path.join(cwd, "package.json");
-      if (existsSync(pkgJsonPath)) {
+      const manifestPath = path.join(cwd, MANIFEST_FILENAME);
+      const remoteSpecsToPull: ResolvedRemoteSpec[] = [];
+      if (existsSync(manifestPath)) {
         try {
-          const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-          const deps = { ...pkgJson.dependencies, ...pkgJson.modelscript?.dependencies };
+          const manifest = parseModelScriptYaml(readFileSync(manifestPath, "utf-8"), manifestPath);
+          const deps = manifest.dependencies ?? {};
           if (isFrozen && lockfile) {
             for (const [depName] of Object.entries(deps)) {
               if (!lockfile.packages[depName]) {
-                console.error(`Error: Lockfile 'msx.lock' is out of sync with 'package.json': missing "${depName}".`);
+                console.error(
+                  `Error: Lockfile '${LOCKFILE_NAME}' is out of sync with '${MANIFEST_FILENAME}': missing "${depName}".`,
+                );
                 process.exit(1);
               }
             }
           }
 
-          for (const [depName, depVer] of Object.entries(deps)) {
-            if (typeof depVer === "string") {
-              if (depVer.startsWith("file:")) {
-                const localPath = path.resolve(cwd, depVer.slice("file:".length));
+          for (const [depName, depSpec] of Object.entries(deps)) {
+            if (isRemoteDependency(depSpec)) {
+              const norm = normalizeRemoteDependency(depSpec);
+              if (norm) {
+                remoteSpecsToPull.push({ ...norm, packageName: depName });
+              }
+              continue;
+            }
+            if (typeof depSpec === "string") {
+              if (depSpec.startsWith("file:")) {
+                const localPath = path.resolve(cwd, depSpec.slice("file:".length));
                 installLocalArchive(localPath, cwd, false, depName);
                 continue;
               }
-              const cleanVer = depVer.replace(/^[\^~>=<]/, "");
+              const cleanVer = depSpec.replace(/^[\^~>=<]/, "");
               packagesToInstall.push({ name: depName, version: cleanVer });
             }
           }
-        } catch {
-          console.error(`Error: Failed to parse package.json at ${pkgJsonPath}`);
+        } catch (err) {
+          console.error(
+            `Error: Failed to parse ${MANIFEST_FILENAME} at ${manifestPath}: ${err instanceof Error ? err.message : String(err)}`,
+          );
           process.exit(1);
+        }
+      }
+
+      if (remoteSpecsToPull.length > 0) {
+        if (isOffline) {
+          console.log(`Offline mode: skipping live ALM sync for ${remoteSpecsToPull.length} remote dependency(ies).`);
+        } else {
+          await syncPullRemoteSpecs(cwd, remoteSpecsToPull, "fail");
+        }
+        if (packagesToInstall.length === 0) {
+          return;
         }
       }
 
@@ -646,8 +693,7 @@ export const Install: CommandModule<{}, InstallArgs> = {
           zip = new AdmZip(buffer);
         }
 
-        const targetDirName = pkgName.startsWith("@") ? pkgName.replace("/", "__") : pkgName;
-        const destDir = path.join(cwd, "libraries", targetDirName);
+        const destDir = path.join(cwd, PACKAGES_DIR, ...pkgName.split("/"));
         const linkResult = defaultPackageStore.linkToWorkspace(storePackageDir, destDir);
 
         // Fetch pre-compiled salsa-index.db if provided by registry (and not offline)
@@ -683,21 +729,20 @@ export const Install: CommandModule<{}, InstallArgs> = {
 
         if (args.save && !isFrozen) {
           if (isDirect) {
-            const pkgJsonPath = path.join(cwd, "package.json");
-            if (existsSync(pkgJsonPath)) {
+            const manifestPath = path.join(cwd, MANIFEST_FILENAME);
+            if (existsSync(manifestPath)) {
               try {
-                const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-                pkgJson.dependencies = pkgJson.dependencies || {};
-                pkgJson.dependencies[pkgName] = `^${resolvedVersion}`;
-                writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n", "utf-8");
-                console.log(`✓ Added "${pkgName}": "^${resolvedVersion}" to package.json`);
+                const rawYaml = readFileSync(manifestPath, "utf-8");
+                const updated = upsertManifestDependency(rawYaml, pkgName, `^${resolvedVersion}`);
+                writeFileSync(manifestPath, updated, "utf-8");
+                console.log(`✓ Added "${pkgName}": "^${resolvedVersion}" to ${MANIFEST_FILENAME}`);
               } catch {
-                // Ignore failure to update package.json
+                // Ignore failure to update modelscript.yaml
               }
             }
           }
 
-          // Update msx.lock with v2 DAG metadata
+          // Update modelscript.lock with v2 DAG metadata
           const domains = extractDomainSummaryFromZip(zip);
           const pkgDeps = solution.packages[pkgName]?.dependencies;
           const resolvedLocation =
@@ -715,7 +760,7 @@ export const Install: CommandModule<{}, InstallArgs> = {
             dependencies: pkgDeps,
             isDirect,
           });
-          console.log(`✓ Updated msx.lock with ${pkgName}@${resolvedVersion}`);
+          console.log(`✓ Updated ${LOCKFILE_NAME} with ${pkgName}@${resolvedVersion}`);
         }
       } catch (err) {
         console.error(`Failed to install ${pkgName}: ${err instanceof Error ? err.message : String(err)}`);

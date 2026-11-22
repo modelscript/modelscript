@@ -55,18 +55,14 @@ export const Unpublish: CommandModule<{}, UnpublishArgs> = {
       const stat = statSync(targetPath);
 
       if (stat.isDirectory()) {
-        const pkgJsonPath = path.join(targetPath, "package.json");
-        const msJsonPath = path.join(targetPath, "modelscript.json");
+        const { MANIFEST_FILENAME, parseModelScriptYaml } = await import("@modelscript/runtime");
+        const yamlPath = path.join(targetPath, MANIFEST_FILENAME);
         const kparMetaPath = path.join(targetPath, ".meta.json");
         const packageMoPath = path.join(targetPath, "package.mo");
 
-        if (existsSync(pkgJsonPath)) {
-          const parsed = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
+        if (existsSync(yamlPath)) {
+          const parsed = parseModelScriptYaml(readFileSync(yamlPath, "utf-8"), yamlPath);
           name = parsed.name ?? null;
-          version = parsed.version || "0.0.0";
-        } else if (existsSync(msJsonPath)) {
-          const parsed = JSON.parse(readFileSync(msJsonPath, "utf-8"));
-          name = parsed.scope ? `${parsed.scope}/${parsed.idShort}` : (parsed.idShort ?? parsed.name ?? null);
           version = parsed.version || "0.0.0";
         } else if (existsSync(kparMetaPath)) {
           const parsed = JSON.parse(readFileSync(kparMetaPath, "utf-8"));
@@ -83,7 +79,7 @@ export const Unpublish: CommandModule<{}, UnpublishArgs> = {
           version = parsed.version || "0.0.0";
         } else {
           console.error(
-            `Error: Directory must contain a 'package.json', 'modelscript.json', '.meta.json', or 'package.mo' file: ${targetPath}`,
+            `Error: Directory must contain a '${MANIFEST_FILENAME}', '.meta.json', or 'package.mo' file: ${targetPath}`,
           );
           process.exit(1);
         }

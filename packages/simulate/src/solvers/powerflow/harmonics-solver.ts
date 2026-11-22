@@ -17,6 +17,7 @@
  */
 
 import { solveDenseLinearSystem } from "../../control/linearize.js";
+import { wasmHarmonicsSolveOrder } from "../../wasm/simulate-wasm.js";
 
 export interface HarmonicSourceInjection {
   busIndex: number;
@@ -169,6 +170,11 @@ function solveComplexLinearSystem(
   rhsI: Float64Array,
   n: number,
 ): { vr: Float64Array; vi: Float64Array } {
+  const wasmRes = wasmHarmonicsSolveOrder(n, g, b, rhsR, rhsI);
+  if (wasmRes) {
+    return { vr: wasmRes.vRe, vi: wasmRes.vIm };
+  }
+
   const dim2 = 2 * n;
   const A = new Float64Array(dim2 * dim2);
   const rhs = new Float64Array(dim2);

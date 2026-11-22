@@ -223,6 +223,8 @@
       "@modelscript/ran/*": ["./languages/ran/src/*"],
       "@modelscript/relap5": ["./languages/relap5/src/index.ts"],
       "@modelscript/relap5/*": ["./languages/relap5/src/*"],
+      "@modelscript/magicdraw": ["./languages/magicdraw/src/index.ts"],
+      "@modelscript/magicdraw/*": ["./languages/magicdraw/src/*"],
       "@modelscript/reqif": ["./languages/reqif/src/index.ts"],
       "@modelscript/reqif/*": ["./languages/reqif/src/*"],
       "@modelscript/rocets": ["./languages/rocets/src/index.ts"],

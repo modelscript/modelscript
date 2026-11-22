@@ -31,7 +31,11 @@ import {
   verifyPsseTrajectoryStl,
   type PsseStlVerifyOptions,
 } from "../analysis/formal-grid-checks.js";
-import { instantiateWasmDyrModelsForCase, type PsseLinkedDynamicInstance } from "../catalog/wasm-dyr-loader.js";
+import {
+  createWasmDyrBatchSession,
+  instantiateWasmDyrModelsForCase,
+  type PsseLinkedDynamicInstance,
+} from "../catalog/wasm-dyr-loader.js";
 import { lowerPsseToDae } from "../dae/psse-to-dae.js";
 import { reduceNodeBreakerToBuses } from "../netlist/node-breaker.js";
 import {
@@ -2387,12 +2391,37 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
     };
   });
 
-  // Initialize optional FMU / AssemblyScript standard-library dynamic models
+  // Initialize zero-copy batched AssemblyScript standard-library session + optional FMU models
+  const wasmCaseWithDyr = options.dyr ? { ...psseCase, dyr: options.dyr } : psseCase;
+  const wasmBatchSession = options.useWasmStdLib !== false ? createWasmDyrBatchSession(wasmCaseWithDyr) : undefined;
+  const initNetForWasm = wasmBatchSession ? solveNetworkVoltages(delta, eqPrime, false, 0) : undefined;
+  const wasmBatchBinding = wasmBatchSession
+    ? wasmBatchSession.slots.map((slot) => {
+        const machIdx = machines.findIndex((m) => m.busNum === slot.busNumber);
+        const busIdx = machIdx >= 0 ? machines[machIdx]!.busIdx : (netlist.busIndices.get(slot.busNumber) ?? -1);
+        const vr0 = busIdx >= 0 ? (initNetForWasm?.vr[busIdx] ?? Vm0[busIdx]! * Math.cos(Va0[busIdx]!)) : 1.0;
+        const vi0 = busIdx >= 0 ? (initNetForWasm?.vi[busIdx] ?? Vm0[busIdx]! * Math.sin(Va0[busIdx]!)) : 0.0;
+        const eterm0 = Math.max(0.05, Math.hypot(vr0, vi0));
+        const efdInit = machIdx >= 0 ? efd[machIdx]! : 1.0;
+        const pmechInit = machIdx >= 0 ? pm[machIdx]! : 0.8;
+        wasmBatchSession.writeSlotIo(slot.index, {
+          eterm: eterm0,
+          speedDev: 0.0,
+          efd: efdInit,
+          pmech: pmechInit,
+          vr: vr0,
+          vi: vi0,
+        });
+        return { slot, machIdx, busIdx };
+      })
+    : [];
+  if (wasmBatchSession) {
+    wasmBatchSession.initAll();
+  }
+
   const linkedDynamicModels = [
     ...(options.fmuModels ?? []),
-    ...(options.useWasmStdLib !== false
-      ? instantiateWasmDyrModelsForCase(options.dyr ? { ...psseCase, dyr: options.dyr } : psseCase)
-      : []),
+    ...(options.useWasmStdLib !== false && !wasmBatchSession ? instantiateWasmDyrModelsForCase(wasmCaseWithDyr) : []),
   ].map((model) => {
     const machIdx = machines.findIndex((m) => m.busNum === model.busNumber);
     const busIdx = machIdx >= 0 ? machines[machIdx]!.busIdx : (netlist.busIndices.get(model.busNumber) ?? -1);
@@ -2737,9 +2766,59 @@ export function simulatePsseTransient(psseCase: PsseCase, options: PsseTransient
       }
     }
 
-    // Step linked FMU / AssemblyScript package.json#modelscript dynamic models
+    // Step zero-copy batched AssemblyScript standard-library dynamic models (single JS<->WASM call)
     wasmInjR.fill(0);
     wasmInjI.fill(0);
+    if (wasmBatchSession) {
+      for (let bi = 0; bi < wasmBatchBinding.length; bi++) {
+        const b = wasmBatchBinding[bi]!;
+        if (b.busIdx < 0) continue;
+        const vrCur = vr[b.busIdx] ?? 1.0;
+        const viCur = vi[b.busIdx] ?? 0.0;
+        const vtCur = Math.max(0.05, Math.hypot(vrCur, viCur));
+        const m = b.machIdx;
+        wasmBatchSession.writeSlotIo(b.slot.index, {
+          eterm: vtCur,
+          speedDev: m >= 0 ? dOmega[m]! / omega0 : 0.0,
+          efd: m >= 0 ? efd[m]! : 1.0,
+          pmech: m >= 0 ? pm[m]! : 0.8,
+          vr: vrCur,
+          vi: viCur,
+        });
+      }
+      wasmBatchSession.stepAll(t, dt);
+      for (let bi = 0; bi < wasmBatchBinding.length; bi++) {
+        const b = wasmBatchBinding[bi]!;
+        if (b.busIdx < 0) continue;
+        const out = wasmBatchSession.readSlotOutput(b.slot.index);
+        const cat = b.slot.category;
+        const m = b.machIdx;
+        const mach = m >= 0 ? machines[m] : undefined;
+        if (mach && m >= 0) {
+          if ((cat === "exciter" || cat === "limiter") && Number.isFinite(out.efd)) {
+            efd[m] = Math.min(mach.efdMax, Math.max(mach.efdMin, out.efd));
+          }
+          if (cat === "governor" && Number.isFinite(out.pmech)) {
+            pm[m] = Math.min(mach.pMaxPu, Math.max(0.0, out.pmech));
+          }
+          if (cat === "stabilizer" && Number.isFinite(out.vsPss)) {
+            efd[m] = Math.min(mach.efdMax, Math.max(mach.efdMin, efd[m]! + out.vsPss * mach.ka * 0.05));
+          }
+          if (cat === "relay" && Number.isFinite(out.tripMult) && out.tripMult < 0.5) {
+            wasmMachTripMult[m] = 0.0;
+          }
+        }
+        if ((cat === "facts" || cat === "load" || cat === "hvdc") && Number.isFinite(out.qSvc)) {
+          const vrCur = vr[b.busIdx] ?? 1.0;
+          const viCur = vi[b.busIdx] ?? 0.0;
+          const v2 = Math.max(0.01, vrCur * vrCur + viCur * viCur);
+          wasmInjR[b.busIdx] = (wasmInjR[b.busIdx] ?? 0) + (out.qSvc * viCur) / v2;
+          wasmInjI[b.busIdx] = (wasmInjI[b.busIdx] ?? 0) - (out.qSvc * vrCur) / v2;
+        }
+      }
+    }
+
+    // Step linked FMU / fallback per-instance dynamic models
     for (const lm of linkedDynamicModels) {
       if (lm.busIdx < 0) continue;
       const bIdx = lm.busIdx;

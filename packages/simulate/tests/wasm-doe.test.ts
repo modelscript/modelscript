@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import assert from "node:assert";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   generateCentralComposite,
   generateFullFactorial,
@@ -9,11 +12,8 @@ import {
   runArenaDoEAsync,
   type ArenaDoEConfig,
   type ArenaDoEInputRange,
-} from "@modelscript/runtime/wasm_doe.js";
-import { Xoshiro256pp } from "@modelscript/runtime/wasm_monte_carlo.js";
-import assert from "node:assert";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+} from "../src/uq/doe.js";
+import { Xoshiro256pp } from "../src/uq/monte-carlo.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

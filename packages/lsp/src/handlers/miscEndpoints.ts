@@ -261,9 +261,9 @@ export function registerMiscEndpoints(context: LspContext) {
     try {
       await ensureLibraryVersionMounted(params, loaderCtx, getServerDistBase(), true);
       try {
-        const nodeModulesRoot = path.resolve(process.cwd(), "node_modules");
-        const pkgDir = path.resolve(nodeModulesRoot, params.name);
-        const relPkg = path.relative(nodeModulesRoot, pkgDir);
+        const packagesRoot = path.resolve(process.cwd(), ".modelscript", "packages");
+        const pkgDir = path.resolve(packagesRoot, params.name);
+        const relPkg = path.relative(packagesRoot, pkgDir);
         if (relPkg && !relPkg.startsWith("..") && !path.isAbsolute(relPkg)) {
           await globalLibraryRegistry.loadLibraryFromDir(pkgDir);
         }

@@ -69,10 +69,19 @@ export function createPscadDiagramBackend(backends: DiagramBackendHost): Diagram
       try {
         const text = await readPscxSource(params.uri);
         if (!text) return null;
-        const { parsePscx } = await import("@modelscript/pscad");
+        const { parsePscx, PSCAD_MASTER_LIB_DIAGRAMS } = await import("@modelscript/pscad");
         const { buildPscadDiagram } = await import("@modelscript/diagram/pscad-diagram-builder");
         const project = parsePscx(text);
-        const rawDiagram = buildPscadDiagram(project, params.className);
+        const cleanroomIcons = new Map<string, string>();
+        for (const d of PSCAD_MASTER_LIB_DIAGRAMS) {
+          if (!d.svg) continue;
+          cleanroomIcons.set(d.namePath, d.svg);
+          cleanroomIcons.set(d.namePath.toLowerCase(), d.svg);
+          const short = d.namePath.includes(":") ? d.namePath.split(":").pop()! : d.namePath;
+          cleanroomIcons.set(short, d.svg);
+          cleanroomIcons.set(short.toLowerCase(), d.svg);
+        }
+        const rawDiagram = buildPscadDiagram(project, params.className, { cleanroomIcons });
         return formatDiagramData(rawDiagram);
       } catch {
         return null;

@@ -2690,6 +2690,101 @@
     ]
   },
   {
+    "slug": "magicdraw",
+    "name": "MagicDraw / Cameo",
+    "packageName": "@modelscript/magicdraw",
+    "sources": [
+      "languages/magicdraw/src/lints/rules.ts"
+    ],
+    "cli": null,
+    "rules": [
+      {
+        "code": "M9921",
+        "rule": "magicdraw-corrupt-archive",
+        "severity": "error",
+        "message": ""
+      },
+      {
+        "code": "M9922",
+        "rule": "magicdraw-encrypted-archive",
+        "severity": "error",
+        "message": ""
+      },
+      {
+        "code": "M9923",
+        "rule": "magicdraw-twc-stub",
+        "severity": "error",
+        "message": ""
+      },
+      {
+        "code": "M9924",
+        "rule": "magicdraw-duplicate-xmi-id",
+        "severity": "error",
+        "message": ""
+      },
+      {
+        "code": "M9925",
+        "rule": "magicdraw-orphan-stereotype",
+        "severity": "warning",
+        "message": ""
+      },
+      {
+        "code": "M9926",
+        "rule": "magicdraw-unresolved-href",
+        "severity": "warning",
+        "message": ""
+      },
+      {
+        "code": "M9927",
+        "rule": "magicdraw-untyped-property",
+        "severity": "warning",
+        "message": ""
+      },
+      {
+        "code": "M9928",
+        "rule": "magicdraw-dangling-connector",
+        "severity": "error",
+        "message": ""
+      },
+      {
+        "code": "M9929",
+        "rule": "magicdraw-cyclic-composition",
+        "severity": "error",
+        "message": ""
+      },
+      {
+        "code": "M9930",
+        "rule": "magicdraw-requirement-missing-id",
+        "severity": "warning",
+        "message": ""
+      },
+      {
+        "code": "M9931",
+        "rule": "magicdraw-requirement-missing-text",
+        "severity": "warning",
+        "message": ""
+      },
+      {
+        "code": "M9932",
+        "rule": "magicdraw-unsatisfied-requirement",
+        "severity": "warning",
+        "message": ""
+      },
+      {
+        "code": "M9933",
+        "rule": "magicdraw-unverified-requirement",
+        "severity": "info",
+        "message": ""
+      },
+      {
+        "code": "M9934",
+        "rule": "magicdraw-invalid-parametric-binding",
+        "severity": "error",
+        "message": ""
+      }
+    ]
+  },
+  {
     "slug": "oscal",
     "name": "NIST OSCAL",
     "packageName": "@modelscript/oscal",
@@ -4826,7 +4921,7 @@
         "code": "M6022",
         "rule": "wire-near-miss",
         "severity": "warning",
-        "message": "Wire '<wireId>' endpoint is <value> px from '<targetName>' (outside snap tolerance 4 px), leaving an unintentional open circuit."
+        "message": "Wire '<wireId>' endpoint is <value> px from '<targetName>' (outside snap tolerance 15 px), leaving an unintentional open circuit."
       },
       {
         "code": "M6023",
@@ -5009,6 +5104,18 @@
         "message": "Definition '<defName>' C segment '<segmentName>' hazard: <reason>."
       },
       {
+        "code": "M6070",
+        "rule": "udm-hardcoded-timestep",
+        "severity": "warning",
+        "message": "Definition '<defName>' <segmentName> segment hardcodes EMT time-step literal '<literal>'; use 'DELT' for time-step invariance (CIGRE TB 825)."
+      },
+      {
+        "code": "M6071",
+        "rule": "dimensional-unit-mismatch",
+        "severity": "error",
+        "message": "Component '<cmpName>' parameter '<paramName>' has unit '[<unit>]' (<actualKind>), incompatible with expected physical dimension (<expectedKind>)."
+      },
+      {
         "code": "M6080",
         "rule": "protection-breaker-state-machine-deadlock",
         "severity": "error",
@@ -5041,7 +5148,7 @@
     "sources": [
       "languages/psse/src/errors.ts"
     ],
-    "cli": "msx psse lint",
+    "cli": "msx lint",
     "rules": [
       {
         "code": "P1001",
@@ -5078,6 +5185,12 @@
         "rule": "invalid-area-zone-owner-ref",
         "severity": "warning",
         "message": "<entityDesc> references area <areaId>, which is not declared in Area Interchange Data."
+      },
+      {
+        "code": "P1007",
+        "rule": "raw-syntax-error",
+        "severity": "error",
+        "message": "PSS/E RAW syntax error: <detail>."
       },
       {
         "code": "P2001",
@@ -5209,13 +5322,19 @@
         "code": "P4009",
         "rule": "three-winding-star-point-negative-reactance",
         "severity": "warning",
-        "message": "3-winding transformer '<ckt>' (<i>-<j>-<k>) star-equivalent reactance X1 = <value> p.u. is strongly negative."
+        "message": "3-winding transformer '<ckt>' (<i>-<j>-<k>) star-equivalent reactance <winding> = <value> p.u. is strongly negative."
       },
       {
         "code": "P4010",
         "rule": "switched-shunt-band-inverted",
         "severity": "error",
         "message": "Switched shunt at bus <busId> has inverted voltage band: VSWLO (<vswlo>) >= VSWHI (<vswhi>)."
+      },
+      {
+        "code": "P4011",
+        "rule": "zbr-closed-loop",
+        "severity": "error",
+        "message": "Zero-impedance branch '<ckt>' (<fromBus>-<toBus>) closes a zero-impedance loop, causing a singular nodal admittance matrix."
       },
       {
         "code": "P5001",
@@ -5338,6 +5457,36 @@
         "message": "User-defined USRMDL '<model>' at bus <busId> is not a standard built-in alias; attach an AssemblyScript/FMU/DLL module for active stepping."
       },
       {
+        "code": "P5021",
+        "rule": "dyr-time-constant-step-underflow",
+        "severity": "warning",
+        "message": "Dynamic model '<model>' at bus <busId> has time constant '<paramName>' = <valueSec> s < <value> ms, risking numerical chatter in PSS/E dynamic integration."
+      },
+      {
+        "code": "P5022",
+        "rule": "mon-sub-target-not-found",
+        "severity": "warning",
+        "message": "PSS/E <fileKind> file references unresolved or invalid target: <detail>."
+      },
+      {
+        "code": "P5101",
+        "rule": "seq-generator-reactance-invalid",
+        "severity": "warning",
+        "message": "Generator '<genId>' at Bus <busId> has non-positive sequence reactance (ZX1=<zxpos>, ZX2=<zxneg>, ZX0=<zx0>)."
+      },
+      {
+        "code": "P5102",
+        "rule": "seq-branch-zero-impedance",
+        "severity": "warning",
+        "message": "Branch <iBus>-<jBus> ('<ckt>') has zero zero-sequence impedance (R0=0, X0=0)."
+      },
+      {
+        "code": "P5103",
+        "rule": "seq-transformer-cc-invalid",
+        "severity": "error",
+        "message": "Transformer <iBus>-<jBus> specifies invalid zero-sequence connection code CC=<cc> (expected 1..22)."
+      },
+      {
         "code": "P6001",
         "rule": "unanchored-energized-island",
         "severity": "error",
@@ -5365,7 +5514,7 @@
         "code": "P6005",
         "rule": "dae-structural-singularity-or-high-index",
         "severity": "error",
-        "message": "Lowered PSS/E DAE system is structurally unbalanced (<varCount> variables vs <eqCount> equations)."
+        "message": "Lowered PSS/E DAE system is structurally singular or high-index (<varCount> variables vs <eqCount> equations): <detail>."
       },
       {
         "code": "P6006",
@@ -5426,6 +5575,42 @@
         "rule": "nerc-prc-voltage-frequency-stl-robustness",
         "severity": "warning",
         "message": "NERC PRC-024/029 STL specification violated on '<signal>' (robustness \\u03C1=<value> at t=<value> s)."
+      },
+      {
+        "code": "P8005",
+        "rule": "nerc-mod032-ontology-violation",
+        "severity": "warning",
+        "message": "Formal ontology compliance gap for <entityDesc>: <axiomDetail>."
+      },
+      {
+        "code": "P8006",
+        "rule": "discrete-control-zeno-chattering",
+        "severity": "error",
+        "message": "Hybrid mode verifier detected discrete control chattering/overlap on <elementDesc>: <detail>."
+      },
+      {
+        "code": "P8007",
+        "rule": "ras-unbounded-ic3-violation",
+        "severity": "error",
+        "message": "IC3/PDR unbounded safety proof failed for RAS/SPS transition system '<schemeDesc>' at depth <depth>; conflicting trip/close state is reachable."
+      },
+      {
+        "code": "P8008",
+        "rule": "powerflow-nlsat-insolvable",
+        "severity": "error",
+        "message": "NLSAT exact algebraic proof certified power-flow insolvability at bus <busId>: <detail>."
+      },
+      {
+        "code": "P8009",
+        "rule": "stochastic-renewable-barrier-risk",
+        "severity": "warning",
+        "message": "Stochastic martingale barrier estimates <value>% probability of frequency/voltage limit breach under renewable uncertainty (tolerance <value>%)."
+      },
+      {
+        "code": "P8010",
+        "rule": "polyglot-parameter-drift",
+        "severity": "warning",
+        "message": "Cross-language parameter drift detected for '<component>.<param>' (<value>% relative discrepancy across models)."
       }
     ]
   },

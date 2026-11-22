@@ -1,0 +1,850 @@
+[
+  {
+    "namePath": "relap5:SNGLVOL",
+    "aliases": [
+      "snglvol",
+      "snglv",
+      "single_volume"
+    ],
+    "label": "Single Volume (SNGLVOL)",
+    "category": "Hydrodynamic Volume",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">VOL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SNGLVOL</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "heat",
+        "kind": "thermal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:TMDPVOL",
+    "aliases": [
+      "tmdpvol",
+      "time_dependent_volume"
+    ],
+    "label": "Time-Dependent Volume (TMDPVOL)",
+    "category": "Hydrodynamic Volume",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">VOL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TMDPVOL</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "heat",
+        "kind": "thermal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:PIPE",
+    "aliases": [
+      "pipe",
+      "multi_volume_pipe"
+    ],
+    "label": "Pipe Component (PIPE)",
+    "category": "Hydrodynamic Volume",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">VOL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PIPE</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "heat",
+        "kind": "thermal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:ANNULUS",
+    "aliases": [
+      "annulus",
+      "downcomer"
+    ],
+    "label": "Annulus Component (ANNULUS)",
+    "category": "Hydrodynamic Volume",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">VOL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ANNULUS</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "heat",
+        "kind": "thermal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:BRANCH",
+    "aliases": [
+      "branch",
+      "plenum"
+    ],
+    "label": "Branch Component (BRANCH)",
+    "category": "Hydrodynamic Volume",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">VOL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BRANCH</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "heat",
+        "kind": "thermal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:SNGLJUN",
+    "aliases": [
+      "sngljun",
+      "snglj",
+      "single_junction"
+    ],
+    "label": "Single Junction (SNGLJUN)",
+    "category": "Hydrodynamic Junction",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#164e63\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#22d3ee\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#22d3ee\">JUN</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SNGLJUN</text></svg>",
+    "ports": [
+      {
+        "name": "from_vol",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "to_vol",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:TMDPJUN",
+    "aliases": [
+      "tmdpjun",
+      "tmdpj",
+      "time_dependent_junction"
+    ],
+    "label": "Time-Dependent Junction (TMDPJUN)",
+    "category": "Hydrodynamic Junction",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#164e63\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#22d3ee\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#22d3ee\">JUN</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TMDPJUN</text></svg>",
+    "ports": [
+      {
+        "name": "from_vol",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "to_vol",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:PUMP",
+    "aliases": [
+      "pump",
+      "rcp"
+    ],
+    "label": "Centrifugal Pump (PUMP)",
+    "category": "Turbomachinery / Valve",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">VLV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PUMP</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:VALVE_TRIP",
+    "aliases": [
+      "valve_trip",
+      "tripvlv",
+      "trpv"
+    ],
+    "label": "Trip Valve (VALVE_TRIP)",
+    "category": "Turbomachinery / Valve",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">VLV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TRIP</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:VALVE_MOTOR",
+    "aliases": [
+      "valve_motor",
+      "mtrvlv",
+      "mov"
+    ],
+    "label": "Motor-Operated Valve (VALVE_MOTOR)",
+    "category": "Turbomachinery / Valve",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">VLV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MOTOR</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:VALVE_CHECK",
+    "aliases": [
+      "valve_check",
+      "chkvlv"
+    ],
+    "label": "Check Valve (VALVE_CHECK)",
+    "category": "Turbomachinery / Valve",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">VLV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CHECK</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:VALVE_RELIEF",
+    "aliases": [
+      "valve_relief",
+      "srvvlv",
+      "porv"
+    ],
+    "label": "Safety / Relief Valve (VALVE_RELIEF)",
+    "category": "Turbomachinery / Valve",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">VLV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RELIEF</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:TURBINE",
+    "aliases": [
+      "turbine",
+      "steam_turbine"
+    ],
+    "label": "Steam Turbine Stage (TURBINE)",
+    "category": "Turbomachinery / Valve",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">VLV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TURBINE</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:SEPARATOR",
+    "aliases": [
+      "separator",
+      "separatr"
+    ],
+    "label": "Steam-Water Separator (SEPARATOR)",
+    "category": "Hydrodynamic Volume",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">VOL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SEPARATOR</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "heat",
+        "kind": "thermal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:ACCUM",
+    "aliases": [
+      "accum",
+      "accumulator"
+    ],
+    "label": "ECCS Accumulator (ACCUM)",
+    "category": "Hydrodynamic Volume",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">VOL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ACCUM</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "heat",
+        "kind": "thermal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:PRIZER",
+    "aliases": [
+      "prizer",
+      "pressurizer"
+    ],
+    "label": "PWR Pressurizer (PRIZER)",
+    "category": "Hydrodynamic Volume",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">VOL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PRIZER</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "heat",
+        "kind": "thermal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:HTSTR_FUEL_ROD",
+    "aliases": [
+      "htstr_fuel_rod",
+      "fuel_rod",
+      "htstr_fuel"
+    ],
+    "label": "Nuclear Fuel Rod Heat Structure (HTSTR_FUEL_ROD)",
+    "category": "Heat Structure",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#431407\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">HTS</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FUEL_ROD</text></svg>",
+    "ports": [
+      {
+        "name": "left_bound",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "right_bound",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "q_gen",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:HTSTR_SG_TUBE",
+    "aliases": [
+      "htstr_sg_tube",
+      "sg_tube",
+      "htstr_sg"
+    ],
+    "label": "Steam Generator U-Tube Heat Structure (HTSTR_SG_TUBE)",
+    "category": "Heat Structure",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#431407\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">HTS</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SG_TUBE</text></svg>",
+    "ports": [
+      {
+        "name": "left_bound",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "right_bound",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "q_gen",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:CORR_DITTUS_BOELTER",
+    "aliases": [
+      "corr_dittus_boelter",
+      "dittus_boelter"
+    ],
+    "label": "Dittus-Boelter Convection Correlation (CORR_DITTUS_BOELTER)",
+    "category": "Boiling / CHF Correlation",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#4c1d95\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">COR</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DITTUS_BOE</text></svg>",
+    "ports": [
+      {
+        "name": "fluid_state",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "htc_chf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:CORR_CHEN_BOILING",
+    "aliases": [
+      "corr_chen_boiling",
+      "chen_boiling"
+    ],
+    "label": "Chen Saturated Boiling Correlation (CORR_CHEN_BOILING)",
+    "category": "Boiling / CHF Correlation",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#4c1d95\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">COR</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CHEN_BOILI</text></svg>",
+    "ports": [
+      {
+        "name": "fluid_state",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "htc_chf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:CORR_ZUBER_CHF",
+    "aliases": [
+      "corr_zuber_chf",
+      "zuber_chf"
+    ],
+    "label": "Zuber Pool-Boiling CHF Correlation (CORR_ZUBER_CHF)",
+    "category": "Boiling / CHF Correlation",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#4c1d95\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">COR</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ZUBER_CHF</text></svg>",
+    "ports": [
+      {
+        "name": "fluid_state",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "htc_chf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:CORR_GROENEVELD_CHF",
+    "aliases": [
+      "corr_groeneveld_chf",
+      "groeneveld_chf"
+    ],
+    "label": "Groeneveld CHF Look-Up Correlation (CORR_GROENEVELD_CHF)",
+    "category": "Boiling / CHF Correlation",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#4c1d95\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">COR</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">GROENEVELD</text></svg>",
+    "ports": [
+      {
+        "name": "fluid_state",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "htc_chf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:POINT_KINETICS_6G",
+    "aliases": [
+      "point_kinetics_6g",
+      "pke6g",
+      "point_kinetics"
+    ],
+    "label": "6-Group Point Reactor Kinetics (POINT_KINETICS_6G)",
+    "category": "Reactor Kinetics",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#450a0a\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">PKE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">POINT_KINE</text></svg>",
+    "ports": [
+      {
+        "name": "reactivity",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "power",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:DECAY_HEAT_ANS79",
+    "aliases": [
+      "decay_heat_ans79",
+      "ans79",
+      "decay_heat"
+    ],
+    "label": "ANS-5.1-1979 Decay Heat Model (DECAY_HEAT_ANS79)",
+    "category": "Reactor Kinetics",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#450a0a\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">PKE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DECAY_HEAT</text></svg>",
+    "ports": [
+      {
+        "name": "reactivity",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "power",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "relap5:STEAM_IAPWS_IF97",
+    "aliases": [
+      "steam_iapws_if97",
+      "iapws_if97",
+      "steam_table"
+    ],
+    "label": "IAPWS-IF97 Water/Steam Saturation Table (STEAM_IAPWS_IF97)",
+    "category": "Fluid Properties",
+    "domain": "thermal-hydraulics",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#94a3b8\">STM</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">STEAM_IAPW</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "t_sat",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  }
+]

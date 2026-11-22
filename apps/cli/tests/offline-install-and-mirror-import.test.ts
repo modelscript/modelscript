@@ -179,19 +179,11 @@ describe("Air-Gap Offline Tooling: msx install --offline & msx mirror import", (
     const workspaceDir = path.join(tmpDir, "offline-workspace");
     fs.mkdirSync(workspaceDir, { recursive: true });
 
-    // Workspace package.json
+    // Workspace modelscript.yaml
     fs.writeFileSync(
-      path.join(workspaceDir, "package.json"),
-      JSON.stringify(
-        {
-          name: "my-airgap-subsystem",
-          version: "1.0.0",
-          dependencies: {
-            "@ansatz/actuators": "^1.0.0",
-          },
-        },
-        null,
-        2,
+      path.join(workspaceDir, "modelscript.yaml"),
+      ["name: my-airgap-subsystem", 'version: "1.0.0"', "dependencies:", '  "@ansatz/actuators": "^1.0.0"', ""].join(
+        "\n",
       ),
     );
 
@@ -201,12 +193,8 @@ describe("Air-Gap Offline Tooling: msx install --offline & msx mirror import", (
     fs.mkdirSync(pkgDir, { recursive: true });
 
     fs.writeFileSync(
-      path.join(pkgDir, "package.json"),
-      JSON.stringify({
-        name: "@ansatz/actuators",
-        version: "1.0.0",
-        dependencies: {},
-      }),
+      path.join(pkgDir, "modelscript.yaml"),
+      ['name: "@ansatz/actuators"', 'version: "1.0.0"', "dependencies: {}", ""].join("\n"),
     );
     fs.writeFileSync(path.join(pkgDir, "Actuator.mo"), "model Actuator parameter Real force = 100; end Actuator;\n");
 
@@ -246,17 +234,17 @@ describe("Air-Gap Offline Tooling: msx install --offline & msx mirror import", (
         save: true,
       });
 
-      // Verify installed into libraries/@ansatz__actuators/
-      const installedDir = path.join(workspaceDir, "libraries", "@ansatz__actuators");
-      assert.ok(fs.existsSync(installedDir), "Libraries directory must contain installed package");
+      // Verify installed into .modelscript/packages/@ansatz/actuators/
+      const installedDir = path.join(workspaceDir, ".modelscript", "packages", "@ansatz", "actuators");
+      assert.ok(fs.existsSync(installedDir), ".modelscript/packages directory must contain installed package");
       assert.ok(fs.existsSync(path.join(installedDir, "Actuator.mo")));
-      assert.ok(fs.existsSync(path.join(installedDir, "package.json")));
+      assert.ok(fs.existsSync(path.join(installedDir, "modelscript.yaml")));
 
-      // Verify msx.lock was written with vendor: resolution
+      // Verify modelscript.lock was written with vendor: resolution
       const lockfile = readLockfile(workspaceDir);
-      assert.ok(lockfile, "msx.lock must exist");
+      assert.ok(lockfile, "modelscript.lock must exist");
       const lockedPkg = lockfile.packages["@ansatz/actuators"];
-      assert.ok(lockedPkg, "@ansatz/actuators must be in msx.lock");
+      assert.ok(lockedPkg, "@ansatz/actuators must be in modelscript.lock");
       assert.strictEqual(lockedPkg.version, "1.0.0");
       assert.ok(lockedPkg.resolved.startsWith("vendor:"));
       assert.strictEqual(lockedPkg.integrity, vendorIntegrity);
@@ -280,18 +268,8 @@ describe("Air-Gap Offline Tooling: msx install --offline & msx mirror import", (
     fs.mkdirSync(workspaceDir, { recursive: true });
 
     fs.writeFileSync(
-      path.join(workspaceDir, "package.json"),
-      JSON.stringify(
-        {
-          name: "cas-consumer",
-          version: "1.0.0",
-          dependencies: {
-            Battery: "3.0.0",
-          },
-        },
-        null,
-        2,
-      ),
+      path.join(workspaceDir, "modelscript.yaml"),
+      ["name: cas-consumer", 'version: "1.0.0"', "dependencies:", '  Battery: "3.0.0"', ""].join("\n"),
     );
 
     const prevCwd = process.cwd();
@@ -303,12 +281,12 @@ describe("Air-Gap Offline Tooling: msx install --offline & msx mirror import", (
         save: true,
       });
 
-      // Verify installed into libraries/Battery/
-      const installedDir = path.join(workspaceDir, "libraries", "Battery");
-      assert.ok(fs.existsSync(installedDir), "Libraries directory must contain installed Battery");
+      // Verify installed into .modelscript/packages/Battery/
+      const installedDir = path.join(workspaceDir, ".modelscript", "packages", "Battery");
+      assert.ok(fs.existsSync(installedDir), ".modelscript/packages directory must contain installed Battery");
       assert.ok(fs.existsSync(path.join(installedDir, "package.mo")));
 
-      // Verify msx.lock references store:
+      // Verify modelscript.lock references store:
       const lockfile = readLockfile(workspaceDir);
       assert.ok(lockfile);
       const lockedPkg = lockfile.packages["Battery"];
@@ -325,18 +303,8 @@ describe("Air-Gap Offline Tooling: msx install --offline & msx mirror import", (
     fs.mkdirSync(workspaceDir, { recursive: true });
 
     fs.writeFileSync(
-      path.join(workspaceDir, "package.json"),
-      JSON.stringify(
-        {
-          name: "unresolvable",
-          version: "1.0.0",
-          dependencies: {
-            NonExistentOfflineLib: "9.9.9",
-          },
-        },
-        null,
-        2,
-      ),
+      path.join(workspaceDir, "modelscript.yaml"),
+      ["name: unresolvable", 'version: "1.0.0"', "dependencies:", '  NonExistentOfflineLib: "9.9.9"', ""].join("\n"),
     );
 
     const prevCwd = process.cwd();

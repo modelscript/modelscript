@@ -20,7 +20,13 @@ import type {
   PhasorNetworkParticipant,
   PhasorTrajectoryResult,
 } from "@modelscript/exchange";
-import { solveLinearSystemSparse } from "@modelscript/runtime";
+import {
+  computeAmdOrdering,
+  sparseLuAnalyze,
+  sparseLuSolve,
+  SparseTripletBuilder,
+  type SparseSymbolicAnalysis,
+} from "@modelscript/runtime";
 import { extractPowerFlowNetlist, type PowerFlowNetlist } from "../netlist/powerflow-netlist.js";
 import { computeMultiPortThevenin, scanExternalNetworkAdmittance } from "../netlist/ward-equivalencer.js";
 import type { PsseCase, PsseDyrCase, PsseSeqCase } from "../types.js";
@@ -173,6 +179,7 @@ export class PssePhasorParticipant implements PhasorNetworkParticipant {
     this.sequences = options.sequences ?? 1;
     this.boundaryBusNumbers = options.boundaryBusIds.map((id) => parseInt(id, 10)).filter((n) => Number.isFinite(n));
 
+    this.sparseLuCache.clear();
     const pf = solvePowerFlow(this.psseCase);
     this.convergedPowerFlow = pf.converged;
     this.netlist = extractPowerFlowNetlist(this.psseCase);
@@ -394,6 +401,8 @@ export class PssePhasorParticipant implements PhasorNetworkParticipant {
     return m;
   }
 
+  private sparseLuCache = new Map<string, SparseSymbolicAnalysis>();
+
   private solveSequenceNetwork(
     seqScale: number,
     extraShuntB: Map<number, number> | undefined,
@@ -401,63 +410,87 @@ export class PssePhasorParticipant implements PhasorNetworkParticipant {
     rhsIm: Float64Array,
     outRe: Float64Array,
     outIm: Float64Array,
+    extraShuntG?: Map<number, number> | undefined,
   ): void {
     const N = this.netlist.nBuses;
     const dim = 2 * N;
-    const mat = new Float64Array(dim * dim);
+
+    // Cache key encodes seqScale and any active fault / companion extra shunts
+    let cacheKey = `seq:${seqScale}`;
+    if (extraShuntB && extraShuntB.size > 0) {
+      for (const [k, v] of extraShuntB) cacheKey += `|b${k}=${v}`;
+    }
+    if (extraShuntG && extraShuntG.size > 0) {
+      for (const [k, v] of extraShuntG) cacheKey += `|g${k}=${v}`;
+    }
+
+    let factors = this.sparseLuCache.get(cacheKey) ?? null;
+    if (!factors) {
+      const builder = new SparseTripletBuilder(dim, dim);
+      const diagG = new Float64Array(N);
+      const diagB = new Float64Array(N);
+
+      const stamp2x2 = (i: number, j: number, g: number, b: number) => {
+        if (i === j) {
+          diagG[i] = diagG[i]! + g;
+          diagB[i] = diagB[i]! + b;
+        }
+        if (g !== 0) {
+          builder.add(2 * i, 2 * j, g);
+          builder.add(2 * i + 1, 2 * j + 1, g);
+        }
+        if (b !== 0) {
+          builder.add(2 * i, 2 * j + 1, -b);
+          builder.add(2 * i + 1, 2 * j, b);
+        }
+      };
+
+      for (let i = 0; i < N; i++) {
+        const gRow = this.netlist.ybus.g.get(i);
+        const bRow = this.netlist.ybus.b.get(i);
+        if (gRow) {
+          for (const [j, gVal] of gRow) stamp2x2(i, j, gVal * seqScale, 0);
+        }
+        if (bRow) {
+          for (const [j, bVal] of bRow) stamp2x2(i, j, 0, bVal * seqScale);
+        }
+
+        // Load constant-impedance shunt + extra fault/companion shunts
+        const gL = this.loadShuntG[i]! * seqScale + (extraShuntG?.get(i) ?? 0.0);
+        const bL = this.loadShuntB[i]! * seqScale + (extraShuntB?.get(i) ?? 0.0);
+        if (gL !== 0 || bL !== 0) stamp2x2(i, i, gL, bL);
+      }
+
+      // Generator Norton admittance 1 / (j * Xd') = -j / Xd' on diagonal
+      for (const gen of this.gens) {
+        const bGen = (-1.0 / gen.xdPrimePu) * seqScale;
+        stamp2x2(gen.busIdx, gen.busIdx, 0, bGen);
+      }
+
+      // Tiny diagonal guard for isolated buses
+      for (let i = 0; i < N; i++) {
+        if (Math.abs(diagG[i]!) < 1e-12 && Math.abs(diagB[i]!) < 1e-12) {
+          builder.add(2 * i, 2 * i, 1e-6);
+          builder.add(2 * i + 1, 2 * i + 1, 1e-6);
+        }
+      }
+
+      const ccs = builder.toCCS();
+      const perm = computeAmdOrdering(ccs);
+      factors = sparseLuAnalyze(ccs, { colPerm: perm, allowPerturbation: true });
+      if (factors) this.sparseLuCache.set(cacheKey, factors);
+    }
+
+    if (!factors) return;
     const rhs = new Float64Array(dim);
-
     for (let i = 0; i < N; i++) {
-      const gRow = this.netlist.ybus.g.get(i);
-      const bRow = this.netlist.ybus.b.get(i);
-      if (gRow) {
-        for (const [j, gVal] of gRow) {
-          const g = gVal * seqScale;
-          mat[2 * i * dim + 2 * j] = mat[2 * i * dim + 2 * j]! + g;
-          mat[(2 * i + 1) * dim + (2 * j + 1)] = mat[(2 * i + 1) * dim + (2 * j + 1)]! + g;
-        }
-      }
-      if (bRow) {
-        for (const [j, bVal] of bRow) {
-          const b = bVal * seqScale;
-          mat[2 * i * dim + (2 * j + 1)] = mat[2 * i * dim + (2 * j + 1)]! - b;
-          mat[(2 * i + 1) * dim + 2 * j] = mat[(2 * i + 1) * dim + 2 * j]! + b;
-        }
-      }
-
-      // Add load constant-impedance shunt on diagonal
-      const gL = this.loadShuntG[i]! * seqScale;
-      const bL = this.loadShuntB[i]! * seqScale + (extraShuntB?.get(i) ?? 0.0);
-      mat[2 * i * dim + 2 * i] = mat[2 * i * dim + 2 * i]! + gL;
-      mat[2 * i * dim + (2 * i + 1)] = mat[2 * i * dim + (2 * i + 1)]! - bL;
-      mat[(2 * i + 1) * dim + 2 * i] = mat[(2 * i + 1) * dim + 2 * i]! + bL;
-      mat[(2 * i + 1) * dim + (2 * i + 1)] = mat[(2 * i + 1) * dim + (2 * i + 1)]! + gL;
-
       rhs[2 * i] = rhsRe[i]!;
       rhs[2 * i + 1] = rhsIm[i]!;
     }
-
-    // Add generator Norton admittance 1 / (j * Xd') = -j / Xd' on diagonal
-    for (const gen of this.gens) {
-      const bGen = (-1.0 / gen.xdPrimePu) * seqScale;
-      const i = gen.busIdx;
-      mat[2 * i * dim + (2 * i + 1)] = mat[2 * i * dim + (2 * i + 1)]! - bGen;
-      mat[(2 * i + 1) * dim + 2 * i] = mat[(2 * i + 1) * dim + 2 * i]! + bGen;
-    }
-
-    // Tiny diagonal guard for isolated buses
+    const sol = sparseLuSolve(factors, rhs);
     for (let i = 0; i < N; i++) {
-      if (Math.abs(mat[2 * i * dim + 2 * i]!) < 1e-12 && Math.abs(mat[(2 * i + 1) * dim + 2 * i]!) < 1e-12) {
-        mat[2 * i * dim + 2 * i] = 1e-6;
-        mat[(2 * i + 1) * dim + (2 * i + 1)] = 1e-6;
-      }
-    }
-
-    if (solveLinearSystemSparse(mat, rhs, dim, { sparseThreshold: 30 })) {
-      for (let i = 0; i < N; i++) {
-        outRe[i] = rhs[2 * i]!;
-        outIm[i] = rhs[2 * i + 1]!;
-      }
+      outRe[i] = sol[2 * i]!;
+      outIm[i] = sol[2 * i + 1]!;
     }
   }
 
@@ -603,128 +636,150 @@ export class PssePhasorParticipant implements PhasorNetworkParticipant {
     const seq = this.seqCase!;
     const N = this.netlist.nBuses;
     const dim = 2 * N;
-    const mat = new Float64Array(dim * dim);
-    const rhs = new Float64Array(dim);
+    const cacheKey = `exactSeq:${kind}`;
 
-    const addY = (i: number, j: number, g: number, b: number) => {
-      mat[2 * i * dim + 2 * j] = mat[2 * i * dim + 2 * j]! + g;
-      mat[2 * i * dim + (2 * j + 1)] = mat[2 * i * dim + (2 * j + 1)]! - b;
-      mat[(2 * i + 1) * dim + 2 * j] = mat[(2 * i + 1) * dim + 2 * j]! + b;
-      mat[(2 * i + 1) * dim + (2 * j + 1)] = mat[(2 * i + 1) * dim + (2 * j + 1)]! + g;
-    };
+    let factors = this.sparseLuCache.get(cacheKey) ?? null;
+    if (!factors) {
+      const builder = new SparseTripletBuilder(dim, dim);
+      const diagG = new Float64Array(N);
+      const diagB = new Float64Array(N);
 
-    const stampSeries = (i: number, j: number, r: number, x: number, bShunt = 0.0) => {
-      const denom = r * r + x * x;
-      if (denom <= 1e-12) return;
-      const g = r / denom;
-      const b = -x / denom;
-      addY(i, i, g, b + 0.5 * bShunt);
-      addY(j, j, g, b + 0.5 * bShunt);
-      addY(i, j, -g, -b);
-      addY(j, i, -g, -b);
-    };
+      const addY = (i: number, j: number, g: number, b: number) => {
+        if (i === j) {
+          diagG[i] = diagG[i]! + g;
+          diagB[i] = diagB[i]! + b;
+        }
+        if (g !== 0) {
+          builder.add(2 * i, 2 * j, g);
+          builder.add(2 * i + 1, 2 * j + 1, g);
+        }
+        if (b !== 0) {
+          builder.add(2 * i, 2 * j + 1, -b);
+          builder.add(2 * i + 1, 2 * j, b);
+        }
+      };
 
-    if (kind === "neg") {
-      // Negative-sequence network uses positive-sequence branches/transformers + exact SeqGenerator Z2
+      const stampSeries = (i: number, j: number, r: number, x: number, bShunt = 0.0) => {
+        const denom = r * r + x * x;
+        if (denom <= 1e-12) return;
+        const g = r / denom;
+        const b = -x / denom;
+        addY(i, i, g, b + 0.5 * bShunt);
+        addY(j, j, g, b + 0.5 * bShunt);
+        addY(i, j, -g, -b);
+        addY(j, i, -g, -b);
+      };
+
+      if (kind === "neg") {
+        // Negative-sequence network uses positive-sequence branches/transformers + exact SeqGenerator Z2
+        for (let i = 0; i < N; i++) {
+          const gRow = this.netlist.ybus.g.get(i);
+          const bRow = this.netlist.ybus.b.get(i);
+          if (gRow) {
+            for (const [j, gVal] of gRow) addY(i, j, gVal, 0);
+          }
+          if (bRow) {
+            for (const [j, bVal] of bRow) addY(i, j, 0, bVal);
+          }
+        }
+        const seqGenMap = new Map<string, (typeof seq.generators)[number]>();
+        for (const sg of seq.generators) seqGenMap.set(`${sg.i}:${sg.id.trim()}`, sg);
+        for (const gen of this.gens) {
+          const sg = seqGenMap.get(`${gen.busNumber}:${gen.id}`);
+          const r2 = sg && sg.zrneg >= 0 ? sg.zrneg : 0.0;
+          const x2 = sg && sg.zxneg > 0 ? sg.zxneg : gen.xdPrimePu;
+          const denom = r2 * r2 + x2 * x2;
+          if (denom > 1e-12) addY(gen.busIdx, gen.busIdx, r2 / denom, -x2 / denom);
+        }
+      } else {
+        // Zero-sequence network from `.seq` branches, transformers, generators, and shunts
+        const seqBrMap = new Map<string, (typeof seq.branches)[number]>();
+        for (const sb of seq.branches) {
+          seqBrMap.set(`${sb.i}:${sb.j}:${sb.ckt.trim()}`, sb);
+          seqBrMap.set(`${sb.j}:${sb.i}:${sb.ckt.trim()}`, sb);
+        }
+        for (const br of this.psseCase.branches) {
+          if (br.st === 0) continue;
+          const i = this.netlist.busIndices.get(br.i);
+          const j = this.netlist.busIndices.get(br.j);
+          if (i === undefined || j === undefined) continue;
+          const sb = seqBrMap.get(`${br.i}:${br.j}:${br.ckt.trim()}`);
+          const r0 = sb ? sb.r0 : br.r * 3.0;
+          const x0 = sb ? sb.x0 : br.x * 3.0;
+          const b0 = sb ? sb.b0 : br.b * 0.6;
+          stampSeries(i, j, r0, x0, b0);
+          if (sb) {
+            if (sb.gi0 !== 0 || sb.bi0 !== 0) addY(i, i, sb.gi0, sb.bi0);
+            if (sb.gj0 !== 0 || sb.bj0 !== 0) addY(j, j, sb.gj0, sb.bj0);
+          }
+        }
+
+        const seqTfMap = new Map<string, (typeof seq.transformers)[number]>();
+        for (const st of seq.transformers) {
+          seqTfMap.set(`${st.i}:${st.j}:${st.ckt.trim()}`, st);
+        }
+        for (const tf of this.psseCase.transformers) {
+          if (tf.stat === 0) continue;
+          const i = this.netlist.busIndices.get(tf.i);
+          const j = this.netlist.busIndices.get(tf.j);
+          if (i === undefined || j === undefined) continue;
+          const st = seqTfMap.get(`${tf.i}:${tf.j}:${tf.ckt.trim()}`);
+          const cc = st?.cc ?? 1;
+          const r0 = st ? st.r01 + 3.0 * st.rg1 : tf.r12;
+          const x0 = st ? st.x01 + 3.0 * st.xg1 : tf.x12;
+          const denom = r0 * r0 + x0 * x0;
+          if (cc === 1) {
+            // Yg-Yg: series pass-through
+            stampSeries(i, j, r0, x0, 0);
+          } else if (cc === 2 && denom > 1e-12) {
+            // Yg-D: shunt to ground on primary bus i, open on delta side j
+            addY(i, i, r0 / denom, -x0 / denom);
+          } else if (cc === 3 && denom > 1e-12) {
+            // D-Yg: shunt to ground on secondary bus j, open on delta side i
+            addY(j, j, r0 / denom, -x0 / denom);
+          }
+          // cc === 4 (D-D) or 5 (Y-Y ungrounded): open in zero sequence
+        }
+
+        const seqGenMap = new Map<string, (typeof seq.generators)[number]>();
+        for (const sg of seq.generators) seqGenMap.set(`${sg.i}:${sg.id.trim()}`, sg);
+        for (const gen of this.gens) {
+          const sg = seqGenMap.get(`${gen.busNumber}:${gen.id}`);
+          const r0 = sg ? sg.zr0 + 3.0 * sg.zrg : 0.0;
+          const x0 = sg && sg.zx0 > 0 ? sg.zx0 + 3.0 * sg.zxg : gen.xdPrimePu * 0.5;
+          const denom = r0 * r0 + x0 * x0;
+          if (denom > 1e-12) addY(gen.busIdx, gen.busIdx, r0 / denom, -x0 / denom);
+        }
+
+        for (const sh of seq.shunts) {
+          const i = this.netlist.busIndices.get(sh.i);
+          if (i !== undefined) addY(i, i, sh.g0, sh.b0);
+        }
+      }
+
       for (let i = 0; i < N; i++) {
-        const gRow = this.netlist.ybus.g.get(i);
-        const bRow = this.netlist.ybus.b.get(i);
-        if (gRow) {
-          for (const [j, gVal] of gRow) addY(i, j, gVal, 0);
-        }
-        if (bRow) {
-          for (const [j, bVal] of bRow) addY(i, j, 0, bVal);
-        }
-      }
-      const seqGenMap = new Map<string, (typeof seq.generators)[number]>();
-      for (const sg of seq.generators) seqGenMap.set(`${sg.i}:${sg.id.trim()}`, sg);
-      for (const gen of this.gens) {
-        const sg = seqGenMap.get(`${gen.busNumber}:${gen.id}`);
-        const r2 = sg && sg.zrneg >= 0 ? sg.zrneg : 0.0;
-        const x2 = sg && sg.zxneg > 0 ? sg.zxneg : gen.xdPrimePu;
-        const denom = r2 * r2 + x2 * x2;
-        if (denom > 1e-12) addY(gen.busIdx, gen.busIdx, r2 / denom, -x2 / denom);
-      }
-    } else {
-      // Zero-sequence network from `.seq` branches, transformers, generators, and shunts
-      const seqBrMap = new Map<string, (typeof seq.branches)[number]>();
-      for (const sb of seq.branches) {
-        seqBrMap.set(`${sb.i}:${sb.j}:${sb.ckt.trim()}`, sb);
-        seqBrMap.set(`${sb.j}:${sb.i}:${sb.ckt.trim()}`, sb);
-      }
-      for (const br of this.psseCase.branches) {
-        if (br.st === 0) continue;
-        const i = this.netlist.busIndices.get(br.i);
-        const j = this.netlist.busIndices.get(br.j);
-        if (i === undefined || j === undefined) continue;
-        const sb = seqBrMap.get(`${br.i}:${br.j}:${br.ckt.trim()}`);
-        const r0 = sb ? sb.r0 : br.r * 3.0;
-        const x0 = sb ? sb.x0 : br.x * 3.0;
-        const b0 = sb ? sb.b0 : br.b * 0.6;
-        stampSeries(i, j, r0, x0, b0);
-        if (sb) {
-          if (sb.gi0 !== 0 || sb.bi0 !== 0) addY(i, i, sb.gi0, sb.bi0);
-          if (sb.gj0 !== 0 || sb.bj0 !== 0) addY(j, j, sb.gj0, sb.bj0);
+        if (Math.abs(diagG[i]!) < 1e-12 && Math.abs(diagB[i]!) < 1e-12) {
+          builder.add(2 * i, 2 * i, 1e-6);
+          builder.add(2 * i + 1, 2 * i + 1, 1e-6);
         }
       }
 
-      const seqTfMap = new Map<string, (typeof seq.transformers)[number]>();
-      for (const st of seq.transformers) {
-        seqTfMap.set(`${st.i}:${st.j}:${st.ckt.trim()}`, st);
-      }
-      for (const tf of this.psseCase.transformers) {
-        if (tf.stat === 0) continue;
-        const i = this.netlist.busIndices.get(tf.i);
-        const j = this.netlist.busIndices.get(tf.j);
-        if (i === undefined || j === undefined) continue;
-        const st = seqTfMap.get(`${tf.i}:${tf.j}:${tf.ckt.trim()}`);
-        const cc = st?.cc ?? 1;
-        const r0 = st ? st.r01 + 3.0 * st.rg1 : tf.r12;
-        const x0 = st ? st.x01 + 3.0 * st.xg1 : tf.x12;
-        const denom = r0 * r0 + x0 * x0;
-        if (cc === 1) {
-          // Yg-Yg: series pass-through
-          stampSeries(i, j, r0, x0, 0);
-        } else if (cc === 2 && denom > 1e-12) {
-          // Yg-D: shunt to ground on primary bus i, open on delta side j
-          addY(i, i, r0 / denom, -x0 / denom);
-        } else if (cc === 3 && denom > 1e-12) {
-          // D-Yg: shunt to ground on secondary bus j, open on delta side i
-          addY(j, j, r0 / denom, -x0 / denom);
-        }
-        // cc === 4 (D-D) or 5 (Y-Y ungrounded): open in zero sequence
-      }
-
-      const seqGenMap = new Map<string, (typeof seq.generators)[number]>();
-      for (const sg of seq.generators) seqGenMap.set(`${sg.i}:${sg.id.trim()}`, sg);
-      for (const gen of this.gens) {
-        const sg = seqGenMap.get(`${gen.busNumber}:${gen.id}`);
-        const r0 = sg ? sg.zr0 + 3.0 * sg.zrg : 0.0;
-        const x0 = sg && sg.zx0 > 0 ? sg.zx0 + 3.0 * sg.zxg : gen.xdPrimePu * 0.5;
-        const denom = r0 * r0 + x0 * x0;
-        if (denom > 1e-12) addY(gen.busIdx, gen.busIdx, r0 / denom, -x0 / denom);
-      }
-
-      for (const sh of seq.shunts) {
-        const i = this.netlist.busIndices.get(sh.i);
-        if (i !== undefined) addY(i, i, sh.g0, sh.b0);
-      }
+      const ccs = builder.toCCS();
+      const perm = computeAmdOrdering(ccs);
+      factors = sparseLuAnalyze(ccs, { colPerm: perm, allowPerturbation: true });
+      if (factors) this.sparseLuCache.set(cacheKey, factors);
     }
 
+    if (!factors) return;
+    const rhs = new Float64Array(dim);
     for (let i = 0; i < N; i++) {
       rhs[2 * i] = rhsRe[i]!;
       rhs[2 * i + 1] = rhsIm[i]!;
-      if (Math.abs(mat[2 * i * dim + 2 * i]!) < 1e-12 && Math.abs(mat[(2 * i + 1) * dim + 2 * i]!) < 1e-12) {
-        mat[2 * i * dim + 2 * i] = 1e-6;
-        mat[(2 * i + 1) * dim + (2 * i + 1)] = 1e-6;
-      }
     }
-
-    if (solveLinearSystemSparse(mat, rhs, dim, { sparseThreshold: 30 })) {
-      for (let i = 0; i < N; i++) {
-        outRe[i] = rhs[2 * i]!;
-        outIm[i] = rhs[2 * i + 1]!;
-      }
+    const sol = sparseLuSolve(factors, rhs);
+    for (let i = 0; i < N; i++) {
+      outRe[i] = sol[2 * i]!;
+      outIm[i] = sol[2 * i + 1]!;
     }
   }
 

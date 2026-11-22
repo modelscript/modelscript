@@ -2,7 +2,7 @@
 
 import { createInterface } from "node:readline";
 import type { Argv, CommandModule } from "yargs";
-import { getApiUrl, saveApiUrl, saveToken } from "../util/auth.js";
+import { getApiUrl, saveApiUrl, saveHostAuth, saveToken } from "../util/auth.js";
 
 interface LoginArgs {
   email?: string | undefined;
@@ -10,6 +10,7 @@ interface LoginArgs {
   token?: string | undefined;
   otp?: string | undefined;
   registry?: string | undefined;
+  host?: string | undefined;
 }
 
 interface AuthResponsePayload {
@@ -70,9 +71,15 @@ function prompt(question: string, hidden = false): Promise<string> {
 
 export const Login: CommandModule<{}, LoginArgs> = {
   command: "login",
-  describe: "Log in to the Ansatz Package Registry & Platform",
+  describe:
+    "Log in to the Ansatz Package Registry or an external ALM host (DOORS Next, Jama, Codebeamer, Polarion, Jira)",
   builder: (yargs) => {
     return yargs
+      .option("host", {
+        alias: "H",
+        description: "External ALM host to store credentials for (e.g. 'elm.corp.com', 'corp.atlassian.net')",
+        type: "string",
+      })
       .option("email", {
         alias: "e",
         description: "Email address or username",
@@ -99,6 +106,27 @@ export const Login: CommandModule<{}, LoginArgs> = {
       }) as unknown as Argv<LoginArgs>;
   },
   handler: async (args) => {
+    // Host-scoped ALM credential login
+    if (args.host) {
+      const normalizedHost = args.host
+        .replace(/^https?:\/\//i, "")
+        .replace(/\/.*$/, "")
+        .trim();
+      let token = args.token;
+      const username = args.email;
+      const password = args.password;
+      if (!token && !password) {
+        token = await prompt(`API Token / PAT for ${normalizedHost}: `, true);
+      }
+      saveHostAuth(normalizedHost, {
+        token: token || undefined,
+        username: username || undefined,
+        password: password || undefined,
+      });
+      console.log(`✅ Saved credentials for ALM host '${normalizedHost}' in ~/.modelscript/credentials.json`);
+      return;
+    }
+
     const apiUrl = (args.registry || getApiUrl()).replace(/\/+$/, "");
     if (args.registry) {
       saveApiUrl(apiUrl);

@@ -20,6 +20,7 @@ export * from "./analysis/wasm_egraph_simplifier.js";
 export * from "./analysis/wasm_hji_solver.js";
 export * from "./analysis/wasm_hybrid_flowpipe.js";
 export * from "./analysis/wasm_interval.js";
+export * from "./analysis/wasm_kernels_bridge.js";
 export * from "./analysis/wasm_pantelides.js";
 export * from "./analysis/wasm_polynomial_abstraction.js";
 export * from "./analysis/wasm_sbg.js";
@@ -106,12 +107,8 @@ export * from "./storage/paged_store.js";
 
 export * from "./pipeline.js";
 export * from "./runtime.js";
-export * from "./simulation/b2b_verifier.js";
-export * from "./simulation/unified_verifier.js";
 export * from "./simulation/wasm_cosim.js";
-export * from "./simulation/wasm_doe.js";
 export * from "./simulation/wasm_fmu_subsystem.js";
-export * from "./simulation/wasm_monte_carlo.js";
 export {
   computeIntegral,
   computeOvershoot,
@@ -151,6 +148,7 @@ export * from "./util/sarif_reporter.js";
 export * from "./util/symbol_roles.js";
 export * from "./util/type_registry.js";
 export * from "./workspace/library-manifest.js";
+export * from "./workspace/wasm-kernel-host.js";
 export * from "./workspace/wasm_cache_store.js";
 export * from "./workspace/wasm_container.js";
 export * from "./workspace/wasm_query_engine.js";
@@ -192,9 +190,11 @@ export * from "./formal/dae/taylor_domain.js";
 export * from "./formal/multidomain_coordinator.js";
 export * from "./formal/oracles/index.js";
 export * from "./formal/theory_coordinator.js";
+export * from "./interop/alm/index.js";
 export * from "./interop/envelope_compliance.js";
 export * from "./lsp_types.js";
 export * from "./math/double64.js";
 export * from "./solvers/distributed-krylov.js";
 export * from "./solvers/sparse_arnoldi.js";
 export * from "./util/snowflake.js";
+export * from "./workspace/manifest.js";

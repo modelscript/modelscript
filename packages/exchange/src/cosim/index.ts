@@ -22,6 +22,7 @@ export {
 export * from "./algebraic-loop-advisor.js";
 export * from "./coupling.js";
 export * from "./fdne-fitter.js";
+export * from "./hybrid-boundary-linter.js";
 export * from "./interface-jacobian.js";
 export * from "./network-sync.js";
 export * from "./olga-cosim-master.js";

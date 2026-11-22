@@ -8,6 +8,7 @@
  */
 
 export * from "./analysis/fault-solver.js";
+export * from "./catalog/index.js";
 export * from "./dae/oneliner-to-dae.js";
 export * from "./indexing.js";
 export * from "./language.js";

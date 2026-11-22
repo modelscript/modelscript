@@ -2396,13 +2396,22 @@ export class ModelicaPortBalancer {
                 const callExpr = dae.addCallExpr("assert", [condExpr, msgExpr]);
                 potentialEqs.push({ kind: EqKind.FunctionCall, lhs: callExpr, rhs: 0, str: dae.getVarName(potRoot) });
               } else {
-                const resolveIntParamVal = (vi: number): number | null => {
+                const resolveDiscreteParamVal = (vi: number): string | number | null => {
+                  const vt = dae.getVarType(vi);
+                  if (vt !== VarType.Integer && vt !== VarType.Boolean && vt !== VarType.Enumeration) return null;
                   let cur = vi;
                   for (let hops = 0; hops < 6; hops++) {
                     const e = dae.getVarExpression(cur);
                     if (e === undefined || e < 0) return null;
                     const k = dae.getExprKind(e);
-                    if (k === ExprKind.IntLiteral) return dae.getExprData1(e);
+                    if (vt === VarType.Integer && k === ExprKind.IntLiteral) return dae.getExprData1(e);
+                    if (vt === VarType.Boolean && k === ExprKind.BoolLiteral) {
+                      return dae.getExprData1(e) !== 0 ? 1 : 0;
+                    }
+                    if (vt === VarType.Enumeration && k === ExprKind.EnumLiteral) {
+                      const enumName = dae.interner.resolve(dae.getExprLeft(e));
+                      return enumName || dae.getExprData1(e);
+                    }
                     if (k === ExprKind.Name) {
                       const nm = dae.interner.resolve(dae.getExprData1(e));
                       const nextVi = nm ? dae.getVarIdxByName(nm) : -1;
@@ -2414,16 +2423,15 @@ export class ModelicaPortBalancer {
                   }
                   return null;
                 };
-                const isEqualIntParamInNf =
+                const isEqualDiscreteParamInNf =
                   !options?.isOldFrontend &&
-                  dae.getVarType(potRoot) === VarType.Integer &&
-                  dae.getVarType(vIdx) === VarType.Integer &&
+                  dae.getVarType(potRoot) === dae.getVarType(vIdx) &&
                   (() => {
-                    const v1 = resolveIntParamVal(potRoot);
-                    const v2 = resolveIntParamVal(vIdx);
+                    const v1 = resolveDiscreteParamVal(potRoot);
+                    const v2 = resolveDiscreteParamVal(vIdx);
                     return v1 !== null && v2 !== null && v1 === v2;
                   })();
-                if (!isEqualIntParamInNf) {
+                if (!isEqualDiscreteParamInNf) {
                   const eqExpr = dae.addBinaryExpr(BinOp.Eq, rootExpr, vExpr);
                   const msgExpr = dae.addExpression(
                     ExprKind.StringLiteral,

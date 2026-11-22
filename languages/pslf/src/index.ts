@@ -7,6 +7,7 @@
  * bi-directional projections to/from PSS/E RAW and DYR, and topological linting.
  */
 
+export * from "./catalog/index.js";
 export { default, pslfLanguage } from "./language.js";
 export * from "./lints/index.js";
 export * from "./lsp.js";

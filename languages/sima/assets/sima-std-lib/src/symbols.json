@@ -1,0 +1,1186 @@
+[
+  {
+    "name": "SIMO_Body6DOF",
+    "kind": "sima_marine_model",
+    "namePath": "sima:SIMO_Body6DOF",
+    "exports": [
+      "mass",
+      "addedMassSurge",
+      "linearDamping",
+      "quadraticDamping",
+      "restoringK",
+      "gmTransverse"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SIMO 6-DOF Floating Body",
+      "category": "Hydrodynamics & Bodies",
+      "domain": "marine",
+      "description": "Rigid 6-DOF floating marine body governed by Cummins impulse-response equations of motion with added mass, radiation damping, and hydrostatic restoring.",
+      "provenance": "Cummins (1962) David Taylor Model Basin Report 1661; Faltinsen (1990) Sea Loads on Ships and Offshore Structures",
+      "aliases": [
+        "Body6DOF",
+        "SIMO_Vessel",
+        "FloatingBody6DOF"
+      ],
+      "parameters": [
+        {
+          "key": "mass",
+          "type": "real",
+          "defaultValue": 50000000,
+          "unit": "kg",
+          "description": "Total structural mass of floating body"
+        },
+        {
+          "key": "addedMassSurge",
+          "type": "real",
+          "defaultValue": 5000000,
+          "unit": "kg",
+          "description": "Infinite-frequency surge added mass A11(inf)"
+        },
+        {
+          "key": "linearDamping",
+          "type": "real",
+          "defaultValue": 200000,
+          "unit": "N*s/m",
+          "description": "Linear hydrodynamic radiation/viscous damping"
+        },
+        {
+          "key": "quadraticDamping",
+          "type": "real",
+          "defaultValue": 50000,
+          "unit": "N*s^2/m^2",
+          "description": "Quadratic drag damping coefficient"
+        },
+        {
+          "key": "restoringK",
+          "type": "real",
+          "defaultValue": 150000,
+          "unit": "N/m",
+          "description": "Equivalent horizontal mooring/restoring stiffness"
+        },
+        {
+          "key": "gmTransverse",
+          "type": "real",
+          "defaultValue": 2.5,
+          "unit": "m",
+          "description": "Transverse metacentric height GMt"
+        }
+      ],
+      "wasmKernel": "SIMO_Body6DOF",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SIMO_MorisonMember",
+    "kind": "sima_marine_model",
+    "namePath": "sima:SIMO_MorisonMember",
+    "exports": [
+      "diameter",
+      "length",
+      "cd",
+      "cm",
+      "waterDensity"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SIMO Morison Slender Member",
+      "category": "Hydrodynamics & Bodies",
+      "domain": "marine",
+      "description": "Hydrodynamic drag and inertia force on a slender cylindrical member using the relative-velocity Morison equation.",
+      "provenance": "Morison, O'Brien, Johnson & Schaaf (1950) Petroleum Trans. AIME 189; DNV-RP-C205 §6.2",
+      "aliases": [
+        "MorisonMember",
+        "SlenderElement",
+        "MorisonCylinder"
+      ],
+      "parameters": [
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "m",
+          "description": "Hydrodynamic outer diameter D"
+        },
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "m",
+          "description": "Member wetted length L"
+        },
+        {
+          "key": "cd",
+          "type": "real",
+          "defaultValue": 1.05,
+          "unit": "-",
+          "description": "Normal drag coefficient CD"
+        },
+        {
+          "key": "cm",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "-",
+          "description": "Inertia coefficient CM (= 1 + Ca)"
+        },
+        {
+          "key": "waterDensity",
+          "type": "real",
+          "defaultValue": 1025,
+          "unit": "kg/m^3",
+          "description": "Seawater density rho"
+        }
+      ],
+      "wasmKernel": "SIMO_MorisonMember",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "SIMO_HydroStatic",
+    "kind": "sima_marine_model",
+    "namePath": "sima:SIMO_HydroStatic",
+    "exports": [
+      "waterplaneArea",
+      "displacementVolume",
+      "gmTransverse",
+      "gmLongitudinal",
+      "waterDensity",
+      "gravity"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SIMO Hydrostatic Restoring Matrix",
+      "category": "Hydrodynamics & Bodies",
+      "domain": "marine",
+      "description": "Linearized hydrostatic restoring forces and moments in heave, roll, and pitch from waterplane area and metacentric heights.",
+      "provenance": "Faltinsen (1990) Sea Loads on Ships and Offshore Structures §3.2; DNV-RP-C205 §7.2",
+      "aliases": [
+        "HydroStatic",
+        "HydrostaticStiffness",
+        "BuoyancyRestoring"
+      ],
+      "parameters": [
+        {
+          "key": "waterplaneArea",
+          "type": "real",
+          "defaultValue": 3200,
+          "unit": "m^2",
+          "description": "Waterplane area Aw"
+        },
+        {
+          "key": "displacementVolume",
+          "type": "real",
+          "defaultValue": 48000,
+          "unit": "m^3",
+          "description": "Displaced volume V"
+        },
+        {
+          "key": "gmTransverse",
+          "type": "real",
+          "defaultValue": 3.2,
+          "unit": "m",
+          "description": "Transverse metacentric height GMt"
+        },
+        {
+          "key": "gmLongitudinal",
+          "type": "real",
+          "defaultValue": 120,
+          "unit": "m",
+          "description": "Longitudinal metacentric height GMl"
+        },
+        {
+          "key": "waterDensity",
+          "type": "real",
+          "defaultValue": 1025,
+          "unit": "kg/m^3",
+          "description": "Seawater density rho"
+        },
+        {
+          "key": "gravity",
+          "type": "real",
+          "defaultValue": 9.80665,
+          "unit": "m/s^2",
+          "description": "Gravitational acceleration g"
+        }
+      ],
+      "wasmKernel": "SIMO_HydroStatic",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "SIMO_WaveDriftQTF",
+    "kind": "sima_marine_model",
+    "namePath": "sima:SIMO_WaveDriftQTF",
+    "exports": [
+      "driftCoeff",
+      "waveAmplitude",
+      "headingRad",
+      "driftDamping"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SIMO Second-Order Wave Drift (QTF)",
+      "category": "Hydrodynamics & Bodies",
+      "domain": "marine",
+      "description": "Mean and slowly-varying second-order wave drift force using Newman's approximation of the Quadratic Transfer Function (QTF).",
+      "provenance": "Newman (1974) Second-Order Slowly-Varying Forces on Vessels in Irregular Waves; DNV-RP-C205 §7.4",
+      "aliases": [
+        "WaveDriftQTF",
+        "MeanWaveDrift",
+        "NewmanQTF"
+      ],
+      "parameters": [
+        {
+          "key": "driftCoeff",
+          "type": "real",
+          "defaultValue": 120000,
+          "unit": "N/m^2",
+          "description": "Diagonal wave-drift force coefficient QTF(w,w)"
+        },
+        {
+          "key": "waveAmplitude",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "m",
+          "description": "Regular/envelope wave amplitude zeta_a"
+        },
+        {
+          "key": "headingRad",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "rad",
+          "description": "Relative wave heading angle"
+        },
+        {
+          "key": "driftDamping",
+          "type": "real",
+          "defaultValue": 15000,
+          "unit": "N*s/m",
+          "description": "Wave-drift damping coefficient"
+        }
+      ],
+      "wasmKernel": "SIMO_WaveDriftQTF",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "SIMO_AddedMassDamping",
+    "kind": "sima_marine_model",
+    "namePath": "sima:SIMO_AddedMassDamping",
+    "exports": [
+      "addedMassInf",
+      "radiationB",
+      "retardationDecay"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SIMO Added Mass & Radiation Damping",
+      "category": "Hydrodynamics & Bodies",
+      "domain": "marine",
+      "description": "Frequency-dependent added mass and radiation potential damping approximated via state-space retardation kernel.",
+      "provenance": "Ogilvie (1964) Recent Progress Toward the Understanding and Prediction of Ship Motions; DNV-RP-C205 §7.2",
+      "aliases": [
+        "AddedMassDamping",
+        "RadiationRetardation",
+        "CumminsRadiation"
+      ],
+      "parameters": [
+        {
+          "key": "addedMassInf",
+          "type": "real",
+          "defaultValue": 4500000,
+          "unit": "kg",
+          "description": "Infinite-frequency added mass A(inf)"
+        },
+        {
+          "key": "radiationB",
+          "type": "real",
+          "defaultValue": 350000,
+          "unit": "N*s/m",
+          "description": "Potential radiation damping B(w)"
+        },
+        {
+          "key": "retardationDecay",
+          "type": "real",
+          "defaultValue": 0.35,
+          "unit": "1/s",
+          "description": "Exponential retardation memory decay rate"
+        }
+      ],
+      "wasmKernel": "SIMO_AddedMassDamping",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "RIFLEX_CatenaryLine",
+    "kind": "sima_marine_model",
+    "namePath": "sima:RIFLEX_CatenaryLine",
+    "exports": [
+      "submergedWeight",
+      "totalLength",
+      "waterDepth",
+      "horizontalSpan",
+      "axialStiffnessEA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RIFLEX Catenary Mooring Line",
+      "category": "Mooring & Risers",
+      "domain": "marine",
+      "description": "Quasi-static inelastic catenary mooring line solver computing horizontal/vertical fairlead tensions, suspended length, and seabed touchdown.",
+      "provenance": "Faltinsen (1990) Sea Loads on Ships and Offshore Structures §8.2; DNV-OS-E301 Position Mooring",
+      "aliases": [
+        "CatenaryLine",
+        "MooringLine",
+        "InelasticCatenary"
+      ],
+      "parameters": [
+        {
+          "key": "submergedWeight",
+          "type": "real",
+          "defaultValue": 1200,
+          "unit": "N/m",
+          "description": "Submerged weight per unit length w"
+        },
+        {
+          "key": "totalLength",
+          "type": "real",
+          "defaultValue": 1200,
+          "unit": "m",
+          "description": "Total unstretched mooring line length L"
+        },
+        {
+          "key": "waterDepth",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "m",
+          "description": "Vertical fairlead-to-anchor height h"
+        },
+        {
+          "key": "horizontalSpan",
+          "type": "real",
+          "defaultValue": 1080,
+          "unit": "m",
+          "description": "Horizontal distance from anchor to fairlead X"
+        },
+        {
+          "key": "axialStiffnessEA",
+          "type": "real",
+          "defaultValue": 800000000,
+          "unit": "N",
+          "description": "Axial stiffness EA for taut regime"
+        }
+      ],
+      "wasmKernel": "RIFLEX_CatenaryLine",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "RIFLEX_BarElement",
+    "kind": "sima_marine_model",
+    "namePath": "sima:RIFLEX_BarElement",
+    "exports": [
+      "length0",
+      "axialStiffnessEA",
+      "structuralDamping",
+      "mbl"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RIFLEX Nonlinear Bar Element",
+      "category": "Mooring & Risers",
+      "domain": "marine",
+      "description": "Tension-only axial bar finite element with elastic stiffness EA and optional proportional structural damping.",
+      "provenance": "DNV-OS-E301 Position Mooring; ISO 19901-7 Stationkeeping Systems for Floating Offshore Structures",
+      "aliases": [
+        "BarElement",
+        "TrussElement",
+        "AxialLineElement"
+      ],
+      "parameters": [
+        {
+          "key": "length0",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "m",
+          "description": "Unstretched element length L0"
+        },
+        {
+          "key": "axialStiffnessEA",
+          "type": "real",
+          "defaultValue": 500000000,
+          "unit": "N",
+          "description": "Axial stiffness EA"
+        },
+        {
+          "key": "structuralDamping",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N*s/m",
+          "description": "Axial Rayleigh damping coefficient"
+        },
+        {
+          "key": "mbl",
+          "type": "real",
+          "defaultValue": 12000000,
+          "unit": "N",
+          "description": "Minimum breaking load (MBL)"
+        }
+      ],
+      "wasmKernel": "RIFLEX_BarElement",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "RIFLEX_BeamRiser",
+    "kind": "sima_marine_model",
+    "namePath": "sima:RIFLEX_BeamRiser",
+    "exports": [
+      "bendingStiffnessEI",
+      "axialStiffnessEA",
+      "outerDiameter",
+      "minBendRadius"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RIFLEX Slender Beam Riser Element",
+      "category": "Mooring & Risers",
+      "domain": "marine",
+      "description": "Slender marine riser beam element combining axial tension, Euler-Bernoulli bending moment EI*kappa, and minimum bending radius check.",
+      "provenance": "DNV-OS-F201 Dynamic Risers; API RP 17B Recommended Practice for Flexible Pipe",
+      "aliases": [
+        "BeamRiser",
+        "FlexibleRiser",
+        "SteelCatenaryRiser"
+      ],
+      "parameters": [
+        {
+          "key": "bendingStiffnessEI",
+          "type": "real",
+          "defaultValue": 25000000,
+          "unit": "N*m^2",
+          "description": "Flexural bending stiffness EI"
+        },
+        {
+          "key": "axialStiffnessEA",
+          "type": "real",
+          "defaultValue": 1200000000,
+          "unit": "N",
+          "description": "Axial stiffness EA"
+        },
+        {
+          "key": "outerDiameter",
+          "type": "real",
+          "defaultValue": 0.35,
+          "unit": "m",
+          "description": "Riser outer diameter"
+        },
+        {
+          "key": "minBendRadius",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "m",
+          "description": "Allowable minimum bending radius (MBR)"
+        }
+      ],
+      "wasmKernel": "RIFLEX_BeamRiser",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "RIFLEX_FlexJoint",
+    "kind": "sima_marine_model",
+    "namePath": "sima:RIFLEX_FlexJoint",
+    "exports": [
+      "rotStiffness",
+      "rotStiffnessCubic",
+      "rotDamping",
+      "maxAngleRad"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RIFLEX Elastomeric Flex Joint",
+      "category": "Mooring & Risers",
+      "domain": "marine",
+      "description": "Rotational elastomeric flex joint at riser hang-off or subsea wellhead with linear/nonlinear rotational stiffness and angular damping.",
+      "provenance": "DNV-OS-F201 Dynamic Risers §6; API RP 2RD Design of Risers for Floating Production Systems",
+      "aliases": [
+        "FlexJoint",
+        "TaperStressJoint",
+        "RiserFlexJoint"
+      ],
+      "parameters": [
+        {
+          "key": "rotStiffness",
+          "type": "real",
+          "defaultValue": 1500000,
+          "unit": "N*m/rad",
+          "description": "Linear rotational stiffness K_theta"
+        },
+        {
+          "key": "rotStiffnessCubic",
+          "type": "real",
+          "defaultValue": 20000000,
+          "unit": "N*m/rad^3",
+          "description": "Nonlinear hardening stiffness at high deflection"
+        },
+        {
+          "key": "rotDamping",
+          "type": "real",
+          "defaultValue": 50000,
+          "unit": "N*m*s/rad",
+          "description": "Angular viscous damping"
+        },
+        {
+          "key": "maxAngleRad",
+          "type": "real",
+          "defaultValue": 0.1745,
+          "unit": "rad",
+          "description": "Maximum rated deflection angle (10 deg)"
+        }
+      ],
+      "wasmKernel": "RIFLEX_FlexJoint",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "RIFLEX_BuoyancyModule",
+    "kind": "sima_marine_model",
+    "namePath": "sima:RIFLEX_BuoyancyModule",
+    "exports": [
+      "outerDiameter",
+      "length",
+      "dryMass",
+      "waterDensity",
+      "cd"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RIFLEX Distributed Buoyancy Module",
+      "category": "Mooring & Risers",
+      "domain": "marine",
+      "description": "Syntactic foam buoyancy module for lazy-wave or steep-wave riser configurations providing net upward buoyancy and hydrodynamic drag.",
+      "provenance": "API RP 17B Flexible Pipe; DNV-RP-C205 §6.2 Hydrodynamic Loads on Slender Members",
+      "aliases": [
+        "BuoyancyModule",
+        "LazyWaveBuoyancy",
+        "SyntacticFoam"
+      ],
+      "parameters": [
+        {
+          "key": "outerDiameter",
+          "type": "real",
+          "defaultValue": 1.1,
+          "unit": "m",
+          "description": "Buoyancy module outer diameter"
+        },
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "m",
+          "description": "Module length"
+        },
+        {
+          "key": "dryMass",
+          "type": "real",
+          "defaultValue": 420,
+          "unit": "kg",
+          "description": "Dry mass of buoyancy module"
+        },
+        {
+          "key": "waterDensity",
+          "type": "real",
+          "defaultValue": 1025,
+          "unit": "kg/m^3",
+          "description": "Seawater density rho"
+        },
+        {
+          "key": "cd",
+          "type": "real",
+          "defaultValue": 1.15,
+          "unit": "-",
+          "description": "Transverse drag coefficient"
+        }
+      ],
+      "wasmKernel": "RIFLEX_BuoyancyModule",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "RIFLEX_SeabedContact",
+    "kind": "sima_marine_model",
+    "namePath": "sima:RIFLEX_SeabedContact",
+    "exports": [
+      "normalStiffness",
+      "normalDamping",
+      "muAxial",
+      "muLateral",
+      "velReg"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RIFLEX Elastic-Coulomb Seabed Contact",
+      "category": "Mooring & Risers",
+      "domain": "marine",
+      "description": "Unilateral normal penalty stiffness and regularized Coulomb friction model for riser/mooring touchdown zone seabed interaction.",
+      "provenance": "DNV-RP-F114 Pipe-Soil Interaction for Submarine Pipelines; DNV-OS-E301",
+      "aliases": [
+        "SeabedContact",
+        "SeabedSoil",
+        "CoulombSeabed"
+      ],
+      "parameters": [
+        {
+          "key": "normalStiffness",
+          "type": "real",
+          "defaultValue": 500000,
+          "unit": "N/m",
+          "description": "Seabed vertical soil stiffness Kz"
+        },
+        {
+          "key": "normalDamping",
+          "type": "real",
+          "defaultValue": 10000,
+          "unit": "N*s/m",
+          "description": "Seabed vertical damping Cz"
+        },
+        {
+          "key": "muAxial",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "-",
+          "description": "Axial seabed Coulomb friction coefficient"
+        },
+        {
+          "key": "muLateral",
+          "type": "real",
+          "defaultValue": 0.6,
+          "unit": "-",
+          "description": "Lateral seabed Coulomb friction coefficient"
+        },
+        {
+          "key": "velReg",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "m/s",
+          "description": "Friction regularization velocity threshold"
+        }
+      ],
+      "wasmKernel": "RIFLEX_SeabedContact",
+      "archetypeId": 15
+    }
+  },
+  {
+    "name": "SIMO_Fender",
+    "kind": "sima_marine_model",
+    "namePath": "sima:SIMO_Fender",
+    "exports": [
+      "k1",
+      "k2",
+      "k3",
+      "damping",
+      "muFriction",
+      "maxDeflection"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SIMO Nonlinear Marine Fender",
+      "category": "Marine Equipment",
+      "domain": "marine",
+      "description": "Nonlinear elastomeric/pneumatic marine fender contact model with polynomial compression curve, loading hysteresis damping, and hull friction.",
+      "provenance": "PIANC MarCom WG 33 Guidelines for the Design of Fender Systems (2002); ISO 17357",
+      "aliases": [
+        "Fender",
+        "MarineFender",
+        "PneumaticFender"
+      ],
+      "parameters": [
+        {
+          "key": "k1",
+          "type": "real",
+          "defaultValue": 400000,
+          "unit": "N/m",
+          "description": "Linear compression stiffness"
+        },
+        {
+          "key": "k2",
+          "type": "real",
+          "defaultValue": 150000,
+          "unit": "N/m^2",
+          "description": "Quadratic compression stiffness"
+        },
+        {
+          "key": "k3",
+          "type": "real",
+          "defaultValue": 80000,
+          "unit": "N/m^3",
+          "description": "Cubic stiffening coefficient"
+        },
+        {
+          "key": "damping",
+          "type": "real",
+          "defaultValue": 60000,
+          "unit": "N*s/m",
+          "description": "Hysteretic loading damping"
+        },
+        {
+          "key": "muFriction",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "-",
+          "description": "Hull-to-fender sliding friction coefficient"
+        },
+        {
+          "key": "maxDeflection",
+          "type": "real",
+          "defaultValue": 1.8,
+          "unit": "m",
+          "description": "Rated maximum fender compression"
+        }
+      ],
+      "wasmKernel": "SIMO_Fender",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "SIMO_Thruster",
+    "kind": "sima_marine_model",
+    "namePath": "sima:SIMO_Thruster",
+    "exports": [
+      "bollardPull",
+      "advanceLossCoeff",
+      "maxInflowVel",
+      "azimuthRad"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SIMO Azimuth / Tunnel Thruster",
+      "category": "Marine Equipment",
+      "domain": "marine",
+      "description": "Marine propulsion thruster model computing bollard-pull thrust, advance-velocity inflow degradation, and azimuth force vector decomposition.",
+      "provenance": "Fossen (2011) Handbook of Marine Craft Hydrodynamics and Motion Control §12.3; DNV-RP-C205",
+      "aliases": [
+        "Thruster",
+        "AzimuthThruster",
+        "TunnelThruster"
+      ],
+      "parameters": [
+        {
+          "key": "bollardPull",
+          "type": "real",
+          "defaultValue": 600000,
+          "unit": "N",
+          "description": "Maximum bollard pull thrust at zero inflow"
+        },
+        {
+          "key": "advanceLossCoeff",
+          "type": "real",
+          "defaultValue": 0.35,
+          "unit": "-",
+          "description": "Inflow velocity thrust degradation factor"
+        },
+        {
+          "key": "maxInflowVel",
+          "type": "real",
+          "defaultValue": 6,
+          "unit": "m/s",
+          "description": "Reference inflow velocity for degradation"
+        },
+        {
+          "key": "azimuthRad",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "rad",
+          "description": "Default thruster azimuth angle"
+        }
+      ],
+      "wasmKernel": "SIMO_Thruster",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "SIMO_Winch",
+    "kind": "sima_marine_model",
+    "namePath": "sima:SIMO_Winch",
+    "exports": [
+      "maxTension",
+      "haulStiffness",
+      "drumDamping",
+      "setpointTension"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SIMO Mooring / Crane Winch",
+      "category": "Marine Equipment",
+      "domain": "marine",
+      "description": "Line-hauling winch with drum speed control, maximum haul tension brake limit, and active constant-tension payout mode.",
+      "provenance": "DNV-OS-E301 Position Mooring; DNV-ST-0378 Offshore and Platform Lifting Appliances",
+      "aliases": [
+        "Winch",
+        "MooringWinch",
+        "ActiveHeaveWinch"
+      ],
+      "parameters": [
+        {
+          "key": "maxTension",
+          "type": "real",
+          "defaultValue": 1500000,
+          "unit": "N",
+          "description": "Maximum rated winch holding/hauling tension"
+        },
+        {
+          "key": "haulStiffness",
+          "type": "real",
+          "defaultValue": 2000000,
+          "unit": "N/m",
+          "description": "Effective wire-drum stiffness"
+        },
+        {
+          "key": "drumDamping",
+          "type": "real",
+          "defaultValue": 80000,
+          "unit": "N*s/m",
+          "description": "Winch drive damping"
+        },
+        {
+          "key": "setpointTension",
+          "type": "real",
+          "defaultValue": 400000,
+          "unit": "N",
+          "description": "Constant-tension mode target tension"
+        }
+      ],
+      "wasmKernel": "SIMO_Winch",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "SIMO_Hawser",
+    "kind": "sima_marine_model",
+    "namePath": "sima:SIMO_Hawser",
+    "exports": [
+      "unstretchedLength",
+      "stiffnessCoeff",
+      "exponent",
+      "damping"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SIMO Synthetic Mooring Hawser",
+      "category": "Marine Equipment",
+      "domain": "marine",
+      "description": "Tension-only synthetic fiber hawser with power-law nonlinear elongation curve T = k * eps^p and hysteretic damping.",
+      "provenance": "OCIMF Mooring Equipment Guidelines (MEG4); DNV-OS-E303 Fibre Ropes for Offshore Mooring",
+      "aliases": [
+        "Hawser",
+        "TowLine",
+        "SyntheticHawser"
+      ],
+      "parameters": [
+        {
+          "key": "unstretchedLength",
+          "type": "real",
+          "defaultValue": 80,
+          "unit": "m",
+          "description": "Unstretched hawser length L0"
+        },
+        {
+          "key": "stiffnessCoeff",
+          "type": "real",
+          "defaultValue": 12000000,
+          "unit": "N",
+          "description": "Nonlinear tension coefficient k (T = k * eps^p)"
+        },
+        {
+          "key": "exponent",
+          "type": "real",
+          "defaultValue": 1.6,
+          "unit": "-",
+          "description": "Synthetic fiber load-elongation power exponent p"
+        },
+        {
+          "key": "damping",
+          "type": "real",
+          "defaultValue": 30000,
+          "unit": "N*s/m",
+          "description": "Internal fiber damping coefficient"
+        }
+      ],
+      "wasmKernel": "SIMO_Hawser",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "SIMO_DPController",
+    "kind": "sima_marine_model",
+    "namePath": "sima:SIMO_DPController",
+    "exports": [
+      "kp",
+      "ki",
+      "kd",
+      "maxForce"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SIMO Dynamic Positioning PID Controller",
+      "category": "Marine Equipment",
+      "domain": "marine",
+      "description": "Horizontal-plane Dynamic Positioning (DP) PID stationkeeping controller with integral anti-windup and thrust saturation.",
+      "provenance": "Fossen (2011) Handbook of Marine Craft Hydrodynamics and Motion Control §12.2; IMCA M 103",
+      "aliases": [
+        "DPController",
+        "DynamicPositioning",
+        "PID_DP"
+      ],
+      "parameters": [
+        {
+          "key": "kp",
+          "type": "real",
+          "defaultValue": 250000,
+          "unit": "N/m",
+          "description": "Proportional position gain Kp"
+        },
+        {
+          "key": "ki",
+          "type": "real",
+          "defaultValue": 12000,
+          "unit": "N/(m*s)",
+          "description": "Integral stationkeeping gain Ki"
+        },
+        {
+          "key": "kd",
+          "type": "real",
+          "defaultValue": 800000,
+          "unit": "N*s/m",
+          "description": "Derivative velocity damping gain Kd"
+        },
+        {
+          "key": "maxForce",
+          "type": "real",
+          "defaultValue": 2000000,
+          "unit": "N",
+          "description": "Maximum commanded DP thrust force"
+        }
+      ],
+      "wasmKernel": "SIMO_DPController",
+      "archetypeId": 24
+    }
+  },
+  {
+    "name": "ENV_JONSWAPWave",
+    "kind": "sima_marine_model",
+    "namePath": "sima:ENV_JONSWAPWave",
+    "exports": [
+      "hs",
+      "tp",
+      "gamma",
+      "sigmaA",
+      "sigmaB"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "JONSWAP Irregular Wave Spectrum",
+      "category": "Metocean Environment",
+      "domain": "marine",
+      "description": "Five-parameter JONSWAP wave energy spectral density S(omega) for fetch-limited North Sea and offshore sea states.",
+      "provenance": "Hasselmann et al. (1973) JONSWAP; DNV-RP-C205 §3.5.5.1 Environmental Conditions and Environmental Loads",
+      "aliases": [
+        "JONSWAPWave",
+        "JONSWAP",
+        "WaveSpectrumJONSWAP"
+      ],
+      "parameters": [
+        {
+          "key": "hs",
+          "type": "real",
+          "defaultValue": 4.5,
+          "unit": "m",
+          "description": "Significant wave height Hs"
+        },
+        {
+          "key": "tp",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Spectral peak period Tp"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 3.3,
+          "unit": "-",
+          "description": "Non-dimensional peak shape parameter gamma"
+        },
+        {
+          "key": "sigmaA",
+          "type": "real",
+          "defaultValue": 0.07,
+          "unit": "-",
+          "description": "Spectral width parameter for omega <= omega_p"
+        },
+        {
+          "key": "sigmaB",
+          "type": "real",
+          "defaultValue": 0.09,
+          "unit": "-",
+          "description": "Spectral width parameter for omega > omega_p"
+        }
+      ],
+      "wasmKernel": "ENV_JONSWAPWave",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "ENV_PiersonMoskowitz",
+    "kind": "sima_marine_model",
+    "namePath": "sima:ENV_PiersonMoskowitz",
+    "exports": [
+      "hs",
+      "tp"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pierson-Moskowitz Wave Spectrum",
+      "category": "Metocean Environment",
+      "domain": "marine",
+      "description": "Two-parameter Pierson-Moskowitz (ISSC) wave energy spectrum S(omega) for fully developed open-ocean sea states (JONSWAP with gamma = 1).",
+      "provenance": "Pierson & Moskowitz (1964) J. Geophys. Res. 69(24); DNV-RP-C205 §3.5.5.1",
+      "aliases": [
+        "PiersonMoskowitz",
+        "PMWave",
+        "ISSCWave"
+      ],
+      "parameters": [
+        {
+          "key": "hs",
+          "type": "real",
+          "defaultValue": 4.5,
+          "unit": "m",
+          "description": "Significant wave height Hs"
+        },
+        {
+          "key": "tp",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Spectral peak period Tp"
+        }
+      ],
+      "wasmKernel": "ENV_PiersonMoskowitz",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "ENV_NPDWind",
+    "kind": "sima_marine_model",
+    "namePath": "sima:ENV_NPDWind",
+    "exports": [
+      "u0",
+      "heightZ",
+      "exponentN"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NPD / Frøya Offshore Wind Spectrum",
+      "category": "Metocean Environment",
+      "domain": "marine",
+      "description": "Norwegian Petroleum Directorate (NPD / Frøya) offshore wind gust power spectral density S_u(f) and logarithmic height profile.",
+      "provenance": "Andersen & Løvseth (1992) Frøya Wind Model; DNV-RP-C205 §2.3.3.2; ISO 19901-1",
+      "aliases": [
+        "NPDWind",
+        "FroyaWind",
+        "ISO19901Wind"
+      ],
+      "parameters": [
+        {
+          "key": "u0",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "m/s",
+          "description": "1-hour mean wind speed at 10 m reference height"
+        },
+        {
+          "key": "heightZ",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "m",
+          "description": "Elevation z above mean sea level"
+        },
+        {
+          "key": "exponentN",
+          "type": "real",
+          "defaultValue": 0.468,
+          "unit": "-",
+          "description": "NPD spectral shape exponent n"
+        }
+      ],
+      "wasmKernel": "ENV_NPDWind",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "ENV_CurrentProfile",
+    "kind": "sima_marine_model",
+    "namePath": "sima:ENV_CurrentProfile",
+    "exports": [
+      "surfaceSpeed",
+      "waterDepth",
+      "powerExponent",
+      "windDriftSpeed",
+      "windDriftDepth"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Power-Law Ocean Current Profile",
+      "category": "Metocean Environment",
+      "domain": "marine",
+      "description": "Depth-varying ocean current speed combining tidal power-law shear profile and wind-generated linear surface drift.",
+      "provenance": "DNV-RP-C205 §4.1.4 Current Velocity Profile; ISO 19901-1 Metocean Design",
+      "aliases": [
+        "CurrentProfile",
+        "PowerLawCurrent",
+        "OceanCurrent"
+      ],
+      "parameters": [
+        {
+          "key": "surfaceSpeed",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "m/s",
+          "description": "Tidal current velocity at mean sea surface"
+        },
+        {
+          "key": "waterDepth",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "m",
+          "description": "Total water depth d"
+        },
+        {
+          "key": "powerExponent",
+          "type": "real",
+          "defaultValue": 0.142857,
+          "unit": "-",
+          "description": "Power-law exponent alpha (default 1/7)"
+        },
+        {
+          "key": "windDriftSpeed",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "m/s",
+          "description": "Wind-generated surface drift velocity"
+        },
+        {
+          "key": "windDriftDepth",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "m",
+          "description": "Reference depth z0 for wind-generated current"
+        }
+      ],
+      "wasmKernel": "ENV_CurrentProfile",
+      "archetypeId": 33
+    }
+  }
+]

@@ -160,6 +160,7 @@ export const BUILT_IN_LANGUAGES: LanguageManifest[] = [
   },
   { id: "psse", name: "PSS/E", extensions: [".raw", ".dyr", ".seq"], isBuiltIn: true },
   { id: "relap5", name: "RELAP5", extensions: [".i", ".relap", ".r5", ".relap5.inp"], isBuiltIn: true },
+  { id: "magicdraw", name: "MagicDraw / Cameo", extensions: [".mdzip", ".mdxml", ".xmi"], isBuiltIn: true },
   { id: "reqif", name: "ReqIF", extensions: [".reqif", ".reqifz", ".reqif.xml"], isBuiltIn: true },
   { id: "sbml", name: "SBML", extensions: [".sbml", ".sbml.xml"], isBuiltIn: true },
   { id: "simpack", name: "SIMPACK", extensions: [".spck", ".sim", ".mbs"], isBuiltIn: true },

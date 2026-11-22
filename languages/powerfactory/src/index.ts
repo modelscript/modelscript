@@ -8,6 +8,7 @@
  * cross-language projections to PSS/E and OpenIPSL Modelica, and the `powerfactory` Python shim.
  */
 
+export * from "./catalog/index.js";
 export * from "./dae/powerfactory-to-dae.js";
 export * from "./dsl/dsl-parser.js";
 export * from "./dsl/dsl-transpiler.js";

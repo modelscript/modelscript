@@ -746,6 +746,10 @@ export interface PscadViewportOptions {
   zoom?: number | undefined;
   /** Threshold of component count above which simplified LOD mode activates automatically (default: 500) */
   lodComponentThreshold?: number | undefined;
+  /** Optional map of component definition name (e.g. `master:xfmr-3p2w` or `xfmr-3p2w`) to cleanroom SVG markup. */
+  cleanroomIcons?: ReadonlyMap<string, string> | undefined;
+  /** When true, prefer `cleanroomIcons` over proprietary `<graphics>` XML from `.pslx`/`.pscx` definitions. */
+  cleanroomOnly?: boolean | undefined;
 }
 
 /**
@@ -1322,7 +1326,51 @@ export function buildPscadDiagram(
         width = 116;
         height = 120;
       }
-      const graphicXml = !isLowDetail ? defGraphic?.svgXml || defGraphic?.graphicsXml : undefined;
+      const rawCleanroomSvg =
+        options?.cleanroomIcons?.get(cmp.definitionName) ??
+        options?.cleanroomIcons?.get(cleanDefn) ??
+        options?.cleanroomIcons?.get(`master:${cleanDefn}`) ??
+        options?.cleanroomIcons?.get(defn) ??
+        options?.cleanroomIcons?.get(cleanDefn.toLowerCase());
+      let cleanroomSvg = rawCleanroomSvg;
+      if (cleanroomSvg && cleanroomSvg.includes("</svg>")) {
+        const overlays: string[] = [];
+        const lowerDef = cleanDefn.toLowerCase();
+        if (lowerDef.includes("breaker") || lowerDef.includes("tbreak")) {
+          const st = String(effParams["Status"] ?? effParams["status"] ?? effParams["Init"] ?? "closed").toLowerCase();
+          const isOpen = st === "open" || st === "0" || st === "false";
+          overlays.push(
+            isOpen
+              ? `<line x1="-7" y1="0" x2="6" y2="-8" stroke="#dc2626" stroke-width="2.4"/><circle cx="0" cy="-12" r="2.5" fill="#dc2626"/>`
+              : `<line x1="-8" y1="0" x2="8" y2="0" stroke="#16a34a" stroke-width="2.4"/><circle cx="0" cy="-12" r="2.5" fill="#16a34a"/>`,
+          );
+        } else if (lowerDef.includes("xfmr") || lowerDef.includes("transformer") || lowerDef.includes("umec")) {
+          const yd1 = String(effParams["YD1"] ?? "").toLowerCase();
+          const yd2 = String(effParams["YD2"] ?? "").toLowerCase();
+          if (yd1 || yd2) {
+            const pGrp = yd1 === "1" || yd1.startsWith("d") ? "Δ" : "Y";
+            const sGrp = yd2 === "0" || yd2.startsWith("y") ? "Y" : "Δ";
+            overlays.push(
+              `<text x="-9" y="3" text-anchor="middle" font-family="sans-serif" font-size="8" font-weight="700" fill="#0369a1">${pGrp}</text>`,
+              `<text x="9" y="3" text-anchor="middle" font-family="sans-serif" font-size="8" font-weight="700" fill="#0369a1">${sGrp}</text>`,
+            );
+          }
+        } else if (lowerDef.includes("slider") && effParams["Value"] !== undefined) {
+          const v = Number(effParams["Value"]);
+          const lo = Number(effParams["Min"] ?? 0);
+          const hi = Number(effParams["Max"] ?? 100);
+          if (Number.isFinite(v) && hi > lo) {
+            const frac = Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+            const cx = Math.round(-12 + frac * 24);
+            overlays.push(`<circle cx="${cx}" cy="0" r="4.5" fill="#d97706"/>`);
+          }
+        }
+        if (overlays.length > 0) {
+          cleanroomSvg = cleanroomSvg.replace("</svg>", `${overlays.join("")}</svg>`);
+        }
+      }
+      const vendorXml = !options?.cleanroomOnly ? defGraphic?.svgXml || defGraphic?.graphicsXml : undefined;
+      const graphicXml = !isLowDetail ? vendorXml || cleanroomSvg : undefined;
       const parsedDef = graphicXml
         ? parseSvgXmlToMarkup(graphicXml, effParams, width, height, cellAngle, cmp.mirror ?? false, cleanDefn)
         : undefined;

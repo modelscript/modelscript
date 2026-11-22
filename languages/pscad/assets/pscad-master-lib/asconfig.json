@@ -10,8 +10,8 @@
   },
   "options": {
     "bindings": "raw",
-    "initialMemory": 1,
-    "maximumMemory": 16,
+    "initialMemory": 8,
+    "maximumMemory": 64,
     "memoryBase": 2048
   }
 }

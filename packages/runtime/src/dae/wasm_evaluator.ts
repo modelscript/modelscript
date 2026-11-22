@@ -24,6 +24,75 @@ import {
   getOrCreateCachedTable,
 } from "./wasm_table.js";
 
+const _purityCache = new WeakMap<DAEBuilder, { exprCount: number; mask: Uint8Array }>();
+
+/**
+ * Computes a bottom-up purity bitset (`1` = pure scalar numeric subtree safe for
+ * `dae_evalExpr` / `dae_evalDualJacobianColumn`, `0` = requires TS fallback).
+ */
+export function computeArenaExprPurityBitset(arena: DAEBuilder): Uint8Array {
+  const cached = _purityCache.get(arena);
+  if (cached && cached.exprCount === arena.exprCount) return cached.mask;
+
+  const n = arena.exprCount;
+  const mask = new Uint8Array(n);
+  for (let id = 0; id < n; id++) {
+    const k = arena.getExprKind(id);
+    if (k === ExprKind.RealLiteral || k === ExprKind.IntLiteral || k === ExprKind.BoolLiteral || k === ExprKind.Name) {
+      mask[id] = 1;
+    } else if (k === ExprKind.Der || k === ExprKind.Pre) {
+      const inner = arena.getExprData1(id);
+      mask[id] = inner >= 0 && inner < id ? mask[inner]! : 0;
+    } else if (k === ExprKind.Negate || k === ExprKind.Unary) {
+      const l = arena.getExprLeft(id);
+      mask[id] = l >= 0 && l < id ? mask[l]! : 0;
+    } else if (k === ExprKind.Binary) {
+      const l = arena.getExprLeft(id);
+      const r = arena.getExprRight(id);
+      mask[id] = l >= 0 && l < id && r >= 0 && r < id && mask[l] === 1 && mask[r] === 1 ? 1 : 0;
+    } else {
+      mask[id] = 0;
+    }
+  }
+  _purityCache.set(arena, { exprCount: n, mask });
+  return mask;
+}
+
+/**
+ * Evaluates a column of the DAE equation Jacobian `d(residual[eqIndices])/d(var[seedVarId])`
+ * directly in WASM linear memory via `dae_evalDualJacobianColumn` (zero Dual heap allocations).
+ * Returns `null` if the arena is not backed by WASM or if `MSX_WASM_EVAL === "ts"`.
+ */
+export function evaluateArenaDualJacobianColumnWasm(
+  arena: DAEBuilder,
+  eqIndices: Int32Array | number[],
+  varValues: Float64Array,
+  seedVarId: number,
+): Float64Array | null {
+  if (typeof process !== "undefined" && process.env?.["MSX_WASM_EVAL"] === "ts") return null;
+  const exp = arena.exports as any;
+  if (arena.ptr === 0 || !exp || typeof exp.dae_evalDualJacobianColumn !== "function") return null;
+
+  const nEqs = eqIndices.length;
+  if (nEqs === 0) return new Float64Array(0);
+
+  const eqPtr = exp.alloc(nEqs * 4);
+  const valPtr = exp.alloc(varValues.byteLength);
+  const outPtr = exp.alloc(nEqs * 8);
+  try {
+    new Int32Array(exp.memory.buffer, eqPtr, nEqs).set(eqIndices);
+    new Float64Array(exp.memory.buffer, valPtr, varValues.length).set(varValues);
+    exp.dae_evalDualJacobianColumn(arena.ptr, nEqs, eqPtr, valPtr, seedVarId, outPtr);
+    const col = new Float64Array(nEqs);
+    col.set(new Float64Array(exp.memory.buffer, outPtr, nEqs));
+    return col;
+  } finally {
+    exp.free(eqPtr);
+    exp.free(valPtr);
+    exp.free(outPtr);
+  }
+}
+
 /**
  * Dual numbers for forward-mode automatic differentiation.
  * A dual number `(val, dot)` represents a value `val` along with its
@@ -2246,8 +2315,45 @@ export function evaluateArrayBuiltin(funcName: string, args: ArenaValue[]): Aren
       return evalReduction(args, "min");
     case "max":
       return evalReduction(args, "max");
-    default:
+    default: {
+      const bvShort = funcName.includes("BooleanVectors.") ? funcName.slice(funcName.lastIndexOf(".") + 1) : funcName;
+      if (
+        bvShort === "anyTrue" ||
+        bvShort === "andTrue" ||
+        bvShort === "allTrue" ||
+        bvShort === "oneTrue" ||
+        bvShort === "countTrue" ||
+        bvShort === "firstTrueIndex"
+      ) {
+        return evalBooleanVectorReduction(args, bvShort);
+      }
       return undefined;
+    }
+  }
+}
+
+function evalBooleanVectorReduction(args: ArenaValue[], op: string): ArenaValue | null {
+  if (args.length < 1 || !Array.isArray(args[0])) return null;
+  const flat = flattenArenaArray(args[0]);
+  const isTruthy = (v: ArenaValue): boolean => v === true || (typeof v === "number" && v !== 0);
+  switch (op) {
+    case "anyTrue":
+      return flat.some(isTruthy);
+    case "andTrue":
+    case "allTrue":
+      return flat.every(isTruthy);
+    case "oneTrue":
+      return flat.filter(isTruthy).length === 1;
+    case "countTrue":
+      return flat.filter(isTruthy).length;
+    case "firstTrueIndex": {
+      for (let i = 0; i < flat.length; i++) {
+        if (isTruthy(flat[i]!)) return i + 1;
+      }
+      return 0;
+    }
+    default:
+      return null;
   }
 }
 
@@ -3465,6 +3571,22 @@ export function evaluateArenaExpression(
 
       const arrayResult = evaluateArrayBuiltin(funcName, args as ArenaValue[]);
       if (arrayResult !== undefined) return arrayResult;
+
+      if (
+        (funcName === "Modelica.ComplexMath.fromPolar" ||
+          funcName === "ComplexMath.fromPolar" ||
+          funcName === "fromPolar") &&
+        typeof args[0] === "number" &&
+        typeof args[1] === "number"
+      ) {
+        return {
+          __kind: "object" as const,
+          fields: new Map<string, ArenaValue>([
+            ["re", args[0] * Math.cos(args[1])],
+            ["im", args[0] * Math.sin(args[1])],
+          ]),
+        };
+      }
 
       const funcNameId = dae.getExprData1(exprId);
       if (functionLookup) {

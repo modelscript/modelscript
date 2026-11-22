@@ -1,0 +1,25 @@
+name: ev-battery-alm-gitops
+version: "1.0.0"
+description: "Reference ModelScript GitOps workspace demonstrating DOORS Next, Jama, Codebeamer, Polarion, and Jira integration."
+languages:
+  - modelica
+  - sysml2
+
+dependencies:
+  "@reqs/battery-safety":
+    source: oslc+https://elm.corp.com/rm/projects/EV_BAT/modules/MOD-42
+    baseline: Release-2.0
+    format: sysml2
+    materialize: requirements/doors
+    push: [verification, links]
+
+  "@reqs/cb-bms":
+    source: codebeamer+https://cb.corp.com/api/v3/trackers/1042
+    workingSet: "branch:${git.branch}"
+    materialize: requirements/codebeamer
+    push: [verification, links]
+
+  "@issues/jira-ev":
+    source: jira+https://corp.atlassian.net
+    query: "project = EV AND labels = model-tracked AND status != Closed"
+    push: [defects-on-fail, links]

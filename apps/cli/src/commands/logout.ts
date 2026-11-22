@@ -1,18 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { Argv, CommandModule } from "yargs";
-import { clearToken, getApiUrl, getAuthHeaders, getToken } from "../util/auth.js";
+import { clearHostAuth, clearToken, getApiUrl, getAuthHeaders, getToken } from "../util/auth.js";
 
 interface LogoutArgs {
   registry?: string | undefined;
+  host?: string | undefined;
   all?: boolean | undefined;
 }
 
 export const Logout: CommandModule<{}, LogoutArgs> = {
   command: "logout",
-  describe: "Log out from the Ansatz Package Registry & Platform",
+  describe: "Log out from the Ansatz Package Registry or an external ALM host",
   builder: (yargs) => {
     return yargs
+      .option("host", {
+        alias: "H",
+        description: "External ALM host to remove stored credentials for",
+        type: "string",
+      })
       .option("registry", {
         alias: "r",
         description: "Registry API URL to log out from",
@@ -25,6 +31,20 @@ export const Logout: CommandModule<{}, LogoutArgs> = {
       }) as unknown as Argv<LogoutArgs>;
   },
   handler: async (args) => {
+    if (args.host) {
+      const normalizedHost = args.host
+        .replace(/^https?:\/\//i, "")
+        .replace(/\/.*$/, "")
+        .trim();
+      const removed = clearHostAuth(normalizedHost);
+      console.log(
+        removed
+          ? `✅ Cleared credentials for ALM host '${normalizedHost}'.`
+          : `No stored credentials for '${normalizedHost}'.`,
+      );
+      return;
+    }
+
     const token = getToken();
     if (!token) {
       console.log("You are not logged in.");

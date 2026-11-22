@@ -9,6 +9,7 @@ import {
   VarAttrKind,
   VarType,
   Variability,
+  WasmEventDetectorBridge,
   causalizeVectorArena,
   convertArenaToMicroModelica,
   eliminateArenaAliases,
@@ -250,6 +251,19 @@ export class ArenaSimulator {
   /** Event indicator functions for zero-crossing detection. */
   public eventIndicators: ArenaEventIndicator[] = [];
   private sampleNextTimeByIdx = new Map<number, number>();
+  private wasmEventDetector: WasmEventDetectorBridge | null = null;
+
+  /** Returns the linear-memory WASM EventDetector bridge if available for this arena. */
+  public getWasmEventDetector(): WasmEventDetectorBridge | null {
+    if (this.wasmEventDetector) return this.wasmEventDetector;
+    if (this.arena.ptr === 0) return null;
+    try {
+      this.wasmEventDetector = new WasmEventDetectorBridge(this.arena.ptr);
+      return this.wasmEventDetector;
+    } catch {
+      return null;
+    }
+  }
 
   /** Extracted derivative equations: der(x) = expr. */
   // derivativeEquations removed

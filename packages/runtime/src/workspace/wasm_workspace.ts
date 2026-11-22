@@ -2289,7 +2289,9 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     options?: { ignore?: string[] | undefined },
   ): Promise<string[]> {
     const loadedUris: string[] = [];
-    const ignoreList = new Set(options?.ignore ?? ["node_modules", "dist", ".git", "testsuite"]);
+    const ignoreList = new Set(
+      options?.ignore ?? ["node_modules", "dist", ".git", "testsuite", "cache", "tmp", "connectors"],
+    );
 
     const crawl = (dir: string) => {
       const stat = fs.stat(dir);

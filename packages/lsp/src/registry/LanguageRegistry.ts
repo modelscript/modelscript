@@ -260,7 +260,7 @@ export const DEFAULT_LANGUAGE_MATURITY: Record<string, "stable" | "beta" | "expe
   kratos: "experimental",
   las: "experimental",
   maap: "experimental",
-  magicdraw: "experimental",
+  magicdraw: "beta",
   matpower: "experimental",
   nastran: "experimental",
   omnetpp: "experimental",
@@ -645,6 +645,9 @@ export class LanguageRegistry {
         if (/<DicomRtPlan\b/i.test(header)) return this.getPluginById("dicom-rt") ?? this.extMap.get(ext);
         if (/<febio_spec\b/i.test(header)) return this.getPluginById("febio") ?? this.extMap.get(ext);
         if (/<PlusConfiguration\b/i.test(header)) return this.getPluginById("igtl") ?? this.extMap.get(ext);
+        if (/<xmi:XMI\b/i.test(header) || /xmlns:xmi=/i.test(header)) {
+          return this.getPluginById("magicdraw") ?? this.extMap.get(ext);
+        }
       } else if (ext === ".in") {
         if (/^\s*(?:TITLE|IN-UNITS|RUN-CONTROL|FLOWSHEET|BLOCK|PROPERTIES|DEF-STREAMS)\b/im.test(header)) {
           return this.getPluginById("aspen") ?? this.extMap.get(ext);

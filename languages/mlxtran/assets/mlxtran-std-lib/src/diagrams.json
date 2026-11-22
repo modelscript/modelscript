@@ -1,0 +1,707 @@
+[
+  {
+    "namePath": "mlxtran:bolus_1cpt_VCl",
+    "aliases": [
+      "bolus_1cpt_Vk",
+      "iv_1cpt_VCl",
+      "pk_1cpt_bolus"
+    ],
+    "label": "1-Compartment IV Bolus (V, Cl)",
+    "category": "Structural PK",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">PK</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">bolus 1cpt V</text></svg>",
+    "ports": [
+      {
+        "name": "dose",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:bolus_2cpt_VClQVp",
+    "aliases": [
+      "bolus_2cpt_Vk12k21",
+      "iv_2cpt_VClQVp",
+      "pk_2cpt_bolus"
+    ],
+    "label": "2-Compartment IV Bolus (V, Cl, Q, Vp)",
+    "category": "Structural PK",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">PK</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">bolus 2cpt V</text></svg>",
+    "ports": [
+      {
+        "name": "dose",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:bolus_3cpt_VClQ2V2Q3V3",
+    "aliases": [
+      "bolus_3cpt",
+      "iv_3cpt"
+    ],
+    "label": "3-Compartment IV Bolus (V, Cl, Q2, V2, Q3, V3)",
+    "category": "Structural PK",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">PK</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">bolus 3cpt V</text></svg>",
+    "ports": [
+      {
+        "name": "dose",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:infusion_1cpt_VCl",
+    "aliases": [
+      "infusion_1cpt_Vk",
+      "iv_infusion_1cpt"
+    ],
+    "label": "1-Compartment IV Infusion (V, Cl)",
+    "category": "Structural PK",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">PK</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">infusion 1cp</text></svg>",
+    "ports": [
+      {
+        "name": "dose",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:oral1_1cpt_kaVCl",
+    "aliases": [
+      "oral1_1cpt_kaVk",
+      "oral_1cpt_kaVCl",
+      "bateman_1cpt"
+    ],
+    "label": "1-Compartment First-Order Oral (ka, V, Cl)",
+    "category": "Structural PK",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">PK</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">oral1 1cpt k</text></svg>",
+    "ports": [
+      {
+        "name": "dose",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:oral1_2cpt_kaVClQVp",
+    "aliases": [
+      "oral1_2cpt_kaVk12k21",
+      "oral_2cpt"
+    ],
+    "label": "2-Compartment First-Order Oral (ka, V, Cl, Q, Vp)",
+    "category": "Structural PK",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">PK</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">oral1 2cpt k</text></svg>",
+    "ports": [
+      {
+        "name": "dose",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:oral1_1cpt_TlagkaVCl",
+    "aliases": [
+      "oral1_1cpt_TlagkaVk",
+      "oral_1cpt_tlag"
+    ],
+    "label": "1-Compartment First-Order Oral with Lag Time (Tlag, ka, V, Cl)",
+    "category": "Structural PK",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">PK</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">oral1 1cpt T</text></svg>",
+    "ports": [
+      {
+        "name": "dose",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:oral0_1cpt_Tk0VCl",
+    "aliases": [
+      "oral0_1cpt_Tk0Vk",
+      "oral_zero_order_1cpt"
+    ],
+    "label": "1-Compartment Zero-Order Oral (Tk0, V, Cl)",
+    "category": "Structural PK",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">PK</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">oral0 1cpt T</text></svg>",
+    "ports": [
+      {
+        "name": "dose",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:michaelis_menten_1cpt",
+    "aliases": [
+      "bolus_1cpt_VVmKm",
+      "mm_1cpt",
+      "nonlinear_pk_1cpt"
+    ],
+    "label": "1-Compartment Michaelis-Menten Elimination (V, Vm, Km)",
+    "category": "Structural PK",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">PK</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">michaelis me</text></svg>",
+    "ports": [
+      {
+        "name": "dose",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:pkmodel",
+    "aliases": [
+      "PKMODEL"
+    ],
+    "label": "PK Macro: pkmodel()",
+    "category": "PK Macro",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">MAC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">pkmodel</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:depot",
+    "aliases": [
+      "DEPOT"
+    ],
+    "label": "PK Macro: depot()",
+    "category": "PK Macro",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">MAC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">depot</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:compartment",
+    "aliases": [
+      "COMPARTMENT",
+      "cmt"
+    ],
+    "label": "PK Macro: compartment()",
+    "category": "PK Macro",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">MAC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">compartment</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:absorption",
+    "aliases": [
+      "ABSORPTION"
+    ],
+    "label": "PK Macro: absorption()",
+    "category": "PK Macro",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">MAC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">absorption</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:elimination",
+    "aliases": [
+      "ELIMINATION"
+    ],
+    "label": "PK Macro: elimination()",
+    "category": "PK Macro",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">MAC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">elimination</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:peripheral",
+    "aliases": [
+      "PERIPHERAL"
+    ],
+    "label": "PK Macro: peripheral()",
+    "category": "PK Macro",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">MAC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">peripheral</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:transfer",
+    "aliases": [
+      "TRANSFER"
+    ],
+    "label": "PK Macro: transfer()",
+    "category": "PK Macro",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">MAC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">transfer</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:effect",
+    "aliases": [
+      "EFFECT",
+      "effect_cpt"
+    ],
+    "label": "PK Macro: effect()",
+    "category": "PK Macro",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">MAC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">effect</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:pd_emax_direct",
+    "aliases": [
+      "emax_direct",
+      "direct_emax"
+    ],
+    "label": "Direct Emax Pharmacodynamic Model",
+    "category": "Pharmacodynamics",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3b0764\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">PD</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">pd emax dire</text></svg>",
+    "ports": [
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "E",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:pd_sigmoid_emax",
+    "aliases": [
+      "sigmoid_emax",
+      "hill_emax",
+      "pd_hill"
+    ],
+    "label": "Sigmoid Hill Emax Pharmacodynamic Model",
+    "category": "Pharmacodynamics",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3b0764\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">PD</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">pd sigmoid e</text></svg>",
+    "ports": [
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "E",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:pd_indirect_inh_prod",
+    "aliases": [
+      "idr1",
+      "indirect_type1",
+      "turnover_inh_kin"
+    ],
+    "label": "Indirect Response Model (Inhibition of Production)",
+    "category": "Pharmacodynamics",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3b0764\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">PD</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">pd indirect </text></svg>",
+    "ports": [
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "E",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:pd_indirect_stim_loss",
+    "aliases": [
+      "idr4",
+      "indirect_type4",
+      "turnover_stim_kout"
+    ],
+    "label": "Indirect Response Model (Stimulation of Loss)",
+    "category": "Pharmacodynamics",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3b0764\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">PD</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">pd indirect </text></svg>",
+    "ports": [
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "E",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:tmdd_qss",
+    "aliases": [
+      "tmdd_quasi_steady_state",
+      "tmdd_qe",
+      "mager_tmdd_qss"
+    ],
+    "label": "TMDD Quasi-Steady-State (QSS) Approximation",
+    "category": "TMDD",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#4c1d95\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#a78bfa\">TMD</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">tmdd qss</text></svg>",
+    "ports": [
+      {
+        "name": "dose",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "Cfree",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 14
+      },
+      {
+        "name": "Rtot",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:tgi_simeoni",
+    "aliases": [
+      "simeoni_tgi",
+      "tumor_simeoni"
+    ],
+    "label": "Simeoni Tumor Growth Inhibition (TGI) Model",
+    "category": "Tumor Growth",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#450a0a\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">TGI</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">tgi simeoni</text></svg>",
+    "ports": [
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "W",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "mlxtran:tgi_exponential",
+    "aliases": [
+      "tumor_exponential",
+      "tgi_exp"
+    ],
+    "label": "Exponential Tumor Growth & Log-Kill Model",
+    "category": "Tumor Growth",
+    "domain": "pharmacometrics",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#450a0a\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">TGI</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">tgi exponent</text></svg>",
+    "ports": [
+      {
+        "name": "Cc",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "W",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  }
+]

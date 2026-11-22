@@ -40,6 +40,7 @@ export interface FortranExecutionContext {
   onStatementSync?: ((line: number, locals: Record<string, number | boolean | string>) => void) | undefined;
   injectCurrent?: ((nodeA: string, nodeB: string, currentAmp: number) => void) | undefined;
   stampBranch?: ((nodeA: string, nodeB: string, r: number, l: number, c: number, e: number) => void) | undefined;
+  invokeExternalSubroutine?: ((subroutineName: string, args: number[]) => number | undefined) | undefined;
 }
 
 export type FortranStepFunction = (ctx: FortranExecutionContext) => void;
@@ -593,6 +594,13 @@ export function buildStepFunction(
               childLocals[retName] ?? childLocals[retName.toLowerCase()] ?? childLocals[retName.toUpperCase()];
             return retVal !== undefined ? retVal : 0;
           }
+          if (ctx.invokeExternalSubroutine) {
+            const argVals = expr.subscripts.map((s) =>
+              Number(evalExpr(s.kind === "index" ? s.expr : (s.start ?? { kind: "number", value: 0 }))),
+            );
+            const extVal = ctx.invokeExternalSubroutine(expr.name.toUpperCase(), argVals);
+            if (extVal !== undefined) return extVal;
+          }
           return 0;
         }
         case "unary": {
@@ -699,8 +707,13 @@ export function buildStepFunction(
               return a1 !== 0 ? a0 % a1 : 0;
             case "sign":
               return a1 >= 0 ? Math.abs(a0) : -Math.abs(a0);
-            default:
+            default: {
+              if (ctx.invokeExternalSubroutine) {
+                const extVal = ctx.invokeExternalSubroutine(expr.func.toUpperCase(), evaluatedArgs);
+                if (extVal !== undefined) return extVal;
+              }
               return a0;
+            }
           }
         }
       }
@@ -1231,6 +1244,15 @@ export function buildStepFunction(
               const callee = lookupUnit(subName);
               if (callee) {
                 invokeUserUnit(callee, args);
+              } else if (ctx.invokeExternalSubroutine) {
+                const evalArgs = args.map((a) => Number(evalExpr(a)));
+                const before = evalArgs.slice();
+                ctx.invokeExternalSubroutine(subName, evalArgs);
+                for (let i = 0; i < args.length; i++) {
+                  if (evalArgs[i] !== before[i]) {
+                    assignTarget(args[i]!, evalArgs[i]!);
+                  }
+                }
               }
               break;
             }

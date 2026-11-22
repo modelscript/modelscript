@@ -171,6 +171,7 @@
     "@modelscript/landgem": "*",
     "@modelscript/las": "*",
     "@modelscript/lps": "*",
+    "@modelscript/magicdraw": "*",
     "@modelscript/matpower": "*",
     "@modelscript/modelica": "*",
     "@modelscript/modelscript": "*",

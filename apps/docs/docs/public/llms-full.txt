@@ -20,7 +20,7 @@ Welcome to **ModelScript**, the open-core **computable digital thread** platform
 
 ## What is the Computable Digital Thread?
 
-Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **92 engineering languages and file formats** spanning **12 industry verticals**:
+Modern cyber-physical systems — from electric vehicles, utility power grids, and satellites to surgical robots, proton therapy nozzles, and subsea flowlines — require tight coordination across **93 engineering languages and file formats** spanning **12 industry verticals**:
 
 - **System Architecture, Requirements, Security & Ontologies** (`SysML v2`, `KerML`, `ReqIF`, `NIST OSCAL`, `OSLC 3.0`, `OWL2`, `AAS / DDP`)
 - **Multi-Domain Acausal, Optimization & Block-Diagram Simulation** (`Modelica 3.x`, `ModelScript .msx`, `AMPL`, `MATLAB Simulink`, `EASY5`, `FMI 2.0/3.0 FMU`, `SSP 1.0/2.0`)
@@ -50,7 +50,7 @@ flowchart LR
 | :--------------------------- | :---------------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
 | **Artifact Storage**         | Proprietary binary blobs in centralized SQL/PLM vaults      | Plain-text, human-readable source files versioned in Git                                       |
 | **Cross-Domain Links**       | Manual, untyped hyperlinks that silently go stale           | Typed `@satisfies` / `@verifies` bindings & bidirectional Triple Graph Grammars (TGG)          |
-| **Static Analysis**          | Checked manually during design reviews                      | **1,160 static lint rules** across **92 languages** evaluated on every keystroke and CI push   |
+| **Static Analysis**          | Checked manually during design reviews                      | **1,160 static lint rules** across **93 languages** evaluated on every keystroke and CI push   |
 | **Requirement Verification** | Post-hoc spreadsheet sign-offs                              | Automated $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and Taylor-model reachability proofs        |
 | **Code Review & Diffs**      | Opaque binary attachments or screenshot exports             | Structural AST/DAE diffs and visual schematic PR diffs (`msx pr-diff`)                         |
 | **AI Copilot Integration**   | Unverified text generation prone to physical hallucinations | Closed-loop MCP server (`@modelscript/mcp`) grounded in DAE solvers and formal counterexamples |
@@ -59,7 +59,7 @@ flowchart LR
 
 ## Core Pillars of ModelScript
 
-### 1. Code-First Engineering Across 92 Languages (26 Beta & 66 Alpha)
+### 1. Code-First Engineering Across 93 Languages (26 Beta & 67 Alpha)
 
 Every model, schematic, requirement, netlist, and mesh configuration lives as clean text in Git. Engineers diff, review, merge, and gate physical hardware designs using standard pull requests, SARIF code scanning, and reproducible CI/CD pipelines.
 
@@ -159,7 +159,7 @@ The official extension turns VS Code or Cursor into a complete multi-domain mode
 1. Open VS Code and open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 2. Search for **`ModelScript`** (`modelscript.modelscript`) and click **Install**.
 
-The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 92 supported formats, interactive schematic and Bode plot panels, the 3D WebGL CAD viewer with formal verification overlays, and the DAP time-travel simulation debugger.
+The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 93 supported formats, interactive schematic and Bode plot panels, the 3D WebGL CAD viewer with formal verification overlays, and the DAP time-travel simulation debugger.
 
 ### 4. AI Coding Assistants & MCP Server (`@modelscript/mcp`)
 
@@ -473,7 +473,7 @@ msx dhf status drone_specs.sysml DroneSimulation.mo
 
 ## Next Steps
 
-- **[Polyglot Languages Overview](../languages/overview.md)** — Explore all 92 supported engineering languages and cross-domain projections.
+- **[Polyglot Languages Overview](../languages/overview.md)** — Explore all 93 supported engineering languages and cross-domain projections.
 - **[AI Agents & MCP Workflows](./ai-agents.md)** — Automate closed-loop synthesis, TGG reconciliation, and RTM auditing with AI agents.
 - **[CI/CD & GitHub Actions](./ci-cd.md)** — Gate pull requests with `msx lint`, `msx verify --format sarif`, `msx pr-diff`, and `msx dhf export`.
 - **[Triple Graph Grammar (TGG) Engine](../architecture/tgg.md)** — Learn how bidirectional synchronization keeps SysML v2 and Modelica aligned.
@@ -733,7 +733,7 @@ flowchart LR
 
 | Stage                      | Command                                        | Output Format                             | Purpose                                                                                                 |
 | :------------------------- | :--------------------------------------------- | :---------------------------------------- | :------------------------------------------------------------------------------------------------------ |
-| **Static Analysis**        | `msx lint ./models ./requirements`             | `json`, `text`                            | Enforces 1,160 static syntax, type, unit, and structural rules across 92 languages.                     |
+| **Static Analysis**        | `msx lint ./models ./requirements`             | `json`, `text`                            | Enforces 1,160 static syntax, type, unit, and structural rules across 93 languages.                     |
 | **Cross-Domain Alignment** | `msx polyglot verify .`                        | Terminal / Exit Code                      | Verifies `@satisfies` / `@verifies` bindings and cross-language port compatibility.                     |
 | **Visual PR Review**       | `msx pr-diff --base origin/main`               | `pr-comment`, `visual-svg`, `visual-html` | Generates color-coded schematic diffs (added = green, modified = amber, deleted = red).                 |
 | **Formal Verification**    | `msx verify <Class> <file> --format sarif`     | `sarif`, `junit`, `ctrf`, `html`, `dhf`   | Runs $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and flowpipe proofs; integrates with GitHub Security tab. |
@@ -961,7 +961,7 @@ end RLC;"
 | `anchor`      | `undefined`    | Target component element ID to visually highlight and auto-center (e.g. `"R1"` or `"chassis"`).                                                |
 | `controls`    | `"none"`       | Set to `"parameters"` to display an interactive live parameter slider ribbon below the model.                                                  |
 | `zoom-mode`   | `"ctrl-wheel"` | Scroll protection mode: `"ctrl-wheel"` (requires Ctrl/⌘ to zoom, preventing iframe page wheel-trapping), `"always"`, or `"click-to-interact"`. |
-| `multi-file`  | `false`        | If set, the watermark pill routes the user to **Studio** instead of **Ansatz**.                                                         |
+| `multi-file`  | `false`        | If set, the watermark pill routes the user to **Studio** instead of **Ansatz**.                                                                |
 | `artifact-id` | `undefined`    | Numerical ID of a published artifact on Ansatz.                                                                                                |
 
 ---
@@ -1775,7 +1775,7 @@ CANONICAL URL: https://modelscript.org/ansatz/overview
 While **ModelScript** provides the core command-line toolchain (`msx`), WebAssembly GLR parsers, and linear-memory DAE simulation engine, **Ansatz** serves as the collaborative platform layer. It provides:
 
 1. **A Polyglot Package Registry:** A centralized and federated index for publishing and versioning Modelica, SysML v2, STEP, SBML, and ModelScript libraries with SPDX license auditing and polyglot standard library discovery (`msx stdlib`).
-2. **Federated Engineering Feeds:** W3C ActivityPub-powered social collaboration where engineers share reproducible models and simulation runs across 92 languages, 3D CAD/FEA/CFD snapshots, and schematic diffs across independent nodes.
+2. **Federated Engineering Feeds:** W3C ActivityPub-powered social collaboration where engineers share reproducible models and simulation runs across 93 languages, 3D CAD/FEA/CFD snapshots, and schematic diffs across independent nodes.
 3. **Scholarly Citations & Literature Graph (`/references`):** Integrated OpenAlex, Crossref, BibTeX, and RIS bibliographic hub linking peer-reviewed literature (`[@cite_key]`) directly to executable models, parameters, and verification cases.
 4. **Personal Activity Git Vault:** Every user account is backed by a cryptographically signed, user-owned Git repository vault that versions posts, model snapshots, citations, and annotations for complete data sovereignty and offline Git portability.
 5. **Cloud HPC Simulation Dispatcher:** An orchestration gateway bridging browser-based design with remote Slurm HPC clusters and continuum CAE solvers.
@@ -1811,17 +1811,17 @@ The ModelScript engine is designed to be completely headless and can run inside 
 
 ## Platform Surfaces
 
-| Surface                  | Route               | Description                                                                                    |
-| :----------------------- | :------------------ | :--------------------------------------------------------------------------------------------- |
-| **Home & Feeds**         | `/home`, `/explore` | ActivityPub engineering posts, reproducible simulation models, and discussion threads.         |
-| **Ansatz**               | `/editor`           | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.         |
-| **Ansatz Studio**        | `/studio`           | Web-native engineering IDE workbench with LSP intelligence and DAP simulation debugger.        |
-| **Scholarly References** | `/references`       | OpenAlex / DOI / BibTeX citation manager and literature-to-model traceability graph.           |
-| **Package Registry**     | `/packages`         | Search, publish, and inspect versioned engineering libraries with dependency trees.            |
-| **Digital Thread**       | `/thread`           | Visual hypergraph explorer tracing requirements and Triple Graph Grammar correspondences.      |
+| Surface                  | Route               | Description                                                                                       |
+| :----------------------- | :------------------ | :------------------------------------------------------------------------------------------------ |
+| **Home & Feeds**         | `/home`, `/explore` | ActivityPub engineering posts, reproducible simulation models, and discussion threads.            |
+| **Ansatz**               | `/editor`           | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.            |
+| **Ansatz Studio**        | `/studio`           | Web-native engineering IDE workbench with LSP intelligence and DAP simulation debugger.           |
+| **Scholarly References** | `/references`       | OpenAlex / DOI / BibTeX citation manager and literature-to-model traceability graph.              |
+| **Package Registry**     | `/packages`         | Search, publish, and inspect versioned engineering libraries with dependency trees.               |
+| **Digital Thread**       | `/thread`           | Visual hypergraph explorer tracing requirements and Triple Graph Grammar correspondences.         |
 | **Personal Git Vault**   | `/settings`         | Cloneable, signed Git repository backing all personal models, simulations, and scholarly records. |
-| **Administration**       | `/admin`            | Instance governance, moderation queues, S2S federation policies, and database backups.        |
-| **Setup Wizard**         | `/setup`            | First-boot guided configuration for initializing standalone or enterprise nodes.              |
+| **Administration**       | `/admin`            | Instance governance, moderation queues, S2S federation policies, and database backups.            |
+| **Setup Wizard**         | `/setup`            | First-boot guided configuration for initializing standalone or enterprise nodes.                  |
 
 ---
 
@@ -1867,7 +1867,7 @@ Practicing engineers in automotive, aerospace, energy, defense, and biomedical s
 ├────────────────────┼─────────────────────────────┼─────────────────────┤
 │ Interoperability   │ Isolated disciplinary silos │ Cross-domain Salsa  │
 │                    │ bridged only by static      │ hypergraph linking  │
-│                    │ PowerPoint screenshots      │ 92 format parsers   │
+│                    │ PowerPoint screenshots      │ 93 format parsers   │
 └────────────────────┴─────────────────────────────┴─────────────────────┘
 ```
 
@@ -2046,7 +2046,7 @@ Ansatz implements the **W3C ActivityPub** standard (Server-to-Server and Client-
 
 In conventional social networks, posts consist of plain text, raster images, or static video. In **Ansatz Network**, posts carry **reproducible models**—compact, self-contained model, simulation, and experiment payloads embedded directly inside ActivityStreams 2.0 `Note` or `Article` objects:
 
-1. **Executable Multi-Physics Models**: Deflate-compressed (`#m=...`) or content-addressed source bundles across any of the 92 supported languages (`Modelica`, `SysML v2`, `PSCAD`, `CIM/CGMES`, `OLGA`, `SPICE`, `URDF`, `OpenSCAD`, `DICOM-RT`).
+1. **Executable Multi-Physics Models**: Deflate-compressed (`#m=...`) or content-addressed source bundles across any of the 93 supported languages (`Modelica`, `SysML v2`, `PSCAD`, `CIM/CGMES`, `OLGA`, `SPICE`, `URDF`, `OpenSCAD`, `DICOM-RT`).
 2. **Reproducible Simulation Trajectories**: Encapsulated DAE/ODE time-series datasets (`Vega-Lite` / Arrow binary attachments) paired with exact solver tolerances, Pantelides index metrics, and initial conditions.
 3. **Interactive 3D CAD, FEA & CFD Views**: Compressed STEP B-Rep geometries, 3MF surgical guides, or VTK Unstructured Grid (`.vtu`) von Mises stress fields rendered directly in the feed via Three.js and `CanvasContextPool`.
 4. **Semantic Architecture & Schematic Diffs**: Structural AST/DAE diffs (`PolyglotVersionDiffView`) highlighting added, modified, or deleted components and equations across Git revisions.
@@ -2140,7 +2140,7 @@ Ansatz separates **transport authentication** from **author non-repudiation**:
 
 | Activity Type                  | Object             | Behavior                                                                                              |
 | :----------------------------- | :----------------- | :---------------------------------------------------------------------------------------------------- |
-| `Create`                       | `Note` / `Article` | Publishes a new engineering post, threaded reply, or interactive model attachment.                   |
+| `Create`                       | `Note` / `Article` | Publishes a new engineering post, threaded reply, or interactive model attachment.                    |
 | `Update`                       | `Note` / `Person`  | Updates an existing post (accompanied by a fresh `eddsa-jcs-2022` proof) or refreshes actor metadata. |
 | `Follow` / `Accept` / `Reject` | `Actor`            | Establishes or revokes cross-instance follower subscriptions.                                         |
 | `Announce`                     | `Note`             | Boosts a verified engineering post or simulation benchmark to local followers.                        |
@@ -2240,7 +2240,7 @@ Engineering simulations for safety-critical aerospace, nuclear, and medical syst
 - **Content-Addressable Storage (SHA-256)**: Every published archive is indexed by its SHA-256 Merkle digest. Modifying a single byte of an equation or parameter table alters the digest and fails lockfile verification.
 - **Detached Ed25519 Publisher Signatures (`--signature`)**: Publishers sign package digests using their registered Ed25519 keys (`msx keys`). During `msx install`, the CLI verifies both the SHA-256 integrity hash and the publisher's cryptographic signature.
 - **SPDX License Compatibility Auditing**: During upload and installation, the registry parses SPDX license expressions (`AGPL-3.0-or-later`, `MPL-2.0`, `Apache-2.0`, `MIT`, or commercial licenses) and warns when a dependency tree mixes incompatible copyleft and proprietary terms.
-- **Polyglot Standard Library Sync (`msx stdlib`)**: Built-in standard libraries across all 92 languages can be inspected and synchronized offline via `msx stdlib`.
+- **Polyglot Standard Library Sync (`msx stdlib`)**: Built-in standard libraries across all 93 languages can be inspected and synchronized offline via `msx stdlib`.
 
 ---
 
@@ -2574,7 +2574,7 @@ ModelScript is built on a **data-oriented, WebAssembly-first compiler architectu
 
 ```mermaid
 flowchart TB
-    subgraph Languages["Polyglot Source Languages (92 Formats — 26 Beta & 66 Alpha)"]
+    subgraph Languages["Polyglot Source Languages (93 Formats — 26 Beta & 67 Alpha)"]
         direction TB
         MO[".mo (Modelica 3.x) / .mod (AMPL)"]
         SYS[".sysml / .kerml / .reqif / .oscal.json"]
@@ -2658,13 +2658,13 @@ Thirteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `@modelscript/cad`        | `packages/cad`      | OpenCascade (OCCT) B-Rep kernel, CSG evaluator, STEP AP214/AP242 serializer, 3D tetrahedral FEA solver, 3D formal verification overlays, Gerber ECAD parser                    |
 | `@modelscript/diagram`    | `packages/diagram`  | Polyglot schematic layout engine, orthogonal Manhattan router, TCC / R-X / P-Q / Water Diff specialized builders, SVG/Canvas renderer                                          |
 | `@modelscript/exchange`   | `packages/exchange` | FMI 2.0/3.0 FMU import/export, SSP 1.0/2.0 container toolkit, Co-Simulation Master Orchestrator, MISRA-C / Q8.24 fixed-point firmware synthesizer, WebSerial HIL               |
-| `@modelscript/lsp`        | `packages/lsp`      | Multi-language LSP server across all 92 languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                              |
+| `@modelscript/lsp`        | `packages/lsp`      | Multi-language LSP server across all 93 languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                              |
 | `@modelscript/mcp`        | `packages/mcp`      | Unified Model Context Protocol server exposing 105 core and 70+ domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools            |
 | `@modelscript/ide-client` | `packages/ide`      | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports with 3D verification overlays                              |
 | `@modelscript/examples`   | `packages/examples` | Curated multi-domain reference workspaces (CubeSat, EV Battery Pack, IEEE 39-Bus Grid, Robotic Arm, Aero-Structural Wing)                                                      |
 | `modelscript` (`msx`)     | `apps/cli`          | Unified command-line interface (169 commands across `flatten`, `simulate`, `verify`, `dossier`, `gatekeeper`, `ampl`, `powerfactory`, `pslf`, `fmu`, `csg`, `surrogate`, etc.) |
 | `@modelscript/api`        | `apps/api`          | REST, GraphQL, SPARQL, Regulatory Dossier, Grid Gatekeeper, and WebSocket simulation backend server                                                                            |
-| `@modelscript/web`        | `apps/web`          | Ansatz Web application (Ansatz browser editor, Studio, Package Registry, and social modeling platform)                                                                                 |
+| `@modelscript/web`        | `apps/web`          | Ansatz Web application (Ansatz browser editor, Studio, Package Registry, and social modeling platform)                                                                         |
 | `@modelscript/ee`         | `ee`                | Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — Ed25519 license verification, SSO/SAML, RBAC, Slurm HPC dispatcher, Digital Twin Historian, HIL                     |
 
 ================================================================================
@@ -6033,7 +6033,7 @@ When `--daemon` is passed, `msx` connects to the local Unix domain socket (`~/.m
 
 ## Complete Command Reference by Category
 
-The `msx` CLI registers **169 commands** (138 primary commands + 31 aliases) organized across **92 supported languages** and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
+The `msx` CLI registers **169 commands** (138 primary commands + 31 aliases) organized across **93 supported languages** and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
 
 ### 1. Compilation, Simulation & Optimization
 
@@ -6087,7 +6087,7 @@ The `msx` CLI registers **169 commands** (138 primary commands + 31 aliases) org
 | [`fmu`](./commands.md#fmu)                   | `export-fmu`           | Package models into FMI 2.0/3.0 Functional Mock-up Units (`.fmu`) or inspect/import existing FMUs.                                            |
 | [`import-fmu`](./commands.md#import-fmu)     | `fmu-import`           | Unpack an external `.fmu` archive and generate typed Modelica wrapper blocks and SSP bindings.                                                |
 | [`cosim`](./commands.md#cosim)               | —                      | Orchestrate and inspect distributed FMI/SSP Co-Simulation sessions, participants, and adaptive step optimizers.                               |
-| [`polyglot`](./commands.md#polyglot)         | —                      | Query cross-language symbol indices, verify digital thread links, and check operational digital twin drift across 92 languages.               |
+| [`polyglot`](./commands.md#polyglot)         | —                      | Query cross-language symbol indices, verify digital thread links, and check operational digital twin drift across 93 languages.               |
 | [`align`](./commands.md#align)               | —                      | Reconcile Triple Graph Grammar (TGG) correspondences across SysML v2, Modelica, Spice, and STEP artifacts.                                    |
 | [`sysml`](./commands.md#sysml)               | —                      | Export, import, check, inspect, and bi-directionally synchronize SysML v2 `.sysml` and Modelica `.mo` models.                                 |
 | [`oslc`](./commands.md#oslc)                 | —                      | Export OSLC 3.0 RDF/Turtle/JSON-LD catalogs or launch a live OSLC Tracked Resource Set (TRS 3.0) server.                                      |
@@ -6187,7 +6187,7 @@ The `msx` CLI registers **169 commands** (138 primary commands + 31 aliases) org
 | [`whoami`](./commands.md#login-logout-whoami)       | —                | Display the currently authenticated user, organization roles, and active registry endpoint.                    |
 | [`token`](./commands.md#token)                      | —                | Manage granular personal access tokens (`create`, `list`, `revoke`).                                           |
 | [`install`](./commands.md#install)                  | `i`, `add`       | Resolve, verify, and install versioned dependencies from the Ansatz Package Registry into `modelica_modules/`. |
-| [`stdlib`](./commands.md#stdlib)                    | —                | Browse, search, and bootstrap official standard libraries across all 92 engineering languages.                 |
+| [`stdlib`](./commands.md#stdlib)                    | —                | Browse, search, and bootstrap official standard libraries across all 93 engineering languages.                 |
 | [`pack`](./commands.md#pack-publish-unpublish)      | —                | Create a deterministic, SHA-256 content-addressed `.zip` package archive from the workspace.                   |
 | [`publish`](./commands.md#pack-publish-unpublish)   | —                | Sign (Ed25519) and publish a package archive to the Ansatz Package Registry.                                   |
 | [`unpublish`](./commands.md#pack-publish-unpublish) | —                | Retract or deprecate a published package version from the Ansatz Package Registry.                             |
@@ -6219,7 +6219,7 @@ CANONICAL URL: https://modelscript.org/cli/commands
 
 # CLI Commands Reference
 
-This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **169 commands** (138 primary commands + 31 aliases) across **92 supported languages** can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
+This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **169 commands** (138 primary commands + 31 aliases) across **93 supported languages** can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
 
 ---
 
@@ -6644,6 +6644,7 @@ Options:
   - `--coordinator <boolean>`: execute polyglot SemanticTheoryCoordinator & DigitalThreadHypergraph verification across arbitrary N files and languages (default: false)
   - `--sync <boolean>`: apply suggested cross-file digital thread synchronization edits on disk (default: false)
   - `--fix <boolean>`: alias for --sync; apply suggested digital thread fixes on disk (default: false)
+  - `--publish-to <string>`: publish verification run evidence to a remote ALM dependency in modelscript.yaml (package name or 'all')
 
 ```bash
 # Verify a controller and emit a GitHub Code Scanning SARIF report
@@ -6887,6 +6888,8 @@ Options:
   - `--include-comments <boolean>`: Include FlyBy comments and parameter descriptions in 'extract' (default: stripped) (default: false)
   - `--include-graphics <boolean>`: Include raw <graphic> primitives in 'extract' (default: stripped) (default: false)
   - `--include-scripts <boolean>`: Include raw Fortran/Computations/Dsdyn/Dsout scripts in 'extract' (default: stripped) (default: false)
+  - `--formal <boolean>`: Enable deep formal verification lints (Star-set IBR FRT, DDE delay, SMT switch, IC3 lockout) (default: false)
+  - `--manifest <string>`: Optional output path for JSON formal proof manifest
 
 | Action            | Description                                                                                                                                                                                                      |
 | :---------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -6907,7 +6910,7 @@ msx pscad verify-ieee2800 SolarPlant_250MW.pscx --tstop 3.0 --step 20us -o ieee2
 
 ### `polyglot`
 
-Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 92 supported languages.
+Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 93 supported languages.
 
 ### CLI Command: `polyglot <action>`
 Multi-domain TGG projection, formal verification, and digital thread tracking
@@ -7402,6 +7405,7 @@ Inspect, lint, and visualize PSS/E-compatible RAW power flow cases (.raw)
 
 Options:
   - `--out, -o, --output <string>`: Output file path (e.g. for SVG diagram or report)
+  - `--format, -f <string>`: Report output format: 'text', 'json', 'csv', or 'html' (default: "text")
   - `--raw <string>`: Associated PSS/E RAW power flow base case file
   - `--dyr <string>`: Companion PSS/E .dyr dynamic data file
   - `--algorithm, --alg <string>`: Power flow algorithm: 'nr' (Newton-Raphson), 'fdpf' (Fast Decoupled), or 'helm' (Holomorphic Embedding) (default: "nr")
@@ -7415,6 +7419,8 @@ Options:
   - `--serve <boolean>`: Start background HTTP API service (e.g. for grid gatekeeper) (default: false)
   - `--port <number>`: Port to listen on when running HTTP server (default: 8080) (default: 8080)
   - `--ref-out <string>`: Reference commercial PSS/E .out or CSV trajectory file for ground-truth verification
+  - `--formal <boolean>`: Enable deep formal verification lints (SMT PRC-024, NLSAT collapse, SOS CCT, proof manifest) (default: false)
+  - `--manifest <string>`: Optional output path for JSON formal proof manifest
 
 | Action        | Description                                                                                |
 | :------------ | :----------------------------------------------------------------------------------------- |
@@ -8141,6 +8147,15 @@ Launches a local interactive web playground server for live grammar authoring, G
 ### CLI Command: `playground`
 Launch the dual-editor DSL workbench
 
+Options:
+  - `--grammar <boolean>`: Launch the legacy dual-editor grammar-DSL workbench (default: false)
+  - `--port, -p <number>`: Dev server port (default: 5179 for language playground, 3002 for grammar workbench)
+  - `--file, -f <string>`: Initial source file to load in language playground mode
+  - `--mode, -m <string>`: Initial host mode (workbench | inspector | artifact)
+  - `--theme, -t <string>`: Initial color theme (dark | light)
+  - `--open <boolean>`: Open browser automatically (default: false)
+  - `--morsel <boolean>`: Launch the full Morsel web editor locked to this single language (?lang=<id>&single=1) (default: false)
+
 ---
 
 ### `sandbox`
@@ -8163,7 +8178,7 @@ Options:
 Initializes a new `modelscript.json` package manifest in the current directory.
 
 ### CLI Command: `init [path]`
-Initialize a ModelScript package.json for a Modelica/SysML project
+Initialize a modelscript.yaml manifest for a ModelScript project
 
 Options:
   - `--yes, -y <boolean>`: Accept all defaults without prompts (default: false)
@@ -8178,6 +8193,7 @@ Manages authentication sessions against the Ansatz Package Registry or self-host
 Log in to the Ansatz Package Registry & Platform
 
 Options:
+  - `--host, -H <string>`: External ALM host to store credentials for (e.g. 'elm.corp.com', 'corp.atlassian.net')
   - `--email, -e <string>`: Email address or username
   - `--password, -p <string>`: Password (recommended only in non-interactive/automated environments)
   - `--token, -t <string>`: Authenticate directly with a personal access token or API token
@@ -8188,6 +8204,7 @@ Options:
 Log out from the Ansatz Package Registry & Platform
 
 Options:
+  - `--host, -H <string>`: External ALM host to remove stored credentials for
   - `--registry, -r <string>`: Registry API URL to log out from
   - `--all <boolean>`: Clear all saved registry preferences and credentials (default: false)
 
@@ -8205,7 +8222,7 @@ Options:
 Resolves semantic version constraints, verifies SHA-256 content-addressable digests and Ed25519 publisher signatures, and installs Modelica/SysML/ModelScript packages into `modelica_modules/` while updating `msx.lock`.
 
 ### CLI Command: `install [package]`
-Install a package from the Ansatz Package Registry into the local workspace
+Install registry, archive, or ALM remote dependencies into .modelscript/packages/
 
 Options:
   - `--save, -s <boolean>`: Save installed package to package.json dependencies (default: true)
@@ -8220,7 +8237,7 @@ Options:
 
 ### `stdlib`
 
-Browses, searches, and bootstraps official standard libraries across all 92 engineering languages.
+Browses, searches, and bootstraps official standard libraries across all 93 engineering languages.
 
 ### CLI Command: `stdlib [action] [pack]`
 Manage, list, and synchronize polyglot standard libraries across 81 languages
@@ -8835,7 +8852,7 @@ ModelScript is not a single-language compiler—it is a **polyglot systems engin
 
 ## Language Maturity Tiers
 
-Every language package under `languages/<slug>/` declares an explicit maturity tier in `package.json#modelscript.tier`, continuously audited in CI by `scripts/lint-package-manifests.ts` and `scripts/audit-language-maturity.ts` (**26 Beta**, **66 Alpha**, **0 Pre-Alpha**):
+Every language package under `languages/<slug>/` declares an explicit maturity tier in `package.json#modelscript.tier`, continuously audited in CI by `scripts/lint-package-manifests.ts` and `scripts/audit-language-maturity.ts` (**26 Beta**, **67 Alpha**, **0 Pre-Alpha**):
 
 | Tier          |    Badge    | Criteria & Guarantees                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | :------------ | :---------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -8854,13 +8871,14 @@ Search by name, file extension, maturity tier, or engineering domain, or filter 
 Filter by platform group, maturity tier (`Beta`, `Alpha`, `Pre-Alpha`), industry, or capability across all engineering languages to inspect simulation engines, linear-memory DAE lowering, and polyglot projections:
 
 ### Polyglot Language Capability Matrix
-ModelScript supports 92 modeling, simulation, and engineering formats across 5 pipeline capabilities:
+ModelScript supports 93 modeling, simulation, and engineering formats across 5 pipeline capabilities:
 | Language | Tier | Extension | Role | Parse | Lint | DAE Arena | Simulate | Projections |
 | :--- | :---: | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
 | Modelica | `beta` | `.mo` | Acausal multi-domain physics | ✓ | ✓ | ✓ | ✓ | ✓ |
 | AMPL | `beta` | `.mod, .dat, .run, .nl, .mps` | Mathematical programming & optimization (LP, MILP, NLP) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | SysML v2 / KerML | `beta` | `.sysml` | Systems architecture & requirements | ✓ | ✓ | — | ✓ | ✓ |
 | ReqIF | `beta` | `.reqif` | Requirements interchange & contract entailment | ✓ | ✓ | — | — | ✓ |
+| MagicDraw / Cameo | `alpha` | `.mdzip` | SysML 1.x / UML 2.x archive inspection, diagrams & SysML v2 migration | ✓ | — | ✓ | — | — |
 | NIST OSCAL | `alpha` | `.oscal.json` | Cyber-physical security controls & SP 800-53 assessment | ✓ | ✓ | — | — | ✓ |
 | SSP | `beta` | `.ssp` | FMU system structure & parameterization | ✓ | ✓ | ✓ | — | ✓ |
 | OWL2 | `beta` | `.owl` | Ontologies & description-logic reasoning | ✓ | ✓ | — | — | ✓ |
@@ -9372,7 +9390,7 @@ The `@modelscript/mcp` server and `@modelscript/modelica` MCP adapter expose 10 
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (3/3) | Parse Latency: 0.26 ms (p95: 0.41 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.31 ms (p95: 0.36 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -9629,11 +9647,11 @@ npm run test:bench --workspace=@modelscript/ampl
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (6/6) | Parse Latency: 0.14 ms (p95: 0.32 ms)
+Tier: `beta` | Pass Rate: 100% (6/6) | Parse Latency: 0.42 ms (p95: 0.47 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | Hitchcock-Koopmans Transportation Network LP | standard | AMPL / HiGHS & Ipopt Reference | `exact <= 0.01` | `0` | PASS |
 | Multi-Period Dynamic Production Lot-Sizing LP | standard | AMPL / HiGHS & Ipopt Reference | `exact <= 50` | `0` | PASS |
 | Petroleum Refinery Feedstock Blending LP | standard | AMPL / HiGHS & Ipopt Reference | `exact <= 0.01` | `0.0003636363639998308` | PASS |
@@ -9831,7 +9849,7 @@ CANONICAL URL: https://modelscript.org/languages/sysml2
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (2/2) | Parse Latency: 0.50 ms (p95: 0.65 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.87 ms (p95: 1.46 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -9944,14 +9962,67 @@ msx reqif to-modelica ThermalLimits.reqif --out=ThermalMonitors.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (2/2) | Parse Latency: 0.23 ms (p95: 0.58 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.10 ms (p95: 0.16 ms)
+
+| Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
+| Hierarchical Requirement Bound Entailment (SMT LRA) | micro | Z3 SMT LRA / Nelson-Oppen Requirement Entailment | `exact <= 0` | `0` | PASS |
+
+Reproduce: `npm run bench:languages -- --lang=reqif`
+
+================================================================================
+DOCUMENT: MagicDraw / Cameo (.mdzip) Language Reference
+CANONICAL URL: https://modelscript.org/languages/magicdraw
+================================================================================
+
+# MagicDraw / Cameo (`.mdzip`, `.mdxml`, `.xmi`)
+
+`@modelscript/magicdraw` provides first-class read, inspection, linting, 2D diagram rendering, arena-native DAE lowering, and polyglot migration support for **MagicDraw / Cameo Systems Modeler** archives (`.mdzip`, `.mdxml`) and **OMG UML 2.x / SysML 1.x XMI** (`.xmi`) files.
+
+## Capabilities
+
+- **Container & Native WASM XML Parsing**: Unpacks `.mdzip` archives via `@modelscript/runtime`'s `defaultContainerToolkit` (including gzipped internal entries and base64/binary LSP payloads) and parses XMI via `@modelscript/dsl/xml` (`parser.wasm`).
+- **Clean-Room Standard Profiles**: Built-in OMG UML 2.5 primitives, OMG SysML 1.6 stereotype inheritance & BDD compartment classification (`parts`, `references`, `values`, `constraints`, `flow properties`, `operations`), QUDV/ISO-80000 SI units, and MagicDraw `href` interoperability mappings—with zero proprietary vendor profile binaries bundled.
+- **Workspace Mounted Module Resolution**: Resolves external `href` references across workspace `.mdzip` / `.mdxml` libraries via `WorkspaceModuleResolver`.
+- **2D Diagram Engine**: Renders **BDD**, **IBD**, **REQ**, **PAR**, and **STM** diagrams, honoring saved `mdOwnedViews` coordinates when present and falling back cleanly to automatic layout.
+- **Semantic Lints (`M9921`–`M9934`)**: Validates archive integrity, encryption, Teamwork Cloud proxy stubs, duplicate `xmi:id`s, orphan stereotypes, unresolved `href`s, untyped properties/ports, dangling connectors, cyclic composition, requirement completeness/traceability, and parametric binding compatibility.
+- **Polyglot Projections & DAE Lowering**:
+  - `.mdzip` → **OMG SysML v2 (`.sysml`)**
+  - `.mdzip` → **OMG ReqIF 1.2 (`.reqif`)**
+  - `.mdzip` Parametrics → **Modelica (`.mo`)** & **Linear-Memory `DAEBuilder`**
+
+## CLI Usage
+
+```bash
+# Summarize packages, blocks, requirements, state machines, and diagrams
+msx magicdraw inspect VehicleArchitecture.mdzip
+
+# Run semantic & structural lint checks (M9921–M9934)
+msx magicdraw lint VehicleArchitecture.mdzip
+
+# Migrate SysML 1.x .mdzip to textual SysML v2
+msx magicdraw to-sysml VehicleArchitecture.mdzip -o VehicleArchitecture.sysml
+
+# Export SysML 1.x requirements to OMG ReqIF 1.2
+msx magicdraw to-reqif VehicleArchitecture.mdzip -o Requirements.reqif
+
+# Project parametric constraint blocks to Modelica
+msx magicdraw to-modelica VehicleArchitecture.mdzip -o VehicleParametrics.mo
+
+# Render a BDD, IBD, REQ, PAR, or STM diagram as headless SVG
+msx magicdraw render VehicleArchitecture.mdzip --diagramKind BDD -o architecture.svg
+```
+
+## Benchmarks
+
+Tier: `alpha` | Pass Rate: 100% (1/1) | Parse Latency: N/A
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
 | Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
-| Hierarchical Requirement Bound Entailment (SMT LRA) | micro | Z3 SMT LRA / Nelson-Oppen Requirement Entailment | `exact <= 0` | `0` | PASS |
 
-Reproduce: `npm run bench:languages -- --lang=reqif`
+Reproduce: `npm run bench:languages -- --lang=magicdraw`
 
 ================================================================================
 DOCUMENT: NIST OSCAL (.oscal.json) Language Reference
@@ -10041,7 +10112,7 @@ msx oscal to-reqif SystemSecurityPlan.oscal.json -o SecurityControls.reqif
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.08 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.05 ms (p95: 0.09 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -10160,11 +10231,11 @@ msx cosim optimize PlantModel.ssp --params="kp:0.1:10.0,kd:0.01:1.0" --objective
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (2/2) | Parse Latency: 0.30 ms (p95: 0.47 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.14 ms (p95: 0.17 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | SSP 1.0 QuarterTruck Topology Lint & Modelica Projection | standard | Modelica Association SSP 1.0 QuarterTruck | `exact <= 0` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=ssp`
@@ -10317,7 +10388,7 @@ msx polyglot verify --strict
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (3/3) | Parse Latency: 0.17 ms (p95: 0.28 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.15 ms (p95: 0.18 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -10446,7 +10517,7 @@ npx msx align chassis.step architecture.sysml
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.22 ms (p95: 0.23 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.27 ms (p95: 0.32 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -10551,11 +10622,11 @@ msx qif to-modelica TurbineBladeInspection.qif -o BladeMetrology.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.15 ms (p95: 0.25 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.16 ms (p95: 0.20 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | QIF 3.0 MMC Bonus Tolerance, Cp/Cpk & TUR Evaluation | micro | QIF 3.0 / ISO 22514-7 GD&T MMC SPC | `max-relative-error <= 0.000001` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=qif`
@@ -10669,7 +10740,7 @@ npx msx csg SatelliteChassis satellite.mo > bracket.scad
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (3/3) | Parse Latency: 0.16 ms (p95: 0.19 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 2.00 ms (p95: 2.09 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -10816,11 +10887,11 @@ SU2 and OpenFOAM are trademarks or registered trademarks of their respective own
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.03 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.07 ms (p95: 0.08 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | NASA Langley TMR NACA 0012 Transonic Airfoil (M=0.799) | standard | NASA TMR / SU2 NACA 0012 | `dae-parity <= 0` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=cfd`
@@ -10971,11 +11042,11 @@ CalculiX, Abaqus, and NASTRAN are trademarks or registered trademarks of their r
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.03 ms (p95: 0.10 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 1.67 ms (p95: 1.99 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | Cantilever Solid Beam (C3D8R) Static Deflection & Modal Analysis | standard | Euler-Bernoulli Analytical / CalculiX | `dae-parity <= 0.001` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=fea`
@@ -11076,7 +11147,7 @@ msx urdf simulate robot.urdf --stop-time=2.0 -o sim.json
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.07 ms (p95: 0.20 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.08 ms (p95: 0.19 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11154,7 +11225,7 @@ msx simulate CircuitModel.mo --stop-time=1.0 --step-size=0.001 --format=csv -o s
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (2/2) | Parse Latency: 0.08 ms (p95: 0.09 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.08 ms (p95: 0.48 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11251,7 +11322,7 @@ msx c to-modelica SensorDriver.h -o SensorDriver.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.74 ms (p95: 1.43 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.71 ms (p95: 1.21 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11354,7 +11425,7 @@ const result = lowerFortranToDae(builder, source.split("\n"));
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.11 ms (p95: 0.12 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.66 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11498,7 +11569,7 @@ msx jsbsim to-modelica Cessna172Skyhawk.xml -o FlightMechanics.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.12 ms (p95: 0.39 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 3.18 ms (p95: 4.27 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11709,7 +11780,7 @@ The `@modelscript/ide-client` package provides a dedicated dual-mode custom edit
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (2/2) | Parse Latency: 0.02 ms (p95: 0.05 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.48 ms (p95: 0.60 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -11780,7 +11851,7 @@ CANONICAL URL: https://modelscript.org/languages/ccsds
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.06 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 1.10 ms (p95: 1.35 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -12066,7 +12137,7 @@ msx easy5 diagram controller.ez5 --out=schematic.svg
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (3/3) | Parse Latency: 0.01 ms (p95: 0.03 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.26 ms (p95: 0.49 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -12199,11 +12270,11 @@ const executionLog = rte.runUntil(0.05, 0.01);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.14 ms (p95: 0.56 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.15 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | AUTOSAR Powertrain SWC ARXML to DAEBuilder Arena | micro | AUTOSAR R22-11 ARXML / DAEBuilder Arena | `dae-parity <= 0` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=autosar`
@@ -12324,7 +12395,7 @@ console.log(`Variables: ${dae.varCount}, Equations: ${dae.eqCount}`);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.05 ms (p95: 0.19 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.15 ms (p95: 0.27 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -12448,7 +12519,7 @@ msx gtsuite to-sysml2 cases/Turbo4Cyl.gtm --out=Engine.sysml
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.06 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.03 ms (p95: 0.04 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -12525,11 +12596,11 @@ CANONICAL URL: https://modelscript.org/languages/opendrive
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (2/2) | Parse Latency: 0.16 ms (p95: 0.25 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.09 ms (p95: 0.12 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | Constant-Curvature Arc Reference Line Heading & Curvature | micro | ASAM OpenDRIVE 1.7 / Analytical Fresnel Clothoid | `max-relative-error <= 0.000001` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=opendrive`
@@ -12677,7 +12748,7 @@ msx openscenario to-modelica HighwayCutIn.xosc -o ScenarioSimulation.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.14 ms (p95: 0.23 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.25 ms (p95: 0.37 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -12756,11 +12827,11 @@ CANONICAL URL: https://modelscript.org/languages/gtfs
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.03 ms (p95: 0.06 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.20 ms (p95: 0.24 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | metro-electric-bus-depot-charging | standard | GTFS Electric Transit Kinematics & Depot Charging | `dae-parity <= 0` | `9` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=gtfs`
@@ -12882,7 +12953,7 @@ AI agents interacting via the ModelScript MCP server have access to:
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (3/3) | Parse Latency: 0.08 ms (p95: 0.09 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.08 ms (p95: 0.09 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -12983,7 +13054,7 @@ AI agents interacting via the ModelScript MCP server have access to:
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.05 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.03 ms (p95: 0.04 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -13069,7 +13140,7 @@ PSCAD `.pscx` files represent schematics visually using a 2D coordinate grid (`U
 
 `@modelscript/pscad` enforces 17 electromagnetic transient modeling best practices before simulation starts, providing 1-click LSP Quick-Fix actions:
 
-### Diagnostics for PSCAD / EMTDC (53 rules)
+### Diagnostics for PSCAD / EMTDC (55 rules)
 | Code | Severity | Identifier | Summary |
 | :--- | :--- | :--- | :--- |
 | `M6001` | error | `floating-electrical-node` | Electrical node '<nodeName>' is floating with no closed connections. |
@@ -13090,7 +13161,7 @@ PSCAD `.pscx` files represent schematics visually using a 2D coordinate grid (`U
 | `M6016` | error | `component-check-failed` | Component '<cmpName>' check failed: <reason>. |
 | `M6017` | warning | `component-check-warning` | Component '<cmpName>' check warning: <reason>. |
 | `M6021` | warning | `unresolved-component-definition` | Component '<cmpName>' references definition '<defName>', which is not found in the project or loaded .pslx libraries. |
-| `M6022` | warning | `wire-near-miss` | Wire '<wireId>' endpoint is <value> px from '<targetName>' (outside snap tolerance 4 px), leaving an unintentional open circuit. |
+| `M6022` | warning | `wire-near-miss` | Wire '<wireId>' endpoint is <value> px from '<targetName>' (outside snap tolerance 15 px), leaving an unintentional open circuit. |
 | `M6023` | warning | `overlapping-wire-segments` | Wire '<wireA>' overlaps collinearly with wire '<wireB>'; verify whether a junction or unintentional short exists. |
 | `M6024` | warning | `dangling-wireless-signal` | Wireless signal tag '<tagName>' (<kind>) is dangling: <reason>. |
 | `M6025` | error | `vector-signal-dimension-mismatch` | Signal vector dimension mismatch: '<srcPort>' (dim=<srcDim>) cannot connect directly to '<dstPort>' (dim=<dstDim>). |
@@ -13121,6 +13192,8 @@ PSCAD `.pscx` files represent schematics visually using a 2D coordinate grid (`U
 | `M6067` | error | `fortran-udm-non-reentrant-global-common` | Definition '<defName>' uses a shared Fortran COMMON block while instantiated <instances> times in the project (causes cross-instance state corruption; use STORF/STORI instead). |
 | `M6068` | warning | `oem-dll-abi-and-license-preflight` | OEM black-box DLL block '<cmpName>' pre-flight warning: <detail>. |
 | `M6069` | error | `c-udm-hazard` | Definition '<defName>' C segment '<segmentName>' hazard: <reason>. |
+| `M6070` | warning | `udm-hardcoded-timestep` | Definition '<defName>' <segmentName> segment hardcodes EMT time-step literal '<literal>'; use 'DELT' for time-step invariance (CIGRE TB 825). |
+| `M6071` | error | `dimensional-unit-mismatch` | Component '<cmpName>' parameter '<paramName>' has unit '[<unit>]' (<actualKind>), incompatible with expected physical dimension (<expectedKind>). |
 | `M6080` | error | `protection-breaker-state-machine-deadlock` | Protection state machine hazard on '<target>': <detail>. |
 | `M6081` | warning | `time-delay-control-loop-instability` | Time-delay control loop through '<blockId>' shows DDE instability risk: <detail>. |
 | `M6082` | warning | `converter-overcurrent-overvoltage-flowpipe` | Converter '<unitId>' zonotope reachable flowpipe breached safety envelope: <detail>. |
@@ -13291,12 +13364,12 @@ When opening any `*.psout` file in Studio or VS Code, the custom editor provides
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (2/2) | Parse Latency: 0.19 ms (p95: 0.33 ms)
+Tier: `beta` | Pass Rate: 50% (1/2) | Parse Latency: 0.09 ms (p95: 0.12 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
-| 230 kV 3-Phase Transmission Line Dommel EMT (50 us, CDA) | standard | PSCAD/EMTDC Dommel Companion-Circuit | `max-relative-error <= 0.001` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
+| 230 kV 3-Phase Transmission Line Dommel EMT (50 us, CDA) | standard | PSCAD/EMTDC Dommel Companion-Circuit | `max-relative-error <= 0.001` | `0` | FAIL |
 
 Reproduce: `npm run bench:languages -- --lang=pscad`
 
@@ -13366,7 +13439,7 @@ flowchart TD
 
 `@modelscript/psse` runs pre-flight static checks across electrical topology, connection consistency, and equipment parameter bounds before simulation or projection:
 
-### Diagnostics for PSS/E (64 rules)
+### Diagnostics for PSS/E (77 rules)
 | Code | Severity | Identifier | Summary |
 | :--- | :--- | :--- | :--- |
 | `P1001` | error | `bus-not-found` | <entityKind> '<id>' references non-existent <busRole>bus <busId>. |
@@ -13375,6 +13448,7 @@ flowchart TD
 | `P1004` | warning | `raw-version-column-mismatch` | PSS/E RAW revision mismatch (REV=<rev>): <detail>. |
 | `P1005` | warning | `unterminated-raw-section` | PSS/E RAW section <sectionIndex> reached EOF without a terminating '0 / END OF ...' delimiter. |
 | `P1006` | warning | `invalid-area-zone-owner-ref` | <entityDesc> references area <areaId>, which is not declared in Area Interchange Data. |
+| `P1007` | error | `raw-syntax-error` | PSS/E RAW syntax error: <detail>. |
 | `P2001` | warning | `isolated-bus` | Bus <busId> ('<busName>') is isolated with 0 in-service connecting branches or transformers. |
 | `P2002` | error | `missing-slack-bus` | Power network base case contains 0 slack/swing buses (Bus Type 3). Power flow solution cannot be anchored. |
 | `P2003` | warning | `multiple-slack-buses` | Power network base case contains <count> swing buses without explicit multi-island partitioning. |
@@ -13396,8 +13470,9 @@ flowchart TD
 | `P4006` | warning | `branch-rating-hierarchy-inverted` | Branch '<ckt>' (<fromBus>-<toBus>) thermal ratings violate RATEA <= RATEB <= RATEC (<rateA>, <rateB>, <rateC>). |
 | `P4007` | warning | `line-charging-mvar-vs-pu-confusion` | Branch '<ckt>' (<fromBus>-<toBus>) charging susceptance B = <b> p.u. is unusually large (> 5.0); verify MVAR vs p.u. units. |
 | `P4008` | warning | `transformer-cz-cw-cm-unit-mismatch` | Transformer '<ckt>' (<fromBus>-<toBus>) unit code mismatch: <detail>. |
-| `P4009` | warning | `three-winding-star-point-negative-reactance` | 3-winding transformer '<ckt>' (<i>-<j>-<k>) star-equivalent reactance X1 = <value> p.u. is strongly negative. |
+| `P4009` | warning | `three-winding-star-point-negative-reactance` | 3-winding transformer '<ckt>' (<i>-<j>-<k>) star-equivalent reactance <winding> = <value> p.u. is strongly negative. |
 | `P4010` | error | `switched-shunt-band-inverted` | Switched shunt at bus <busId> has inverted voltage band: VSWLO (<vswlo>) >= VSWHI (<vswhi>). |
+| `P4011` | error | `zbr-closed-loop` | Zero-impedance branch '<ckt>' (<fromBus>-<toBus>) closes a zero-impedance loop, causing a singular nodal admittance matrix. |
 | `P5001` | warning | `dyr-param-count-schema-mismatch` | Dynamic model '<model>' at Bus <busId> specifies <actual> CON parameters, expected <expected>. |
 | `P5002` | error | `dyr-duplicate-slot-assignment` | Duplicate dynamic <category> model assigned to machine (<busId>, '<id>'). |
 | `P5003` | warning | `dyr-orphan-controller` | Dynamic <category> '<model>' for (<busId>, '<id>') has no matching generator/IBR dynamic model. |
@@ -13418,11 +13493,16 @@ flowchart TD
 | `P5018` | error | `dyr-remote-bus-not-found` | Dynamic model '<model>' at bus <busId> ICON '<iconName>' references non-existent bus <remoteBus>. |
 | `P5019` | error | `dyr-hvdc-facts-link-not-found` | Dynamic HVDC/FACTS model '<model>' references '<deviceName>', which is not declared in .raw DC/FACTS sections. |
 | `P5020` | info | `dyr-usrmdl-unmapped-custom` | User-defined USRMDL '<model>' at bus <busId> is not a standard built-in alias; attach an AssemblyScript/FMU/DLL module for active stepping. |
+| `P5021` | warning | `dyr-time-constant-step-underflow` | Dynamic model '<model>' at bus <busId> has time constant '<paramName>' = <valueSec> s < <value> ms, risking numerical chatter in PSS/E dynamic integration. |
+| `P5022` | warning | `mon-sub-target-not-found` | PSS/E <fileKind> file references unresolved or invalid target: <detail>. |
+| `P5101` | warning | `seq-generator-reactance-invalid` | Generator '<genId>' at Bus <busId> has non-positive sequence reactance (ZX1=<zxpos>, ZX2=<zxneg>, ZX0=<zx0>). |
+| `P5102` | warning | `seq-branch-zero-impedance` | Branch <iBus>-<jBus> ('<ckt>') has zero zero-sequence impedance (R0=0, X0=0). |
+| `P5103` | error | `seq-transformer-cc-invalid` | Transformer <iBus>-<jBus> specifies invalid zero-sequence connection code CC=<cc> (expected 1..22). |
 | `P6001` | error | `unanchored-energized-island` | Energized network island (<islandSize> bus(es), including bus <sampleBus>) contains no swing/slack bus (IDE = 3). |
 | `P6002` | info | `single-branch-cut-bridge` | <kind> '<ckt>' (<fromBus>-<toBus>) is a topological N-1 cut bridge; its outage islands <value> MW of generation/load. |
 | `P6003` | warning | `pocket-short-circuit-ratio-weak-ibr` | IBR POI bus <busId> has low driving-point Short-Circuit Ratio (SCR = <value> < 1.5; S_sc = <value> MVA for <value> MVA IBR). |
 | `P6004` | warning | `jacobian-high-condition-number-voltage-collapse` | Reduced Q-V Jacobian indicates proximity to voltage collapse (min eigenvalue \\u03C3_min=<value>, max dV/dQ=<value> pu/pu at bus <weakestBus>). |
-| `P6005` | error | `dae-structural-singularity-or-high-index` | Lowered PSS/E DAE system is structurally unbalanced (<varCount> variables vs <eqCount> equations). |
+| `P6005` | error | `dae-structural-singularity-or-high-index` | Lowered PSS/E DAE system is structurally singular or high-index (<varCount> variables vs <eqCount> equations): <detail>. |
 | `P6006` | warning | `poorly-damped-interarea-or-local-mode` | Small-signal eigenvalue check detected <unstableCount> unstable / poorly damped mode(s) (min damping \\u03B6=<value>% at <value> Hz, dominant: <machine>). |
 | `P7001` | warning | `dyr-initial-condition-limit-violation` | INITIAL CONDITIONS SUSPECT for generator '<genId>' at bus <busId>: <reason>. |
 | `P7002` | warning | `generator-d-curve-reactive-infeasibility` | Generator '<genId>' at bus <busId> violates nameplate capability envelope: <detail>. |
@@ -13433,6 +13513,12 @@ flowchart TD
 | `P8002` | warning | `transient-critical-clearing-barrier-violation` | Generator '<genId>' at bus <busId> critical clearing time (<value> ms) < clearing time (<value> ms); post-fault swing breaches Lyapunov/SOS barrier. |
 | `P8003` | warning | `frequency-nadir-ufls-reachability` | Zonotope reachability proves largest contingency loss (<value> MW, H_eq=<value> s) can drive frequency nadir to <value> Hz <= UFLS stage (<value> Hz). |
 | `P8004` | warning | `nerc-prc-voltage-frequency-stl-robustness` | NERC PRC-024/029 STL specification violated on '<signal>' (robustness \\u03C1=<value> at t=<value> s). |
+| `P8005` | warning | `nerc-mod032-ontology-violation` | Formal ontology compliance gap for <entityDesc>: <axiomDetail>. |
+| `P8006` | error | `discrete-control-zeno-chattering` | Hybrid mode verifier detected discrete control chattering/overlap on <elementDesc>: <detail>. |
+| `P8007` | error | `ras-unbounded-ic3-violation` | IC3/PDR unbounded safety proof failed for RAS/SPS transition system '<schemeDesc>' at depth <depth>; conflicting trip/close state is reachable. |
+| `P8008` | error | `powerflow-nlsat-insolvable` | NLSAT exact algebraic proof certified power-flow insolvability at bus <busId>: <detail>. |
+| `P8009` | warning | `stochastic-renewable-barrier-risk` | Stochastic martingale barrier estimates <value>% probability of frequency/voltage limit breach under renewable uncertainty (tolerance <value>%). |
+| `P8010` | warning | `polyglot-parameter-drift` | Cross-language parameter drift detected for '<component>.<param>' (<value>% relative discrepancy across models). |
 
 ---
 
@@ -13596,12 +13682,12 @@ Opening any `.raw` file in the ModelScript IDE or VS Code launches the custom du
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (3/3) | Parse Latency: 0.32 ms (p95: 0.37 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.33 ms (p95: 0.57 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
 | Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
-| PSS/E-33 Newton-Raphson AC Power Flow Convergence | standard | Siemens PSS/E 33 / ANDES Newton-Raphson AC Power Flow | `residual <= 0.0001` | `0.00003525266483535641` | PASS |
+| PSS/E-33 Newton-Raphson AC Power Flow Convergence | standard | Siemens PSS/E 33 / ANDES Newton-Raphson AC Power Flow | `residual <= 0.0001` | `0.00003525266484272899` | PASS |
 | PSS/E RAW to DAEBuilder Arena Lowering | standard | Siemens PSS/E 33 / ANDES Newton-Raphson AC Power Flow | `dae-parity <= 0` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=psse`
@@ -13735,7 +13821,7 @@ msx powerfactory to-modelica grid.pfd --out=GridModel.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (3/3) | Parse Latency: 0.01 ms (p95: 0.14 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.03 ms (p95: 0.06 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -13850,7 +13936,7 @@ msx pslf from-psse wecc_case.raw --dyr=wecc_case.dyr --out=wecc_case.epc
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.03 ms (p95: 0.06 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 1.41 ms (p95: 1.84 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -14087,7 +14173,7 @@ const modelicaSource = cgmesToModelica(model, { packageName: "EntsoeCorridor" })
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 16.14 ms (p95: 21.32 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 13.62 ms (p95: 32.80 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -14221,7 +14307,7 @@ msx opendss to-modelica IEEE13NodeFeeder.dss -o DistributionFeeder.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.15 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.14 ms (p95: 0.17 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -14298,7 +14384,7 @@ CANONICAL URL: https://modelscript.org/languages/ocpp
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.04 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.06 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -14393,11 +14479,11 @@ CANONICAL URL: https://modelscript.org/languages/openadr
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.05 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.05 ms (p95: 0.08 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | caiso-dr-curtailment-schedule | standard | OpenADR 2.0b / 3.0 Grid Curtailment | `dae-parity <= 0` | `5` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=openadr`
@@ -14503,7 +14589,7 @@ CANONICAL URL: https://modelscript.org/languages/tough
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.06 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 5.09 ms (p95: 5.96 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -14690,11 +14776,11 @@ const psseCase = matpowerToPsseRaw(mpc);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.02 ms (p95: 0.39 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.18 ms (p95: 2.21 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | MATPOWER case.m to Newton-Raphson AC Power Flow | standard | MATPOWER 8.0 / PYPOWER Newton-Raphson AC Power Flow | `residual <= 0.0001` | `6.8250503582056865e-9` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=matpower`
@@ -14783,11 +14869,11 @@ msx comtrade to-dae fault_record.cfg
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.07 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.21 ms (p95: 0.22 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | 60 Hz Full-Cycle DFT Synchrophasor RMS Extraction | micro | IEEE C37.111 / 1-Cycle Full-Cycle DFT Phasor | `max-relative-error <= 0.001` | `2.3684757858670006e-16` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=comtrade`
@@ -14877,11 +14963,11 @@ msx scl to-dae substation.scd
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.28 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.06 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | IEC 61850-5 Type 1A Fast-Trip GOOSE Stream Latency | micro | IEC 61850-5 Type 1A GOOSE Latency Verification | `max-relative-error <= 0.0001` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=scl`
@@ -14966,11 +15052,11 @@ msx atp to-dae lightning_surge.atp
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.06 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.07 ms (p95: 0.08 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | 60 Hz Series RLC Surge Transient (10 us, 200 steps) | standard | ATP/EMTP Trapezoidal Companion-Circuit | `rmse <= 0.001` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=atp`
@@ -15055,11 +15141,11 @@ msx dnp3 to-dae rtu_substation_profile.xml
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.38 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.05 ms (p95: 0.19 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | DNP3 Class-2 Analog Deadband Event Compression | micro | IEEE 1815 DNP3 Deadband Compression Reference | `rmse <= 2.5` | `0.6123724356957945` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=dnp3`
@@ -15149,11 +15235,11 @@ msx oneliner to-dae utility_transmission.dxt
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.00 ms (p95: 0.03 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.05 ms (p95: 0.11 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | 500 kV 3-Phase & SLG Sequence Network Short-Circuit | standard | ASPEN OneLiner Symmetrical Components Fault Solver | `rmse <= 0.001` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=oneliner`
@@ -15243,11 +15329,11 @@ msx sel to-dae sel421_line_protection.txt
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.05 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.06 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | IEEE C37.112 U3 Very-Inverse Curve & SELogic Evaluation | micro | IEEE C37.112 U3 Time-Overcurrent & SELogic | `rmse <= 1e-8` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=sel`
@@ -15698,7 +15784,7 @@ msx olga survey bathymetry_survey.csv \
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (3/3) | Parse Latency: 0.03 ms (p95: 0.10 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.16 ms (p95: 0.37 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -15950,11 +16036,11 @@ msx lps sysml network.lps -o network.sysml
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (3/3) | Parse Latency: 0.02 ms (p95: 0.11 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.25 ms (p95: 4.32 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | Texas Gas Transmission Steady-State AGA8 Pressure Drop | standard | DNV Synergi Gas / AGA8 Steady Network | `max-relative-error <= 0.0001` | `0` | PASS |
 | Transmission Line-Pack Energy & Hydrogen Blend Inventory | standard | DNV Synergi Gas / AGA8 Steady Network | `exact <= 0` | `0` | PASS |
 
@@ -16078,12 +16164,12 @@ msx eclipse to-modelica NorthSeaReservoir.data -o ReservoirModel.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.43 ms (p95: 0.62 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.15 ms (p95: 0.17 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
-| spe10-brent-black-oil-depletion | standard | SPE10 / OPM Flow Black-Oil Reservoir | `dae-parity <= 0` | `24` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
+| SPE10 Brent Black-Oil Depletion | standard | SPE10 / OPM Flow Black-Oil Reservoir | `dae-parity <= 0` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=eclipse`
 
@@ -16210,7 +16296,7 @@ msx relap5 to-modelica PwrPrimaryLoop.i -o NuclearLoop.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.14 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.20 ms (p95: 0.25 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -16374,7 +16460,7 @@ msx sima to-sysml2 cases/OC4_Semi.inp --out=OC4_Semi.sysml
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.03 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.02 ms (p95: 0.06 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -16476,7 +16562,7 @@ msx spice lint SensorFrontEnd.net
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (3/3) | Parse Latency: 0.18 ms (p95: 0.63 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.07 ms (p95: 0.19 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -16586,7 +16672,7 @@ msx verilog-a to-spice MOS_Transistor.va -o MOS_Transistor.sub
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.10 ms (p95: 0.42 ms)
+Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 0.23 ms (p95: 0.45 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -16704,11 +16790,11 @@ msx ibis to-modelica Ddr4Driver.ibs -o Ddr4Buffer.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.09 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.12 ms (p95: 0.14 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | serdes-10g-ami-eye-diagram | standard | ANSI/EIA-656 IBIS-AMI 10 Gbps SerDes | `dae-parity <= 0` | `40` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=ibis`
@@ -16836,11 +16922,11 @@ msx touchstone to-modelica BandpassFilter.s2p -o FilterModel.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.09 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.10 ms (p95: 0.10 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | diff-4port-passivity-vector-fit | standard | scikit-rf / Vector Fitting 4-Port Differential S4P | `max-relative-error <= 1` | `0.937709976485267` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=touchstone`
@@ -16956,11 +17042,11 @@ msx optical to-dae network.json --out=optical.dae
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.07 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.27 ms (p95: 0.30 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | dwdm-800g-600km-gn-model | standard | OpenROADM / GNPy 800G DWDM Transmission | `dae-parity <= 0` | `5` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=optical`
@@ -17078,11 +17164,11 @@ msx ran fresnel --freq=11.0 --dist=15.0
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.02 ms (p95: 0.06 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.15 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | 5g-cband-mimo-backhaul-mpe | standard | FCC OET-65 MPE & ITU-R P.530 5G Backhaul | `max-relative-error <= 1` | `0.833` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=ran`
@@ -17186,11 +17272,11 @@ msx fiber make-ready --prop-height=21
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.05 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 2.08 ms (p95: 2.25 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | tia598-144strand-metro-ring | standard | ANSI/TIA-598-D & NESC Rule 250 | `max-relative-error <= 1` | `0.07` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=fiber`
@@ -17311,7 +17397,7 @@ On [Ansatz](https://ansatz.social), `.urdf`, `.sdf`, and `.xacro` artifacts rend
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (2/2) | Parse Latency: 0.11 ms (p95: 0.23 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.32 ms (p95: 0.42 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -17408,7 +17494,7 @@ msx plcopen to-modelica AutomationController.xml -o ControllerBlocks.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.11 ms (p95: 0.31 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.10 ms (p95: 0.26 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -17503,11 +17589,11 @@ msx aml to-modelica RoboticAssemblyCell.aml -o PlantModel.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.31 ms (p95: 0.45 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.15 ms (p95: 0.20 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | AutomationML SortingCell Topology to DAEBuilder Arena | micro | AutomationML 2.15 / DAEBuilder Plant Arena | `dae-parity <= 0` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=automationml`
@@ -17600,11 +17686,11 @@ msx adams mobility ExcavatorMechanism.adm
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (3/3) | Parse Latency: 0.09 ms (p95: 0.16 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.28 ms (p95: 1.24 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | Spherical Joint Kinematic Constraint Residual | micro | MSC Adams / Analytical 3D Rigid-Body Kinematics | `residual <= 1e-9` | `0` | PASS |
 | Tait-Bryan 1-2-3 Marker Global SE(3) Transform | micro | MSC Adams / Analytical 3D Rigid-Body Kinematics | `residual <= 1e-9` | `0` | PASS |
 
@@ -17666,7 +17752,7 @@ CANONICAL URL: https://modelscript.org/languages/energyplus
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.08 ms (p95: 0.11 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.09 ms (p95: 0.10 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -17770,11 +17856,11 @@ CANONICAL URL: https://modelscript.org/languages/epanet
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (3/3) | Parse Latency: 0.01 ms (p95: 0.03 ms)
+Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 4.04 ms (p95: 5.12 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | EPANET Net1 Gravity Baseline | standard | US EPA EPANET 2.2 | `residual <= 0.001` | `1.4210854715202004e-14` | PASS |
 | EPANET Net2 Branched Distribution | standard | US EPA EPANET 2.2 | `residual <= 0.001` | `1.1368683772161603e-13` | PASS |
 
@@ -17953,7 +18039,7 @@ msx swmm to-modelica UrbanDrainage.inp -o StormwaterNetwork.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (2/2) | Parse Latency: 0.03 ms (p95: 0.10 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 3.65 ms (p95: 5.12 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -18038,7 +18124,7 @@ CANONICAL URL: https://modelscript.org/languages/hec-ras
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.05 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.58 ms (p95: 9.42 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -18151,11 +18237,11 @@ CANONICAL URL: https://modelscript.org/languages/modflow
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.02 ms (p95: 0.06 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 4.50 ms (p95: 8.89 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | USGS TWRI 3-Layer Aquifer Water Balance & Drawdown | standard | USGS MODFLOW 6 | `exact <= 0.0001` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=modflow`
@@ -18273,11 +18359,11 @@ CANONICAL URL: https://modelscript.org/languages/landgem
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.04 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 4.58 ms (p95: 10.90 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | metro-landfill-adm1-chp | standard | US EPA LandGEM / ADM1 Anaerobic Co-Digestion | `dae-parity <= 0` | `8` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=landgem`
@@ -18399,11 +18485,11 @@ AI agents connect to `@modelscript/hec-hms` through dedicated MCP tools:
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.04 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 2.15 ms (p95: 6.09 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | SCS Curve Number Retention & Cumulative Runoff Parity | micro | USACE HEC-HMS / Analytical SCS Curve Number | `max-relative-error <= 0.001` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=hec-hms`
@@ -18495,11 +18581,11 @@ msx waterml to-dae usgs_gauge_01646500.xml
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.12 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.53 ms (p95: 0.78 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | Power-Law & Piecewise Stage-Discharge Rating Curve | micro | OGC WaterML 2.0 / Stage-Discharge Rating Curve | `max-relative-error <= 0.000001` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=waterml`
@@ -18585,11 +18671,11 @@ msx asm to-dae bsm1_plant.asm
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.01 ms (p95: 0.26 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.08 ms (p95: 0.10 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | IWA ASM1 Aerobic & Anoxic COD Stoichiometric Conservation | micro | IWA ASM1 / BSM1 Stoichiometric Petersen Matrix | `residual <= 0.000001` | `5.551115123125783e-17` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=asm`
@@ -18709,11 +18795,11 @@ msx aspen to-modelica MethanolWaterPlant.inp -o MethanolPlant.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.07 ms (p95: 0.29 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.15 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | Industrial De-Ethanizer & Hydrocarbon Fractionation Train | standard | Aspen Plus V14 Peng-Robinson VLE | `dae-parity <= 0` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=aspen`
@@ -18831,11 +18917,11 @@ gPROMS is a registered trademark of Process Systems Enterprise Limited (Siemens 
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.06 ms (p95: 0.13 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.12 ms (p95: 0.13 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | axial-dispersion-pfr-mol | standard | gPROMS ProcessBuilder Method-of-Lines PFR | `dae-parity <= 0` | `16` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=gproms`
@@ -18983,7 +19069,7 @@ const modelicaSource = canteraToModelica(mech);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `stable` | Pass Rate: 100% (2/2) | Parse Latency: 0.10 ms (p95: 0.11 ms)
+Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 1.26 ms (p95: 1.32 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -19134,11 +19220,11 @@ const moCode = phreeqcToModelica(deck);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.04 ms (p95: 0.16 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.07 ms (p95: 0.09 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | karst-aquifer-calcite-speciation | standard | USGS PHREEQC Aqueous Speciation | `dae-parity <= 0` | `23` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=phreeqc`
@@ -19262,7 +19348,7 @@ const modelicaMedia = smilesToModelica(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.26 ms (p95: 0.59 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.06 ms (p95: 0.12 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -19391,7 +19477,7 @@ msx sbml to-modelica GlycolyticPathway.sbml -o GlycolysisModel.mo
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.15 ms (p95: 0.28 ms)
+Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 1.02 ms (p95: 1.13 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -19528,11 +19614,11 @@ const moCode = antimonyToModelica(doc);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.13 ms (p95: 0.41 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.16 ms (p95: 0.21 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | Kholodenko (2000) MAPK Signaling Cascade & Pool Conservation | standard | libAntimony / Tellurium | `dae-parity <= 0` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=antimony`
@@ -19658,11 +19744,11 @@ const moCode = bnglToModelica(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.07 ms (p95: 0.23 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.23 ms (p95: 0.27 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | EGFR Rule-Based Signaling Pathway Expansion & ODE Integration | standard | BioNetGen 2.9 Rule-Based Simulator | `residual <= 0.0001` | `4.263e-14` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=bngl`
@@ -19784,12 +19870,12 @@ const modelicaCode = sbolToModelica(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.05 ms (p95: 0.15 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.40 ms (p95: 0.66 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
 | Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
-| elowitz-repressilator-hill-dae | standard | SBOL 3 / Hill Kinetics Repressilator | `dae-parity <= 0` | `21` | PASS |
+| Elowitz Repressilator Hill DAE | standard | SBOL 3 / Hill Kinetics Repressilator | `dae-parity <= 0` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=sbol`
 
@@ -19916,12 +20002,12 @@ const modelicaSource = sedmlToModelica(doc);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.07 ms (p95: 0.17 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.22 ms (p95: 6.58 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
 | Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
-| metabolic-cvode-sweep-dae | standard | SED-ML L1V4 / CVODE Metabolic Experiment | `dae-parity <= 0` | `17` | PASS |
+| Metabolic CVODE Sweep DAE | standard | SED-ML L1V4 / CVODE Metabolic Experiment | `dae-parity <= 0` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=sedml`
 
@@ -20056,7 +20142,7 @@ NONMEM is a registered trademark of ICON plc. PsN and Pirana are trademarks or s
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.34 ms (p95: 0.39 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 2.39 ms (p95: 2.62 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -20180,7 +20266,7 @@ Monolix® and Lixoft® are registered trademarks of Lixoft SAS / Simulations Plu
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.05 ms (p95: 0.08 ms)
+Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 0.06 ms (p95: 0.10 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -20328,7 +20414,7 @@ const moCode = pdbToModelica(structure);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 2.11 ms (p95: 4.66 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.12 ms (p95: 0.14 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -20479,11 +20565,11 @@ const moCode = genbankToModelica(record);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.07 ms (p95: 0.28 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.14 ms (p95: 0.18 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | pgfp-mini-plasmid-dae | standard | NCBI GenBank / BioPython Central Dogma | `dae-parity <= 0` | `7` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=genbank`
@@ -20591,7 +20677,7 @@ const sbmlXml = cellmlToSbml(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.11 ms (p95: 0.18 ms)
+Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 0.37 ms (p95: 0.48 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -20700,7 +20786,7 @@ const modelicaCode = nmodlToModelica(doc);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (3/3) | Parse Latency: 0.09 ms (p95: 0.13 ms)
+Tier: `alpha` | Pass Rate: 100% (3/3) | Parse Latency: 0.10 ms (p95: 0.12 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -20817,11 +20903,11 @@ const urdfXml = openSimToUrdf(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.14 ms (p95: 0.19 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.09 ms (p95: 0.11 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | Arm26 2-DoF 6-Muscle Dynamic Arm Model | standard | OpenSim 4.x Musculoskeletal Reference | `exact <= 0.0001` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=opensim`
@@ -20934,7 +21020,7 @@ const modelicaCode = febioToModelica(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.22 ms (p95: 0.38 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 2.50 ms (p95: 5.59 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -21064,7 +21150,7 @@ const sysmlPkg = dicomRtToSysML2(plan);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.02 ms (p95: 0.06 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.02 ms (p95: 0.06 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -21182,7 +21268,7 @@ const modelicaCode = topasToModelica(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.08 ms (p95: 0.16 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.09 ms (p95: 0.27 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -21294,11 +21380,11 @@ const scadCode = niftiToScad(volume);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.02 ms (p95: 0.07 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.10 ms (p95: 0.12 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | RAS Affine, Watertight Volume/Area & Tracer DAE Lowering | micro | NIfTI-1 RAS Affine / Watertight Marching Surface | `max-relative-error <= 0.000001` | `0` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=nifti`
@@ -21408,11 +21494,11 @@ const scadCode = threeMfToScad(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.14 ms (p95: 0.27 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.08 ms (p95: 0.11 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
-| Canonical Fixture Parse | micro | ModelScript Native Parser | `ast-pass-rate <= 1` | `0` | PASS |
+| Canonical Fixture Parse | micro | ModelScript WASM GLR | `ast-pass-rate <= 1` | `0` | PASS |
 | 3MF Watertight 2-Manifold Euler (V-E+F=2) & Volume | micro | 3MF Consortium 2-Manifold Euler-Poincare Kernel | `max-relative-error <= 0.001` | `1.9999999949504856e-9` | PASS |
 
 Reproduce: `npm run bench:languages -- --lang=three-mf`
@@ -21523,7 +21609,7 @@ const modelicaCode = igtlToModelica(model);
 
 ## Verification, Maturity & Benchmarks
 
-Tier: `beta` | Pass Rate: 100% (2/2) | Parse Latency: 0.00 ms (p95: 0.01 ms)
+Tier: `alpha` | Pass Rate: 100% (2/2) | Parse Latency: 0.00 ms (p95: 0.01 ms)
 
 | Benchmark Case | Scale | Reference Oracle | Metric / Threshold | Measured | Status |
 | :--- | :--- | :--- | :--- | :--- | :---: |
@@ -22003,7 +22089,7 @@ CANONICAL URL: https://modelscript.org/reference/linter-rules
 
 # Linter Rules Reference
 
-ModelScript ships **1379 diagnostic rules** across **84 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
+ModelScript ships **1408 diagnostic rules** across **85 languages**. This page is generated from each language's rule catalog (for example `languages/modelica/src/errors.ts`), so codes, severities and message templates match what the tools report. Text in `<angle brackets>` is filled in from your model.
 
 ## Running the linters
 
@@ -22028,6 +22114,7 @@ The **CLI** column below shows which command reports each language's rules.
 | [AMPL](#ampl)                             | `@modelscript/ampl`         |    12 | `msx lint`              |
 | [SysML v2 / KerML](#sysml2)               | `@modelscript/sysml2`       |   108 | `msx lint`              |
 | [ReqIF](#reqif)                           | `@modelscript/reqif`        |    13 | `msx reqif lint`        |
+| [MagicDraw / Cameo](#magicdraw)           | `@modelscript/magicdraw`    |    14 | Language server / API   |
 | [NIST OSCAL](#oscal)                      | `@modelscript/oscal`        |    13 | Language server / API   |
 | [SSP](#ssp)                               | `@modelscript/ssp`          |    18 | `msx lint`              |
 | [OWL2](#owl2)                             | `@modelscript/owl2`         |    24 | `msx lint`              |
@@ -22052,8 +22139,8 @@ The **CLI** column below shows which command reports each language's rules.
 | [GTFS](#gtfs)                             | `@modelscript/gtfs`         |     7 | `msx lint`              |
 | [GENSYS](#gensys)                         | `@modelscript/gensys`       |    10 | `msx gensys lint`       |
 | [SIMPACK](#simpack)                       | `@modelscript/simpack`      |    10 | `msx simpack lint`      |
-| [PSCAD / EMTDC](#pscad)                   | `@modelscript/pscad`        |    53 | `msx lint`              |
-| [PSS/E](#psse)                            | `@modelscript/psse`         |    64 | `msx psse lint`         |
+| [PSCAD / EMTDC](#pscad)                   | `@modelscript/pscad`        |    55 | `msx lint`              |
+| [PSS/E](#psse)                            | `@modelscript/psse`         |    77 | `msx lint`              |
 | [DIgSILENT PowerFactory](#powerfactory)   | `@modelscript/powerfactory` |     6 | Language server / API   |
 | [GE Vernova PSLF](#pslf)                  | `@modelscript/pslf`         |    10 | `msx pslf lint`         |
 | [CIM / CGMES](#cgmes)                     | `@modelscript/cgmes`        |    10 | `msx cgmes lint`        |
@@ -22646,6 +22733,27 @@ Requirements interchange & contract entailment. **13 rules** · `@modelscript/re
 | <span id="reqif-m7012"></span>`M7012` | `spec-object-empty-description`  | [warning] | Safety-critical SpecObject '<code>&lt;reqId&gt;</code>' has empty text description.                                                            |
 | <span id="reqif-m7013"></span>`M7013` | `spec-hierarchy-level-excessive` | [warning] | SpecHierarchy nesting level (<code>&lt;level&gt;</code>) exceeds recommended maximum (7).                                                      |
 
+## MagicDraw / Cameo {#magicdraw}
+
+SysML 1.x / UML 2.x archive inspection, diagrams & SysML v2 migration. **14 rules** · `@modelscript/magicdraw` · Source: `languages/magicdraw/src/lints/rules.ts` · [Language guide](../languages/magicdraw.md)
+
+| Code                                      | Rule                                   | Severity                                | Message |
+| :---------------------------------------- | :------------------------------------- | :-------------------------------------- | :------ |
+| <span id="magicdraw-m9921"></span>`M9921` | `magicdraw-corrupt-archive`            | [error]    |         |
+| <span id="magicdraw-m9922"></span>`M9922` | `magicdraw-encrypted-archive`          | [error]    |         |
+| <span id="magicdraw-m9923"></span>`M9923` | `magicdraw-twc-stub`                   | [error]    |         |
+| <span id="magicdraw-m9924"></span>`M9924` | `magicdraw-duplicate-xmi-id`           | [error]    |         |
+| <span id="magicdraw-m9925"></span>`M9925` | `magicdraw-orphan-stereotype`          | [warning] |         |
+| <span id="magicdraw-m9926"></span>`M9926` | `magicdraw-unresolved-href`            | [warning] |         |
+| <span id="magicdraw-m9927"></span>`M9927` | `magicdraw-untyped-property`           | [warning] |         |
+| <span id="magicdraw-m9928"></span>`M9928` | `magicdraw-dangling-connector`         | [error]    |         |
+| <span id="magicdraw-m9929"></span>`M9929` | `magicdraw-cyclic-composition`         | [error]    |         |
+| <span id="magicdraw-m9930"></span>`M9930` | `magicdraw-requirement-missing-id`     | [warning] |         |
+| <span id="magicdraw-m9931"></span>`M9931` | `magicdraw-requirement-missing-text`   | [warning] |         |
+| <span id="magicdraw-m9932"></span>`M9932` | `magicdraw-unsatisfied-requirement`    | [warning] |         |
+| <span id="magicdraw-m9933"></span>`M9933` | `magicdraw-unverified-requirement`     | [info]       |         |
+| <span id="magicdraw-m9934"></span>`M9934` | `magicdraw-invalid-parametric-binding` | [error]    |         |
+
 ## NIST OSCAL {#oscal}
 
 Cyber-physical security controls & SP 800-53 assessment. **13 rules** · `@modelscript/oscal` · Source: `languages/oscal/src/lints/rules.ts` · [Language guide](../languages/oscal.md)
@@ -23108,7 +23216,7 @@ Spatial multibody dynamics. **10 rules** · `@modelscript/simpack` · Source: `l
 
 ## PSCAD / EMTDC {#pscad}
 
-Electromagnetic transients (EMT). **53 rules** · `@modelscript/pscad` · Source: `languages/pscad/src/lints/index.ts` · [Language guide](../languages/pscad.md)
+Electromagnetic transients (EMT). **55 rules** · `@modelscript/pscad` · Source: `languages/pscad/src/lints/index.ts` · [Language guide](../languages/pscad.md)
 
 | Code                                  | Rule                                               | Severity                                | Message                                                                                                                                                                                                                                                                   |
 | :------------------------------------ | :------------------------------------------------- | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -23130,7 +23238,7 @@ Electromagnetic transients (EMT). **53 rules** · `@modelscript/pscad` · Source
 | <span id="pscad-m6016"></span>`M6016` | `component-check-failed`                           | [error]    | Component '<code>&lt;cmpName&gt;</code>' check failed: <code>&lt;reason&gt;</code>.                                                                                                                                                                                       |
 | <span id="pscad-m6017"></span>`M6017` | `component-check-warning`                          | [warning] | Component '<code>&lt;cmpName&gt;</code>' check warning: <code>&lt;reason&gt;</code>.                                                                                                                                                                                      |
 | <span id="pscad-m6021"></span>`M6021` | `unresolved-component-definition`                  | [warning] | Component '<code>&lt;cmpName&gt;</code>' references definition '<code>&lt;defName&gt;</code>', which is not found in the project or loaded .pslx libraries.                                                                                                               |
-| <span id="pscad-m6022"></span>`M6022` | `wire-near-miss`                                   | [warning] | Wire '<code>&lt;wireId&gt;</code>' endpoint is <code>&lt;value&gt;</code> px from '<code>&lt;targetName&gt;</code>' (outside snap tolerance 4 px), leaving an unintentional open circuit.                                                                                 |
+| <span id="pscad-m6022"></span>`M6022` | `wire-near-miss`                                   | [warning] | Wire '<code>&lt;wireId&gt;</code>' endpoint is <code>&lt;value&gt;</code> px from '<code>&lt;targetName&gt;</code>' (outside snap tolerance 15 px), leaving an unintentional open circuit.                                                                                |
 | <span id="pscad-m6023"></span>`M6023` | `overlapping-wire-segments`                        | [warning] | Wire '<code>&lt;wireA&gt;</code>' overlaps collinearly with wire '<code>&lt;wireB&gt;</code>'; verify whether a junction or unintentional short exists.                                                                                                                   |
 | <span id="pscad-m6024"></span>`M6024` | `dangling-wireless-signal`                         | [warning] | Wireless signal tag '<code>&lt;tagName&gt;</code>' (<code>&lt;kind&gt;</code>) is dangling: <code>&lt;reason&gt;</code>.                                                                                                                                                  |
 | <span id="pscad-m6025"></span>`M6025` | `vector-signal-dimension-mismatch`                 | [error]    | Signal vector dimension mismatch: '<code>&lt;srcPort&gt;</code>' (dim=<code>&lt;srcDim&gt;</code>) cannot connect directly to '<code>&lt;dstPort&gt;</code>' (dim=<code>&lt;dstDim&gt;</code>).                                                                           |
@@ -23161,6 +23269,8 @@ Electromagnetic transients (EMT). **53 rules** · `@modelscript/pscad` · Source
 | <span id="pscad-m6067"></span>`M6067` | `fortran-udm-non-reentrant-global-common`          | [error]    | Definition '<code>&lt;defName&gt;</code>' uses a shared Fortran COMMON block while instantiated <code>&lt;instances&gt;</code> times in the project (causes cross-instance state corruption; use STORF/STORI instead).                                                    |
 | <span id="pscad-m6068"></span>`M6068` | `oem-dll-abi-and-license-preflight`                | [warning] | OEM black-box DLL block '<code>&lt;cmpName&gt;</code>' pre-flight warning: <code>&lt;detail&gt;</code>.                                                                                                                                                                   |
 | <span id="pscad-m6069"></span>`M6069` | `c-udm-hazard`                                     | [error]    | Definition '<code>&lt;defName&gt;</code>' C segment '<code>&lt;segmentName&gt;</code>' hazard: <code>&lt;reason&gt;</code>.                                                                                                                                               |
+| <span id="pscad-m6070"></span>`M6070` | `udm-hardcoded-timestep`                           | [warning] | Definition '<code>&lt;defName&gt;</code>' <code>&lt;segmentName&gt;</code> segment hardcodes EMT time-step literal '<code>&lt;literal&gt;</code>'; use 'DELT' for time-step invariance (CIGRE TB 825).                                                                    |
+| <span id="pscad-m6071"></span>`M6071` | `dimensional-unit-mismatch`                        | [error]    | Component '<code>&lt;cmpName&gt;</code>' parameter '<code>&lt;paramName&gt;</code>' has unit '&#91;<code>&lt;unit&gt;</code>&#93;' (<code>&lt;actualKind&gt;</code>), incompatible with expected physical dimension (<code>&lt;expectedKind&gt;</code>).                  |
 | <span id="pscad-m6080"></span>`M6080` | `protection-breaker-state-machine-deadlock`        | [error]    | Protection state machine hazard on '<code>&lt;target&gt;</code>': <code>&lt;detail&gt;</code>.                                                                                                                                                                            |
 | <span id="pscad-m6081"></span>`M6081` | `time-delay-control-loop-instability`              | [warning] | Time-delay control loop through '<code>&lt;blockId&gt;</code>' shows DDE instability risk: <code>&lt;detail&gt;</code>.                                                                                                                                                   |
 | <span id="pscad-m6082"></span>`M6082` | `converter-overcurrent-overvoltage-flowpipe`       | [warning] | Converter '<code>&lt;unitId&gt;</code>' zonotope reachable flowpipe breached safety envelope: <code>&lt;detail&gt;</code>.                                                                                                                                                |
@@ -23168,74 +23278,87 @@ Electromagnetic transients (EMT). **53 rules** · `@modelscript/pscad` · Source
 
 ## PSS/E {#psse}
 
-Transmission power flow & transient stability. **64 rules** · `@modelscript/psse` · Source: `languages/psse/src/errors.ts` · [Language guide](../languages/psse.md)
+Transmission power flow & transient stability. **77 rules** · `@modelscript/psse` · Source: `languages/psse/src/errors.ts` · [Language guide](../languages/psse.md)
 
-| Code                                 | Rule                                              | Severity                                | Message                                                                                                                                                                                                                                                 |
-| :----------------------------------- | :------------------------------------------------ | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| <span id="psse-p1001"></span>`P1001` | `bus-not-found`                                   | [error]    | <code>&lt;entityKind&gt;</code> '<code>&lt;id&gt;</code>' references non-existent <code>&lt;busRole&gt;</code>bus <code>&lt;busId&gt;</code>.                                                                                                           |
-| <span id="psse-p1002"></span>`P1002` | `generator-negative-power`                        | [warning] | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has negative active power output (<code>&lt;pg&gt;</code> MW).                                                                                                                 |
-| <span id="psse-p1003"></span>`P1003` | `duplicate-equipment-id`                          | [error]    | Duplicate generator ID '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code>.                                                                                                                                                                  |
-| <span id="psse-p1004"></span>`P1004` | `raw-version-column-mismatch`                     | [warning] | PSS/E RAW revision mismatch (REV=<code>&lt;rev&gt;</code>): <code>&lt;detail&gt;</code>.                                                                                                                                                                |
-| <span id="psse-p1005"></span>`P1005` | `unterminated-raw-section`                        | [warning] | PSS/E RAW section <code>&lt;sectionIndex&gt;</code> reached EOF without a terminating '0 / END OF ...' delimiter.                                                                                                                                       |
-| <span id="psse-p1006"></span>`P1006` | `invalid-area-zone-owner-ref`                     | [warning] | <code>&lt;entityDesc&gt;</code> references area <code>&lt;areaId&gt;</code>, which is not declared in Area Interchange Data.                                                                                                                            |
-| <span id="psse-p2001"></span>`P2001` | `isolated-bus`                                    | [warning] | Bus <code>&lt;busId&gt;</code> ('<code>&lt;busName&gt;</code>') is isolated with 0 in-service connecting branches or transformers.                                                                                                                      |
-| <span id="psse-p2002"></span>`P2002` | `missing-slack-bus`                               | [error]    | Power network base case contains 0 slack/swing buses (Bus Type 3). Power flow solution cannot be anchored.                                                                                                                                              |
-| <span id="psse-p2003"></span>`P2003` | `multiple-slack-buses`                            | [warning] | Power network base case contains <code>&lt;count&gt;</code> swing buses without explicit multi-island partitioning.                                                                                                                                     |
-| <span id="psse-p2004"></span>`P2004` | `voltage-out-of-bounds`                           | [warning] | Initial voltage magnitude at bus <code>&lt;busId&gt;</code> (<code>&lt;value&gt;</code> pu) is outside standard operational limits &#91;0.8, 1.2 pu&#93;.                                                                                               |
-| <span id="psse-p2005"></span>`P2005` | `substation-voltage-violation-nerc`               | [warning] | Bus <code>&lt;busId&gt;</code> voltage magnitude (<code>&lt;value&gt;</code> pu) violates NERC standard transmission bounds &#91;0.90, 1.10 pu&#93;.                                                                                                    |
-| <span id="psse-p2006"></span>`P2006` | `type4-bus-with-inservice-equipment`              | [error]    | Isolated bus <code>&lt;busId&gt;</code> (IDE = 4) has in-service <code>&lt;equipDesc&gt;</code>, creating a TREE topology inconsistency.                                                                                                                |
-| <span id="psse-p2007"></span>`P2007` | `pv-bus-without-online-reactive-source`           | [warning] | PV/Swing bus <code>&lt;busId&gt;</code> ('<code>&lt;busName&gt;</code>') has no in-service generator or regulating reactive source.                                                                                                                     |
-| <span id="psse-p2008"></span>`P2008` | `generator-on-pq-bus`                             | [warning] | In-service generator '<code>&lt;genId&gt;</code>' is attached to PQ bus <code>&lt;busId&gt;</code> (IDE = 1) and will not regulate voltage.                                                                                                             |
-| <span id="psse-p2009"></span>`P2009` | `conflicting-remote-voltage-regulation`           | [warning] | Remote voltage regulation conflict at regulated bus <code>&lt;busId&gt;</code>: <code>&lt;reason&gt;</code>.                                                                                                                                            |
-| <span id="psse-p3001"></span>`P3001` | `generator-reactive-limits-inverted`              | [error]    | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has inverted reactive limits: Qmin (<code>&lt;qMin&gt;</code> MVAR) &gt; Qmax (<code>&lt;qMax&gt;</code> MVAR).                                                                |
-| <span id="psse-p3002"></span>`P3002` | `generator-power-limits-inverted`                 | [error]    | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has inverted active power limits: Pmin (<code>&lt;pMin&gt;</code> MW) &gt; Pmax (<code>&lt;pMax&gt;</code> MW).                                                                |
-| <span id="psse-p3003"></span>`P3003` | `generator-scheduled-voltage-bounds`              | [warning] | Generator '<code>&lt;genId&gt;</code>' scheduled voltage Vs = <code>&lt;vs&gt;</code> p.u. is outside the typical operating band &#91;0.8, 1.2&#93;.                                                                                                    |
-| <span id="psse-p3004"></span>`P3004` | `zero-inertia-dynamic-bus`                        | [error]    | Synchronous machine dynamic record at bus <code>&lt;busId&gt;</code> specifies zero inertia constant (H &lt;= 0).                                                                                                                                       |
-| <span id="psse-p4001"></span>`P4001` | `branch-invalid-reactance`                        | [error]    | Transmission branch '<code>&lt;ckt&gt;</code>' between bus <code>&lt;fromBus&gt;</code> and <code>&lt;toBus&gt;</code> has zero or negative reactance X = <code>&lt;x&gt;</code> p.u.                                                                   |
-| <span id="psse-p4002"></span>`P4002` | `branch-base-kv-mismatch`                         | [warning] | Branch '<code>&lt;ckt&gt;</code>' connects bus <code>&lt;fromBus&gt;</code> (<code>&lt;fromKv&gt;</code> kV) to bus <code>&lt;toBus&gt;</code> (<code>&lt;toKv&gt;</code> kV) without a transformer.                                                    |
-| <span id="psse-p4003"></span>`P4003` | `transformer-tap-out-of-bounds`                   | [warning] | Transformer '<code>&lt;ckt&gt;</code>' between bus <code>&lt;fromBus&gt;</code> and <code>&lt;toBus&gt;</code> has off-nominal tap ratio <code>&lt;ratio&gt;</code> outside typical limits &#91;0.7, 1.3&#93;.                                          |
-| <span id="psse-p4004"></span>`P4004` | `branch-thermal-rating-zero`                      | [warning] | Transmission branch '<code>&lt;ckt&gt;</code>' between bus <code>&lt;fromBus&gt;</code> and <code>&lt;toBus&gt;</code> has zero MVA thermal rating.                                                                                                     |
-| <span id="psse-p4005"></span>`P4005` | `branch-extreme-impedance`                        | [warning] | Transmission branch '<code>&lt;ckt&gt;</code>' between bus <code>&lt;fromBus&gt;</code> and <code>&lt;toBus&gt;</code> has <code>&lt;detail&gt;</code>.                                                                                                 |
-| <span id="psse-p4006"></span>`P4006` | `branch-rating-hierarchy-inverted`                | [warning] | Branch '<code>&lt;ckt&gt;</code>' (<code>&lt;fromBus&gt;</code>-<code>&lt;toBus&gt;</code>) thermal ratings violate RATEA &lt;= RATEB &lt;= RATEC (<code>&lt;rateA&gt;</code>, <code>&lt;rateB&gt;</code>, <code>&lt;rateC&gt;</code>).                 |
-| <span id="psse-p4007"></span>`P4007` | `line-charging-mvar-vs-pu-confusion`              | [warning] | Branch '<code>&lt;ckt&gt;</code>' (<code>&lt;fromBus&gt;</code>-<code>&lt;toBus&gt;</code>) charging susceptance B = <code>&lt;b&gt;</code> p.u. is unusually large (&gt; 5.0); verify MVAR vs p.u. units.                                              |
-| <span id="psse-p4008"></span>`P4008` | `transformer-cz-cw-cm-unit-mismatch`              | [warning] | Transformer '<code>&lt;ckt&gt;</code>' (<code>&lt;fromBus&gt;</code>-<code>&lt;toBus&gt;</code>) unit code mismatch: <code>&lt;detail&gt;</code>.                                                                                                       |
-| <span id="psse-p4009"></span>`P4009` | `three-winding-star-point-negative-reactance`     | [warning] | 3-winding transformer '<code>&lt;ckt&gt;</code>' (<code>&lt;i&gt;</code>-<code>&lt;j&gt;</code>-<code>&lt;k&gt;</code>) star-equivalent reactance X1 = <code>&lt;value&gt;</code> p.u. is strongly negative.                                            |
-| <span id="psse-p4010"></span>`P4010` | `switched-shunt-band-inverted`                    | [error]    | Switched shunt at bus <code>&lt;busId&gt;</code> has inverted voltage band: VSWLO (<code>&lt;vswlo&gt;</code>) &gt;= VSWHI (<code>&lt;vswhi&gt;</code>).                                                                                                |
-| <span id="psse-p5001"></span>`P5001` | `dyr-param-count-schema-mismatch`                 | [warning] | Dynamic model '<code>&lt;model&gt;</code>' at Bus <code>&lt;busId&gt;</code> specifies <code>&lt;actual&gt;</code> CON parameters, expected <code>&lt;expected&gt;</code>.                                                                              |
-| <span id="psse-p5002"></span>`P5002` | `dyr-duplicate-slot-assignment`                   | [error]    | Duplicate dynamic <code>&lt;category&gt;</code> model assigned to machine (<code>&lt;busId&gt;</code>, '<code>&lt;id&gt;</code>').                                                                                                                      |
-| <span id="psse-p5003"></span>`P5003` | `dyr-orphan-controller`                           | [warning] | Dynamic <code>&lt;category&gt;</code> '<code>&lt;model&gt;</code>' for (<code>&lt;busId&gt;</code>, '<code>&lt;id&gt;</code>') has no matching generator/IBR dynamic model.                                                                             |
-| <span id="psse-p5004"></span>`P5004` | `dyr-online-gen-missing-dynamics`                 | [warning] | In-service generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> (Pg=<code>&lt;value&gt;</code> MW) has no dynamic model in .dyr.                                                                                                    |
-| <span id="psse-p5005"></span>`P5005` | `dyr-reactance-timeconstant-hierarchy`            | [error]    | Dynamic machine '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> violates physical parameter ordering: <code>&lt;detail&gt;</code>.                                                                                                       |
-| <span id="psse-p5006"></span>`P5006` | `dyr-raw-source-impedance-mismatch`               | [warning] | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has RAW ZX=<code>&lt;value&gt;</code> p.u. vs DYR subtransient/transient reactance <code>&lt;value&gt;</code> p.u.                                                             |
-| <span id="psse-p5007"></span>`P5007` | `seq-zero-negative-sequence-gaps`                 | [warning] | Sequence data (.seq) gap: <code>&lt;detail&gt;</code>.                                                                                                                                                                                                  |
-| <span id="psse-p5008"></span>`P5008` | `seq-transformer-vector-group-invalid`            | [warning] | Transformer (<code>&lt;iBus&gt;</code>-<code>&lt;jBus&gt;</code> CKT '<code>&lt;ckt&gt;</code>') zero-sequence connection invalid: <code>&lt;detail&gt;</code>.                                                                                         |
-| <span id="psse-p5009"></span>`P5009` | `con-target-not-found`                            | [warning] | Contingency '<code>&lt;contId&gt;</code>' references unresolved element: <code>&lt;detail&gt;</code>.                                                                                                                                                   |
-| <span id="psse-p5010"></span>`P5010` | `dyr-bus-not-found`                               | [error]    | DYR model '<code>&lt;model&gt;</code>' references bus <code>&lt;busId&gt;</code>, which does not exist in RAW case '<code>&lt;rawUri&gt;</code>'.                                                                                                       |
-| <span id="psse-p5011"></span>`P5011` | `dyr-machine-not-found`                           | [warning] | DYR model '<code>&lt;model&gt;</code>' references machine (<code>&lt;busId&gt;</code>, '<code>&lt;id&gt;</code>') not present in RAW generators.                                                                                                        |
-| <span id="psse-p5012"></span>`P5012` | `seq-bus-not-found`                               | [error]    | SEQ record references bus <code>&lt;busId&gt;</code>, which does not exist in RAW case '<code>&lt;rawUri&gt;</code>'.                                                                                                                                   |
-| <span id="psse-p5013"></span>`P5013` | `dyr-icon-invalid-value`                          | [error]    | Dynamic model '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> has invalid ICON '<code>&lt;iconName&gt;</code>' = <code>&lt;actual&gt;</code> (expected one of: <code>&lt;valid&gt;</code>).                                              |
-| <span id="psse-p5014"></span>`P5014` | `dyr-con-physical-bounds`                         | [warning] | Dynamic model '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> parameter '<code>&lt;paramName&gt;</code>' = <code>&lt;actual&gt;</code> is outside expected physical bounds &#91;<code>&lt;min&gt;</code>, <code>&lt;max&gt;</code>&#93;. |
-| <span id="psse-p5015"></span>`P5015` | `dyr-leadlag-ratio-extreme`                       | [warning] | Dynamic model '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> has extreme lead/lag ratio <code>&lt;tcName&gt;</code>/<code>&lt;tbName&gt;</code> = <code>&lt;value&gt;</code> (&gt; 25.0).                                               |
-| <span id="psse-p5016"></span>`P5016` | `dyr-saturation-non-monotonic`                    | [error]    | Dynamic model '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> has non-monotonic saturation factors: S(1.0)=<code>&lt;s10&gt;</code>, S(1.2)=<code>&lt;s12&gt;</code>.                                                                    |
-| <span id="psse-p5017"></span>`P5017` | `dyr-composite-load-fraction-sum`                 | [error]    | Dynamic composite load '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> motor/electronic fractions sum to <code>&lt;value&gt;</code> (must be within &#91;0, 1.0&#93;).                                                                   |
-| <span id="psse-p5018"></span>`P5018` | `dyr-remote-bus-not-found`                        | [error]    | Dynamic model '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> ICON '<code>&lt;iconName&gt;</code>' references non-existent bus <code>&lt;remoteBus&gt;</code>.                                                                           |
-| <span id="psse-p5019"></span>`P5019` | `dyr-hvdc-facts-link-not-found`                   | [error]    | Dynamic HVDC/FACTS model '<code>&lt;model&gt;</code>' references '<code>&lt;deviceName&gt;</code>', which is not declared in .raw DC/FACTS sections.                                                                                                    |
-| <span id="psse-p5020"></span>`P5020` | `dyr-usrmdl-unmapped-custom`                      | [info]       | User-defined USRMDL '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> is not a standard built-in alias; attach an AssemblyScript/FMU/DLL module for active stepping.                                                                       |
-| <span id="psse-p6001"></span>`P6001` | `unanchored-energized-island`                     | [error]    | Energized network island (<code>&lt;islandSize&gt;</code> bus(es), including bus <code>&lt;sampleBus&gt;</code>) contains no swing/slack bus (IDE = 3).                                                                                                 |
-| <span id="psse-p6002"></span>`P6002` | `single-branch-cut-bridge`                        | [info]       | <code>&lt;kind&gt;</code> '<code>&lt;ckt&gt;</code>' (<code>&lt;fromBus&gt;</code>-<code>&lt;toBus&gt;</code>) is a topological N-1 cut bridge; its outage islands <code>&lt;value&gt;</code> MW of generation/load.                                    |
-| <span id="psse-p6003"></span>`P6003` | `pocket-short-circuit-ratio-weak-ibr`             | [warning] | IBR POI bus <code>&lt;busId&gt;</code> has low driving-point Short-Circuit Ratio (SCR = <code>&lt;value&gt;</code> &lt; 1.5; S_sc = <code>&lt;value&gt;</code> MVA for <code>&lt;value&gt;</code> MVA IBR).                                             |
-| <span id="psse-p6004"></span>`P6004` | `jacobian-high-condition-number-voltage-collapse` | [warning] | Reduced Q-V Jacobian indicates proximity to voltage collapse (min eigenvalue &#92;u03C3_min=<code>&lt;value&gt;</code>, max dV/dQ=<code>&lt;value&gt;</code> pu/pu at bus <code>&lt;weakestBus&gt;</code>).                                             |
-| <span id="psse-p6005"></span>`P6005` | `dae-structural-singularity-or-high-index`        | [error]    | Lowered PSS/E DAE system is structurally unbalanced (<code>&lt;varCount&gt;</code> variables vs <code>&lt;eqCount&gt;</code> equations).                                                                                                                |
-| <span id="psse-p6006"></span>`P6006` | `poorly-damped-interarea-or-local-mode`           | [warning] | Small-signal eigenvalue check detected <code>&lt;unstableCount&gt;</code> unstable / poorly damped mode(s) (min damping &#92;u03B6=<code>&lt;value&gt;</code>% at <code>&lt;value&gt;</code> Hz, dominant: <code>&lt;machine&gt;</code>).               |
-| <span id="psse-p7001"></span>`P7001` | `dyr-initial-condition-limit-violation`           | [warning] | INITIAL CONDITIONS SUSPECT for generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code>: <code>&lt;reason&gt;</code>.                                                                                                                   |
-| <span id="psse-p7002"></span>`P7002` | `generator-d-curve-reactive-infeasibility`        | [warning] | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> violates nameplate capability envelope: <code>&lt;detail&gt;</code>.                                                                                                           |
-| <span id="psse-p7003"></span>`P7003` | `powerflow-unsolvable-pocket-certificate`         | [error]    | Load pocket at bus <code>&lt;busId&gt;</code> requires <code>&lt;value&gt;</code> MVA, exceeding theoretical static transfer capacity (<code>&lt;value&gt;</code> MVA) across incident lines.                                                           |
-| <span id="psse-p7004"></span>`P7004` | `ibr-control-priority-conflict`                   | [error]    | IBR control model '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> has conflicting limit/deadband settings: <code>&lt;detail&gt;</code>.                                                                                                  |
-| <span id="psse-p7005"></span>`P7005` | `idv-psspy-script-mutation-hazards`               | [warning] | PSS/E IDV script hazard at line <code>&lt;lineNo&gt;</code> (<code>&lt;cmd&gt;</code>): <code>&lt;detail&gt;</code>.                                                                                                                                    |
-| <span id="psse-p8001"></span>`P8001` | `ras-sps-chattering-or-race-condition`            | [error]    | Formal BMC/SAT check proved contradictory RAS/SPS race on '<code>&lt;target&gt;</code>': '<code>&lt;schemeA&gt;</code>' and '<code>&lt;schemeB&gt;</code>' can trigger opposing actions simultaneously.                                                 |
-| <span id="psse-p8002"></span>`P8002` | `transient-critical-clearing-barrier-violation`   | [warning] | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> critical clearing time (<code>&lt;value&gt;</code> ms) &lt; clearing time (<code>&lt;value&gt;</code> ms); post-fault swing breaches Lyapunov/SOS barrier.                     |
-| <span id="psse-p8003"></span>`P8003` | `frequency-nadir-ufls-reachability`               | [warning] | Zonotope reachability proves largest contingency loss (<code>&lt;value&gt;</code> MW, H_eq=<code>&lt;value&gt;</code> s) can drive frequency nadir to <code>&lt;value&gt;</code> Hz &lt;= UFLS stage (<code>&lt;value&gt;</code> Hz).                   |
-| <span id="psse-p8004"></span>`P8004` | `nerc-prc-voltage-frequency-stl-robustness`       | [warning] | NERC PRC-024/029 STL specification violated on '<code>&lt;signal&gt;</code>' (robustness &#92;u03C1=<code>&lt;value&gt;</code> at t=<code>&lt;value&gt;</code> s).                                                                                      |
+| Code                                 | Rule                                              | Severity                                | Message                                                                                                                                                                                                                                                       |
+| :----------------------------------- | :------------------------------------------------ | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| <span id="psse-p1001"></span>`P1001` | `bus-not-found`                                   | [error]    | <code>&lt;entityKind&gt;</code> '<code>&lt;id&gt;</code>' references non-existent <code>&lt;busRole&gt;</code>bus <code>&lt;busId&gt;</code>.                                                                                                                 |
+| <span id="psse-p1002"></span>`P1002` | `generator-negative-power`                        | [warning] | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has negative active power output (<code>&lt;pg&gt;</code> MW).                                                                                                                       |
+| <span id="psse-p1003"></span>`P1003` | `duplicate-equipment-id`                          | [error]    | Duplicate generator ID '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code>.                                                                                                                                                                        |
+| <span id="psse-p1004"></span>`P1004` | `raw-version-column-mismatch`                     | [warning] | PSS/E RAW revision mismatch (REV=<code>&lt;rev&gt;</code>): <code>&lt;detail&gt;</code>.                                                                                                                                                                      |
+| <span id="psse-p1005"></span>`P1005` | `unterminated-raw-section`                        | [warning] | PSS/E RAW section <code>&lt;sectionIndex&gt;</code> reached EOF without a terminating '0 / END OF ...' delimiter.                                                                                                                                             |
+| <span id="psse-p1006"></span>`P1006` | `invalid-area-zone-owner-ref`                     | [warning] | <code>&lt;entityDesc&gt;</code> references area <code>&lt;areaId&gt;</code>, which is not declared in Area Interchange Data.                                                                                                                                  |
+| <span id="psse-p1007"></span>`P1007` | `raw-syntax-error`                                | [error]    | PSS/E RAW syntax error: <code>&lt;detail&gt;</code>.                                                                                                                                                                                                          |
+| <span id="psse-p2001"></span>`P2001` | `isolated-bus`                                    | [warning] | Bus <code>&lt;busId&gt;</code> ('<code>&lt;busName&gt;</code>') is isolated with 0 in-service connecting branches or transformers.                                                                                                                            |
+| <span id="psse-p2002"></span>`P2002` | `missing-slack-bus`                               | [error]    | Power network base case contains 0 slack/swing buses (Bus Type 3). Power flow solution cannot be anchored.                                                                                                                                                    |
+| <span id="psse-p2003"></span>`P2003` | `multiple-slack-buses`                            | [warning] | Power network base case contains <code>&lt;count&gt;</code> swing buses without explicit multi-island partitioning.                                                                                                                                           |
+| <span id="psse-p2004"></span>`P2004` | `voltage-out-of-bounds`                           | [warning] | Initial voltage magnitude at bus <code>&lt;busId&gt;</code> (<code>&lt;value&gt;</code> pu) is outside standard operational limits &#91;0.8, 1.2 pu&#93;.                                                                                                     |
+| <span id="psse-p2005"></span>`P2005` | `substation-voltage-violation-nerc`               | [warning] | Bus <code>&lt;busId&gt;</code> voltage magnitude (<code>&lt;value&gt;</code> pu) violates NERC standard transmission bounds &#91;0.90, 1.10 pu&#93;.                                                                                                          |
+| <span id="psse-p2006"></span>`P2006` | `type4-bus-with-inservice-equipment`              | [error]    | Isolated bus <code>&lt;busId&gt;</code> (IDE = 4) has in-service <code>&lt;equipDesc&gt;</code>, creating a TREE topology inconsistency.                                                                                                                      |
+| <span id="psse-p2007"></span>`P2007` | `pv-bus-without-online-reactive-source`           | [warning] | PV/Swing bus <code>&lt;busId&gt;</code> ('<code>&lt;busName&gt;</code>') has no in-service generator or regulating reactive source.                                                                                                                           |
+| <span id="psse-p2008"></span>`P2008` | `generator-on-pq-bus`                             | [warning] | In-service generator '<code>&lt;genId&gt;</code>' is attached to PQ bus <code>&lt;busId&gt;</code> (IDE = 1) and will not regulate voltage.                                                                                                                   |
+| <span id="psse-p2009"></span>`P2009` | `conflicting-remote-voltage-regulation`           | [warning] | Remote voltage regulation conflict at regulated bus <code>&lt;busId&gt;</code>: <code>&lt;reason&gt;</code>.                                                                                                                                                  |
+| <span id="psse-p3001"></span>`P3001` | `generator-reactive-limits-inverted`              | [error]    | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has inverted reactive limits: Qmin (<code>&lt;qMin&gt;</code> MVAR) &gt; Qmax (<code>&lt;qMax&gt;</code> MVAR).                                                                      |
+| <span id="psse-p3002"></span>`P3002` | `generator-power-limits-inverted`                 | [error]    | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has inverted active power limits: Pmin (<code>&lt;pMin&gt;</code> MW) &gt; Pmax (<code>&lt;pMax&gt;</code> MW).                                                                      |
+| <span id="psse-p3003"></span>`P3003` | `generator-scheduled-voltage-bounds`              | [warning] | Generator '<code>&lt;genId&gt;</code>' scheduled voltage Vs = <code>&lt;vs&gt;</code> p.u. is outside the typical operating band &#91;0.8, 1.2&#93;.                                                                                                          |
+| <span id="psse-p3004"></span>`P3004` | `zero-inertia-dynamic-bus`                        | [error]    | Synchronous machine dynamic record at bus <code>&lt;busId&gt;</code> specifies zero inertia constant (H &lt;= 0).                                                                                                                                             |
+| <span id="psse-p4001"></span>`P4001` | `branch-invalid-reactance`                        | [error]    | Transmission branch '<code>&lt;ckt&gt;</code>' between bus <code>&lt;fromBus&gt;</code> and <code>&lt;toBus&gt;</code> has zero or negative reactance X = <code>&lt;x&gt;</code> p.u.                                                                         |
+| <span id="psse-p4002"></span>`P4002` | `branch-base-kv-mismatch`                         | [warning] | Branch '<code>&lt;ckt&gt;</code>' connects bus <code>&lt;fromBus&gt;</code> (<code>&lt;fromKv&gt;</code> kV) to bus <code>&lt;toBus&gt;</code> (<code>&lt;toKv&gt;</code> kV) without a transformer.                                                          |
+| <span id="psse-p4003"></span>`P4003` | `transformer-tap-out-of-bounds`                   | [warning] | Transformer '<code>&lt;ckt&gt;</code>' between bus <code>&lt;fromBus&gt;</code> and <code>&lt;toBus&gt;</code> has off-nominal tap ratio <code>&lt;ratio&gt;</code> outside typical limits &#91;0.7, 1.3&#93;.                                                |
+| <span id="psse-p4004"></span>`P4004` | `branch-thermal-rating-zero`                      | [warning] | Transmission branch '<code>&lt;ckt&gt;</code>' between bus <code>&lt;fromBus&gt;</code> and <code>&lt;toBus&gt;</code> has zero MVA thermal rating.                                                                                                           |
+| <span id="psse-p4005"></span>`P4005` | `branch-extreme-impedance`                        | [warning] | Transmission branch '<code>&lt;ckt&gt;</code>' between bus <code>&lt;fromBus&gt;</code> and <code>&lt;toBus&gt;</code> has <code>&lt;detail&gt;</code>.                                                                                                       |
+| <span id="psse-p4006"></span>`P4006` | `branch-rating-hierarchy-inverted`                | [warning] | Branch '<code>&lt;ckt&gt;</code>' (<code>&lt;fromBus&gt;</code>-<code>&lt;toBus&gt;</code>) thermal ratings violate RATEA &lt;= RATEB &lt;= RATEC (<code>&lt;rateA&gt;</code>, <code>&lt;rateB&gt;</code>, <code>&lt;rateC&gt;</code>).                       |
+| <span id="psse-p4007"></span>`P4007` | `line-charging-mvar-vs-pu-confusion`              | [warning] | Branch '<code>&lt;ckt&gt;</code>' (<code>&lt;fromBus&gt;</code>-<code>&lt;toBus&gt;</code>) charging susceptance B = <code>&lt;b&gt;</code> p.u. is unusually large (&gt; 5.0); verify MVAR vs p.u. units.                                                    |
+| <span id="psse-p4008"></span>`P4008` | `transformer-cz-cw-cm-unit-mismatch`              | [warning] | Transformer '<code>&lt;ckt&gt;</code>' (<code>&lt;fromBus&gt;</code>-<code>&lt;toBus&gt;</code>) unit code mismatch: <code>&lt;detail&gt;</code>.                                                                                                             |
+| <span id="psse-p4009"></span>`P4009` | `three-winding-star-point-negative-reactance`     | [warning] | 3-winding transformer '<code>&lt;ckt&gt;</code>' (<code>&lt;i&gt;</code>-<code>&lt;j&gt;</code>-<code>&lt;k&gt;</code>) star-equivalent reactance <code>&lt;winding&gt;</code> = <code>&lt;value&gt;</code> p.u. is strongly negative.                        |
+| <span id="psse-p4010"></span>`P4010` | `switched-shunt-band-inverted`                    | [error]    | Switched shunt at bus <code>&lt;busId&gt;</code> has inverted voltage band: VSWLO (<code>&lt;vswlo&gt;</code>) &gt;= VSWHI (<code>&lt;vswhi&gt;</code>).                                                                                                      |
+| <span id="psse-p4011"></span>`P4011` | `zbr-closed-loop`                                 | [error]    | Zero-impedance branch '<code>&lt;ckt&gt;</code>' (<code>&lt;fromBus&gt;</code>-<code>&lt;toBus&gt;</code>) closes a zero-impedance loop, causing a singular nodal admittance matrix.                                                                          |
+| <span id="psse-p5001"></span>`P5001` | `dyr-param-count-schema-mismatch`                 | [warning] | Dynamic model '<code>&lt;model&gt;</code>' at Bus <code>&lt;busId&gt;</code> specifies <code>&lt;actual&gt;</code> CON parameters, expected <code>&lt;expected&gt;</code>.                                                                                    |
+| <span id="psse-p5002"></span>`P5002` | `dyr-duplicate-slot-assignment`                   | [error]    | Duplicate dynamic <code>&lt;category&gt;</code> model assigned to machine (<code>&lt;busId&gt;</code>, '<code>&lt;id&gt;</code>').                                                                                                                            |
+| <span id="psse-p5003"></span>`P5003` | `dyr-orphan-controller`                           | [warning] | Dynamic <code>&lt;category&gt;</code> '<code>&lt;model&gt;</code>' for (<code>&lt;busId&gt;</code>, '<code>&lt;id&gt;</code>') has no matching generator/IBR dynamic model.                                                                                   |
+| <span id="psse-p5004"></span>`P5004` | `dyr-online-gen-missing-dynamics`                 | [warning] | In-service generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> (Pg=<code>&lt;value&gt;</code> MW) has no dynamic model in .dyr.                                                                                                          |
+| <span id="psse-p5005"></span>`P5005` | `dyr-reactance-timeconstant-hierarchy`            | [error]    | Dynamic machine '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> violates physical parameter ordering: <code>&lt;detail&gt;</code>.                                                                                                             |
+| <span id="psse-p5006"></span>`P5006` | `dyr-raw-source-impedance-mismatch`               | [warning] | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> has RAW ZX=<code>&lt;value&gt;</code> p.u. vs DYR subtransient/transient reactance <code>&lt;value&gt;</code> p.u.                                                                   |
+| <span id="psse-p5007"></span>`P5007` | `seq-zero-negative-sequence-gaps`                 | [warning] | Sequence data (.seq) gap: <code>&lt;detail&gt;</code>.                                                                                                                                                                                                        |
+| <span id="psse-p5008"></span>`P5008` | `seq-transformer-vector-group-invalid`            | [warning] | Transformer (<code>&lt;iBus&gt;</code>-<code>&lt;jBus&gt;</code> CKT '<code>&lt;ckt&gt;</code>') zero-sequence connection invalid: <code>&lt;detail&gt;</code>.                                                                                               |
+| <span id="psse-p5009"></span>`P5009` | `con-target-not-found`                            | [warning] | Contingency '<code>&lt;contId&gt;</code>' references unresolved element: <code>&lt;detail&gt;</code>.                                                                                                                                                         |
+| <span id="psse-p5010"></span>`P5010` | `dyr-bus-not-found`                               | [error]    | DYR model '<code>&lt;model&gt;</code>' references bus <code>&lt;busId&gt;</code>, which does not exist in RAW case '<code>&lt;rawUri&gt;</code>'.                                                                                                             |
+| <span id="psse-p5011"></span>`P5011` | `dyr-machine-not-found`                           | [warning] | DYR model '<code>&lt;model&gt;</code>' references machine (<code>&lt;busId&gt;</code>, '<code>&lt;id&gt;</code>') not present in RAW generators.                                                                                                              |
+| <span id="psse-p5012"></span>`P5012` | `seq-bus-not-found`                               | [error]    | SEQ record references bus <code>&lt;busId&gt;</code>, which does not exist in RAW case '<code>&lt;rawUri&gt;</code>'.                                                                                                                                         |
+| <span id="psse-p5013"></span>`P5013` | `dyr-icon-invalid-value`                          | [error]    | Dynamic model '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> has invalid ICON '<code>&lt;iconName&gt;</code>' = <code>&lt;actual&gt;</code> (expected one of: <code>&lt;valid&gt;</code>).                                                    |
+| <span id="psse-p5014"></span>`P5014` | `dyr-con-physical-bounds`                         | [warning] | Dynamic model '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> parameter '<code>&lt;paramName&gt;</code>' = <code>&lt;actual&gt;</code> is outside expected physical bounds &#91;<code>&lt;min&gt;</code>, <code>&lt;max&gt;</code>&#93;.       |
+| <span id="psse-p5015"></span>`P5015` | `dyr-leadlag-ratio-extreme`                       | [warning] | Dynamic model '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> has extreme lead/lag ratio <code>&lt;tcName&gt;</code>/<code>&lt;tbName&gt;</code> = <code>&lt;value&gt;</code> (&gt; 25.0).                                                     |
+| <span id="psse-p5016"></span>`P5016` | `dyr-saturation-non-monotonic`                    | [error]    | Dynamic model '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> has non-monotonic saturation factors: S(1.0)=<code>&lt;s10&gt;</code>, S(1.2)=<code>&lt;s12&gt;</code>.                                                                          |
+| <span id="psse-p5017"></span>`P5017` | `dyr-composite-load-fraction-sum`                 | [error]    | Dynamic composite load '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> motor/electronic fractions sum to <code>&lt;value&gt;</code> (must be within &#91;0, 1.0&#93;).                                                                         |
+| <span id="psse-p5018"></span>`P5018` | `dyr-remote-bus-not-found`                        | [error]    | Dynamic model '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> ICON '<code>&lt;iconName&gt;</code>' references non-existent bus <code>&lt;remoteBus&gt;</code>.                                                                                 |
+| <span id="psse-p5019"></span>`P5019` | `dyr-hvdc-facts-link-not-found`                   | [error]    | Dynamic HVDC/FACTS model '<code>&lt;model&gt;</code>' references '<code>&lt;deviceName&gt;</code>', which is not declared in .raw DC/FACTS sections.                                                                                                          |
+| <span id="psse-p5020"></span>`P5020` | `dyr-usrmdl-unmapped-custom`                      | [info]       | User-defined USRMDL '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> is not a standard built-in alias; attach an AssemblyScript/FMU/DLL module for active stepping.                                                                             |
+| <span id="psse-p5021"></span>`P5021` | `dyr-time-constant-step-underflow`                | [warning] | Dynamic model '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> has time constant '<code>&lt;paramName&gt;</code>' = <code>&lt;valueSec&gt;</code> s &lt; <code>&lt;value&gt;</code> ms, risking numerical chatter in PSS/E dynamic integration. |
+| <span id="psse-p5022"></span>`P5022` | `mon-sub-target-not-found`                        | [warning] | PSS/E <code>&lt;fileKind&gt;</code> file references unresolved or invalid target: <code>&lt;detail&gt;</code>.                                                                                                                                                |
+| <span id="psse-p5101"></span>`P5101` | `seq-generator-reactance-invalid`                 | [warning] | Generator '<code>&lt;genId&gt;</code>' at Bus <code>&lt;busId&gt;</code> has non-positive sequence reactance (ZX1=<code>&lt;zxpos&gt;</code>, ZX2=<code>&lt;zxneg&gt;</code>, ZX0=<code>&lt;zx0&gt;</code>).                                                  |
+| <span id="psse-p5102"></span>`P5102` | `seq-branch-zero-impedance`                       | [warning] | Branch <code>&lt;iBus&gt;</code>-<code>&lt;jBus&gt;</code> ('<code>&lt;ckt&gt;</code>') has zero zero-sequence impedance (R0=0, X0=0).                                                                                                                        |
+| <span id="psse-p5103"></span>`P5103` | `seq-transformer-cc-invalid`                      | [error]    | Transformer <code>&lt;iBus&gt;</code>-<code>&lt;jBus&gt;</code> specifies invalid zero-sequence connection code CC=<code>&lt;cc&gt;</code> (expected 1..22).                                                                                                  |
+| <span id="psse-p6001"></span>`P6001` | `unanchored-energized-island`                     | [error]    | Energized network island (<code>&lt;islandSize&gt;</code> bus(es), including bus <code>&lt;sampleBus&gt;</code>) contains no swing/slack bus (IDE = 3).                                                                                                       |
+| <span id="psse-p6002"></span>`P6002` | `single-branch-cut-bridge`                        | [info]       | <code>&lt;kind&gt;</code> '<code>&lt;ckt&gt;</code>' (<code>&lt;fromBus&gt;</code>-<code>&lt;toBus&gt;</code>) is a topological N-1 cut bridge; its outage islands <code>&lt;value&gt;</code> MW of generation/load.                                          |
+| <span id="psse-p6003"></span>`P6003` | `pocket-short-circuit-ratio-weak-ibr`             | [warning] | IBR POI bus <code>&lt;busId&gt;</code> has low driving-point Short-Circuit Ratio (SCR = <code>&lt;value&gt;</code> &lt; 1.5; S_sc = <code>&lt;value&gt;</code> MVA for <code>&lt;value&gt;</code> MVA IBR).                                                   |
+| <span id="psse-p6004"></span>`P6004` | `jacobian-high-condition-number-voltage-collapse` | [warning] | Reduced Q-V Jacobian indicates proximity to voltage collapse (min eigenvalue &#92;u03C3_min=<code>&lt;value&gt;</code>, max dV/dQ=<code>&lt;value&gt;</code> pu/pu at bus <code>&lt;weakestBus&gt;</code>).                                                   |
+| <span id="psse-p6005"></span>`P6005` | `dae-structural-singularity-or-high-index`        | [error]    | Lowered PSS/E DAE system is structurally singular or high-index (<code>&lt;varCount&gt;</code> variables vs <code>&lt;eqCount&gt;</code> equations): <code>&lt;detail&gt;</code>.                                                                             |
+| <span id="psse-p6006"></span>`P6006` | `poorly-damped-interarea-or-local-mode`           | [warning] | Small-signal eigenvalue check detected <code>&lt;unstableCount&gt;</code> unstable / poorly damped mode(s) (min damping &#92;u03B6=<code>&lt;value&gt;</code>% at <code>&lt;value&gt;</code> Hz, dominant: <code>&lt;machine&gt;</code>).                     |
+| <span id="psse-p7001"></span>`P7001` | `dyr-initial-condition-limit-violation`           | [warning] | INITIAL CONDITIONS SUSPECT for generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code>: <code>&lt;reason&gt;</code>.                                                                                                                         |
+| <span id="psse-p7002"></span>`P7002` | `generator-d-curve-reactive-infeasibility`        | [warning] | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> violates nameplate capability envelope: <code>&lt;detail&gt;</code>.                                                                                                                 |
+| <span id="psse-p7003"></span>`P7003` | `powerflow-unsolvable-pocket-certificate`         | [error]    | Load pocket at bus <code>&lt;busId&gt;</code> requires <code>&lt;value&gt;</code> MVA, exceeding theoretical static transfer capacity (<code>&lt;value&gt;</code> MVA) across incident lines.                                                                 |
+| <span id="psse-p7004"></span>`P7004` | `ibr-control-priority-conflict`                   | [error]    | IBR control model '<code>&lt;model&gt;</code>' at bus <code>&lt;busId&gt;</code> has conflicting limit/deadband settings: <code>&lt;detail&gt;</code>.                                                                                                        |
+| <span id="psse-p7005"></span>`P7005` | `idv-psspy-script-mutation-hazards`               | [warning] | PSS/E IDV script hazard at line <code>&lt;lineNo&gt;</code> (<code>&lt;cmd&gt;</code>): <code>&lt;detail&gt;</code>.                                                                                                                                          |
+| <span id="psse-p8001"></span>`P8001` | `ras-sps-chattering-or-race-condition`            | [error]    | Formal BMC/SAT check proved contradictory RAS/SPS race on '<code>&lt;target&gt;</code>': '<code>&lt;schemeA&gt;</code>' and '<code>&lt;schemeB&gt;</code>' can trigger opposing actions simultaneously.                                                       |
+| <span id="psse-p8002"></span>`P8002` | `transient-critical-clearing-barrier-violation`   | [warning] | Generator '<code>&lt;genId&gt;</code>' at bus <code>&lt;busId&gt;</code> critical clearing time (<code>&lt;value&gt;</code> ms) &lt; clearing time (<code>&lt;value&gt;</code> ms); post-fault swing breaches Lyapunov/SOS barrier.                           |
+| <span id="psse-p8003"></span>`P8003` | `frequency-nadir-ufls-reachability`               | [warning] | Zonotope reachability proves largest contingency loss (<code>&lt;value&gt;</code> MW, H_eq=<code>&lt;value&gt;</code> s) can drive frequency nadir to <code>&lt;value&gt;</code> Hz &lt;= UFLS stage (<code>&lt;value&gt;</code> Hz).                         |
+| <span id="psse-p8004"></span>`P8004` | `nerc-prc-voltage-frequency-stl-robustness`       | [warning] | NERC PRC-024/029 STL specification violated on '<code>&lt;signal&gt;</code>' (robustness &#92;u03C1=<code>&lt;value&gt;</code> at t=<code>&lt;value&gt;</code> s).                                                                                            |
+| <span id="psse-p8005"></span>`P8005` | `nerc-mod032-ontology-violation`                  | [warning] | Formal ontology compliance gap for <code>&lt;entityDesc&gt;</code>: <code>&lt;axiomDetail&gt;</code>.                                                                                                                                                         |
+| <span id="psse-p8006"></span>`P8006` | `discrete-control-zeno-chattering`                | [error]    | Hybrid mode verifier detected discrete control chattering/overlap on <code>&lt;elementDesc&gt;</code>: <code>&lt;detail&gt;</code>.                                                                                                                           |
+| <span id="psse-p8007"></span>`P8007` | `ras-unbounded-ic3-violation`                     | [error]    | IC3/PDR unbounded safety proof failed for RAS/SPS transition system '<code>&lt;schemeDesc&gt;</code>' at depth <code>&lt;depth&gt;</code>; conflicting trip/close state is reachable.                                                                         |
+| <span id="psse-p8008"></span>`P8008` | `powerflow-nlsat-insolvable`                      | [error]    | NLSAT exact algebraic proof certified power-flow insolvability at bus <code>&lt;busId&gt;</code>: <code>&lt;detail&gt;</code>.                                                                                                                                |
+| <span id="psse-p8009"></span>`P8009` | `stochastic-renewable-barrier-risk`               | [warning] | Stochastic martingale barrier estimates <code>&lt;value&gt;</code>% probability of frequency/voltage limit breach under renewable uncertainty (tolerance <code>&lt;value&gt;</code>%).                                                                        |
+| <span id="psse-p8010"></span>`P8010` | `polyglot-parameter-drift`                        | [warning] | Cross-language parameter drift detected for '<code>&lt;component&gt;</code>.<code>&lt;param&gt;</code>' (<code>&lt;value&gt;</code>% relative discrepancy across models).                                                                                     |
 
 ## DIgSILENT PowerFactory {#powerfactory}
 
@@ -24720,7 +24843,7 @@ The official ModelScript extension (`modelscript.modelscript`, source in `apps/i
 
 ### 1. Polyglot Language Server (`@modelscript/lsp`)
 
-A single unified Language Server Protocol instance provides incremental language intelligence across all 92 registered languages (`.mo`, `.sysml`, `.kerml`, `.msx`, `.mod`, `.pscx`, `.pswx`, `.raw`, `.dyr`, `.dsl`, `.dgs`, `.epc`, `.dyd`, `.dss`, `.ocpp`, `.oadr`, `.opt`, `.ran`, `.fbr`, `.inp`, `.ras`, `.tough`, `.nam`, `.lgm`, `.gtfs`, `.scad`, `.stp`, `.step`, `.usda`, `.owl`, `.ssp`, `.ssd`, `.ssv`, `.csv`, `.su2`, `.cfg`, `.gbr`, `.qif`, `.oscal.json`, `.aml`, `.osim`, `.rtplan`, `.cellml`, `.mlxtran`, `.3mf`, `.igtl`, and more):
+A single unified Language Server Protocol instance provides incremental language intelligence across all 93 registered languages (`.mo`, `.sysml`, `.kerml`, `.msx`, `.mod`, `.pscx`, `.pswx`, `.raw`, `.dyr`, `.dsl`, `.dgs`, `.epc`, `.dyd`, `.dss`, `.ocpp`, `.oadr`, `.opt`, `.ran`, `.fbr`, `.inp`, `.ras`, `.tough`, `.nam`, `.lgm`, `.gtfs`, `.scad`, `.stp`, `.step`, `.usda`, `.owl`, `.ssp`, `.ssd`, `.ssv`, `.csv`, `.su2`, `.cfg`, `.gbr`, `.qif`, `.oscal.json`, `.aml`, `.osim`, `.rtplan`, `.cellml`, `.mlxtran`, `.3mf`, `.igtl`, and more):
 
 - **Real-Time Diagnostics**: Incremental GLR parsing + Salsa `lint__*` queries + cross-file unit/type checking across 1,160 static diagnostic rules.
 - **Navigation & Refactoring**: Go-to-Definition, Find All References (across `.sysml` $\leftrightarrow$ `.mo` $\leftrightarrow$ `.msx` boundaries), Workspace Symbol Search, Rename Symbol, and Document Outline.

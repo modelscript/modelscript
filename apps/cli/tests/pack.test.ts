@@ -24,16 +24,8 @@ describe("msx pack & local archive install CLI commands", () => {
 
     // Setup sample package
     writeFileSync(
-      path.join(pkgDir, "package.json"),
-      JSON.stringify(
-        {
-          name: "offline-pkg",
-          version: "1.0.0",
-          description: "Offline package for testing msx pack",
-        },
-        null,
-        2,
-      ),
+      path.join(pkgDir, "modelscript.yaml"),
+      ["name: offline-pkg", 'version: "1.0.0"', 'description: "Offline package for testing msx pack"', ""].join("\n"),
     );
     writeFileSync(path.join(pkgDir, "package.mo"), "package offline_pkg\nend offline_pkg;\n");
     writeFileSync(path.join(pkgDir, ".env"), "SECRET_KEY=leaked_secret");
@@ -42,22 +34,15 @@ describe("msx pack & local archive install CLI commands", () => {
 
     // Setup scoped package
     writeFileSync(
-      path.join(scopedPkgDir, "package.json"),
-      JSON.stringify(
-        {
-          name: "@flight/autopilot",
-          version: "2.1.0",
-        },
-        null,
-        2,
-      ),
+      path.join(scopedPkgDir, "modelscript.yaml"),
+      ['name: "@flight/autopilot"', 'version: "2.1.0"', ""].join("\n"),
     );
     writeFileSync(path.join(scopedPkgDir, "package.mo"), "package autopilot\nend autopilot;\n");
 
     // Setup consumer project
     writeFileSync(
-      path.join(consumerDir, "package.json"),
-      JSON.stringify({ name: "consumer-app", dependencies: {} }, null, 2),
+      path.join(consumerDir, "modelscript.yaml"),
+      ["name: consumer-app", 'version: "0.1.0"', "dependencies: {}", ""].join("\n"),
     );
   });
 
@@ -102,7 +87,7 @@ describe("msx pack & local archive install CLI commands", () => {
       const zip = new AdmZip(archivePath);
       const entryNames = zip.getEntries().map((e) => e.entryName);
 
-      assert.ok(entryNames.includes("package.json"));
+      assert.ok(entryNames.includes("modelscript.yaml"));
       assert.ok(entryNames.includes("package.mo"));
       assert.ok(entryNames.includes("src/Model.mo"));
       assert.ok(!entryNames.includes(".env"), ".env must be excluded from archive");
@@ -125,14 +110,14 @@ describe("msx pack & local archive install CLI commands", () => {
 
       const zip = new AdmZip(archivePath);
       const entryNames = zip.getEntries().map((e) => e.entryName);
-      assert.ok(entryNames.includes("package.json"));
+      assert.ok(entryNames.includes("modelscript.yaml"));
       assert.ok(entryNames.includes("package.mo"));
     } finally {
       process.chdir(originalCwd);
     }
   });
 
-  test("msx install installs from local archive and updates package.json", async () => {
+  test("msx install installs from local archive and updates modelscript.yaml", async () => {
     const originalCwd = process.cwd();
     process.chdir(consumerDir);
     try {
@@ -143,16 +128,16 @@ describe("msx pack & local archive install CLI commands", () => {
         save: true,
       });
 
-      // Verify files installed in libraries/offline-pkg
-      const installedPkgMo = path.join(consumerDir, "libraries", "offline-pkg", "package.mo");
-      const installedModelMo = path.join(consumerDir, "libraries", "offline-pkg", "src", "Model.mo");
+      // Verify files installed in .modelscript/packages/offline-pkg
+      const installedPkgMo = path.join(consumerDir, ".modelscript", "packages", "offline-pkg", "package.mo");
+      const installedModelMo = path.join(consumerDir, ".modelscript", "packages", "offline-pkg", "src", "Model.mo");
       assert.ok(existsSync(installedPkgMo));
       assert.ok(existsSync(installedModelMo));
 
-      // Verify package.json updated with file: dependency
-      const consumerPkgJson = JSON.parse(readFileSync(path.join(consumerDir, "package.json"), "utf-8"));
-      assert.ok(consumerPkgJson.dependencies["offline-pkg"]);
-      assert.ok(consumerPkgJson.dependencies["offline-pkg"].startsWith("file:"));
+      // Verify modelscript.yaml updated with file: dependency
+      const manifestRaw = readFileSync(path.join(consumerDir, "modelscript.yaml"), "utf-8");
+      assert.ok(manifestRaw.includes("offline-pkg"));
+      assert.ok(manifestRaw.includes("file:"));
     } finally {
       process.chdir(originalCwd);
     }
@@ -169,32 +154,32 @@ describe("msx pack & local archive install CLI commands", () => {
         save: true,
       });
 
-      // Verify files installed in libraries/@flight__autopilot
-      const installedPkgMo = path.join(consumerDir, "libraries", "@flight__autopilot", "package.mo");
+      // Verify files installed in .modelscript/packages/@flight/autopilot
+      const installedPkgMo = path.join(consumerDir, ".modelscript", "packages", "@flight", "autopilot", "package.mo");
       assert.ok(existsSync(installedPkgMo));
 
-      const consumerPkgJson = JSON.parse(readFileSync(path.join(consumerDir, "package.json"), "utf-8"));
-      assert.ok(consumerPkgJson.dependencies["@flight/autopilot"]);
-      assert.ok(consumerPkgJson.dependencies["@flight/autopilot"].startsWith("file:"));
+      const manifestRaw = readFileSync(path.join(consumerDir, "modelscript.yaml"), "utf-8");
+      assert.ok(manifestRaw.includes("@flight/autopilot"));
+      assert.ok(manifestRaw.includes("file:"));
     } finally {
       process.chdir(originalCwd);
     }
   });
 
-  test("msx install resolves file: dependencies from package.json", async () => {
+  test("msx install resolves file: dependencies from modelscript.yaml", async () => {
     const originalCwd = process.cwd();
     process.chdir(consumerDir);
     try {
-      // Remove libraries directory
-      rmSync(path.join(consumerDir, "libraries"), { recursive: true, force: true });
-      assert.ok(!existsSync(path.join(consumerDir, "libraries")));
+      // Remove .modelscript/packages directory
+      rmSync(path.join(consumerDir, ".modelscript", "packages"), { recursive: true, force: true });
+      assert.ok(!existsSync(path.join(consumerDir, ".modelscript", "packages")));
 
-      // Run msx install with no arguments (reads package.json)
+      // Run msx install with no arguments (reads modelscript.yaml)
       await (Install.handler as any)({});
 
       // Verify both packages were reinstalled
-      assert.ok(existsSync(path.join(consumerDir, "libraries", "offline-pkg", "package.mo")));
-      assert.ok(existsSync(path.join(consumerDir, "libraries", "@flight__autopilot", "package.mo")));
+      assert.ok(existsSync(path.join(consumerDir, ".modelscript", "packages", "offline-pkg", "package.mo")));
+      assert.ok(existsSync(path.join(consumerDir, ".modelscript", "packages", "@flight", "autopilot", "package.mo")));
     } finally {
       process.chdir(originalCwd);
     }

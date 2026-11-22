@@ -43,6 +43,10 @@ export * from "../src/wasm/formal/sat";
 export * from "../src/wasm/formal/simplex";
 export * from "../src/wasm/formal/sturm";
 export * from "../src/wasm/formal/zonotope";
+export * from "../src/wasm/formal/hc4";
+export * from "../src/wasm/analysis/egraph";
+export * from "../src/wasm/analysis/sbg_core";
+export * from "../src/wasm/analysis/taylor_model";
 export * from "../src/wasm/solvers/wasm_emt";
 export * from "../src/wasm/structural/emt_partitioner";
 export {

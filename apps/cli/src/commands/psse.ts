@@ -174,6 +174,15 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
       .option("dyr", {
         description: "Companion PSS/E .dyr dynamic data file",
         type: "string",
+      })
+      .option("formal", {
+        description: "Enable deep formal verification lints (SMT PRC-024, NLSAT collapse, SOS CCT, proof manifest)",
+        type: "boolean",
+        default: false,
+      })
+      .option("manifest", {
+        description: "Optional output path for JSON formal proof manifest",
+        type: "string",
       });
   },
   handler: async (argv) => {
@@ -657,8 +666,31 @@ export const PsseCommand: CommandModule<Record<string, unknown>, Record<string, 
 
       switch (action) {
         case "lint": {
-          console.log(`[psse] Linting ${path.basename(file)}...`);
-          const diags = lintPsse(parsed);
+          const formal = Boolean(argv["formal"]);
+          const dyrPath = argv["dyr"] as string | undefined;
+          if (dyrPath && fs.existsSync(dyrPath)) {
+            parsed.dyr = parseDyr(fs.readFileSync(dyrPath, "utf-8"));
+          }
+          console.log(`[psse] Linting ${path.basename(file)}${formal ? " (formal verification tier)" : ""}...`);
+          const diags = lintPsse(parsed, { tier: formal ? "formal" : "deep" });
+          const manifestPath = argv["manifest"] as string | undefined;
+          if (manifestPath) {
+            fs.writeFileSync(
+              manifestPath,
+              JSON.stringify(
+                {
+                  file: path.basename(file),
+                  tier: formal ? "formal" : "deep",
+                  diagnosticCount: diags.length,
+                  diagnostics: diags,
+                },
+                null,
+                2,
+              ),
+              "utf-8",
+            );
+            console.log(`  Wrote verification manifest to ${manifestPath}`);
+          }
           if (diags.length === 0) {
             console.log("  ✔ No electrical or parameter diagnostics found.");
           } else {

@@ -172,8 +172,22 @@ function formatQualifiedIntArgCallFromCst(
   return rawCall && stmtText.includes(rawCall) ? stmtText.replace(rawCall, formattedFn) : stmtText;
 }
 
+const commandLineOptionCstCache = new WeakMap<object, Map<string, boolean>>();
+
 function hasCommandLineOptionInCst(rootNode: CstNodeLike | null | undefined, optionName: string): boolean {
   if (!rootNode) return false;
+  let byOpt = commandLineOptionCstCache.get(rootNode as object);
+  const cached = byOpt?.get(optionName);
+  if (cached !== undefined) return cached;
+  if (rootNode.text && !rootNode.text.includes(optionName)) {
+    if (!byOpt) {
+      byOpt = new Map();
+      commandLineOptionCstCache.set(rootNode as object, byOpt);
+    }
+    byOpt.set(optionName, false);
+    return false;
+  }
+  let found = false;
   const stack: CstNodeLike[] = [rootNode];
   while (stack.length > 0) {
     const cur = stack.pop();
@@ -192,7 +206,8 @@ function hasCommandLineOptionInCst(rootNode: CstNodeLike | null | undefined, opt
               mNode.childForFieldName?.("modification") ??
               (mNode.children || []).find((c) => c.type === "modification");
             if (modNode?.text?.includes(optionName)) {
-              return true;
+              found = true;
+              break;
             }
           }
         }
@@ -200,6 +215,7 @@ function hasCommandLineOptionInCst(rootNode: CstNodeLike | null | undefined, opt
           modStack.push(ch);
         }
       }
+      if (found) break;
       continue;
     }
     const children = cur.children || [];
@@ -207,7 +223,12 @@ function hasCommandLineOptionInCst(rootNode: CstNodeLike | null | undefined, opt
       if (children[i]) stack.push(children[i]!);
     }
   }
-  return false;
+  if (!byOpt) {
+    byOpt = new Map();
+    commandLineOptionCstCache.set(rootNode as object, byOpt);
+  }
+  byOpt.set(optionName, found);
+  return found;
 }
 
 const connectPairCache = new Map<string, [string, string] | null>();
@@ -3968,29 +3989,33 @@ export function extractClassEquations(
 
               // Validate `reinit(v, expr)`: forbidden inside algorithm sections by MLS §12.2
               // unless `--allowNonStandardModelica=reinitInAlgorithms` is active.
-              const sText = (sNode.text ?? "").trim();
-              let rootP: any = sNode;
-              while (rootP?.parent) rootP = rootP.parent;
-              const allowsReinitInAlg =
-                dae.extensionMetadata?.["isOldFrontend"] ||
-                (flattener.options as any)?.allowNonStandardModelica?.includes("reinitInAlgorithms") ||
-                hasCommandLineOptionInCst(rootP, "reinitInAlgorithms");
-              if (isReinitCallNode(sNode) && !allowsReinitInAlg) {
-                let startB = sNode.startIndex ?? sNode.startOffset;
-                let endB = sNode.endIndex ?? sNode.endOffset;
-                if (endB != null && sText.endsWith(";")) endB -= 1;
-                dae.diagnostics.push({
-                  severity: "error",
-                  code: ModelicaErrorCode.REINIT_IN_ALGORITHM.code,
-                  message: ModelicaErrorCode.REINIT_IN_ALGORITHM.message(),
-                  range: {
-                    startOffset: startB,
-                    endOffset: endB,
-                    startPosition: sNode.startPosition,
-                    endPosition: sNode.endPosition,
-                  },
-                });
-                return;
+              if (isReinitCallNode(sNode)) {
+                const sText = (sNode.text ?? "").trim();
+                let allowsReinitInAlg =
+                  Boolean(dae.extensionMetadata?.["isOldFrontend"]) ||
+                  Boolean((flattener.options as any)?.allowNonStandardModelica?.includes("reinitInAlgorithms"));
+                if (!allowsReinitInAlg) {
+                  let rootP: any = sNode;
+                  while (rootP?.parent) rootP = rootP.parent;
+                  allowsReinitInAlg = hasCommandLineOptionInCst(rootP, "reinitInAlgorithms");
+                }
+                if (!allowsReinitInAlg) {
+                  let startB = sNode.startIndex ?? sNode.startOffset;
+                  let endB = sNode.endIndex ?? sNode.endOffset;
+                  if (endB != null && sText.endsWith(";")) endB -= 1;
+                  dae.diagnostics.push({
+                    severity: "error",
+                    code: ModelicaErrorCode.REINIT_IN_ALGORITHM.code,
+                    message: ModelicaErrorCode.REINIT_IN_ALGORITHM.message(),
+                    range: {
+                      startOffset: startB,
+                      endOffset: endB,
+                      startPosition: sNode.startPosition,
+                      endPosition: sNode.endPosition,
+                    },
+                  });
+                  return;
+                }
               }
 
               // Handle wrapper `statement` nodes: either multi-output tuple assignments

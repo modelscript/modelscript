@@ -34,7 +34,7 @@ Practicing engineers in automotive, aerospace, energy, defense, and biomedical s
 ├────────────────────┼─────────────────────────────┼─────────────────────┤
 │ Interoperability   │ Isolated disciplinary silos │ Cross-domain Salsa  │
 │                    │ bridged only by static      │ hypergraph linking  │
-│                    │ PowerPoint screenshots      │ 92 format parsers   │
+│                    │ PowerPoint screenshots      │ 93 format parsers   │
 └────────────────────┴─────────────────────────────┴─────────────────────┘
 ```
 

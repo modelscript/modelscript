@@ -15,6 +15,7 @@ import {
   evalRawSubscriptIndex,
   evaluateArenaExpression,
   evaluateArenaRuntime,
+  isArenaObject,
   splitTopLevelIndices,
   type ArenaValue,
 } from "./wasm_evaluator.js";
@@ -1351,7 +1352,25 @@ export function executeArenaCEvalStatements(
               }
             } else {
               env.set(name, value);
-              if (Array.isArray(value) && !name.includes(".")) {
+              if (isArenaObject(value)) {
+                const setObjFields = (pfx: string, obj: ArenaValue): void => {
+                  if (isArenaObject(obj)) {
+                    for (const [fk, fv] of obj.fields.entries()) {
+                      env.set(`${pfx}.${fk}`, fv);
+                      setObjFields(`${pfx}.${fk}`, fv);
+                    }
+                  }
+                };
+                setObjFields(name, value);
+              } else if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+                for (const [fk, fv] of Object.entries(value as Record<string, ArenaValue>)) {
+                  env.set(`${name}.${fk}`, fv);
+                }
+              } else if (Array.isArray(value) && (value as any).__fields instanceof Map) {
+                for (const [fk, fv] of ((value as any).__fields as Map<string, ArenaValue>).entries()) {
+                  env.set(`${name}.${fk}`, fv);
+                }
+              } else if (Array.isArray(value) && !name.includes(".")) {
                 const prefixDot = `${name}.`;
                 const existingFieldKeys: string[] = [];
                 for (const k of env.keys()) {
@@ -2148,12 +2167,28 @@ export function evaluateArenaFunctionCall(
     }
 
     let inputIndex = 0;
+    let hasScalarizedInputs = false;
+    for (let i = 0; i < funcArena.varCount; i++) {
+      if (
+        !funcArena.isVarRemoved(i) &&
+        funcArena.getVarCausality(i) === 1 /* Input */ &&
+        funcArena.getVarName(i).includes("[")
+      ) {
+        hasScalarizedInputs = true;
+        break;
+      }
+    }
     const unprovidedInputs: {
       name: string;
       varIdx: number;
       exprId: number;
       defaultVal: ArenaValue;
       deps: Set<string>;
+    }[] = [];
+    const deferredNonInputs: {
+      name: string;
+      startExprId: number;
+      varCtorArena: DAEBuilder | undefined;
     }[] = [];
 
     for (let i = 0; i < funcArena.varCount; i++) {
@@ -2198,8 +2233,8 @@ export function evaluateArenaFunctionCall(
 
       if (causality === 1 /* Input */) {
         let val: ArenaValue | undefined;
-        if (argValues.length === expectedInputsCount) {
-          val = argValues[inputIndex++];
+        if (argValues.length === expectedInputsCount || !hasScalarizedInputs) {
+          val = inputIndex < argValues.length ? argValues[inputIndex++] : undefined;
         } else {
           if (flatArgs.length === 0) {
             const flattenArg = (val2: ArenaValue): void => {
@@ -2213,10 +2248,78 @@ export function evaluateArenaFunctionCall(
           }
         }
 
+        const initRecordFields = (prefix: string, customType: string, depth = 0): ArenaValue[] | null => {
+          if (depth > 8) return null;
+          const ctorArena = lookupRecordConstructorArena(funcArena, customType, dae);
+          if (!ctorArena) return null;
+          const recFields: ArenaValue[] = [];
+          for (let vi = 0; vi < ctorArena.varCount; vi++) {
+            if (!ctorArena.isVarRemoved(vi) && ctorArena.getVarCausality(vi) === 1 /* Input */) {
+              const fName = ctorArena.getVarName(vi);
+              const fFull = `${prefix}.${fName}`;
+              const fType = ctorArena.getVarType(vi);
+              const fCustom = ctorArena.getVarCustomType(vi);
+              const fShape = ctorArena.getVarShape(vi);
+              let fDefault: ArenaValue = fType === VarType.Boolean ? false : fType === VarType.String ? "" : 0.0;
+              if (fCustom && (!fShape || fShape.length === 0)) {
+                const nested = initRecordFields(fFull, fCustom, depth + 1);
+                if (nested) fDefault = nested;
+              }
+              const fExprId = ctorArena.getVarExpression(vi) as number | undefined;
+              if (typeof fExprId === "number" && fExprId !== -1) {
+                const fEval = evaluateArenaExpression(
+                  ctorArena,
+                  fExprId,
+                  env,
+                  db,
+                  scopeId,
+                  undefined,
+                  false,
+                  functionLookup,
+                  dae,
+                  instancePrefix,
+                );
+                if (fEval !== null && fEval !== undefined) {
+                  fDefault = fEval;
+                }
+              }
+              env.set(fFull, fDefault);
+              recFields.push(fDefault);
+            }
+          }
+          return recFields.length > 0 ? recFields : null;
+        };
+
+        const populateRecordVal = (pfx: string, recVal: ArenaValue): void => {
+          if (isArenaObject(recVal)) {
+            for (const [fk, fv] of recVal.fields.entries()) {
+              const fullKey = `${pfx}.${fk}`;
+              env.set(fullKey, fv);
+              populateRecordVal(fullKey, fv);
+            }
+          } else if (recVal !== null && typeof recVal === "object" && !Array.isArray(recVal)) {
+            for (const [fk, fv] of Object.entries(recVal as Record<string, ArenaValue>)) {
+              const fullKey = `${pfx}.${fk}`;
+              env.set(fullKey, fv);
+              populateRecordVal(fullKey, fv);
+            }
+          } else if (Array.isArray(recVal) && (recVal as any).__fields instanceof Map) {
+            for (const [fk, fv] of ((recVal as any).__fields as Map<string, ArenaValue>).entries()) {
+              env.set(`${pfx}.${fk}`, fv);
+            }
+          }
+        };
+
         if (val !== undefined) {
           env.set(name, val);
           const customType = funcArena.getVarCustomType(i);
-          if (Array.isArray(val) && customType && (!shape || shape.length === 0)) {
+          if (
+            isArenaObject(val) ||
+            (val !== null && typeof val === "object" && !Array.isArray(val)) ||
+            (Array.isArray(val) && (val as any).__fields instanceof Map)
+          ) {
+            populateRecordVal(name, val);
+          } else if (Array.isArray(val) && customType && (!shape || shape.length === 0)) {
             const ctorArena = lookupRecordConstructorArena(funcArena, customType, dae);
             if (ctorArena) {
               let fIdx = 0;
@@ -2235,6 +2338,11 @@ export function evaluateArenaFunctionCall(
           collectExprVarNames(funcArena, startExprId, deps);
           unprovidedInputs.push({ name, varIdx: i, exprId: startExprId, defaultVal, deps });
         } else {
+          const customType = funcArena.getVarCustomType(i);
+          if (customType && (!shape || shape.length === 0) && (!shapeExprs || shapeExprs.length === 0)) {
+            const recFields = initRecordFields(name, customType);
+            if (recFields) defaultVal = recFields;
+          }
           env.set(name, defaultVal);
         }
       } else {
@@ -2244,13 +2352,51 @@ export function evaluateArenaFunctionCall(
           varCustomType && (!shape || shape.length === 0) && (!shapeExprs || shapeExprs.length === 0)
             ? lookupRecordConstructorArena(funcArena, varCustomType, dae)
             : undefined;
-        if (varCtorArena) {
-          for (let vi = 0; vi < varCtorArena.varCount; vi++) {
-            if (!varCtorArena.isVarRemoved(vi) && varCtorArena.getVarCausality(vi) === 1 /* Input */) {
-              const fType = varCtorArena.getVarType(vi);
-              const fDefault: ArenaValue = fType === VarType.Boolean ? false : fType === VarType.String ? "" : 0.0;
-              env.set(`${name}.${varCtorArena.getVarName(vi)}`, fDefault);
+        if (varCtorArena && varCustomType) {
+          const initRec = (prefix: string, cType: string, depth = 0): ArenaValue[] | null => {
+            if (depth > 8) return null;
+            const cArena = lookupRecordConstructorArena(funcArena, cType, dae);
+            if (!cArena) return null;
+            const recFields: ArenaValue[] = [];
+            for (let vi = 0; vi < cArena.varCount; vi++) {
+              if (!cArena.isVarRemoved(vi) && cArena.getVarCausality(vi) === 1 /* Input */) {
+                const fName = cArena.getVarName(vi);
+                const fFull = `${prefix}.${fName}`;
+                const fType = cArena.getVarType(vi);
+                const fCustom = cArena.getVarCustomType(vi);
+                const fShape = cArena.getVarShape(vi);
+                let fDefault: ArenaValue = fType === VarType.Boolean ? false : fType === VarType.String ? "" : 0.0;
+                if (fCustom && (!fShape || fShape.length === 0)) {
+                  const nested = initRec(fFull, fCustom, depth + 1);
+                  if (nested) fDefault = nested;
+                }
+                const fExprId = cArena.getVarExpression(vi) as number | undefined;
+                if (typeof fExprId === "number" && fExprId !== -1) {
+                  const fEval = evaluateArenaExpression(
+                    cArena,
+                    fExprId,
+                    env,
+                    db,
+                    scopeId,
+                    undefined,
+                    false,
+                    functionLookup,
+                    dae,
+                    instancePrefix,
+                  );
+                  if (fEval !== null && fEval !== undefined) {
+                    fDefault = fEval;
+                  }
+                }
+                env.set(fFull, fDefault);
+                recFields.push(fDefault);
+              }
             }
+            return recFields.length > 0 ? recFields : null;
+          };
+          const recFields = initRec(name, varCustomType);
+          if (recFields) {
+            defaultVal = recFields;
           }
         }
         if (typeof startExprId === "number" && startExprId !== -1) {
@@ -2296,13 +2442,16 @@ export function evaluateArenaFunctionCall(
             }
           } else if (isSelfCall) {
             env.set(name, defaultVal);
+          } else if (unprovidedInputs.length > 0) {
+            deferredNonInputs.push({ name, startExprId, varCtorArena });
           }
         } else {
           if (
             causality === 2 /* Output */ &&
             funcArena.stmtCount === 0 &&
             !funcArena.externalDecl &&
-            !funcArena.description?.includes("record constructor")
+            !funcArena.description?.includes("record constructor") &&
+            !(funcArena as any).recordVarFieldExprs?.has(name)
           ) {
             return null;
           }
@@ -2356,7 +2505,25 @@ export function evaluateArenaFunctionCall(
           env.set(inputName, val);
           const customType = funcArena.getVarCustomType(info.varIdx);
           const shape = funcArena.getVarShape(info.varIdx);
-          if (Array.isArray(val) && customType && (!shape || shape.length === 0)) {
+          if (isArenaObject(val)) {
+            const setObj = (pfx: string, o: ArenaValue): void => {
+              if (isArenaObject(o)) {
+                for (const [fk, fv] of o.fields.entries()) {
+                  env.set(`${pfx}.${fk}`, fv);
+                  setObj(`${pfx}.${fk}`, fv);
+                }
+              }
+            };
+            setObj(inputName, val);
+          } else if (val !== null && typeof val === "object" && !Array.isArray(val)) {
+            for (const [fk, fv] of Object.entries(val as Record<string, ArenaValue>)) {
+              env.set(`${inputName}.${fk}`, fv);
+            }
+          } else if (Array.isArray(val) && (val as any).__fields instanceof Map) {
+            for (const [fk, fv] of ((val as any).__fields as Map<string, ArenaValue>).entries()) {
+              env.set(`${inputName}.${fk}`, fv);
+            }
+          } else if (Array.isArray(val) && customType && (!shape || shape.length === 0)) {
             const ctorArena = lookupRecordConstructorArena(funcArena, customType, dae);
             if (ctorArena) {
               let fIdx = 0;
@@ -2377,6 +2544,35 @@ export function evaluateArenaFunctionCall(
 
       for (const item of unprovidedInputs) {
         resolveInput(item.name);
+      }
+
+      for (const def of deferredNonInputs) {
+        const evaluatedVal = evaluateArenaExpression(
+          funcArena,
+          def.startExprId,
+          env,
+          db,
+          scopeId,
+          undefined,
+          false,
+          functionLookup,
+          dae,
+          instancePrefix,
+        );
+        if (evaluatedVal !== null && evaluatedVal !== undefined) {
+          env.set(def.name, evaluatedVal);
+          if (Array.isArray(evaluatedVal) && def.varCtorArena) {
+            let fIdx = 0;
+            for (let vi = 0; vi < def.varCtorArena.varCount; vi++) {
+              if (!def.varCtorArena.isVarRemoved(vi) && def.varCtorArena.getVarCausality(vi) === 1 /* Input */) {
+                if (fIdx < evaluatedVal.length) {
+                  env.set(`${def.name}.${def.varCtorArena.getVarName(vi)}`, evaluatedVal[fIdx]!);
+                }
+                fIdx++;
+              }
+            }
+          }
+        }
       }
     }
 
@@ -2685,13 +2881,17 @@ export function evaluateArenaFunctionCall(
     const resolveOutput = (outName: string): ArenaValue | null => {
       const fieldPrefix = `${outName}.`;
       const recordFields: [string, ArenaValue][] = [];
+      const fieldMap = new Map<string, ArenaValue>();
       for (const [key, val] of env.entries()) {
         if (key.startsWith(fieldPrefix)) {
           recordFields.push([key, val]);
+          fieldMap.set(key.slice(fieldPrefix.length), val);
         }
       }
       if (recordFields.length > 0) {
-        return recordFields.map(([_, v]) => v) as ArenaValue;
+        const arr = recordFields.map(([_, v]) => v) as ArenaValue[];
+        Object.defineProperty(arr, "__fields", { value: fieldMap, enumerable: false });
+        return arr as ArenaValue;
       }
       return env.get(outName) ?? null;
     };

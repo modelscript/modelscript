@@ -61,7 +61,6 @@ import { DigitalThreadHypergraph, ThreadDomain } from "../src/interop/thread_hyp
 import { ThreadSerializer } from "../src/interop/thread_serializer.js";
 import { TradeStudyEngine } from "../src/interop/trade_study.js";
 import { VCycleVerifier } from "../src/interop/vcycle_verifier.js";
-import { UnifiedVerifier } from "../src/simulation/unified_verifier.js";
 
 describe("Semantic Theory Coordinator Hardening & Soundness", () => {
   // =========================================================================
@@ -241,27 +240,6 @@ describe("Semantic Theory Coordinator Hardening & Soundness", () => {
       assert.strictEqual(res.status, "UNKNOWN");
       assert.strictEqual(res.isSat, false);
       assert.strictEqual(res.reason, "Verification cancelled by client token.");
-    });
-
-    it("should thread cancellationToken through UnifiedVerifier.verify", async () => {
-      const coordinator = new SemanticTheoryCoordinator();
-      coordinator.registerOracle(new ConstraintTheoryOracle());
-
-      const token = { isCancellationRequested: true };
-      const report = await UnifiedVerifier.verify(
-        {
-          sourceText: "model Test end Test;",
-          coordinator,
-        },
-        {
-          theoryCoordinator: true,
-          cancellationToken: token,
-        },
-      );
-
-      assert.strictEqual(report.summary.overallPassed, false);
-      assert.strictEqual(report.stages["theory_coordination"]?.passed, false);
-      assert.ok(report.stages["theory_coordination"]?.summary.includes("cancelled by client token"));
     });
   });
 
@@ -931,7 +909,7 @@ describe("Semantic Theory Coordinator Hardening & Soundness", () => {
       assert.ok(res.conflictingConstraintIds && res.conflictingConstraintIds.length > 0);
     });
 
-    it("should respect equality constraints at lower bound in PhysicsSimplexReconciler and reuse hypergraph slots in UnifiedVerifier", async () => {
+    it("should respect equality constraints at lower bound in PhysicsSimplexReconciler", () => {
       // Degenerate equality constraint at x == min (RHS == 0 in shifted coordinates x' = x - min)
       const reconcileRes = PhysicsSimplexReconciler.reconcile({
         name: "DegenerateLowerBoundTest",
@@ -957,21 +935,6 @@ describe("Semantic Theory Coordinator Hardening & Soundness", () => {
       });
       assert.strictEqual(reconcileRes.status, "OPTIMAL");
       assert.strictEqual(reconcileRes.parameters["mass"]?.optimalValue, 10);
-
-      // UnifiedVerifier.verify with updateHypergraph should reuse existing thread slot instead of creating unbound thread 1
-      const hg = new DigitalThreadHypergraph();
-      const s0 = hg.createThread(101);
-      hg.bindDomainNode(s0, ThreadDomain.SysML2, 2001);
-      assert.strictEqual(hg.getThreadCount(), 1);
-
-      await UnifiedVerifier.verify(
-        {
-          sourceText: "package P {}",
-          hypergraph: hg,
-        },
-        { updateHypergraph: true, all: false },
-      );
-      assert.strictEqual(hg.getThreadCount(), 1, "syncDigitalThread must reuse existing thread slot when present");
     });
 
     it("should detect negative-slope Lipschitz violations and tag unary/pow/call AST nodes across RelationalVerifier, RegionDecomposer, and InductiveProver", () => {

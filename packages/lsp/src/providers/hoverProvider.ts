@@ -13,6 +13,7 @@ import {
   stripNamespacePrefix,
   uriBasename,
 } from "../utils/lexical-utils.js";
+import { getAlmExternalHover } from "./almHover.js";
 
 function getDomainName(domainId: number, resourceId?: string): string {
   switch (domainId) {
@@ -323,6 +324,10 @@ export function registerHoverProvider(
 
     const text = document.getText();
     const offset = document.offsetAt(params.position);
+
+    // ── Synced External ALM Provenance Hover (DOORS Next / Jama / Codebeamer / Polarion / Jira) ──
+    const almHover = getAlmExternalHover(text, params.position.line);
+    if (almHover) return almHover;
 
     // ── CFD (SU2) and FEA (CalculiX) Domain Hovers ──
     const targetUri = params.textDocument.uri;

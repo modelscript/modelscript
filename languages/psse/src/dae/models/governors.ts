@@ -8,6 +8,7 @@ import {
   addReal,
   div,
   emitClamp,
+  emitDeadband,
   emitFirstOrderLag,
   emitLeadLag,
   emitMin,
@@ -296,24 +297,69 @@ export function lowerGovernorUnitToDae(
     return pmOutExpr;
   }
 
-  // Fallback for gov_lcfb / gov_degov
-  const r = Math.max(0.005, np["R"] ?? 0.05);
-  const t1 = Math.max(0.02, np["T1"] ?? np["Tact"] ?? 0.2);
+  if (archetype === "gov_lcfb") {
+    // Dedicated WECC LCFB1 Turbine Load Controller / Frequency Bias: deadband + PI + Pe filter
+    const db = Math.abs(np["db"] ?? np["DB"] ?? 0.0006);
+    const kp = Math.max(0.05, np["Kp"] ?? np["KP"] ?? 1.0);
+    const ki = Math.max(0.02, np["Ki"] ?? np["KI"] ?? 0.2);
+    const tPe = Math.max(0.02, np["Tpelec"] ?? np["Tp"] ?? 0.2);
+    const pMax = Math.max(pm0Pu + 0.1, np["Pmax"] ?? np["PMAX"] ?? 1.1);
+    const pMin = Math.min(pm0Pu, np["Pmin"] ?? np["PMIN"] ?? 0.0);
+    const fBias = mul(dae, addReal(dae, -1.0), emitDeadband(ctx, dwPu, addReal(dae, -db), addReal(dae, db)));
+    const xInt = emitNonWindupIntegrator(
+      ctx,
+      `xlcfb_int_${gId}`,
+      mul(dae, addReal(dae, ki), fBias),
+      addReal(dae, 1.0),
+      1.0,
+      addReal(dae, pMin),
+      addReal(dae, pMax),
+      pm0Pu,
+    );
+    const pCmd = emitClamp(
+      ctx,
+      add(dae, xInt, mul(dae, addReal(dae, kp), fBias)),
+      addReal(dae, pMin),
+      addReal(dae, pMax),
+    );
+    const pOutPu = emitFirstOrderLag(ctx, `xlcfb_out_${gId}`, pCmd, addReal(dae, 1.0), addReal(dae, tPe), tPe, pm0Pu);
+    void peExpr;
+    dae.addEquation(EqKind.Simple, pmOutExpr, mul(dae, addReal(dae, mbase), pOutPu));
+    return pmOutExpr;
+  }
+
+  // Dedicated Woodward DEGOV1 Diesel Engine Governor: droop + electric control box lead-lag + actuator + engine delay
+  const r = Math.max(0.005, np["R"] ?? np["K"] ?? 0.05);
+  const t1 = Math.max(0.01, np["T1"] ?? 0.01);
+  const t2 = Math.max(0.0, np["T2"] ?? 0.02);
+  const t3 = Math.max(0.01, np["T3"] ?? 0.2);
+  const t4 = Math.max(0.02, np["T4"] ?? np["Tact"] ?? 0.1);
+  const t5 = Math.max(0.02, np["T5"] ?? 0.05);
   const tMax = Math.max(pm0Pu + 0.1, np["TMAX"] ?? np["Pmax"] ?? 1.1);
   const tMin = Math.min(pm0Pu, np["TMIN"] ?? np["Pmin"] ?? 0.0);
   const pRef = sub(dae, addReal(dae, pm0Pu), div(dae, dwPu, addReal(dae, r)));
-  const xGov = emitNonWindupLag(
+  const xCtrl = emitLeadLag(
     ctx,
-    `xgov_${gId}`,
+    `xdegov_ll_${gId}`,
     pRef,
+    addReal(dae, t2),
+    addReal(dae, Math.max(t1, t3)),
+    Math.max(t1, t3),
+    pm0Pu,
+  );
+  const xAct = emitNonWindupLag(
+    ctx,
+    `xdegov_act_${gId}`,
+    xCtrl,
     addReal(dae, 1.0),
-    addReal(dae, t1),
-    t1,
+    addReal(dae, t4),
+    t4,
     addReal(dae, tMin),
     addReal(dae, tMax),
     pm0Pu,
   );
+  const xEng = emitFirstOrderLag(ctx, `xdegov_eng_${gId}`, xAct, addReal(dae, 1.0), addReal(dae, t5), t5, pm0Pu);
   void peExpr;
-  dae.addEquation(EqKind.Simple, pmOutExpr, mul(dae, addReal(dae, mbase), xGov));
+  dae.addEquation(EqKind.Simple, pmOutExpr, mul(dae, addReal(dae, mbase), xEng));
   return pmOutExpr;
 }

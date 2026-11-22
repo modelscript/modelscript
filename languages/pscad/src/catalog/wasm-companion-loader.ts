@@ -23,7 +23,13 @@ function getOrInstantiateWasm(wasmBytes: Uint8Array): WebAssembly.Instance | und
   try {
     const copy = new Uint8Array(wasmBytes);
     const mod = new WebAssembly.Module(copy);
-    inst = new WebAssembly.Instance(mod, { env: { abort: () => {} } });
+    inst = new WebAssembly.Instance(mod, {
+      env: {
+        abort: () => {},
+        emtdc_host_io: (_op: number, _a0: number, a1: number) => a1,
+        emtdc_host_plot: () => {},
+      },
+    });
     compiledCache.set(wasmBytes, inst);
     return inst;
   } catch {
@@ -46,6 +52,8 @@ export function instantiateWasmCompanionsForNetlist(netlist: EmtNetlist): Map<st
     .filter((p) => p.wasmBytes && p.wasmBytes.byteLength > 0);
   if (pkgs.length === 0) return companions;
 
+  const instanceCounterByType = new Map<string, number>();
+
   for (const fmu of fmus) {
     const rawName = (fmu as unknown as { modelName?: string; defn?: string }).modelName ?? fmu.id;
     const shortName = rawName.includes(":") ? rawName.split(":").pop()! : rawName;
@@ -67,6 +75,10 @@ export function instantiateWasmCompanionsForNetlist(netlist: EmtNetlist): Map<st
 
       if (typeof stampFn !== "function" || typeof stepFn !== "function" || !exports.memory) continue;
 
+      const setInstFn = exports["companion_set_instance"] as ((id: number) => void) | undefined;
+      const instId = instanceCounterByType.get(safe) ?? 0;
+      instanceCounterByType.set(safe, instId + 1);
+
       const mem = exports.memory;
       // Reserve 128 bytes at offset 1024 (aligned to 8 bytes): 9 f64s for gEq (72B), 3 f64s for iHist (24B), 3 f64s for vNode (24B)
       const gEqPtr = 1024;
@@ -78,6 +90,7 @@ export function instantiateWasmCompanionsForNetlist(netlist: EmtNetlist): Map<st
         (exports[`${safe}_init`] as ((pPtr: number, count: number) => void) | undefined) ??
         (exports["init"] as ((pPtr: number, count: number) => void) | undefined);
       if (typeof initFn === "function") {
+        setInstFn?.(instId);
         const rawParams = (fmu as unknown as { params?: Record<string, unknown> }).params ?? {};
         const pickNum = (...keys: string[]): number => {
           for (const k of keys) {
@@ -107,6 +120,7 @@ export function instantiateWasmCompanionsForNetlist(netlist: EmtNetlist): Map<st
 
       companions.set(fmu.id, {
         stampCompanion(tSec: number, dtSec: number) {
+          setInstFn?.(instId);
           stampFn(tSec, dtSec, gEqPtr, iHistPtr);
           const f64 = new Float64Array(mem.buffer);
           const gEq = new Float64Array(9);
@@ -116,6 +130,7 @@ export function instantiateWasmCompanionsForNetlist(netlist: EmtNetlist): Map<st
           return { gEq, iHist };
         },
         doStep(tSec: number, dtSec: number, vNode: ArrayLike<number>) {
+          setInstFn?.(instId);
           const f64 = new Float64Array(mem.buffer);
           f64[(vNodePtr >> 3) + 0] = vNode[0] ?? 0;
           f64[(vNodePtr >> 3) + 1] = vNode[1] ?? 0;
@@ -592,4 +607,133 @@ export async function compileCleanRoomCompanionsForNetlist(
   }
 
   return result;
+}
+
+export interface CleanRoomWasmHostCallbacks {
+  onHostIo?: ((opCode: number, a0: number, a1: number, a2: number) => number) | undefined;
+  onHostPlot?: ((channelId: number, value: number, timeSec: number) => void) | undefined;
+}
+
+/**
+ * Runtime handle to the compiled cleanroom `@modelscript/pscad-master-lib` WebAssembly
+ * module (`dist/runtime.wasm`), exposing all 521 EMTDC external subroutines & functions
+ * backed by the multi-instance `STORF`/`STORI`/`STORL`/`STORC` linear-memory arena.
+ */
+export class CleanRoomEmtdcWasmRuntime {
+  private readonly exports: WasmLibraryExports;
+  private readonly memory: WebAssembly.Memory;
+  private readonly argsPtr = 1360;
+  private readonly plottedChannels = new Map<number, { time: number; value: number }[]>();
+
+  constructor(wasmBytes: Uint8Array, callbacks?: CleanRoomWasmHostCallbacks) {
+    const mod = new WebAssembly.Module(new Uint8Array(wasmBytes));
+    const inst = new WebAssembly.Instance(mod, {
+      env: {
+        abort: () => {},
+        emtdc_host_io: (opCode: number, a0: number, a1: number, a2: number) =>
+          callbacks?.onHostIo ? callbacks.onHostIo(opCode, a0, a1, a2) : a1,
+        emtdc_host_plot: (channelId: number, value: number, timeSec: number) => {
+          let series = this.plottedChannels.get(channelId);
+          if (!series) {
+            series = [];
+            this.plottedChannels.set(channelId, series);
+          }
+          series.push({ time: timeSec, value });
+          callbacks?.onHostPlot?.(channelId, value, timeSec);
+        },
+      },
+    });
+    this.exports = inst.exports as WasmLibraryExports;
+    if (!this.exports.memory) {
+      throw new Error("CleanRoomEmtdcWasmRuntime: WebAssembly module does not export linear memory");
+    }
+    this.memory = this.exports.memory;
+  }
+
+  /** Returns all plot/RTPS channel samples recorded via `FPLOT19` / `RTPS_*` / `EXNEWCHCO`. */
+  getPlottedChannels(): ReadonlyMap<number, readonly { time: number; value: number }[]> {
+    return this.plottedChannels;
+  }
+
+  /** Resets the multi-instance STORF/STORI/STORL/STORC linear-memory arena. */
+  reset(): void {
+    this.plottedChannels.clear();
+    const fn = this.exports["emtdc_reset_arena"] as (() => void) | undefined;
+    fn?.();
+  }
+
+  /** Updates simulation context header (TIME, DELT, TIMEZERO, FIRSTSTEP, LASTSTEP). */
+  setContext(timeSec: number, dtSec: number, timeZero: boolean, firstStep: boolean, lastStep = false): void {
+    const fn = this.exports["emtdc_set_context"] as
+      | ((t: number, dt: number, tz: number, fs: number, ls: number) => void)
+      | undefined;
+    fn?.(timeSec, dtSec, timeZero ? 1 : 0, firstStep ? 1 : 0, lastStep ? 1 : 0);
+  }
+
+  /** Sets active multi-instance state cursors (`NSTORF`, `NSTORI`, `NSTORL`, `NSTORC`). */
+  setCursors(nstorf: number, nstori = 1, nstorl = 1, nstorc = 1): void {
+    const fn = this.exports["emtdc_set_cursors"] as
+      | ((nf: number, ni: number, nl: number, nc: number) => void)
+      | undefined;
+    fn?.(nstorf, nstori, nstorl, nstorc);
+  }
+
+  /** Resolves an exported cleanroom subroutine/function name (handling leading digits). */
+  private resolveExportName(name: string): string {
+    const cleaned = name
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Za-z0-9_]/g, "_");
+    return /^[0-9]/.test(cleaned) ? `_${cleaned}` : cleaned;
+  }
+
+  /** Returns true if the given EMTDC subroutine or function is exported by `runtime.wasm`. */
+  hasSubroutine(name: string): boolean {
+    const expName = this.resolveExportName(name);
+    return typeof this.exports[expName] === "function";
+  }
+
+  /** Lists all exported function names in the WebAssembly module. */
+  listExportedSubroutines(): string[] {
+    return Object.keys(this.exports).filter((k) => typeof this.exports[k] === "function");
+  }
+
+  /**
+   * Invokes a cleanroom EMTDC subroutine/function by name, writing `args` into the
+   * linear-memory argument buffer and copying any mutated output args back into `args`.
+   */
+  callSubroutine(name: string, args: number[] = []): number {
+    const expName = this.resolveExportName(name);
+    const fn = this.exports[expName] as ((argsPtr: number, argCount: number) => number) | undefined;
+    if (typeof fn !== "function") {
+      throw new Error(`Clean-room EMTDC subroutine '${name}' (export '${expName}') not found in runtime.wasm`);
+    }
+    const count = Math.min(args.length, 64);
+    const f64 = new Float64Array(this.memory.buffer);
+    const baseIdx = this.argsPtr >> 3;
+    for (let i = 0; i < count; i++) {
+      f64[baseIdx + i] = args[i] ?? 0;
+    }
+    const ret = fn(this.argsPtr, count);
+    const afterF64 = new Float64Array(this.memory.buffer);
+    for (let i = 0; i < count; i++) {
+      args[i] = afterF64[baseIdx + i] ?? 0;
+    }
+    return ret;
+  }
+}
+
+/**
+ * Instantiates a fresh `CleanRoomEmtdcWasmRuntime` from the registered `@modelscript/pscad-master-lib`
+ * package's `runtime.wasm` bytes (if loaded).
+ */
+export function createCleanRoomEmtdcWasmRuntime(
+  callbacks?: CleanRoomWasmHostCallbacks,
+): CleanRoomEmtdcWasmRuntime | undefined {
+  const pkgs = globalLibraryRegistry
+    .getPackagesForLanguage("pscad")
+    .filter((p) => p.wasmBytes && p.wasmBytes.byteLength > 0);
+  const masterPkg = pkgs.find((p) => p.packageName === "@modelscript/pscad-master-lib") ?? pkgs[0];
+  if (!masterPkg?.wasmBytes) return undefined;
+  return new CleanRoomEmtdcWasmRuntime(masterPkg.wasmBytes, callbacks);
 }

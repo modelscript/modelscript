@@ -2,6 +2,7 @@
 
 import { analyzeStructuralDaeIndex, sparseLuFactor, sparseLuSolve, SparseTripletBuilder } from "@modelscript/runtime";
 import { verifyDiscreteControlChattering } from "../analysis/advanced-formal-checks.js";
+import { runPsseFastStaticLints, runPsseFormalVerificationLints } from "../analysis/fast-static-checks.js";
 import { verifyDyrProtectionCoordinationSmt } from "../analysis/formal-grid-checks.js";
 import { verifyGridOntologyCompliance } from "../analysis/grid-ontology-check.js";
 import { lowerPsseToDae } from "../dae/psse-to-dae.js";
@@ -1692,14 +1693,20 @@ export function lintPsse(c: PsseCase, options?: PsseLintOptions): PsseDiagnostic
     }
   }
 
+  // 18b. Tier 1 Fast Static Lints (< 10 ms): Tarjan N-1 bridges (P8011), DYR/RAW consistency (P8012),
+  //      HC4 static transfer feasibility (P8014), and protection stage overlap (P8015)
+  diagnostics.push(...runPsseFastStaticLints(c));
+
   // 19. Formal tier: automatic DYR protection relay SMT (P8001), NERC/IEEE 2800 ontology compliance (P8005),
-  //     and hybrid discrete control Zeno/deadband chattering verification (P8006)
+  //     hybrid discrete control chattering (P8006), PRC-024 selectivity SMT (P8016), NLSAT voltage collapse (P8017),
+  //     SOS multi-machine CCT (P8018), and proof manifest summary (P8019)
   if (tier === "formal") {
     diagnostics.push(...verifyDiscreteControlChattering(c));
     if (c.dyr && c.dyr.records.length > 0) {
       diagnostics.push(...verifyDyrProtectionCoordinationSmt(c));
       diagnostics.push(...verifyGridOntologyCompliance(c));
     }
+    diagnostics.push(...runPsseFormalVerificationLints(c));
   }
 
   return diagnostics;

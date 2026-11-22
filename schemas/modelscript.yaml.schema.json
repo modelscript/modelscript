@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://modelscript.org/schemas/modelscript.yaml.schema.json",
+  "title": "ModelScript Project & Package Manifest (modelscript.yaml)",
+  "type": "object",
+  "required": ["name", "version"],
+  "additionalProperties": true,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Package or project identifier (e.g. 'ev-battery-pack' or '@acme/thermal')."
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Semantic version string (quote numeric versions like \"1.0.0\")."
+    },
+    "description": { "type": "string" },
+    "license": { "type": "string" },
+    "main": { "type": "string" },
+    "modelicaVersion": { "type": "string" },
+    "languages": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "workspaces": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "dependencies": {
+      "type": "object",
+      "description": "Registry semver ranges, local file: archives, or protocol-prefixed ALM remotes (oslc+https://, jama+https://, codebeamer+https://, polarion+https://, jira+https://).",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "required": ["source"],
+            "additionalProperties": false,
+            "properties": {
+              "source": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9._-]*\\+https?://.+$"
+              },
+              "query": { "type": "string" },
+              "baseline": { "type": "string" },
+              "workingSet": { "type": "string" },
+              "revision": { "type": "string" },
+              "format": {
+                "type": "string",
+                "enum": ["sysml2", "modelscript", "reqif"],
+                "default": "sysml2"
+              },
+              "materialize": {
+                "type": "string",
+                "description": "Optional Git-tracked relative directory for materialized projections."
+              },
+              "push": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["verification", "links", "defects-on-fail", "artifacts"]
+                }
+              },
+              "connector": { "type": "string" },
+              "options": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": ["string", "number", "boolean"]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "peerDependencies": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "library": {
+      "type": "object",
+      "required": ["category"],
+      "properties": {
+        "category": { "type": "string", "enum": ["library", "standard-pack"] },
+        "language": { "type": "string" },
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "symbols": { "type": "string" },
+        "diagrams": { "type": "string" }
+      }
+    }
+  }
+}

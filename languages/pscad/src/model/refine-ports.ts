@@ -36,7 +36,7 @@ export function refineModulePorts(mod: PscxModule, def: ModelDefinition | undefi
     if (!inst) continue;
     if (cmp.ports.length === 0) {
       const seen = new Set<string>();
-      for (const dp of inst.ports.filter((p) => p.source === "definition")) {
+      for (const dp of inst.ports.filter((p) => p.source === "definition" || p.source === "catalog")) {
         if (seen.has(dp.name)) continue;
         seen.add(dp.name);
         cmp.ports.push({

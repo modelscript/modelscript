@@ -1,0 +1,29 @@
+name: "@modelscript/asme-bpvc-viii-1"
+version: "1.0.0"
+license: "AGPL-3.0-or-later"
+description: "Reference ASME BPVC Section VIII Div 1 compliance standard pack for ModelScript (UG-27, UG-32, UG-99, UG-125) with synthetic material lookup curves."
+library:
+  category: standard-pack
+  languages:
+    - sysml2
+    - modelica
+  standard:
+    code: ASME-BPVC-VIII-1
+    edition: "2023"
+    profile: pressure-vessel
+    title: "ASME BPVC Section VIII Division 1 (Example Standard Pack)"
+    activation: import
+    namespaces:
+      - ASME_BPVC_VIII_1
+    oracles:
+      - PressureVesselOracle
+    calculators:
+      - calcName: AllowableStress
+        tableKey: SA516_Gr70_AllowableStress
+        params:
+          - materialSpec
+          - designTempF
+        returnUnit: MPa
+  runtime:
+    tables:
+      SA516_Gr70_AllowableStress: tables/sa516-gr70-allowable-stress.json

@@ -138,6 +138,15 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
         description: "Include raw Fortran/Computations/Dsdyn/Dsout scripts in 'extract' (default: stripped)",
         type: "boolean",
         default: false,
+      })
+      .option("formal", {
+        description: "Enable deep formal verification lints (Star-set IBR FRT, DDE delay, SMT switch, IC3 lockout)",
+        type: "boolean",
+        default: false,
+      })
+      .option("manifest", {
+        description: "Optional output path for JSON formal proof manifest",
+        type: "string",
       });
   },
   handler: async (args) => {
@@ -327,8 +336,29 @@ export const PscadCommand: CommandModule<Record<string, unknown>, Record<string,
       }
 
       case "lint": {
-        console.log(`Linting PSCAD project: ${project.name} (${firstFilePath})...\n`);
-        const diags = lintPscx(project);
+        const formal = Boolean(args["formal"]);
+        console.log(
+          `Linting PSCAD project: ${project.name} (${firstFilePath})${formal ? " [formal verification tier]" : ""}...\n`,
+        );
+        const diags = lintPscx(project, { tier: formal ? "formal" : "deep" });
+        const manifestPath = args["manifest"] as string | undefined;
+        if (manifestPath) {
+          fs.writeFileSync(
+            manifestPath,
+            JSON.stringify(
+              {
+                project: project.name,
+                tier: formal ? "formal" : "deep",
+                diagnosticCount: diags.length,
+                diagnostics: diags,
+              },
+              null,
+              2,
+            ),
+            "utf-8",
+          );
+          console.log(`Wrote verification manifest to ${manifestPath}`);
+        }
 
         if (diags.length === 0) {
           console.log("✓ No issues found. Electrical topology and parameters are valid.");

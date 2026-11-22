@@ -1112,13 +1112,24 @@ function executeFlattenStage(context: Context, task: WorkerTask): FlattenResult 
   let msError: string | undefined;
 
   try {
-    const arena = context.flattenArena(task.modelFqn, undefined, undefined, { omcCompatibility: true });
+    const arena = context.flattenArena(task.modelFqn, undefined, undefined, {
+      omcCompatibility: true,
+      ...(task.flattenerBackend ? { backend: task.flattenerBackend } : {}),
+    });
     if (arena) {
-      const out = new StringWriter();
-      const printer = new ArenaDAEPrinter(out, arena, true);
-      printer.printDAE(arena);
-      msFlatText = out.toString().trim();
-      msSuccess = true;
+      const wasmBail = (arena as any).wasmBail as { code?: number; reason?: string; description?: string } | undefined;
+      const errDiags = arena.diagnostics.filter((d) => d.severity === "error");
+      if (task.flattenerBackend === "wasm" && (wasmBail || errDiags.length > 0)) {
+        const bailPrefix = wasmBail ? `[wasmBail:${wasmBail.reason ?? wasmBail.code}] ` : "";
+        const diagMsg = errDiags.map((d) => d.message).join(" | ");
+        msError = `${bailPrefix}${diagMsg || wasmBail?.description || "WASM flattening failed"}`.trim();
+      } else {
+        const out = new StringWriter();
+        const printer = new ArenaDAEPrinter(out, arena, true);
+        printer.printDAE(arena);
+        msFlatText = out.toString().trim();
+        msSuccess = true;
+      }
     } else {
       msError = "flattenArena returned null (class not resolved)";
     }
@@ -1239,7 +1250,10 @@ async function executeSimulateStage(context: Context, task: WorkerTask): Promise
   // For non-MSL libraries (OpenIPSL) it changes the simulated dynamics (SMIB_AVR_PSS diverges), so
   // the simulation stage flattens in the regular mode there. MSL baselines are left unchanged.
   const simOmcCompat = !task.library || task.library === "Modelica";
-  const arena = context.flattenArena(task.modelFqn, undefined, undefined, { omcCompatibility: simOmcCompat });
+  const arena = context.flattenArena(task.modelFqn, undefined, undefined, {
+    omcCompatibility: simOmcCompat,
+    ...(task.flattenerBackend ? { backend: task.flattenerBackend } : {}),
+  });
 
   if (!arena) {
     return {

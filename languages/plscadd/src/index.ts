@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./catalog/index.js";
 export * from "./dae/plscadd-to-dae.js";
 export * from "./indexing.js";
 export * from "./language.js";

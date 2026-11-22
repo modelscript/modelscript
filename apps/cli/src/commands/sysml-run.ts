@@ -52,8 +52,7 @@ function findPackageRoot(sysmlFilePath: string): string {
     if (
       fs.existsSync(path.join(dir, "assembly")) ||
       fs.existsSync(path.join(dir, "data")) ||
-      fs.existsSync(path.join(dir, "package.json")) ||
-      fs.existsSync(path.join(dir, "modelscript.json"))
+      fs.existsSync(path.join(dir, "modelscript.yaml"))
     ) {
       return dir;
     }

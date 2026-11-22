@@ -5,6 +5,7 @@
  */
 
 export * from "./aerodynamics/index.js";
+export * from "./catalog/index.js";
 export * from "./contact/index.js";
 export * from "./dae/index.js";
 export * from "./diagram/index.js";

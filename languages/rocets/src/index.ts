@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-export {
-  DEFAULT_PUMP_MAP,
-  DEFAULT_TURBINE_MAP,
-  interpolatePerformanceMap,
-  type MapPoint,
-} from "./catalog/default-maps.js";
-export { ROCETS_MODULE_DESCRIPTORS, getModuleDescriptor, type ModuleDescriptor } from "./catalog/modules.js";
+export * from "./catalog/index.js";
 export { lowerRocetsToDae, rocetsToDae, type RocetsDaeLoweringResult, type RocetsToDaeOptions } from "./dae/index.js";
 export {
   buildRocetsDiagramData,

@@ -4,7 +4,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ABBSVC1",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Static Var System / Synchronous Condenser Shunt Var Compensator (CSVGN1–6)",
@@ -22,7 +25,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:AC10C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
@@ -40,7 +46,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:AC11C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
@@ -58,7 +67,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:AC1C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC1A Alternator-Rectifier Excitation System",
@@ -76,7 +88,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:AC2C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC2A High-Initial-Response Brushless Exciter",
@@ -94,7 +109,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:AC3C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
@@ -112,7 +130,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:AC4C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC4A Alternator-Supplied Controlled-Rectifier Exciter",
@@ -130,7 +151,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:AC5C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
@@ -148,7 +172,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:AC6C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
@@ -166,7 +193,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:AC7B",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
@@ -184,7 +214,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:AC7C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
@@ -202,7 +235,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:AC8B",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
@@ -220,7 +256,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:AC8C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
@@ -238,7 +277,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:BBSEX1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
@@ -256,7 +298,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:BESS1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
@@ -274,7 +319,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:BUSFRQ",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Bus Frequency & Phase-Angle Rate Measurement Block (BUSFRQ / SBUS)",
@@ -292,7 +340,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CCGOV1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC General Purpose Gas & Combined-Cycle Turbine-Governor (GGOV1 / CCGOV1)",
@@ -310,7 +361,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CDC4T",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
@@ -328,7 +382,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CDC6T",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
@@ -346,7 +403,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CDC6TA",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
@@ -364,7 +424,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CDC7T",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
@@ -382,7 +445,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CDCAB1",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
@@ -400,7 +466,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CDCV1T",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
@@ -418,7 +487,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CEEL1",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
@@ -436,7 +508,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CELIN",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Digital PID / Proportional-Integral Excitation System (EX2000 / EXPIC1)",
@@ -454,7 +529,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CFB1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Turbine Load Controller / Boiler Pressure Feedback (LCFB1)",
@@ -472,7 +550,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CGEN1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Constant-Excitation Transient Synchronous Generator Model",
@@ -490,7 +573,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CHSVCT",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Static Var System / Synchronous Condenser Shunt Var Compensator (CSVGN1–6)",
@@ -508,7 +594,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CHVDC2",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
@@ -526,7 +615,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIM5",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Fifth-Order Double-Cage Induction Motor Load Model (CIM5)",
@@ -544,7 +637,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIM5AL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Fifth-Order Double-Cage Induction Motor Load (Area-Level)",
@@ -562,7 +659,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIM5BL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Fifth-Order Double-Cage Induction Motor Load (Bus-Level)",
@@ -580,7 +681,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIM5OW",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Fifth-Order Double-Cage Induction Motor Load (Owner-Level)",
@@ -598,7 +703,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIM5ZL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Fifth-Order Double-Cage Induction Motor Load (Zone-Level)",
@@ -616,7 +725,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIM6AL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Sixth-Order Double-Cage Induction Motor Load (Area-Level)",
@@ -634,7 +747,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIM6BL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Sixth-Order Double-Cage Induction Motor Load (Bus-Level)",
@@ -652,7 +769,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIM6OW",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Sixth-Order Double-Cage Induction Motor Load (Owner-Level)",
@@ -670,7 +791,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIM6ZL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Sixth-Order Double-Cage Induction Motor Load (Zone-Level)",
@@ -688,7 +813,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIMTR1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Single-Cage Induction Generator / Motor Machine Model",
@@ -706,7 +836,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIMTR3",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Double-Cage Induction Generator / Motor Machine Model",
@@ -724,7 +859,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIMWAL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Wound-Rotor Induction Motor Load (Area-Level)",
@@ -742,7 +881,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIMWBL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Wound-Rotor Induction Motor Load (Bus-Level)",
@@ -760,7 +903,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIMWOW",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Wound-Rotor Induction Motor Load (Owner-Level)",
@@ -778,7 +925,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CIMWZL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Wound-Rotor Induction Motor Load (Zone-Level)",
@@ -796,7 +947,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CLOD",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Complex Aggregate Load Model (CLOD)",
@@ -814,7 +969,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CLODAL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Complex Aggregate Load Model (Area-Level)",
@@ -832,7 +991,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CLODBL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Complex Aggregate Load Model (Bus-Level)",
@@ -850,7 +1013,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CLODOW",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Complex Aggregate Load Model (Owner-Level)",
@@ -868,7 +1035,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CLODZL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Complex Aggregate Load Model (Zone-Level)",
@@ -886,7 +1057,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CMLDAL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Composite Load Subsystem Model (Area-Level)",
@@ -904,7 +1079,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CMLDBL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Composite Load Subsystem Model (Bus-Level)",
@@ -922,7 +1101,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CMLDBLDGU2",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Composite Load Model (CMPLDW / CMLD) with Motor A–D & FIDVR",
@@ -940,7 +1123,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CMLDBLU1",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Composite Load Model (CMPLDW / CMLD) with Motor A–D & FIDVR",
@@ -958,7 +1145,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CMLDBLU2",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Composite Load Model (CMPLDW / CMLD) with Motor A–D & FIDVR",
@@ -976,7 +1167,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CMLDOW",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Composite Load Subsystem Model (Owner-Level)",
@@ -994,7 +1189,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CMLDRL",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Transmission Line 3-Zone Mho Distance & Overcurrent Relay (DISTRL / TIOCR1)",
@@ -1012,7 +1210,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CMLDZL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Composite Load Subsystem Model (Zone-Level)",
@@ -1030,7 +1232,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CMPLDW",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Composite Load Model (CMPLDW / CMLD) with Motor A–D & FIDVR",
@@ -1048,7 +1254,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:COMP",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Reactive Current / Line-Drop Voltage Compensator (COMP / IEEEVC)",
@@ -1066,7 +1275,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:COMPCC",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Reactive Current / Line-Drop Voltage Compensator (COMP / IEEEVC)",
@@ -1084,7 +1296,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CRCMGV",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type 1 Tandem / Cross-Compound Steam Turbine-Governor (IEEEG1)",
@@ -1102,7 +1317,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CSTCNT",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Thyristor-Controlled Series Capacitor / Series FACTS Model (CSTCNT / TCSC1)",
@@ -1120,7 +1338,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CSVGN1",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Static Var System / Synchronous Condenser Shunt Var Compensator (CSVGN1–6)",
@@ -1138,7 +1359,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CSVGN3",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Static Var System / Synchronous Condenser Shunt Var Compensator (CSVGN1–6)",
@@ -1156,7 +1380,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CSVGN4",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Static Var System / Synchronous Condenser Shunt Var Compensator (CSVGN1–6)",
@@ -1174,7 +1401,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CSVGN5",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Static Var System / Synchronous Condenser Shunt Var Compensator (CSVGN1–6)",
@@ -1192,7 +1422,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:CSVGN6",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Static Var System / Synchronous Condenser Shunt Var Compensator (CSVGN1–6)",
@@ -1210,7 +1443,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DC1C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type 1 DC Rotating Excitation System (IEEET1)",
@@ -1228,7 +1464,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DC2C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
@@ -1246,7 +1485,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DC3A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
@@ -1264,7 +1506,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DC4B",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
@@ -1282,7 +1527,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DC4C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
@@ -1300,7 +1548,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DC_MOD1",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
@@ -1318,7 +1569,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DEC1A",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Woodward Diesel Engine Speed Governor Model (DEGOV1)",
@@ -1336,7 +1590,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DEGOV",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Woodward Diesel Engine Speed Governor Model (DEGOV1)",
@@ -1354,7 +1611,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DEGOV1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Woodward Diesel Engine Speed Governor Model (DEGOV1)",
@@ -1372,7 +1632,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DERA1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Aggregate Distributed Energy Resource Model (DER_A)",
@@ -1390,7 +1655,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DERAU1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Aggregate Distributed Energy Resource Model (DER_A)",
@@ -1408,7 +1678,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DER_A",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Aggregate Distributed Energy Resource Model (DER_A)",
@@ -1426,7 +1701,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DIESEL1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Woodward Diesel Engine Speed Governor Model (DEGOV1)",
@@ -1444,7 +1722,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DIREX1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Digital PID / Proportional-Integral Excitation System (EX2000 / EXPIC1)",
@@ -1462,7 +1743,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DIST1",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Transmission Line 3-Zone Mho Distance & Overcurrent Relay (DISTRL / TIOCR1)",
@@ -1480,7 +1764,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DISTRL",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Transmission Line 3-Zone Mho Distance & Overcurrent Relay (DISTRL / TIOCR1)",
@@ -1498,7 +1785,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DLSHAL",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
@@ -1516,7 +1806,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:DLSHBL",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
@@ -1534,7 +1827,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EMAC1T",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Digital PID / Proportional-Integral Excitation System (EX2000 / EXPIC1)",
@@ -1552,7 +1848,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESAC10A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
@@ -1570,7 +1869,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESAC1A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC1A Alternator-Rectifier Excitation System",
@@ -1588,7 +1890,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESAC2A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC2A High-Initial-Response Brushless Exciter",
@@ -1606,7 +1911,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESAC3A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
@@ -1624,7 +1932,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESAC4A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC4A Alternator-Supplied Controlled-Rectifier Exciter",
@@ -1642,7 +1953,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESAC5A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
@@ -1660,7 +1974,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESAC6A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
@@ -1678,7 +1995,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESAC8B",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC7B / AC8B / AC10C Digital PID Brushless Exciter",
@@ -1696,7 +2016,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESDC1A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
@@ -1714,7 +2037,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESDC2A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
@@ -1732,7 +2058,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESDC3A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
@@ -1750,7 +2079,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESST1A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
@@ -1768,7 +2100,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESST2A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
@@ -1786,7 +2121,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESST3A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
@@ -1804,7 +2142,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESST4B",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
@@ -1822,7 +2163,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ESST5B",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
@@ -1840,7 +2184,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EX2000",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Digital PID / Proportional-Integral Excitation System (EX2000 / EXPIC1)",
@@ -1858,7 +2205,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXAC1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC1A Alternator-Rectifier Excitation System",
@@ -1876,7 +2226,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXAC1A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC1A Alternator-Rectifier Excitation System",
@@ -1894,7 +2247,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXAC2",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC2A High-Initial-Response Brushless Exciter",
@@ -1912,7 +2268,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXAC3",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
@@ -1930,7 +2289,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXAC4",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC4A Alternator-Supplied Controlled-Rectifier Exciter",
@@ -1948,7 +2310,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXBAS",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Digital PID / Proportional-Integral Excitation System (EX2000 / EXPIC1)",
@@ -1966,7 +2331,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXBBC",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Digital PID / Proportional-Integral Excitation System (EX2000 / EXPIC1)",
@@ -1984,7 +2352,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXDC1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type 1 DC Rotating Excitation System (IEEET1)",
@@ -2002,7 +2373,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXDC2",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
@@ -2020,7 +2394,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXELI",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
@@ -2038,7 +2415,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXPIC1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Digital PID / Proportional-Integral Excitation System (EX2000 / EXPIC1)",
@@ -2056,7 +2436,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXST1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST1 Potential-Source Controlled-Rectifier Exciter",
@@ -2074,7 +2457,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXST2",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
@@ -2092,7 +2478,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXST2A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
@@ -2110,7 +2499,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:EXST3",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
@@ -2128,7 +2520,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:FCTRB1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
@@ -2146,7 +2541,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:FRQTPAT",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Generator Over/Under-Frequency Trip Relay (FRQTPAT)",
@@ -2164,7 +2562,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:FRQTPAU",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Generator Over/Under-Frequency Trip Relay (FRQTPAT)",
@@ -2182,7 +2583,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GASSIM",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Single-Shaft Gas Turbine-Governor Model (GAST / GAST2A)",
@@ -2200,7 +2604,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GAST",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Single-Shaft Gas Turbine-Governor Model (GAST / GAST2A)",
@@ -2218,7 +2625,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GAST2A",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Single-Shaft Gas Turbine-Governor Model (GAST / GAST2A)",
@@ -2236,7 +2646,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GASTWD",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Single-Shaft Gas Turbine-Governor Model (GAST / GAST2A)",
@@ -2254,7 +2667,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENCC",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Cross-Compound Synchronous Generator Pair Model",
@@ -2272,7 +2690,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENCLS",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Classical Constant-Flux Synchronous Generator Model",
@@ -2290,7 +2713,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENDCO",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Round-Rotor Generator with Direct Damper Coupling",
@@ -2308,7 +2736,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENEQU",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Dynamic Equivalenced Synchronous Generator Model",
@@ -2326,7 +2759,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENROE",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Round-Rotor Synchronous Generator Model (Subtransient, Exponential Saturation)",
@@ -2344,7 +2782,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENROU",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Round-Rotor Synchronous Generator Model (Subtransient, Quadratic Saturation)",
@@ -2362,7 +2805,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENROUU1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Round-Rotor Synchronous Generator Model (Subtransient, Quadratic Saturation)",
@@ -2380,7 +2828,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENSAE",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Salient-Pole Synchronous Generator Model (Exponential Saturation)",
@@ -2398,7 +2851,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENSAL",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Salient-Pole Synchronous Generator Model (Quadratic Saturation)",
@@ -2416,7 +2874,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENSDO",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Salient-Pole Generator with Distinct q-Axis Subtransient Reactance",
@@ -2434,7 +2897,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENTB1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Turbine-Generator Extended Saturation Model",
@@ -2452,7 +2920,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENTPJ",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Round/Salient Synchronous Generator with Current-Dependent Saturation (Kis)",
@@ -2470,7 +2943,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENTPJ1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Round/Salient Synchronous Generator with Current-Dependent Saturation (Kis)",
@@ -2488,7 +2966,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENTPJU1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Round/Salient Synchronous Generator with Current-Dependent Saturation (Kis)",
@@ -2506,7 +2989,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GENTRA",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Three-State Transient Synchronous Generator Model",
@@ -2524,7 +3012,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GFM_DROOP",
-    "exports": ["Vterm", "Ip", "Iq"],
+    "exports": [
+      "Vterm",
+      "Ip",
+      "Iq"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Droop / Virtual Synchronous Machine Grid-Forming Inverter (REGFM_A1)",
@@ -2542,7 +3034,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GFM_VSM",
-    "exports": ["Vterm", "Ip", "Iq"],
+    "exports": [
+      "Vterm",
+      "Ip",
+      "Iq"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Droop / Virtual Synchronous Machine Grid-Forming Inverter (REGFM_A1)",
@@ -2560,7 +3056,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GGOV1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC General Purpose Gas & Combined-Cycle Turbine-Governor (GGOV1 / CCGOV1)",
@@ -2578,7 +3077,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GGOV1DU",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC General Purpose Gas & Combined-Cycle Turbine-Governor (GGOV1 / CCGOV1)",
@@ -2596,7 +3098,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GGOV3",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC General Purpose Gas & Combined-Cycle Turbine-Governor (GGOV1 / CCGOV1)",
@@ -2614,7 +3119,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GP1",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Generator Over/Under-Frequency Trip Relay (FRQTPAT)",
@@ -2632,7 +3140,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GP2",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Generator Over/Under-Voltage Trip Relay (VTGTPAT / VTGDCAT)",
@@ -2650,7 +3161,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:GPWSCC",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
@@ -2668,7 +3182,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:HVDC_VSC",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Voltage Source Converter (VSC / MMC) HVDC Dynamic Link Model",
@@ -2686,7 +3203,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:HYDTUR",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
@@ -2704,7 +3224,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:HYG3",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
@@ -2722,7 +3245,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:HYGOV",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
@@ -2740,7 +3266,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:HYGOV2",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
@@ -2758,7 +3287,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:HYGOV4",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
@@ -2776,7 +3308,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:HYGOVM",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
@@ -2794,7 +3329,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:HYGOVR",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Electronic PID Hydro Turbine-Governor (PIDGOV / WPIDHY / HYGOVR)",
@@ -2812,7 +3350,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IECPV1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
@@ -2830,7 +3371,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IECWT3",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
@@ -2848,7 +3392,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IECWT4A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
@@ -2866,7 +3413,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IECWT4B",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
@@ -2884,7 +3434,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEEG1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type 1 Tandem / Cross-Compound Steam Turbine-Governor (IEEEG1)",
@@ -2902,7 +3455,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEEG2",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type 1 Tandem / Cross-Compound Steam Turbine-Governor (IEEEG1)",
@@ -2920,7 +3476,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEEG3",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
@@ -2938,7 +3497,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEEL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Polynomial & Frequency-Dependent Static Load Model",
@@ -2956,7 +3519,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEEST",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Single-Input Power System Stabilizer (PSS1A / IEEEST)",
@@ -2974,7 +3540,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEET1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type 1 DC Rotating Excitation System (IEEET1)",
@@ -2992,7 +3561,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEET2",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
@@ -3010,7 +3582,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEET3",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
@@ -3028,7 +3603,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEET4",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST1 Potential-Source Controlled-Rectifier Exciter",
@@ -3046,7 +3624,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEET5",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST1 Potential-Source Controlled-Rectifier Exciter",
@@ -3064,7 +3645,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEEVC",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Reactive Current / Line-Drop Voltage Compensator (COMP / IEEEVC)",
@@ -3082,7 +3666,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEEX1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type DC1A / DC2A / DC4C Excitation System",
@@ -3100,7 +3687,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEEX2",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
@@ -3118,7 +3708,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEEX3",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
@@ -3136,7 +3729,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEEEX4",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type AC3A / AC5A / AC6A Alternator-Rectifier Excitation System",
@@ -3154,7 +3750,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEELAL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Polynomial & Frequency Static Load (Area-Level)",
@@ -3172,7 +3772,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEELBL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Polynomial & Frequency Static Load (Bus-Level)",
@@ -3190,7 +3794,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEELOW",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Polynomial & Frequency Static Load (Owner-Level)",
@@ -3208,7 +3816,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEELZL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Polynomial & Frequency Static Load (Zone-Level)",
@@ -3226,7 +3838,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IEESGO",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE General Speed-Governing & Steam Turbine Model (IEESGO / WSIEG1)",
@@ -3244,7 +3859,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:IRRADU1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
@@ -3262,7 +3880,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:LCFB1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Turbine Load Controller / Boiler Pressure Feedback (LCFB1)",
@@ -3280,7 +3901,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:LD1PAC",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Single-Phase Residential Air-Conditioner Stall Model (LD1PAC)",
@@ -3298,7 +3923,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:LD1PACU1",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Single-Phase Residential Air-Conditioner Stall Model (LD1PAC)",
@@ -3316,7 +3945,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:LDFRAL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Exponential Voltage & Frequency Load Model (Area-Level)",
@@ -3334,7 +3967,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:LDFRBL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Exponential Voltage & Frequency Load Model (Bus-Level)",
@@ -3352,7 +3989,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:LDFROW",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Exponential Voltage & Frequency Load Model (Owner-Level)",
@@ -3370,7 +4011,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:LDFRZL",
-    "exports": ["Vterm", "Pload", "Qload"],
+    "exports": [
+      "Vterm",
+      "Pload",
+      "Qload"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Exponential Voltage & Frequency Load Model (Zone-Level)",
@@ -3388,7 +4033,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:LDSHAL",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
@@ -3406,7 +4054,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:LDSHBL",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
@@ -3424,7 +4075,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:LDSHZL",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
@@ -3442,7 +4096,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:LOEXR1",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Generator Out-of-Step & Loss-of-Excitation Protection Relay (OOSR1 / LOEXR1)",
@@ -3460,7 +4117,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:LVSHAL",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Under-Voltage Load Shedding Relay (LVSHBL / UVLS)",
@@ -3478,7 +4138,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:LVSHBL",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Under-Voltage Load Shedding Relay (LVSHBL / UVLS)",
@@ -3496,7 +4159,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:LVSHZL",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Under-Voltage Load Shedding Relay (LVSHBL / UVLS)",
@@ -3514,7 +4180,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:MAXEX1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Over-Excitation Limiter (OEL / MAXEX)",
@@ -3532,7 +4201,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:MAXEX2",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Over-Excitation Limiter (OEL / MAXEX)",
@@ -3550,7 +4222,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:MDSPSS",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Microprocessor-Based Dual-Washout Stabilizer (PTIST / MDSPSS)",
@@ -3568,7 +4243,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:MMC_HVDC1",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Voltage Source Converter (VSC / MMC) HVDC Dynamic Link Model",
@@ -3586,7 +4264,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:MNLEX1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Under-Excitation Limiter (UEL / MNLEX)",
@@ -3604,7 +4285,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:MNLEX2",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Under-Excitation Limiter (UEL / MNLEX)",
@@ -3622,7 +4306,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:MNLEX3",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Under-Excitation Limiter (UEL / MNLEX)",
@@ -3640,7 +4327,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:MOTOR1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Dynamic Induction Motor/Generator Model (Generator Table)",
@@ -3658,7 +4350,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:MTDC1T",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Two-Terminal / Multi-Terminal LCC HVDC Dynamic Model with VDCOL (CDC4T / CDC6T)",
@@ -3676,7 +4371,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:OEL1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Over-Excitation Limiter (OEL / MAXEX)",
@@ -3694,7 +4392,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:OEL2B",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Over-Excitation Limiter (OEL / MAXEX)",
@@ -3712,7 +4413,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:OEL4C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Over-Excitation Limiter (OEL / MAXEX)",
@@ -3730,7 +4434,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:OEL5C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Over-Excitation Limiter (OEL / MAXEX)",
@@ -3748,7 +4455,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:OOSR1",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Generator Out-of-Step & Loss-of-Excitation Protection Relay (OOSR1 / LOEXR1)",
@@ -3766,7 +4476,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:OSTB1T",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Microprocessor-Based Dual-Washout Stabilizer (PTIST / MDSPSS)",
@@ -3784,7 +4497,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PANELU1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
@@ -3802,7 +4518,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PIDGOV",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Electronic PID Hydro Turbine-Governor (PIDGOV / WPIDHY / HYGOVR)",
@@ -3820,7 +4539,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PLNTBU1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Multi-Unit Plant Controller Model B/C (REPC_B / PLNTBU1)",
@@ -3838,7 +4560,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PMU_MEAS",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Bus Frequency & Phase-Angle Rate Measurement Block (BUSFRQ / SBUS)",
@@ -3856,7 +4581,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSS1A",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Single-Input Power System Stabilizer (PSS1A / IEEEST)",
@@ -3874,7 +4602,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSS1C",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Single-Input Power System Stabilizer (PSS1A / IEEEST)",
@@ -3892,7 +4623,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSS2A",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Dual-Input Accelerating Power PSS (PSS2A)",
@@ -3910,7 +4644,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSS2AU1",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Dual-Input Accelerating Power PSS (PSS2A)",
@@ -3928,7 +4665,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSS2B",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Extended Dual-Input PSS (PSS2B / PSS2C)",
@@ -3946,7 +4686,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSS2BU1",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Extended Dual-Input PSS (PSS2B / PSS2C)",
@@ -3964,7 +4707,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSS2C",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Extended Dual-Input PSS (PSS2B / PSS2C)",
@@ -3982,7 +4728,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSS3B",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Dual-Input Transducer Stabilizer (PSS3B / PSS3C)",
@@ -4000,7 +4749,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSS3C",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Dual-Input Transducer Stabilizer (PSS3B / PSS3C)",
@@ -4018,7 +4770,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSS4B",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Multi-Band Power System Stabilizer (MB-PSS / PSS4B)",
@@ -4036,7 +4791,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSS4C",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Multi-Band Power System Stabilizer (MB-PSS / PSS4B)",
@@ -4054,7 +4812,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSS5C",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Multi-Band Power System Stabilizer (MB-PSS / PSS4B)",
@@ -4072,7 +4833,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSS6C",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Multi-Band Power System Stabilizer (MB-PSS / PSS4B)",
@@ -4090,7 +4854,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSS7C",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Multi-Band Power System Stabilizer (MB-PSS / PSS4B)",
@@ -4108,7 +4875,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PSSSH",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Microprocessor-Based Dual-Washout Stabilizer (PTIST / MDSPSS)",
@@ -4126,7 +4896,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PTIST1",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Microprocessor-Based Dual-Washout Stabilizer (PTIST / MDSPSS)",
@@ -4144,7 +4917,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PTIST3",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Microprocessor-Based Dual-Washout Stabilizer (PTIST / MDSPSS)",
@@ -4162,7 +4938,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PV1E",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
@@ -4180,7 +4959,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PV1G",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
@@ -4198,7 +4980,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PVEU1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
@@ -4216,7 +5001,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:PVGU1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC 1st-Generation Photovoltaic Converter Generator Model",
@@ -4234,7 +5024,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REAX3B1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
@@ -4252,7 +5045,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REAX4B1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
@@ -4270,7 +5066,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REECA1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Renewable Electrical Control Model A (REEC_A / REECA1)",
@@ -4288,7 +5087,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REECAU1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Renewable Electrical Control Model A (REEC_A / REECA1)",
@@ -4306,7 +5108,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REECB1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Solar PV Electrical Control Model B (REEC_B / REECB1)",
@@ -4324,7 +5129,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REECBU1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Solar PV Electrical Control Model B (REEC_B / REECB1)",
@@ -4342,7 +5150,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REECC1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Battery Energy Storage Electrical Control Model C (REEC_C)",
@@ -4360,7 +5171,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REECCU1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Battery Energy Storage Electrical Control Model C (REEC_C)",
@@ -4378,7 +5192,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REECD1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Extended Renewable Electrical Control Model D (REEC_D)",
@@ -4396,7 +5213,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REECDU1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Extended Renewable Electrical Control Model D (REEC_D)",
@@ -4414,7 +5234,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REEC_A",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Renewable Electrical Control Model A (REEC_A / REECA1)",
@@ -4432,7 +5255,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REEC_B",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Solar PV Electrical Control Model B (REEC_B / REECB1)",
@@ -4450,7 +5276,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REEC_C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Battery Energy Storage Electrical Control Model C (REEC_C)",
@@ -4468,7 +5297,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REEC_D",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Extended Renewable Electrical Control Model D (REEC_D)",
@@ -4486,7 +5318,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REGCA1",
-    "exports": ["Vterm", "Ip", "Iq"],
+    "exports": [
+      "Vterm",
+      "Ip",
+      "Iq"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Generic Renewable Generator-Converter Model A (REGC_A / REGCA1)",
@@ -4504,7 +5340,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REGCAU1",
-    "exports": ["Vterm", "Ip", "Iq"],
+    "exports": [
+      "Vterm",
+      "Ip",
+      "Iq"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Generic Renewable Generator-Converter Model A (REGC_A / REGCA1)",
@@ -4522,7 +5362,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REGCB1",
-    "exports": ["Vterm", "Ip", "Iq"],
+    "exports": [
+      "Vterm",
+      "Ip",
+      "Iq"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Voltage-Source Renewable Converter Model B (REGC_B)",
@@ -4540,7 +5384,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REGCBU1",
-    "exports": ["Vterm", "Ip", "Iq"],
+    "exports": [
+      "Vterm",
+      "Ip",
+      "Iq"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Voltage-Source Renewable Converter Model B (REGC_B)",
@@ -4558,7 +5406,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REGCC1",
-    "exports": ["Vterm", "Ip", "Iq"],
+    "exports": [
+      "Vterm",
+      "Ip",
+      "Iq"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC High-Bandwidth PLL/Voltage-Source Converter Model C (REGC_C)",
@@ -4576,7 +5428,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REGCCU1",
-    "exports": ["Vterm", "Ip", "Iq"],
+    "exports": [
+      "Vterm",
+      "Ip",
+      "Iq"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC High-Bandwidth PLL/Voltage-Source Converter Model C (REGC_C)",
@@ -4594,7 +5450,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REGC_A",
-    "exports": ["Vterm", "Ip", "Iq"],
+    "exports": [
+      "Vterm",
+      "Ip",
+      "Iq"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Generic Renewable Generator-Converter Model A (REGC_A / REGCA1)",
@@ -4612,7 +5472,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REGC_B",
-    "exports": ["Vterm", "Ip", "Iq"],
+    "exports": [
+      "Vterm",
+      "Ip",
+      "Iq"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Voltage-Source Renewable Converter Model B (REGC_B)",
@@ -4630,7 +5494,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REGC_C",
-    "exports": ["Vterm", "Ip", "Iq"],
+    "exports": [
+      "Vterm",
+      "Ip",
+      "Iq"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC High-Bandwidth PLL/Voltage-Source Converter Model C (REGC_C)",
@@ -4648,7 +5516,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REGFM_A1",
-    "exports": ["Vterm", "Ip", "Iq"],
+    "exports": [
+      "Vterm",
+      "Ip",
+      "Iq"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Droop / Virtual Synchronous Machine Grid-Forming Inverter (REGFM_A1)",
@@ -4666,7 +5538,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REPCA1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Renewable Energy Plant Controller Model A (REPC_A / REPCA1)",
@@ -4684,7 +5559,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REPCAU1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Renewable Energy Plant Controller Model A (REPC_A / REPCA1)",
@@ -4702,7 +5580,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REPCB1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Multi-Unit Plant Controller Model B/C (REPC_B / PLNTBU1)",
@@ -4720,7 +5601,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REPCBU1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Multi-Unit Plant Controller Model B/C (REPC_B / PLNTBU1)",
@@ -4738,7 +5622,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REPCC1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Multi-Unit Plant Controller Model B/C (REPC_B / PLNTBU1)",
@@ -4756,7 +5643,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REPC_A",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Renewable Energy Plant Controller Model A (REPC_A / REPCA1)",
@@ -4774,7 +5664,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REPC_B",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Multi-Unit Plant Controller Model B/C (REPC_B / PLNTBU1)",
@@ -4792,7 +5685,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:REPC_C",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Multi-Unit Plant Controller Model B/C (REPC_B / PLNTBU1)",
@@ -4810,7 +5706,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:SBUS",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Bus Frequency & Phase-Angle Rate Measurement Block (BUSFRQ / SBUS)",
@@ -4828,7 +5727,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:SCRX",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Bus- or Solid-Fed SCR Static Exciter Model (SCRX)",
@@ -4846,7 +5748,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:SEXS",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Simplified Excitation System Model (SEXS)",
@@ -4864,7 +5769,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:SEXSG",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Simplified Excitation System Model (SEXS)",
@@ -4882,7 +5790,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:SSSC1",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Thyristor-Controlled Series Capacitor / Series FACTS Model (CSTCNT / TCSC1)",
@@ -4900,7 +5811,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ST10C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
@@ -4918,7 +5832,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ST1C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
@@ -4936,7 +5853,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ST2C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
@@ -4954,7 +5874,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ST3C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
@@ -4972,7 +5895,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ST4B",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
@@ -4990,7 +5916,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ST4C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
@@ -5008,7 +5937,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ST5B",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
@@ -5026,7 +5958,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ST5C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
@@ -5044,7 +5979,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ST6B",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
@@ -5062,7 +6000,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ST6C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
@@ -5080,7 +6021,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ST7B",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
@@ -5098,7 +6042,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ST7C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
@@ -5116,7 +6063,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ST8C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
@@ -5134,7 +6084,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:ST9C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type ST4B / ST5B / ST6B / ST7B Dual-PI Static Exciter",
@@ -5152,7 +6105,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:STAB1",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Speed-Sensitive Power System Stabilizer (STAB1)",
@@ -5170,7 +6126,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:STAB2A",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Power-Sensitive Power System Stabilizer (STAB2A)",
@@ -5188,7 +6147,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:STAB3",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Accelerating-Power Dual-Input Stabilizer (STAB3 / STAB4)",
@@ -5206,7 +6168,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:STAB4",
-    "exports": ["dOmega", "Vs"],
+    "exports": [
+      "dOmega",
+      "Vs"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Accelerating-Power Dual-Input Stabilizer (STAB3 / STAB4)",
@@ -5224,7 +6189,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:STATCOM1",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Static Synchronous Compensator (STATCOM) Model (SVSMO3)",
@@ -5242,7 +6210,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:STEAM1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Fast-Valving Steam Turbine-Governor Model (TGOV2 / TGOV3 / TGOV5)",
@@ -5260,7 +6231,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:SVSMO1",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Static Var Compensator Model 1/2 (SVSMO1 / SVSMO2)",
@@ -5278,7 +6252,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:SVSMO2",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Static Var Compensator Model 1/2 (SVSMO1 / SVSMO2)",
@@ -5296,7 +6273,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:SVSMO3",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Static Synchronous Compensator (STATCOM) Model (SVSMO3)",
@@ -5314,7 +6294,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:SWSHNT",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Static Var Compensator Model 1/2 (SVSMO1 / SVSMO2)",
@@ -5332,7 +6315,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:SYNCON",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Synchronous Condenser Dynamic Machine Model",
@@ -5350,7 +6338,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:SYN_STAT",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Static Synchronous Compensator (STATCOM) Model (SVSMO3)",
@@ -5368,7 +6359,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:TCSC1",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Thyristor-Controlled Series Capacitor / Series FACTS Model (CSTCNT / TCSC1)",
@@ -5386,7 +6380,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:TGOV1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Simplified Steam Turbine-Governor Model (TGOV1)",
@@ -5404,7 +6401,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:TGOV1D",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Simplified Steam Turbine-Governor Model (TGOV1)",
@@ -5422,7 +6422,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:TGOV1DU",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Simplified Steam Turbine-Governor Model (TGOV1)",
@@ -5440,7 +6443,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:TGOV2",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Fast-Valving Steam Turbine-Governor Model (TGOV2 / TGOV3 / TGOV5)",
@@ -5458,7 +6464,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:TGOV3",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Fast-Valving Steam Turbine-Governor Model (TGOV2 / TGOV3 / TGOV5)",
@@ -5476,7 +6485,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:TGOV4",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Fast-Valving Steam Turbine-Governor Model (TGOV2 / TGOV3 / TGOV5)",
@@ -5494,7 +6506,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:TGOV5",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Fast-Valving Steam Turbine-Governor Model (TGOV2 / TGOV3 / TGOV5)",
@@ -5512,7 +6527,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:TGOV_CC",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Fast-Valving Steam Turbine-Governor Model (TGOV2 / TGOV3 / TGOV5)",
@@ -5530,7 +6548,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:TIOCR1",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Transmission Line 3-Zone Mho Distance & Overcurrent Relay (DISTRL / TIOCR1)",
@@ -5548,7 +6569,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:TMECH1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Turbine Load Controller / Boiler Pressure Feedback (LCFB1)",
@@ -5566,7 +6590,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:TOVRD1",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Transmission Line 3-Zone Mho Distance & Overcurrent Relay (DISTRL / TIOCR1)",
@@ -5584,7 +6611,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:TURCZT",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Type 1 Tandem / Cross-Compound Steam Turbine-Governor (IEEEG1)",
@@ -5602,7 +6632,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:UEL1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Under-Excitation Limiter (UEL / MNLEX)",
@@ -5620,7 +6653,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:UEL2",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Under-Excitation Limiter (UEL / MNLEX)",
@@ -5638,7 +6674,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:UEL2C",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Under-Excitation Limiter (UEL / MNLEX)",
@@ -5656,7 +6695,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:UFLSAL",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
@@ -5674,7 +6716,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:UFLSBL",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Under-Frequency Load Shedding Relay (LDSHBL / UFLS / DLSH)",
@@ -5692,7 +6737,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:UPFC1",
-    "exports": ["Vterm", "Qinj"],
+    "exports": [
+      "Vterm",
+      "Qinj"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Thyristor-Controlled Series Capacitor / Series FACTS Model (CSTCNT / TCSC1)",
@@ -5710,7 +6758,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:URST5T",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE Std 421.5 Static Excitation System (ST1A / ST2A / ST3A)",
@@ -5728,7 +6779,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:UVLSAL",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Under-Voltage Load Shedding Relay (LVSHBL / UVLS)",
@@ -5746,7 +6800,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:UVLSBL",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Under-Voltage Load Shedding Relay (LVSHBL / UVLS)",
@@ -5764,7 +6821,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:VHZL1",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Volts-Per-Hertz Overfluxing Limiter (VHZL1)",
@@ -5782,7 +6842,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:VSC2DC",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Voltage Source Converter (VSC / MMC) HVDC Dynamic Link Model",
@@ -5800,7 +6863,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:VSCDCT",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Voltage Source Converter (VSC / MMC) HVDC Dynamic Link Model",
@@ -5818,7 +6884,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:VSC_DC",
-    "exports": ["Pdc", "Qdc"],
+    "exports": [
+      "Pdc",
+      "Qdc"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Voltage Source Converter (VSC / MMC) HVDC Dynamic Link Model",
@@ -5836,7 +6905,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:VTGDCAT",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Generator Over/Under-Voltage Trip Relay (VTGTPAT / VTGDCAT)",
@@ -5854,7 +6926,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:VTGTPAT",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Generator Over/Under-Voltage Trip Relay (VTGTPAT / VTGDCAT)",
@@ -5872,7 +6947,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:VTGTPAU",
-    "exports": ["Signal", "Trip"],
+    "exports": [
+      "Signal",
+      "Trip"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Generator Over/Under-Voltage Trip Relay (VTGTPAT / VTGDCAT)",
@@ -5890,7 +6968,11 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WECCGFM",
-    "exports": ["Vterm", "Ip", "Iq"],
+    "exports": [
+      "Vterm",
+      "Ip",
+      "Iq"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Droop / Virtual Synchronous Machine Grid-Forming Inverter (REGFM_A1)",
@@ -5908,7 +6990,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WEHGOV",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE General Speed-Governing & Steam Turbine Model (IEESGO / WSIEG1)",
@@ -5926,7 +7011,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WNDTGE",
-    "exports": ["Vterm", "Efd"],
+    "exports": [
+      "Vterm",
+      "Efd"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEC / WECC Auxiliary Renewable Control & Pitch/Irradiance Module",
@@ -5944,7 +7032,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WPID",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Electronic PID Hydro Turbine-Governor (PIDGOV / WPIDHY / HYGOVR)",
@@ -5962,7 +7053,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WPIDHY",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "Electronic PID Hydro Turbine-Governor (PIDGOV / WPIDHY / HYGOVR)",
@@ -5980,7 +7074,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WSHYDD",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
@@ -5998,7 +7095,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WSHYGP",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
@@ -6016,7 +7116,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WSHYST",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC / IEEE Hydro Turbine-Governor with Nonlinear Penstock (HYGOV / IEEEG3)",
@@ -6034,7 +7137,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WSIEG1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "IEEE General Speed-Governing & Steam Turbine Model (IEESGO / WSIEG1)",
@@ -6052,7 +7158,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT1G",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Type 1 Fixed-Speed Induction Wind Generator",
@@ -6070,7 +7181,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT1G1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Type 1 Fixed-Speed Induction Wind Generator",
@@ -6088,7 +7204,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT1P",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Blade Pitch Control Model (WTPTA1)",
@@ -6106,7 +7225,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT1T",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Two-Mass Wind Turbine Drive-Train Model (WTDTA1 / WT3T1)",
@@ -6124,7 +7246,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT2E",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
@@ -6142,7 +7267,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT2G",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Type 2 Wound-Rotor Induction Wind Generator (Variable Slip)",
@@ -6160,7 +7290,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT2G1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Type 2 Wound-Rotor Induction Wind Generator (Variable Slip)",
@@ -6178,7 +7313,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT2T",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Two-Mass Wind Turbine Drive-Train Model (WTDTA1 / WT3T1)",
@@ -6196,7 +7334,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT3E1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
@@ -6214,7 +7355,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT3G1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Type 3 Doubly-Fed Asynchronous Wind Generator (DFAG)",
@@ -6232,7 +7378,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT3G2",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Type 3 Doubly-Fed Asynchronous Wind Generator (DFAG)",
@@ -6250,7 +7401,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT3GU1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Type 3 Doubly-Fed Asynchronous Wind Generator (DFAG)",
@@ -6268,7 +7424,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT3P1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Blade Pitch Control Model (WTPTA1)",
@@ -6286,7 +7445,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT3T1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Two-Mass Wind Turbine Drive-Train Model (WTDTA1 / WT3T1)",
@@ -6304,7 +7466,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT4E1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
@@ -6322,7 +7487,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT4E2",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
@@ -6340,7 +7508,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT4G1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Type 4 Full-Converter Wind Generator Interface",
@@ -6358,7 +7531,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT4G2",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Type 4 Full-Converter Wind Generator Interface",
@@ -6376,7 +7554,12 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WT4GU1",
-    "exports": ["Efd", "Pmech", "Pe", "omega"],
+    "exports": [
+      "Efd",
+      "Pmech",
+      "Pe",
+      "omega"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Type 4 Full-Converter Wind Generator Interface",
@@ -6394,7 +7577,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WTARA1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
@@ -6412,7 +7598,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WTARAU1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
@@ -6430,7 +7619,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WTDTA1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Two-Mass Wind Turbine Drive-Train Model (WTDTA1 / WT3T1)",
@@ -6448,7 +7640,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WTDTAU1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Two-Mass Wind Turbine Drive-Train Model (WTDTA1 / WT3T1)",
@@ -6466,7 +7661,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WTGAR1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
@@ -6484,7 +7682,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WTGARA",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
@@ -6502,7 +7703,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WTGT_A",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
@@ -6520,7 +7724,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WTPTA1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Blade Pitch Control Model (WTPTA1)",
@@ -6538,7 +7745,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WTPTAU1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Blade Pitch Control Model (WTPTA1)",
@@ -6556,7 +7766,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WTTQA1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",
@@ -6574,7 +7787,10 @@
     "kind": "psse_dyr_model",
     "ruleName": "dyr_record",
     "namePath": "psse:WTTQAU1",
-    "exports": ["dOmega", "Pmech"],
+    "exports": [
+      "dOmega",
+      "Pmech"
+    ],
     "inherits": [],
     "metadata": {
       "label": "WECC Wind Turbine Torque / Aerodynamic / Electrical Controller (WTTQA1 / WT3E1 / WT4E1)",

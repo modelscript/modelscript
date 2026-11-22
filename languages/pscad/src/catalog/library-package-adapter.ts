@@ -946,8 +946,11 @@ export function ensureBuiltInPscadLibraryRegistered(): LoadedLibraryPackage | un
       ];
       for (const dir of candidates) {
         const pkgPath = nodePath.join(dir, "package.json");
-        if (!nodeFs.existsSync(pkgPath)) continue;
-        const pkgJson = JSON.parse(nodeFs.readFileSync(pkgPath, "utf-8"));
+        const yamlPath = nodePath.join(dir, "modelscript.yaml");
+        if (!nodeFs.existsSync(pkgPath) && !nodeFs.existsSync(yamlPath)) continue;
+        const pkgJson = nodeFs.existsSync(pkgPath)
+          ? JSON.parse(nodeFs.readFileSync(pkgPath, "utf-8"))
+          : PSCAD_MASTER_LIB_PKG_JSON;
         if (!isModelscriptLibraryPackageJson(pkgJson)) continue;
         let symbols: LibrarySymbolStub[] = [];
         if (pkgJson.modelscript.symbols) {
@@ -1040,7 +1043,20 @@ export async function exportSchemasToLibraryPackageDir(
     } satisfies ModelscriptLibraryManifest,
   };
 
+  const modelscriptYaml = [
+    `name: "${pkgName}"`,
+    `version: "${version}"`,
+    `license: "AGPL-3.0-or-later"`,
+    `library:`,
+    `  category: library`,
+    `  language: pscad`,
+    `  symbols: ./dist/symbols.json`,
+    `  diagrams: ./dist/diagrams.json`,
+    "",
+  ].join("\n");
+
   fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify(pkgJson, null, 2) + "\n", "utf-8");
+  fs.writeFileSync(path.join(outDir, "modelscript.yaml"), modelscriptYaml, "utf-8");
   fs.writeFileSync(path.join(distDir, "symbols.json"), JSON.stringify(symbols, null, 2) + "\n", "utf-8");
   fs.writeFileSync(path.join(distDir, "diagrams.json"), JSON.stringify(diagrams, null, 2) + "\n", "utf-8");
 }

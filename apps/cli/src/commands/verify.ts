@@ -5,14 +5,15 @@ import { Context } from "@modelscript/modelica/context";
 import { createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
 import modelicaLangFallback from "@modelscript/modelica/language";
 import { createWasmParser } from "@modelscript/modelica/parser";
+import { initBltWasm, UnifiedWorkspace } from "@modelscript/runtime";
 import {
-  initBltWasm,
+  ArenaSimulator,
+  runWasmSimulation,
+  simulateArenaAsync,
   UnifiedVerifier,
-  UnifiedWorkspace,
   type UnifiedVerificationOptions,
   type UnifiedVerificationReport,
-} from "@modelscript/runtime";
-import { ArenaSimulator, runWasmSimulation, simulateArenaAsync } from "@modelscript/simulate";
+} from "@modelscript/simulate";
 import { createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
@@ -59,6 +60,7 @@ interface VerifyArgs {
   sync?: boolean | undefined;
   fix?: boolean | undefined;
   flattener?: "ts" | "wasm" | "hybrid" | "diff" | undefined;
+  publishTo?: string | undefined;
 }
 
 export const Verify: CommandModule<{}, VerifyArgs> = {
@@ -226,6 +228,11 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
         description: "alias for --sync; apply suggested digital thread fixes on disk",
         type: "boolean",
         default: false,
+      })
+      .option("publish-to", {
+        description:
+          "publish verification run evidence to a remote ALM dependency in modelscript.yaml (package name or 'all')",
+        type: "string",
       }) as unknown as Argv<VerifyArgs>;
   },
 
@@ -275,12 +282,10 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       }
       return false;
     });
-    let pendingPolyglotThreadPayload:
-      | Parameters<typeof import("@modelscript/runtime").UnifiedVerifier.attachPolyglotDigitalThread>[1]
-      | null = null;
+    let pendingPolyglotThreadPayload: Parameters<typeof UnifiedVerifier.attachPolyglotDigitalThread>[1] | null = null;
     if (args.coordinator || hasPolyglotCaeFiles || cliUniqueExts.size >= 2 || hasPolyglotDirective) {
       const [
-        { createPolyglotCoordinator, COORDINATOR_SCENARIOS, UnifiedVerifier },
+        { createPolyglotCoordinator, COORDINATOR_SCENARIOS },
         { OpenFoamDialect, evaluateCfdExpression },
         { InpDialect },
         { evaluateScad },
@@ -930,6 +935,39 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
           console.log(`Exported Modelica experiment to: ${mosPath}`);
         }
       }
+    }
+
+    if (args.publishTo) {
+      const { execFileSync } = await import("node:child_process");
+      const { publishVerificationToRemotes } = await import("./sync.js");
+      let commitSha: string | undefined;
+      try {
+        commitSha = execFileSync("git", ["rev-parse", "HEAD"], {
+          encoding: "utf-8",
+          stdio: ["ignore", "pipe", "ignore"],
+        }).trim();
+      } catch {
+        commitSha = undefined;
+      }
+      await publishVerificationToRemotes(process.cwd(), args.publishTo, [
+        {
+          runId: `verify-${Date.now()}`,
+          title: `ModelScript Verify (${target || "workspace"})`,
+          status: report.summary.overallPassed ? "Passed" : "Failed",
+          commitSha,
+          verifiesIds: [],
+          metrics: {
+            totalStages: report.summary.totalStages,
+            passedStages: report.summary.passedStages,
+            failedStages: report.summary.failedStages,
+            totalViolations: report.summary.totalViolations,
+          },
+          timestamp: new Date().toISOString(),
+          details: report.summary.overallPassed
+            ? "All verification checks passed."
+            : "One or more verification checks failed.",
+        },
+      ]);
     }
 
     if (!report.summary.overallPassed) {

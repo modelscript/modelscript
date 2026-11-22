@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { MANIFEST_FILENAME, parseModelScriptYaml } from "@modelscript/runtime";
 import AdmZip from "adm-zip";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
@@ -99,20 +100,16 @@ export const Publish: CommandModule<{}, PublishArgs> = {
     let files: PackageFileEntry[] = [];
 
     if (stat.isDirectory()) {
-      const packageJsonPath = path.join(targetPath, "package.json");
+      const manifestPath = path.join(targetPath, MANIFEST_FILENAME);
       const packageMoPath = path.join(targetPath, "package.mo");
 
-      if (existsSync(packageJsonPath)) {
+      if (existsSync(manifestPath)) {
         try {
-          const parsed = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
-          if (!parsed.name) {
-            console.error(`Error: 'name' field is missing in ${packageJsonPath}`);
-            process.exit(1);
-          }
+          const parsed = parseModelScriptYaml(readFileSync(manifestPath, "utf-8"), manifestPath);
           name = parsed.name;
           version = parsed.version || "0.0.0";
         } catch (err) {
-          console.error(`Error: Failed to parse ${packageJsonPath}: ${err instanceof Error ? err.message : err}`);
+          console.error(`Error: Failed to parse ${manifestPath}: ${err instanceof Error ? err.message : err}`);
           process.exit(1);
         }
       } else if (existsSync(packageMoPath)) {
@@ -127,7 +124,9 @@ export const Publish: CommandModule<{}, PublishArgs> = {
         name = parsed.name;
         version = parsed.version || "0.0.0";
       } else {
-        console.error(`Error: Directory must contain either a 'package.json' or 'package.mo' file: ${targetPath}`);
+        console.error(
+          `Error: Directory must contain either a '${MANIFEST_FILENAME}' or 'package.mo' file: ${targetPath}`,
+        );
         process.exit(1);
       }
 

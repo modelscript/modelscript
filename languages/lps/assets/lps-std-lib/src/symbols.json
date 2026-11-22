@@ -1,0 +1,1398 @@
+[
+  {
+    "name": "PIPE_GAS",
+    "kind": "lps_component_model",
+    "namePath": "lps:PIPE_GAS",
+    "exports": [
+      "length",
+      "diameter",
+      "roughness",
+      "elevationChange",
+      "molarMass",
+      "zFactor",
+      "efficiency",
+      "viscosity"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Compressible Gas Pipeline Segment",
+      "category": "Pipeline",
+      "domain": "fluid",
+      "description": "Steady-state and transient compressible natural gas pipeline segment using Weymouth / Panhandle / Darcy-Weisbach friction and Swamee-Jain roughness.",
+      "provenance": "Weymouth (1912) / Panhandle B / Darcy-Weisbach / ISO 20765-1 (AGA-8)",
+      "aliases": [
+        "pipe_gas",
+        "gas_pipe",
+        "tgnet_pipe",
+        "PIPE"
+      ],
+      "parameters": [
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 10000,
+          "unit": "m",
+          "description": "Pipeline segment length"
+        },
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "m",
+          "description": "Internal pipe diameter"
+        },
+        {
+          "key": "roughness",
+          "type": "real",
+          "defaultValue": 0.000045,
+          "unit": "m",
+          "description": "Absolute internal wall roughness"
+        },
+        {
+          "key": "elevationChange",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Outlet minus inlet elevation"
+        },
+        {
+          "key": "molarMass",
+          "type": "real",
+          "defaultValue": 17.4,
+          "unit": "kg/kmol",
+          "description": "Gas mixture molar mass"
+        },
+        {
+          "key": "zFactor",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Fixed compressibility factor (0 = compute via Papay/AGA-8)"
+        },
+        {
+          "key": "efficiency",
+          "type": "real",
+          "defaultValue": 0.95,
+          "unit": "1",
+          "description": "Pipeline hydraulic drag efficiency factor"
+        },
+        {
+          "key": "viscosity",
+          "type": "real",
+          "defaultValue": 0.0000115,
+          "unit": "Pa*s",
+          "description": "Dynamic gas viscosity"
+        }
+      ],
+      "wasmKernel": "PIPE_GAS",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "PIPE_LIQUID",
+    "kind": "lps_component_model",
+    "namePath": "lps:PIPE_LIQUID",
+    "exports": [
+      "length",
+      "diameter",
+      "roughness",
+      "wallThickness",
+      "elevationChange",
+      "density",
+      "viscosity",
+      "bulkModulus",
+      "pipeElasticModulus"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Incompressible Liquid Pipeline & Surge Segment",
+      "category": "Pipeline",
+      "domain": "fluid",
+      "description": "Darcy-Weisbach liquid pipeline hydraulics with Korteweg-Moens acoustic wave speed and Joukowsky water-hammer surge pressure evaluation.",
+      "provenance": "Darcy-Weisbach / Swamee-Jain (1976) / Joukowsky (1898) Water-Hammer Equation",
+      "aliases": [
+        "pipe_liquid",
+        "liquid_pipe",
+        "tlnet_pipe"
+      ],
+      "parameters": [
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 10000,
+          "unit": "m",
+          "description": "Pipeline segment length"
+        },
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "m",
+          "description": "Internal pipe diameter"
+        },
+        {
+          "key": "roughness",
+          "type": "real",
+          "defaultValue": 0.000045,
+          "unit": "m",
+          "description": "Absolute internal wall roughness"
+        },
+        {
+          "key": "wallThickness",
+          "type": "real",
+          "defaultValue": 0.012,
+          "unit": "m",
+          "description": "Pipe steel wall thickness"
+        },
+        {
+          "key": "elevationChange",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Outlet minus inlet elevation"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 850,
+          "unit": "kg/m3",
+          "description": "Liquid operating density"
+        },
+        {
+          "key": "viscosity",
+          "type": "real",
+          "defaultValue": 0.005,
+          "unit": "Pa*s",
+          "description": "Dynamic liquid viscosity"
+        },
+        {
+          "key": "bulkModulus",
+          "type": "real",
+          "defaultValue": 1500000000,
+          "unit": "Pa",
+          "description": "Liquid adiabatic bulk modulus K"
+        },
+        {
+          "key": "pipeElasticModulus",
+          "type": "real",
+          "defaultValue": 207000000000,
+          "unit": "Pa",
+          "description": "Pipe wall Young's modulus E (carbon steel)"
+        }
+      ],
+      "wasmKernel": "PIPE_LIQUID",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "COMPRESSOR_CENTRIFUGAL",
+    "kind": "lps_component_model",
+    "namePath": "lps:COMPRESSOR_CENTRIFUGAL",
+    "exports": [
+      "pressureRatio",
+      "polytropicEfficiency",
+      "gamma",
+      "molarMass",
+      "maxPowerW",
+      "maxPressureRatio",
+      "zFactor"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Centrifugal Gas Compressor Station",
+      "category": "Machinery",
+      "domain": "fluid",
+      "description": "Polytropic centrifugal gas compressor calculating discharge pressure, polytropic head, discharge temperature, and shaft power.",
+      "provenance": "ASME PTC 10 / GPSA Engineering Data Book Ch. 13 Polytropic Compression",
+      "aliases": [
+        "compressor_centrifugal",
+        "centrifugal_compressor",
+        "COMP",
+        "CS"
+      ],
+      "parameters": [
+        {
+          "key": "pressureRatio",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "1",
+          "description": "Target discharge-to-suction pressure ratio"
+        },
+        {
+          "key": "polytropicEfficiency",
+          "type": "real",
+          "defaultValue": 0.82,
+          "unit": "1",
+          "description": "Polytropic compression efficiency"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.3,
+          "unit": "1",
+          "description": "Isentropic specific heat ratio cp/cv"
+        },
+        {
+          "key": "molarMass",
+          "type": "real",
+          "defaultValue": 17.4,
+          "unit": "kg/kmol",
+          "description": "Gas mixture molar mass"
+        },
+        {
+          "key": "maxPowerW",
+          "type": "real",
+          "defaultValue": 25000000,
+          "unit": "W",
+          "description": "Maximum available driver shaft power"
+        },
+        {
+          "key": "maxPressureRatio",
+          "type": "real",
+          "defaultValue": 2.2,
+          "unit": "1",
+          "description": "Maximum allowable compression ratio"
+        },
+        {
+          "key": "zFactor",
+          "type": "real",
+          "defaultValue": 0.88,
+          "unit": "1",
+          "description": "Mean suction/discharge compressibility factor"
+        }
+      ],
+      "wasmKernel": "COMPRESSOR_CENTRIFUGAL",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "COMPRESSOR_RECIP",
+    "kind": "lps_component_model",
+    "namePath": "lps:COMPRESSOR_RECIP",
+    "exports": [
+      "pressureRatio",
+      "mechanicalEfficiency",
+      "gamma",
+      "molarMass",
+      "maxPowerW",
+      "clearanceFraction",
+      "zFactor"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Reciprocating Gas Compressor Station",
+      "category": "Machinery",
+      "domain": "fluid",
+      "description": "Positive-displacement reciprocating gas compressor with clearance volumetric efficiency and adiabatic head/power calculation.",
+      "provenance": "API Std 618 / GPSA Engineering Data Book Reciprocating Compressors",
+      "aliases": [
+        "compressor_recip",
+        "reciprocating_compressor",
+        "RECIP"
+      ],
+      "parameters": [
+        {
+          "key": "pressureRatio",
+          "type": "real",
+          "defaultValue": 1.8,
+          "unit": "1",
+          "description": "Target compression ratio"
+        },
+        {
+          "key": "mechanicalEfficiency",
+          "type": "real",
+          "defaultValue": 0.88,
+          "unit": "1",
+          "description": "Adiabatic/mechanical efficiency"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.3,
+          "unit": "1",
+          "description": "Specific heat ratio cp/cv"
+        },
+        {
+          "key": "molarMass",
+          "type": "real",
+          "defaultValue": 17.4,
+          "unit": "kg/kmol",
+          "description": "Gas mixture molar mass"
+        },
+        {
+          "key": "maxPowerW",
+          "type": "real",
+          "defaultValue": 12000000,
+          "unit": "W",
+          "description": "Maximum rated shaft power"
+        },
+        {
+          "key": "clearanceFraction",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "1",
+          "description": "Cylinder clearance volume ratio"
+        },
+        {
+          "key": "zFactor",
+          "type": "real",
+          "defaultValue": 0.88,
+          "unit": "1",
+          "description": "Average compressibility factor"
+        }
+      ],
+      "wasmKernel": "COMPRESSOR_RECIP",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "PUMP_CENTRIFUGAL",
+    "kind": "lps_component_model",
+    "namePath": "lps:PUMP_CENTRIFUGAL",
+    "exports": [
+      "ratedHeadM",
+      "ratedFlowM3S",
+      "efficiency",
+      "density",
+      "shutoffRatio",
+      "speedRatio"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Centrifugal Liquid Booster Pump",
+      "category": "Machinery",
+      "domain": "fluid",
+      "description": "Centrifugal liquid pipeline pump modeled with parabolic affinity H-Q characteristic curve, differential pressure, and brake power.",
+      "provenance": "API Std 610 / Hydraulic Institute ANSI/HI 1.3 Centrifugal Pump Curves",
+      "aliases": [
+        "pump_centrifugal",
+        "centrifugal_pump",
+        "PUMP"
+      ],
+      "parameters": [
+        {
+          "key": "ratedHeadM",
+          "type": "real",
+          "defaultValue": 120,
+          "unit": "m",
+          "description": "Rated differential hydraulic head"
+        },
+        {
+          "key": "ratedFlowM3S",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "m3/s",
+          "description": "Rated volumetric flow rate"
+        },
+        {
+          "key": "efficiency",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "1",
+          "description": "Hydraulic pump efficiency at BEP"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 850,
+          "unit": "kg/m3",
+          "description": "Pumped liquid density"
+        },
+        {
+          "key": "shutoffRatio",
+          "type": "real",
+          "defaultValue": 1.25,
+          "unit": "1",
+          "description": "Shutoff head to rated head ratio"
+        },
+        {
+          "key": "speedRatio",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Normalized shaft speed N/N_rated"
+        }
+      ],
+      "wasmKernel": "PUMP_CENTRIFUGAL",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "REGULATOR_PRESSURE",
+    "kind": "lps_component_model",
+    "namePath": "lps:REGULATOR_PRESSURE",
+    "exports": [
+      "setpointPressurePa",
+      "maxCapacityKgS",
+      "jtCoeffKPerPa",
+      "minPressureDropPa"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pressure Reducing Regulator",
+      "category": "Valve / Regulator",
+      "domain": "fluid",
+      "description": "Downstream pressure-clamping gas regulator with Joule-Thomson expansion cooling and non-boosting check.",
+      "provenance": "ASME B31.8 / ISA-75.01 Pressure Regulator & Joule-Thomson Expansion",
+      "aliases": [
+        "regulator_pressure",
+        "pressure_regulator",
+        "REG",
+        "PRV"
+      ],
+      "parameters": [
+        {
+          "key": "setpointPressurePa",
+          "type": "real",
+          "defaultValue": 4000000,
+          "unit": "Pa",
+          "description": "Controlled downstream pressure setpoint"
+        },
+        {
+          "key": "maxCapacityKgS",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "kg/s",
+          "description": "Maximum regulator mass flow capacity"
+        },
+        {
+          "key": "jtCoeffKPerPa",
+          "type": "real",
+          "defaultValue": 0.0000045,
+          "unit": "K/Pa",
+          "description": "Joule-Thomson cooling coefficient"
+        },
+        {
+          "key": "minPressureDropPa",
+          "type": "real",
+          "defaultValue": 50000,
+          "unit": "Pa",
+          "description": "Minimum wide-open differential pressure"
+        }
+      ],
+      "wasmKernel": "REGULATOR_PRESSURE",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "VALVE_CONTROL",
+    "kind": "lps_component_model",
+    "namePath": "lps:VALVE_CONTROL",
+    "exports": [
+      "cv",
+      "opening",
+      "density",
+      "closingTimeS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Throttling Control Valve",
+      "category": "Valve / Regulator",
+      "domain": "fluid",
+      "description": "Modulating flow/pressure control valve governed by ISA Cv flow coefficient and fractional stem opening.",
+      "provenance": "ANSI/ISA-75.01.01 (IEC 60534-2-1) Control Valve Sizing Equations",
+      "aliases": [
+        "valve_control",
+        "control_valve",
+        "FCV",
+        "PCV"
+      ],
+      "parameters": [
+        {
+          "key": "cv",
+          "type": "real",
+          "defaultValue": 1200,
+          "unit": "gpm/sqrt(psi)",
+          "description": "Valve flow coefficient Cv"
+        },
+        {
+          "key": "opening",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Fractional valve stem opening (0..1)"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "kg/m3",
+          "description": "Fluid density at valve inlet"
+        },
+        {
+          "key": "closingTimeS",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "s",
+          "description": "Full-stroke actuator closing time"
+        }
+      ],
+      "wasmKernel": "VALVE_CONTROL",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "VALVE_CHECK",
+    "kind": "lps_component_model",
+    "namePath": "lps:VALVE_CHECK",
+    "exports": [
+      "cv",
+      "crackingDeltaPPa",
+      "density"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Non-Return Check Valve",
+      "category": "Valve / Regulator",
+      "domain": "fluid",
+      "description": "Swing/axial non-return check valve permitting forward flow with cracking differential pressure and blocking reverse flow.",
+      "provenance": "API Spec 6D / Crane TP-410 Check Valve Hydraulics",
+      "aliases": [
+        "valve_check",
+        "check_valve",
+        "NRV"
+      ],
+      "parameters": [
+        {
+          "key": "cv",
+          "type": "real",
+          "defaultValue": 2500,
+          "unit": "gpm/sqrt(psi)",
+          "description": "Full-open valve flow coefficient Cv"
+        },
+        {
+          "key": "crackingDeltaPPa",
+          "type": "real",
+          "defaultValue": 5000,
+          "unit": "Pa",
+          "description": "Minimum cracking pressure differential"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 850,
+          "unit": "kg/m3",
+          "description": "Fluid density at valve inlet"
+        }
+      ],
+      "wasmKernel": "VALVE_CHECK",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "VALVE_BLOCK",
+    "kind": "lps_component_model",
+    "namePath": "lps:VALVE_BLOCK",
+    "exports": [
+      "cv",
+      "opening",
+      "density",
+      "closingTimeS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Mainline Isolation / ESD Block Valve",
+      "category": "Valve / Regulator",
+      "domain": "fluid",
+      "description": "Full-bore mainline isolation or emergency shutdown (ESD) block valve with open/closed state and stroke time.",
+      "provenance": "API Spec 6D / ASME B31.4 & B31.8 Mainline Block Valve",
+      "aliases": [
+        "valve_block",
+        "block_valve",
+        "ESD_VALVE",
+        "BV"
+      ],
+      "parameters": [
+        {
+          "key": "cv",
+          "type": "real",
+          "defaultValue": 5000,
+          "unit": "gpm/sqrt(psi)",
+          "description": "Full-bore flow coefficient Cv"
+        },
+        {
+          "key": "opening",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Valve status (1 = open, 0 = closed)"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "kg/m3",
+          "description": "Fluid density at valve"
+        },
+        {
+          "key": "closingTimeS",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "s",
+          "description": "ESD closure stroke duration"
+        }
+      ],
+      "wasmKernel": "VALVE_BLOCK",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "HEATER_GAS",
+    "kind": "lps_component_model",
+    "namePath": "lps:HEATER_GAS",
+    "exports": [
+      "targetTempK",
+      "cpJPerKgK",
+      "pressureDropPa",
+      "thermalEfficiency"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Inline Gas Pre-Heater",
+      "category": "Thermal",
+      "domain": "fluid",
+      "description": "Line heater preventing hydrate formation upstream of pressure reduction stations by heating gas to target temperature.",
+      "provenance": "GPSA Engineering Data Book Ch. 9 / ASME BPVC Fired Line Heaters",
+      "aliases": [
+        "heater_gas",
+        "gas_heater",
+        "PREHEATER",
+        "HEATER"
+      ],
+      "parameters": [
+        {
+          "key": "targetTempK",
+          "type": "real",
+          "defaultValue": 313.15,
+          "unit": "K",
+          "description": "Controlled outlet gas temperature"
+        },
+        {
+          "key": "cpJPerKgK",
+          "type": "real",
+          "defaultValue": 2200,
+          "unit": "J/(kg*K)",
+          "description": "Isobaric specific heat capacity"
+        },
+        {
+          "key": "pressureDropPa",
+          "type": "real",
+          "defaultValue": 20000,
+          "unit": "Pa",
+          "description": "Tube-side frictional pressure loss"
+        },
+        {
+          "key": "thermalEfficiency",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "1",
+          "description": "Burner thermal efficiency"
+        }
+      ],
+      "wasmKernel": "HEATER_GAS",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "COOLER_GAS",
+    "kind": "lps_component_model",
+    "namePath": "lps:COOLER_GAS",
+    "exports": [
+      "targetTempK",
+      "cpJPerKgK",
+      "pressureDropPa",
+      "ambientTempK"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Compressor Discharge Gas Aftercooler",
+      "category": "Thermal",
+      "domain": "fluid",
+      "description": "Aerial fin-fan or shell-and-tube gas aftercooler rejecting compression heat to protect downstream pipeline coating.",
+      "provenance": "API Std 661 (ISO 13706) Air-Cooled Heat Exchangers",
+      "aliases": [
+        "cooler_gas",
+        "gas_cooler",
+        "AFTERCOOLER",
+        "COOLER"
+      ],
+      "parameters": [
+        {
+          "key": "targetTempK",
+          "type": "real",
+          "defaultValue": 308.15,
+          "unit": "K",
+          "description": "Controlled outlet gas temperature"
+        },
+        {
+          "key": "cpJPerKgK",
+          "type": "real",
+          "defaultValue": 2200,
+          "unit": "J/(kg*K)",
+          "description": "Isobaric specific heat capacity"
+        },
+        {
+          "key": "pressureDropPa",
+          "type": "real",
+          "defaultValue": 35000,
+          "unit": "Pa",
+          "description": "Cooler bundle pressure drop"
+        },
+        {
+          "key": "ambientTempK",
+          "type": "real",
+          "defaultValue": 293.15,
+          "unit": "K",
+          "description": "Ambient air/water sink temperature"
+        }
+      ],
+      "wasmKernel": "COOLER_GAS",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "TANK_STORAGE",
+    "kind": "lps_component_model",
+    "namePath": "lps:TANK_STORAGE",
+    "exports": [
+      "diameterM",
+      "liquidLevelM",
+      "maxLevelM",
+      "density",
+      "headspacePressurePa"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Atmospheric Liquid Storage Tank",
+      "category": "Storage / Surge",
+      "domain": "fluid",
+      "description": "Atmospheric or pressurized liquid storage tank providing hydrostatic head and inventory buffering.",
+      "provenance": "API Std 650 Welded Tanks for Oil Storage",
+      "aliases": [
+        "tank_storage",
+        "storage_tank",
+        "TANK"
+      ],
+      "parameters": [
+        {
+          "key": "diameterM",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "m",
+          "description": "Tank internal diameter"
+        },
+        {
+          "key": "liquidLevelM",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "m",
+          "description": "Current liquid column height"
+        },
+        {
+          "key": "maxLevelM",
+          "type": "real",
+          "defaultValue": 18,
+          "unit": "m",
+          "description": "Maximum safe fill height"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 850,
+          "unit": "kg/m3",
+          "description": "Stored liquid density"
+        },
+        {
+          "key": "headspacePressurePa",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Vapor headspace pressure"
+        }
+      ],
+      "wasmKernel": "TANK_STORAGE",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "SURGE_VESSEL",
+    "kind": "lps_component_model",
+    "namePath": "lps:SURGE_VESSEL",
+    "exports": [
+      "vesselVolumeM3",
+      "gasVolumeM3",
+      "prechargePressurePa",
+      "polytropicExponent",
+      "orificeLossCoeff"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Gas-Cushioned Hydraulic Surge Vessel",
+      "category": "Storage / Surge",
+      "domain": "fluid",
+      "description": "Pressurized bladder/gas-cushioned surge vessel mitigating liquid pipeline water-hammer transients via polytropic gas cushion.",
+      "provenance": "Wylie & Streeter Fluid Transients / ASME BPVC Section VIII Surge Vessel",
+      "aliases": [
+        "surge_vessel",
+        "surge_tank",
+        "ACCUMULATOR"
+      ],
+      "parameters": [
+        {
+          "key": "vesselVolumeM3",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "m3",
+          "description": "Total internal vessel volume"
+        },
+        {
+          "key": "gasVolumeM3",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "m3",
+          "description": "Pre-charge gas cushion volume"
+        },
+        {
+          "key": "prechargePressurePa",
+          "type": "real",
+          "defaultValue": 3500000,
+          "unit": "Pa",
+          "description": "Initial nitrogen cushion pressure"
+        },
+        {
+          "key": "polytropicExponent",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "1",
+          "description": "Gas cushion polytropic exponent n"
+        },
+        {
+          "key": "orificeLossCoeff",
+          "type": "real",
+          "defaultValue": 2.5,
+          "unit": "1",
+          "description": "Nozzle throttling loss coefficient K"
+        }
+      ],
+      "wasmKernel": "SURGE_VESSEL",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "SUPPLY_NODE",
+    "kind": "lps_component_model",
+    "namePath": "lps:SUPPLY_NODE",
+    "exports": [
+      "setpointPressurePa",
+      "temperatureK",
+      "maxFlowKgS",
+      "elevationM"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pipeline Supply / Receipt Boundary",
+      "category": "Boundary Node",
+      "domain": "fluid",
+      "description": "Network supply or receipt station enforcing boundary pressure, temperature, and maximum contract supply rate.",
+      "provenance": "PipelineStudio TGNET / TLNET & Synergi Gas Boundary Conditions",
+      "aliases": [
+        "supply_node",
+        "supply",
+        "SOURCE",
+        "RECEIPT"
+      ],
+      "parameters": [
+        {
+          "key": "setpointPressurePa",
+          "type": "real",
+          "defaultValue": 7000000,
+          "unit": "Pa",
+          "description": "Supply boundary pressure"
+        },
+        {
+          "key": "temperatureK",
+          "type": "real",
+          "defaultValue": 288.15,
+          "unit": "K",
+          "description": "Supply fluid temperature"
+        },
+        {
+          "key": "maxFlowKgS",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "kg/s",
+          "description": "Maximum available supply mass rate"
+        },
+        {
+          "key": "elevationM",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Node elevation above datum"
+        }
+      ],
+      "wasmKernel": "SUPPLY_NODE",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "DELIVERY_NODE",
+    "kind": "lps_component_model",
+    "namePath": "lps:DELIVERY_NODE",
+    "exports": [
+      "minPressurePa",
+      "targetFlowKgS",
+      "elevationM"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pipeline Delivery / Offtake Boundary",
+      "category": "Boundary Node",
+      "domain": "fluid",
+      "description": "Network delivery or customer offtake node specifying contract flow rate and minimum delivery pressure.",
+      "provenance": "PipelineStudio TGNET / TLNET & Synergi Gas Boundary Conditions",
+      "aliases": [
+        "delivery_node",
+        "delivery",
+        "SINK",
+        "DEMAND"
+      ],
+      "parameters": [
+        {
+          "key": "minPressurePa",
+          "type": "real",
+          "defaultValue": 3000000,
+          "unit": "Pa",
+          "description": "Minimum contractual delivery pressure"
+        },
+        {
+          "key": "targetFlowKgS",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "kg/s",
+          "description": "Scheduled delivery mass flow rate"
+        },
+        {
+          "key": "elevationM",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Node elevation above datum"
+        }
+      ],
+      "wasmKernel": "DELIVERY_NODE",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "EOS_AGA8",
+    "kind": "lps_component_model",
+    "namePath": "lps:EOS_AGA8",
+    "exports": [
+      "molarMass",
+      "pPseudocriticalPa",
+      "tPseudocriticalK",
+      "gamma"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "AGA-8 / ISO 20765-1 Natural Gas EOS",
+      "category": "Gas EOS",
+      "domain": "fluid",
+      "description": "Natural gas compressibility factor Z(P,T), density, and speed of sound per AGA Report No. 8 / ISO 20765-1 with pseudocritical Papay formulation.",
+      "provenance": "ISO 20765-1:2005 / AGA Report No. 8 Detailed Characterization Method",
+      "aliases": [
+        "eos_aga8",
+        "AGA8",
+        "AGA-8",
+        "aga8_detail"
+      ],
+      "parameters": [
+        {
+          "key": "molarMass",
+          "type": "real",
+          "defaultValue": 17.4,
+          "unit": "kg/kmol",
+          "description": "Gas mixture molar mass"
+        },
+        {
+          "key": "pPseudocriticalPa",
+          "type": "real",
+          "defaultValue": 4640000,
+          "unit": "Pa",
+          "description": "Pseudocritical pressure P_pc"
+        },
+        {
+          "key": "tPseudocriticalK",
+          "type": "real",
+          "defaultValue": 205,
+          "unit": "K",
+          "description": "Pseudocritical temperature T_pc"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.3,
+          "unit": "1",
+          "description": "Isentropic exponent k"
+        }
+      ],
+      "wasmKernel": "EOS_AGA8",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "EOS_GERG2008",
+    "kind": "lps_component_model",
+    "namePath": "lps:EOS_GERG2008",
+    "exports": [
+      "molarMass",
+      "pPseudocriticalPa",
+      "tPseudocriticalK",
+      "hydrogenFraction",
+      "gamma"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "GERG-2008 / ISO 20765-2 Wide-Range Gas EOS",
+      "category": "Gas EOS",
+      "domain": "fluid",
+      "description": "Wide-range multi-component natural gas and hydrogen-blend thermodynamic equation of state per ISO 20765-2 (GERG-2008).",
+      "provenance": "ISO 20765-2:2015 / Kunz & Wagner (2012) GERG-2008 Equation of State",
+      "aliases": [
+        "eos_gerg2008",
+        "GERG2008",
+        "GERG-2008",
+        "ISO20765-2"
+      ],
+      "parameters": [
+        {
+          "key": "molarMass",
+          "type": "real",
+          "defaultValue": 17.4,
+          "unit": "kg/kmol",
+          "description": "Gas mixture molar mass"
+        },
+        {
+          "key": "pPseudocriticalPa",
+          "type": "real",
+          "defaultValue": 4640000,
+          "unit": "Pa",
+          "description": "Pseudocritical pressure P_pc"
+        },
+        {
+          "key": "tPseudocriticalK",
+          "type": "real",
+          "defaultValue": 205,
+          "unit": "K",
+          "description": "Pseudocritical temperature T_pc"
+        },
+        {
+          "key": "hydrogenFraction",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Hydrogen molar blend fraction (0..1)"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.31,
+          "unit": "1",
+          "description": "Isentropic exponent k"
+        }
+      ],
+      "wasmKernel": "EOS_GERG2008",
+      "archetypeId": 61
+    }
+  },
+  {
+    "name": "EOS_PENG_ROBINSON",
+    "kind": "lps_component_model",
+    "namePath": "lps:EOS_PENG_ROBINSON",
+    "exports": [
+      "molarMass",
+      "pCriticalPa",
+      "tCriticalK",
+      "acentricFactor",
+      "gamma"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Peng-Robinson Cubic Equation of State",
+      "category": "Gas EOS",
+      "domain": "fluid",
+      "description": "Two-parameter Peng-Robinson (1976) cubic equation of state solving vapor-phase compressibility Z(P,T), density, and acoustic speed.",
+      "provenance": "Peng & Robinson (1976), Ind. Eng. Chem. Fundam. 15(1): 59-64",
+      "aliases": [
+        "eos_peng_robinson",
+        "PENG_ROBINSON",
+        "PR_EOS",
+        "PR76"
+      ],
+      "parameters": [
+        {
+          "key": "molarMass",
+          "type": "real",
+          "defaultValue": 16.043,
+          "unit": "kg/kmol",
+          "description": "Fluid molar mass"
+        },
+        {
+          "key": "pCriticalPa",
+          "type": "real",
+          "defaultValue": 4599000,
+          "unit": "Pa",
+          "description": "Critical pressure Pc"
+        },
+        {
+          "key": "tCriticalK",
+          "type": "real",
+          "defaultValue": 190.564,
+          "unit": "K",
+          "description": "Critical temperature Tc"
+        },
+        {
+          "key": "acentricFactor",
+          "type": "real",
+          "defaultValue": 0.0115,
+          "unit": "1",
+          "description": "Pitzer acentric factor omega"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.31,
+          "unit": "1",
+          "description": "Isentropic exponent k"
+        }
+      ],
+      "wasmKernel": "EOS_PENG_ROBINSON",
+      "archetypeId": 62
+    }
+  },
+  {
+    "name": "LIQUID_CRUDE",
+    "kind": "lps_component_model",
+    "namePath": "lps:LIQUID_CRUDE",
+    "exports": [
+      "refDensityKgM3",
+      "bulkModulusPa",
+      "thermalExpPerK",
+      "viscosityPaS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Crude Oil Liquid Property Standard",
+      "category": "Liquid Fluid",
+      "domain": "fluid",
+      "description": "API MPMS Ch. 11.1 temperature/pressure-compensated crude oil density, viscosity, bulk modulus, and wave speed.",
+      "provenance": "API MPMS Chapter 11.1 / ASTM D1250 Petroleum Measurement Tables",
+      "aliases": [
+        "liquid_crude",
+        "CRUDE_OIL",
+        "CRUDE"
+      ],
+      "parameters": [
+        {
+          "key": "refDensityKgM3",
+          "type": "real",
+          "defaultValue": 860,
+          "unit": "kg/m3",
+          "description": "Reference density at 15 degC, 1 atm"
+        },
+        {
+          "key": "bulkModulusPa",
+          "type": "real",
+          "defaultValue": 1500000000,
+          "unit": "Pa",
+          "description": "Adiabatic bulk modulus K"
+        },
+        {
+          "key": "thermalExpPerK",
+          "type": "real",
+          "defaultValue": 0.00078,
+          "unit": "1/K",
+          "description": "Volumetric thermal expansion coefficient"
+        },
+        {
+          "key": "viscosityPaS",
+          "type": "real",
+          "defaultValue": 0.012,
+          "unit": "Pa*s",
+          "description": "Reference dynamic viscosity"
+        }
+      ],
+      "wasmKernel": "LIQUID_CRUDE",
+      "archetypeId": 70
+    }
+  },
+  {
+    "name": "LIQUID_DIESEL",
+    "kind": "lps_component_model",
+    "namePath": "lps:LIQUID_DIESEL",
+    "exports": [
+      "refDensityKgM3",
+      "bulkModulusPa",
+      "thermalExpPerK",
+      "viscosityPaS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ultra-Low Sulfur Diesel Fluid Standard",
+      "category": "Liquid Fluid",
+      "domain": "fluid",
+      "description": "Refined diesel distillate fluid properties for TLNET multi-product batch pipelines and hydraulic surge analysis.",
+      "provenance": "API MPMS Chapter 11.1 / ASTM D975 Diesel Fuel Oil Standard",
+      "aliases": [
+        "liquid_diesel",
+        "DIESEL",
+        "ULSD"
+      ],
+      "parameters": [
+        {
+          "key": "refDensityKgM3",
+          "type": "real",
+          "defaultValue": 835,
+          "unit": "kg/m3",
+          "description": "Reference density at 15 degC, 1 atm"
+        },
+        {
+          "key": "bulkModulusPa",
+          "type": "real",
+          "defaultValue": 1450000000,
+          "unit": "Pa",
+          "description": "Adiabatic bulk modulus K"
+        },
+        {
+          "key": "thermalExpPerK",
+          "type": "real",
+          "defaultValue": 0.00083,
+          "unit": "1/K",
+          "description": "Volumetric thermal expansion coefficient"
+        },
+        {
+          "key": "viscosityPaS",
+          "type": "real",
+          "defaultValue": 0.003,
+          "unit": "Pa*s",
+          "description": "Reference dynamic viscosity"
+        }
+      ],
+      "wasmKernel": "LIQUID_DIESEL",
+      "archetypeId": 71
+    }
+  },
+  {
+    "name": "LIQUID_GASOLINE",
+    "kind": "lps_component_model",
+    "namePath": "lps:LIQUID_GASOLINE",
+    "exports": [
+      "refDensityKgM3",
+      "bulkModulusPa",
+      "thermalExpPerK",
+      "viscosityPaS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Motor Gasoline Fluid Standard",
+      "category": "Liquid Fluid",
+      "domain": "fluid",
+      "description": "Refined motor gasoline liquid properties with lower bulk modulus and higher thermal expansion for refined product pipelines.",
+      "provenance": "API MPMS Chapter 11.1 / ASTM D4814 Automotive Spark-Ignition Fuel",
+      "aliases": [
+        "liquid_gasoline",
+        "GASOLINE",
+        "MOGAS"
+      ],
+      "parameters": [
+        {
+          "key": "refDensityKgM3",
+          "type": "real",
+          "defaultValue": 745,
+          "unit": "kg/m3",
+          "description": "Reference density at 15 degC, 1 atm"
+        },
+        {
+          "key": "bulkModulusPa",
+          "type": "real",
+          "defaultValue": 1150000000,
+          "unit": "Pa",
+          "description": "Adiabatic bulk modulus K"
+        },
+        {
+          "key": "thermalExpPerK",
+          "type": "real",
+          "defaultValue": 0.00115,
+          "unit": "1/K",
+          "description": "Volumetric thermal expansion coefficient"
+        },
+        {
+          "key": "viscosityPaS",
+          "type": "real",
+          "defaultValue": 0.00055,
+          "unit": "Pa*s",
+          "description": "Reference dynamic viscosity"
+        }
+      ],
+      "wasmKernel": "LIQUID_GASOLINE",
+      "archetypeId": 72
+    }
+  },
+  {
+    "name": "LIQUID_WATER",
+    "kind": "lps_component_model",
+    "namePath": "lps:LIQUID_WATER",
+    "exports": [
+      "refDensityKgM3",
+      "bulkModulusPa",
+      "thermalExpPerK",
+      "viscosityPaS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Liquid Water Fluid Standard (IAPWS-95)",
+      "category": "Liquid Fluid",
+      "domain": "fluid",
+      "description": "Standard liquid water density, compressibility, and acoustic wave speed reference for hydrotest and water-hammer verification.",
+      "provenance": "IAPWS-95 / ISO 4185 Liquid Water Reference Properties",
+      "aliases": [
+        "liquid_water",
+        "WATER",
+        "H2O"
+      ],
+      "parameters": [
+        {
+          "key": "refDensityKgM3",
+          "type": "real",
+          "defaultValue": 999.1,
+          "unit": "kg/m3",
+          "description": "Reference density at 15 degC, 1 atm"
+        },
+        {
+          "key": "bulkModulusPa",
+          "type": "real",
+          "defaultValue": 2150000000,
+          "unit": "Pa",
+          "description": "Adiabatic bulk modulus K"
+        },
+        {
+          "key": "thermalExpPerK",
+          "type": "real",
+          "defaultValue": 0.00015,
+          "unit": "1/K",
+          "description": "Volumetric thermal expansion coefficient"
+        },
+        {
+          "key": "viscosityPaS",
+          "type": "real",
+          "defaultValue": 0.00114,
+          "unit": "Pa*s",
+          "description": "Reference dynamic viscosity"
+        }
+      ],
+      "wasmKernel": "LIQUID_WATER",
+      "archetypeId": 73
+    }
+  }
+]

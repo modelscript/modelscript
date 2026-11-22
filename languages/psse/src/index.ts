@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./analysis/advanced-formal-checks.js";
+export * from "./analysis/fast-static-checks.js";
 export * from "./analysis/formal-grid-checks.js";
 export * from "./builtins.js";
 export * from "./dae/index.js";
@@ -18,6 +19,7 @@ export * from "./benchmarking/pegase9241.js";
 export * from "./benchmarking/sota-discrepancy.js";
 export * from "./calibration/dyr-calibrator.js";
 export * from "./catalog/fmu-dyr-linker.js";
+export * from "./catalog/psse-std-lib-data.js";
 export * from "./catalog/wasm-dyr-loader.js";
 export * from "./compliance/nerc-auditor.js";
 export * from "./compliance/protection-auditor.js";

@@ -122,6 +122,27 @@
     "ruleCount": 13
   },
   {
+    "slug": "magicdraw",
+    "name": "MagicDraw / Cameo",
+    "sidebar": "MagicDraw (.mdzip)",
+    "ext": ".mdzip",
+    "role": "SysML 1.x / UML 2.x archive inspection, diagrams & SysML v2 migration",
+    "group": "core",
+    "pkgName": "@modelscript/magicdraw",
+    "version": "0.1.0",
+    "tier": "alpha",
+    "cliCommand": null,
+    "actions": [],
+    "capabilities": {
+      "parse": true,
+      "lint": false,
+      "dae": true,
+      "simulate": false,
+      "projections": []
+    },
+    "ruleCount": 0
+  },
+  {
     "slug": "oscal",
     "name": "NIST OSCAL",
     "sidebar": "NIST OSCAL Security",

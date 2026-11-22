@@ -247,7 +247,6 @@ export class DaeBuilder {
   /**
    * Resets all equation, variable, expression, and metadata counters.
    */
-  @inline
   reset(): void {
     this.varCount = 0;
     this.eqCount = 0;
@@ -340,7 +339,6 @@ export class DaeBuilder {
   /**
    * Registers a variable declaration in the DAE system and populates the secondary name index.
    */
-  @inline
   addVariable(
     nameId: u32,
     type: i32,
@@ -394,7 +392,6 @@ export class DaeBuilder {
    * O(1) Variable Lookup by interned Name StringId.
    * Returns variable index or -1 if not found.
    */
-  @inline
   lookupVariableByName(nameId: u32): i32 {
     if (nameId == 0 || changetype<usize>(this.nameIndex) == 0) return -1;
     let val = this.getNameIndex().get(nameId as u64);
@@ -404,7 +401,6 @@ export class DaeBuilder {
   /**
    * Registers an alias relationship (e.g. `varIdx` is an alias for `targetNameId`).
    */
-  @inline
   addAlias(varIdx: u32, targetNameId: u32): void {
     if (varIdx >= this.varCount) return;
     this.getAliasData().set(varIdx, targetNameId as i32);
@@ -413,7 +409,6 @@ export class DaeBuilder {
   /**
    * Gets the alias target Name StringId for a variable, with path compression.
    */
-  @inline
   getAlias(varIdx: u32): u32 {
     if (varIdx >= this.varCount) return 0;
     let target = this.getAliasData().get(varIdx);
@@ -423,7 +418,6 @@ export class DaeBuilder {
   /**
    * Sets an attribute expression (e.g. min, max, unit, start, fixed) for a variable.
    */
-  @inline
   setVarAttrExpr(varIdx: u32, attrKind: u32, exprId: u32): void {
     if (varIdx >= this.varCount || attrKind >= VAR_ATTR_STRIDE) return;
     this.getVarAttrData().set(varIdx * VAR_ATTR_STRIDE + attrKind, exprId as i32);
@@ -432,7 +426,6 @@ export class DaeBuilder {
   /**
    * Gets an attribute expression for a variable.
    */
-  @inline
   getVarAttrExpr(varIdx: u32, attrKind: u32): u32 {
     if (varIdx >= this.varCount || attrKind >= VAR_ATTR_STRIDE) return 0xffffffff;
     return this.getVarAttrData().get(varIdx * VAR_ATTR_STRIDE + attrKind) as u32;
@@ -441,7 +434,6 @@ export class DaeBuilder {
   /**
    * Sets concrete shape dimension for a variable.
    */
-  @inline
   setVarShapeDim(varIdx: u32, dimIdx: u32, size: i32): void {
     if (varIdx >= this.varCount || dimIdx >= 4) return;
     this.getVarShapes().set(varIdx * 4 + dimIdx, size);
@@ -454,7 +446,6 @@ export class DaeBuilder {
   /**
    * Gets concrete shape dimension for a variable.
    */
-  @inline
   getVarShapeDim(varIdx: u32, dimIdx: u32): i32 {
     if (varIdx >= this.varCount || dimIdx >= 4) return 0;
     return this.getVarShapes().get(varIdx * 4 + dimIdx);
@@ -463,7 +454,6 @@ export class DaeBuilder {
   /**
    * Sets symbolic shape dimension expression for a variable.
    */
-  @inline
   setVarSymbolicShapeExpr(varIdx: u32, dimIdx: u32, exprId: u32): void {
     if (varIdx >= this.varCount || dimIdx >= 4) return;
     this.getVarSymbolicShapes().set(varIdx * 4 + dimIdx, exprId as i32);
@@ -472,7 +462,6 @@ export class DaeBuilder {
   /**
    * Gets symbolic shape dimension expression for a variable.
    */
-  @inline
   getVarSymbolicShapeExpr(varIdx: u32, dimIdx: u32): u32 {
     if (varIdx >= this.varCount || dimIdx >= 4) return 0xffffffff;
     return this.getVarSymbolicShapes().get(varIdx * 4 + dimIdx) as u32;
@@ -481,7 +470,6 @@ export class DaeBuilder {
   /**
    * Registers a discrete clock domain (Modelica 3.7 §16).
    */
-  @inline
   addClock(intervalExprId: u32, resolutionExprId: u32 = 0xffffffff, shiftExprId: u32 = 0xffffffff): u32 {
     let id = ++this.clockCount;
     let offset = (id - 1) * CLOCK_STRIDE;
@@ -492,25 +480,21 @@ export class DaeBuilder {
     return id;
   }
 
-  @inline
   setVarClock(varIdx: u32, clockId: u32): void {
     if (varIdx >= this.varCount) return;
     this.getVarClockMap().set(varIdx, clockId as i32);
   }
 
-  @inline
   getVarClock(varIdx: u32): u32 {
     if (varIdx >= this.varCount) return 0;
     return this.getVarClockMap().get(varIdx) as u32;
   }
 
-  @inline
   setEqClock(eqIdx: u32, clockId: u32): void {
     if (eqIdx >= this.eqCount) return;
     this.getEqClockMap().set(eqIdx, clockId as i32);
   }
 
-  @inline
   getEqClock(eqIdx: u32): u32 {
     if (eqIdx >= this.eqCount) return 0;
     return this.getEqClockMap().get(eqIdx) as u32;
@@ -519,7 +503,6 @@ export class DaeBuilder {
   /**
    * Adds a compound when-equation block (keeps body out of root BLT count).
    */
-  @inline
   addWhenEquation(conditionExprId: u32): u32 {
     let idx = this.whenCount++;
     let offset = idx * WHEN_STRIDE;
@@ -530,7 +513,6 @@ export class DaeBuilder {
     return idx;
   }
 
-  @inline
   addWhenBodyEquation(whenIdx: u32, kind: i32, lhsId: u32, rhsId: u32): u32 {
     if (whenIdx >= this.whenCount) return 0;
     let bIdx = this.whenBodyEqCount++;
@@ -549,7 +531,6 @@ export class DaeBuilder {
   /**
    * Adds a compound for-equation block.
    */
-  @inline
   addForEquation(indexNameId: u32, rangeExprId: u32): u32 {
     let idx = this.forCount++;
     let offset = idx * FOR_STRIDE;
@@ -560,7 +541,6 @@ export class DaeBuilder {
     return idx;
   }
 
-  @inline
   addForBodyEquation(forIdx: u32, kind: i32, lhsId: u32, rhsId: u32): u32 {
     if (forIdx >= this.forCount) return 0;
     let bIdx = this.forBodyEqCount++;
@@ -579,7 +559,6 @@ export class DaeBuilder {
   /**
    * Adds a compound if-equation block.
    */
-  @inline
   addIfEquation(conditionExprId: u32): u32 {
     let idx = this.ifCount++;
     let offset = idx * IF_STRIDE;
@@ -592,7 +571,6 @@ export class DaeBuilder {
     return idx;
   }
 
-  @inline
   addIfThenEquation(ifIdx: u32, kind: i32, lhsId: u32, rhsId: u32): u32 {
     if (ifIdx >= this.ifCount) return 0;
     let bIdx = this.ifBranchEqCount++;
@@ -611,7 +589,6 @@ export class DaeBuilder {
   /**
    * Adds a state machine container (Modelica 3.7 §17).
    */
-  @inline
   addStateMachine(nameId: u32, initialStateId: u32): u32 {
     let idx = this.smCount++;
     let offset = idx * SM_STRIDE;
@@ -622,7 +599,6 @@ export class DaeBuilder {
     return idx;
   }
 
-  @inline
   addState(smId: u32, nameId: u32): u32 {
     if (smId >= this.smCount) return 0;
     let idx = this.stateCount++;
@@ -640,7 +616,6 @@ export class DaeBuilder {
     return idx;
   }
 
-  @inline
   addStateEquation(smId: u32, stateId: u32, targetNameId: u32, exprId: u32, isDerivative: boolean): u32 {
     if (stateId >= this.stateCount) return 0;
     let idx = this.stateEqCount++;
@@ -656,7 +631,6 @@ export class DaeBuilder {
     return idx;
   }
 
-  @inline
   addTransition(
     smId: u32,
     fromStateId: u32,
@@ -679,19 +653,16 @@ export class DaeBuilder {
   /**
    * Registers a zero-crossing event indicator expression for continuous integration.
    */
-  @inline
   addEventIndicator(exprId: u32): u32 {
     let idx = this.eventIndicatorCount++;
     this.getEventIndicators().set(idx, exprId as i32);
     return idx;
   }
 
-  @inline
   getEventIndicatorCount(): u32 {
     return this.eventIndicatorCount;
   }
 
-  @inline
   getEventIndicatorExprId(idx: u32): u32 {
     if (idx >= this.eventIndicatorCount) return 0xffffffff;
     return this.getEventIndicators().get(idx) as u32;
@@ -700,7 +671,6 @@ export class DaeBuilder {
   /**
    * Sets optimization objective expressions.
    */
-  @inline
   setOptimizationObjective(objExpr: u32, integrandExpr: u32, startExpr: u32, finalExpr: u32): void {
     this.objectiveExprId = objExpr;
     this.objectiveIntegrandExprId = integrandExpr;
@@ -711,7 +681,6 @@ export class DaeBuilder {
   /**
    * Adds an expression node to the DAE system.
    */
-  @inline
   addExpression(kind: i32, data1: u32, left: u32 = 0xffffffff, right: u32 = 0xffffffff): u32 {
     let idx = this.exprCount++;
     let offset = idx * EXPR_STRIDE;
@@ -723,22 +692,18 @@ export class DaeBuilder {
     return idx;
   }
 
-  @inline
   addName(varId: u32): u32 {
     return this.addExpression(ExprKind.Name, varId);
   }
 
-  @inline
   addIntLiteral(value: i32): u32 {
     return this.addExpression(ExprKind.IntLiteral, value as u32);
   }
 
-  @inline
   addBoolLiteral(value: bool): u32 {
     return this.addExpression(ExprKind.BoolLiteral, value ? 1 : 0);
   }
 
-  @inline
   addRealLiteral(value: f64): u32 {
     let bits = i64.reinterpret_f64(value) as u64;
     let lo = (bits & 0xffffffff) as u32;
@@ -746,7 +711,6 @@ export class DaeBuilder {
     return this.addExpression(ExprKind.RealLiteral, lo, hi);
   }
 
-  @inline
   getExprRealValue(exprId: u32): f64 {
     let lo = (this.getExprData().get(exprId * 4 + 1) as u64) & 0xffffffff;
     let hi = (this.getExprData().get(exprId * 4 + 2) as u64) << 32;
@@ -754,57 +718,46 @@ export class DaeBuilder {
     return f64.reinterpret_i64(bits as i64);
   }
 
-  @inline
   addBinaryExpr(op: u16, left: u32, right: u32): u32 {
     return this.addExpression(ExprKind.Binary, op as u32, left, right);
   }
 
-  @inline
   addUnaryExpr(op: u32, left: u32): u32 {
     return this.addExpression(ExprKind.Unary, op, left, 0xffffffff);
   }
 
-  @inline
   addDer(varId: u32): u32 {
     return this.addExpression(ExprKind.Der, varId);
   }
 
-  @inline
   addDerExpr(operand: u32): u32 {
     return this.addExpression(ExprKind.Der, operand);
   }
 
-  @inline
   addPreExpr(operand: u32): u32 {
     return this.addExpression(ExprKind.Pre, operand);
   }
 
-  @inline
   addIfElse(condExpr: u32, trueExpr: u32, falseExpr: u32): u32 {
     return this.addExpression(ExprKind.IfElse, condExpr, trueExpr, falseExpr);
   }
 
-  @inline
   addCall(funcId: i32, firstArg: u32, argCount: u32): u32 {
     return this.addExpression(ExprKind.Call, funcId as u32, firstArg, argCount);
   }
 
-  @inline
   getExprKind(exprId: u32): i32 {
     return this.getExprData().get(exprId * 4 + 0);
   }
 
-  @inline
   getExprData1(exprId: u32): u32 {
     return this.getExprData().get(exprId * 4 + 1) as u32;
   }
 
-  @inline
   getExprLeft(exprId: u32): u32 {
     return this.getExprData().get(exprId * 4 + 2) as u32;
   }
 
-  @inline
   getExprRight(exprId: u32): u32 {
     return this.getExprData().get(exprId * 4 + 3) as u32;
   }
@@ -813,7 +766,6 @@ export class DaeBuilder {
    * Resolves an expression payload (`EXPR_DATA1` of `Name` or `Der`) that stores
    * a 0-based `varIdx`, or falls back to looking up by interned `StringId`.
    */
-  @inline
   resolveExprVarId(nameOrVarId: u32): i32 {
     if (nameOrVarId == 0xffffffff) return -1;
     if (changetype<usize>(this.stringPool) != 0 && this.stringPool.isTime(nameOrVarId)) return -1;
@@ -826,7 +778,6 @@ export class DaeBuilder {
    * supporting both the canonical `addCallExpr` layout (`Tuple` slots at `callExprId + argIdx`
    * with `EXPR_LEFT = argExprId`) and legacy binary/contiguous layouts.
    */
-  @inline
   getCallArgExprId(callExprId: u32, argIdx: u32): u32 {
     if (callExprId >= this.exprCount) return 0xffffffff;
     let firstArg = this.getExprLeft(callExprId);
@@ -851,24 +802,20 @@ export class DaeBuilder {
     return 0xffffffff;
   }
 
-  @inline
   getVarCount(): i32 {
     return this.varCount as i32;
   }
 
-  @inline
   getVarNameId(varIdx: u32): u32 {
     if (varIdx >= this.varCount) return 0;
     return this.getVarData().get(varIdx * VAR_STRIDE + VAR_NAME) as u32;
   }
 
-  @inline
   isVarRemoved(varIdx: u32): bool {
     if (varIdx >= this.varCount) return true;
     return (this.getVarData().get(varIdx * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_REMOVED) != 0;
   }
 
-  @inline
   setVarRemoved(varIdx: u32, removed: bool = true): void {
     if (varIdx >= this.varCount) return;
     let offset = varIdx * VAR_STRIDE + VAR_FLAGS;
@@ -880,7 +827,6 @@ export class DaeBuilder {
     }
   }
 
-  @inline
   isEqInitial(eqIdx: u32): bool {
     if (eqIdx >= this.eqCount) return false;
     let offset = eqIdx * EQ_STRIDE;
@@ -890,14 +836,12 @@ export class DaeBuilder {
     return aux != -1 && (aux & FLAG_EQ_INITIAL) != 0;
   }
 
-  @inline
   isEqRemoved(eqIdx: u32): bool {
     if (eqIdx >= this.eqCount) return true;
     let aux = this.getEqData().get(eqIdx * EQ_STRIDE + EQ_AUX);
     return aux != -1 && (aux & FLAG_EQ_REMOVED) != 0;
   }
 
-  @inline
   setEqRemoved(eqIdx: u32, removed: bool = true): void {
     if (eqIdx >= this.eqCount) return;
     let offset = eqIdx * EQ_STRIDE + EQ_AUX;
@@ -910,13 +854,11 @@ export class DaeBuilder {
     }
   }
 
-  @inline
   getVarType(varIdx: u32): i32 {
     if (varIdx >= this.varCount) return -1;
     return this.getVarData().get(varIdx * VAR_STRIDE + VAR_TYPE);
   }
 
-  @inline
   getVarStartValue(varId: u32): f64 {
     if (varId >= this.varCount) return 0.0;
     let hi = (this.getVarData().get(varId * VAR_STRIDE + VAR_START_HI) as u64) << 32;
@@ -924,7 +866,6 @@ export class DaeBuilder {
     return f64.reinterpret_i64((hi | lo) as i64);
   }
 
-  @inline
   setVarStartValue(varId: u32, val: f64): void {
     if (varId >= this.varCount) return;
     let bits = i64.reinterpret_f64(val) as u64;
@@ -934,23 +875,19 @@ export class DaeBuilder {
     this.getVarData().set(varId * VAR_STRIDE + VAR_START_LO, lo);
   }
 
-  @inline
   getWarmStartValue(varId: u32): f64 {
     return this.getVarStartValue(varId);
   }
 
-  @inline
   setWarmStartValue(varId: u32, val: f64): void {
     this.setVarStartValue(varId, val);
   }
 
-  @inline
   isVarFlow(varIdx: u32): boolean {
     if (varIdx >= this.varCount) return false;
     return (this.getVarData().get(varIdx * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_FLOW) != 0;
   }
 
-  @inline
   setVarFlow(varIdx: u32, isFlow: bool): void {
     if (varIdx >= this.varCount) return;
     let offset = varIdx * VAR_STRIDE + VAR_FLAGS;
@@ -962,13 +899,11 @@ export class DaeBuilder {
     }
   }
 
-  @inline
   isVarStream(varIdx: u32): boolean {
     if (varIdx >= this.varCount) return false;
     return (this.getVarData().get(varIdx * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_STREAM) != 0;
   }
 
-  @inline
   setVarStream(varIdx: u32, isStream: bool): void {
     if (varIdx >= this.varCount) return;
     let offset = varIdx * VAR_STRIDE + VAR_FLAGS;
@@ -980,13 +915,11 @@ export class DaeBuilder {
     }
   }
 
-  @inline
   isVarFixed(varIdx: u32): boolean {
     if (varIdx >= this.varCount) return false;
     return (this.getVarData().get(varIdx * VAR_STRIDE + VAR_FLAGS) & FLAG_VAR_FIXED) != 0;
   }
 
-  @inline
   setVarFixed(varIdx: u32, isFixed: bool): void {
     if (varIdx >= this.varCount) return;
     let offset = varIdx * VAR_STRIDE + VAR_FLAGS;
@@ -998,7 +931,6 @@ export class DaeBuilder {
     }
   }
 
-  @inline
   removeVariable(varIdx: u32): void {
     if (varIdx >= this.varCount) return;
     let offset = varIdx * VAR_STRIDE + VAR_FLAGS;
@@ -1009,7 +941,6 @@ export class DaeBuilder {
   /**
    * Adds an equation to the DAE system (e.g. `lhs = rhs`).
    */
-  @inline
   addEquation(kind: i32, lhsId: u32, rhsId: u32, auxId: u32 = 0xffffffff): u32 {
     let idx = this.eqCount++;
     let offset = idx * EQ_STRIDE;
@@ -1025,7 +956,6 @@ export class DaeBuilder {
   /**
    * Adds an algorithm statement to the DAE system.
    */
-  @inline
   addStatement(kind: i32, data1: u32, left: u32 = 0xffffffff, right: u32 = 0xffffffff): u32 {
     let idx = this.stmtCount++;
     let offset = idx * STMT_STRIDE;
@@ -1038,7 +968,6 @@ export class DaeBuilder {
     return idx;
   }
 
-  @inline
   setVarFlag(varId: u32, flag: i32): void {
     if (varId >= this.varCount) return;
     let offset = varId * VAR_STRIDE + VAR_FLAGS;
@@ -1046,14 +975,12 @@ export class DaeBuilder {
     this.getVarData().set(offset, curr | flag);
   }
 
-  @inline
   hasVarFlag(varId: u32, flag: i32): boolean {
     if (varId >= this.varCount) return false;
     let offset = varId * VAR_STRIDE + VAR_FLAGS;
     return (this.getVarData().get(offset) & flag) != 0;
   }
 
-  @inline
   exportDaeBinary(targetBuf: usize): u32 {
     if (targetBuf == 0) return 0;
     store<u32>(targetBuf, this.varCount);
@@ -1069,7 +996,6 @@ export class DaeBuilder {
   /**
    * Captures a snapshot checkpoint of all variable, equation, and metadata counts.
    */
-  @inline
   snapshot(): void {
     this.snapshotVarCount = this.varCount;
     this.snapshotEqCount = this.eqCount;
@@ -1093,7 +1019,6 @@ export class DaeBuilder {
   /**
    * Restores the DAE system state back to the previous snapshot checkpoint.
    */
-  @inline
   rollback(): void {
     const oldVarCount = this.varCount;
     this.varCount = this.snapshotVarCount;
@@ -1157,7 +1082,6 @@ export class DaeBuilder {
     this.getEventIndicators().length = this.eventIndicatorCount;
   }
 
-  @inline
   resolveBuiltinMathFunc(funcId: i32): i32 {
     if (changetype<usize>(this.stringPool) != 0) {
       return this.stringPool.resolveBuiltinMathFunc(funcId);

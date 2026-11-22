@@ -37,8 +37,6 @@
       "@modelscript/runtime/parallel_reasoner.js": ["../src/ontology/parallel_reasoner.ts"],
       "@modelscript/runtime/wasm_rtc_statemachine.js": ["../src/statemachine/wasm_rtc_statemachine.ts"],
       "@modelscript/runtime/wasm_fuml_engine.js": ["../src/statemachine/wasm_fuml_engine.ts"],
-      "@modelscript/runtime/wasm_monte_carlo.js": ["../src/simulation/wasm_monte_carlo.ts"],
-      "@modelscript/runtime/wasm_doe.js": ["../src/simulation/wasm_doe.ts"],
       "@modelscript/runtime/wasm_cosim.js": ["../src/simulation/wasm_cosim.ts"],
       "@modelscript/runtime/wasm_fmu_subsystem.js": ["../src/simulation/wasm_fmu_subsystem.ts"],
       "@modelscript/runtime/wasm_verifier.js": ["../src/simulation/wasm_verifier.ts"],

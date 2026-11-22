@@ -1,0 +1,1667 @@
+[
+  {
+    "name": "SEL_U1_MI",
+    "kind": "sel_protection_element",
+    "namePath": "sel:SEL_U1_MI",
+    "exports": [
+      "pickup",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "tr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "U1 Moderately Inverse TCC",
+      "category": "Time-Overcurrent Curve",
+      "domain": "electrical",
+      "description": "IEEE C37.112 Moderately Inverse time-overcurrent characteristic curve (U1).",
+      "provenance": "IEEE Std C37.112-1996 / C37.112-2018 Table 1 — Moderately Inverse (U1)",
+      "aliases": [
+        "U1",
+        "IEEE_MI",
+        "C37.112_MI"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "A",
+          "description": "Time-overcurrent pickup current (secondary A or pu)"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time-dial / time-multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 0.0515,
+          "unit": "s",
+          "description": "Inverse-time numerator constant A (or k)"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.114,
+          "unit": "s",
+          "description": "Definite-time asymptote constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "",
+          "description": "Inverse-time exponent p (or alpha)"
+        },
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 4.85,
+          "unit": "s",
+          "description": "Electromechanical reset time constant tr (0 = instant reset)"
+        }
+      ],
+      "wasmKernel": "SEL_U1_MI",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SEL_U2_I",
+    "kind": "sel_protection_element",
+    "namePath": "sel:SEL_U2_I",
+    "exports": [
+      "pickup",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "tr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "U2 Inverse TCC",
+      "category": "Time-Overcurrent Curve",
+      "domain": "electrical",
+      "description": "IEEE C37.112 / US Inverse time-overcurrent characteristic curve (U2).",
+      "provenance": "IEEE Std C37.112-1996 / IEEE C37.2 Device 51 — US Inverse (U2)",
+      "aliases": [
+        "U2",
+        "IEEE_I",
+        "CO8"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "A",
+          "description": "Time-overcurrent pickup current (secondary A or pu)"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time-dial / time-multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 5.95,
+          "unit": "s",
+          "description": "Inverse-time numerator constant A (or k)"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.18,
+          "unit": "s",
+          "description": "Definite-time asymptote constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Inverse-time exponent p (or alpha)"
+        },
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 5.95,
+          "unit": "s",
+          "description": "Electromechanical reset time constant tr (0 = instant reset)"
+        }
+      ],
+      "wasmKernel": "SEL_U2_I",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SEL_U3_VI",
+    "kind": "sel_protection_element",
+    "namePath": "sel:SEL_U3_VI",
+    "exports": [
+      "pickup",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "tr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "U3 Very Inverse TCC",
+      "category": "Time-Overcurrent Curve",
+      "domain": "electrical",
+      "description": "IEEE C37.112 Very Inverse time-overcurrent characteristic curve (U3).",
+      "provenance": "IEEE Std C37.112-1996 / C37.112-2018 Table 1 — Very Inverse (U3)",
+      "aliases": [
+        "U3",
+        "IEEE_VI",
+        "C37.112_VI"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "A",
+          "description": "Time-overcurrent pickup current (secondary A or pu)"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time-dial / time-multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 19.61,
+          "unit": "s",
+          "description": "Inverse-time numerator constant A (or k)"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.491,
+          "unit": "s",
+          "description": "Definite-time asymptote constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Inverse-time exponent p (or alpha)"
+        },
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 21.6,
+          "unit": "s",
+          "description": "Electromechanical reset time constant tr (0 = instant reset)"
+        }
+      ],
+      "wasmKernel": "SEL_U3_VI",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SEL_U4_EI",
+    "kind": "sel_protection_element",
+    "namePath": "sel:SEL_U4_EI",
+    "exports": [
+      "pickup",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "tr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "U4 Extremely Inverse TCC",
+      "category": "Time-Overcurrent Curve",
+      "domain": "electrical",
+      "description": "IEEE C37.112 Extremely Inverse time-overcurrent characteristic curve (U4).",
+      "provenance": "IEEE Std C37.112-1996 / C37.112-2018 Table 1 — Extremely Inverse (U4)",
+      "aliases": [
+        "U4",
+        "IEEE_EI",
+        "C37.112_EI"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "A",
+          "description": "Time-overcurrent pickup current (secondary A or pu)"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time-dial / time-multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 28.2,
+          "unit": "s",
+          "description": "Inverse-time numerator constant A (or k)"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.1217,
+          "unit": "s",
+          "description": "Definite-time asymptote constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Inverse-time exponent p (or alpha)"
+        },
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 29.1,
+          "unit": "s",
+          "description": "Electromechanical reset time constant tr (0 = instant reset)"
+        }
+      ],
+      "wasmKernel": "SEL_U4_EI",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SEL_U5_STI",
+    "kind": "sel_protection_element",
+    "namePath": "sel:SEL_U5_STI",
+    "exports": [
+      "pickup",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "tr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "U5 Short-Time Inverse TCC",
+      "category": "Time-Overcurrent Curve",
+      "domain": "electrical",
+      "description": "IEEE C37.112 Short-Time Inverse time-overcurrent characteristic curve (U5).",
+      "provenance": "IEEE Std C37.112-1996 / IEEE C37.2 Device 51 — Short-Time Inverse (U5)",
+      "aliases": [
+        "U5",
+        "IEEE_STI"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "A",
+          "description": "Time-overcurrent pickup current (secondary A or pu)"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time-dial / time-multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 0.02394,
+          "unit": "s",
+          "description": "Inverse-time numerator constant A (or k)"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.01694,
+          "unit": "s",
+          "description": "Definite-time asymptote constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "",
+          "description": "Inverse-time exponent p (or alpha)"
+        },
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 2.261,
+          "unit": "s",
+          "description": "Electromechanical reset time constant tr (0 = instant reset)"
+        }
+      ],
+      "wasmKernel": "SEL_U5_STI",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SEL_C1_SI",
+    "kind": "sel_protection_element",
+    "namePath": "sel:SEL_C1_SI",
+    "exports": [
+      "pickup",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "tr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "C1 IEC Standard Inverse TCC",
+      "category": "Time-Overcurrent Curve",
+      "domain": "electrical",
+      "description": "IEC 60255-151 Standard Inverse time-overcurrent characteristic curve (C1).",
+      "provenance": "IEC 60255-151:2009 / IEC 60255-3 — Standard Inverse (C1, k=0.14, alpha=0.02)",
+      "aliases": [
+        "C1",
+        "IEC_SI",
+        "IEC_60255_SI"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "A",
+          "description": "Time-overcurrent pickup current (secondary A or pu)"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time-dial / time-multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 0.14,
+          "unit": "s",
+          "description": "Inverse-time numerator constant A (or k)"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Definite-time asymptote constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "",
+          "description": "Inverse-time exponent p (or alpha)"
+        },
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 13.5,
+          "unit": "s",
+          "description": "Electromechanical reset time constant tr (0 = instant reset)"
+        }
+      ],
+      "wasmKernel": "SEL_C1_SI",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SEL_C2_VI",
+    "kind": "sel_protection_element",
+    "namePath": "sel:SEL_C2_VI",
+    "exports": [
+      "pickup",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "tr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "C2 IEC Very Inverse TCC",
+      "category": "Time-Overcurrent Curve",
+      "domain": "electrical",
+      "description": "IEC 60255-151 Very Inverse time-overcurrent characteristic curve (C2).",
+      "provenance": "IEC 60255-151:2009 / IEC 60255-3 — Very Inverse (C2, k=13.5, alpha=1.0)",
+      "aliases": [
+        "C2",
+        "IEC_VI",
+        "IEC_60255_VI"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "A",
+          "description": "Time-overcurrent pickup current (secondary A or pu)"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time-dial / time-multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 13.5,
+          "unit": "s",
+          "description": "Inverse-time numerator constant A (or k)"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Definite-time asymptote constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Inverse-time exponent p (or alpha)"
+        },
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 47.3,
+          "unit": "s",
+          "description": "Electromechanical reset time constant tr (0 = instant reset)"
+        }
+      ],
+      "wasmKernel": "SEL_C2_VI",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SEL_C3_EI",
+    "kind": "sel_protection_element",
+    "namePath": "sel:SEL_C3_EI",
+    "exports": [
+      "pickup",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "tr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "C3 IEC Extremely Inverse TCC",
+      "category": "Time-Overcurrent Curve",
+      "domain": "electrical",
+      "description": "IEC 60255-151 Extremely Inverse time-overcurrent characteristic curve (C3).",
+      "provenance": "IEC 60255-151:2009 / IEC 60255-3 — Extremely Inverse (C3, k=80.0, alpha=2.0)",
+      "aliases": [
+        "C3",
+        "IEC_EI",
+        "IEC_60255_EI"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "A",
+          "description": "Time-overcurrent pickup current (secondary A or pu)"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time-dial / time-multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 80,
+          "unit": "s",
+          "description": "Inverse-time numerator constant A (or k)"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Definite-time asymptote constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Inverse-time exponent p (or alpha)"
+        },
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 80,
+          "unit": "s",
+          "description": "Electromechanical reset time constant tr (0 = instant reset)"
+        }
+      ],
+      "wasmKernel": "SEL_C3_EI",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SEL_C4_LTI",
+    "kind": "sel_protection_element",
+    "namePath": "sel:SEL_C4_LTI",
+    "exports": [
+      "pickup",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "tr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "C4 IEC Long-Time Inverse TCC",
+      "category": "Time-Overcurrent Curve",
+      "domain": "electrical",
+      "description": "IEC 60255-151 Long-Time Inverse time-overcurrent characteristic curve (C4).",
+      "provenance": "IEC 60255-151:2009 / IEC 60255-3 — Long-Time Inverse (C4, k=120.0, alpha=1.0)",
+      "aliases": [
+        "C4",
+        "IEC_LTI",
+        "IEC_60255_LTI"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "A",
+          "description": "Time-overcurrent pickup current (secondary A or pu)"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time-dial / time-multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 120,
+          "unit": "s",
+          "description": "Inverse-time numerator constant A (or k)"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Definite-time asymptote constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Inverse-time exponent p (or alpha)"
+        },
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 120,
+          "unit": "s",
+          "description": "Electromechanical reset time constant tr (0 = instant reset)"
+        }
+      ],
+      "wasmKernel": "SEL_C4_LTI",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SEL_C5_STI",
+    "kind": "sel_protection_element",
+    "namePath": "sel:SEL_C5_STI",
+    "exports": [
+      "pickup",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "tr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "C5 IEC Short-Time Inverse TCC",
+      "category": "Time-Overcurrent Curve",
+      "domain": "electrical",
+      "description": "IEC 60255-151 Short-Time Inverse time-overcurrent characteristic curve (C5).",
+      "provenance": "IEC 60255-151:2009 / IEC 60255-3 — Short-Time Inverse (C5, k=0.05, alpha=0.04)",
+      "aliases": [
+        "C5",
+        "IEC_STI",
+        "IEC_60255_STI"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "A",
+          "description": "Time-overcurrent pickup current (secondary A or pu)"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time-dial / time-multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "s",
+          "description": "Inverse-time numerator constant A (or k)"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Definite-time asymptote constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 0.04,
+          "unit": "",
+          "description": "Inverse-time exponent p (or alpha)"
+        },
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 4.85,
+          "unit": "s",
+          "description": "Electromechanical reset time constant tr (0 = instant reset)"
+        }
+      ],
+      "wasmKernel": "SEL_C5_STI",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "EL_50P",
+    "kind": "sel_protection_element",
+    "namePath": "sel:EL_50P",
+    "exports": [
+      "pickup",
+      "delaySec",
+      "dropoutRatio"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "50P Instantaneous Phase OC",
+      "category": "Protection Element",
+      "domain": "electrical",
+      "description": "Instantaneous / definite-time phase overcurrent element with hysteresis dropout.",
+      "provenance": "IEEE Std C37.2-2022 Device 50P — Instantaneous Phase Overcurrent Relay",
+      "aliases": [
+        "50P",
+        "50P1P",
+        "50P2P"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "A",
+          "description": "50P phase instantaneous pickup current"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Definite-time delay"
+        },
+        {
+          "key": "dropoutRatio",
+          "type": "real",
+          "defaultValue": 0.95,
+          "unit": "pu",
+          "description": "Dropout-to-pickup hysteresis ratio"
+        }
+      ],
+      "wasmKernel": "EL_50P",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "EL_50G",
+    "kind": "sel_protection_element",
+    "namePath": "sel:EL_50G",
+    "exports": [
+      "pickup",
+      "delaySec",
+      "dropoutRatio"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "50G Instantaneous Ground OC",
+      "category": "Protection Element",
+      "domain": "electrical",
+      "description": "Instantaneous / definite-time residual ground overcurrent element.",
+      "provenance": "IEEE Std C37.2-2022 Device 50G/50N — Instantaneous Ground Overcurrent Relay",
+      "aliases": [
+        "50G",
+        "50G1P",
+        "50N"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "A",
+          "description": "50G ground instantaneous pickup current"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Definite-time delay"
+        },
+        {
+          "key": "dropoutRatio",
+          "type": "real",
+          "defaultValue": 0.95,
+          "unit": "pu",
+          "description": "Dropout-to-pickup hysteresis ratio"
+        }
+      ],
+      "wasmKernel": "EL_50G",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "EL_51P",
+    "kind": "sel_protection_element",
+    "namePath": "sel:EL_51P",
+    "exports": [
+      "pickup",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "tr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "51P Phase Time-Overcurrent",
+      "category": "Protection Element",
+      "domain": "electrical",
+      "description": "Phase inverse-time overcurrent protection element (default IEEE U3 Very Inverse).",
+      "provenance": "IEEE Std C37.2-2022 Device 51P & IEEE Std C37.112-2018",
+      "aliases": [
+        "51P",
+        "51P1P"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "A",
+          "description": "Time-overcurrent pickup current (secondary A or pu)"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time-dial / time-multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 19.61,
+          "unit": "s",
+          "description": "Inverse-time numerator constant A (or k)"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.491,
+          "unit": "s",
+          "description": "Definite-time asymptote constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Inverse-time exponent p (or alpha)"
+        },
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 21.6,
+          "unit": "s",
+          "description": "Electromechanical reset time constant tr (0 = instant reset)"
+        }
+      ],
+      "wasmKernel": "EL_51P",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "EL_51G",
+    "kind": "sel_protection_element",
+    "namePath": "sel:EL_51G",
+    "exports": [
+      "pickup",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "tr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "51G Ground Time-Overcurrent",
+      "category": "Protection Element",
+      "domain": "electrical",
+      "description": "Ground / residual inverse-time overcurrent protection element (default IEEE U3 Very Inverse).",
+      "provenance": "IEEE Std C37.2-2022 Device 51G/51N & IEEE Std C37.112-2018",
+      "aliases": [
+        "51G",
+        "51G1P",
+        "51N"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "A",
+          "description": "Time-overcurrent pickup current (secondary A or pu)"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time-dial / time-multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 19.61,
+          "unit": "s",
+          "description": "Inverse-time numerator constant A (or k)"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.491,
+          "unit": "s",
+          "description": "Definite-time asymptote constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Inverse-time exponent p (or alpha)"
+        },
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 21.6,
+          "unit": "s",
+          "description": "Electromechanical reset time constant tr (0 = instant reset)"
+        }
+      ],
+      "wasmKernel": "EL_51G",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "EL_21P_MHO",
+    "kind": "sel_protection_element",
+    "namePath": "sel:EL_21P_MHO",
+    "exports": [
+      "reachOhm",
+      "mtaDeg",
+      "delaySec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "21P Phase Mho Distance",
+      "category": "Protection Element",
+      "domain": "electrical",
+      "description": "Phase-to-phase circular mho distance protection zone passing through the R-X origin.",
+      "provenance": "IEEE Std C37.2-2022 Device 21P & IEEE Std C37.113-2015 — Mho Distance Relay",
+      "aliases": [
+        "21P",
+        "Z1P",
+        "Z2P",
+        "Z3P",
+        "MHO"
+      ],
+      "parameters": [
+        {
+          "key": "reachOhm",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "Ohm",
+          "description": "Zone mho diameter reach Zr (secondary Ohms)"
+        },
+        {
+          "key": "mtaDeg",
+          "type": "real",
+          "defaultValue": 75,
+          "unit": "deg",
+          "description": "Line positive-sequence maximum torque angle"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Zone definite-time trip delay"
+        }
+      ],
+      "wasmKernel": "EL_21P_MHO",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "EL_21G_QUAD",
+    "kind": "sel_protection_element",
+    "namePath": "sel:EL_21G_QUAD",
+    "exports": [
+      "xReachOhm",
+      "rReachOhm",
+      "mtaDeg",
+      "delaySec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "21G Ground Quadrilateral Distance",
+      "category": "Protection Element",
+      "domain": "electrical",
+      "description": "Phase-to-ground quadrilateral distance zone with independent reactive and resistive blinders.",
+      "provenance": "IEEE Std C37.2-2022 Device 21G & IEEE Std C37.113-2015 — Quadrilateral Distance Relay",
+      "aliases": [
+        "21G",
+        "Z1G",
+        "Z2G",
+        "QUAD"
+      ],
+      "parameters": [
+        {
+          "key": "xReachOhm",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "Ohm",
+          "description": "Reactive reach X1 (secondary Ohms)"
+        },
+        {
+          "key": "rReachOhm",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "Ohm",
+          "description": "Resistive blinder reach R1 (secondary Ohms)"
+        },
+        {
+          "key": "mtaDeg",
+          "type": "real",
+          "defaultValue": 75,
+          "unit": "deg",
+          "description": "Line impedance angle"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Zone definite-time trip delay"
+        }
+      ],
+      "wasmKernel": "EL_21G_QUAD",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "EL_67P",
+    "kind": "sel_protection_element",
+    "namePath": "sel:EL_67P",
+    "exports": [
+      "pickup",
+      "mtaDeg",
+      "delaySec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "67P Directional Phase OC",
+      "category": "Protection Element",
+      "domain": "electrical",
+      "description": "Torque-controlled directional phase overcurrent element with characteristic MTA.",
+      "provenance": "IEEE Std C37.2-2022 Device 67P — AC Directional Phase Overcurrent Relay",
+      "aliases": [
+        "67P",
+        "67P1"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 6,
+          "unit": "A",
+          "description": "Directional overcurrent pickup current"
+        },
+        {
+          "key": "mtaDeg",
+          "type": "real",
+          "defaultValue": 60,
+          "unit": "deg",
+          "description": "Maximum torque angle (V-I polarizing angle)"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Definite-time operating delay"
+        }
+      ],
+      "wasmKernel": "EL_67P",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "EL_67Q",
+    "kind": "sel_protection_element",
+    "namePath": "sel:EL_67Q",
+    "exports": [
+      "pickup",
+      "mtaDeg",
+      "delaySec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "67Q Neg-Seq Directional OC",
+      "category": "Protection Element",
+      "domain": "electrical",
+      "description": "Negative-sequence directional overcurrent element for unbalanced fault discrimination.",
+      "provenance": "IEEE Std C37.2-2022 Device 67Q & IEEE Std C37.113-2015 — Negative-Sequence Directional",
+      "aliases": [
+        "67Q",
+        "32Q",
+        "67Q1"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "A",
+          "description": "3I2 negative-sequence current pickup"
+        },
+        {
+          "key": "mtaDeg",
+          "type": "real",
+          "defaultValue": 75,
+          "unit": "deg",
+          "description": "Negative-sequence impedance MTA"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Definite-time operating delay"
+        }
+      ],
+      "wasmKernel": "EL_67Q",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "EL_87L",
+    "kind": "sel_protection_element",
+    "namePath": "sel:EL_87L",
+    "exports": [
+      "pickup",
+      "slope1Pct",
+      "slope2Pct",
+      "irBreak",
+      "harm2BlockPct"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "87L Line Current Differential",
+      "category": "Protection Element",
+      "domain": "electrical",
+      "description": "Dual-slope percentage current differential protection for transmission lines.",
+      "provenance": "IEEE Std C37.2-2022 Device 87L & IEEE Std C37.243-2015 — Line Differential",
+      "aliases": [
+        "87L",
+        "87LP"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "pu",
+          "description": "Minimum differential operate pickup O87P"
+        },
+        {
+          "key": "slope1Pct",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "%",
+          "description": "Slope 1 percentage restraint"
+        },
+        {
+          "key": "slope2Pct",
+          "type": "real",
+          "defaultValue": 60,
+          "unit": "%",
+          "description": "Slope 2 high-current percentage restraint"
+        },
+        {
+          "key": "irBreak",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "pu",
+          "description": "Restraint current breakpoint"
+        },
+        {
+          "key": "harm2BlockPct",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "%",
+          "description": "Second-harmonic blocking threshold (0 = disabled)"
+        }
+      ],
+      "wasmKernel": "EL_87L",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "EL_87T",
+    "kind": "sel_protection_element",
+    "namePath": "sel:EL_87T",
+    "exports": [
+      "pickup",
+      "slope1Pct",
+      "slope2Pct",
+      "irBreak",
+      "harm2BlockPct"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "87T Transformer Differential",
+      "category": "Protection Element",
+      "domain": "electrical",
+      "description": "Dual-slope transformer percentage differential element with 2nd-harmonic inrush restraint.",
+      "provenance": "IEEE Std C37.2-2022 Device 87T & IEEE Std C37.91-2021 — Transformer Differential",
+      "aliases": [
+        "87T",
+        "87R"
+      ],
+      "parameters": [
+        {
+          "key": "pickup",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "pu",
+          "description": "Minimum differential operate pickup O87P"
+        },
+        {
+          "key": "slope1Pct",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "%",
+          "description": "Slope 1 percentage restraint"
+        },
+        {
+          "key": "slope2Pct",
+          "type": "real",
+          "defaultValue": 65,
+          "unit": "%",
+          "description": "Slope 2 percentage restraint"
+        },
+        {
+          "key": "irBreak",
+          "type": "real",
+          "defaultValue": 2.5,
+          "unit": "pu",
+          "description": "Restraint current breakpoint"
+        },
+        {
+          "key": "harm2BlockPct",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "%",
+          "description": "Second-harmonic inrush blocking threshold"
+        }
+      ],
+      "wasmKernel": "EL_87T",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "EL_79_RECLOSE",
+    "kind": "sel_protection_element",
+    "namePath": "sel:EL_79_RECLOSE",
+    "exports": [
+      "openIntervalSec",
+      "resetTimeSec",
+      "maxShots"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "79 Automatic Reclosing",
+      "category": "Protection Element",
+      "domain": "electrical",
+      "description": "Multi-shot automatic AC reclosing relay with open-interval, reset, and lockout states.",
+      "provenance": "IEEE Std C37.2-2022 Device 79 & IEEE Std C37.104-2022 — Automatic Reclosing",
+      "aliases": [
+        "79",
+        "79OI1",
+        "RECLOSE"
+      ],
+      "parameters": [
+        {
+          "key": "openIntervalSec",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Dead-time open interval before reclose command"
+        },
+        {
+          "key": "resetTimeSec",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "s",
+          "description": "Reclaim / reset time after successful reclose"
+        },
+        {
+          "key": "maxShots",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "",
+          "description": "Maximum reclose attempts before lockout"
+        }
+      ],
+      "wasmKernel": "EL_79_RECLOSE",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "EL_81O_U",
+    "kind": "sel_protection_element",
+    "namePath": "sel:EL_81O_U",
+    "exports": [
+      "pickupHz",
+      "delaySec",
+      "mode"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "81O/81U Frequency Element",
+      "category": "Protection Element",
+      "domain": "electrical",
+      "description": "Underfrequency (81U) and overfrequency (81O) definite-time protection element.",
+      "provenance": "IEEE Std C37.2-2022 Device 81 & IEEE Std C37.106-2003 — Frequency Protection",
+      "aliases": [
+        "81",
+        "81O",
+        "81U",
+        "81D1P"
+      ],
+      "parameters": [
+        {
+          "key": "pickupHz",
+          "type": "real",
+          "defaultValue": 59.5,
+          "unit": "Hz",
+          "description": "Frequency pickup threshold"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "s",
+          "description": "Definite-time operating delay"
+        },
+        {
+          "key": "mode",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Operating mode (-1 = underfrequency 81U, +1 = overfrequency 81O)"
+        }
+      ],
+      "wasmKernel": "EL_81O_U",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "EL_27_59",
+    "kind": "sel_protection_element",
+    "namePath": "sel:EL_27_59",
+    "exports": [
+      "pickupV",
+      "delaySec",
+      "mode"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "27/59 Voltage Element",
+      "category": "Protection Element",
+      "domain": "electrical",
+      "description": "Undervoltage (27) and overvoltage (59) definite-time protection element.",
+      "provenance": "IEEE Std C37.2-2022 Devices 27 & 59 — Undervoltage / Overvoltage Relay",
+      "aliases": [
+        "27",
+        "59",
+        "27P",
+        "59P"
+      ],
+      "parameters": [
+        {
+          "key": "pickupV",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "pu",
+          "description": "Voltage pickup threshold (pu or secondary V)"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "s",
+          "description": "Definite-time operating delay"
+        },
+        {
+          "key": "mode",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Operating mode (-1 = undervoltage 27, +1 = overvoltage 59)"
+        }
+      ],
+      "wasmKernel": "EL_27_59",
+      "archetypeId": 61
+    }
+  },
+  {
+    "name": "EL_50BF",
+    "kind": "sel_protection_element",
+    "namePath": "sel:EL_50BF",
+    "exports": [
+      "currentPickup",
+      "retripDelaySec",
+      "bfDelaySec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "50BF Breaker Failure",
+      "category": "Protection Element",
+      "domain": "electrical",
+      "description": "Breaker failure protection with current detector, retrip timer, and backup trip timer.",
+      "provenance": "IEEE Std C37.2-2022 Device 50BF & IEEE Std C37.119-2016 — Breaker Failure",
+      "aliases": [
+        "50BF",
+        "BF",
+        "62BF"
+      ],
+      "parameters": [
+        {
+          "key": "currentPickup",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "A",
+          "description": "50BF phase current fault detector pickup"
+        },
+        {
+          "key": "retripDelaySec",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "s",
+          "description": "Retrip output time delay"
+        },
+        {
+          "key": "bfDelaySec",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "s",
+          "description": "Backup breaker-failure trip time delay"
+        }
+      ],
+      "wasmKernel": "EL_50BF",
+      "archetypeId": 62
+    }
+  },
+  {
+    "name": "SV_TIMER",
+    "kind": "sel_protection_element",
+    "namePath": "sel:SV_TIMER",
+    "exports": [
+      "pickupDelaySec",
+      "dropoutDelaySec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SV SELogic Pickup/Dropout Timer",
+      "category": "SELogic & Timer",
+      "domain": "electrical",
+      "description": "Programmable SELogic variable timer with independent pickup (SVnPU) and dropout (SVnDO) delays.",
+      "provenance": "IEC 61131-3 TON/TOF & IEEE Std C37.2 Device 62 — Time-Delay Logic Timer",
+      "aliases": [
+        "SV1",
+        "SV1T",
+        "SVnT",
+        "SELOGIC_TIMER"
+      ],
+      "parameters": [
+        {
+          "key": "pickupDelaySec",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "s",
+          "description": "Pickup delay SVnPU (seconds)"
+        },
+        {
+          "key": "dropoutDelaySec",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "s",
+          "description": "Dropout delay SVnDO (seconds)"
+        }
+      ],
+      "wasmKernel": "SV_TIMER",
+      "archetypeId": 70
+    }
+  },
+  {
+    "name": "LT_LATCH",
+    "kind": "sel_protection_element",
+    "namePath": "sel:LT_LATCH",
+    "exports": [
+      "setDominant"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "LT SELogic Set/Reset Latch",
+      "category": "SELogic & Timer",
+      "domain": "electrical",
+      "description": "Non-volatile SELogic bistable set/reset latch bit (SETn / RSTn).",
+      "provenance": "IEC 61131-3 SR/RS Bistable Function Block & IEEE C37.2 Device 86",
+      "aliases": [
+        "LT1",
+        "LTn",
+        "SET_RST"
+      ],
+      "parameters": [
+        {
+          "key": "setDominant",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Priority mode (0 = reset-dominant RS, 1 = set-dominant SR)"
+        }
+      ],
+      "wasmKernel": "LT_LATCH",
+      "archetypeId": 71
+    }
+  },
+  {
+    "name": "PMV_MATH",
+    "kind": "sel_protection_element",
+    "namePath": "sel:PMV_MATH",
+    "exports": [
+      "gain",
+      "offset",
+      "threshold"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PMV Protection Math Variable",
+      "category": "SELogic & Timer",
+      "domain": "electrical",
+      "description": "Analog protection math variable computing linear scaled quantities and comparator output.",
+      "provenance": "IEC 61131-3 Analog Arithmetic & Comparator Block",
+      "aliases": [
+        "PMV01",
+        "PMVn",
+        "MATH"
+      ],
+      "parameters": [
+        {
+          "key": "gain",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Primary analog input scale factor"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Secondary analog offset / bias multiplier"
+        },
+        {
+          "key": "threshold",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Comparator assertion threshold"
+        }
+      ],
+      "wasmKernel": "PMV_MATH",
+      "archetypeId": 72
+    }
+  },
+  {
+    "name": "WORD_BIT_52A",
+    "kind": "sel_protection_element",
+    "namePath": "sel:WORD_BIT_52A",
+    "exports": [
+      "invert"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "52a Breaker Status Word Bit",
+      "category": "SELogic & Timer",
+      "domain": "electrical",
+      "description": "Circuit breaker auxiliary contact 52a status bit (asserted when breaker is closed).",
+      "provenance": "IEEE Std C37.2-2022 Device 52a — AC Circuit Breaker Auxiliary Contact",
+      "aliases": [
+        "52A",
+        "IN101",
+        "BRK_52A"
+      ],
+      "parameters": [
+        {
+          "key": "invert",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Contact polarity (0 = 52a normally open, 1 = 52b normally closed)"
+        }
+      ],
+      "wasmKernel": "WORD_BIT_52A",
+      "archetypeId": 73
+    }
+  },
+  {
+    "name": "WORD_BIT_TRIP",
+    "kind": "sel_protection_element",
+    "namePath": "sel:WORD_BIT_TRIP",
+    "exports": [
+      "invert"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TRIP Output Word Bit",
+      "category": "SELogic & Timer",
+      "domain": "electrical",
+      "description": "Primary relay trip output word bit driving breaker trip coil contact OUT101.",
+      "provenance": "IEEE Std C37.2-2022 Device 94 — Tripping Output Relay",
+      "aliases": [
+        "TRIP",
+        "TR",
+        "OUT101"
+      ],
+      "parameters": [
+        {
+          "key": "invert",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Output contact polarity (0 = normally open, 1 = inverted)"
+        }
+      ],
+      "wasmKernel": "WORD_BIT_TRIP",
+      "archetypeId": 73
+    }
+  }
+]

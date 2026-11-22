@@ -27,6 +27,7 @@ import { defaultApiLimiter } from "./middleware/rate-limiter.js";
 import { allMigrations } from "./migrations/index.js";
 import { adminRouter } from "./routes/admin.js";
 import { aiRouter } from "./routes/ai.js";
+import { almRouter } from "./routes/alm.js";
 import { artifactViewerRouter } from "./routes/artifact-viewer.js";
 import { authRouter } from "./routes/auth.js";
 import { billingRouter } from "./routes/billing.js";
@@ -850,6 +851,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
 
   app.use("/api/v1/fmus", optionalAuth, fmuRouter(fmuStorage));
   app.use("/api/v1/pscad", optionalAuth, pscadRouter());
+  app.use("/api/v1/alm", optionalAuth, almRouter());
   app.use("/git", gitServerRouter(database));
   app.use("/api/v1/git-server", gitServerRouter(database));
   app.use("/api/thumbnails", express.static(path.resolve(API_ROOT, "public/thumbnails")));

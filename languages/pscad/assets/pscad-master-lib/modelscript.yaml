@@ -1,0 +1,11 @@
+name: "@modelscript/pscad-master-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom PSCAD Master Library (symbols, cleanroom SVG block diagrams, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: pscad
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

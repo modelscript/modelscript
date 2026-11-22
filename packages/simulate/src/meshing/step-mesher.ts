@@ -2,6 +2,7 @@
 
 import { Tet4Mesher } from "../fea/tet4-mesher.js";
 import type { MeshQualityMetrics, Tet4Mesh } from "../fea/tet4-types.js";
+import { wasmEarClip2D } from "../wasm/simulate-wasm.js";
 import { BoundaryLayerExtruder, type BoundaryLayerOptions, type ExtrusionResult } from "./boundary-layer-extruder.js";
 import { MeshQualityAnalyzer } from "./mesh-quality-analyzer.js";
 import { PatchClassifier, type ClassifiedPatches, type PatchClassificationRules } from "./patch-classifier.js";
@@ -577,6 +578,29 @@ export class StepMesher {
 
       // Ear-clipping on merged 2D polygon
       const coords = poly.map((ptId) => ({ ptId, uv: project2D(ptId) }));
+
+      if (coords.length >= 3) {
+        const uvFlat = new Float64Array(coords.length * 2);
+        const ptIdArr = new Int32Array(coords.length);
+        for (let i = 0; i < coords.length; i++) {
+          uvFlat[i * 2] = coords[i]!.uv[0];
+          uvFlat[i * 2 + 1] = coords[i]!.uv[1];
+          ptIdArr[i] = coords[i]!.ptId;
+        }
+        const wasmTris = wasmEarClip2D(uvFlat, ptIdArr);
+        if (wasmTris && wasmTris.length > 0) {
+          for (let t = 0; t < wasmTris.length; t += 3) {
+            const v0 = getOrAddVertex(coords[wasmTris[t]!]!.ptId);
+            const v1 = getOrAddVertex(coords[wasmTris[t + 1]!]!.ptId);
+            const v2 = getOrAddVertex(coords[wasmTris[t + 2]!]!.ptId);
+            if (v0 !== v1 && v1 !== v2 && v2 !== v0) {
+              triIndices.push(v0, v1, v2);
+            }
+          }
+          return;
+        }
+      }
+
       const idxList = coords.map((_, i) => i);
 
       const cross2D = (a: [number, number], b: [number, number], c: [number, number]): number =>

@@ -23,6 +23,7 @@ import {
 } from "../analysis/control-intervals.js";
 import { verifyControlOctagonRelations } from "../analysis/control-octagon.js";
 import { verifyPscadDimensionalUnits } from "../analysis/dimensional-check.js";
+import { runPscadFastStaticLints, runPscadFormalVerificationLints } from "../analysis/fast-static-checks.js";
 import {
   verifyControlDelayStability,
   verifyConverterReachability,
@@ -2832,11 +2833,19 @@ export function lintPscx(project: PscxProject, options?: PscadLintOptions): Psca
     diagnostics.push(...verifyPscadDimensionalUnits(project));
   }
 
-  // 40. Formal tier: OctagonDBM relational control bounds & CFG-based Fortran UDM storage bounds
+  // 39b. Tier 1 Fast Static Lints (< 10 ms): Tarjan algebraic loops (M6084), high-index singularities (M6085),
+  //      control positive feedback/dead branches (M6086), HC4 saturation (M6087), UDM numerical hazards (M6088)
+  if (!isLibraryProject) {
+    diagnostics.push(...runPscadFastStaticLints(project, netlist));
+  }
+
+  // 40. Formal tier: OctagonDBM relational control bounds, CFG UDM storage bounds,
+  //     Star-set IBR FRT (M6089), DDE delay margin (M6090), SMT switch exclusivity (M6091), IC3 lockout (M6092)
   if (tier === "formal" && !isLibraryProject) {
     if (netlist.controlBlocks && netlist.controlBlocks.length > 0) {
       diagnostics.push(...verifyControlOctagonRelations(netlist.controlBlocks));
     }
+    diagnostics.push(...runPscadFormalVerificationLints(project, netlist, (project.settings?.timeStepUs ?? 50) * 1e-6));
     if (project.definitions) {
       for (const [defName, def] of project.definitions) {
         if (!def.scriptSegments) continue;

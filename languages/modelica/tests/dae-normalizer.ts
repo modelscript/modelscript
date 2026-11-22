@@ -159,8 +159,62 @@ function canonicalizeMultiplicativeChain(s: string): string {
     return trimmed;
   };
 
-  const canonNums = numerators.map(canonPart);
-  const canonDens = denominators.map(canonPart);
+  const stripOuterMatchedParens = (expr: string): string => {
+    let cur = expr.trim();
+    while (cur.startsWith("(") && cur.endsWith(")")) {
+      let d = 0;
+      let wrapsAll = true;
+      for (let i = 0; i < cur.length - 1; i++) {
+        if (cur[i] === "(") d++;
+        else if (cur[i] === ")") {
+          d--;
+          if (d === 0) {
+            wrapsAll = false;
+            break;
+          }
+        }
+      }
+      if (!wrapsAll) break;
+      cur = cur.slice(1, -1).trim();
+    }
+    return cur;
+  };
+
+  let negSign = false;
+  const extractFactorSign = (raw: string): string => {
+    let f = stripOuterMatchedParens(raw);
+    while (f.startsWith("-")) {
+      const rest = f.slice(1).trim();
+      if (!rest) break;
+      if (rest.startsWith("(") && stripOuterMatchedParens(rest) !== rest) {
+        // Unary minus applies to whole parenthesized group: `-(a - b)`
+        negSign = !negSign;
+        f = stripOuterMatchedParens(rest);
+        // Re-wrap if inner still has top-level additive/binary structure
+        const canonInner = canonicalizeExpression(f);
+        if (
+          canonInner.includes(" + ") ||
+          canonInner.includes(" - ") ||
+          canonInner.includes(" * ") ||
+          canonInner.includes(" / ")
+        ) {
+          return `(${canonInner})`;
+        }
+        return canonInner;
+      }
+      // Bare identifier/call `-x` or `-f(a)` with no outer binary `+`/`-`/`^`
+      if (/^[a-zA-Z_$][a-zA-Z0-9_.[\],']*(\([^)]*\))?$/.test(rest)) {
+        negSign = !negSign;
+        f = rest;
+        continue;
+      }
+      break;
+    }
+    return f;
+  };
+
+  const canonNums = numerators.map((p) => canonPart(extractFactorSign(p)));
+  const canonDens = denominators.map((p) => canonPart(extractFactorSign(p)));
 
   // Fold pure numeric literal factors across numerators and denominators
   // (e.g. `1e5 * time / 10` and `0.1 * 1e5 * time` both become `10000 * time`,
@@ -170,7 +224,7 @@ function canonicalizeMultiplicativeChain(s: string): string {
   const denLitCount = canonDens.filter((f) => NUM_LIT_RE.test(f)).length;
   const hasLongFloat = canonNums.some((f) => NUM_LIT_RE.test(f) && f.length > 13);
   if (numLitCount >= 2 || denLitCount >= 1 || hasLongFloat) {
-    let coeff = 1;
+    let coeff = negSign ? -1 : 1;
     let valid = true;
     const symNums: string[] = [];
     const symDens: string[] = [];
@@ -204,7 +258,9 @@ function canonicalizeMultiplicativeChain(s: string): string {
       if (coeff === 0 && symDens.length === 0) return "0";
       symNums.sort(compareFactors);
       const rounded = Number(coeff.toPrecision(12));
-      if (rounded !== 1 || symNums.length === 0) {
+      if (rounded === -1 && symNums.length > 0) {
+        symNums[0] = `-${symNums[0]}`;
+      } else if (rounded !== 1 || symNums.length === 0) {
         symNums.unshift(String(rounded));
       }
       const numPartFolded = symNums.join(" * ");
@@ -216,7 +272,11 @@ function canonicalizeMultiplicativeChain(s: string): string {
   canonNums.sort(compareFactors);
 
   const numFiltered = canonNums.length > 1 ? canonNums.filter((f) => f !== "1") : canonNums;
-  const numPart = (numFiltered.length > 0 ? numFiltered : ["1"]).join(" * ");
+  const finalNums = numFiltered.length > 0 ? [...numFiltered] : ["1"];
+  if (negSign && finalNums.length > 0) {
+    finalNums[0] = finalNums[0]!.startsWith("-") ? finalNums[0]!.slice(1) : `-${finalNums[0]}`;
+  }
+  const numPart = finalNums.join(" * ");
   if (canonDens.length === 0) return numPart;
   return `${numPart} / ${canonDens.join(" / ")}`;
 }

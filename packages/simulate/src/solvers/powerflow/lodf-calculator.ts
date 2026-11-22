@@ -13,6 +13,7 @@
  */
 
 import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
+import { wasmComputePtdfLodf } from "../../wasm/simulate-wasm.js";
 import type { GenericPowerCase } from "../opf/types.js";
 
 export interface BranchSensitivityInfo {
@@ -47,6 +48,33 @@ export function calculateNetworkSensitivities(
 ): { ptdf: Float32Array; lodf: Float32Array } {
   const L = branches.length;
   const B = busCount;
+
+  // Fast-path: execute B_red assembly, inversion, PTDF & LODF in simulate.wasm linear memory
+  if (B > 1 && L > 0) {
+    const fromArr = new Int32Array(L);
+    const toArr = new Int32Array(L);
+    const xArr = new Float64Array(L);
+    for (let l = 0; l < L; l++) {
+      const br = branches[l]!;
+      fromArr[l] = br.fromBus;
+      toArr[l] = br.toBus;
+      xArr[l] = br.status === 0 ? 0.0 : Math.abs(br.reactance) > 1e-6 ? br.reactance : 1e-4;
+    }
+    const wasmRes = wasmComputePtdfLodf(B, slackBus, fromArr, toArr, xArr);
+    if (wasmRes) {
+      const ptdf = new Float32Array(L * B);
+      for (let i = 0; i < L * B; i++) ptdf[i] = wasmRes.ptdf[i]!;
+      const lodf = new Float32Array(L * L);
+      // Transpose WASM [l * L + k] -> [k * L + l] to match row=outage k, col=monitored l
+      for (let k = 0; k < L; k++) {
+        if (branches[k]!.status === 0) continue;
+        for (let l = 0; l < L; l++) {
+          lodf[k * L + l] = l === k ? -1.0 : branches[l]!.status === 0 ? 0.0 : wasmRes.lodf[l * L + k]!;
+        }
+      }
+      return { ptdf, lodf };
+    }
+  }
 
   // 1. Assemble B_bus matrix (B x B)
   const Bbus = new Float64Array(B * B);

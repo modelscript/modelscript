@@ -7,7 +7,7 @@ titleTemplate: false
 hero:
   name: "ModelScript"
   text: "One web-native compiler for every engineering model"
-  tagline: "Build a computable digital thread across 92 engineering formats. Link requirements, architecture, multi-physics models and 3D CAD — with simulation, formal verification, optimization and AI-agent tooling (MCP) built in."
+  tagline: "Build a computable digital thread across 93 engineering formats. Link requirements, architecture, multi-physics models and 3D CAD — with simulation, formal verification, optimization and AI-agent tooling (MCP) built in."
   image:
     src: /ms-logo.png
     alt: ModelScript 3D turbine engine

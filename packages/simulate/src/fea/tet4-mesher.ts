@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { wasmPromoteTet4ToTet10, wasmVoxelizeSurface } from "../wasm/simulate-wasm.js";
 import type { Tet4Mesh } from "./tet4-types.js";
 
 export interface BoxMeshOptions {
@@ -202,6 +203,34 @@ export class Tet4Mesher {
    */
   public static convertToQuadratic(linear: Tet4Mesh): Tet4Mesh {
     const { nodeCoords, elements, numNodes, numElements, boundaryNodes } = linear;
+
+    const wasmQuad = wasmPromoteTet4ToTet10(nodeCoords, numNodes, elements, numElements);
+    if (wasmQuad) {
+      const { quadCoords, quadElements, edgePairs, midCount } = wasmQuad;
+      const quadBoundaryNodes = new Map<string, number[]>();
+      for (const [tag, nodes] of boundaryNodes.entries()) {
+        const nodeSet = new Set(nodes);
+        const quadList = [...nodes];
+        for (let i = 0; i < midCount; i++) {
+          const a = edgePairs[i * 2]!;
+          const b = edgePairs[i * 2 + 1]!;
+          if (nodeSet.has(a) && nodeSet.has(b)) {
+            quadList.push(numNodes + i);
+          }
+        }
+        quadBoundaryNodes.set(tag, quadList);
+      }
+      return {
+        nodeCoords: quadCoords,
+        elements: quadElements,
+        numNodes: numNodes + midCount,
+        numElements,
+        elementOrder: "quadratic",
+        nodesPerElement: 10,
+        boundaryNodes: quadBoundaryNodes,
+      };
+    }
+
     const edgeMap = new Map<string, number>();
     const midCoords: number[] = [];
 
@@ -558,6 +587,22 @@ export class Tet4Mesher {
     const nx = Math.ceil((extentX + 2 * dx) / dx);
     const ny = Math.ceil((extentY + 2 * dx) / dx);
     const nz = Math.ceil((extentZ + 2 * dx) / dx);
+
+    const vertsF32 = vertices instanceof Float32Array ? vertices : new Float32Array(vertices);
+    const idxU32 = indices instanceof Uint32Array ? indices : new Uint32Array(indices);
+    const wasmVox = wasmVoxelizeSurface(vertsF32, idxU32, nx, ny, nz, ox, oy, oz, dx);
+    if (wasmVox) {
+      return Tet4Mesher.createFromVoxelGrid({
+        grid: wasmVox.grid,
+        nx,
+        ny,
+        nz,
+        dx,
+        origin: [ox, oy, oz],
+        order: opts.order,
+        tagRules: opts.tagRules,
+      });
+    }
 
     const grid = new Uint8Array(nx * ny * nz);
 

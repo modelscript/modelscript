@@ -17,6 +17,8 @@ export interface DiscoveredModel {
   canIcon?: boolean;
 }
 
+export type FlattenerBackendOpt = "wasm" | "ts" | "hybrid" | "diff";
+
 export interface WorkerTask {
   modelFqn: string;
   mslDir: string;
@@ -24,6 +26,7 @@ export interface WorkerTask {
   cacheDir: string;
   indexCachePath: string;
   stage: MslStage;
+  flattenerBackend?: FlattenerBackendOpt;
   forceOmc?: boolean;
   simTolerance?: number;
   simIntervals?: number;
@@ -174,4 +177,5 @@ export interface RunnerOptions {
   reportJson?: string;
   reportHtml?: string;
   reportCtrf?: string;
+  flattenerBackend?: FlattenerBackendOpt;
 }

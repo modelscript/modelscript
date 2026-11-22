@@ -186,14 +186,6 @@
       "types": "./dist/statemachine/wasm_fuml_engine.d.ts",
       "default": "./dist/statemachine/wasm_fuml_engine.js"
     },
-    "./wasm_monte_carlo.js": {
-      "types": "./dist/simulation/wasm_monte_carlo.d.ts",
-      "default": "./dist/simulation/wasm_monte_carlo.js"
-    },
-    "./wasm_doe.js": {
-      "types": "./dist/simulation/wasm_doe.d.ts",
-      "default": "./dist/simulation/wasm_doe.js"
-    },
     "./wasm_cosim.js": {
       "types": "./dist/simulation/wasm_cosim.d.ts",
       "default": "./dist/simulation/wasm_cosim.js"
@@ -311,7 +303,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@modelscript/dsl": "*"
+    "@modelscript/dsl": "*",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",

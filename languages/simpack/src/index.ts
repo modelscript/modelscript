@@ -5,6 +5,7 @@
  */
 
 export * from "./bushing/index.js";
+export * from "./catalog/index.js";
 export * from "./dae/index.js";
 export * from "./diagram/index.js";
 export * from "./errors.js";

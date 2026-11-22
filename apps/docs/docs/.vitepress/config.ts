@@ -483,6 +483,7 @@ export default defineConfig({
           items: [
             { text: "AI Agents & MCP Workflows", link: "/guide/ai-agents" },
             { text: "CI/CD & GitHub Actions", link: "/guide/ci-cd" },
+            { text: "ALM & API Integration", link: "/guide/alm-integration" },
             { text: "Embedding Artifacts", link: "/guide/embedding" },
             { text: "Enterprise Administration", link: "/guide/administration" },
             { text: "Pricing & Licensing", link: "/pricing" },
@@ -536,6 +537,7 @@ export default defineConfig({
             { text: "Pricing & Licensing", link: "/pricing" },
             { text: "Embedding Artifacts", link: "/guide/embedding" },
             { text: "CI/CD & GitHub Actions", link: "/guide/ci-cd" },
+            { text: "ALM & API Integration", link: "/guide/alm-integration" },
             { text: "Trademark Policy", link: "/trademark" },
           ],
         },

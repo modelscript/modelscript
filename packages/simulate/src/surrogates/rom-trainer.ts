@@ -13,6 +13,7 @@
 
 import { getDefaultWasmExports } from "@modelscript/runtime";
 import type { ArenaDoEResult } from "../uq/doe.js";
+import { wasmCholeskySolve, wasmRbfGramMatrix } from "../wasm/simulate-wasm.js";
 import { computeMultivariateBounds, type MultivariateBounds } from "./multivariate-bounds.js";
 
 interface RomLuWasmExports {
@@ -354,6 +355,34 @@ function trainRBF(
     }
   }
   const epsilon = count > 0 ? totalDist / count : 1;
+
+  // Fast-path: build flat Gaussian Gram matrix and solve via Cholesky in simulate.wasm
+  if (kernel === "gaussian" && N > 0) {
+    const dim = trainIn[0]!.length;
+    const flatX = new Float64Array(N * dim);
+    for (let i = 0; i < N; i++) {
+      for (let d = 0; d < dim; d++) flatX[i * dim + d] = trainIn[i]![d]!;
+    }
+    const shapeEps = epsilon > 1e-12 ? 1.0 / (Math.SQRT2 * epsilon) : 1.0;
+    const KFlat = wasmRbfGramMatrix(flatX, N, dim, 0, shapeEps, 1e-8);
+    if (KFlat) {
+      const weights: number[][] = [];
+      let allSolved = true;
+      for (let o = 0; o < nOutputs; o++) {
+        const yVec = new Float64Array(N);
+        for (let i = 0; i < N; i++) yVec[i] = trainOut[i]![o]!;
+        const wSol = wasmCholeskySolve(KFlat, yVec, N);
+        if (!wSol) {
+          allSolved = false;
+          break;
+        }
+        weights.push(Array.from(wSol));
+      }
+      if (allSolved) {
+        return { centers, weights, epsilon };
+      }
+    }
+  }
 
   // Build kernel matrix K
   const K: number[][] = [];

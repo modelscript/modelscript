@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./catalog/index.js";
 export { simaToDae, type SimaToDaeOptions } from "./dae/index.js";
 export * from "./grammar/index.js";
 export { simaLanguage } from "./language.js";

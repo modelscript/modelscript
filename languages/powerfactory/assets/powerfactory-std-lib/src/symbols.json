@@ -1,0 +1,3509 @@
+[
+  {
+    "name": "TypLne_OHL_110kV",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypLne_OHL_110kV",
+    "exports": [
+      "uline",
+      "inom",
+      "r1",
+      "x1",
+      "b1",
+      "r0",
+      "x0",
+      "b0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "110 kV Overhead Line (ACSR 240/40)",
+      "category": "Transmission Line / Cable",
+      "domain": "electrical",
+      "description": "Standard 110 kV single-circuit ACSR 240/40 overhead transmission line type.",
+      "provenance": "IEC 60909-2 / CIGRE TB 272 Overhead Line Reference Data",
+      "aliases": [
+        "OHL_110kV",
+        "TypLne.OHL110"
+      ],
+      "parameters": [
+        {
+          "key": "uline",
+          "type": "real",
+          "defaultValue": 110,
+          "unit": "kV",
+          "description": "Rated line voltage"
+        },
+        {
+          "key": "inom",
+          "type": "real",
+          "defaultValue": 0.645,
+          "unit": "kA",
+          "description": "Rated thermal current"
+        },
+        {
+          "key": "r1",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "Ohm/km",
+          "description": "Positive-sequence resistance"
+        },
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "Ohm/km",
+          "description": "Positive-sequence reactance"
+        },
+        {
+          "key": "b1",
+          "type": "real",
+          "defaultValue": 2.8,
+          "unit": "uS/km",
+          "description": "Positive-sequence susceptance"
+        },
+        {
+          "key": "r0",
+          "type": "real",
+          "defaultValue": 0.27,
+          "unit": "Ohm/km",
+          "description": "Zero-sequence resistance"
+        },
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": 1.25,
+          "unit": "Ohm/km",
+          "description": "Zero-sequence reactance"
+        },
+        {
+          "key": "b0",
+          "type": "real",
+          "defaultValue": 1.7,
+          "unit": "uS/km",
+          "description": "Zero-sequence susceptance"
+        }
+      ],
+      "wasmKernel": "TypLne_OHL_110kV",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "TypLne_OHL_220kV",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypLne_OHL_220kV",
+    "exports": [
+      "uline",
+      "inom",
+      "r1",
+      "x1",
+      "b1",
+      "r0",
+      "x0",
+      "b0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "220 kV Overhead Line (ACSR 2x265/35)",
+      "category": "Transmission Line / Cable",
+      "domain": "electrical",
+      "description": "Standard 220 kV twin-bundle ACSR overhead transmission line type.",
+      "provenance": "IEC 60909-2 / CIGRE TB 272 Overhead Line Reference Data",
+      "aliases": [
+        "OHL_220kV",
+        "TypLne.OHL220"
+      ],
+      "parameters": [
+        {
+          "key": "uline",
+          "type": "real",
+          "defaultValue": 220,
+          "unit": "kV",
+          "description": "Rated line voltage"
+        },
+        {
+          "key": "inom",
+          "type": "real",
+          "defaultValue": 1.36,
+          "unit": "kA",
+          "description": "Rated thermal current"
+        },
+        {
+          "key": "r1",
+          "type": "real",
+          "defaultValue": 0.055,
+          "unit": "Ohm/km",
+          "description": "Positive-sequence resistance"
+        },
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 0.31,
+          "unit": "Ohm/km",
+          "description": "Positive-sequence reactance"
+        },
+        {
+          "key": "b1",
+          "type": "real",
+          "defaultValue": 3.6,
+          "unit": "uS/km",
+          "description": "Positive-sequence susceptance"
+        },
+        {
+          "key": "r0",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "Ohm/km",
+          "description": "Zero-sequence resistance"
+        },
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": 1.05,
+          "unit": "Ohm/km",
+          "description": "Zero-sequence reactance"
+        },
+        {
+          "key": "b0",
+          "type": "real",
+          "defaultValue": 2.1,
+          "unit": "uS/km",
+          "description": "Zero-sequence susceptance"
+        }
+      ],
+      "wasmKernel": "TypLne_OHL_220kV",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "TypLne_OHL_400kV",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypLne_OHL_400kV",
+    "exports": [
+      "uline",
+      "inom",
+      "r1",
+      "x1",
+      "b1",
+      "r0",
+      "x0",
+      "b0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "400 kV Overhead Line (ACSR 4x265/35)",
+      "category": "Transmission Line / Cable",
+      "domain": "electrical",
+      "description": "Standard 400 kV quad-bundle ACSR EHV overhead transmission line type.",
+      "provenance": "IEC 60909-2 / ENTSO-E & CIGRE EHV Benchmark Line Data",
+      "aliases": [
+        "OHL_400kV",
+        "TypLne.OHL400"
+      ],
+      "parameters": [
+        {
+          "key": "uline",
+          "type": "real",
+          "defaultValue": 400,
+          "unit": "kV",
+          "description": "Rated line voltage"
+        },
+        {
+          "key": "inom",
+          "type": "real",
+          "defaultValue": 2.72,
+          "unit": "kA",
+          "description": "Rated thermal current"
+        },
+        {
+          "key": "r1",
+          "type": "real",
+          "defaultValue": 0.028,
+          "unit": "Ohm/km",
+          "description": "Positive-sequence resistance"
+        },
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 0.26,
+          "unit": "Ohm/km",
+          "description": "Positive-sequence reactance"
+        },
+        {
+          "key": "b1",
+          "type": "real",
+          "defaultValue": 4.3,
+          "unit": "uS/km",
+          "description": "Positive-sequence susceptance"
+        },
+        {
+          "key": "r0",
+          "type": "real",
+          "defaultValue": 0.16,
+          "unit": "Ohm/km",
+          "description": "Zero-sequence resistance"
+        },
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": 0.92,
+          "unit": "Ohm/km",
+          "description": "Zero-sequence reactance"
+        },
+        {
+          "key": "b0",
+          "type": "real",
+          "defaultValue": 2.5,
+          "unit": "uS/km",
+          "description": "Zero-sequence susceptance"
+        }
+      ],
+      "wasmKernel": "TypLne_OHL_400kV",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "TypLne_Cable_20kV",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypLne_Cable_20kV",
+    "exports": [
+      "uline",
+      "inom",
+      "r1",
+      "x1",
+      "b1",
+      "r0",
+      "x0",
+      "b0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "20 kV XLPE Underground Cable (185 mm2 Al)",
+      "category": "Transmission Line / Cable",
+      "domain": "electrical",
+      "description": "Standard 20 kV medium-voltage XLPE single-core trefoil cable type.",
+      "provenance": "IEC 60502-2 / CIGRE TB 575 MV Distribution Benchmark",
+      "aliases": [
+        "Cable_20kV",
+        "NA2XS2Y_20kV"
+      ],
+      "parameters": [
+        {
+          "key": "uline",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "kV",
+          "description": "Rated cable voltage"
+        },
+        {
+          "key": "inom",
+          "type": "real",
+          "defaultValue": 0.355,
+          "unit": "kA",
+          "description": "Rated thermal current"
+        },
+        {
+          "key": "r1",
+          "type": "real",
+          "defaultValue": 0.164,
+          "unit": "Ohm/km",
+          "description": "Positive-sequence resistance"
+        },
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 0.112,
+          "unit": "Ohm/km",
+          "description": "Positive-sequence reactance"
+        },
+        {
+          "key": "b1",
+          "type": "real",
+          "defaultValue": 88,
+          "unit": "uS/km",
+          "description": "Positive-sequence susceptance"
+        },
+        {
+          "key": "r0",
+          "type": "real",
+          "defaultValue": 0.65,
+          "unit": "Ohm/km",
+          "description": "Zero-sequence resistance"
+        },
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": 0.35,
+          "unit": "Ohm/km",
+          "description": "Zero-sequence reactance"
+        },
+        {
+          "key": "b0",
+          "type": "real",
+          "defaultValue": 88,
+          "unit": "uS/km",
+          "description": "Zero-sequence susceptance"
+        }
+      ],
+      "wasmKernel": "TypLne_Cable_20kV",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "TypLne_Cable_110kV",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypLne_Cable_110kV",
+    "exports": [
+      "uline",
+      "inom",
+      "r1",
+      "x1",
+      "b1",
+      "r0",
+      "x0",
+      "b0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "110 kV XLPE Underground Cable (630 mm2 Cu)",
+      "category": "Transmission Line / Cable",
+      "domain": "electrical",
+      "description": "Standard 110 kV high-voltage XLPE underground cable type.",
+      "provenance": "IEC 60840 / CIGRE TB 490 HV Cable Reference Data",
+      "aliases": [
+        "Cable_110kV",
+        "XLPE_110kV"
+      ],
+      "parameters": [
+        {
+          "key": "uline",
+          "type": "real",
+          "defaultValue": 110,
+          "unit": "kV",
+          "description": "Rated cable voltage"
+        },
+        {
+          "key": "inom",
+          "type": "real",
+          "defaultValue": 0.82,
+          "unit": "kA",
+          "description": "Rated thermal current"
+        },
+        {
+          "key": "r1",
+          "type": "real",
+          "defaultValue": 0.036,
+          "unit": "Ohm/km",
+          "description": "Positive-sequence resistance"
+        },
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 0.125,
+          "unit": "Ohm/km",
+          "description": "Positive-sequence reactance"
+        },
+        {
+          "key": "b1",
+          "type": "real",
+          "defaultValue": 72,
+          "unit": "uS/km",
+          "description": "Positive-sequence susceptance"
+        },
+        {
+          "key": "r0",
+          "type": "real",
+          "defaultValue": 0.14,
+          "unit": "Ohm/km",
+          "description": "Zero-sequence resistance"
+        },
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": 0.32,
+          "unit": "Ohm/km",
+          "description": "Zero-sequence reactance"
+        },
+        {
+          "key": "b0",
+          "type": "real",
+          "defaultValue": 72,
+          "unit": "uS/km",
+          "description": "Zero-sequence susceptance"
+        }
+      ],
+      "wasmKernel": "TypLne_Cable_110kV",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "TypTr2_110_20kV",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypTr2_110_20kV",
+    "exports": [
+      "strn",
+      "utrn_h",
+      "utrn_l",
+      "ukrr",
+      "pkr",
+      "pfe",
+      "i0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Winding Transformer 110/20 kV (40 MVA)",
+      "category": "Transformer",
+      "domain": "electrical",
+      "description": "Standard 110/20 kV YNd11 substation two-winding power transformer.",
+      "provenance": "IEC 60076-1 / CIGRE TB 575 MV Substation Transformer",
+      "aliases": [
+        "Tr2_110_20kV",
+        "TypTr2.110_20"
+      ],
+      "parameters": [
+        {
+          "key": "strn",
+          "type": "real",
+          "defaultValue": 40,
+          "unit": "MVA",
+          "description": "Rated apparent power"
+        },
+        {
+          "key": "utrn_h",
+          "type": "real",
+          "defaultValue": 110,
+          "unit": "kV",
+          "description": "Rated HV voltage"
+        },
+        {
+          "key": "utrn_l",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "kV",
+          "description": "Rated LV voltage"
+        },
+        {
+          "key": "ukrr",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "%",
+          "description": "Short-circuit impedance voltage"
+        },
+        {
+          "key": "pkr",
+          "type": "real",
+          "defaultValue": 160,
+          "unit": "kW",
+          "description": "Load (copper) losses at rated current"
+        },
+        {
+          "key": "pfe",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "kW",
+          "description": "No-load (iron) losses"
+        },
+        {
+          "key": "i0",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "%",
+          "description": "No-load current"
+        }
+      ],
+      "wasmKernel": "TypTr2_110_20kV",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "TypTr2_220_110kV",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypTr2_220_110kV",
+    "exports": [
+      "strn",
+      "utrn_h",
+      "utrn_l",
+      "ukrr",
+      "pkr",
+      "pfe",
+      "i0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Winding Transformer 220/110 kV (150 MVA)",
+      "category": "Transformer",
+      "domain": "electrical",
+      "description": "Standard 220/110 kV YNy0 transmission intertie autotransformer.",
+      "provenance": "IEC 60076-1 / IEC 60909-2 Transmission Transformer Data",
+      "aliases": [
+        "Tr2_220_110kV",
+        "TypTr2.220_110"
+      ],
+      "parameters": [
+        {
+          "key": "strn",
+          "type": "real",
+          "defaultValue": 150,
+          "unit": "MVA",
+          "description": "Rated apparent power"
+        },
+        {
+          "key": "utrn_h",
+          "type": "real",
+          "defaultValue": 220,
+          "unit": "kV",
+          "description": "Rated HV voltage"
+        },
+        {
+          "key": "utrn_l",
+          "type": "real",
+          "defaultValue": 110,
+          "unit": "kV",
+          "description": "Rated LV voltage"
+        },
+        {
+          "key": "ukrr",
+          "type": "real",
+          "defaultValue": 12.5,
+          "unit": "%",
+          "description": "Short-circuit impedance voltage"
+        },
+        {
+          "key": "pkr",
+          "type": "real",
+          "defaultValue": 420,
+          "unit": "kW",
+          "description": "Load (copper) losses at rated current"
+        },
+        {
+          "key": "pfe",
+          "type": "real",
+          "defaultValue": 65,
+          "unit": "kW",
+          "description": "No-load (iron) losses"
+        },
+        {
+          "key": "i0",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "%",
+          "description": "No-load current"
+        }
+      ],
+      "wasmKernel": "TypTr2_220_110kV",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "TypTr2_400_220kV",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypTr2_400_220kV",
+    "exports": [
+      "strn",
+      "utrn_h",
+      "utrn_l",
+      "ukrr",
+      "pkr",
+      "pfe",
+      "i0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Winding Transformer 400/220 kV (300 MVA)",
+      "category": "Transformer",
+      "domain": "electrical",
+      "description": "Standard 400/220 kV EHV transmission bulk power transformer.",
+      "provenance": "IEC 60076-1 / ENTSO-E & CIGRE EHV Transformer Reference",
+      "aliases": [
+        "Tr2_400_220kV",
+        "TypTr2.400_220"
+      ],
+      "parameters": [
+        {
+          "key": "strn",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "MVA",
+          "description": "Rated apparent power"
+        },
+        {
+          "key": "utrn_h",
+          "type": "real",
+          "defaultValue": 400,
+          "unit": "kV",
+          "description": "Rated HV voltage"
+        },
+        {
+          "key": "utrn_l",
+          "type": "real",
+          "defaultValue": 220,
+          "unit": "kV",
+          "description": "Rated LV voltage"
+        },
+        {
+          "key": "ukrr",
+          "type": "real",
+          "defaultValue": 14,
+          "unit": "%",
+          "description": "Short-circuit impedance voltage"
+        },
+        {
+          "key": "pkr",
+          "type": "real",
+          "defaultValue": 750,
+          "unit": "kW",
+          "description": "Load (copper) losses at rated current"
+        },
+        {
+          "key": "pfe",
+          "type": "real",
+          "defaultValue": 110,
+          "unit": "kW",
+          "description": "No-load (iron) losses"
+        },
+        {
+          "key": "i0",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "%",
+          "description": "No-load current"
+        }
+      ],
+      "wasmKernel": "TypTr2_400_220kV",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "TypTr3_3W",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypTr3_3W",
+    "exports": [
+      "strn_h",
+      "strn_m",
+      "strn_l",
+      "utrn_h",
+      "utrn_m",
+      "utrn_l",
+      "uk_hm",
+      "uk_ml",
+      "uk_hl"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Winding Transformer 400/110/30 kV (300 MVA)",
+      "category": "Transformer",
+      "domain": "electrical",
+      "description": "Standard YNy0d11 three-winding transmission transformer with tertiary delta winding.",
+      "provenance": "IEC 60076-1 / IEC 60909-0 Three-Winding Equivalent Circuit",
+      "aliases": [
+        "Tr3_3W",
+        "TypTr3.400_110_30"
+      ],
+      "parameters": [
+        {
+          "key": "strn_h",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "MVA",
+          "description": "HV winding rated power"
+        },
+        {
+          "key": "strn_m",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "MVA",
+          "description": "MV winding rated power"
+        },
+        {
+          "key": "strn_l",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "MVA",
+          "description": "LV tertiary winding rated power"
+        },
+        {
+          "key": "utrn_h",
+          "type": "real",
+          "defaultValue": 400,
+          "unit": "kV",
+          "description": "Rated HV voltage"
+        },
+        {
+          "key": "utrn_m",
+          "type": "real",
+          "defaultValue": 110,
+          "unit": "kV",
+          "description": "Rated MV voltage"
+        },
+        {
+          "key": "utrn_l",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "kV",
+          "description": "Rated LV voltage"
+        },
+        {
+          "key": "uk_hm",
+          "type": "real",
+          "defaultValue": 13.5,
+          "unit": "%",
+          "description": "HV-MV short-circuit voltage"
+        },
+        {
+          "key": "uk_ml",
+          "type": "real",
+          "defaultValue": 9,
+          "unit": "%",
+          "description": "MV-LV short-circuit voltage"
+        },
+        {
+          "key": "uk_hl",
+          "type": "real",
+          "defaultValue": 16,
+          "unit": "%",
+          "description": "HV-LV short-circuit voltage"
+        }
+      ],
+      "wasmKernel": "TypTr3_3W",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "TypSym_Thermal",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypSym_Thermal",
+    "exports": [
+      "snom",
+      "unom",
+      "h",
+      "d",
+      "xd",
+      "xq",
+      "xdp",
+      "xdpp",
+      "tdp0",
+      "tdpp0",
+      "xl"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Thermal Synchronous Generator (Round Rotor)",
+      "category": "Rotating Machine",
+      "domain": "electrical",
+      "description": "Round-rotor synchronous turbogenerator type per IEEE Std 1110.",
+      "provenance": "IEEE Std 1110-2019 / IEC 60034-4 Round-Rotor Synchronous Machine",
+      "aliases": [
+        "Sym_Thermal",
+        "TypSym.RoundRotor"
+      ],
+      "parameters": [
+        {
+          "key": "snom",
+          "type": "real",
+          "defaultValue": 250,
+          "unit": "MVA",
+          "description": "Rated apparent power"
+        },
+        {
+          "key": "unom",
+          "type": "real",
+          "defaultValue": 15.75,
+          "unit": "kV",
+          "description": "Rated terminal voltage"
+        },
+        {
+          "key": "h",
+          "type": "real",
+          "defaultValue": 4.5,
+          "unit": "s",
+          "description": "Inertia time constant H"
+        },
+        {
+          "key": "d",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "pu",
+          "description": "Speed damping coefficient"
+        },
+        {
+          "key": "xd",
+          "type": "real",
+          "defaultValue": 1.9,
+          "unit": "pu",
+          "description": "d-axis synchronous reactance"
+        },
+        {
+          "key": "xq",
+          "type": "real",
+          "defaultValue": 1.8,
+          "unit": "pu",
+          "description": "q-axis synchronous reactance"
+        },
+        {
+          "key": "xdp",
+          "type": "real",
+          "defaultValue": 0.28,
+          "unit": "pu",
+          "description": "d-axis transient reactance"
+        },
+        {
+          "key": "xdpp",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "pu",
+          "description": "d-axis subtransient reactance"
+        },
+        {
+          "key": "tdp0",
+          "type": "real",
+          "defaultValue": 6.5,
+          "unit": "s",
+          "description": "d-axis transient open-circuit time constant"
+        },
+        {
+          "key": "tdpp0",
+          "type": "real",
+          "defaultValue": 0.04,
+          "unit": "s",
+          "description": "d-axis subtransient open-circuit time constant"
+        },
+        {
+          "key": "xl",
+          "type": "real",
+          "defaultValue": 0.14,
+          "unit": "pu",
+          "description": "Stator leakage reactance"
+        }
+      ],
+      "wasmKernel": "TypSym_Thermal",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "TypSym_Hydro",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypSym_Hydro",
+    "exports": [
+      "snom",
+      "unom",
+      "h",
+      "d",
+      "xd",
+      "xq",
+      "xdp",
+      "xdpp",
+      "tdp0",
+      "tdpp0",
+      "xl"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hydro Synchronous Generator (Salient Pole)",
+      "category": "Rotating Machine",
+      "domain": "electrical",
+      "description": "Salient-pole hydro synchronous generator type per IEEE Std 1110.",
+      "provenance": "IEEE Std 1110-2019 / IEC 60034-4 Salient-Pole Synchronous Machine",
+      "aliases": [
+        "Sym_Hydro",
+        "TypSym.SalientPole"
+      ],
+      "parameters": [
+        {
+          "key": "snom",
+          "type": "real",
+          "defaultValue": 120,
+          "unit": "MVA",
+          "description": "Rated apparent power"
+        },
+        {
+          "key": "unom",
+          "type": "real",
+          "defaultValue": 13.8,
+          "unit": "kV",
+          "description": "Rated terminal voltage"
+        },
+        {
+          "key": "h",
+          "type": "real",
+          "defaultValue": 3.2,
+          "unit": "s",
+          "description": "Inertia time constant H"
+        },
+        {
+          "key": "d",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Speed damping coefficient"
+        },
+        {
+          "key": "xd",
+          "type": "real",
+          "defaultValue": 1.15,
+          "unit": "pu",
+          "description": "d-axis synchronous reactance"
+        },
+        {
+          "key": "xq",
+          "type": "real",
+          "defaultValue": 0.72,
+          "unit": "pu",
+          "description": "q-axis synchronous reactance"
+        },
+        {
+          "key": "xdp",
+          "type": "real",
+          "defaultValue": 0.32,
+          "unit": "pu",
+          "description": "d-axis transient reactance"
+        },
+        {
+          "key": "xdpp",
+          "type": "real",
+          "defaultValue": 0.22,
+          "unit": "pu",
+          "description": "d-axis subtransient reactance"
+        },
+        {
+          "key": "tdp0",
+          "type": "real",
+          "defaultValue": 5.5,
+          "unit": "s",
+          "description": "d-axis transient open-circuit time constant"
+        },
+        {
+          "key": "tdpp0",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "s",
+          "description": "d-axis subtransient open-circuit time constant"
+        },
+        {
+          "key": "xl",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "pu",
+          "description": "Stator leakage reactance"
+        }
+      ],
+      "wasmKernel": "TypSym_Hydro",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "TypAsmo_IndMotor",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypAsmo_IndMotor",
+    "exports": [
+      "pmech",
+      "unom",
+      "h",
+      "rs",
+      "xs",
+      "xm",
+      "rr",
+      "xr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Squirrel-Cage Induction Motor",
+      "category": "Rotating Machine",
+      "domain": "electrical",
+      "description": "Three-phase squirrel-cage asynchronous motor with slip dynamics.",
+      "provenance": "IEC 60034-1 / IEEE Std 112 Induction Machine Equivalent Circuit",
+      "aliases": [
+        "Asmo_IndMotor",
+        "TypAsmo.Cage"
+      ],
+      "parameters": [
+        {
+          "key": "pmech",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "MW",
+          "description": "Rated mechanical shaft power"
+        },
+        {
+          "key": "unom",
+          "type": "real",
+          "defaultValue": 6.6,
+          "unit": "kV",
+          "description": "Rated terminal voltage"
+        },
+        {
+          "key": "h",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "s",
+          "description": "Motor inertia constant H"
+        },
+        {
+          "key": "rs",
+          "type": "real",
+          "defaultValue": 0.015,
+          "unit": "pu",
+          "description": "Stator resistance"
+        },
+        {
+          "key": "xs",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "pu",
+          "description": "Stator leakage reactance"
+        },
+        {
+          "key": "xm",
+          "type": "real",
+          "defaultValue": 3.2,
+          "unit": "pu",
+          "description": "Magnetizing reactance"
+        },
+        {
+          "key": "rr",
+          "type": "real",
+          "defaultValue": 0.018,
+          "unit": "pu",
+          "description": "Rotor resistance"
+        },
+        {
+          "key": "xr",
+          "type": "real",
+          "defaultValue": 0.14,
+          "unit": "pu",
+          "description": "Rotor leakage reactance"
+        }
+      ],
+      "wasmKernel": "TypAsmo_IndMotor",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "TypLod_ZIP",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypLod_ZIP",
+    "exports": [
+      "aP",
+      "bP",
+      "cP",
+      "aQ",
+      "bQ",
+      "cQ",
+      "kpf",
+      "kqf"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Static ZIP Voltage/Frequency Load",
+      "category": "Static Load / IBR",
+      "domain": "electrical",
+      "description": "Polynomial constant-impedance (Z), constant-current (I), constant-power (P) load type.",
+      "provenance": "IEEE Task Force on Load Representation (1993) / CIGRE TB 566",
+      "aliases": [
+        "Lod_ZIP",
+        "TypLod.Composite"
+      ],
+      "parameters": [
+        {
+          "key": "aP",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "pu",
+          "description": "Constant-impedance active power share"
+        },
+        {
+          "key": "bP",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "pu",
+          "description": "Constant-current active power share"
+        },
+        {
+          "key": "cP",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "pu",
+          "description": "Constant-power active power share"
+        },
+        {
+          "key": "aQ",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "pu",
+          "description": "Constant-impedance reactive power share"
+        },
+        {
+          "key": "bQ",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "pu",
+          "description": "Constant-current reactive power share"
+        },
+        {
+          "key": "cQ",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "pu",
+          "description": "Constant-power reactive power share"
+        },
+        {
+          "key": "kpf",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Active power frequency sensitivity"
+        },
+        {
+          "key": "kqf",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "pu",
+          "description": "Reactive power frequency sensitivity"
+        }
+      ],
+      "wasmKernel": "TypLod_ZIP",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "TypGenstat_PV",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypGenstat_PV",
+    "exports": [
+      "tg",
+      "rrpwr",
+      "brkpt",
+      "zerox",
+      "lvpl1",
+      "kqv",
+      "vtmax",
+      "qmin",
+      "imax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Static Generator — Utility-Scale Solar PV",
+      "category": "Static Load / IBR",
+      "domain": "electrical",
+      "description": "Grid-following solar PV inverter static generator with LVRT reactive current support.",
+      "provenance": "IEEE Std 2800-2022 / WECC Generic PV Plant Model",
+      "aliases": [
+        "Genstat_PV",
+        "PV_Inverter"
+      ],
+      "parameters": [
+        {
+          "key": "tg",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Converter current control time constant"
+        },
+        {
+          "key": "rrpwr",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "pu/s",
+          "description": "Active current ramp rate limit"
+        },
+        {
+          "key": "brkpt",
+          "type": "real",
+          "defaultValue": 0.9,
+          "unit": "pu",
+          "description": "Low-voltage active current breakpoint"
+        },
+        {
+          "key": "zerox",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "pu",
+          "description": "Low-voltage active current zero crossing"
+        },
+        {
+          "key": "lvpl1",
+          "type": "real",
+          "defaultValue": 1.22,
+          "unit": "pu",
+          "description": "LVPL gain breakpoint"
+        },
+        {
+          "key": "kqv",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "pu",
+          "description": "Reactive current voltage support gain"
+        },
+        {
+          "key": "vtmax",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "pu",
+          "description": "High-voltage reactive current limit threshold"
+        },
+        {
+          "key": "qmin",
+          "type": "real",
+          "defaultValue": -1.3,
+          "unit": "pu",
+          "description": "Minimum reactive current limit"
+        },
+        {
+          "key": "imax",
+          "type": "real",
+          "defaultValue": 1.1,
+          "unit": "pu",
+          "description": "Maximum converter current limit"
+        }
+      ],
+      "wasmKernel": "TypGenstat_PV",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "TypGenstat_BESS",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypGenstat_BESS",
+    "exports": [
+      "tg",
+      "rrpwr",
+      "brkpt",
+      "zerox",
+      "lvpl1",
+      "kqv",
+      "soc0",
+      "pmax",
+      "pmin"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Static Generator — Battery Energy Storage (BESS)",
+      "category": "Static Load / IBR",
+      "domain": "electrical",
+      "description": "Bidirectional battery energy storage inverter with fast frequency/voltage support.",
+      "provenance": "IEEE Std 2800-2022 / WECC REEC_C Energy Storage Specification",
+      "aliases": [
+        "Genstat_BESS",
+        "BESS_Inverter"
+      ],
+      "parameters": [
+        {
+          "key": "tg",
+          "type": "real",
+          "defaultValue": 0.015,
+          "unit": "s",
+          "description": "Inverter current loop time constant"
+        },
+        {
+          "key": "rrpwr",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "pu/s",
+          "description": "Active power ramp rate limit"
+        },
+        {
+          "key": "brkpt",
+          "type": "real",
+          "defaultValue": 0.9,
+          "unit": "pu",
+          "description": "LVPL breakpoint voltage"
+        },
+        {
+          "key": "zerox",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "pu",
+          "description": "LVPL zero-crossing voltage"
+        },
+        {
+          "key": "lvpl1",
+          "type": "real",
+          "defaultValue": 1.25,
+          "unit": "pu",
+          "description": "LVPL gain breakpoint"
+        },
+        {
+          "key": "kqv",
+          "type": "real",
+          "defaultValue": 2.5,
+          "unit": "pu",
+          "description": "Reactive current support gain"
+        },
+        {
+          "key": "soc0",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "pu",
+          "description": "Initial state of charge"
+        },
+        {
+          "key": "pmax",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Max discharge active power"
+        },
+        {
+          "key": "pmin",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "pu",
+          "description": "Max charge active power"
+        }
+      ],
+      "wasmKernel": "TypGenstat_BESS",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "TypGenstat_Wind",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:TypGenstat_Wind",
+    "exports": [
+      "tg",
+      "rrpwr",
+      "brkpt",
+      "zerox",
+      "lvpl1",
+      "kqv",
+      "vtmax",
+      "qmin",
+      "imax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Static Generator — Type-4 Full-Converter Wind",
+      "category": "Static Load / IBR",
+      "domain": "electrical",
+      "description": "Full-converter (Type-4) wind turbine generator per IEC 61400-27-1.",
+      "provenance": "IEC 61400-27-1:2020 Type 4A/4B Wind Turbine Generic Model",
+      "aliases": [
+        "Genstat_Wind",
+        "Type4_Wind"
+      ],
+      "parameters": [
+        {
+          "key": "tg",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Converter current control time constant"
+        },
+        {
+          "key": "rrpwr",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "pu/s",
+          "description": "Active current ramp rate limit"
+        },
+        {
+          "key": "brkpt",
+          "type": "real",
+          "defaultValue": 0.9,
+          "unit": "pu",
+          "description": "Low-voltage active current breakpoint"
+        },
+        {
+          "key": "zerox",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "pu",
+          "description": "Low-voltage active current zero crossing"
+        },
+        {
+          "key": "lvpl1",
+          "type": "real",
+          "defaultValue": 1.22,
+          "unit": "pu",
+          "description": "LVPL gain breakpoint"
+        },
+        {
+          "key": "kqv",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "pu",
+          "description": "Reactive current voltage support gain"
+        },
+        {
+          "key": "vtmax",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "pu",
+          "description": "High-voltage reactive current limit threshold"
+        },
+        {
+          "key": "qmin",
+          "type": "real",
+          "defaultValue": -1.3,
+          "unit": "pu",
+          "description": "Minimum reactive current limit"
+        },
+        {
+          "key": "imax",
+          "type": "real",
+          "defaultValue": 1.1,
+          "unit": "pu",
+          "description": "Maximum converter current limit"
+        }
+      ],
+      "wasmKernel": "TypGenstat_Wind",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "vco_IEEET1",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:vco_IEEET1",
+    "exports": [
+      "tr",
+      "vimax",
+      "vimin",
+      "te",
+      "ke",
+      "ka",
+      "ta",
+      "vrmax",
+      "vrmin",
+      "kf",
+      "tf"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE Type 1 DC Commutator Exciter",
+      "category": "Exciter (DSL)",
+      "domain": "electrical",
+      "description": "1968 IEEE Type 1 continuously acting DC commutator excitation system.",
+      "provenance": "IEEE Std 421.5-2016 Type DC1A / 1968 IEEE Type 1",
+      "aliases": [
+        "IEEET1",
+        "avr_IEEET1"
+      ],
+      "parameters": [
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Measurement filter time constant"
+        },
+        {
+          "key": "vimax",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "pu",
+          "description": "Voltage error upper limit"
+        },
+        {
+          "key": "vimin",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "pu",
+          "description": "Voltage error lower limit"
+        },
+        {
+          "key": "te",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "s",
+          "description": "Exciter field time constant"
+        },
+        {
+          "key": "ke",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Exciter constant related to self-excited field"
+        },
+        {
+          "key": "ka",
+          "type": "real",
+          "defaultValue": 150,
+          "unit": "pu",
+          "description": "Voltage regulator gain"
+        },
+        {
+          "key": "ta",
+          "type": "real",
+          "defaultValue": 0.06,
+          "unit": "s",
+          "description": "Voltage regulator time constant"
+        },
+        {
+          "key": "vrmax",
+          "type": "real",
+          "defaultValue": 5.2,
+          "unit": "pu",
+          "description": "Maximum regulator output"
+        },
+        {
+          "key": "vrmin",
+          "type": "real",
+          "defaultValue": -4,
+          "unit": "pu",
+          "description": "Minimum regulator output"
+        },
+        {
+          "key": "kf",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "pu",
+          "description": "Stabilizing feedback gain"
+        },
+        {
+          "key": "tf",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Stabilizing feedback time constant"
+        }
+      ],
+      "wasmKernel": "vco_IEEET1",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "vco_ST1A",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:vco_ST1A",
+    "exports": [
+      "tr",
+      "vimax",
+      "vimin",
+      "tc",
+      "tb",
+      "ka",
+      "ta",
+      "vrmax",
+      "vrmin",
+      "kc",
+      "kf",
+      "tf"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE ST1A Potential-Source Static Exciter",
+      "category": "Exciter (DSL)",
+      "domain": "electrical",
+      "description": "IEEE Std 421.5 Type ST1A potential-source controlled-rectifier static excitation system.",
+      "provenance": "IEEE Std 421.5-2016 Type ST1A",
+      "aliases": [
+        "ST1A",
+        "ESST1A",
+        "avr_ST1A"
+      ],
+      "parameters": [
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Measurement filter time constant"
+        },
+        {
+          "key": "vimax",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "pu",
+          "description": "Voltage error upper limit"
+        },
+        {
+          "key": "vimin",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "pu",
+          "description": "Voltage error lower limit"
+        },
+        {
+          "key": "tc",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Lead time constant"
+        },
+        {
+          "key": "tb",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Lag time constant"
+        },
+        {
+          "key": "ka",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "pu",
+          "description": "Voltage regulator gain"
+        },
+        {
+          "key": "ta",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "s",
+          "description": "Voltage regulator time constant"
+        },
+        {
+          "key": "vrmax",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "pu",
+          "description": "Maximum regulator output"
+        },
+        {
+          "key": "vrmin",
+          "type": "real",
+          "defaultValue": -4.5,
+          "unit": "pu",
+          "description": "Minimum regulator output"
+        },
+        {
+          "key": "kc",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "pu",
+          "description": "Rectifier commutation factor"
+        },
+        {
+          "key": "kf",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Rate feedback gain"
+        },
+        {
+          "key": "tf",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Rate feedback time constant"
+        }
+      ],
+      "wasmKernel": "vco_ST1A",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "vco_ST4B",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:vco_ST4B",
+    "exports": [
+      "tr",
+      "vimax",
+      "vimin",
+      "tc",
+      "tb",
+      "ka",
+      "ta",
+      "vrmax",
+      "vrmin",
+      "kc",
+      "kf",
+      "tf"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE ST4B Dual-PI Static Exciter",
+      "category": "Exciter (DSL)",
+      "domain": "electrical",
+      "description": "IEEE Std 421.5 Type ST4B potential/compound-source static exciter with PI inner/outer loops.",
+      "provenance": "IEEE Std 421.5-2016 Type ST4B",
+      "aliases": [
+        "ST4B",
+        "ESST4B",
+        "avr_ST4B"
+      ],
+      "parameters": [
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Measurement filter time constant"
+        },
+        {
+          "key": "vimax",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "pu",
+          "description": "Voltage error upper limit"
+        },
+        {
+          "key": "vimin",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "pu",
+          "description": "Voltage error lower limit"
+        },
+        {
+          "key": "tc",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Lead time constant"
+        },
+        {
+          "key": "tb",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Lag time constant"
+        },
+        {
+          "key": "ka",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "pu",
+          "description": "Voltage regulator gain"
+        },
+        {
+          "key": "ta",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "s",
+          "description": "Voltage regulator time constant"
+        },
+        {
+          "key": "vrmax",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "pu",
+          "description": "Maximum regulator output"
+        },
+        {
+          "key": "vrmin",
+          "type": "real",
+          "defaultValue": -4.5,
+          "unit": "pu",
+          "description": "Minimum regulator output"
+        },
+        {
+          "key": "kc",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "pu",
+          "description": "Rectifier commutation factor"
+        },
+        {
+          "key": "kf",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Rate feedback gain"
+        },
+        {
+          "key": "tf",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Rate feedback time constant"
+        }
+      ],
+      "wasmKernel": "vco_ST4B",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "vco_EXAC1",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:vco_EXAC1",
+    "exports": [
+      "tr",
+      "vimax",
+      "vimin",
+      "te",
+      "ke",
+      "ka",
+      "ta",
+      "vrmax",
+      "vrmin",
+      "kf",
+      "tf"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE AC1A Brushless Alternator Exciter",
+      "category": "Exciter (DSL)",
+      "domain": "electrical",
+      "description": "IEEE Std 421.5 Type AC1A alternator-rectifier excitation system with non-controlled rectifiers.",
+      "provenance": "IEEE Std 421.5-2016 Type AC1A",
+      "aliases": [
+        "EXAC1",
+        "AC1A",
+        "avr_EXAC1"
+      ],
+      "parameters": [
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Measurement filter time constant"
+        },
+        {
+          "key": "vimax",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "pu",
+          "description": "Voltage error upper limit"
+        },
+        {
+          "key": "vimin",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "pu",
+          "description": "Voltage error lower limit"
+        },
+        {
+          "key": "te",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "s",
+          "description": "Exciter field time constant"
+        },
+        {
+          "key": "ke",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Exciter constant related to self-excited field"
+        },
+        {
+          "key": "ka",
+          "type": "real",
+          "defaultValue": 150,
+          "unit": "pu",
+          "description": "Voltage regulator gain"
+        },
+        {
+          "key": "ta",
+          "type": "real",
+          "defaultValue": 0.06,
+          "unit": "s",
+          "description": "Voltage regulator time constant"
+        },
+        {
+          "key": "vrmax",
+          "type": "real",
+          "defaultValue": 5.2,
+          "unit": "pu",
+          "description": "Maximum regulator output"
+        },
+        {
+          "key": "vrmin",
+          "type": "real",
+          "defaultValue": -4,
+          "unit": "pu",
+          "description": "Minimum regulator output"
+        },
+        {
+          "key": "kf",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "pu",
+          "description": "Stabilizing feedback gain"
+        },
+        {
+          "key": "tf",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Stabilizing feedback time constant"
+        }
+      ],
+      "wasmKernel": "vco_EXAC1",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "vco_EXDC1",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:vco_EXDC1",
+    "exports": [
+      "tr",
+      "vimax",
+      "vimin",
+      "te",
+      "ke",
+      "ka",
+      "ta",
+      "vrmax",
+      "vrmin",
+      "kf",
+      "tf"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE DC1A DC Commutator Exciter",
+      "category": "Exciter (DSL)",
+      "domain": "electrical",
+      "description": "IEEE Std 421.5 Type DC1A DC commutator exciter with field-controlled voltage regulator.",
+      "provenance": "IEEE Std 421.5-2016 Type DC1A",
+      "aliases": [
+        "EXDC1",
+        "DC1A",
+        "avr_EXDC1"
+      ],
+      "parameters": [
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Measurement filter time constant"
+        },
+        {
+          "key": "vimax",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "pu",
+          "description": "Voltage error upper limit"
+        },
+        {
+          "key": "vimin",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "pu",
+          "description": "Voltage error lower limit"
+        },
+        {
+          "key": "te",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "s",
+          "description": "Exciter field time constant"
+        },
+        {
+          "key": "ke",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Exciter constant related to self-excited field"
+        },
+        {
+          "key": "ka",
+          "type": "real",
+          "defaultValue": 150,
+          "unit": "pu",
+          "description": "Voltage regulator gain"
+        },
+        {
+          "key": "ta",
+          "type": "real",
+          "defaultValue": 0.06,
+          "unit": "s",
+          "description": "Voltage regulator time constant"
+        },
+        {
+          "key": "vrmax",
+          "type": "real",
+          "defaultValue": 5.2,
+          "unit": "pu",
+          "description": "Maximum regulator output"
+        },
+        {
+          "key": "vrmin",
+          "type": "real",
+          "defaultValue": -4,
+          "unit": "pu",
+          "description": "Minimum regulator output"
+        },
+        {
+          "key": "kf",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "pu",
+          "description": "Stabilizing feedback gain"
+        },
+        {
+          "key": "tf",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Stabilizing feedback time constant"
+        }
+      ],
+      "wasmKernel": "vco_EXDC1",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "vco_SEXS",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:vco_SEXS",
+    "exports": [
+      "tr",
+      "vimax",
+      "vimin",
+      "tc",
+      "tb",
+      "ka",
+      "ta",
+      "vrmax",
+      "vrmin",
+      "kc",
+      "kf",
+      "tf"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Simplified Excitation System (SEXS)",
+      "category": "Exciter (DSL)",
+      "domain": "electrical",
+      "description": "Simplified generic excitation system with transient gain reduction and first-order lag.",
+      "provenance": "IEEE / WECC Simplified Excitation System (SEXS)",
+      "aliases": [
+        "SEXS",
+        "avr_SEXS"
+      ],
+      "parameters": [
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Measurement filter time constant"
+        },
+        {
+          "key": "vimax",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "pu",
+          "description": "Voltage error upper limit"
+        },
+        {
+          "key": "vimin",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "pu",
+          "description": "Voltage error lower limit"
+        },
+        {
+          "key": "tc",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Lead time constant"
+        },
+        {
+          "key": "tb",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Lag time constant"
+        },
+        {
+          "key": "ka",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "pu",
+          "description": "Voltage regulator gain"
+        },
+        {
+          "key": "ta",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "s",
+          "description": "Voltage regulator time constant"
+        },
+        {
+          "key": "vrmax",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "pu",
+          "description": "Maximum regulator output"
+        },
+        {
+          "key": "vrmin",
+          "type": "real",
+          "defaultValue": -4.5,
+          "unit": "pu",
+          "description": "Minimum regulator output"
+        },
+        {
+          "key": "kc",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "pu",
+          "description": "Rectifier commutation factor"
+        },
+        {
+          "key": "kf",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Rate feedback gain"
+        },
+        {
+          "key": "tf",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Rate feedback time constant"
+        }
+      ],
+      "wasmKernel": "vco_SEXS",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "gov_TGOV1",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:gov_TGOV1",
+    "exports": [
+      "r",
+      "t1",
+      "vmax",
+      "vmin",
+      "t2",
+      "t3",
+      "dt"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Steam Turbine-Governor (TGOV1)",
+      "category": "Governor (DSL)",
+      "domain": "electrical",
+      "description": "Simplified steam turbine-governor with droop, valve lag, and reheater lead-lag.",
+      "provenance": "IEEE PES / WECC TGOV1 Steam Turbine-Governor Model",
+      "aliases": [
+        "TGOV1",
+        "pcu_TGOV1"
+      ],
+      "parameters": [
+        {
+          "key": "r",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "pu",
+          "description": "Permanent speed droop"
+        },
+        {
+          "key": "t1",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "s",
+          "description": "Governor lag time constant"
+        },
+        {
+          "key": "vmax",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Maximum valve position"
+        },
+        {
+          "key": "vmin",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Minimum valve position"
+        },
+        {
+          "key": "t2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Turbine lead time constant"
+        },
+        {
+          "key": "t3",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "s",
+          "description": "Reheater lag time constant"
+        },
+        {
+          "key": "dt",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Turbine damping factor"
+        }
+      ],
+      "wasmKernel": "gov_TGOV1",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "gov_HYGOV",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:gov_HYGOV",
+    "exports": [
+      "r",
+      "t1",
+      "gmax",
+      "gmin",
+      "rt",
+      "tw",
+      "tr",
+      "at",
+      "dturb",
+      "qnl"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hydro Turbine-Governor (HYGOV)",
+      "category": "Governor (DSL)",
+      "domain": "electrical",
+      "description": "Nonlinear hydro turbine and governor with penstock water starting time and temporary droop.",
+      "provenance": "IEEE Working Group on Prime Mover & Energy Supply (1992) HYGOV",
+      "aliases": [
+        "HYGOV",
+        "pcu_HYGOV"
+      ],
+      "parameters": [
+        {
+          "key": "r",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "pu",
+          "description": "Permanent droop"
+        },
+        {
+          "key": "t1",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "s",
+          "description": "Servo time constant"
+        },
+        {
+          "key": "gmax",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Maximum gate opening"
+        },
+        {
+          "key": "gmin",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Minimum gate opening"
+        },
+        {
+          "key": "rt",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "pu",
+          "description": "Temporary droop"
+        },
+        {
+          "key": "tw",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "s",
+          "description": "Water starting time"
+        },
+        {
+          "key": "tr",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "s",
+          "description": "Dashpot time constant"
+        },
+        {
+          "key": "at",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "pu",
+          "description": "Turbine gain"
+        },
+        {
+          "key": "dturb",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "pu",
+          "description": "Turbine damping"
+        },
+        {
+          "key": "qnl",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "pu",
+          "description": "No-load flow"
+        }
+      ],
+      "wasmKernel": "gov_HYGOV",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "gov_GGOV1",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:gov_GGOV1",
+    "exports": [
+      "r",
+      "t1",
+      "vmax",
+      "vmin",
+      "t2",
+      "t3",
+      "dt"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "General-Purpose Gas/Thermal Governor (GGOV1)",
+      "category": "Governor (DSL)",
+      "domain": "electrical",
+      "description": "WECC/IEEE general-purpose turbine-governor for combustion turbines and combined-cycle units.",
+      "provenance": "IEEE PES-TR1 / WECC GGOV1 Turbine-Governor Model",
+      "aliases": [
+        "GGOV1",
+        "pcu_GGOV1"
+      ],
+      "parameters": [
+        {
+          "key": "r",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "pu",
+          "description": "Permanent speed droop"
+        },
+        {
+          "key": "t1",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "s",
+          "description": "Governor lag time constant"
+        },
+        {
+          "key": "vmax",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Maximum valve position"
+        },
+        {
+          "key": "vmin",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Minimum valve position"
+        },
+        {
+          "key": "t2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Turbine lead time constant"
+        },
+        {
+          "key": "t3",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "s",
+          "description": "Reheater lag time constant"
+        },
+        {
+          "key": "dt",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Turbine damping factor"
+        }
+      ],
+      "wasmKernel": "gov_GGOV1",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "gov_IEESGO",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:gov_IEESGO",
+    "exports": [
+      "r",
+      "t1",
+      "vmax",
+      "vmin",
+      "t2",
+      "t3",
+      "dt"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE Standard Steam Governor (IEESGO)",
+      "category": "Governor (DSL)",
+      "domain": "electrical",
+      "description": "IEEE 1973 standard speed-governing and steam turbine reheat model.",
+      "provenance": "IEEE Committee Report (1973) Dynamic Models for Steam & Hydro Turbines",
+      "aliases": [
+        "IEESGO",
+        "pcu_IEESGO"
+      ],
+      "parameters": [
+        {
+          "key": "r",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "pu",
+          "description": "Permanent speed droop"
+        },
+        {
+          "key": "t1",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "s",
+          "description": "Governor lag time constant"
+        },
+        {
+          "key": "vmax",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Maximum valve position"
+        },
+        {
+          "key": "vmin",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Minimum valve position"
+        },
+        {
+          "key": "t2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Turbine lead time constant"
+        },
+        {
+          "key": "t3",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "s",
+          "description": "Reheater lag time constant"
+        },
+        {
+          "key": "dt",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Turbine damping factor"
+        }
+      ],
+      "wasmKernel": "gov_IEESGO",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "pss_PSS2A",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:pss_PSS2A",
+    "exports": [
+      "tw1",
+      "tw2",
+      "ks1",
+      "t1",
+      "t2",
+      "t3",
+      "t4",
+      "vstmax",
+      "vstmin"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE PSS2A Dual-Input Power System Stabilizer",
+      "category": "Stabilizer (DSL)",
+      "domain": "electrical",
+      "description": "Dual-input (rotor speed & electrical power) ramp-tracking power system stabilizer.",
+      "provenance": "IEEE Std 421.5-2016 Type PSS2A",
+      "aliases": [
+        "PSS2A",
+        "IEEE_PSS2A"
+      ],
+      "parameters": [
+        {
+          "key": "tw1",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Washout time constant 1"
+        },
+        {
+          "key": "tw2",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Washout time constant 2"
+        },
+        {
+          "key": "ks1",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "pu",
+          "description": "Stabilizer gain"
+        },
+        {
+          "key": "t1",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "s",
+          "description": "Lead time constant 1"
+        },
+        {
+          "key": "t2",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "s",
+          "description": "Lag time constant 1"
+        },
+        {
+          "key": "t3",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "s",
+          "description": "Lead time constant 2"
+        },
+        {
+          "key": "t4",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "s",
+          "description": "Lag time constant 2"
+        },
+        {
+          "key": "vstmax",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "pu",
+          "description": "Maximum stabilizer output"
+        },
+        {
+          "key": "vstmin",
+          "type": "real",
+          "defaultValue": -0.1,
+          "unit": "pu",
+          "description": "Minimum stabilizer output"
+        }
+      ],
+      "wasmKernel": "pss_PSS2A",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "pss_PSS2B",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:pss_PSS2B",
+    "exports": [
+      "tw1",
+      "tw2",
+      "ks1",
+      "t1",
+      "t2",
+      "t3",
+      "t4",
+      "vstmax",
+      "vstmin"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE PSS2B Dual-Input Power System Stabilizer",
+      "category": "Stabilizer (DSL)",
+      "domain": "electrical",
+      "description": "Enhanced dual-input power system stabilizer with third lead-lag compensation stage.",
+      "provenance": "IEEE Std 421.5-2016 Type PSS2B",
+      "aliases": [
+        "PSS2B",
+        "IEEE_PSS2B"
+      ],
+      "parameters": [
+        {
+          "key": "tw1",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Washout time constant 1"
+        },
+        {
+          "key": "tw2",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Washout time constant 2"
+        },
+        {
+          "key": "ks1",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "pu",
+          "description": "Stabilizer gain"
+        },
+        {
+          "key": "t1",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "s",
+          "description": "Lead time constant 1"
+        },
+        {
+          "key": "t2",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "s",
+          "description": "Lag time constant 1"
+        },
+        {
+          "key": "t3",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "s",
+          "description": "Lead time constant 2"
+        },
+        {
+          "key": "t4",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "s",
+          "description": "Lag time constant 2"
+        },
+        {
+          "key": "vstmax",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "pu",
+          "description": "Maximum stabilizer output"
+        },
+        {
+          "key": "vstmin",
+          "type": "real",
+          "defaultValue": -0.1,
+          "unit": "pu",
+          "description": "Minimum stabilizer output"
+        }
+      ],
+      "wasmKernel": "pss_PSS2B",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "pss_IEEEST",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:pss_IEEEST",
+    "exports": [
+      "tw1",
+      "tw2",
+      "ks1",
+      "t1",
+      "t2",
+      "t3",
+      "t4",
+      "vstmax",
+      "vstmin"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE Type PSS1A / IEEEST Stabilizer",
+      "category": "Stabilizer (DSL)",
+      "domain": "electrical",
+      "description": "Single-input power system stabilizer with washout filter and two lead-lag blocks.",
+      "provenance": "IEEE Std 421.5-2016 Type PSS1A / IEEEST",
+      "aliases": [
+        "IEEEST",
+        "PSS1A",
+        "IEEE_ST"
+      ],
+      "parameters": [
+        {
+          "key": "tw1",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Washout time constant 1"
+        },
+        {
+          "key": "tw2",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Washout time constant 2"
+        },
+        {
+          "key": "ks1",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "pu",
+          "description": "Stabilizer gain"
+        },
+        {
+          "key": "t1",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "s",
+          "description": "Lead time constant 1"
+        },
+        {
+          "key": "t2",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "s",
+          "description": "Lag time constant 1"
+        },
+        {
+          "key": "t3",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "s",
+          "description": "Lead time constant 2"
+        },
+        {
+          "key": "t4",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "s",
+          "description": "Lag time constant 2"
+        },
+        {
+          "key": "vstmax",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "pu",
+          "description": "Maximum stabilizer output"
+        },
+        {
+          "key": "vstmin",
+          "type": "real",
+          "defaultValue": -0.1,
+          "unit": "pu",
+          "description": "Minimum stabilizer output"
+        }
+      ],
+      "wasmKernel": "pss_IEEEST",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "wecc_REGC_A",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:wecc_REGC_A",
+    "exports": [
+      "tg",
+      "rrpwr",
+      "brkpt",
+      "zerox",
+      "lvpl1",
+      "kqv",
+      "vtmax",
+      "qmin",
+      "imax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "WECC REGC_A Renewable Energy Generator/Converter",
+      "category": "Renewable / FACTS (DSL)",
+      "domain": "electrical",
+      "description": "WECC generic renewable generator/converter interface with LVPL and high-voltage reactive current limit.",
+      "provenance": "WECC Second-Generation Generic Renewable Energy Model REGC_A",
+      "aliases": [
+        "REGC_A",
+        "regc_a"
+      ],
+      "parameters": [
+        {
+          "key": "tg",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Converter current control time constant"
+        },
+        {
+          "key": "rrpwr",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "pu/s",
+          "description": "Active current ramp rate limit"
+        },
+        {
+          "key": "brkpt",
+          "type": "real",
+          "defaultValue": 0.9,
+          "unit": "pu",
+          "description": "Low-voltage active current breakpoint"
+        },
+        {
+          "key": "zerox",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "pu",
+          "description": "Low-voltage active current zero crossing"
+        },
+        {
+          "key": "lvpl1",
+          "type": "real",
+          "defaultValue": 1.22,
+          "unit": "pu",
+          "description": "LVPL gain breakpoint"
+        },
+        {
+          "key": "kqv",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "pu",
+          "description": "Reactive current voltage support gain"
+        },
+        {
+          "key": "vtmax",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "pu",
+          "description": "High-voltage reactive current limit threshold"
+        },
+        {
+          "key": "qmin",
+          "type": "real",
+          "defaultValue": -1.3,
+          "unit": "pu",
+          "description": "Minimum reactive current limit"
+        },
+        {
+          "key": "imax",
+          "type": "real",
+          "defaultValue": 1.1,
+          "unit": "pu",
+          "description": "Maximum converter current limit"
+        }
+      ],
+      "wasmKernel": "wecc_REGC_A",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "wecc_REEC_A",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:wecc_REEC_A",
+    "exports": [
+      "tg",
+      "rrpwr",
+      "brkpt",
+      "zerox",
+      "lvpl1",
+      "kqv",
+      "vtmax",
+      "qmin",
+      "imax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "WECC REEC_A Renewable Electrical Control",
+      "category": "Renewable / FACTS (DSL)",
+      "domain": "electrical",
+      "description": "WECC generic renewable electrical control for local P/Q and dynamic voltage support.",
+      "provenance": "WECC Second-Generation Generic Renewable Energy Model REEC_A",
+      "aliases": [
+        "REEC_A",
+        "reec_a"
+      ],
+      "parameters": [
+        {
+          "key": "tg",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Converter current control time constant"
+        },
+        {
+          "key": "rrpwr",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "pu/s",
+          "description": "Active current ramp rate limit"
+        },
+        {
+          "key": "brkpt",
+          "type": "real",
+          "defaultValue": 0.9,
+          "unit": "pu",
+          "description": "Low-voltage active current breakpoint"
+        },
+        {
+          "key": "zerox",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "pu",
+          "description": "Low-voltage active current zero crossing"
+        },
+        {
+          "key": "lvpl1",
+          "type": "real",
+          "defaultValue": 1.22,
+          "unit": "pu",
+          "description": "LVPL gain breakpoint"
+        },
+        {
+          "key": "kqv",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "pu",
+          "description": "Reactive current voltage support gain"
+        },
+        {
+          "key": "vtmax",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "pu",
+          "description": "High-voltage reactive current limit threshold"
+        },
+        {
+          "key": "qmin",
+          "type": "real",
+          "defaultValue": -1.3,
+          "unit": "pu",
+          "description": "Minimum reactive current limit"
+        },
+        {
+          "key": "imax",
+          "type": "real",
+          "defaultValue": 1.1,
+          "unit": "pu",
+          "description": "Maximum converter current limit"
+        }
+      ],
+      "wasmKernel": "wecc_REEC_A",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "wecc_REPC_A",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:wecc_REPC_A",
+    "exports": [
+      "tg",
+      "rrpwr",
+      "brkpt",
+      "zerox",
+      "lvpl1",
+      "kqv",
+      "vtmax",
+      "qmin",
+      "imax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "WECC REPC_A Renewable Plant Controller",
+      "category": "Renewable / FACTS (DSL)",
+      "domain": "electrical",
+      "description": "WECC generic plant-level volt/var and primary frequency droop controller.",
+      "provenance": "WECC Second-Generation Generic Renewable Energy Model REPC_A",
+      "aliases": [
+        "REPC_A",
+        "repc_a"
+      ],
+      "parameters": [
+        {
+          "key": "tg",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Converter current control time constant"
+        },
+        {
+          "key": "rrpwr",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "pu/s",
+          "description": "Active current ramp rate limit"
+        },
+        {
+          "key": "brkpt",
+          "type": "real",
+          "defaultValue": 0.9,
+          "unit": "pu",
+          "description": "Low-voltage active current breakpoint"
+        },
+        {
+          "key": "zerox",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "pu",
+          "description": "Low-voltage active current zero crossing"
+        },
+        {
+          "key": "lvpl1",
+          "type": "real",
+          "defaultValue": 1.22,
+          "unit": "pu",
+          "description": "LVPL gain breakpoint"
+        },
+        {
+          "key": "kqv",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "pu",
+          "description": "Reactive current voltage support gain"
+        },
+        {
+          "key": "vtmax",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "pu",
+          "description": "High-voltage reactive current limit threshold"
+        },
+        {
+          "key": "qmin",
+          "type": "real",
+          "defaultValue": -1.3,
+          "unit": "pu",
+          "description": "Minimum reactive current limit"
+        },
+        {
+          "key": "imax",
+          "type": "real",
+          "defaultValue": 1.1,
+          "unit": "pu",
+          "description": "Maximum converter current limit"
+        }
+      ],
+      "wasmKernel": "wecc_REPC_A",
+      "archetypeId": 52
+    }
+  },
+  {
+    "name": "wecc_DER_A",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:wecc_DER_A",
+    "exports": [
+      "tg",
+      "rrpwr",
+      "brkpt",
+      "zerox",
+      "lvpl1",
+      "kqv",
+      "vtmax",
+      "qmin",
+      "imax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "WECC DER_A Distributed Energy Resource Aggregate",
+      "category": "Renewable / FACTS (DSL)",
+      "domain": "electrical",
+      "description": "Aggregate distributed energy resource model with IEEE 1547-2018 ride-through and droop.",
+      "provenance": "WECC / NERC DER_A Aggregate Model & IEEE Std 1547-2018",
+      "aliases": [
+        "DER_A",
+        "der_a"
+      ],
+      "parameters": [
+        {
+          "key": "tg",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Converter current control time constant"
+        },
+        {
+          "key": "rrpwr",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "pu/s",
+          "description": "Active current ramp rate limit"
+        },
+        {
+          "key": "brkpt",
+          "type": "real",
+          "defaultValue": 0.9,
+          "unit": "pu",
+          "description": "Low-voltage active current breakpoint"
+        },
+        {
+          "key": "zerox",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "pu",
+          "description": "Low-voltage active current zero crossing"
+        },
+        {
+          "key": "lvpl1",
+          "type": "real",
+          "defaultValue": 1.22,
+          "unit": "pu",
+          "description": "LVPL gain breakpoint"
+        },
+        {
+          "key": "kqv",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "pu",
+          "description": "Reactive current voltage support gain"
+        },
+        {
+          "key": "vtmax",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "pu",
+          "description": "High-voltage reactive current limit threshold"
+        },
+        {
+          "key": "qmin",
+          "type": "real",
+          "defaultValue": -1.3,
+          "unit": "pu",
+          "description": "Minimum reactive current limit"
+        },
+        {
+          "key": "imax",
+          "type": "real",
+          "defaultValue": 1.1,
+          "unit": "pu",
+          "description": "Maximum converter current limit"
+        }
+      ],
+      "wasmKernel": "wecc_DER_A",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "svc_IEEE",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:svc_IEEE",
+    "exports": [
+      "ksvc",
+      "tsvc",
+      "bmax",
+      "bmin",
+      "xslope"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE Static Var Compensator (SVC)",
+      "category": "Renewable / FACTS (DSL)",
+      "domain": "electrical",
+      "description": "Shunt thyristor-controlled reactor / switched capacitor voltage regulator.",
+      "provenance": "IEEE Special Stability Controls Working Group (1994) / CIGRE TB 144",
+      "aliases": [
+        "SVC_IEEE",
+        "SVSMO1"
+      ],
+      "parameters": [
+        {
+          "key": "ksvc",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "pu",
+          "description": "SVC voltage regulator gain"
+        },
+        {
+          "key": "tsvc",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "s",
+          "description": "SVC regulator lag time constant"
+        },
+        {
+          "key": "bmax",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Maximum capacitive susceptance"
+        },
+        {
+          "key": "bmin",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "pu",
+          "description": "Minimum inductive susceptance"
+        },
+        {
+          "key": "xslope",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "pu",
+          "description": "Voltage droop slope"
+        }
+      ],
+      "wasmKernel": "svc_IEEE",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "rel_TOC_IEC",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:rel_TOC_IEC",
+    "exports": [
+      "ipickup",
+      "tms",
+      "curveType",
+      "tbreaker"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEC 60255 Inverse-Time Overcurrent Relay (51)",
+      "category": "Protection Relay",
+      "domain": "electrical",
+      "description": "IEC 60255-151 inverse-time overcurrent relay supporting SI, VI, EI, and LTI curves.",
+      "provenance": "IEC 60255-151:2009 Functional Requirements for Over/Under Current Protection",
+      "aliases": [
+        "TOC_IEC",
+        "RelToc_IEC",
+        "ANSI_51_IEC"
+      ],
+      "parameters": [
+        {
+          "key": "ipickup",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "pu",
+          "description": "Pickup current threshold"
+        },
+        {
+          "key": "tms",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "s",
+          "description": "Time Multiplier Setting (TMS)"
+        },
+        {
+          "key": "curveType",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "IEC curve selector (0=SI, 1=VI, 2=EI, 3=LTI)"
+        },
+        {
+          "key": "tbreaker",
+          "type": "real",
+          "defaultValue": 0.06,
+          "unit": "s",
+          "description": "Circuit breaker clearing time"
+        }
+      ],
+      "wasmKernel": "rel_TOC_IEC",
+      "archetypeId": 70
+    }
+  },
+  {
+    "name": "rel_TOC_IEEE",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:rel_TOC_IEEE",
+    "exports": [
+      "ipickup",
+      "td",
+      "curveType",
+      "tbreaker"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE C37.112 Inverse-Time Overcurrent Relay (51)",
+      "category": "Protection Relay",
+      "domain": "electrical",
+      "description": "IEEE Std C37.112 inverse-time overcurrent relay supporting MI, VI, and EI curves.",
+      "provenance": "IEEE Std C37.112-2018 Inverse-Time Characteristic Equations for Overcurrent Relays",
+      "aliases": [
+        "TOC_IEEE",
+        "RelToc_IEEE",
+        "ANSI_51_IEEE"
+      ],
+      "parameters": [
+        {
+          "key": "ipickup",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "pu",
+          "description": "Pickup current threshold"
+        },
+        {
+          "key": "td",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Time Dial (TD)"
+        },
+        {
+          "key": "curveType",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "",
+          "description": "IEEE curve selector (10=MI, 11=VI, 12=EI)"
+        },
+        {
+          "key": "tbreaker",
+          "type": "real",
+          "defaultValue": 0.06,
+          "unit": "s",
+          "description": "Circuit breaker clearing time"
+        }
+      ],
+      "wasmKernel": "rel_TOC_IEEE",
+      "archetypeId": 71
+    }
+  },
+  {
+    "name": "rel_DIST_21",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:rel_DIST_21",
+    "exports": [
+      "z1",
+      "t1",
+      "z2",
+      "t2",
+      "z3",
+      "t3"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Mho / Quadrilateral Distance Relay (ANSI 21)",
+      "category": "Protection Relay",
+      "domain": "electrical",
+      "description": "Multi-zone transmission line distance protection relay (Zone 1/2/3 impedance reach).",
+      "provenance": "IEEE Std C37.113-2015 Guide for Protective Relay Applications to Transmission Lines",
+      "aliases": [
+        "DIST_21",
+        "RelDis_21",
+        "ANSI_21"
+      ],
+      "parameters": [
+        {
+          "key": "z1",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "pu",
+          "description": "Zone 1 impedance reach"
+        },
+        {
+          "key": "t1",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Zone 1 trip delay"
+        },
+        {
+          "key": "z2",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "pu",
+          "description": "Zone 2 impedance reach"
+        },
+        {
+          "key": "t2",
+          "type": "real",
+          "defaultValue": 0.35,
+          "unit": "s",
+          "description": "Zone 2 trip delay"
+        },
+        {
+          "key": "z3",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "pu",
+          "description": "Zone 3 impedance reach"
+        },
+        {
+          "key": "t3",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "s",
+          "description": "Zone 3 trip delay"
+        }
+      ],
+      "wasmKernel": "rel_DIST_21",
+      "archetypeId": 72
+    }
+  },
+  {
+    "name": "rel_DIFF_87",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:rel_DIFF_87",
+    "exports": [
+      "idiffMin",
+      "slope1",
+      "slope2",
+      "tTrip"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Percentage-Restrained Differential Relay (ANSI 87)",
+      "category": "Protection Relay",
+      "domain": "electrical",
+      "description": "Dual-slope percentage-restrained differential protection for transformers and generators.",
+      "provenance": "IEEE Std C37.91-2021 Guide for Protecting Power Transformers",
+      "aliases": [
+        "DIFF_87",
+        "RelDiff_87",
+        "ANSI_87"
+      ],
+      "parameters": [
+        {
+          "key": "idiffMin",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "pu",
+          "description": "Minimum differential pickup current"
+        },
+        {
+          "key": "slope1",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "pu",
+          "description": "First restraint slope"
+        },
+        {
+          "key": "slope2",
+          "type": "real",
+          "defaultValue": 0.6,
+          "unit": "pu",
+          "description": "Second restraint slope"
+        },
+        {
+          "key": "tTrip",
+          "type": "real",
+          "defaultValue": 0.025,
+          "unit": "s",
+          "description": "Differential operating time"
+        }
+      ],
+      "wasmKernel": "rel_DIFF_87",
+      "archetypeId": 73
+    }
+  },
+  {
+    "name": "rel_UFLS_81",
+    "kind": "powerfactory_library_model",
+    "namePath": "powerfactory:rel_UFLS_81",
+    "exports": [
+      "f1",
+      "t1",
+      "frac1",
+      "tbreaker"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Under-Frequency Load Shedding Relay (ANSI 81U)",
+      "category": "Protection Relay",
+      "domain": "electrical",
+      "description": "Multi-stage under-frequency load shedding relay per NERC PRC-006 / ENTSO-E LFDD.",
+      "provenance": "NERC PRC-006-5 / ENTSO-E System Defence Plan (LFDD)",
+      "aliases": [
+        "UFLS_81",
+        "RelFmeas_81",
+        "ANSI_81"
+      ],
+      "parameters": [
+        {
+          "key": "f1",
+          "type": "real",
+          "defaultValue": 49,
+          "unit": "Hz",
+          "description": "Stage 1 under-frequency threshold (50 Hz base)"
+        },
+        {
+          "key": "t1",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "s",
+          "description": "Stage 1 intentional time delay"
+        },
+        {
+          "key": "frac1",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "pu",
+          "description": "Stage 1 load shed fraction"
+        },
+        {
+          "key": "tbreaker",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "s",
+          "description": "Breaker opening time"
+        }
+      ],
+      "wasmKernel": "rel_UFLS_81",
+      "archetypeId": 74
+    }
+  }
+]

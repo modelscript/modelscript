@@ -1,0 +1,97 @@
+{
+  "name": "@modelscript/magicdraw",
+  "version": "0.1.0",
+  "description": "MagicDraw / Cameo Systems Modeler (.mdzip, .mdxml, .xmi) OMG UML 2.x / SysML 1.x engineering language package for ModelScript",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./language": {
+      "types": "./dist/src/language.d.ts",
+      "default": "./dist/src/language.js"
+    },
+    "./types": {
+      "types": "./dist/src/types.d.ts",
+      "default": "./dist/src/types.js"
+    },
+    "./parser": {
+      "types": "./dist/src/parser/index.d.ts",
+      "default": "./dist/src/parser/index.js"
+    },
+    "./profiles": {
+      "types": "./dist/src/profiles/index.d.ts",
+      "default": "./dist/src/profiles/index.js"
+    },
+    "./diagram": {
+      "types": "./dist/src/diagram.d.ts",
+      "default": "./dist/src/diagram.js"
+    },
+    "./tabular": {
+      "types": "./dist/src/tabular.d.ts",
+      "default": "./dist/src/tabular.js"
+    },
+    "./lints": {
+      "types": "./dist/src/lints/index.d.ts",
+      "default": "./dist/src/lints/index.js"
+    },
+    "./projections": {
+      "types": "./dist/src/projections/index.d.ts",
+      "default": "./dist/src/projections/index.js"
+    },
+    "./dae": {
+      "types": "./dist/src/dae/parametric-to-dae.d.ts",
+      "default": "./dist/src/dae/parametric-to-dae.js"
+    },
+    "./parser.wasm": "./dist/parser.wasm",
+    "./wasm-parser": {
+      "types": "./src-gen/bindings.d.ts",
+      "default": "./src-gen/bindings.js"
+    },
+    "./ui": {
+      "types": "./dist/src/ui/MagicDrawPanel.d.ts",
+      "default": "./dist/src/ui/MagicDrawPanel.js"
+    }
+  },
+  "files": [
+    "src/**",
+    "dist/**",
+    "src-gen/**"
+  ],
+  "scripts": {
+    "build": "node ../../scripts/build-language-parser.js && tsc",
+    "build:parser": "node ../../scripts/build-language-parser.js --force",
+    "clean": "rimraf dist",
+    "lint": "eslint src tests --no-warn-ignored",
+    "playground": "npx tsx ../../scripts/language-playground.ts .",
+    "test": "node ../../scripts/test-runner.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "*",
+    "@modelscript/runtime": "*"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.10",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "@modelscript/design-tokens": "*",
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@modelscript/design-tokens": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "modelscript": {
+    "tier": "alpha",
+    "category": "language"
+  }
+}

@@ -121,6 +121,15 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     tier: "beta",
   },
   {
+    slug: "magicdraw",
+    name: "MagicDraw / Cameo",
+    sidebar: "MagicDraw (.mdzip)",
+    ext: ".mdzip",
+    role: "SysML 1.x / UML 2.x archive inspection, diagrams & SysML v2 migration",
+    group: "core",
+    tier: "alpha",
+  },
+  {
     slug: "oscal",
     name: "NIST OSCAL",
     sidebar: "NIST OSCAL Security",

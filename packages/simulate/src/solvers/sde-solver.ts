@@ -33,7 +33,6 @@
  */
 
 import { getDefaultWasmExports } from "@modelscript/runtime";
-import { Xoshiro256pp } from "@modelscript/runtime/wasm_monte_carlo.js";
 import type {
   SDEEnsembleResult,
   SDEOptions,
@@ -41,6 +40,7 @@ import type {
   SDESimulationResult,
   SolverStats,
 } from "../core/problem-types.js";
+import { Xoshiro256pp } from "../uq/monte-carlo.js";
 
 /**
  * Standard Normal Gaussian random variate generator.

@@ -423,6 +423,14 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "magicdraw <action> <file>",
+      "MagicDraw / Cameo (.mdzip, .mdxml, .xmi) inspection, linting, diagramming, and SysML v2/ReqIF/Modelica migration",
+      () => import("./commands/magicdraw.js"),
+      "MagicDraw",
+    ),
+  )
+  .command(
+    lazy(
       "spice <action>",
       "SPICE netlist (.cir, .sp, .net) analog & mixed-signal simulation and translation",
       () => import("./commands/spice.js"),
@@ -502,7 +510,7 @@ await yargs(rawArgs)
   .command(
     lazy(
       "init [path]",
-      "Initialize a ModelScript package.json for a Modelica/SysML project",
+      "Initialize a modelscript.yaml manifest for a ModelScript project",
       () => import("./commands/init.js"),
       "Init",
     ),
@@ -554,10 +562,26 @@ await yargs(rawArgs)
   .command(
     lazy(
       "install [package]",
-      "Install a package from the Ansatz Package Registry into the local workspace",
+      "Install registry, archive, or ALM remote dependencies into .modelscript/packages/",
       () => import("./commands/install.js"),
       "Install",
       ["i", "add"],
+    ),
+  )
+  .command(
+    lazy(
+      "remote <subcommand>",
+      "Manage protocol/API ALM remotes (DOORS Next, Jama, Codebeamer, Polarion, Jira) in modelscript.yaml",
+      () => import("./commands/remote.js"),
+      "Remote",
+    ),
+  )
+  .command(
+    lazy(
+      "sync <subcommand>",
+      "Synchronize protocol/API ALM dependencies (pull, status, push)",
+      () => import("./commands/sync.js"),
+      "Sync",
     ),
   )
   .command(

@@ -1,0 +1,2366 @@
+[
+  {
+    "name": "STEP",
+    "kind": "adams_element",
+    "namePath": "adams:STEP",
+    "exports": [
+      "x0",
+      "h0",
+      "x1",
+      "h1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cubic Hermite Step Function",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "C1-continuous cubic Hermite polynomial transition from h0 at x0 to h1 at x1.",
+      "provenance": "Shabana, Dynamics of Multibody Systems (5th ed.); Cubic Hermite Interpolation",
+      "aliases": [
+        "step"
+      ],
+      "parameters": [
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Start of transition interval"
+        },
+        {
+          "key": "h0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Initial value for x <= x0"
+        },
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "End of transition interval"
+        },
+        {
+          "key": "h1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Final value for x >= x1"
+        }
+      ],
+      "wasmKernel": "step",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "STEP5",
+    "kind": "adams_element",
+    "namePath": "adams:STEP5",
+    "exports": [
+      "x0",
+      "h0",
+      "x1",
+      "h1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Quintic Step Function",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "C2-continuous quintic polynomial transition with zero first and second derivatives at endpoints.",
+      "provenance": "Shabana, Dynamics of Multibody Systems (5th ed.); Quintic Minimum-Jerk Interpolation",
+      "aliases": [
+        "step5"
+      ],
+      "parameters": [
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Start of transition interval"
+        },
+        {
+          "key": "h0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Initial value for x <= x0"
+        },
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "End of transition interval"
+        },
+        {
+          "key": "h1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Final value for x >= x1"
+        }
+      ],
+      "wasmKernel": "step5",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "IMPACT",
+    "kind": "adams_element",
+    "namePath": "adams:IMPACT",
+    "exports": [
+      "x1",
+      "k",
+      "e",
+      "cmax",
+      "d"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hertzian Impact Contact Force",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "Unilateral nonlinear Hertzian spring-damper contact force with cubic-step damping ramp.",
+      "provenance": "Hunt & Crossley (1975) ASME J. Appl. Mech.; Flores & Lankarani, Contact Force Models",
+      "aliases": [
+        "impact"
+      ],
+      "parameters": [
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Contact trigger threshold distance"
+        },
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N/m^e",
+          "description": "Hertzian contact stiffness coefficient"
+        },
+        {
+          "key": "e",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "1",
+          "description": "Force-penetration exponent (1.5 for Hertzian spheres)"
+        },
+        {
+          "key": "cmax",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "N*s/m",
+          "description": "Maximum viscous damping coefficient"
+        },
+        {
+          "key": "d",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "m",
+          "description": "Penetration depth at which full damping cmax is reached"
+        }
+      ],
+      "wasmKernel": "impact",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "BISTOP",
+    "kind": "adams_element",
+    "namePath": "adams:BISTOP",
+    "exports": [
+      "x1",
+      "x2",
+      "k",
+      "e",
+      "cmax",
+      "d"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Bilateral Gap Stop Force",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "Two-sided clearance gap contact force engaging Hertzian IMPACT stops below x1 and above x2.",
+      "provenance": "Flores & Lankarani, Contact Force Models for Multibody Dynamics (Springer, 2016)",
+      "aliases": [
+        "bistop"
+      ],
+      "parameters": [
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": -0.05,
+          "unit": "m",
+          "description": "Lower gap stop boundary"
+        },
+        {
+          "key": "x2",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "m",
+          "description": "Upper gap stop boundary"
+        },
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N/m^e",
+          "description": "Stop contact stiffness"
+        },
+        {
+          "key": "e",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "1",
+          "description": "Force-penetration exponent"
+        },
+        {
+          "key": "cmax",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "N*s/m",
+          "description": "Maximum stop damping coefficient"
+        },
+        {
+          "key": "d",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "m",
+          "description": "Full damping penetration depth"
+        }
+      ],
+      "wasmKernel": "bistop",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "AKISPL",
+    "kind": "adams_element",
+    "namePath": "adams:AKISPL",
+    "exports": [
+      "x0",
+      "y0",
+      "x1",
+      "y1",
+      "x2",
+      "y2",
+      "order"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Akima Cubic Spline Interpolation",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "Shape-preserving local Akima cubic spline interpolation minimizing overshoot.",
+      "provenance": "Akima (1970) J. ACM 17(4):589-602, A New Method of Interpolation and Smooth Curve Fitting",
+      "aliases": [
+        "akispl"
+      ],
+      "parameters": [
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "First knot abscissa"
+        },
+        {
+          "key": "y0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "First knot ordinate"
+        },
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Second knot abscissa"
+        },
+        {
+          "key": "y1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Second knot ordinate"
+        },
+        {
+          "key": "x2",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Third knot abscissa"
+        },
+        {
+          "key": "y2",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "1",
+          "description": "Third knot ordinate"
+        },
+        {
+          "key": "order",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Derivative order (0=value, 1=first derivative, 2=second derivative)"
+        }
+      ],
+      "wasmKernel": "akispl",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "CUBSPL",
+    "kind": "adams_element",
+    "namePath": "adams:CUBSPL",
+    "exports": [
+      "x0",
+      "y0",
+      "x1",
+      "y1",
+      "x2",
+      "y2",
+      "order"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Natural Cubic Spline Interpolation",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "C2-continuous piecewise cubic spline interpolation over tabulated data points.",
+      "provenance": "de Boor, A Practical Guide to Splines (Springer, 2001)",
+      "aliases": [
+        "cubspl"
+      ],
+      "parameters": [
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "First knot abscissa"
+        },
+        {
+          "key": "y0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "First knot ordinate"
+        },
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Second knot abscissa"
+        },
+        {
+          "key": "y1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Second knot ordinate"
+        },
+        {
+          "key": "x2",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Third knot abscissa"
+        },
+        {
+          "key": "y2",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "1",
+          "description": "Third knot ordinate"
+        },
+        {
+          "key": "order",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Derivative order (0=value, 1=first derivative, 2=second derivative)"
+        }
+      ],
+      "wasmKernel": "cubspl",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "HAVSIN",
+    "kind": "adams_element",
+    "namePath": "adams:HAVSIN",
+    "exports": [
+      "x0",
+      "h0",
+      "x1",
+      "h1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Haversine Smooth Step Function",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "Smooth raised-cosine (haversine) transition from h0 at x0 to h1 at x1.",
+      "provenance": "Standard Trigonometric Haversine Transition; Shabana, Multibody Systems",
+      "aliases": [
+        "havsin"
+      ],
+      "parameters": [
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Start of transition interval"
+        },
+        {
+          "key": "h0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Initial value for x <= x0"
+        },
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "End of transition interval"
+        },
+        {
+          "key": "h1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Final value for x >= x1"
+        }
+      ],
+      "wasmKernel": "havsin",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "SHF",
+    "kind": "adams_element",
+    "namePath": "adams:SHF",
+    "exports": [
+      "x0",
+      "a",
+      "omega",
+      "phi",
+      "b"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Simple Harmonic Function",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "Sinusoidal excitation a * sin(omega * (x - x0) - phi) + b.",
+      "provenance": "Meirovitch, Fundamentals of Vibrations (McGraw-Hill, 2001)",
+      "aliases": [
+        "shf"
+      ],
+      "parameters": [
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Independent variable shift"
+        },
+        {
+          "key": "a",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Amplitude"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 6.283185307179586,
+          "unit": "rad/s",
+          "description": "Angular frequency"
+        },
+        {
+          "key": "phi",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "rad",
+          "description": "Phase shift"
+        },
+        {
+          "key": "b",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Average value / DC offset"
+        }
+      ],
+      "wasmKernel": "shf",
+      "archetypeId": 8
+    }
+  },
+  {
+    "name": "DM",
+    "kind": "adams_element",
+    "namePath": "adams:DM",
+    "exports": [
+      "axis",
+      "scale"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Marker Distance Magnitude",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "Euclidean distance magnitude sqrt(dx^2 + dy^2 + dz^2) between I and J markers.",
+      "provenance": "Haug, Computer Aided Kinematics and Dynamics of Mechanical Systems (1989)",
+      "aliases": [
+        "dm"
+      ],
+      "parameters": [
+        {
+          "key": "axis",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "0 = 3D Euclidean magnitude"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Scale factor"
+        }
+      ],
+      "wasmKernel": "dm",
+      "archetypeId": 9
+    }
+  },
+  {
+    "name": "DX",
+    "kind": "adams_element",
+    "namePath": "adams:DX",
+    "exports": [
+      "axis",
+      "scale"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "X Displacement Measure",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "Translational displacement component along reference X axis between I and J markers.",
+      "provenance": "Haug, Computer Aided Kinematics and Dynamics of Mechanical Systems (1989)",
+      "aliases": [
+        "dx"
+      ],
+      "parameters": [
+        {
+          "key": "axis",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "1 = X component"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Scale factor"
+        }
+      ],
+      "wasmKernel": "dx",
+      "archetypeId": 9
+    }
+  },
+  {
+    "name": "DY",
+    "kind": "adams_element",
+    "namePath": "adams:DY",
+    "exports": [
+      "axis",
+      "scale"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Y Displacement Measure",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "Translational displacement component along reference Y axis between I and J markers.",
+      "provenance": "Haug, Computer Aided Kinematics and Dynamics of Mechanical Systems (1989)",
+      "aliases": [
+        "dy"
+      ],
+      "parameters": [
+        {
+          "key": "axis",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "2 = Y component"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Scale factor"
+        }
+      ],
+      "wasmKernel": "dy",
+      "archetypeId": 9
+    }
+  },
+  {
+    "name": "DZ",
+    "kind": "adams_element",
+    "namePath": "adams:DZ",
+    "exports": [
+      "axis",
+      "scale"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Z Displacement Measure",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "Translational displacement component along reference Z axis between I and J markers.",
+      "provenance": "Haug, Computer Aided Kinematics and Dynamics of Mechanical Systems (1989)",
+      "aliases": [
+        "dz"
+      ],
+      "parameters": [
+        {
+          "key": "axis",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "1",
+          "description": "3 = Z component"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Scale factor"
+        }
+      ],
+      "wasmKernel": "dz",
+      "archetypeId": 9
+    }
+  },
+  {
+    "name": "VX",
+    "kind": "adams_element",
+    "namePath": "adams:VX",
+    "exports": [
+      "axis",
+      "scale"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "X Translational Velocity Measure",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "Relative translational velocity component along reference X axis between I and J markers.",
+      "provenance": "Nikravesh, Computer-Aided Analysis of Mechanical Systems (Prentice Hall, 1988)",
+      "aliases": [
+        "vx"
+      ],
+      "parameters": [
+        {
+          "key": "axis",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "1 = X velocity component"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Scale factor"
+        }
+      ],
+      "wasmKernel": "vx",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "VY",
+    "kind": "adams_element",
+    "namePath": "adams:VY",
+    "exports": [
+      "axis",
+      "scale"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Y Translational Velocity Measure",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "Relative translational velocity component along reference Y axis between I and J markers.",
+      "provenance": "Nikravesh, Computer-Aided Analysis of Mechanical Systems (Prentice Hall, 1988)",
+      "aliases": [
+        "vy"
+      ],
+      "parameters": [
+        {
+          "key": "axis",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "2 = Y velocity component"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Scale factor"
+        }
+      ],
+      "wasmKernel": "vy",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "VZ",
+    "kind": "adams_element",
+    "namePath": "adams:VZ",
+    "exports": [
+      "axis",
+      "scale"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Z Translational Velocity Measure",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "Relative translational velocity component along reference Z axis between I and J markers.",
+      "provenance": "Nikravesh, Computer-Aided Analysis of Mechanical Systems (Prentice Hall, 1988)",
+      "aliases": [
+        "vz"
+      ],
+      "parameters": [
+        {
+          "key": "axis",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "1",
+          "description": "3 = Z velocity component"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Scale factor"
+        }
+      ],
+      "wasmKernel": "vz",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "VR",
+    "kind": "adams_element",
+    "namePath": "adams:VR",
+    "exports": [
+      "axis",
+      "scale"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Radial Separation Velocity Measure",
+      "category": "Runtime Function",
+      "domain": "mechanical",
+      "description": "Time rate of change of separation distance d/dt(DM) = (r . v) / |r| between I and J markers.",
+      "provenance": "Nikravesh, Computer-Aided Analysis of Mechanical Systems (Prentice Hall, 1988)",
+      "aliases": [
+        "vr"
+      ],
+      "parameters": [
+        {
+          "key": "axis",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "1",
+          "description": "4 = radial line-of-sight velocity"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Scale factor"
+        }
+      ],
+      "wasmKernel": "vr",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "REVOLUTE",
+    "kind": "adams_element",
+    "namePath": "adams:REVOLUTE",
+    "exports": [
+      "dof",
+      "penalty_k",
+      "penalty_c"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Revolute (Hinge) Joint",
+      "category": "Joint / Constraint",
+      "domain": "mechanical",
+      "description": "1-DOF kinematic constraint permitting pure rotation about the common Z axis (5 constraints).",
+      "provenance": "Shabana, Dynamics of Multibody Systems (5th ed.), Ch. 3 Revolute Joint",
+      "aliases": [
+        "rev",
+        "hinge",
+        "joint_revolute"
+      ],
+      "parameters": [
+        {
+          "key": "dof",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Number of unconstrained relative degrees of freedom"
+        },
+        {
+          "key": "penalty_k",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "N/m",
+          "description": "Baumgarte / penalty constraint stiffness"
+        },
+        {
+          "key": "penalty_c",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*s/m",
+          "description": "Baumgarte / penalty constraint damping"
+        }
+      ],
+      "wasmKernel": "revolute",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "TRANSLATIONAL",
+    "kind": "adams_element",
+    "namePath": "adams:TRANSLATIONAL",
+    "exports": [
+      "dof",
+      "penalty_k",
+      "penalty_c"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Translational (Prismatic) Joint",
+      "category": "Joint / Constraint",
+      "domain": "mechanical",
+      "description": "1-DOF kinematic constraint permitting pure sliding along the common Z axis (5 constraints).",
+      "provenance": "Shabana, Dynamics of Multibody Systems (5th ed.), Ch. 3 Prismatic Joint",
+      "aliases": [
+        "trans",
+        "prismatic",
+        "joint_translational"
+      ],
+      "parameters": [
+        {
+          "key": "dof",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Number of unconstrained relative degrees of freedom"
+        },
+        {
+          "key": "penalty_k",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "N/m",
+          "description": "Baumgarte / penalty constraint stiffness"
+        },
+        {
+          "key": "penalty_c",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*s/m",
+          "description": "Baumgarte / penalty constraint damping"
+        }
+      ],
+      "wasmKernel": "translational",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "SPHERICAL",
+    "kind": "adams_element",
+    "namePath": "adams:SPHERICAL",
+    "exports": [
+      "dof",
+      "penalty_k",
+      "penalty_c"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Spherical (Ball-and-Socket) Joint",
+      "category": "Joint / Constraint",
+      "domain": "mechanical",
+      "description": "3-DOF rotational constraint enforcing coincident marker origins (3 translational constraints).",
+      "provenance": "Haug, Computer Aided Kinematics and Dynamics of Mechanical Systems (1989), Ch. 9",
+      "aliases": [
+        "sph",
+        "ball",
+        "joint_spherical"
+      ],
+      "parameters": [
+        {
+          "key": "dof",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "1",
+          "description": "3 rotational degrees of freedom"
+        },
+        {
+          "key": "penalty_k",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "N/m",
+          "description": "Constraint stiffness"
+        },
+        {
+          "key": "penalty_c",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*s/m",
+          "description": "Constraint damping"
+        }
+      ],
+      "wasmKernel": "spherical",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "UNIVERSAL",
+    "kind": "adams_element",
+    "namePath": "adams:UNIVERSAL",
+    "exports": [
+      "dof",
+      "penalty_k",
+      "penalty_c"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Universal (Cardan) Joint",
+      "category": "Joint / Constraint",
+      "domain": "mechanical",
+      "description": "2-DOF intersecting-axis rotational constraint enforcing orthogonal I-Z and J-Z axes (4 constraints).",
+      "provenance": "Nikravesh, Computer-Aided Analysis of Mechanical Systems (1988), Universal Joint",
+      "aliases": [
+        "uni",
+        "cardan",
+        "joint_universal"
+      ],
+      "parameters": [
+        {
+          "key": "dof",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "2 rotational degrees of freedom"
+        },
+        {
+          "key": "penalty_k",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "N/m",
+          "description": "Constraint stiffness"
+        },
+        {
+          "key": "penalty_c",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*s/m",
+          "description": "Constraint damping"
+        }
+      ],
+      "wasmKernel": "universal",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "CYLINDRICAL",
+    "kind": "adams_element",
+    "namePath": "adams:CYLINDRICAL",
+    "exports": [
+      "dof",
+      "penalty_k",
+      "penalty_c"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cylindrical Joint",
+      "category": "Joint / Constraint",
+      "domain": "mechanical",
+      "description": "2-DOF kinematic constraint permitting collinear translation and rotation along Z (4 constraints).",
+      "provenance": "Shabana, Dynamics of Multibody Systems (5th ed.), Ch. 3 Cylindrical Joint",
+      "aliases": [
+        "cyl",
+        "joint_cylindrical"
+      ],
+      "parameters": [
+        {
+          "key": "dof",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "1 translational + 1 rotational DOF"
+        },
+        {
+          "key": "penalty_k",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "N/m",
+          "description": "Constraint stiffness"
+        },
+        {
+          "key": "penalty_c",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*s/m",
+          "description": "Constraint damping"
+        }
+      ],
+      "wasmKernel": "cylindrical",
+      "archetypeId": 24
+    }
+  },
+  {
+    "name": "FIXED",
+    "kind": "adams_element",
+    "namePath": "adams:FIXED",
+    "exports": [
+      "dof",
+      "penalty_k",
+      "penalty_c"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Fixed (Weld) Joint",
+      "category": "Joint / Constraint",
+      "domain": "mechanical",
+      "description": "0-DOF rigid attachment removing all 6 relative translational and rotational degrees of freedom.",
+      "provenance": "Haug, Computer Aided Kinematics and Dynamics of Mechanical Systems (1989)",
+      "aliases": [
+        "fix",
+        "weld",
+        "bracket",
+        "joint_fixed"
+      ],
+      "parameters": [
+        {
+          "key": "dof",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "0 relative degrees of freedom (6 constraints)"
+        },
+        {
+          "key": "penalty_k",
+          "type": "real",
+          "defaultValue": 100000000,
+          "unit": "N/m",
+          "description": "Constraint stiffness"
+        },
+        {
+          "key": "penalty_c",
+          "type": "real",
+          "defaultValue": 5000,
+          "unit": "N*s/m",
+          "description": "Constraint damping"
+        }
+      ],
+      "wasmKernel": "fixed",
+      "archetypeId": 25
+    }
+  },
+  {
+    "name": "PLANAR",
+    "kind": "adams_element",
+    "namePath": "adams:PLANAR",
+    "exports": [
+      "dof",
+      "penalty_k",
+      "penalty_c"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Planar Joint",
+      "category": "Joint / Constraint",
+      "domain": "mechanical",
+      "description": "3-DOF constraint keeping I marker origin in the J-XY plane and Z axes parallel (3 constraints).",
+      "provenance": "Nikravesh, Computer-Aided Analysis of Mechanical Systems (1988), Planar Joint",
+      "aliases": [
+        "pln",
+        "joint_planar"
+      ],
+      "parameters": [
+        {
+          "key": "dof",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "1",
+          "description": "2 translational + 1 rotational in-plane DOF"
+        },
+        {
+          "key": "penalty_k",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "N/m",
+          "description": "Constraint stiffness"
+        },
+        {
+          "key": "penalty_c",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*s/m",
+          "description": "Constraint damping"
+        }
+      ],
+      "wasmKernel": "planar",
+      "archetypeId": 26
+    }
+  },
+  {
+    "name": "CONSTANT_VELOCITY",
+    "kind": "adams_element",
+    "namePath": "adams:CONSTANT_VELOCITY",
+    "exports": [
+      "dof",
+      "penalty_k",
+      "penalty_c"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Constant Velocity (CV) Joint",
+      "category": "Joint / Constraint",
+      "domain": "mechanical",
+      "description": "2-DOF homokinetic drive joint transmitting identical shaft angular velocity across articulation angles.",
+      "provenance": "Gillespie, Fundamentals of Vehicle Dynamics (SAE, 1992); Homokinetic CV Kinematics",
+      "aliases": [
+        "convel",
+        "cv",
+        "cv_joint"
+      ],
+      "parameters": [
+        {
+          "key": "dof",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "2 articulation degrees of freedom"
+        },
+        {
+          "key": "penalty_k",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "N/m",
+          "description": "Constraint stiffness"
+        },
+        {
+          "key": "penalty_c",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*s/m",
+          "description": "Constraint damping"
+        }
+      ],
+      "wasmKernel": "constant_velocity",
+      "archetypeId": 27
+    }
+  },
+  {
+    "name": "HOOKE",
+    "kind": "adams_element",
+    "namePath": "adams:HOOKE",
+    "exports": [
+      "dof",
+      "penalty_k",
+      "penalty_c"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hooke Joint",
+      "category": "Joint / Constraint",
+      "domain": "mechanical",
+      "description": "2-DOF gimbal/Hooke coupling with orthogonal cross-pin axes transmitting torque across shaft misalignment.",
+      "provenance": "Shabana, Dynamics of Multibody Systems (5th ed.), Universal / Hooke Joint",
+      "aliases": [
+        "hooke_joint"
+      ],
+      "parameters": [
+        {
+          "key": "dof",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "2 rotational degrees of freedom"
+        },
+        {
+          "key": "penalty_k",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "N/m",
+          "description": "Constraint stiffness"
+        },
+        {
+          "key": "penalty_c",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*s/m",
+          "description": "Constraint damping"
+        }
+      ],
+      "wasmKernel": "hooke",
+      "archetypeId": 28
+    }
+  },
+  {
+    "name": "POINT_CURVE",
+    "kind": "adams_element",
+    "namePath": "adams:POINT_CURVE",
+    "exports": [
+      "dof",
+      "penalty_k",
+      "penalty_c"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Point-Curve Constraint",
+      "category": "Joint / Constraint",
+      "domain": "mechanical",
+      "description": "Higher-pair 4-DOF constraint restricting marker I origin to lie on a parametric 3D curve on body J.",
+      "provenance": "Haug, Computer Aided Kinematics and Dynamics (1989); Higher-Pair Cam/Curve Constraints",
+      "aliases": [
+        "ptcv",
+        "point_on_curve"
+      ],
+      "parameters": [
+        {
+          "key": "dof",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "1",
+          "description": "4 degrees of freedom (2 normal constraints)"
+        },
+        {
+          "key": "penalty_k",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "N/m",
+          "description": "Normal curve constraint stiffness"
+        },
+        {
+          "key": "penalty_c",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*s/m",
+          "description": "Normal curve constraint damping"
+        }
+      ],
+      "wasmKernel": "point_curve",
+      "archetypeId": 29
+    }
+  },
+  {
+    "name": "MOTION",
+    "kind": "adams_element",
+    "namePath": "adams:MOTION",
+    "exports": [
+      "amplitude",
+      "omega",
+      "phase",
+      "offset"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Prescribed Kinematic Motion Driver",
+      "category": "Joint / Constraint",
+      "domain": "mechanical",
+      "description": "Rheonomic constraint prescribing displacement, velocity, or acceleration as a function of time.",
+      "provenance": "Shabana, Dynamics of Multibody Systems (5th ed.), Ch. 3 Driving Constraints",
+      "aliases": [
+        "joint_motion",
+        "pmotion"
+      ],
+      "parameters": [
+        {
+          "key": "amplitude",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Motion amplitude or rate"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "rad/s",
+          "description": "Harmonic frequency (0 for linear ramp)"
+        },
+        {
+          "key": "phase",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "rad",
+          "description": "Phase offset"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Initial offset"
+        }
+      ],
+      "wasmKernel": "motion",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "SPRING_DAMPER",
+    "kind": "adams_element",
+    "namePath": "adams:SPRING_DAMPER",
+    "exports": [
+      "k",
+      "c",
+      "l0",
+      "f0",
+      "k_nl"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Translational / Rotational Spring-Damper",
+      "category": "Force / Bushing",
+      "domain": "mechanical",
+      "description": "Linear/cubic-nonlinear viscoelastic Kelvin-Voigt spring-damper element with preload and free length.",
+      "provenance": "Shabana, Dynamics of Multibody Systems (5th ed.), TSDA / RSDA Force Elements",
+      "aliases": [
+        "springdamper",
+        "tsda",
+        "rsda"
+      ],
+      "parameters": [
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 10000,
+          "unit": "N/m",
+          "description": "Linear stiffness coefficient"
+        },
+        {
+          "key": "c",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "N*s/m",
+          "description": "Viscous damping coefficient"
+        },
+        {
+          "key": "l0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Free (unloaded) length"
+        },
+        {
+          "key": "f0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N",
+          "description": "Static preload force"
+        },
+        {
+          "key": "k_nl",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N/m^3",
+          "description": "Cubic progressive stiffness coefficient"
+        }
+      ],
+      "wasmKernel": "spring_damper",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "BUSHING",
+    "kind": "adams_element",
+    "namePath": "adams:BUSHING",
+    "exports": [
+      "kx",
+      "ky",
+      "kz",
+      "krx",
+      "kry",
+      "krz",
+      "cx",
+      "cy",
+      "cz",
+      "crx",
+      "cry",
+      "crz"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "6-DOF Elastomeric Bushing",
+      "category": "Force / Bushing",
+      "domain": "mechanical",
+      "description": "6-DOF compliant translational and rotational viscoelastic mount between I and J markers.",
+      "provenance": "Blundell & Harty, The Multibody Systems Approach to Vehicle Dynamics (2nd ed., 2015)",
+      "aliases": [
+        "bush",
+        "elastomer_bushing"
+      ],
+      "parameters": [
+        {
+          "key": "kx",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N/m",
+          "description": "Translational stiffness along X"
+        },
+        {
+          "key": "ky",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N/m",
+          "description": "Translational stiffness along Y"
+        },
+        {
+          "key": "kz",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N/m",
+          "description": "Translational stiffness along Z"
+        },
+        {
+          "key": "krx",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*m/rad",
+          "description": "Rotational stiffness about X"
+        },
+        {
+          "key": "kry",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*m/rad",
+          "description": "Rotational stiffness about Y"
+        },
+        {
+          "key": "krz",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*m/rad",
+          "description": "Rotational stiffness about Z"
+        },
+        {
+          "key": "cx",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "N*s/m",
+          "description": "Translational damping along X"
+        },
+        {
+          "key": "cy",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "N*s/m",
+          "description": "Translational damping along Y"
+        },
+        {
+          "key": "cz",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "N*s/m",
+          "description": "Translational damping along Z"
+        },
+        {
+          "key": "crx",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "N*m*s/rad",
+          "description": "Rotational damping about X"
+        },
+        {
+          "key": "cry",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "N*m*s/rad",
+          "description": "Rotational damping about Y"
+        },
+        {
+          "key": "crz",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "N*m*s/rad",
+          "description": "Rotational damping about Z"
+        }
+      ],
+      "wasmKernel": "bushing",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "BEAM",
+    "kind": "adams_element",
+    "namePath": "adams:BEAM",
+    "exports": [
+      "length",
+      "area",
+      "iyy",
+      "izz",
+      "ixx",
+      "ymodulus",
+      "gmodulus",
+      "cr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3D Timoshenko Elastic Beam Element",
+      "category": "Force / Bushing",
+      "domain": "mechanical",
+      "description": "6-DOF massless linear Timoshenko beam compliance element with axial, bending, shear, and torsion.",
+      "provenance": "Przemieniecki, Theory of Matrix Structural Analysis (Dover, 1985)",
+      "aliases": [
+        "timoshenko_beam"
+      ],
+      "parameters": [
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Unloaded beam length L"
+        },
+        {
+          "key": "area",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "m^2",
+          "description": "Cross-sectional area A"
+        },
+        {
+          "key": "iyy",
+          "type": "real",
+          "defaultValue": 0.000001,
+          "unit": "m^4",
+          "description": "Second moment of area Iyy"
+        },
+        {
+          "key": "izz",
+          "type": "real",
+          "defaultValue": 0.000001,
+          "unit": "m^4",
+          "description": "Second moment of area Izz"
+        },
+        {
+          "key": "ixx",
+          "type": "real",
+          "defaultValue": 0.000002,
+          "unit": "m^4",
+          "description": "Torsional constant J = Ixx"
+        },
+        {
+          "key": "ymodulus",
+          "type": "real",
+          "defaultValue": 210000000000,
+          "unit": "Pa",
+          "description": "Young's modulus E"
+        },
+        {
+          "key": "gmodulus",
+          "type": "real",
+          "defaultValue": 80000000000,
+          "unit": "Pa",
+          "description": "Shear modulus G"
+        },
+        {
+          "key": "cr",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "s",
+          "description": "Proportional structural damping ratio"
+        }
+      ],
+      "wasmKernel": "beam",
+      "archetypeId": 42
+    }
+  },
+  {
+    "name": "FIELD",
+    "kind": "adams_element",
+    "namePath": "adams:FIELD",
+    "exports": [
+      "kx",
+      "ky",
+      "kz",
+      "krx",
+      "kry",
+      "krz",
+      "cx",
+      "cy",
+      "cz",
+      "crx",
+      "cry",
+      "crz"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "6-DOF Coupled Stiffness-Damping Field",
+      "category": "Force / Bushing",
+      "domain": "mechanical",
+      "description": "General 6x6 stiffness and damping matrix field force element between I and J markers.",
+      "provenance": "Shabana, Dynamics of Multibody Systems (5th ed.); General 6-DOF Compliance Matrix",
+      "aliases": [
+        "stiffness_field"
+      ],
+      "parameters": [
+        {
+          "key": "kx",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N/m",
+          "description": "Translational stiffness along X"
+        },
+        {
+          "key": "ky",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N/m",
+          "description": "Translational stiffness along Y"
+        },
+        {
+          "key": "kz",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N/m",
+          "description": "Translational stiffness along Z"
+        },
+        {
+          "key": "krx",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*m/rad",
+          "description": "Rotational stiffness about X"
+        },
+        {
+          "key": "kry",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*m/rad",
+          "description": "Rotational stiffness about Y"
+        },
+        {
+          "key": "krz",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N*m/rad",
+          "description": "Rotational stiffness about Z"
+        },
+        {
+          "key": "cx",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "N*s/m",
+          "description": "Translational damping along X"
+        },
+        {
+          "key": "cy",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "N*s/m",
+          "description": "Translational damping along Y"
+        },
+        {
+          "key": "cz",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "N*s/m",
+          "description": "Translational damping along Z"
+        },
+        {
+          "key": "crx",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "N*m*s/rad",
+          "description": "Rotational damping about X"
+        },
+        {
+          "key": "cry",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "N*m*s/rad",
+          "description": "Rotational damping about Y"
+        },
+        {
+          "key": "crz",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "N*m*s/rad",
+          "description": "Rotational damping about Z"
+        }
+      ],
+      "wasmKernel": "field",
+      "archetypeId": 43
+    }
+  },
+  {
+    "name": "SFORCE",
+    "kind": "adams_element",
+    "namePath": "adams:SFORCE",
+    "exports": [
+      "gain",
+      "bias",
+      "fmin",
+      "fmax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Single-Component Action-Reaction Force",
+      "category": "Force / Bushing",
+      "domain": "mechanical",
+      "description": "Scalar translational or rotational action-reaction force applied along the I-J line of action.",
+      "provenance": "Haug, Computer Aided Kinematics and Dynamics of Mechanical Systems (1989)",
+      "aliases": [
+        "single_force",
+        "scalar_force"
+      ],
+      "parameters": [
+        {
+          "key": "gain",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "N",
+          "description": "Proportional gain on input signal"
+        },
+        {
+          "key": "bias",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N",
+          "description": "Constant force bias"
+        },
+        {
+          "key": "fmin",
+          "type": "real",
+          "defaultValue": -1000000000,
+          "unit": "N",
+          "description": "Lower saturation limit"
+        },
+        {
+          "key": "fmax",
+          "type": "real",
+          "defaultValue": 1000000000,
+          "unit": "N",
+          "description": "Upper saturation limit"
+        }
+      ],
+      "wasmKernel": "sforce",
+      "archetypeId": 44
+    }
+  },
+  {
+    "name": "VFORCE",
+    "kind": "adams_element",
+    "namePath": "adams:VFORCE",
+    "exports": [
+      "fx",
+      "fy",
+      "fz"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Component Vector Force",
+      "category": "Force / Bushing",
+      "domain": "mechanical",
+      "description": "Three orthogonal translational force components (Fx, Fy, Fz) resolved in reference marker frame.",
+      "provenance": "Haug, Computer Aided Kinematics and Dynamics of Mechanical Systems (1989)",
+      "aliases": [
+        "vector_force"
+      ],
+      "parameters": [
+        {
+          "key": "fx",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N",
+          "description": "X force component"
+        },
+        {
+          "key": "fy",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N",
+          "description": "Y force component"
+        },
+        {
+          "key": "fz",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N",
+          "description": "Z force component"
+        }
+      ],
+      "wasmKernel": "vforce",
+      "archetypeId": 45
+    }
+  },
+  {
+    "name": "GFORCE",
+    "kind": "adams_element",
+    "namePath": "adams:GFORCE",
+    "exports": [
+      "fx",
+      "fy",
+      "fz",
+      "tx",
+      "ty",
+      "tz"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "6-Component General Force & Torque",
+      "category": "Force / Bushing",
+      "domain": "mechanical",
+      "description": "Full 6-component spatial wrench (Fx, Fy, Fz, Tx, Ty, Tz) resolved in reference marker frame.",
+      "provenance": "Shabana, Dynamics of Multibody Systems (5th ed.), Generalized Spatial Forces",
+      "aliases": [
+        "general_force"
+      ],
+      "parameters": [
+        {
+          "key": "fx",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N",
+          "description": "X force component"
+        },
+        {
+          "key": "fy",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N",
+          "description": "Y force component"
+        },
+        {
+          "key": "fz",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N",
+          "description": "Z force component"
+        },
+        {
+          "key": "tx",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N*m",
+          "description": "X torque component"
+        },
+        {
+          "key": "ty",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N*m",
+          "description": "Y torque component"
+        },
+        {
+          "key": "tz",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N*m",
+          "description": "Z torque component"
+        }
+      ],
+      "wasmKernel": "gforce",
+      "archetypeId": 46
+    }
+  },
+  {
+    "name": "CONTACT_3D",
+    "kind": "adams_element",
+    "namePath": "adams:CONTACT_3D",
+    "exports": [
+      "k",
+      "e",
+      "cmax",
+      "d",
+      "mu_s",
+      "mu_d",
+      "vs",
+      "vd"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3D Geometry Impact & Coulomb Friction Contact",
+      "category": "Force / Bushing",
+      "domain": "mechanical",
+      "description": "3D solid-to-solid Hertzian normal impact with regularized Stribeck/Coulomb tangential friction.",
+      "provenance": "Flores & Lankarani (2016); Regularized Coulomb Friction for Multibody Contact",
+      "aliases": [
+        "contact",
+        "solid_contact"
+      ],
+      "parameters": [
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N/m^e",
+          "description": "Normal Hertzian contact stiffness"
+        },
+        {
+          "key": "e",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "1",
+          "description": "Normal force exponent"
+        },
+        {
+          "key": "cmax",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "N*s/m",
+          "description": "Maximum normal damping"
+        },
+        {
+          "key": "d",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "m",
+          "description": "Full damping penetration depth"
+        },
+        {
+          "key": "mu_s",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "1",
+          "description": "Static friction coefficient"
+        },
+        {
+          "key": "mu_d",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "1",
+          "description": "Dynamic (kinetic) friction coefficient"
+        },
+        {
+          "key": "vs",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "m/s",
+          "description": "Stiction transition velocity"
+        },
+        {
+          "key": "vd",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "m/s",
+          "description": "Friction transition velocity"
+        }
+      ],
+      "wasmKernel": "contact_3d",
+      "archetypeId": 47
+    }
+  },
+  {
+    "name": "PAC2002_TIRE",
+    "kind": "adams_element",
+    "namePath": "adams:PAC2002_TIRE",
+    "exports": [
+      "Bx",
+      "Cx",
+      "Dx",
+      "Ex",
+      "By",
+      "Cy",
+      "Dy",
+      "Ey",
+      "fz0",
+      "trail"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pacejka Magic Formula 2002 Tire",
+      "category": "Tire / Road",
+      "domain": "mechanical",
+      "description": "Semi-empirical Pacejka Magic Formula (PAC2002) longitudinal/lateral tire force and aligning torque.",
+      "provenance": "Pacejka, Tyre and Vehicle Dynamics (3rd ed., Butterworth-Heinemann, 2012)",
+      "aliases": [
+        "pac2002",
+        "magic_formula",
+        "mf2002"
+      ],
+      "parameters": [
+        {
+          "key": "Bx",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "1",
+          "description": "Longitudinal stiffness factor B_x"
+        },
+        {
+          "key": "Cx",
+          "type": "real",
+          "defaultValue": 1.65,
+          "unit": "1",
+          "description": "Longitudinal shape factor C_x"
+        },
+        {
+          "key": "Dx",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Longitudinal peak friction coefficient mu_x (D_x = mu_x * Fz)"
+        },
+        {
+          "key": "Ex",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1",
+          "description": "Longitudinal curvature factor E_x"
+        },
+        {
+          "key": "By",
+          "type": "real",
+          "defaultValue": 8.5,
+          "unit": "1/rad",
+          "description": "Lateral stiffness factor B_y"
+        },
+        {
+          "key": "Cy",
+          "type": "real",
+          "defaultValue": 1.3,
+          "unit": "1",
+          "description": "Lateral shape factor C_y"
+        },
+        {
+          "key": "Dy",
+          "type": "real",
+          "defaultValue": 0.95,
+          "unit": "1",
+          "description": "Lateral peak friction coefficient mu_y (D_y = mu_y * Fz)"
+        },
+        {
+          "key": "Ey",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "1",
+          "description": "Lateral curvature factor E_y"
+        },
+        {
+          "key": "fz0",
+          "type": "real",
+          "defaultValue": 4000,
+          "unit": "N",
+          "description": "Nominal vertical tire load F_z0"
+        },
+        {
+          "key": "trail",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "m",
+          "description": "Nominal pneumatic trail t_p for aligning torque M_z"
+        }
+      ],
+      "wasmKernel": "pac2002_tire",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "FIALA_TIRE",
+    "kind": "adams_element",
+    "namePath": "adams:FIALA_TIRE",
+    "exports": [
+      "kz",
+      "cz",
+      "c_slip",
+      "c_alpha",
+      "u_min",
+      "u_max",
+      "r_unloaded"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Fiala Analytical Tire Model",
+      "category": "Tire / Road",
+      "domain": "mechanical",
+      "description": "Analytical parabolic-pressure brush tire model for longitudinal, lateral, and aligning forces.",
+      "provenance": "Fiala (1954) VDI Zeitschrift 96(29):973-979; Blundell & Harty (2015)",
+      "aliases": [
+        "fiala"
+      ],
+      "parameters": [
+        {
+          "key": "kz",
+          "type": "real",
+          "defaultValue": 200000,
+          "unit": "N/m",
+          "description": "Vertical tire stiffness"
+        },
+        {
+          "key": "cz",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "N*s/m",
+          "description": "Vertical tire damping"
+        },
+        {
+          "key": "c_slip",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N",
+          "description": "Longitudinal slip stiffness"
+        },
+        {
+          "key": "c_alpha",
+          "type": "real",
+          "defaultValue": 60000,
+          "unit": "N/rad",
+          "description": "Cornering stiffness"
+        },
+        {
+          "key": "u_min",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "1",
+          "description": "Sliding friction coefficient"
+        },
+        {
+          "key": "u_max",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Peak static friction coefficient"
+        },
+        {
+          "key": "r_unloaded",
+          "type": "real",
+          "defaultValue": 0.32,
+          "unit": "m",
+          "description": "Unloaded tire radius"
+        }
+      ],
+      "wasmKernel": "fiala_tire",
+      "archetypeId": 61
+    }
+  },
+  {
+    "name": "UA_TIRE",
+    "kind": "adams_element",
+    "namePath": "adams:UA_TIRE",
+    "exports": [
+      "kz",
+      "cz",
+      "c_s",
+      "c_alpha",
+      "c_gamma",
+      "mu_0",
+      "r_unloaded"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "University of Arizona (UA) Tire Model",
+      "category": "Tire / Road",
+      "domain": "mechanical",
+      "description": "Combined-slip friction-ellipse analytical tire model with camber thrust and rolling resistance.",
+      "provenance": "Gim & Nikravesh (1990) Int. J. Vehicle Design 11(6):589-603, Analytical Model of Pneumatic Tyres",
+      "aliases": [
+        "ua",
+        "university_of_arizona_tire"
+      ],
+      "parameters": [
+        {
+          "key": "kz",
+          "type": "real",
+          "defaultValue": 200000,
+          "unit": "N/m",
+          "description": "Vertical tire stiffness"
+        },
+        {
+          "key": "cz",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "N*s/m",
+          "description": "Vertical tire damping"
+        },
+        {
+          "key": "c_s",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N",
+          "description": "Longitudinal slip stiffness"
+        },
+        {
+          "key": "c_alpha",
+          "type": "real",
+          "defaultValue": 60000,
+          "unit": "N/rad",
+          "description": "Lateral cornering stiffness"
+        },
+        {
+          "key": "c_gamma",
+          "type": "real",
+          "defaultValue": 2500,
+          "unit": "N/rad",
+          "description": "Camber thrust stiffness"
+        },
+        {
+          "key": "mu_0",
+          "type": "real",
+          "defaultValue": 0.95,
+          "unit": "1",
+          "description": "Peak tire-road friction coefficient"
+        },
+        {
+          "key": "r_unloaded",
+          "type": "real",
+          "defaultValue": 0.32,
+          "unit": "m",
+          "description": "Unloaded tire radius"
+        }
+      ],
+      "wasmKernel": "ua_tire",
+      "archetypeId": 62
+    }
+  },
+  {
+    "name": "ROAD_FLAT",
+    "kind": "adams_element",
+    "namePath": "adams:ROAD_FLAT",
+    "exports": [
+      "z0",
+      "mu",
+      "grade"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Flat Planar Road Surface",
+      "category": "Tire / Road",
+      "domain": "mechanical",
+      "description": "Infinite planar road surface at constant elevation z0 with uniform friction scaling mu.",
+      "provenance": "Pacejka, Tyre and Vehicle Dynamics (3rd ed., 2012); Standard Flat Road Profile",
+      "aliases": [
+        "flat_road",
+        "rdf_flat"
+      ],
+      "parameters": [
+        {
+          "key": "z0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Road plane elevation"
+        },
+        {
+          "key": "mu",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Road surface friction scaling factor"
+        },
+        {
+          "key": "grade",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "rad",
+          "description": "Longitudinal road slope"
+        }
+      ],
+      "wasmKernel": "road_flat",
+      "archetypeId": 63
+    }
+  },
+  {
+    "name": "ROAD_CLEAT",
+    "kind": "adams_element",
+    "namePath": "adams:ROAD_CLEAT",
+    "exports": [
+      "x_start",
+      "length",
+      "height",
+      "ramp",
+      "mu"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cleat / Speed-Bump Road Profile",
+      "category": "Tire / Road",
+      "domain": "mechanical",
+      "description": "Flat road with a trapezoidal or haversine cleat obstacle for ride and harshness evaluation.",
+      "provenance": "ISO 8608 & Pacejka (2012); Transient Cleat Envelopment Road Test Profile",
+      "aliases": [
+        "cleat_road",
+        "rdf_cleat",
+        "speed_bump"
+      ],
+      "parameters": [
+        {
+          "key": "x_start",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "m",
+          "description": "Longitudinal start position of cleat"
+        },
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "m",
+          "description": "Cleat longitudinal width"
+        },
+        {
+          "key": "height",
+          "type": "real",
+          "defaultValue": 0.025,
+          "unit": "m",
+          "description": "Cleat peak height"
+        },
+        {
+          "key": "ramp",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "m",
+          "description": "Bevel / transition ramp length"
+        },
+        {
+          "key": "mu",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Road friction scaling factor"
+        }
+      ],
+      "wasmKernel": "road_cleat",
+      "archetypeId": 64
+    }
+  }
+]

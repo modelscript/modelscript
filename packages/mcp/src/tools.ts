@@ -73,7 +73,6 @@ import {
   type RunwaySpecification,
 } from "@modelscript/ran";
 import {
-  B2BEquivalenceVerifier,
   executeBgpQuery,
   executeQueryString,
   formatBgpQueryResult,
@@ -93,6 +92,7 @@ import { analyzeMobility, lintSimpackModel, parseSimDeck, parseSpckXml } from "@
 import {
   ArenaSimulator,
   autotunePid,
+  B2BEquivalenceVerifier,
   computeBodeResponse,
   computeEigenStructure,
   computeStabilityMargins,

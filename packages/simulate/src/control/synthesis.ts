@@ -10,6 +10,7 @@
  */
 
 import { getDefaultWasmExports, VarAttrKind, type DAEBuilder } from "@modelscript/runtime";
+import { wasmCareNewton } from "../wasm/simulate-wasm.js";
 import {
   computeBodeResponse,
   computeEigenStructure,
@@ -466,7 +467,16 @@ export function synthesizeLqr(
   }
 
   // Compute K = R^{-1} B^T P
-  const K = matMul(RinvBT, P, m, n, n);
+  let K = matMul(RinvBT, P, m, n, n);
+
+  // Polish (P, K) with Newton-Kleinman CARE iterations in simulate.wasm (for n <= 16)
+  if (n <= 16) {
+    const refined = wasmCareNewton(A, B, Q, R, n, m, K, 5, 1e-12);
+    if (refined) {
+      P.set(refined.P);
+      K = refined.K;
+    }
+  }
 
   // Compute closed-loop matrix A_cl = A - B K
   const BK = matMul(B, K, n, m, n);

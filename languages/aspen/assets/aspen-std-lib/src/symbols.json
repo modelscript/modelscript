@@ -1,0 +1,2590 @@
+[
+  {
+    "name": "Flash2",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:Flash2",
+    "exports": [
+      "T_spec",
+      "P_spec",
+      "A1",
+      "B1",
+      "C1",
+      "A2",
+      "B2",
+      "C2",
+      "dH_vap",
+      "Cp_liq"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Two-Phase VLE Flash Drum (Flash2)",
+      "category": "Separator",
+      "domain": "process",
+      "description": "Rigorous isothermal/isobaric two-phase vapor-liquid equilibrium flash drum solving the Rachford-Rice equation.",
+      "provenance": "Rachford & Rice (1952) J. Pet. Technol. 4(10); Smith, Van Ness & Abbott, Intro. to Chem. Eng. Thermodynamics (8th ed.)",
+      "aliases": [
+        "FLASH2",
+        "VLE_FLASH",
+        "SEPARATOR"
+      ],
+      "parameters": [
+        {
+          "key": "T_spec",
+          "type": "real",
+          "defaultValue": 368.15,
+          "unit": "K",
+          "description": "Flash vessel temperature specification"
+        },
+        {
+          "key": "P_spec",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Flash vessel pressure specification"
+        },
+        {
+          "key": "A1",
+          "type": "real",
+          "defaultValue": 4.01814,
+          "unit": "1",
+          "description": "Light component Antoine constant A (log10 P_bar)"
+        },
+        {
+          "key": "B1",
+          "type": "real",
+          "defaultValue": 1203.835,
+          "unit": "K",
+          "description": "Light component Antoine constant B"
+        },
+        {
+          "key": "C1",
+          "type": "real",
+          "defaultValue": -53.226,
+          "unit": "K",
+          "description": "Light component Antoine constant C"
+        },
+        {
+          "key": "A2",
+          "type": "real",
+          "defaultValue": 4.07827,
+          "unit": "1",
+          "description": "Heavy component Antoine constant A (log10 P_bar)"
+        },
+        {
+          "key": "B2",
+          "type": "real",
+          "defaultValue": 1343.943,
+          "unit": "K",
+          "description": "Heavy component Antoine constant B"
+        },
+        {
+          "key": "C2",
+          "type": "real",
+          "defaultValue": -53.773,
+          "unit": "K",
+          "description": "Heavy component Antoine constant C"
+        },
+        {
+          "key": "dH_vap",
+          "type": "real",
+          "defaultValue": 32000,
+          "unit": "J/mol",
+          "description": "Average molar enthalpy of vaporization"
+        },
+        {
+          "key": "Cp_liq",
+          "type": "real",
+          "defaultValue": 140,
+          "unit": "J/(mol*K)",
+          "description": "Average liquid molar heat capacity"
+        }
+      ],
+      "wasmKernel": "Flash2",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "Flash3",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:Flash3",
+    "exports": [
+      "T_spec",
+      "P_spec",
+      "A1",
+      "B1",
+      "C1",
+      "A2",
+      "B2",
+      "C2",
+      "dH_vap",
+      "Cp_liq",
+      "L2_split"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Three-Phase VLLE Flash Drum (Flash3)",
+      "category": "Separator",
+      "domain": "process",
+      "description": "Three-phase vapor-liquid-liquid equilibrium separator for immiscible aqueous/organic hydrocarbon mixtures.",
+      "provenance": "Michelsen & Mollerup, Thermodynamic Models: Fundamentals & Computational Aspects (2nd ed.); Smith-Van Ness-Abbott",
+      "aliases": [
+        "FLASH3",
+        "VLLE_FLASH",
+        "THREE_PHASE_SEP"
+      ],
+      "parameters": [
+        {
+          "key": "T_spec",
+          "type": "real",
+          "defaultValue": 368.15,
+          "unit": "K",
+          "description": "Flash vessel temperature specification"
+        },
+        {
+          "key": "P_spec",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Flash vessel pressure specification"
+        },
+        {
+          "key": "A1",
+          "type": "real",
+          "defaultValue": 4.01814,
+          "unit": "1",
+          "description": "Light component Antoine constant A (log10 P_bar)"
+        },
+        {
+          "key": "B1",
+          "type": "real",
+          "defaultValue": 1203.835,
+          "unit": "K",
+          "description": "Light component Antoine constant B"
+        },
+        {
+          "key": "C1",
+          "type": "real",
+          "defaultValue": -53.226,
+          "unit": "K",
+          "description": "Light component Antoine constant C"
+        },
+        {
+          "key": "A2",
+          "type": "real",
+          "defaultValue": 4.07827,
+          "unit": "1",
+          "description": "Heavy component Antoine constant A (log10 P_bar)"
+        },
+        {
+          "key": "B2",
+          "type": "real",
+          "defaultValue": 1343.943,
+          "unit": "K",
+          "description": "Heavy component Antoine constant B"
+        },
+        {
+          "key": "C2",
+          "type": "real",
+          "defaultValue": -53.773,
+          "unit": "K",
+          "description": "Heavy component Antoine constant C"
+        },
+        {
+          "key": "dH_vap",
+          "type": "real",
+          "defaultValue": 32000,
+          "unit": "J/mol",
+          "description": "Average molar enthalpy of vaporization"
+        },
+        {
+          "key": "Cp_liq",
+          "type": "real",
+          "defaultValue": 140,
+          "unit": "J/(mol*K)",
+          "description": "Average liquid molar heat capacity"
+        },
+        {
+          "key": "L2_split",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "1",
+          "description": "Second liquid phase decant fraction"
+        }
+      ],
+      "wasmKernel": "Flash3",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "RadFrac",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:RadFrac",
+    "exports": [
+      "N_stages",
+      "reflux_ratio",
+      "D_over_F",
+      "P_top",
+      "dP_stage",
+      "alpha_rel"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Rigorous Multistage Distillation Column (RadFrac)",
+      "category": "Column",
+      "domain": "process",
+      "description": "Rigorous MESH-equation multistage vapor-liquid fractionation column with condenser and reboiler.",
+      "provenance": "Seader, Henley & Roper, Separation Process Principles (4th ed.); Naphtali & Sandholm (1971) AIChE J. 17(1)",
+      "aliases": [
+        "RADFRAC",
+        "DISTILLATION",
+        "COLUMN"
+      ],
+      "parameters": [
+        {
+          "key": "N_stages",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "1",
+          "description": "Number of equilibrium stages"
+        },
+        {
+          "key": "reflux_ratio",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Molar reflux ratio L/D"
+        },
+        {
+          "key": "D_over_F",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1",
+          "description": "Distillate-to-feed molar ratio"
+        },
+        {
+          "key": "P_top",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Condenser pressure"
+        },
+        {
+          "key": "dP_stage",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "Pa",
+          "description": "Pressure drop per tray"
+        },
+        {
+          "key": "alpha_rel",
+          "type": "real",
+          "defaultValue": 2.4,
+          "unit": "1",
+          "description": "Effective relative volatility"
+        }
+      ],
+      "wasmKernel": "RadFrac",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "DSTWU",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:DSTWU",
+    "exports": [
+      "light_key_rec",
+      "heavy_key_rec",
+      "alpha_rel",
+      "R_over_Rmin",
+      "P_cond"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Winn-Underwood-Gilliland Shortcut Column (DSTWU)",
+      "category": "Column",
+      "domain": "process",
+      "description": "Shortcut distillation design using Fenske minimum stages, Underwood minimum reflux, and Gilliland correlation.",
+      "provenance": "Fenske (1932) Ind. Eng. Chem. 24; Underwood (1948) Chem. Eng. Prog. 44; Gilliland (1940) Ind. Eng. Chem. 32",
+      "aliases": [
+        "DSTWU",
+        "FUG_COLUMN",
+        "SHORTCUT_COL"
+      ],
+      "parameters": [
+        {
+          "key": "light_key_rec",
+          "type": "real",
+          "defaultValue": 0.99,
+          "unit": "1",
+          "description": "Light key fractional recovery in distillate"
+        },
+        {
+          "key": "heavy_key_rec",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "1",
+          "description": "Heavy key fractional recovery in distillate"
+        },
+        {
+          "key": "alpha_rel",
+          "type": "real",
+          "defaultValue": 2.4,
+          "unit": "1",
+          "description": "Geometric mean relative volatility"
+        },
+        {
+          "key": "R_over_Rmin",
+          "type": "real",
+          "defaultValue": 1.25,
+          "unit": "1",
+          "description": "Ratio of actual to minimum reflux ratio"
+        },
+        {
+          "key": "P_cond",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Condenser operating pressure"
+        }
+      ],
+      "wasmKernel": "DSTWU",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "Sep",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:Sep",
+    "exports": [
+      "split_comp1",
+      "split_comp2",
+      "P_out"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Component Separator (Sep)",
+      "category": "Separator",
+      "domain": "process",
+      "description": "Ideal component splitter routing specified molar fractions of each component to overhead and bottoms outlets.",
+      "provenance": "Seader, Henley & Roper, Separation Process Principles (4th ed.)",
+      "aliases": [
+        "SEP",
+        "COMPONENT_SPLITTER"
+      ],
+      "parameters": [
+        {
+          "key": "split_comp1",
+          "type": "real",
+          "defaultValue": 0.95,
+          "unit": "1",
+          "description": "Overhead split fraction for component 1"
+        },
+        {
+          "key": "split_comp2",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "1",
+          "description": "Overhead split fraction for component 2"
+        },
+        {
+          "key": "P_out",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Outlet pressure"
+        }
+      ],
+      "wasmKernel": "Sep",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "Heater",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:Heater",
+    "exports": [
+      "T_out_spec",
+      "dP",
+      "Cp"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Thermal Heater / Cooler (Heater)",
+      "category": "Heat Exchanger",
+      "domain": "process",
+      "description": "Single-stream thermal heater or cooler computing required heat duty from inlet/outlet enthalpy change.",
+      "provenance": "Smith, Van Ness & Abbott, Intro. to Chem. Eng. Thermodynamics (8th ed.)",
+      "aliases": [
+        "HEATER",
+        "COOLER",
+        "CONDENSER",
+        "REBOILER"
+      ],
+      "parameters": [
+        {
+          "key": "T_out_spec",
+          "type": "real",
+          "defaultValue": 373.15,
+          "unit": "K",
+          "description": "Specified outlet temperature"
+        },
+        {
+          "key": "dP",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "Pa",
+          "description": "Pressure drop across heater"
+        },
+        {
+          "key": "Cp",
+          "type": "real",
+          "defaultValue": 75.3,
+          "unit": "J/(mol*K)",
+          "description": "Molar heat capacity at constant pressure"
+        }
+      ],
+      "wasmKernel": "Heater",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "HeatX",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:HeatX",
+    "exports": [
+      "UA",
+      "T_cold_in",
+      "F_cold",
+      "Cp_hot",
+      "Cp_cold",
+      "dP_hot",
+      "dP_cold"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Two-Stream Countercurrent Heat Exchanger (HeatX)",
+      "category": "Heat Exchanger",
+      "domain": "process",
+      "description": "Countercurrent two-stream shell-and-tube heat exchanger evaluated via exact LMTD / epsilon-NTU heat transfer.",
+      "provenance": "Incropera, DeWitt, Bergman & Lavine, Fundamentals of Heat and Mass Transfer (7th ed.); Kays & London",
+      "aliases": [
+        "HEATX",
+        "EXCHANGER",
+        "SHELL_TUBE"
+      ],
+      "parameters": [
+        {
+          "key": "UA",
+          "type": "real",
+          "defaultValue": 10000,
+          "unit": "W/K",
+          "description": "Overall heat transfer coefficient times area (U*A)"
+        },
+        {
+          "key": "T_cold_in",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "K",
+          "description": "Cold stream inlet temperature"
+        },
+        {
+          "key": "F_cold",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "mol/s",
+          "description": "Cold stream molar flow rate"
+        },
+        {
+          "key": "Cp_hot",
+          "type": "real",
+          "defaultValue": 75.3,
+          "unit": "J/(mol*K)",
+          "description": "Hot stream molar heat capacity"
+        },
+        {
+          "key": "Cp_cold",
+          "type": "real",
+          "defaultValue": 75.3,
+          "unit": "J/(mol*K)",
+          "description": "Cold stream molar heat capacity"
+        },
+        {
+          "key": "dP_hot",
+          "type": "real",
+          "defaultValue": 5000,
+          "unit": "Pa",
+          "description": "Hot side pressure drop"
+        },
+        {
+          "key": "dP_cold",
+          "type": "real",
+          "defaultValue": 5000,
+          "unit": "Pa",
+          "description": "Cold side pressure drop"
+        }
+      ],
+      "wasmKernel": "HeatX",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "Mixer",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:Mixer",
+    "exports": [
+      "P_out_spec",
+      "T_in2",
+      "F_in2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Adiabatic Stream Mixer (Mixer)",
+      "category": "Mixer / Splitter",
+      "domain": "process",
+      "description": "Adiabatic material and enthalpy balance mixer combining inlet streams at the minimum inlet pressure.",
+      "provenance": "Felder, Rousseau & Bullard, Elementary Principles of Chemical Processes (4th ed.)",
+      "aliases": [
+        "MIXER",
+        "STREAM_MIXER"
+      ],
+      "parameters": [
+        {
+          "key": "P_out_spec",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "Pa",
+          "description": "Outlet pressure override (0 = minimum inlet pressure)"
+        },
+        {
+          "key": "T_in2",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "K",
+          "description": "Secondary inlet stream temperature"
+        },
+        {
+          "key": "F_in2",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "mol/s",
+          "description": "Secondary inlet molar flow rate"
+        }
+      ],
+      "wasmKernel": "Mixer",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "FSplit",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:FSplit",
+    "exports": [
+      "split_frac",
+      "dP"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Stream Flow Splitter (FSplit)",
+      "category": "Mixer / Splitter",
+      "domain": "process",
+      "description": "Isothermal, isobaric stream splitter dividing a single feed into branch streams of identical composition.",
+      "provenance": "Felder, Rousseau & Bullard, Elementary Principles of Chemical Processes (4th ed.)",
+      "aliases": [
+        "FSPLIT",
+        "FLOW_SPLITTER",
+        "TEE"
+      ],
+      "parameters": [
+        {
+          "key": "split_frac",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1",
+          "description": "Molar split fraction to primary outlet"
+        },
+        {
+          "key": "dP",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "Pa",
+          "description": "Branch pressure drop"
+        }
+      ],
+      "wasmKernel": "FSplit",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "Pump",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:Pump",
+    "exports": [
+      "P_out",
+      "eta_pump",
+      "rho",
+      "Mw",
+      "Cp"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Centrifugal Liquid Pump (Pump)",
+      "category": "Pressure Changer",
+      "domain": "process",
+      "description": "Incompressible liquid pump computing hydraulic shaft power and frictional discharge temperature rise.",
+      "provenance": "Perry's Chemical Engineers' Handbook (9th ed.) Sec. 10; Smith, Van Ness & Abbott (8th ed.)",
+      "aliases": [
+        "PUMP",
+        "CENTRIFUGAL_PUMP"
+      ],
+      "parameters": [
+        {
+          "key": "P_out",
+          "type": "real",
+          "defaultValue": 500000,
+          "unit": "Pa",
+          "description": "Discharge pressure specification"
+        },
+        {
+          "key": "eta_pump",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "1",
+          "description": "Hydraulic pump efficiency"
+        },
+        {
+          "key": "rho",
+          "type": "real",
+          "defaultValue": 998,
+          "unit": "kg/m^3",
+          "description": "Liquid mass density"
+        },
+        {
+          "key": "Mw",
+          "type": "real",
+          "defaultValue": 18.015,
+          "unit": "kg/kmol",
+          "description": "Liquid molar mass"
+        },
+        {
+          "key": "Cp",
+          "type": "real",
+          "defaultValue": 75.3,
+          "unit": "J/(mol*K)",
+          "description": "Liquid molar heat capacity"
+        }
+      ],
+      "wasmKernel": "Pump",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "Compr",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:Compr",
+    "exports": [
+      "P_out",
+      "eta_is",
+      "gamma",
+      "eta_mech"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Isentropic Compressor / Turbine (Compr)",
+      "category": "Pressure Changer",
+      "domain": "process",
+      "description": "Single-stage isentropic/polytropic gas compressor or expander computing discharge temperature and shaft power.",
+      "provenance": "Smith, Van Ness & Abbott, Intro. to Chem. Eng. Thermodynamics (8th ed.) Ch. 7; GPSA Engineering Data Book",
+      "aliases": [
+        "COMPR",
+        "COMPRESSOR",
+        "TURBINE",
+        "EXPANDER"
+      ],
+      "parameters": [
+        {
+          "key": "P_out",
+          "type": "real",
+          "defaultValue": 500000,
+          "unit": "Pa",
+          "description": "Discharge pressure specification"
+        },
+        {
+          "key": "eta_is",
+          "type": "real",
+          "defaultValue": 0.78,
+          "unit": "1",
+          "description": "Isentropic efficiency"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "1",
+          "description": "Heat capacity ratio Cp/Cv"
+        },
+        {
+          "key": "eta_mech",
+          "type": "real",
+          "defaultValue": 0.98,
+          "unit": "1",
+          "description": "Mechanical drive efficiency"
+        }
+      ],
+      "wasmKernel": "Compr",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "MCompr",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:MCompr",
+    "exports": [
+      "P_out",
+      "eta_is",
+      "gamma",
+      "eta_mech",
+      "n_stages"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Multistage Intercooled Compressor (MCompr)",
+      "category": "Pressure Changer",
+      "domain": "process",
+      "description": "Multistage gas compressor with equal stage pressure ratios and interstage cooling back to suction temperature.",
+      "provenance": "GPSA Engineering Data Book (14th ed.); Smith, Van Ness & Abbott (8th ed.) Ch. 7",
+      "aliases": [
+        "MCOMPR",
+        "MULTISTAGE_COMPR"
+      ],
+      "parameters": [
+        {
+          "key": "P_out",
+          "type": "real",
+          "defaultValue": 2000000,
+          "unit": "Pa",
+          "description": "Final discharge pressure"
+        },
+        {
+          "key": "eta_is",
+          "type": "real",
+          "defaultValue": 0.78,
+          "unit": "1",
+          "description": "Per-stage isentropic efficiency"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "1",
+          "description": "Heat capacity ratio Cp/Cv"
+        },
+        {
+          "key": "eta_mech",
+          "type": "real",
+          "defaultValue": 0.98,
+          "unit": "1",
+          "description": "Mechanical efficiency"
+        },
+        {
+          "key": "n_stages",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "1",
+          "description": "Number of compression stages"
+        }
+      ],
+      "wasmKernel": "MCompr",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "Valve",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:Valve",
+    "exports": [
+      "P_out",
+      "mu_JT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Adiabatic Throttling Valve (Valve)",
+      "category": "Pressure Changer",
+      "domain": "process",
+      "description": "Isenthalpic throttling valve computing Joule-Thomson temperature change across a specified pressure drop.",
+      "provenance": "Smith, Van Ness & Abbott, Intro. to Chem. Eng. Thermodynamics (8th ed.) Ch. 6",
+      "aliases": [
+        "VALVE",
+        "JT_VALVE",
+        "THROTTLE"
+      ],
+      "parameters": [
+        {
+          "key": "P_out",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Outlet pressure specification"
+        },
+        {
+          "key": "mu_JT",
+          "type": "real",
+          "defaultValue": 0.000002,
+          "unit": "K/Pa",
+          "description": "Joule-Thomson coefficient (dT/dP)_H"
+        }
+      ],
+      "wasmKernel": "Valve",
+      "archetypeId": 33
+    }
+  },
+  {
+    "name": "Pipe",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:Pipe",
+    "exports": [
+      "length",
+      "diameter",
+      "f_darcy",
+      "rho",
+      "Mw"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Fluid Pipeline Segment (Pipe)",
+      "category": "Pressure Changer",
+      "domain": "process",
+      "description": "Darcy-Weisbach frictional pipeline segment computing pressure drop and ambient heat loss.",
+      "provenance": "Crane Technical Paper No. 410; Perry's Chemical Engineers' Handbook (9th ed.) Sec. 6",
+      "aliases": [
+        "PIPE",
+        "PIPELINE",
+        "SEGMENT"
+      ],
+      "parameters": [
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "m",
+          "description": "Pipe length"
+        },
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "m",
+          "description": "Internal pipe diameter"
+        },
+        {
+          "key": "f_darcy",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "1",
+          "description": "Darcy friction factor"
+        },
+        {
+          "key": "rho",
+          "type": "real",
+          "defaultValue": 998,
+          "unit": "kg/m^3",
+          "description": "Fluid density"
+        },
+        {
+          "key": "Mw",
+          "type": "real",
+          "defaultValue": 18.015,
+          "unit": "kg/kmol",
+          "description": "Fluid molar mass"
+        }
+      ],
+      "wasmKernel": "Pipe",
+      "archetypeId": 34
+    }
+  },
+  {
+    "name": "RCSTR",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:RCSTR",
+    "exports": [
+      "volume",
+      "k0",
+      "Ea",
+      "dH_rxn",
+      "c_total"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Continuous Stirred-Tank Reactor (RCSTR)",
+      "category": "Reactor",
+      "domain": "process",
+      "description": "Isothermal/non-isothermal perfectly mixed CSTR with Arrhenius power-law reaction kinetics and heat duty.",
+      "provenance": "Levenspiel, Chemical Reaction Engineering (3rd ed.) Ch. 5; Fogler, Elements of Chemical Reaction Engineering",
+      "aliases": [
+        "RCSTR",
+        "CSTR"
+      ],
+      "parameters": [
+        {
+          "key": "volume",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m^3",
+          "description": "Liquid/reactor holdup volume"
+        },
+        {
+          "key": "k0",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "1/s",
+          "description": "Arrhenius pre-exponential factor"
+        },
+        {
+          "key": "Ea",
+          "type": "real",
+          "defaultValue": 50000,
+          "unit": "J/mol",
+          "description": "Activation energy"
+        },
+        {
+          "key": "dH_rxn",
+          "type": "real",
+          "defaultValue": -50000,
+          "unit": "J/mol",
+          "description": "Standard enthalpy of reaction"
+        },
+        {
+          "key": "c_total",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "mol/m^3",
+          "description": "Total molar concentration"
+        }
+      ],
+      "wasmKernel": "RCSTR",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "RPlug",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:RPlug",
+    "exports": [
+      "volume",
+      "k0",
+      "Ea",
+      "dH_rxn",
+      "c_total"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Plug Flow Tubular Reactor (RPlug)",
+      "category": "Reactor",
+      "domain": "process",
+      "description": "Ideal plug flow tubular reactor computing analytical/integrated Arrhenius conversion along reactor length.",
+      "provenance": "Levenspiel, Chemical Reaction Engineering (3rd ed.) Ch. 5; Fogler, Elements of Chemical Reaction Engineering",
+      "aliases": [
+        "RPLUG",
+        "PFR",
+        "PLUG_FLOW"
+      ],
+      "parameters": [
+        {
+          "key": "volume",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m^3",
+          "description": "Tubular reactor volume"
+        },
+        {
+          "key": "k0",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "1/s",
+          "description": "Arrhenius pre-exponential factor"
+        },
+        {
+          "key": "Ea",
+          "type": "real",
+          "defaultValue": 50000,
+          "unit": "J/mol",
+          "description": "Activation energy"
+        },
+        {
+          "key": "dH_rxn",
+          "type": "real",
+          "defaultValue": -50000,
+          "unit": "J/mol",
+          "description": "Standard enthalpy of reaction"
+        },
+        {
+          "key": "c_total",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "mol/m^3",
+          "description": "Total molar concentration"
+        }
+      ],
+      "wasmKernel": "RPlug",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "RStoic",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:RStoic",
+    "exports": [
+      "conversion",
+      "dH_rxn"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Stoichiometric Reactor (RStoic)",
+      "category": "Reactor",
+      "domain": "process",
+      "description": "Stoichiometric reactor with user-specified fractional key-component conversion and reaction heat duty.",
+      "provenance": "Felder, Rousseau & Bullard, Elementary Principles of Chemical Processes (4th ed.)",
+      "aliases": [
+        "RSTOIC",
+        "STOIC_REACTOR"
+      ],
+      "parameters": [
+        {
+          "key": "conversion",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "1",
+          "description": "Specified fractional conversion of key reactant"
+        },
+        {
+          "key": "dH_rxn",
+          "type": "real",
+          "defaultValue": -50000,
+          "unit": "J/mol",
+          "description": "Standard enthalpy of reaction"
+        }
+      ],
+      "wasmKernel": "RStoic",
+      "archetypeId": 42
+    }
+  },
+  {
+    "name": "RGibbs",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:RGibbs",
+    "exports": [
+      "dG0_298",
+      "dH_rxn"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Gibbs Free Energy Minimization Reactor (RGibbs)",
+      "category": "Reactor",
+      "domain": "process",
+      "description": "Chemical and phase equilibrium reactor minimizing total Gibbs free energy via van 't Hoff equilibrium constant.",
+      "provenance": "Smith, Van Ness & Abbott, Intro. to Chem. Eng. Thermodynamics (8th ed.) Ch. 13",
+      "aliases": [
+        "RGIBBS",
+        "GIBBS_REACTOR"
+      ],
+      "parameters": [
+        {
+          "key": "dG0_298",
+          "type": "real",
+          "defaultValue": -10000,
+          "unit": "J/mol",
+          "description": "Standard Gibbs energy of reaction at 298.15 K"
+        },
+        {
+          "key": "dH_rxn",
+          "type": "real",
+          "defaultValue": -40000,
+          "unit": "J/mol",
+          "description": "Standard enthalpy of reaction"
+        }
+      ],
+      "wasmKernel": "RGibbs",
+      "archetypeId": 43
+    }
+  },
+  {
+    "name": "REquil",
+    "kind": "aspen_unit_operation",
+    "namePath": "aspen:REquil",
+    "exports": [
+      "dG0_298",
+      "dH_rxn"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Equilibrium Reactor (REquil)",
+      "category": "Reactor",
+      "domain": "process",
+      "description": "Stoichiometric chemical equilibrium reactor solving K_eq(T) = exp(-dG0 / RT) for equilibrium conversion.",
+      "provenance": "Smith, Van Ness & Abbott, Intro. to Chem. Eng. Thermodynamics (8th ed.) Ch. 13",
+      "aliases": [
+        "REQUIL",
+        "EQUIL_REACTOR"
+      ],
+      "parameters": [
+        {
+          "key": "dG0_298",
+          "type": "real",
+          "defaultValue": -8000,
+          "unit": "J/mol",
+          "description": "Standard Gibbs energy of reaction at 298.15 K"
+        },
+        {
+          "key": "dH_rxn",
+          "type": "real",
+          "defaultValue": -35000,
+          "unit": "J/mol",
+          "description": "Standard enthalpy of reaction"
+        }
+      ],
+      "wasmKernel": "REquil",
+      "archetypeId": 44
+    }
+  },
+  {
+    "name": "PENG_ROB",
+    "kind": "aspen_property_method",
+    "namePath": "aspen:PENG_ROB",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega",
+      "k_ij"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Peng-Robinson Cubic EOS (PENG-ROB)",
+      "category": "Property Method",
+      "domain": "process",
+      "description": "Peng-Robinson (1976) cubic equation of state for hydrocarbon/non-polar VLE, compressibility Z, and fugacity.",
+      "provenance": "Peng & Robinson (1976) Ind. Eng. Chem. Fundam. 15(1):59-64; Poling, Prausnitz & O'Connell (5th ed.)",
+      "aliases": [
+        "PENG-ROB",
+        "PR",
+        "PENG_ROBINSON"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 190.564,
+          "unit": "K",
+          "description": "Critical temperature (default: Methane)"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 4599200,
+          "unit": "Pa",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.01142,
+          "unit": "1",
+          "description": "Pitzer acentric factor"
+        },
+        {
+          "key": "k_ij",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Binary interaction parameter"
+        }
+      ],
+      "wasmKernel": "PENG_ROB",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "SRK",
+    "kind": "aspen_property_method",
+    "namePath": "aspen:SRK",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega",
+      "k_ij"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Soave-Redlich-Kwong Cubic EOS (SRK)",
+      "category": "Property Method",
+      "domain": "process",
+      "description": "Soave-Redlich-Kwong (1972) cubic equation of state for gas processing and refinery hydrocarbon VLE.",
+      "provenance": "Soave (1972) Chem. Eng. Sci. 27(6):1197-1203; Poling, Prausnitz & O'Connell (5th ed.)",
+      "aliases": [
+        "SOAVE_REDLICH_KWONG",
+        "RK-SOAVE"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 190.564,
+          "unit": "K",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 4599200,
+          "unit": "Pa",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.01142,
+          "unit": "1",
+          "description": "Pitzer acentric factor"
+        },
+        {
+          "key": "k_ij",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Binary interaction parameter"
+        }
+      ],
+      "wasmKernel": "SRK",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "NRTL",
+    "kind": "aspen_property_method",
+    "namePath": "aspen:NRTL",
+    "exports": [
+      "tau12",
+      "tau21",
+      "alpha12"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Non-Random Two-Liquid Activity Model (NRTL)",
+      "category": "Property Method",
+      "domain": "process",
+      "description": "Renon-Prausnitz (1968) local-composition activity coefficient model for strongly non-ideal polar VLE/LLE.",
+      "provenance": "Renon & Prausnitz (1968) AIChE J. 14(1):135-144; Smith, Van Ness & Abbott (8th ed.)",
+      "aliases": [
+        "NRTL-RK",
+        "NRTL-HOC"
+      ],
+      "parameters": [
+        {
+          "key": "tau12",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1",
+          "description": "Binary interaction parameter tau_12 = g_12 / RT"
+        },
+        {
+          "key": "tau21",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "1",
+          "description": "Binary interaction parameter tau_21 = g_21 / RT"
+        },
+        {
+          "key": "alpha12",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "1",
+          "description": "Non-randomness parameter alpha_12"
+        }
+      ],
+      "wasmKernel": "NRTL",
+      "archetypeId": 52
+    }
+  },
+  {
+    "name": "UNIQUAC",
+    "kind": "aspen_property_method",
+    "namePath": "aspen:UNIQUAC",
+    "exports": [
+      "tau12",
+      "tau21",
+      "r1",
+      "q1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Universal Quasi-Chemical Activity Model (UNIQUAC)",
+      "category": "Property Method",
+      "domain": "process",
+      "description": "Abrams-Prausnitz (1975) combinatorial + residual local-composition activity coefficient model.",
+      "provenance": "Abrams & Prausnitz (1975) AIChE J. 21(1):116-128; Poling, Prausnitz & O'Connell (5th ed.)",
+      "aliases": [
+        "UNIQUAC-RK"
+      ],
+      "parameters": [
+        {
+          "key": "tau12",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "1",
+          "description": "UNIQUAC Boltzmann interaction parameter tau_12"
+        },
+        {
+          "key": "tau21",
+          "type": "real",
+          "defaultValue": 0.72,
+          "unit": "1",
+          "description": "UNIQUAC Boltzmann interaction parameter tau_21"
+        },
+        {
+          "key": "r1",
+          "type": "real",
+          "defaultValue": 2.11,
+          "unit": "1",
+          "description": "Molecular volume parameter r_1"
+        },
+        {
+          "key": "q1",
+          "type": "real",
+          "defaultValue": 1.97,
+          "unit": "1",
+          "description": "Molecular surface area parameter q_1"
+        }
+      ],
+      "wasmKernel": "UNIQUAC",
+      "archetypeId": 53
+    }
+  },
+  {
+    "name": "WILSON",
+    "kind": "aspen_property_method",
+    "namePath": "aspen:WILSON",
+    "exports": [
+      "Lambda12",
+      "Lambda21"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Wilson Activity Coefficient Model (WILSON)",
+      "category": "Property Method",
+      "domain": "process",
+      "description": "Wilson (1964) local-composition activity coefficient model for miscible polar/alcohol-water mixtures.",
+      "provenance": "Wilson (1964) J. Am. Chem. Soc. 86(2):127-130; Smith, Van Ness & Abbott (8th ed.)",
+      "aliases": [
+        "WILSON-RK"
+      ],
+      "parameters": [
+        {
+          "key": "Lambda12",
+          "type": "real",
+          "defaultValue": 0.45,
+          "unit": "1",
+          "description": "Wilson binary energy parameter Lambda_12"
+        },
+        {
+          "key": "Lambda21",
+          "type": "real",
+          "defaultValue": 0.65,
+          "unit": "1",
+          "description": "Wilson binary energy parameter Lambda_21"
+        }
+      ],
+      "wasmKernel": "WILSON",
+      "archetypeId": 54
+    }
+  },
+  {
+    "name": "IDEAL",
+    "kind": "aspen_property_method",
+    "namePath": "aspen:IDEAL",
+    "exports": [
+      "Z_ideal"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ideal Gas & Raoult's Law (IDEAL)",
+      "category": "Property Method",
+      "domain": "process",
+      "description": "Ideal gas law (Z = 1) combined with ideal liquid solution Raoult's Law (gamma = 1, phi = 1).",
+      "provenance": "Smith, Van Ness & Abbott, Intro. to Chem. Eng. Thermodynamics (8th ed.) Ch. 10",
+      "aliases": [
+        "IDEAL_GAS",
+        "RAOULT"
+      ],
+      "parameters": [
+        {
+          "key": "Z_ideal",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Ideal gas compressibility factor"
+        }
+      ],
+      "wasmKernel": "IDEAL",
+      "archetypeId": 55
+    }
+  },
+  {
+    "name": "STEAM_TA",
+    "kind": "aspen_property_method",
+    "namePath": "aspen:STEAM_TA",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ASME / IAPWS-IF97 Steam Tables (STEAM-TA)",
+      "category": "Property Method",
+      "domain": "process",
+      "description": "Industrial formulation for water and steam saturation pressure, enthalpy, and compressibility.",
+      "provenance": "IAPWS-IF97 (Wagner et al., 2000) J. Eng. Gas Turbines Power 122(1):150-184",
+      "aliases": [
+        "STEAM-TA",
+        "STEAMNBS",
+        "IAPWS-IF97"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 647.096,
+          "unit": "K",
+          "description": "Water critical temperature (IAPWS-IF97)"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 22064000,
+          "unit": "Pa",
+          "description": "Water critical pressure (IAPWS-IF97)"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.3443,
+          "unit": "1",
+          "description": "Water acentric factor"
+        }
+      ],
+      "wasmKernel": "STEAM_TA",
+      "archetypeId": 56
+    }
+  },
+  {
+    "name": "ELECNRTL",
+    "kind": "aspen_property_method",
+    "namePath": "aspen:ELECNRTL",
+    "exports": [
+      "tau12",
+      "tau21",
+      "alpha12",
+      "ionic_strength"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Electrolyte NRTL Activity Model (ELECNRTL)",
+      "category": "Property Method",
+      "domain": "process",
+      "description": "Chen-Britt-Boston-Evans electrolyte NRTL model combining Pitzer-Debye-Huckel long-range and NRTL short-range terms.",
+      "provenance": "Chen, Britt, Boston & Evans (1982) AIChE J. 28(4):588-596; Poling, Prausnitz & O'Connell (5th ed.)",
+      "aliases": [
+        "ENRTL",
+        "ENRTL-RK"
+      ],
+      "parameters": [
+        {
+          "key": "tau12",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "1",
+          "description": "Short-range NRTL interaction tau_12"
+        },
+        {
+          "key": "tau21",
+          "type": "real",
+          "defaultValue": 0.9,
+          "unit": "1",
+          "description": "Short-range NRTL interaction tau_21"
+        },
+        {
+          "key": "alpha12",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "Electrolyte non-randomness factor"
+        },
+        {
+          "key": "ionic_strength",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "mol/kg",
+          "description": "Solution ionic strength I"
+        }
+      ],
+      "wasmKernel": "ELECNRTL",
+      "archetypeId": 57
+    }
+  },
+  {
+    "name": "COMP_H2O",
+    "kind": "aspen_pure_component",
+    "namePath": "aspen:COMP_H2O",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega",
+      "Mw",
+      "Tb",
+      "Antoine_A",
+      "Antoine_B",
+      "Antoine_C"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Water (H2O)",
+      "category": "Pure Component",
+      "domain": "process",
+      "description": "Pure component water thermodynamic constants and NIST WebBook Antoine vapor pressure correlation.",
+      "provenance": "NIST Chemistry WebBook SRD 69 (CAS 7732-18-5); IAPWS-95",
+      "aliases": [
+        "H2O",
+        "WATER",
+        "7732-18-5"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 647.096,
+          "unit": "K",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 22064000,
+          "unit": "Pa",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.3443,
+          "unit": "1",
+          "description": "Pitzer acentric factor"
+        },
+        {
+          "key": "Mw",
+          "type": "real",
+          "defaultValue": 18.01528,
+          "unit": "kg/kmol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "Tb",
+          "type": "real",
+          "defaultValue": 373.15,
+          "unit": "K",
+          "description": "Normal boiling point"
+        },
+        {
+          "key": "Antoine_A",
+          "type": "real",
+          "defaultValue": 5.20389,
+          "unit": "1",
+          "description": "Antoine A (log10 P_bar, 373-647 K)"
+        },
+        {
+          "key": "Antoine_B",
+          "type": "real",
+          "defaultValue": 1733.926,
+          "unit": "K",
+          "description": "Antoine B"
+        },
+        {
+          "key": "Antoine_C",
+          "type": "real",
+          "defaultValue": -39.485,
+          "unit": "K",
+          "description": "Antoine C"
+        }
+      ],
+      "wasmKernel": "COMP_H2O",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "COMP_CH4",
+    "kind": "aspen_pure_component",
+    "namePath": "aspen:COMP_CH4",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega",
+      "Mw",
+      "Tb",
+      "Antoine_A",
+      "Antoine_B",
+      "Antoine_C"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Methane (CH4)",
+      "category": "Pure Component",
+      "domain": "process",
+      "description": "Pure component methane critical constants and NIST WebBook Antoine vapor pressure correlation.",
+      "provenance": "NIST Chemistry WebBook SRD 69 (CAS 74-82-8); Poling, Prausnitz & O'Connell (5th ed.)",
+      "aliases": [
+        "CH4",
+        "METHANE",
+        "74-82-8"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 190.564,
+          "unit": "K",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 4599200,
+          "unit": "Pa",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.01142,
+          "unit": "1",
+          "description": "Pitzer acentric factor"
+        },
+        {
+          "key": "Mw",
+          "type": "real",
+          "defaultValue": 16.0425,
+          "unit": "kg/kmol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "Tb",
+          "type": "real",
+          "defaultValue": 111.66,
+          "unit": "K",
+          "description": "Normal boiling point"
+        },
+        {
+          "key": "Antoine_A",
+          "type": "real",
+          "defaultValue": 3.9895,
+          "unit": "1",
+          "description": "Antoine A (log10 P_bar)"
+        },
+        {
+          "key": "Antoine_B",
+          "type": "real",
+          "defaultValue": 443.028,
+          "unit": "K",
+          "description": "Antoine B"
+        },
+        {
+          "key": "Antoine_C",
+          "type": "real",
+          "defaultValue": -0.49,
+          "unit": "K",
+          "description": "Antoine C"
+        }
+      ],
+      "wasmKernel": "COMP_CH4",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "COMP_C2H6",
+    "kind": "aspen_pure_component",
+    "namePath": "aspen:COMP_C2H6",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega",
+      "Mw",
+      "Tb",
+      "Antoine_A",
+      "Antoine_B",
+      "Antoine_C"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ethane (C2H6)",
+      "category": "Pure Component",
+      "domain": "process",
+      "description": "Pure component ethane critical constants and NIST WebBook Antoine vapor pressure correlation.",
+      "provenance": "NIST Chemistry WebBook SRD 69 (CAS 74-84-0); Poling, Prausnitz & O'Connell (5th ed.)",
+      "aliases": [
+        "C2H6",
+        "ETHANE",
+        "74-84-0"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 305.322,
+          "unit": "K",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 4872200,
+          "unit": "Pa",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.0995,
+          "unit": "1",
+          "description": "Pitzer acentric factor"
+        },
+        {
+          "key": "Mw",
+          "type": "real",
+          "defaultValue": 30.069,
+          "unit": "kg/kmol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "Tb",
+          "type": "real",
+          "defaultValue": 184.55,
+          "unit": "K",
+          "description": "Normal boiling point"
+        },
+        {
+          "key": "Antoine_A",
+          "type": "real",
+          "defaultValue": 3.95405,
+          "unit": "1",
+          "description": "Antoine A (log10 P_bar)"
+        },
+        {
+          "key": "Antoine_B",
+          "type": "real",
+          "defaultValue": 663.72,
+          "unit": "K",
+          "description": "Antoine B"
+        },
+        {
+          "key": "Antoine_C",
+          "type": "real",
+          "defaultValue": -16.47,
+          "unit": "K",
+          "description": "Antoine C"
+        }
+      ],
+      "wasmKernel": "COMP_C2H6",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "COMP_C3H8",
+    "kind": "aspen_pure_component",
+    "namePath": "aspen:COMP_C3H8",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega",
+      "Mw",
+      "Tb",
+      "Antoine_A",
+      "Antoine_B",
+      "Antoine_C"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Propane (C3H8)",
+      "category": "Pure Component",
+      "domain": "process",
+      "description": "Pure component propane critical constants and NIST WebBook Antoine vapor pressure correlation.",
+      "provenance": "NIST Chemistry WebBook SRD 69 (CAS 74-98-6); Poling, Prausnitz & O'Connell (5th ed.)",
+      "aliases": [
+        "C3H8",
+        "PROPANE",
+        "74-98-6"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 369.825,
+          "unit": "K",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 4248000,
+          "unit": "Pa",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.1522,
+          "unit": "1",
+          "description": "Pitzer acentric factor"
+        },
+        {
+          "key": "Mw",
+          "type": "real",
+          "defaultValue": 44.0956,
+          "unit": "kg/kmol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "Tb",
+          "type": "real",
+          "defaultValue": 231.08,
+          "unit": "K",
+          "description": "Normal boiling point"
+        },
+        {
+          "key": "Antoine_A",
+          "type": "real",
+          "defaultValue": 4.01158,
+          "unit": "1",
+          "description": "Antoine A (log10 P_bar)"
+        },
+        {
+          "key": "Antoine_B",
+          "type": "real",
+          "defaultValue": 834.26,
+          "unit": "K",
+          "description": "Antoine B"
+        },
+        {
+          "key": "Antoine_C",
+          "type": "real",
+          "defaultValue": -22.763,
+          "unit": "K",
+          "description": "Antoine C"
+        }
+      ],
+      "wasmKernel": "COMP_C3H8",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "COMP_CO2",
+    "kind": "aspen_pure_component",
+    "namePath": "aspen:COMP_CO2",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega",
+      "Mw",
+      "Tb",
+      "Antoine_A",
+      "Antoine_B",
+      "Antoine_C"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Carbon Dioxide (CO2)",
+      "category": "Pure Component",
+      "domain": "process",
+      "description": "Pure component carbon dioxide critical constants and NIST WebBook Antoine correlation.",
+      "provenance": "NIST Chemistry WebBook SRD 69 (CAS 124-38-9); Span & Wagner (1996)",
+      "aliases": [
+        "CO2",
+        "CARBON_DIOXIDE",
+        "124-38-9"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 304.128,
+          "unit": "K",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 7377300,
+          "unit": "Pa",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.22394,
+          "unit": "1",
+          "description": "Pitzer acentric factor"
+        },
+        {
+          "key": "Mw",
+          "type": "real",
+          "defaultValue": 44.0095,
+          "unit": "kg/kmol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "Tb",
+          "type": "real",
+          "defaultValue": 194.65,
+          "unit": "K",
+          "description": "Normal sublimation point"
+        },
+        {
+          "key": "Antoine_A",
+          "type": "real",
+          "defaultValue": 6.81228,
+          "unit": "1",
+          "description": "Antoine A (log10 P_bar)"
+        },
+        {
+          "key": "Antoine_B",
+          "type": "real",
+          "defaultValue": 1301.679,
+          "unit": "K",
+          "description": "Antoine B"
+        },
+        {
+          "key": "Antoine_C",
+          "type": "real",
+          "defaultValue": -3.494,
+          "unit": "K",
+          "description": "Antoine C"
+        }
+      ],
+      "wasmKernel": "COMP_CO2",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "COMP_N2",
+    "kind": "aspen_pure_component",
+    "namePath": "aspen:COMP_N2",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega",
+      "Mw",
+      "Tb",
+      "Antoine_A",
+      "Antoine_B",
+      "Antoine_C"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Nitrogen (N2)",
+      "category": "Pure Component",
+      "domain": "process",
+      "description": "Pure component nitrogen critical constants and NIST WebBook Antoine vapor pressure correlation.",
+      "provenance": "NIST Chemistry WebBook SRD 69 (CAS 7727-37-9); Span et al. (2000)",
+      "aliases": [
+        "N2",
+        "NITROGEN",
+        "7727-37-9"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 126.192,
+          "unit": "K",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 3395800,
+          "unit": "Pa",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.0372,
+          "unit": "1",
+          "description": "Pitzer acentric factor"
+        },
+        {
+          "key": "Mw",
+          "type": "real",
+          "defaultValue": 28.0134,
+          "unit": "kg/kmol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "Tb",
+          "type": "real",
+          "defaultValue": 77.355,
+          "unit": "K",
+          "description": "Normal boiling point"
+        },
+        {
+          "key": "Antoine_A",
+          "type": "real",
+          "defaultValue": 3.7362,
+          "unit": "1",
+          "description": "Antoine A (log10 P_bar)"
+        },
+        {
+          "key": "Antoine_B",
+          "type": "real",
+          "defaultValue": 264.651,
+          "unit": "K",
+          "description": "Antoine B"
+        },
+        {
+          "key": "Antoine_C",
+          "type": "real",
+          "defaultValue": -6.788,
+          "unit": "K",
+          "description": "Antoine C"
+        }
+      ],
+      "wasmKernel": "COMP_N2",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "COMP_O2",
+    "kind": "aspen_pure_component",
+    "namePath": "aspen:COMP_O2",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega",
+      "Mw",
+      "Tb",
+      "Antoine_A",
+      "Antoine_B",
+      "Antoine_C"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Oxygen (O2)",
+      "category": "Pure Component",
+      "domain": "process",
+      "description": "Pure component oxygen critical constants and NIST WebBook Antoine vapor pressure correlation.",
+      "provenance": "NIST Chemistry WebBook SRD 69 (CAS 7782-44-7); Poling, Prausnitz & O'Connell (5th ed.)",
+      "aliases": [
+        "O2",
+        "OXYGEN",
+        "7782-44-7"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 154.581,
+          "unit": "K",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 5043000,
+          "unit": "Pa",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.0222,
+          "unit": "1",
+          "description": "Pitzer acentric factor"
+        },
+        {
+          "key": "Mw",
+          "type": "real",
+          "defaultValue": 31.9988,
+          "unit": "kg/kmol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "Tb",
+          "type": "real",
+          "defaultValue": 90.188,
+          "unit": "K",
+          "description": "Normal boiling point"
+        },
+        {
+          "key": "Antoine_A",
+          "type": "real",
+          "defaultValue": 3.9523,
+          "unit": "1",
+          "description": "Antoine A (log10 P_bar)"
+        },
+        {
+          "key": "Antoine_B",
+          "type": "real",
+          "defaultValue": 340.024,
+          "unit": "K",
+          "description": "Antoine B"
+        },
+        {
+          "key": "Antoine_C",
+          "type": "real",
+          "defaultValue": -4.144,
+          "unit": "K",
+          "description": "Antoine C"
+        }
+      ],
+      "wasmKernel": "COMP_O2",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "COMP_H2",
+    "kind": "aspen_pure_component",
+    "namePath": "aspen:COMP_H2",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega",
+      "Mw",
+      "Tb",
+      "Antoine_A",
+      "Antoine_B",
+      "Antoine_C"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hydrogen (H2)",
+      "category": "Pure Component",
+      "domain": "process",
+      "description": "Pure component hydrogen critical constants and NIST WebBook Antoine vapor pressure correlation.",
+      "provenance": "NIST Chemistry WebBook SRD 69 (CAS 1333-74-0); Leachman et al. (2009)",
+      "aliases": [
+        "H2",
+        "HYDROGEN",
+        "1333-74-0"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 33.145,
+          "unit": "K",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 1296400,
+          "unit": "Pa",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": -0.219,
+          "unit": "1",
+          "description": "Pitzer acentric factor"
+        },
+        {
+          "key": "Mw",
+          "type": "real",
+          "defaultValue": 2.01588,
+          "unit": "kg/kmol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "Tb",
+          "type": "real",
+          "defaultValue": 20.271,
+          "unit": "K",
+          "description": "Normal boiling point"
+        },
+        {
+          "key": "Antoine_A",
+          "type": "real",
+          "defaultValue": 3.54314,
+          "unit": "1",
+          "description": "Antoine A (log10 P_bar)"
+        },
+        {
+          "key": "Antoine_B",
+          "type": "real",
+          "defaultValue": 99.395,
+          "unit": "K",
+          "description": "Antoine B"
+        },
+        {
+          "key": "Antoine_C",
+          "type": "real",
+          "defaultValue": 7.726,
+          "unit": "K",
+          "description": "Antoine C"
+        }
+      ],
+      "wasmKernel": "COMP_H2",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "COMP_NH3",
+    "kind": "aspen_pure_component",
+    "namePath": "aspen:COMP_NH3",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega",
+      "Mw",
+      "Tb",
+      "Antoine_A",
+      "Antoine_B",
+      "Antoine_C"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ammonia (NH3)",
+      "category": "Pure Component",
+      "domain": "process",
+      "description": "Pure component ammonia critical constants and NIST WebBook Antoine vapor pressure correlation.",
+      "provenance": "NIST Chemistry WebBook SRD 69 (CAS 7664-41-7); Poling, Prausnitz & O'Connell (5th ed.)",
+      "aliases": [
+        "NH3",
+        "AMMONIA",
+        "7664-41-7"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 405.4,
+          "unit": "K",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 11333000,
+          "unit": "Pa",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.256,
+          "unit": "1",
+          "description": "Pitzer acentric factor"
+        },
+        {
+          "key": "Mw",
+          "type": "real",
+          "defaultValue": 17.0305,
+          "unit": "kg/kmol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "Tb",
+          "type": "real",
+          "defaultValue": 239.82,
+          "unit": "K",
+          "description": "Normal boiling point"
+        },
+        {
+          "key": "Antoine_A",
+          "type": "real",
+          "defaultValue": 4.4854,
+          "unit": "1",
+          "description": "Antoine A (log10 P_bar)"
+        },
+        {
+          "key": "Antoine_B",
+          "type": "real",
+          "defaultValue": 926.132,
+          "unit": "K",
+          "description": "Antoine B"
+        },
+        {
+          "key": "Antoine_C",
+          "type": "real",
+          "defaultValue": -32.98,
+          "unit": "K",
+          "description": "Antoine C"
+        }
+      ],
+      "wasmKernel": "COMP_NH3",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "COMP_MEOH",
+    "kind": "aspen_pure_component",
+    "namePath": "aspen:COMP_MEOH",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega",
+      "Mw",
+      "Tb",
+      "Antoine_A",
+      "Antoine_B",
+      "Antoine_C"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Methanol (CH3OH)",
+      "category": "Pure Component",
+      "domain": "process",
+      "description": "Pure component methanol critical constants and NIST WebBook Antoine vapor pressure correlation.",
+      "provenance": "NIST Chemistry WebBook SRD 69 (CAS 67-56-1); Poling, Prausnitz & O'Connell (5th ed.)",
+      "aliases": [
+        "MEOH",
+        "CH3OH",
+        "METHANOL",
+        "67-56-1"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 512.5,
+          "unit": "K",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 8084000,
+          "unit": "Pa",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.5625,
+          "unit": "1",
+          "description": "Pitzer acentric factor"
+        },
+        {
+          "key": "Mw",
+          "type": "real",
+          "defaultValue": 32.0419,
+          "unit": "kg/kmol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "Tb",
+          "type": "real",
+          "defaultValue": 337.85,
+          "unit": "K",
+          "description": "Normal boiling point"
+        },
+        {
+          "key": "Antoine_A",
+          "type": "real",
+          "defaultValue": 5.20409,
+          "unit": "1",
+          "description": "Antoine A (log10 P_bar)"
+        },
+        {
+          "key": "Antoine_B",
+          "type": "real",
+          "defaultValue": 1581.341,
+          "unit": "K",
+          "description": "Antoine B"
+        },
+        {
+          "key": "Antoine_C",
+          "type": "real",
+          "defaultValue": -33.5,
+          "unit": "K",
+          "description": "Antoine C"
+        }
+      ],
+      "wasmKernel": "COMP_MEOH",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "COMP_ETOH",
+    "kind": "aspen_pure_component",
+    "namePath": "aspen:COMP_ETOH",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega",
+      "Mw",
+      "Tb",
+      "Antoine_A",
+      "Antoine_B",
+      "Antoine_C"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ethanol (C2H5OH)",
+      "category": "Pure Component",
+      "domain": "process",
+      "description": "Pure component ethanol critical constants and NIST WebBook Antoine vapor pressure correlation.",
+      "provenance": "NIST Chemistry WebBook SRD 69 (CAS 64-17-5); Poling, Prausnitz & O'Connell (5th ed.)",
+      "aliases": [
+        "ETOH",
+        "C2H5OH",
+        "ETHANOL",
+        "64-17-5"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 513.9,
+          "unit": "K",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 6148000,
+          "unit": "Pa",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.6436,
+          "unit": "1",
+          "description": "Pitzer acentric factor"
+        },
+        {
+          "key": "Mw",
+          "type": "real",
+          "defaultValue": 46.0684,
+          "unit": "kg/kmol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "Tb",
+          "type": "real",
+          "defaultValue": 351.44,
+          "unit": "K",
+          "description": "Normal boiling point"
+        },
+        {
+          "key": "Antoine_A",
+          "type": "real",
+          "defaultValue": 5.24677,
+          "unit": "1",
+          "description": "Antoine A (log10 P_bar)"
+        },
+        {
+          "key": "Antoine_B",
+          "type": "real",
+          "defaultValue": 1598.673,
+          "unit": "K",
+          "description": "Antoine B"
+        },
+        {
+          "key": "Antoine_C",
+          "type": "real",
+          "defaultValue": -46.424,
+          "unit": "K",
+          "description": "Antoine C"
+        }
+      ],
+      "wasmKernel": "COMP_ETOH",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "COMP_BENZENE",
+    "kind": "aspen_pure_component",
+    "namePath": "aspen:COMP_BENZENE",
+    "exports": [
+      "Tc",
+      "Pc",
+      "omega",
+      "Mw",
+      "Tb",
+      "Antoine_A",
+      "Antoine_B",
+      "Antoine_C"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Benzene (C6H6)",
+      "category": "Pure Component",
+      "domain": "process",
+      "description": "Pure component benzene critical constants and NIST WebBook Antoine vapor pressure correlation.",
+      "provenance": "NIST Chemistry WebBook SRD 69 (CAS 71-43-2); Poling, Prausnitz & O'Connell (5th ed.)",
+      "aliases": [
+        "BENZENE",
+        "C6H6",
+        "71-43-2"
+      ],
+      "parameters": [
+        {
+          "key": "Tc",
+          "type": "real",
+          "defaultValue": 562.05,
+          "unit": "K",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "Pc",
+          "type": "real",
+          "defaultValue": 4895000,
+          "unit": "Pa",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.2103,
+          "unit": "1",
+          "description": "Pitzer acentric factor"
+        },
+        {
+          "key": "Mw",
+          "type": "real",
+          "defaultValue": 78.1118,
+          "unit": "kg/kmol",
+          "description": "Molecular weight"
+        },
+        {
+          "key": "Tb",
+          "type": "real",
+          "defaultValue": 353.24,
+          "unit": "K",
+          "description": "Normal boiling point"
+        },
+        {
+          "key": "Antoine_A",
+          "type": "real",
+          "defaultValue": 4.01814,
+          "unit": "1",
+          "description": "Antoine A (log10 P_bar)"
+        },
+        {
+          "key": "Antoine_B",
+          "type": "real",
+          "defaultValue": 1203.835,
+          "unit": "K",
+          "description": "Antoine B"
+        },
+        {
+          "key": "Antoine_C",
+          "type": "real",
+          "defaultValue": -53.226,
+          "unit": "K",
+          "description": "Antoine C"
+        }
+      ],
+      "wasmKernel": "COMP_BENZENE",
+      "archetypeId": 60
+    }
+  }
+]

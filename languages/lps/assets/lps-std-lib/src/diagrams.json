@@ -1,0 +1,681 @@
+[
+  {
+    "namePath": "lps:PIPE_GAS",
+    "aliases": [
+      "pipe_gas",
+      "gas_pipe",
+      "tgnet_pipe",
+      "PIPE"
+    ],
+    "label": "Compressible Gas Pipeline Segment",
+    "category": "Pipeline",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><line x1=\"12\" y1=\"24\" x2=\"68\" y2=\"24\" stroke=\"#60a5fa\" stroke-width=\"2.2\" stroke-opacity=\"0.45\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">PIPE</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">PIPE GAS</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:PIPE_LIQUID",
+    "aliases": [
+      "pipe_liquid",
+      "liquid_pipe",
+      "tlnet_pipe"
+    ],
+    "label": "Incompressible Liquid Pipeline & Surge Segment",
+    "category": "Pipeline",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><line x1=\"12\" y1=\"24\" x2=\"68\" y2=\"24\" stroke=\"#60a5fa\" stroke-width=\"2.2\" stroke-opacity=\"0.45\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">PIPE</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">PIPE LIQUI</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:COMPRESSOR_CENTRIFUGAL",
+    "aliases": [
+      "compressor_centrifugal",
+      "centrifugal_compressor",
+      "COMP",
+      "CS"
+    ],
+    "label": "Centrifugal Gas Compressor Station",
+    "category": "Machinery",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><circle cx=\"62\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.3\" stroke-opacity=\"0.6\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">MACH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">COMPRESSOR</text></svg>",
+    "ports": [
+      {
+        "name": "suction",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "discharge",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "lps:COMPRESSOR_RECIP",
+    "aliases": [
+      "compressor_recip",
+      "reciprocating_compressor",
+      "RECIP"
+    ],
+    "label": "Reciprocating Gas Compressor Station",
+    "category": "Machinery",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><circle cx=\"62\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.3\" stroke-opacity=\"0.6\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">MACH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">COMPRESSOR</text></svg>",
+    "ports": [
+      {
+        "name": "suction",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "discharge",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "lps:PUMP_CENTRIFUGAL",
+    "aliases": [
+      "pump_centrifugal",
+      "centrifugal_pump",
+      "PUMP"
+    ],
+    "label": "Centrifugal Liquid Booster Pump",
+    "category": "Machinery",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><circle cx=\"62\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.3\" stroke-opacity=\"0.6\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">MACH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">PUMP CENTR</text></svg>",
+    "ports": [
+      {
+        "name": "suction",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "discharge",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "lps:REGULATOR_PRESSURE",
+    "aliases": [
+      "regulator_pressure",
+      "pressure_regulator",
+      "REG",
+      "PRV"
+    ],
+    "label": "Pressure Reducing Regulator",
+    "category": "Valve / Regulator",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><polygon points=\"56,10 68,18 68,10 56,18\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.2\" stroke-opacity=\"0.6\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">VLV</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">REGULATOR </text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:VALVE_CONTROL",
+    "aliases": [
+      "valve_control",
+      "control_valve",
+      "FCV",
+      "PCV"
+    ],
+    "label": "Throttling Control Valve",
+    "category": "Valve / Regulator",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><polygon points=\"56,10 68,18 68,10 56,18\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.2\" stroke-opacity=\"0.6\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">VLV</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">VALVE CONT</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:VALVE_CHECK",
+    "aliases": [
+      "valve_check",
+      "check_valve",
+      "NRV"
+    ],
+    "label": "Non-Return Check Valve",
+    "category": "Valve / Regulator",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><polygon points=\"56,10 68,18 68,10 56,18\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.2\" stroke-opacity=\"0.6\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">VLV</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">VALVE CHEC</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:VALVE_BLOCK",
+    "aliases": [
+      "valve_block",
+      "block_valve",
+      "ESD_VALVE",
+      "BV"
+    ],
+    "label": "Mainline Isolation / ESD Block Valve",
+    "category": "Valve / Regulator",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><polygon points=\"56,10 68,18 68,10 56,18\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.2\" stroke-opacity=\"0.6\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">VLV</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">VALVE BLOC</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:HEATER_GAS",
+    "aliases": [
+      "heater_gas",
+      "gas_heater",
+      "PREHEATER",
+      "HEATER"
+    ],
+    "label": "Inline Gas Pre-Heater",
+    "category": "Thermal",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f87171\">THRM</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">HEATER GAS</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:COOLER_GAS",
+    "aliases": [
+      "cooler_gas",
+      "gas_cooler",
+      "AFTERCOOLER",
+      "COOLER"
+    ],
+    "label": "Compressor Discharge Gas Aftercooler",
+    "category": "Thermal",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f87171\">THRM</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">COOLER GAS</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:TANK_STORAGE",
+    "aliases": [
+      "tank_storage",
+      "storage_tank",
+      "TANK"
+    ],
+    "label": "Atmospheric Liquid Storage Tank",
+    "category": "Storage / Surge",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"57\" y=\"8\" width=\"12\" height=\"12\" rx=\"3\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.2\" stroke-opacity=\"0.6\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">STOR</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">TANK STORA</text></svg>",
+    "ports": [
+      {
+        "name": "nozzle",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "vent",
+        "kind": "fluid",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "lps:SURGE_VESSEL",
+    "aliases": [
+      "surge_vessel",
+      "surge_tank",
+      "ACCUMULATOR"
+    ],
+    "label": "Gas-Cushioned Hydraulic Surge Vessel",
+    "category": "Storage / Surge",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"57\" y=\"8\" width=\"12\" height=\"12\" rx=\"3\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.2\" stroke-opacity=\"0.6\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">STOR</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">SURGE VESS</text></svg>",
+    "ports": [
+      {
+        "name": "nozzle",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "vent",
+        "kind": "fluid",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "lps:SUPPLY_NODE",
+    "aliases": [
+      "supply_node",
+      "supply",
+      "SOURCE",
+      "RECEIPT"
+    ],
+    "label": "Pipeline Supply / Receipt Boundary",
+    "category": "Boundary Node",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#818cf8\">NODE</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">SUPPLY NOD</text></svg>",
+    "ports": [
+      {
+        "name": "port",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:DELIVERY_NODE",
+    "aliases": [
+      "delivery_node",
+      "delivery",
+      "SINK",
+      "DEMAND"
+    ],
+    "label": "Pipeline Delivery / Offtake Boundary",
+    "category": "Boundary Node",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#818cf8\">NODE</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">DELIVERY N</text></svg>",
+    "ports": [
+      {
+        "name": "port",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:EOS_AGA8",
+    "aliases": [
+      "eos_aga8",
+      "AGA8",
+      "AGA-8",
+      "aga8_detail"
+    ],
+    "label": "AGA-8 / ISO 20765-1 Natural Gas EOS",
+    "category": "Gas EOS",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">EOS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">EOS AGA8</text></svg>",
+    "ports": [
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:EOS_GERG2008",
+    "aliases": [
+      "eos_gerg2008",
+      "GERG2008",
+      "GERG-2008",
+      "ISO20765-2"
+    ],
+    "label": "GERG-2008 / ISO 20765-2 Wide-Range Gas EOS",
+    "category": "Gas EOS",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">EOS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">EOS GERG20</text></svg>",
+    "ports": [
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:EOS_PENG_ROBINSON",
+    "aliases": [
+      "eos_peng_robinson",
+      "PENG_ROBINSON",
+      "PR_EOS",
+      "PR76"
+    ],
+    "label": "Peng-Robinson Cubic Equation of State",
+    "category": "Gas EOS",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">EOS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">EOS PENG R</text></svg>",
+    "ports": [
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:LIQUID_CRUDE",
+    "aliases": [
+      "liquid_crude",
+      "CRUDE_OIL",
+      "CRUDE"
+    ],
+    "label": "Crude Oil Liquid Property Standard",
+    "category": "Liquid Fluid",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">LIQ</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">LIQUID CRU</text></svg>",
+    "ports": [
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:LIQUID_DIESEL",
+    "aliases": [
+      "liquid_diesel",
+      "DIESEL",
+      "ULSD"
+    ],
+    "label": "Ultra-Low Sulfur Diesel Fluid Standard",
+    "category": "Liquid Fluid",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">LIQ</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">LIQUID DIE</text></svg>",
+    "ports": [
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:LIQUID_GASOLINE",
+    "aliases": [
+      "liquid_gasoline",
+      "GASOLINE",
+      "MOGAS"
+    ],
+    "label": "Motor Gasoline Fluid Standard",
+    "category": "Liquid Fluid",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">LIQ</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">LIQUID GAS</text></svg>",
+    "ports": [
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "lps:LIQUID_WATER",
+    "aliases": [
+      "liquid_water",
+      "WATER",
+      "H2O"
+    ],
+    "label": "Liquid Water Fluid Standard (IAPWS-95)",
+    "category": "Liquid Fluid",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">LIQ</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">LIQUID WAT</text></svg>",
+    "ports": [
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  }
+]

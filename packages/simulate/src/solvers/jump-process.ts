@@ -23,7 +23,8 @@
  *   the tau-leaping simulation method." The Journal of Chemical Physics, 124(4), 044109.
  */
 
-import { Xoshiro256pp } from "@modelscript/runtime/wasm_monte_carlo.js";
+import { Xoshiro256pp } from "../uq/monte-carlo.js";
+import { getSimulateWasmSync } from "../wasm/simulate-wasm.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public Types & Interfaces
@@ -38,6 +39,8 @@ export interface JumpReactionChannel {
   propensity: (state: readonly number[], t: number) => number;
   /** Optional reactant stoichiometry metadata used by Cao-Gillespie-Petzold adaptive $\tau$-leaping. */
   reactants?: readonly { speciesIndex: number; count: number }[] | undefined;
+  /** Internal rate constant for mass-action channels eligible for the simulate.wasm SSA fast-path. */
+  _massActionRate?: number | undefined;
 }
 
 export interface MassActionChannelSpec {
@@ -121,6 +124,7 @@ export function massActionChannel(spec: MassActionChannelSpec): JumpReactionChan
     name: spec.name,
     netStoichiometry: net,
     reactants: spec.reactants,
+    _massActionRate: spec.rate,
     propensity: (state: readonly number[]): number => {
       let rate = spec.rate;
       for (const r of spec.reactants) {
@@ -182,6 +186,121 @@ export function gillespieSSA(problem: JumpProblem, options: JumpOptions = {}): J
   const maxSteps = options.maxSteps ?? 500000;
   const dtSave = options.dtSave;
   const seed = options.seed ?? problem.seed ?? 42;
+
+  // Fast-path: run full Gillespie Direct Method in simulate.wasm linear memory for mass-action networks
+  if (
+    dtSave !== undefined &&
+    dtSave > 0 &&
+    n > 0 &&
+    M > 0 &&
+    problem.channels.every((ch) => ch._massActionRate !== undefined && ch.reactants !== undefined)
+  ) {
+    const w = getSimulateWasmSync();
+    if (w) {
+      const numOutputs = Math.max(2, Math.floor((tEnd - t0) / dtSave) + 1);
+      const reactRow = new Int32Array(M + 1);
+      const reactSpList: number[] = [];
+      const reactOrdList: number[] = [];
+      const stoichRow = new Int32Array(M + 1);
+      const stoichSpList: number[] = [];
+      const stoichDelList: number[] = [];
+      const rates = new Float64Array(M);
+
+      for (let j = 0; j < M; j++) {
+        const ch = problem.channels[j]!;
+        rates[j] = ch._massActionRate!;
+        reactRow[j] = reactSpList.length;
+        for (const r of ch.reactants!) {
+          reactSpList.push(r.speciesIndex);
+          reactOrdList.push(r.count);
+        }
+        stoichRow[j] = stoichSpList.length;
+        for (let s = 0; s < ch.netStoichiometry.length; s++) {
+          const d = ch.netStoichiometry[s]!;
+          if (d !== 0) {
+            stoichSpList.push(s);
+            stoichDelList.push(d);
+          }
+        }
+      }
+      reactRow[M] = reactSpList.length;
+      stoichRow[M] = stoichSpList.length;
+
+      const initPtr = w.alloc(n * 8);
+      const ratePtr = w.alloc(M * 8);
+      const rRowPtr = w.alloc((M + 1) * 4);
+      const rSpPtr = w.alloc(Math.max(4, reactSpList.length * 4));
+      const rOrdPtr = w.alloc(Math.max(4, reactOrdList.length * 4));
+      const sRowPtr = w.alloc((M + 1) * 4);
+      const sSpPtr = w.alloc(Math.max(4, stoichSpList.length * 4));
+      const sDelPtr = w.alloc(Math.max(8, stoichDelList.length * 8));
+      const outTPtr = w.alloc(numOutputs * 8);
+      const outXPtr = w.alloc(numOutputs * n * 8);
+
+      try {
+        new Float64Array(w.memory.buffer, initPtr, n).set(problem.u0);
+        new Float64Array(w.memory.buffer, ratePtr, M).set(rates);
+        new Int32Array(w.memory.buffer, rRowPtr, M + 1).set(reactRow);
+        if (reactSpList.length > 0) {
+          new Int32Array(w.memory.buffer, rSpPtr, reactSpList.length).set(reactSpList);
+          new Int32Array(w.memory.buffer, rOrdPtr, reactOrdList.length).set(reactOrdList);
+        }
+        new Int32Array(w.memory.buffer, sRowPtr, M + 1).set(stoichRow);
+        if (stoichSpList.length > 0) {
+          new Int32Array(w.memory.buffer, sSpPtr, stoichSpList.length).set(stoichSpList);
+          new Float64Array(w.memory.buffer, sDelPtr, stoichDelList.length).set(stoichDelList);
+        }
+
+        const totalReactions = w.ssa_gillespieTrajectory(
+          n,
+          M,
+          initPtr,
+          ratePtr,
+          rRowPtr,
+          rSpPtr,
+          rOrdPtr,
+          sRowPtr,
+          sSpPtr,
+          sDelPtr,
+          t0,
+          tEnd,
+          numOutputs,
+          maxSteps,
+          BigInt(Math.trunc(seed) >>> 0),
+          outTPtr,
+          outXPtr,
+        );
+
+        const tView = new Float64Array(w.memory.buffer, outTPtr, numOutputs);
+        const xView = new Float64Array(w.memory.buffer, outXPtr, numOutputs * n);
+        const times = Array.from(tView);
+        const states: number[][] = new Array(numOutputs);
+        for (let i = 0; i < numOutputs; i++) {
+          const row = new Array<number>(n);
+          for (let s = 0; s < n; s++) row[s] = xView[i * n + s]!;
+          states[i] = row;
+        }
+        return {
+          times,
+          states,
+          totalReactions,
+          channelCounts: new Array<number>(M).fill(0),
+        };
+      } finally {
+        w.free(initPtr);
+        w.free(ratePtr);
+        w.free(rRowPtr);
+        w.free(rSpPtr);
+        w.free(rOrdPtr);
+        w.free(sRowPtr);
+        w.free(sSpPtr);
+        w.free(sDelPtr);
+        w.free(outTPtr);
+        w.free(outXPtr);
+      }
+    }
+  }
+
   const rng = new Xoshiro256pp(seed);
 
   let t = t0;

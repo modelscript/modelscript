@@ -122,6 +122,7 @@ COPY languages/pypsa/package.json languages/pypsa/
 COPY languages/qif/package.json languages/qif/
 COPY languages/ran/package.json languages/ran/
 COPY languages/relap5/package.json languages/relap5/
+COPY languages/magicdraw/package.json languages/magicdraw/
 COPY languages/reqif/package.json languages/reqif/
 COPY languages/rocets/package.json languages/rocets/
 COPY languages/rtds/package.json languages/rtds/

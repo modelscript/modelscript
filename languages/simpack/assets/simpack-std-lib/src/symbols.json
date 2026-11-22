@@ -1,0 +1,1700 @@
+[
+  {
+    "name": "$F_PtP_SpringDamper",
+    "kind": "simpack_element",
+    "namePath": "simpack:$F_PtP_SpringDamper",
+    "exports": [
+      "k",
+      "c",
+      "l0",
+      "f0",
+      "k3"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Point-to-Point Spring-Damper",
+      "category": "Force Element",
+      "domain": "mechanical",
+      "description": "Uniaxial point-to-point linear/cubic spring and viscous damper force element with preload.",
+      "provenance": "Classical Kelvin-Voigt viscoelastic element; Shabana, Dynamics of Multibody Systems (4th ed.)",
+      "aliases": [
+        "PtP_SpringDamper",
+        "FE5",
+        "SpringDamper"
+      ],
+      "parameters": [
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 25000,
+          "unit": "N/m",
+          "description": "Linear stiffness"
+        },
+        {
+          "key": "c",
+          "type": "real",
+          "defaultValue": 1500,
+          "unit": "N*s/m",
+          "description": "Viscous damping coefficient"
+        },
+        {
+          "key": "l0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Undeformed free length"
+        },
+        {
+          "key": "f0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N",
+          "description": "Static preload force"
+        },
+        {
+          "key": "k3",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N/m^3",
+          "description": "Cubic progressive stiffness"
+        }
+      ],
+      "wasmKernel": "$F_PtP_SpringDamper",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "$F_Cmp_Bushing",
+    "kind": "simpack_element",
+    "namePath": "simpack:$F_Cmp_Bushing",
+    "exports": [
+      "kx",
+      "ky",
+      "kz",
+      "cx",
+      "cy",
+      "cz",
+      "fMaxHyst",
+      "x2Hyst"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "6-DOF Elastomer Bushing",
+      "category": "Force Element",
+      "domain": "mechanical",
+      "description": "Six-degree-of-freedom translational and rotational elastomer bushing with Berg hysteresis parameters.",
+      "provenance": "Berg, M. (1998), A non-linear rubber spring model for rail vehicle dynamics analysis, Vehicle System Dynamics 30(3-4)",
+      "aliases": [
+        "Cmp_Bushing",
+        "FE43",
+        "Bushing6DOF"
+      ],
+      "parameters": [
+        {
+          "key": "kx",
+          "type": "real",
+          "defaultValue": 1500000,
+          "unit": "N/m",
+          "description": "Longitudinal stiffness"
+        },
+        {
+          "key": "ky",
+          "type": "real",
+          "defaultValue": 1500000,
+          "unit": "N/m",
+          "description": "Lateral stiffness"
+        },
+        {
+          "key": "kz",
+          "type": "real",
+          "defaultValue": 3000000,
+          "unit": "N/m",
+          "description": "Vertical stiffness"
+        },
+        {
+          "key": "cx",
+          "type": "real",
+          "defaultValue": 2500,
+          "unit": "N*s/m",
+          "description": "Longitudinal viscous damping"
+        },
+        {
+          "key": "cy",
+          "type": "real",
+          "defaultValue": 2500,
+          "unit": "N*s/m",
+          "description": "Lateral viscous damping"
+        },
+        {
+          "key": "cz",
+          "type": "real",
+          "defaultValue": 4000,
+          "unit": "N*s/m",
+          "description": "Vertical viscous damping"
+        },
+        {
+          "key": "fMaxHyst",
+          "type": "real",
+          "defaultValue": 1200,
+          "unit": "N",
+          "description": "Berg friction hysteresis saturation force"
+        },
+        {
+          "key": "x2Hyst",
+          "type": "real",
+          "defaultValue": 0.002,
+          "unit": "m",
+          "description": "Berg half-saturation displacement"
+        }
+      ],
+      "wasmKernel": "$F_Cmp_Bushing",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "$F_Cmp_Bumpstop",
+    "kind": "simpack_element",
+    "namePath": "simpack:$F_Cmp_Bumpstop",
+    "exports": [
+      "clearance",
+      "kLin",
+      "kExp",
+      "expN",
+      "c"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Nonlinear Progressive Bumpstop",
+      "category": "Force Element",
+      "domain": "mechanical",
+      "description": "Unilateral clearance-gap rubber bumpstop with progressive power-law stiffness and asymmetric damping.",
+      "provenance": "ISO 2631 / UIC 518 secondary suspension lateral/vertical progressive end-stop formulation",
+      "aliases": [
+        "Cmp_Bumpstop",
+        "FE18",
+        "Bumpstop"
+      ],
+      "parameters": [
+        {
+          "key": "clearance",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "m",
+          "description": "Free travel clearance gap before contact"
+        },
+        {
+          "key": "kLin",
+          "type": "real",
+          "defaultValue": 50000,
+          "unit": "N/m",
+          "description": "Initial contact linear stiffness"
+        },
+        {
+          "key": "kExp",
+          "type": "real",
+          "defaultValue": 25000000,
+          "unit": "N/m^n",
+          "description": "Progressive nonlinear stiffness coefficient"
+        },
+        {
+          "key": "expN",
+          "type": "real",
+          "defaultValue": 2.5,
+          "unit": "-",
+          "description": "Power-law stiffening exponent"
+        },
+        {
+          "key": "c",
+          "type": "real",
+          "defaultValue": 3000,
+          "unit": "N*s/m",
+          "description": "Contact compression damping"
+        }
+      ],
+      "wasmKernel": "$F_Cmp_Bumpstop",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "$F_Cmp_Friction",
+    "kind": "simpack_element",
+    "namePath": "simpack:$F_Cmp_Friction",
+    "exports": [
+      "muS",
+      "muK",
+      "vStribeck",
+      "cVisc",
+      "vEps"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Stribeck Dry Friction Element",
+      "category": "Force Element",
+      "domain": "mechanical",
+      "description": "Smooth Stribeck dry friction model combining static breakaway, Coulomb sliding, and viscous damping.",
+      "provenance": "Armstrong-Helouvry, Dupont & Canudas de Wit (1994), Automatica 30(7): A Survey of Models, Analysis Tools and Compensation Methods for the Control of Machines with Friction",
+      "aliases": [
+        "Cmp_Friction",
+        "FE19",
+        "StribeckFriction"
+      ],
+      "parameters": [
+        {
+          "key": "muS",
+          "type": "real",
+          "defaultValue": 0.35,
+          "unit": "-",
+          "description": "Static friction coefficient"
+        },
+        {
+          "key": "muK",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "-",
+          "description": "Kinetic (Coulomb) friction coefficient"
+        },
+        {
+          "key": "vStribeck",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "m/s",
+          "description": "Stribeck characteristic velocity"
+        },
+        {
+          "key": "cVisc",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "N*s/m",
+          "description": "Viscous friction coefficient"
+        },
+        {
+          "key": "vEps",
+          "type": "real",
+          "defaultValue": 0.005,
+          "unit": "m/s",
+          "description": "Hyperbolic tangent smoothing velocity"
+        }
+      ],
+      "wasmKernel": "$F_Cmp_Friction",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "$F_Cmp_Hydromount",
+    "kind": "simpack_element",
+    "namePath": "simpack:$F_Cmp_Hydromount",
+    "exports": [
+      "kMain",
+      "cMain",
+      "kBulge",
+      "mFluid",
+      "cTrack"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hydraulic Engine / Cab Mount",
+      "category": "Force Element",
+      "domain": "mechanical",
+      "description": "Frequency-dependent lumped-parameter hydraulic mount with rubber main spring and inertia track fluid column.",
+      "provenance": "Flower, W. C. (1985), SAE Technical Paper 850975: Understanding Hydraulic Mounts for Improved Vehicle Noise, Vibration and Ride Qualities",
+      "aliases": [
+        "Cmp_Hydromount",
+        "FE45",
+        "Hydromount"
+      ],
+      "parameters": [
+        {
+          "key": "kMain",
+          "type": "real",
+          "defaultValue": 180000,
+          "unit": "N/m",
+          "description": "Main elastomer stiffness"
+        },
+        {
+          "key": "cMain",
+          "type": "real",
+          "defaultValue": 450,
+          "unit": "N*s/m",
+          "description": "Main elastomer damping"
+        },
+        {
+          "key": "kBulge",
+          "type": "real",
+          "defaultValue": 450000,
+          "unit": "N/m",
+          "description": "Upper chamber volumetric bulge stiffness"
+        },
+        {
+          "key": "mFluid",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "kg",
+          "description": "Effective inertia track fluid mass"
+        },
+        {
+          "key": "cTrack",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "N*s/m",
+          "description": "Inertia track flow resistance damping"
+        }
+      ],
+      "wasmKernel": "$F_Cmp_Hydromount",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "$F_Cmp_AirSpring",
+    "kind": "simpack_element",
+    "namePath": "simpack:$F_Cmp_AirSpring",
+    "exports": [
+      "p0",
+      "pAtm",
+      "area",
+      "vol0",
+      "gamma",
+      "cOrifice"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Polytropic Pneumatic Air Spring",
+      "category": "Force Element",
+      "domain": "mechanical",
+      "description": "Thermodynamic polytropic pneumatic air spring with effective piston area, gas volume, and orifice damping.",
+      "provenance": "Berg, M. (1999), A Three-Dimensional Airspring Model with Friction and Orifice Damping, Vehicle System Dynamics 33(sup1); UIC 518",
+      "aliases": [
+        "Cmp_AirSpring",
+        "FE84",
+        "AirSpring"
+      ],
+      "parameters": [
+        {
+          "key": "p0",
+          "type": "real",
+          "defaultValue": 450000,
+          "unit": "Pa",
+          "description": "Nominal gauge pressure"
+        },
+        {
+          "key": "pAtm",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Ambient atmospheric pressure"
+        },
+        {
+          "key": "area",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "m^2",
+          "description": "Effective pneumatic piston area"
+        },
+        {
+          "key": "vol0",
+          "type": "real",
+          "defaultValue": 0.04,
+          "unit": "m^3",
+          "description": "Nominal air + reservoir volume"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.38,
+          "unit": "-",
+          "description": "Polytropic gas exponent (1.0 isothermal .. 1.4 adiabatic)"
+        },
+        {
+          "key": "cOrifice",
+          "type": "real",
+          "defaultValue": 8000,
+          "unit": "N*s/m",
+          "description": "Surge-pipe orifice damping coefficient"
+        }
+      ],
+      "wasmKernel": "$F_Cmp_AirSpring",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "$F_Gear_Mesh",
+    "kind": "simpack_element",
+    "namePath": "simpack:$F_Gear_Mesh",
+    "exports": [
+      "kMesh",
+      "cMesh",
+      "backlash",
+      "rBase"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Involute Gear Pair Mesh",
+      "category": "Force Element",
+      "domain": "mechanical",
+      "description": "Involute spur/helical gear tooth mesh compliance with backlash deadzone and viscous mesh damping.",
+      "provenance": "ISO 6336-1:2019 Calculation of load capacity of spur and helical gears — Basic principles and mesh stiffness",
+      "aliases": [
+        "Gear_Mesh",
+        "FE225",
+        "GearPair"
+      ],
+      "parameters": [
+        {
+          "key": "kMesh",
+          "type": "real",
+          "defaultValue": 250000000,
+          "unit": "N/m",
+          "description": "Mean gear tooth mesh stiffness"
+        },
+        {
+          "key": "cMesh",
+          "type": "real",
+          "defaultValue": 15000,
+          "unit": "N*s/m",
+          "description": "Gear mesh viscous damping"
+        },
+        {
+          "key": "backlash",
+          "type": "real",
+          "defaultValue": 0.0001,
+          "unit": "m",
+          "description": "Half-backlash clearance along line of action"
+        },
+        {
+          "key": "rBase",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "m",
+          "description": "Base circle radius for torque arm"
+        }
+      ],
+      "wasmKernel": "$F_Gear_Mesh",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "$F_Bearing_Roller",
+    "kind": "simpack_element",
+    "namePath": "simpack:$F_Bearing_Roller",
+    "exports": [
+      "kHertz",
+      "clearance",
+      "cDamp",
+      "expN"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hertzian Rolling-Element Bearing",
+      "category": "Force Element",
+      "domain": "mechanical",
+      "description": "Nonlinear Hertzian load-deflection rolling bearing force element with radial internal clearance.",
+      "provenance": "Harris, T. A. & Kotzalas, M. N. (2006), Rolling Bearing Analysis (5th ed.); ISO 281",
+      "aliases": [
+        "Bearing_Roller",
+        "FE88",
+        "RollerBearing"
+      ],
+      "parameters": [
+        {
+          "key": "kHertz",
+          "type": "real",
+          "defaultValue": 12000000000,
+          "unit": "N/m^1.5",
+          "description": "Hertzian contact stiffness coefficient"
+        },
+        {
+          "key": "clearance",
+          "type": "real",
+          "defaultValue": 0.00002,
+          "unit": "m",
+          "description": "Radial internal clearance"
+        },
+        {
+          "key": "cDamp",
+          "type": "real",
+          "defaultValue": 2500,
+          "unit": "N*s/m",
+          "description": "Lubricant film viscous damping"
+        },
+        {
+          "key": "expN",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "-",
+          "description": "Contact load-deflection exponent (1.5 ball, 1.11 roller)"
+        }
+      ],
+      "wasmKernel": "$F_Bearing_Roller",
+      "archetypeId": 8
+    }
+  },
+  {
+    "name": "$J_Revolute",
+    "kind": "simpack_element",
+    "namePath": "simpack:$J_Revolute",
+    "exports": [
+      "kPen",
+      "cPen",
+      "alpha",
+      "beta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Revolute Joint (1-DOF)",
+      "category": "Joint",
+      "domain": "mechanical",
+      "description": "Single-axis rotational joint constraining 3 translations and 2 rotations.",
+      "provenance": "Haug, E. J. (1989), Computer-Aided Kinematics and Dynamics of Mechanical Systems; Baumgarte (1972)",
+      "aliases": [
+        "Revolute",
+        "Joint2",
+        "RevJoint"
+      ],
+      "parameters": [
+        {
+          "key": "kPen",
+          "type": "real",
+          "defaultValue": 100000000,
+          "unit": "N/m",
+          "description": "Constraint stabilization penalty stiffness"
+        },
+        {
+          "key": "cPen",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N*s/m",
+          "description": "Constraint stabilization penalty damping"
+        },
+        {
+          "key": "alpha",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "1/s",
+          "description": "Baumgarte position stabilization parameter"
+        },
+        {
+          "key": "beta",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "1/s",
+          "description": "Baumgarte velocity stabilization parameter"
+        }
+      ],
+      "wasmKernel": "$J_Revolute",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "$J_Prismatic",
+    "kind": "simpack_element",
+    "namePath": "simpack:$J_Prismatic",
+    "exports": [
+      "kPen",
+      "cPen",
+      "alpha",
+      "beta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Prismatic Joint (1-DOF)",
+      "category": "Joint",
+      "domain": "mechanical",
+      "description": "Single-axis translational sliding joint constraining 2 transverse translations and 3 rotations.",
+      "provenance": "Haug, E. J. (1989), Computer-Aided Kinematics and Dynamics of Mechanical Systems; Baumgarte (1972)",
+      "aliases": [
+        "Prismatic",
+        "Joint1",
+        "TransJoint"
+      ],
+      "parameters": [
+        {
+          "key": "kPen",
+          "type": "real",
+          "defaultValue": 100000000,
+          "unit": "N/m",
+          "description": "Constraint stabilization penalty stiffness"
+        },
+        {
+          "key": "cPen",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N*s/m",
+          "description": "Constraint stabilization penalty damping"
+        },
+        {
+          "key": "alpha",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "1/s",
+          "description": "Baumgarte position stabilization parameter"
+        },
+        {
+          "key": "beta",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "1/s",
+          "description": "Baumgarte velocity stabilization parameter"
+        }
+      ],
+      "wasmKernel": "$J_Prismatic",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "$J_Spherical",
+    "kind": "simpack_element",
+    "namePath": "simpack:$J_Spherical",
+    "exports": [
+      "kPen",
+      "cPen",
+      "alpha",
+      "beta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Spherical / Ball Joint (3-DOF)",
+      "category": "Joint",
+      "domain": "mechanical",
+      "description": "Three-DOF rotational ball-and-socket joint constraining all 3 relative translations.",
+      "provenance": "Haug, E. J. (1989), Computer-Aided Kinematics and Dynamics of Mechanical Systems",
+      "aliases": [
+        "Spherical",
+        "Joint5",
+        "BallJoint"
+      ],
+      "parameters": [
+        {
+          "key": "kPen",
+          "type": "real",
+          "defaultValue": 100000000,
+          "unit": "N/m",
+          "description": "Translational constraint penalty stiffness"
+        },
+        {
+          "key": "cPen",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N*s/m",
+          "description": "Translational constraint penalty damping"
+        },
+        {
+          "key": "alpha",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "1/s",
+          "description": "Baumgarte position stabilization parameter"
+        },
+        {
+          "key": "beta",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "1/s",
+          "description": "Baumgarte velocity stabilization parameter"
+        }
+      ],
+      "wasmKernel": "$J_Spherical",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "$J_Universal",
+    "kind": "simpack_element",
+    "namePath": "simpack:$J_Universal",
+    "exports": [
+      "kPen",
+      "cPen",
+      "alpha",
+      "beta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Universal / Cardan Joint (2-DOF)",
+      "category": "Joint",
+      "domain": "mechanical",
+      "description": "Two-DOF orthogonal-axis universal (Hooke/Cardan) joint constraining 3 translations and 1 axial spin.",
+      "provenance": "Shabana, A. A. (2013), Dynamics of Multibody Systems (4th ed.)",
+      "aliases": [
+        "Universal",
+        "Joint3",
+        "HookeJoint",
+        "CardanJoint"
+      ],
+      "parameters": [
+        {
+          "key": "kPen",
+          "type": "real",
+          "defaultValue": 100000000,
+          "unit": "N/m",
+          "description": "Constraint penalty stiffness"
+        },
+        {
+          "key": "cPen",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N*s/m",
+          "description": "Constraint penalty damping"
+        },
+        {
+          "key": "alpha",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "1/s",
+          "description": "Baumgarte position stabilization parameter"
+        },
+        {
+          "key": "beta",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "1/s",
+          "description": "Baumgarte velocity stabilization parameter"
+        }
+      ],
+      "wasmKernel": "$J_Universal",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "$J_Cylindrical",
+    "kind": "simpack_element",
+    "namePath": "simpack:$J_Cylindrical",
+    "exports": [
+      "kPen",
+      "cPen",
+      "alpha",
+      "beta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cylindrical Joint (2-DOF)",
+      "category": "Joint",
+      "domain": "mechanical",
+      "description": "Two-DOF joint permitting coaxial translation and rotation while constraining 4 orthogonal DOFs.",
+      "provenance": "Haug, E. J. (1989), Computer-Aided Kinematics and Dynamics of Mechanical Systems",
+      "aliases": [
+        "Cylindrical",
+        "Joint4",
+        "CylJoint"
+      ],
+      "parameters": [
+        {
+          "key": "kPen",
+          "type": "real",
+          "defaultValue": 100000000,
+          "unit": "N/m",
+          "description": "Constraint penalty stiffness"
+        },
+        {
+          "key": "cPen",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N*s/m",
+          "description": "Constraint penalty damping"
+        },
+        {
+          "key": "alpha",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "1/s",
+          "description": "Baumgarte position stabilization parameter"
+        },
+        {
+          "key": "beta",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "1/s",
+          "description": "Baumgarte velocity stabilization parameter"
+        }
+      ],
+      "wasmKernel": "$J_Cylindrical",
+      "archetypeId": 24
+    }
+  },
+  {
+    "name": "$J_Planar",
+    "kind": "simpack_element",
+    "namePath": "simpack:$J_Planar",
+    "exports": [
+      "kPen",
+      "cPen",
+      "alpha",
+      "beta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Planar Joint (3-DOF)",
+      "category": "Joint",
+      "domain": "mechanical",
+      "description": "Three-DOF planar motion joint permitting 2 in-plane translations and 1 normal rotation.",
+      "provenance": "Shabana, A. A. (2013), Dynamics of Multibody Systems (4th ed.)",
+      "aliases": [
+        "Planar",
+        "Joint6",
+        "PlanarJoint"
+      ],
+      "parameters": [
+        {
+          "key": "kPen",
+          "type": "real",
+          "defaultValue": 100000000,
+          "unit": "N/m",
+          "description": "Out-of-plane constraint penalty stiffness"
+        },
+        {
+          "key": "cPen",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N*s/m",
+          "description": "Out-of-plane constraint penalty damping"
+        },
+        {
+          "key": "alpha",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "1/s",
+          "description": "Baumgarte position stabilization parameter"
+        },
+        {
+          "key": "beta",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "1/s",
+          "description": "Baumgarte velocity stabilization parameter"
+        }
+      ],
+      "wasmKernel": "$J_Planar",
+      "archetypeId": 25
+    }
+  },
+  {
+    "name": "$J_General6DOF",
+    "kind": "simpack_element",
+    "namePath": "simpack:$J_General6DOF",
+    "exports": [
+      "kPen",
+      "cPen"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "General 6-DOF Floating Joint",
+      "category": "Joint",
+      "domain": "mechanical",
+      "description": "Unconstrained 6-DOF free-body relative coordinate joint (3 translations + 3 Cardan/Euler angles).",
+      "provenance": "Featherstone, R. (2008), Rigid Body Dynamics Algorithms",
+      "aliases": [
+        "General6DOF",
+        "Joint7",
+        "FreeJoint"
+      ],
+      "parameters": [
+        {
+          "key": "kPen",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N/m",
+          "description": "Optional soft tether stiffness"
+        },
+        {
+          "key": "cPen",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N*s/m",
+          "description": "Optional soft tether damping"
+        }
+      ],
+      "wasmKernel": "$J_General6DOF",
+      "archetypeId": 26
+    }
+  },
+  {
+    "name": "$J_TrackJoint",
+    "kind": "simpack_element",
+    "namePath": "simpack:$J_TrackJoint",
+    "exports": [
+      "gauge",
+      "cant",
+      "curveRadius",
+      "grade"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Railway Curvilinear Track Joint",
+      "category": "Joint",
+      "domain": "mechanical",
+      "description": "6-DOF railway track-following joint parameterized by arc length s, curvature, cant (superelevation), and grade.",
+      "provenance": "UIC 518 / EN 14363 Testing and approval of railway vehicles; Shabana et al. (2008) Railroad Vehicle Dynamics",
+      "aliases": [
+        "TrackJoint",
+        "Joint9",
+        "RailTrackJoint"
+      ],
+      "parameters": [
+        {
+          "key": "gauge",
+          "type": "real",
+          "defaultValue": 1.435,
+          "unit": "m",
+          "description": "Standard track gauge"
+        },
+        {
+          "key": "cant",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Track superelevation (cant)"
+        },
+        {
+          "key": "curveRadius",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "m",
+          "description": "Horizontal curve radius"
+        },
+        {
+          "key": "grade",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "-",
+          "description": "Longitudinal track gradient"
+        }
+      ],
+      "wasmKernel": "$J_TrackJoint",
+      "archetypeId": 27
+    }
+  },
+  {
+    "name": "$R_WheelRail_Kalker",
+    "kind": "simpack_element",
+    "namePath": "simpack:$R_WheelRail_Kalker",
+    "exports": [
+      "mu",
+      "a",
+      "b",
+      "G",
+      "c11",
+      "c22",
+      "c23",
+      "c33"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Kalker Wheel-Rail Creep Contact",
+      "category": "Rail / Wheel-Rail",
+      "domain": "mechanical",
+      "description": "Kalker linear creepage theory with Vermeulen-Johnson / Coulomb tangential saturation for Hertzian wheel-rail patches.",
+      "provenance": "Kalker, J. J. (1967, 1982, 1990), Three-Dimensional Elastic Bodies in Rolling Contact, Kluwer Academic Publishers",
+      "aliases": [
+        "WheelRail_Kalker",
+        "FASTSIM",
+        "KalkerContact"
+      ],
+      "parameters": [
+        {
+          "key": "mu",
+          "type": "real",
+          "defaultValue": 0.35,
+          "unit": "-",
+          "description": "Coulomb wheel-rail friction coefficient"
+        },
+        {
+          "key": "a",
+          "type": "real",
+          "defaultValue": 0.006,
+          "unit": "m",
+          "description": "Hertzian contact ellipse longitudinal semi-axis"
+        },
+        {
+          "key": "b",
+          "type": "real",
+          "defaultValue": 0.0045,
+          "unit": "m",
+          "description": "Hertzian contact ellipse lateral semi-axis"
+        },
+        {
+          "key": "G",
+          "type": "real",
+          "defaultValue": 81000000000,
+          "unit": "Pa",
+          "description": "Combined steel shear modulus"
+        },
+        {
+          "key": "c11",
+          "type": "real",
+          "defaultValue": 4.12,
+          "unit": "-",
+          "description": "Kalker longitudinal creepage coefficient C11"
+        },
+        {
+          "key": "c22",
+          "type": "real",
+          "defaultValue": 3.67,
+          "unit": "-",
+          "description": "Kalker lateral creepage coefficient C22"
+        },
+        {
+          "key": "c23",
+          "type": "real",
+          "defaultValue": 1.47,
+          "unit": "-",
+          "description": "Kalker lateral-spin creepage coefficient C23"
+        },
+        {
+          "key": "c33",
+          "type": "real",
+          "defaultValue": 1.19,
+          "unit": "-",
+          "description": "Kalker spin creepage coefficient C33"
+        }
+      ],
+      "wasmKernel": "$R_WheelRail_Kalker",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "$R_WheelRail_Polach",
+    "kind": "simpack_element",
+    "namePath": "simpack:$R_WheelRail_Polach",
+    "exports": [
+      "mu0",
+      "A",
+      "B",
+      "kA",
+      "kS",
+      "a",
+      "b",
+      "G",
+      "c11",
+      "c22"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Polach Nonlinear Wheel-Rail Contact",
+      "category": "Rail / Wheel-Rail",
+      "domain": "mechanical",
+      "description": "Polach fast nonlinear wheel-rail creep force law with variable slip-dependent falling friction for traction and curving.",
+      "provenance": "Polach, O. (1999), Vehicle System Dynamics 33(sup1):728-739; Polach, O. (2005), Wear 258(7-8):992-1000",
+      "aliases": [
+        "WheelRail_Polach",
+        "PolachContact",
+        "Polach"
+      ],
+      "parameters": [
+        {
+          "key": "mu0",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "-",
+          "description": "Maximum static friction coefficient at zero slip"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "-",
+          "description": "Ratio of limit friction at infinity to maximum friction"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.6,
+          "unit": "s/m",
+          "description": "Exponential friction decay coefficient"
+        },
+        {
+          "key": "kA",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Reduction factor in adhesion area"
+        },
+        {
+          "key": "kS",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "-",
+          "description": "Reduction factor in slip area"
+        },
+        {
+          "key": "a",
+          "type": "real",
+          "defaultValue": 0.0065,
+          "unit": "m",
+          "description": "Hertzian contact patch longitudinal semi-axis"
+        },
+        {
+          "key": "b",
+          "type": "real",
+          "defaultValue": 0.0045,
+          "unit": "m",
+          "description": "Hertzian contact patch lateral semi-axis"
+        },
+        {
+          "key": "G",
+          "type": "real",
+          "defaultValue": 81000000000,
+          "unit": "Pa",
+          "description": "Combined steel shear modulus"
+        },
+        {
+          "key": "c11",
+          "type": "real",
+          "defaultValue": 4.12,
+          "unit": "-",
+          "description": "Kalker longitudinal coefficient C11"
+        },
+        {
+          "key": "c22",
+          "type": "real",
+          "defaultValue": 3.67,
+          "unit": "-",
+          "description": "Kalker lateral coefficient C22"
+        }
+      ],
+      "wasmKernel": "$R_WheelRail_Polach",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "$R_Track_UIC60",
+    "kind": "simpack_element",
+    "namePath": "simpack:$R_Track_UIC60",
+    "exports": [
+      "crownRadius",
+      "shoulderRadius",
+      "gaugeCornerRadius",
+      "inclination",
+      "headWidth"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "UIC 60 (60E1) Rail Profile",
+      "category": "Rail / Wheel-Rail",
+      "domain": "mechanical",
+      "description": "Standard European UIC 60 / 60E1 rail head profile geometry (R300/R80/R13 crown arcs) with rail inclination.",
+      "provenance": "EN 13674-1:2011+A1:2017 Railway applications — Track — Rail (Profile 60E1 / UIC 60)",
+      "aliases": [
+        "Track_UIC60",
+        "60E1",
+        "UIC60"
+      ],
+      "parameters": [
+        {
+          "key": "crownRadius",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "m",
+          "description": "Primary rail crown radius R300"
+        },
+        {
+          "key": "shoulderRadius",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "m",
+          "description": "Rail shoulder radius R80"
+        },
+        {
+          "key": "gaugeCornerRadius",
+          "type": "real",
+          "defaultValue": 0.013,
+          "unit": "m",
+          "description": "Gauge corner radius R13"
+        },
+        {
+          "key": "inclination",
+          "type": "real",
+          "defaultValue": 0.025,
+          "unit": "rad",
+          "description": "Rail cant / inclination (1:40 = 0.025 rad)"
+        },
+        {
+          "key": "headWidth",
+          "type": "real",
+          "defaultValue": 0.072,
+          "unit": "m",
+          "description": "Nominal rail head width"
+        }
+      ],
+      "wasmKernel": "$R_Track_UIC60",
+      "archetypeId": 42
+    }
+  },
+  {
+    "name": "$R_Wheel_S1002",
+    "kind": "simpack_element",
+    "namePath": "simpack:$R_Wheel_S1002",
+    "exports": [
+      "nominalRadius",
+      "equivConicity",
+      "flangeClearance",
+      "flangeAngleDeg",
+      "wheelWidth"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ORE S1002 Railway Wheel Profile",
+      "category": "Rail / Wheel-Rail",
+      "domain": "mechanical",
+      "description": "Standard ORE S1002 wear-adapted railway wheel tread and 70-degree flange profile with equivalent conicity.",
+      "provenance": "EN 13715:2020 Railway applications — Wheelsets and bogies — Wheels — Tread profile S1002; UIC 510-2",
+      "aliases": [
+        "Wheel_S1002",
+        "S1002",
+        "ORE_S1002"
+      ],
+      "parameters": [
+        {
+          "key": "nominalRadius",
+          "type": "real",
+          "defaultValue": 0.46,
+          "unit": "m",
+          "description": "Nominal wheel rolling radius"
+        },
+        {
+          "key": "equivConicity",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "-",
+          "description": "Nominal equivalent conicity lambda_e on UIC60 1:40"
+        },
+        {
+          "key": "flangeClearance",
+          "type": "real",
+          "defaultValue": 0.007,
+          "unit": "m",
+          "description": "Nominal lateral flangeway clearance"
+        },
+        {
+          "key": "flangeAngleDeg",
+          "type": "real",
+          "defaultValue": 70,
+          "unit": "deg",
+          "description": "Maximum flange face angle"
+        },
+        {
+          "key": "wheelWidth",
+          "type": "real",
+          "defaultValue": 0.135,
+          "unit": "m",
+          "description": "Nominal wheel rim width"
+        }
+      ],
+      "wasmKernel": "$R_Wheel_S1002",
+      "archetypeId": 43
+    }
+  },
+  {
+    "name": "$R_Track_Irregularity",
+    "kind": "simpack_element",
+    "namePath": "simpack:$R_Track_Irregularity",
+    "exports": [
+      "av",
+      "aa",
+      "omegaC",
+      "omegaR",
+      "ampScale"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ERRI B176 Track Irregularity PSD",
+      "category": "Rail / Wheel-Rail",
+      "domain": "mechanical",
+      "description": "Analytic spatial track alignment, vertical longitudinal level, and cross-level irregularity realization from ERRI B176 PSD.",
+      "provenance": "ERRI B176 / ORE B176 RP1 (1989) & UIC 518 / EN 14363 standard track irregularity spectral densities",
+      "aliases": [
+        "Track_Irregularity",
+        "ERRI_B176",
+        "TrackPSD"
+      ],
+      "parameters": [
+        {
+          "key": "av",
+          "type": "real",
+          "defaultValue": 4.032e-7,
+          "unit": "m*rad",
+          "description": "Vertical roughness constant Av (low-level quality)"
+        },
+        {
+          "key": "aa",
+          "type": "real",
+          "defaultValue": 2.119e-7,
+          "unit": "m*rad",
+          "description": "Alignment roughness constant Aa"
+        },
+        {
+          "key": "omegaC",
+          "type": "real",
+          "defaultValue": 0.8246,
+          "unit": "rad/m",
+          "description": "Upper break spatial frequency"
+        },
+        {
+          "key": "omegaR",
+          "type": "real",
+          "defaultValue": 0.0206,
+          "unit": "rad/m",
+          "description": "Lower break spatial frequency"
+        },
+        {
+          "key": "ampScale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Overall irregularity amplitude scaling factor"
+        }
+      ],
+      "wasmKernel": "$R_Track_Irregularity",
+      "archetypeId": 44
+    }
+  },
+  {
+    "name": "$T_Pacejka_MF",
+    "kind": "simpack_element",
+    "namePath": "simpack:$T_Pacejka_MF",
+    "exports": [
+      "Bx",
+      "Cx",
+      "Dx",
+      "Ex",
+      "By",
+      "Cy",
+      "Dy",
+      "Ey",
+      "fzNom",
+      "rEff"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pacejka Magic Formula Tire",
+      "category": "Tire",
+      "domain": "mechanical",
+      "description": "Pacejka Magic Formula 5.2/6.1 combined-slip longitudinal, lateral, and self-aligning pneumatic tire force model.",
+      "provenance": "Pacejka, H. B. (2012), Tire and Vehicle Dynamics (3rd ed.), Butterworth-Heinemann",
+      "aliases": [
+        "Pacejka_MF",
+        "MF52",
+        "MF61",
+        "MagicFormula"
+      ],
+      "parameters": [
+        {
+          "key": "Bx",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "-",
+          "description": "Longitudinal stiffness factor B_x"
+        },
+        {
+          "key": "Cx",
+          "type": "real",
+          "defaultValue": 1.65,
+          "unit": "-",
+          "description": "Longitudinal shape factor C_x"
+        },
+        {
+          "key": "Dx",
+          "type": "real",
+          "defaultValue": 1.05,
+          "unit": "-",
+          "description": "Longitudinal peak friction factor D_x"
+        },
+        {
+          "key": "Ex",
+          "type": "real",
+          "defaultValue": 0.97,
+          "unit": "-",
+          "description": "Longitudinal curvature factor E_x"
+        },
+        {
+          "key": "By",
+          "type": "real",
+          "defaultValue": 8.5,
+          "unit": "-",
+          "description": "Lateral stiffness factor B_y"
+        },
+        {
+          "key": "Cy",
+          "type": "real",
+          "defaultValue": 1.3,
+          "unit": "-",
+          "description": "Lateral shape factor C_y"
+        },
+        {
+          "key": "Dy",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Lateral peak friction factor D_y"
+        },
+        {
+          "key": "Ey",
+          "type": "real",
+          "defaultValue": -1.6,
+          "unit": "-",
+          "description": "Lateral curvature factor E_y"
+        },
+        {
+          "key": "fzNom",
+          "type": "real",
+          "defaultValue": 4000,
+          "unit": "N",
+          "description": "Nominal vertical tire load"
+        },
+        {
+          "key": "rEff",
+          "type": "real",
+          "defaultValue": 0.315,
+          "unit": "m",
+          "description": "Effective rolling radius"
+        }
+      ],
+      "wasmKernel": "$T_Pacejka_MF",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "$T_FTire_Simple",
+    "kind": "simpack_element",
+    "namePath": "simpack:$T_FTire_Simple",
+    "exports": [
+      "kVert",
+      "cVert",
+      "rUnloaded",
+      "muPeak",
+      "cSlip"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Flexible-Ring Tire (Simplified FTire)",
+      "category": "Tire",
+      "domain": "mechanical",
+      "description": "Simplified flexible-belt tire model with vertical sidewall stiffness/damping and brush-model tangential contact.",
+      "provenance": "Gipser, M. (2007), FTire — the tire simulation model for all applications related to vehicle dynamics, Vehicle System Dynamics 45(sup1)",
+      "aliases": [
+        "FTire_Simple",
+        "FTire",
+        "FlexRingTire"
+      ],
+      "parameters": [
+        {
+          "key": "kVert",
+          "type": "real",
+          "defaultValue": 220000,
+          "unit": "N/m",
+          "description": "Vertical radial tire stiffness"
+        },
+        {
+          "key": "cVert",
+          "type": "real",
+          "defaultValue": 150,
+          "unit": "N*s/m",
+          "description": "Vertical radial tire damping"
+        },
+        {
+          "key": "rUnloaded",
+          "type": "real",
+          "defaultValue": 0.32,
+          "unit": "m",
+          "description": "Unloaded tire outer radius"
+        },
+        {
+          "key": "muPeak",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Peak road-tire friction coefficient"
+        },
+        {
+          "key": "cSlip",
+          "type": "real",
+          "defaultValue": 65000,
+          "unit": "N/rad",
+          "description": "Effective brush cornering/slip stiffness"
+        }
+      ],
+      "wasmKernel": "$T_FTire_Simple",
+      "archetypeId": 61
+    }
+  },
+  {
+    "name": "$C_PID",
+    "kind": "simpack_element",
+    "namePath": "simpack:$C_PID",
+    "exports": [
+      "kp",
+      "ki",
+      "kd",
+      "uMin",
+      "uMax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PID Control Element",
+      "category": "Control",
+      "domain": "mechanical",
+      "description": "Continuous-time proportional-integral-derivative controller with output saturation and anti-windup.",
+      "provenance": "Astrom, K. J. & Hagglund, T. (2006), Advanced PID Control, ISA",
+      "aliases": [
+        "PID",
+        "Ctrl_PID",
+        "PIDController"
+      ],
+      "parameters": [
+        {
+          "key": "kp",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "-",
+          "description": "Proportional gain"
+        },
+        {
+          "key": "ki",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1/s",
+          "description": "Integral gain"
+        },
+        {
+          "key": "kd",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "s",
+          "description": "Derivative gain"
+        },
+        {
+          "key": "uMin",
+          "type": "real",
+          "defaultValue": -1000000,
+          "unit": "-",
+          "description": "Lower output saturation limit"
+        },
+        {
+          "key": "uMax",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "-",
+          "description": "Upper output saturation limit"
+        }
+      ],
+      "wasmKernel": "$C_PID",
+      "archetypeId": 70
+    }
+  },
+  {
+    "name": "$C_TransferFcn",
+    "kind": "simpack_element",
+    "namePath": "simpack:$C_TransferFcn",
+    "exports": [
+      "gain",
+      "tau",
+      "y0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Linear Transfer Function",
+      "category": "Control",
+      "domain": "mechanical",
+      "description": "SISO first-order linear time-invariant transfer function block G(s) = K / (tau*s + 1).",
+      "provenance": "Ogata, K. (2010), Modern Control Engineering (5th ed.)",
+      "aliases": [
+        "TransferFcn",
+        "Ctrl_TF",
+        "FirstOrderLag"
+      ],
+      "parameters": [
+        {
+          "key": "gain",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "DC steady-state gain K"
+        },
+        {
+          "key": "tau",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "s",
+          "description": "Lag time constant tau"
+        },
+        {
+          "key": "y0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "-",
+          "description": "Initial state output"
+        }
+      ],
+      "wasmKernel": "$C_TransferFcn",
+      "archetypeId": 71
+    }
+  },
+  {
+    "name": "$C_Lookup1D",
+    "kind": "simpack_element",
+    "namePath": "simpack:$C_Lookup1D",
+    "exports": [
+      "x0",
+      "y0",
+      "x1",
+      "y1",
+      "x2",
+      "y2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1D Piecewise-Linear Lookup Table",
+      "category": "Control",
+      "domain": "mechanical",
+      "description": "1D clamped piecewise-linear lookup table mapping input u to output y across up to 5 knot pairs (x_i, y_i).",
+      "provenance": "Standard piecewise-linear spline interpolation; ISO/IEC 10967 numerical arithmetic",
+      "aliases": [
+        "Lookup1D",
+        "Ctrl_Lookup1D",
+        "InputFunction1D"
+      ],
+      "parameters": [
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "-",
+          "description": "Knot 0 abscissa"
+        },
+        {
+          "key": "y0",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "-",
+          "description": "Knot 0 ordinate"
+        },
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "-",
+          "description": "Knot 1 abscissa"
+        },
+        {
+          "key": "y1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "-",
+          "description": "Knot 1 ordinate"
+        },
+        {
+          "key": "x2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Knot 2 abscissa"
+        },
+        {
+          "key": "y2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Knot 2 ordinate"
+        }
+      ],
+      "wasmKernel": "$C_Lookup1D",
+      "archetypeId": 72
+    }
+  }
+]

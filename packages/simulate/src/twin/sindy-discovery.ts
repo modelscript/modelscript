@@ -29,6 +29,7 @@ import {
   type DimensionVector,
 } from "@modelscript/runtime";
 import { solveDenseLinearSystem } from "../control/linearize.js";
+import { wasmCholeskySolve } from "../wasm/simulate-wasm.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public Interfaces
@@ -474,7 +475,7 @@ function solveStlsqSingleThreshold(
       }
     }
 
-    const { X: cNorm } = solveDenseLinearSystem(G, rhs, nActive, 1, 1e-12);
+    const cNorm = wasmCholeskySolve(G, rhs, nActive) ?? solveDenseLinearSystem(G, rhs, nActive, 1, 1e-12).X;
 
     // Compute y norm for relative thresholding
     let yNorm = 0;

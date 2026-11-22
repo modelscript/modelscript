@@ -4,7 +4,6 @@ import { parseCsvMeasurements } from "@modelscript/csv/csv-parser";
 import { generateRomWasmSource } from "@modelscript/exchange/fmu";
 import { extractModelicaCosimGraph } from "@modelscript/modelica";
 import {
-  B2BEquivalenceVerifier,
   CandidateFilter,
   Causality,
   DAEBuilder,
@@ -12,18 +11,19 @@ import {
   foldArenaConstants,
   performBltTransformationArena,
   SemanticTheoryCoordinator,
-  UnifiedVerifier,
   Variability,
-  type UnifiedVerificationOptions,
-  type UnifiedVerificationReport,
 } from "@modelscript/runtime";
 import {
   ArenaSimulator,
+  B2BEquivalenceVerifier,
   buildArenaSurrogate,
   runMonteCarloArena,
   simulateArena,
   simulateArenaAsync,
+  UnifiedVerifier,
   type ArenaDoEInputRange,
+  type UnifiedVerificationOptions,
+  type UnifiedVerificationReport,
 } from "@modelscript/simulate";
 import { ModelicaCalibrator, ModelicaOptimizer } from "@modelscript/simulate/optimizer";
 import { extractSysML2Constraints, mapConstraintsToOptimizer } from "@modelscript/sysml2";
@@ -631,7 +631,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
             {
               uri: params.uri,
               sourceText,
-              queryDB,
+              queryDB: queryDB as Parameters<typeof UnifiedVerifier.verify>[0]["queryDB"],
               arena: arena ?? undefined,
               simulationResult: simResult,
               coordinator,

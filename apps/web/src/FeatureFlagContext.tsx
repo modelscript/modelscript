@@ -40,6 +40,7 @@ export const POLYGLOT_LANGUAGE_IDS = [
   "autosar",
   "simulink",
   "reqif",
+  "magicdraw",
   "ccsds",
   "opendrive",
   "openscenario",

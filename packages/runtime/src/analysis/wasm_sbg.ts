@@ -33,6 +33,7 @@ import {
   VarType,
 } from "../dae/wasm_dae.js";
 import { isZeroExpr } from "./wasm_blt.js";
+import { wasmSbgIntervalIntersect } from "./wasm_kernels_bridge.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Number-Theoretic Helpers (GCD, Extended GCD, LCM)
@@ -130,6 +131,12 @@ export class SBGInterval {
     const maxLo = Math.max(this.lo, other.lo);
     const minHi = Math.min(this.hi, other.hi);
     if (maxLo > minHi) return SBGInterval.empty();
+
+    if (this.step > 1 && other.step > 1) {
+      const wRes = wasmSbgIntervalIntersect(this.lo, this.step, this.hi, other.lo, other.step, other.hi);
+      if (wRes === null) return SBGInterval.empty();
+      if (wRes !== undefined) return new SBGInterval(wRes[0], wRes[1], wRes[2]);
+    }
 
     const g = gcd(this.step, other.step);
     if ((this.lo - other.lo) % g !== 0) {

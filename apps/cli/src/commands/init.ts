@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  MANIFEST_FILENAME,
+  stringifyModelScriptYaml,
+  WORKSPACE_DIR,
+  type ModelScriptManifest,
+} from "@modelscript/runtime";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import type { Argv, CommandModule } from "yargs";
@@ -23,7 +29,7 @@ function prompt(question: string): Promise<string> {
 
 export const Init: CommandModule<{}, InitArgs> = {
   command: "init [path]",
-  describe: "Initialize a ModelScript package.json for a Modelica/SysML project",
+  describe: "Initialize a modelscript.yaml manifest for a ModelScript project",
   builder: (yargs) => {
     return yargs
       .positional("path", {
@@ -39,11 +45,10 @@ export const Init: CommandModule<{}, InitArgs> = {
   },
   handler: async (args) => {
     const projectDir = path.resolve(args.path || ".");
-    const packageJsonPath = path.join(projectDir, "package.json");
+    const manifestPath = path.join(projectDir, MANIFEST_FILENAME);
 
-    if (existsSync(packageJsonPath)) {
-      console.error(`Error: package.json already exists at ${packageJsonPath}`);
-      console.error("Use 'npm init' to modify it or delete it first.");
+    if (existsSync(manifestPath)) {
+      console.error(`Error: ${MANIFEST_FILENAME} already exists at ${manifestPath}`);
       process.exit(1);
     }
 
@@ -69,61 +74,50 @@ export const Init: CommandModule<{}, InitArgs> = {
     let modelicaVersion: string;
 
     if (args.yes) {
-      // Use defaults
       name = detectedName ? `@modelscript/${detectedName.toLowerCase()}` : path.basename(projectDir);
-      version = detectedVersion || "0.0.0";
+      version = detectedVersion || "0.1.0";
       description = detectedDescription || "";
       license = "MIT";
       modelicaVersion = "3.7";
     } else {
-      // Interactive prompts
       const defaultName = detectedName ? `@modelscript/${detectedName.toLowerCase()}` : path.basename(projectDir);
 
       name = (await prompt(`Package name (${defaultName}): `)) || defaultName;
-      version = (await prompt(`Version (${detectedVersion || "0.0.0"}): `)) || detectedVersion || "0.0.0";
+      version = (await prompt(`Version (${detectedVersion || "0.1.0"}): `)) || detectedVersion || "0.1.0";
       description = (await prompt(`Description (${detectedDescription || ""}): `)) || detectedDescription || "";
       license = (await prompt("License (MIT): ")) || "MIT";
       modelicaVersion = (await prompt("Modelica version (3.7): ")) || "3.7";
     }
 
-    // Build the package.json
-
-    const packageJson: {
-      name: string;
-      version: string;
-      description: string;
-      license: string;
-      modelscript: {
-        languages: string[];
-        main?: string | undefined;
-        modelicaVersion: string;
-        artifacts: string[];
-      };
-      dependencies: Record<string, string>;
-    } = {
+    const manifest: ModelScriptManifest = {
       name,
       version,
-      description,
+      description: description || undefined,
       license,
-      modelscript: {
-        languages: ["modelica"],
-        main: existsSync(packageMoPath) ? "package.mo" : undefined,
-        modelicaVersion,
-        artifacts: [],
-      },
+      languages: ["modelica", "sysml2"],
+      main: existsSync(packageMoPath) ? "package.mo" : undefined,
+      modelicaVersion,
       dependencies: {},
     };
 
-    // Remove undefined values
-    if (!packageJson.modelscript.main) {
-      delete packageJson.modelscript.main;
+    writeFileSync(manifestPath, stringifyModelScriptYaml(manifest), "utf-8");
+
+    // Ensure .modelscript/ is gitignored
+    const gitignorePath = path.join(projectDir, ".gitignore");
+    const ignoreLine = `${WORKSPACE_DIR}/`;
+    if (existsSync(gitignorePath)) {
+      const existing = readFileSync(gitignorePath, "utf-8");
+      if (!existing.split(/\r?\n/).some((line) => line.trim() === ignoreLine)) {
+        appendFileSync(gitignorePath, `${existing.endsWith("\n") ? "" : "\n"}${ignoreLine}\n`, "utf-8");
+      }
+    } else {
+      writeFileSync(gitignorePath, `${ignoreLine}\n`, "utf-8");
     }
 
-    writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + "\n");
-    console.log(`\n✅ Created ${packageJsonPath}`);
+    console.log(`\n✅ Created ${manifestPath}`);
     console.log("\nNext steps:");
     console.log(`  msx install @modelscript/msl`);
-    console.log(`  msx publish .`);
-    console.log(`  (Inspect & share on Ansatz Package Registry at https://ansatz.social/packages)`);
+    console.log(`  msx remote add @reqs/safety oslc+https://elm.corp.com/rm/modules/MOD-42`);
+    console.log(`  msx sync pull`);
   },
 };

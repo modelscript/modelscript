@@ -1,0 +1,11 @@
+name: "@modelscript/plscadd-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom Bentley PLS-CADD overhead transmission line standard library (22 schemas: ASTM/IEC conductors, ASCE structures, insulators, NESC C2 / IEC 60826 load cases, cleanroom SVG icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: plscadd
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

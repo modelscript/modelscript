@@ -89,12 +89,15 @@ describe("msx install --frozen-lockfile CI mode", () => {
     }
   });
 
-  test("fails if msx.lock does not exist in frozen mode", async () => {
+  test("fails if modelscript.lock does not exist in frozen mode", async () => {
     process.env.MODELSCRIPT_API_URL = serverUrl;
     const originalCwd = process.cwd();
     const caseDir = path.join(testDir, "no-lock");
     mkdirSync(caseDir, { recursive: true });
-    writeFileSync(path.join(caseDir, "package.json"), JSON.stringify({ dependencies: { FrozenPkg: "^1.0.0" } }));
+    writeFileSync(
+      path.join(caseDir, "modelscript.yaml"),
+      'name: no-lock\nversion: "0.1.0"\ndependencies:\n  FrozenPkg: "^1.0.0"\n',
+    );
 
     process.chdir(caseDir);
     const origExit = process.exit;
@@ -117,17 +120,17 @@ describe("msx install --frozen-lockfile CI mode", () => {
     }
   });
 
-  test("fails if msx.lock is missing a dependency specified in package.json", async () => {
+  test("fails if modelscript.lock is missing a dependency specified in modelscript.yaml", async () => {
     process.env.MODELSCRIPT_API_URL = serverUrl;
     const originalCwd = process.cwd();
     const caseDir = path.join(testDir, "missing-dep");
     mkdirSync(caseDir, { recursive: true });
     writeFileSync(
-      path.join(caseDir, "package.json"),
-      JSON.stringify({ dependencies: { FrozenPkg: "^1.0.0", MissingPkg: "^2.0.0" } }),
+      path.join(caseDir, "modelscript.yaml"),
+      'name: missing-dep\nversion: "0.1.0"\ndependencies:\n  FrozenPkg: "^1.0.0"\n  MissingPkg: "^2.0.0"\n',
     );
     writeLockfile(caseDir, {
-      lockfileVersion: 1,
+      lockfileVersion: 2,
       packages: {
         FrozenPkg: {
           version: "1.0.0",
@@ -158,14 +161,17 @@ describe("msx install --frozen-lockfile CI mode", () => {
     }
   });
 
-  test("fails if downloaded package hash does not match msx.lock integrity hash", async () => {
+  test("fails if downloaded package hash does not match modelscript.lock integrity hash", async () => {
     process.env.MODELSCRIPT_API_URL = serverUrl;
     const originalCwd = process.cwd();
     const caseDir = path.join(testDir, "tampered-hash");
     mkdirSync(caseDir, { recursive: true });
-    writeFileSync(path.join(caseDir, "package.json"), JSON.stringify({ dependencies: { FrozenPkg: "^1.0.0" } }));
+    writeFileSync(
+      path.join(caseDir, "modelscript.yaml"),
+      'name: tampered-hash\nversion: "0.1.0"\ndependencies:\n  FrozenPkg: "^1.0.0"\n',
+    );
     writeLockfile(caseDir, {
-      lockfileVersion: 1,
+      lockfileVersion: 2,
       packages: {
         FrozenPkg: {
           version: "1.0.0",
@@ -196,27 +202,26 @@ describe("msx install --frozen-lockfile CI mode", () => {
     }
   });
 
-  test("successfully installs valid locked package without modifying lockfile or package.json", async () => {
+  test("successfully installs valid locked package without modifying lockfile or modelscript.yaml", async () => {
     process.env.MODELSCRIPT_API_URL = serverUrl;
     const originalCwd = process.cwd();
     const caseDir = path.join(testDir, "valid-frozen");
     mkdirSync(caseDir, { recursive: true });
-    const originalPkgJson = JSON.stringify({ dependencies: { FrozenPkg: "1.0.0" } }, null, 2);
-    writeFileSync(path.join(caseDir, "package.json"), originalPkgJson);
+    const originalManifest = 'name: valid-frozen\nversion: "0.1.0"\ndependencies:\n  FrozenPkg: "1.0.0"\n';
+    writeFileSync(path.join(caseDir, "modelscript.yaml"), originalManifest);
 
     const initialLock = {
-      lockfileVersion: 1 as const,
+      lockfileVersion: 2 as const,
       packages: {
         FrozenPkg: {
           version: "1.0.0",
           resolved: `${serverUrl}/api/v1/libraries/FrozenPkg/1.0.0/download`,
           integrity: validHash,
-          domains: ["modelica" as const],
         },
       },
     };
     writeLockfile(caseDir, initialLock);
-    const originalLockContent = readFileSync(path.join(caseDir, "msx.lock"), "utf-8");
+    const originalLockContent = readFileSync(path.join(caseDir, "modelscript.lock"), "utf-8");
 
     process.chdir(caseDir);
     try {
@@ -225,14 +230,14 @@ describe("msx install --frozen-lockfile CI mode", () => {
         save: true, // Should be ignored in frozen mode
       });
 
-      // Verify files installed
-      assert.ok(existsSync(path.join(caseDir, "libraries", "FrozenPkg", "package.mo")));
+      // Verify files installed in .modelscript/packages/FrozenPkg
+      assert.ok(existsSync(path.join(caseDir, ".modelscript", "packages", "FrozenPkg", "package.mo")));
 
-      // Verify package.json and msx.lock are untouched
-      const currentPkgJson = readFileSync(path.join(caseDir, "package.json"), "utf-8");
-      assert.equal(currentPkgJson, originalPkgJson);
+      // Verify modelscript.yaml and modelscript.lock are untouched
+      const currentManifest = readFileSync(path.join(caseDir, "modelscript.yaml"), "utf-8");
+      assert.equal(currentManifest, originalManifest);
 
-      const currentLockContent = readFileSync(path.join(caseDir, "msx.lock"), "utf-8");
+      const currentLockContent = readFileSync(path.join(caseDir, "modelscript.lock"), "utf-8");
       assert.equal(currentLockContent, originalLockContent);
     } finally {
       process.chdir(originalCwd);

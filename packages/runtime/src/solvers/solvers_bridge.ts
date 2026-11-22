@@ -195,42 +195,4 @@ export class SolversBridge {
       if (outColPtr) this.free(outColPtr);
     }
   }
-
-  async simulateDaeWithSundials(
-    sundialsModule: any,
-    daePtr: number,
-    stateVarIds: number[],
-    derivEqIds: number[],
-    y0: number[],
-    options: any = {},
-  ): Promise<SimulationResult> {
-    if (_sundialsDaeRunner) {
-      return _sundialsDaeRunner(sundialsModule, this.wasmExports, daePtr, stateVarIds, derivEqIds, y0, options);
-    }
-    try {
-      const simPkg = "@modelscript/simulate";
-      const { simulateDaeWithSundials } = (await import(simPkg)) as any;
-      return simulateDaeWithSundials(sundialsModule, this.wasmExports, daePtr, stateVarIds, derivEqIds, y0, options);
-    } catch {
-      throw new Error(
-        "Sundials solver not available in @modelscript/runtime. Register a runner via registerSundialsDaeRunner() or import @modelscript/simulate.",
-      );
-    }
-  }
-}
-
-export type SundialsDaeRunner = (
-  sundialsModule: any,
-  wasmExports: any,
-  daePtr: number,
-  stateVarIds: number[],
-  derivEqIds: number[],
-  y0: number[],
-  options?: any,
-) => Promise<SimulationResult>;
-
-let _sundialsDaeRunner: SundialsDaeRunner | null = null;
-
-export function registerSundialsDaeRunner(runner: SundialsDaeRunner): void {
-  _sundialsDaeRunner = runner;
 }

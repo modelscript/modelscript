@@ -24,6 +24,38 @@ export function runLanguageParserBuild(options) {
   const { langName, dir, languageModule, languageExportName, extraWatchFiles = [], extraAscFlags = [] } = options;
 
   const forceRebuild = process.argv.includes("--force");
+  const isCI = process.env.CI === "true" || process.env.CI === "1" || process.env.GITHUB_ACTIONS === "true";
+  const envOpt = (process.env.MS_WASM_OPT || "").trim().toLowerCase();
+
+  /**
+   * Resolve WebAssembly optimization profile:
+   * - CI builds ALWAYS perform full optimization ("full": -O3s / wasm-opt -Os).
+   * - Local builds default to "fast" (-O1, shrinkLevel 0) to avoid Binaryen's
+   *   quadratic O3/shrink passes in single-threaded JS/WASM binaryen.js.
+   * - Override locally via MS_WASM_OPT=0|none|1|fast|2|3|full or --dev / --release.
+   * @returns {"none" | "fast" | "o2" | "full"}
+   */
+  function resolveOptProfile() {
+    if (isCI) return "full";
+    if (
+      process.argv.includes("--release") ||
+      envOpt === "full" ||
+      envOpt === "3" ||
+      envOpt === "s" ||
+      process.env.NODE_ENV === "production"
+    ) {
+      return "full";
+    }
+    if (process.argv.includes("--dev") || envOpt === "0" || envOpt === "none") {
+      return "none";
+    }
+    if (envOpt === "2" || envOpt === "o2") {
+      return "o2";
+    }
+    return "fast";
+  }
+
+  const optProfile = resolveOptProfile();
   const outWasm = path.join(dir, "dist", "parser.wasm");
   const bindingsJs = path.join(dir, "src-gen", "bindings.js");
   const bindingsDts = path.join(dir, "src-gen", "bindings.d.ts");
@@ -73,6 +105,7 @@ export function runLanguageParserBuild(options) {
   function computeInputHash() {
     const hash = crypto.createHash("sha256");
     hash.update(langName);
+    hash.update(`opt:${optProfile}`);
     hash.update(JSON.stringify(extraAscFlags));
     hashPathInto(hash, languagePath);
     hashPathInto(hash, dslDistPath);
@@ -188,7 +221,7 @@ export function runLanguageParserBuild(options) {
   const buildScriptContent = `// SPDX-License-Identifier: AGPL-3.0-or-later
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { buildParser } from "@modelscript/dsl";
 import * as langModuleNamespace from "${relLanguageModule}";
 
@@ -225,13 +258,14 @@ fs.mkdirSync(distSrcGenDir, { recursive: true });
 fs.writeFileSync(path.join(distSrcGenDir, "bindings.js"), result.javascriptWrapper.js);
 fs.writeFileSync(path.join(distSrcGenDir, "bindings.d.ts"), result.javascriptWrapper.dts);
 
-// 3. Compile parser.ts to WebAssembly with asc
+// 3. Compile parser.ts to WebAssembly with asc (+ native wasm-opt when available)
 const parserTs = path.join(asGenDir, "parser.ts");
 const outWasm = path.join(__dirname, "dist", "parser.wasm");
 const isWin = process.platform === "win32";
+const optProfile = ${JSON.stringify(optProfile)};
 const ascPath = path.resolve(__dirname, "../../node_modules/.bin", isWin ? "asc.cmd" : "asc");
 const ascExec = fs.existsSync(ascPath) ? ascPath : (isWin ? "npx.cmd" : "npx");
-const ascArgs = fs.existsSync(ascPath)
+const baseAscArgs = fs.existsSync(ascPath)
   ? [
       parserTs,
       "-o",
@@ -241,7 +275,6 @@ const ascArgs = fs.existsSync(ascPath)
       "threads",
       "--enable",
       "simd",
-      "--optimize",
       "--runtime",
       "stub",
       ${extraAscFlags.map((f) => JSON.stringify(f)).join(", ")}
@@ -256,13 +289,80 @@ const ascArgs = fs.existsSync(ascPath)
       "threads",
       "--enable",
       "simd",
-      "--optimize",
       "--runtime",
       "stub",
       ${extraAscFlags.map((f) => JSON.stringify(f)).join(", ")}
     ];
 
-execFileSync(ascExec, ascArgs, { stdio: "inherit", shell: isWin, cwd: __dirname });
+function getAscOptFlags(profile: string): string[] {
+  if (profile === "full") return ["--optimize"];
+  if (profile === "o2") return ["--optimizeLevel", "2", "--shrinkLevel", "0"];
+  if (profile === "fast") return ["--optimizeLevel", "1", "--shrinkLevel", "0"];
+  return [];
+}
+
+function getWasmOptFlag(profile: string): string | null {
+  if (profile === "full") return "-Os";
+  if (profile === "o2") return "-O2";
+  if (profile === "fast") return "-O1";
+  return null;
+}
+
+function findNativeWasmOpt(): string | null {
+  if (process.env.MS_WASM_OPT_DISABLE_NATIVE === "1") return null;
+  if (process.env.MS_WASM_OPT_BIN) {
+    const probe = spawnSync(process.env.MS_WASM_OPT_BIN, ["--version"], { stdio: "ignore", shell: isWin });
+    return probe.status === 0 ? process.env.MS_WASM_OPT_BIN : null;
+  }
+  const pathEnv = process.env.PATH || "";
+  const candidates = isWin ? ["wasm-opt.exe"] : ["wasm-opt"];
+  for (const dirEntry of pathEnv.split(path.delimiter)) {
+    if (!dirEntry || dirEntry.includes("node_modules")) continue;
+    for (const name of candidates) {
+      const fullPath = path.join(dirEntry, name);
+      if (!fs.existsSync(fullPath)) continue;
+      try {
+        const real = fs.realpathSync(fullPath);
+        if (real.includes("node_modules")) continue;
+        // Skip JS/shell wrapper scripts (shebang '#!'); only accept native binaries
+        const fd = fs.openSync(real, "r");
+        const header = Buffer.alloc(2);
+        fs.readSync(fd, header, 0, 2, 0);
+        fs.closeSync(fd);
+        if (header[0] === 0x23 && header[1] === 0x21) continue;
+        const probe = spawnSync(real, ["--version"], { stdio: "ignore" });
+        if (probe.status === 0) return real;
+      } catch {
+        continue;
+      }
+    }
+  }
+  return null;
+}
+
+const nativeWasmOpt = optProfile !== "none" ? findNativeWasmOpt() : null;
+const wasmOptFlag = getWasmOptFlag(optProfile);
+
+if (nativeWasmOpt && wasmOptFlag) {
+  console.log("[${langName}] Compiling Wasm with asc (unoptimized) + native wasm-opt " + wasmOptFlag + " (profile: " + optProfile + ")...");
+  execFileSync(ascExec, baseAscArgs, { stdio: "inherit", shell: isWin, cwd: __dirname });
+  const tmpOptWasm = outWasm + ".opt.tmp";
+  try {
+    execFileSync(nativeWasmOpt, ["--all-features", wasmOptFlag, "-o", tmpOptWasm, outWasm], {
+      stdio: "inherit",
+      shell: isWin,
+      cwd: __dirname,
+    });
+    fs.renameSync(tmpOptWasm, outWasm);
+  } catch (err) {
+    if (fs.existsSync(tmpOptWasm)) fs.unlinkSync(tmpOptWasm);
+    console.warn("[${langName}] Native wasm-opt failed; falling back to asc optimization:", err instanceof Error ? err.message : String(err));
+    execFileSync(ascExec, [...baseAscArgs, ...getAscOptFlags(optProfile)], { stdio: "inherit", shell: isWin, cwd: __dirname });
+  }
+} else {
+  const ascOptFlags = getAscOptFlags(optProfile);
+  execFileSync(ascExec, [...baseAscArgs, ...ascOptFlags], { stdio: "inherit", shell: isWin, cwd: __dirname });
+}
 `;
 
   fs.writeFileSync(buildScriptPath, buildScriptContent);

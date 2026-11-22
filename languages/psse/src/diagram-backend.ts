@@ -15,6 +15,7 @@ import {
   type PropertyTabConfig,
   type DiagramTextEdit as TextEdit,
 } from "@modelscript/diagram/protocol";
+import { globalLibraryRegistry } from "@modelscript/runtime";
 
 function getUnifiedIndexFromDeps(backends: DiagramBackendHost): any {
   return (
@@ -723,47 +724,70 @@ export function createPsseDiagramBackend(backends: DiagramBackendHost): DiagramB
     },
 
     getPalette(): DiagramPalette {
-      return {
-        categories: [
-          {
-            name: "Substation Buses",
-            items: [
-              { label: "PQ Load Bus", className: "psse:bus_pq", description: "IDE=1 PQ load substation bus" },
-              { label: "PV Generator Bus", className: "psse:bus_pv", description: "IDE=2 PV voltage-controlled bus" },
-              { label: "Swing / Slack Bus", className: "psse:bus_slack", description: "IDE=3 reference swing bus" },
-            ],
-          },
-          {
-            name: "Generation & Shunts",
-            items: [
-              { label: "Synchronous Generator", className: "psse:generator", description: "Generator dispatch unit" },
-              { label: "ZIP Load", className: "psse:load", description: "Constant MVA / current / admittance load" },
-              { label: "Fixed Shunt", className: "psse:fixed_shunt", description: "Static capacitor / reactor shunt" },
-              {
-                label: "Switched Shunt",
-                className: "psse:switched_shunt",
-                description: "Voltage-regulated shunt bank",
-              },
-            ],
-          },
-          {
-            name: "Transmission & Transformation",
-            items: [
-              { label: "AC Branch", className: "psse:branch", description: "Non-transformer AC transmission line" },
-              {
-                label: "2-Winding Transformer",
-                className: "psse:xfmr_2w",
-                description: "Two-winding LTC/phase transformer",
-              },
-              {
-                label: "3-Winding Transformer",
-                className: "psse:xfmr_3w",
-                description: "Three-winding power transformer",
-              },
-            ],
-          },
-        ],
-      };
+      const categories: DiagramPalette["categories"] = [
+        {
+          name: "Substation Buses",
+          items: [
+            { label: "PQ Load Bus", className: "psse:bus_pq", description: "IDE=1 PQ load substation bus" },
+            { label: "PV Generator Bus", className: "psse:bus_pv", description: "IDE=2 PV voltage-controlled bus" },
+            { label: "Swing / Slack Bus", className: "psse:bus_slack", description: "IDE=3 reference swing bus" },
+          ],
+        },
+        {
+          name: "Generation & Shunts",
+          items: [
+            { label: "Synchronous Generator", className: "psse:generator", description: "Generator dispatch unit" },
+            { label: "ZIP Load", className: "psse:load", description: "Constant MVA / current / admittance load" },
+            { label: "Fixed Shunt", className: "psse:fixed_shunt", description: "Static capacitor / reactor shunt" },
+            {
+              label: "Switched Shunt",
+              className: "psse:switched_shunt",
+              description: "Voltage-regulated shunt bank",
+            },
+          ],
+        },
+        {
+          name: "Transmission & Transformation",
+          items: [
+            { label: "AC Branch", className: "psse:branch", description: "Non-transformer AC transmission line" },
+            {
+              label: "2-Winding Transformer",
+              className: "psse:xfmr_2w",
+              description: "Two-winding LTC/phase transformer",
+            },
+            {
+              label: "3-Winding Transformer",
+              className: "psse:xfmr_3w",
+              description: "Three-winding power transformer",
+            },
+          ],
+        },
+      ];
+
+      // Append cleanroom @modelscript/psse-std-lib dynamic blocks with embedded SVG icons
+      const pkgs = globalLibraryRegistry.getPackagesForLanguage("psse");
+      const byCat = new Map<string, DiagramPalette["categories"][number]["items"]>();
+      for (const pkg of pkgs) {
+        for (const d of pkg.diagrams) {
+          const catTitle = `Dynamic: ${(d.category ?? "model").toUpperCase()}`;
+          let list = byCat.get(catTitle);
+          if (!list) {
+            list = [];
+            byCat.set(catTitle, list);
+          }
+          list.push({
+            label: d.aliases?.[0] ?? d.namePath.replace(/^psse:/, ""),
+            className: d.namePath,
+            description: d.label ?? d.namePath,
+            iconSvg: d.svg,
+          });
+        }
+      }
+      for (const [name, items] of byCat) {
+        categories.push({ name, items });
+      }
+
+      return { categories };
     },
   };
 }

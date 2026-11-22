@@ -8,8 +8,6 @@ import {
   OntologyTheoryOracle,
   SemanticTheoryCoordinator,
   SmtProblem,
-  UnifiedVerifier,
-  VerificationInputContext,
   type TheoryLiteral,
 } from "../src/index.js";
 
@@ -179,39 +177,5 @@ describe("Semantic Theory Coordinator — Phase 3: Algorithm Unification & Pipel
     const hpLit = updatedActiveLits.find((l) => l.predicate === "hyperplane");
     assert.ok(hpLit);
     assert.deepEqual(hpLit!.args[0], { x: 2, z: 3 }, "Zero coefficient 'y: 0' should be pruned from hyperplane");
-  });
-
-  it("should forward Stage 0 contracted state space to downstream stages in UnifiedVerifier", async () => {
-    const coordinator = new SemanticTheoryCoordinator();
-    const constraints = new ConstraintTheoryOracle();
-    coordinator.registerOracle(constraints);
-
-    // Initial bound: position in [10, 20]
-    coordinator.assertLiteral({
-      predicate: "interval",
-      args: ["pos_x", 10, 20],
-      domain: "constraint",
-    });
-
-    const ctx: VerificationInputContext = {
-      uri: "file:///model/system.mo",
-      coordinator,
-    };
-
-    const report = await UnifiedVerifier.verify(ctx, {
-      theoryCoordinator: true,
-      all: false,
-    });
-
-    assert.equal(report.summary.overallPassed, true);
-    assert.ok(report.stages.theory_coordination, "Theory coordination stage should be present");
-    assert.equal(report.stages.theory_coordination.passed, true);
-
-    // Verify ctx.contractedStateSpace was forwarded from Stage 0
-    assert.ok(ctx.contractedStateSpace, "Contracted state space should be forwarded into context");
-    assert.ok(ctx.contractedStateSpace!.has("pos_x"), "pos_x should be in contracted state space");
-    const bounds = ctx.contractedStateSpace!.get("pos_x");
-    assert.equal(bounds?.[0], 10);
-    assert.equal(bounds?.[1], 20);
   });
 });

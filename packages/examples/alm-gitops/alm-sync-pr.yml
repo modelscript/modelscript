@@ -1,0 +1,59 @@
+# Example GitHub Actions workflow: Automated ALM Sync & Verification PR Bot
+# Triggered on schedule, manual dispatch, or repository_dispatch from /api/v1/alm/webhook/:protocol
+name: ALM Sync & Verification
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  repository_dispatch:
+    types: [alm-baseline-updated]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  alm-sync-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Pull latest ALM deltas into materialized files & modelscript.lock
+        env:
+          MSX_TOKEN_ELM_CORP_COM: ${{ secrets.DOORS_PAT }}
+          MSX_TOKEN_CB_CORP_COM: ${{ secrets.CODEBEAMER_TOKEN }}
+          MSX_USER_CORP_ATLASSIAN_NET: ${{ secrets.JIRA_EMAIL }}
+          MSX_PASSWORD_CORP_ATLASSIAN_NET: ${{ secrets.JIRA_API_TOKEN }}
+        run: |
+          npx msx sync pull
+          npx msx lint .
+
+      - name: Open Pull Request if requirements or lockfile changed
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: alm-sync/auto-update
+          commit-message: "chore(alm): sync requirements and modelscript.lock"
+          title: "chore(alm): automated ALM requirements sync"
+          body: |
+            Automated sync triggered by `msx sync pull`.
+            Review the materialized `.sysml` diffs and `modelscript.lock` baseline revisions before merging.
+
+  verify-and-publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify offline against locked ALM baseline & publish results
+        env:
+          MSX_TOKEN_ELM_CORP_COM: ${{ secrets.DOORS_PAT }}
+        run: |
+          npx msx install --frozen --offline
+          npx msx verify --publish-to @reqs/battery-safety

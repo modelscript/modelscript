@@ -1,0 +1,2058 @@
+[
+  {
+    "name": "OC_IEEE_MI",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:OC_IEEE_MI",
+    "exports": [
+      "pickupA",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "ctRatio",
+      "instMult"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE Moderately Inverse Time-Overcurrent Relay (51)",
+      "category": "Overcurrent Relay",
+      "domain": "electrical",
+      "description": "IEEE C37.112 Moderately Inverse time-overcurrent relay characteristic: t = TD * (0.0515 / (M^0.02 - 1) + 0.1140).",
+      "provenance": "IEEE Std C37.112-2018 Table 1 (Moderately Inverse); Blackburn, Protective Relaying 4th Ed.",
+      "aliases": [
+        "IEEE_Moderately_Inverse",
+        "U1",
+        "IEEE_MI",
+        "51_IEEE_MI"
+      ],
+      "parameters": [
+        {
+          "key": "pickupA",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "A",
+          "description": "Primary pickup current"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time dial setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 0.0515,
+          "unit": "",
+          "description": "IEEE C37.112 curve constant A"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.114,
+          "unit": "s",
+          "description": "IEEE C37.112 curve constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "",
+          "description": "IEEE C37.112 curve exponent p"
+        },
+        {
+          "key": "ctRatio",
+          "type": "real",
+          "defaultValue": 240,
+          "unit": "",
+          "description": "Current transformer ratio (e.g. 1200:5)"
+        },
+        {
+          "key": "instMult",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Instantaneous 50 high-set multiple (0 = disabled)"
+        }
+      ],
+      "wasmKernel": "OC_IEEE_MI",
+      "archetypeId": 1,
+      "ansiCode": "51"
+    }
+  },
+  {
+    "name": "OC_IEEE_VI",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:OC_IEEE_VI",
+    "exports": [
+      "pickupA",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "ctRatio",
+      "instMult"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE Very Inverse Time-Overcurrent Relay (51)",
+      "category": "Overcurrent Relay",
+      "domain": "electrical",
+      "description": "IEEE C37.112 Very Inverse time-overcurrent relay characteristic: t = TD * (19.61 / (M^2 - 1) + 0.491).",
+      "provenance": "IEEE Std C37.112-2018 Table 1 (Very Inverse); Blackburn, Protective Relaying 4th Ed.",
+      "aliases": [
+        "IEEE_Very_Inverse",
+        "U2",
+        "IEEE_VI",
+        "51_IEEE_VI"
+      ],
+      "parameters": [
+        {
+          "key": "pickupA",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "A",
+          "description": "Primary pickup current"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time dial setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 19.61,
+          "unit": "",
+          "description": "IEEE C37.112 curve constant A"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.491,
+          "unit": "s",
+          "description": "IEEE C37.112 curve constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "IEEE C37.112 curve exponent p"
+        },
+        {
+          "key": "ctRatio",
+          "type": "real",
+          "defaultValue": 240,
+          "unit": "",
+          "description": "Current transformer ratio"
+        },
+        {
+          "key": "instMult",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Instantaneous 50 high-set multiple (0 = disabled)"
+        }
+      ],
+      "wasmKernel": "OC_IEEE_VI",
+      "archetypeId": 1,
+      "ansiCode": "51"
+    }
+  },
+  {
+    "name": "OC_IEEE_EI",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:OC_IEEE_EI",
+    "exports": [
+      "pickupA",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "ctRatio",
+      "instMult"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE Extremely Inverse Time-Overcurrent Relay (51)",
+      "category": "Overcurrent Relay",
+      "domain": "electrical",
+      "description": "IEEE C37.112 Extremely Inverse time-overcurrent relay characteristic: t = TD * (28.2 / (M^2 - 1) + 0.1217).",
+      "provenance": "IEEE Std C37.112-2018 Table 1 (Extremely Inverse); Blackburn, Protective Relaying 4th Ed.",
+      "aliases": [
+        "IEEE_Extremely_Inverse",
+        "U3",
+        "IEEE_EI",
+        "51_IEEE_EI"
+      ],
+      "parameters": [
+        {
+          "key": "pickupA",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "A",
+          "description": "Primary pickup current"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time dial setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 28.2,
+          "unit": "",
+          "description": "IEEE C37.112 curve constant A"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.1217,
+          "unit": "s",
+          "description": "IEEE C37.112 curve constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "IEEE C37.112 curve exponent p"
+        },
+        {
+          "key": "ctRatio",
+          "type": "real",
+          "defaultValue": 240,
+          "unit": "",
+          "description": "Current transformer ratio"
+        },
+        {
+          "key": "instMult",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Instantaneous 50 high-set multiple (0 = disabled)"
+        }
+      ],
+      "wasmKernel": "OC_IEEE_EI",
+      "archetypeId": 1,
+      "ansiCode": "51"
+    }
+  },
+  {
+    "name": "OC_IEC_SI",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:OC_IEC_SI",
+    "exports": [
+      "pickupA",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "ctRatio",
+      "instMult"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEC Standard Inverse Time-Overcurrent Relay (51)",
+      "category": "Overcurrent Relay",
+      "domain": "electrical",
+      "description": "IEC 60255-151 Standard Inverse time-overcurrent characteristic: t = TMS * (0.14 / (M^0.02 - 1)).",
+      "provenance": "IEC 60255-151:2009 Table 1 (Standard Inverse Curve A)",
+      "aliases": [
+        "IEC_Standard_Inverse",
+        "IEC_Normal_Inverse",
+        "C1",
+        "51_IEC_SI"
+      ],
+      "parameters": [
+        {
+          "key": "pickupA",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "A",
+          "description": "Primary pickup current"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "TMS",
+          "description": "Time multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 0.14,
+          "unit": "",
+          "description": "IEC 60255-151 constant k"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "IEC 60255-151 additive constant c"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "",
+          "description": "IEC 60255-151 exponent alpha"
+        },
+        {
+          "key": "ctRatio",
+          "type": "real",
+          "defaultValue": 240,
+          "unit": "",
+          "description": "Current transformer ratio"
+        },
+        {
+          "key": "instMult",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Instantaneous 50 high-set multiple (0 = disabled)"
+        }
+      ],
+      "wasmKernel": "OC_IEC_SI",
+      "archetypeId": 1,
+      "ansiCode": "51"
+    }
+  },
+  {
+    "name": "OC_IEC_VI",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:OC_IEC_VI",
+    "exports": [
+      "pickupA",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "ctRatio",
+      "instMult"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEC Very Inverse Time-Overcurrent Relay (51)",
+      "category": "Overcurrent Relay",
+      "domain": "electrical",
+      "description": "IEC 60255-151 Very Inverse time-overcurrent characteristic: t = TMS * (13.5 / (M - 1)).",
+      "provenance": "IEC 60255-151:2009 Table 1 (Very Inverse Curve B)",
+      "aliases": [
+        "IEC_Very_Inverse",
+        "C2",
+        "51_IEC_VI"
+      ],
+      "parameters": [
+        {
+          "key": "pickupA",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "A",
+          "description": "Primary pickup current"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "TMS",
+          "description": "Time multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 13.5,
+          "unit": "",
+          "description": "IEC 60255-151 constant k"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "IEC 60255-151 additive constant c"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "IEC 60255-151 exponent alpha"
+        },
+        {
+          "key": "ctRatio",
+          "type": "real",
+          "defaultValue": 240,
+          "unit": "",
+          "description": "Current transformer ratio"
+        },
+        {
+          "key": "instMult",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Instantaneous 50 high-set multiple (0 = disabled)"
+        }
+      ],
+      "wasmKernel": "OC_IEC_VI",
+      "archetypeId": 1,
+      "ansiCode": "51"
+    }
+  },
+  {
+    "name": "OC_IEC_EI",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:OC_IEC_EI",
+    "exports": [
+      "pickupA",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "ctRatio",
+      "instMult"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEC Extremely Inverse Time-Overcurrent Relay (51)",
+      "category": "Overcurrent Relay",
+      "domain": "electrical",
+      "description": "IEC 60255-151 Extremely Inverse time-overcurrent characteristic: t = TMS * (80.0 / (M^2 - 1)).",
+      "provenance": "IEC 60255-151:2009 Table 1 (Extremely Inverse Curve C)",
+      "aliases": [
+        "IEC_Extremely_Inverse",
+        "C3",
+        "51_IEC_EI"
+      ],
+      "parameters": [
+        {
+          "key": "pickupA",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "A",
+          "description": "Primary pickup current"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "TMS",
+          "description": "Time multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 80,
+          "unit": "",
+          "description": "IEC 60255-151 constant k"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "IEC 60255-151 additive constant c"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "IEC 60255-151 exponent alpha"
+        },
+        {
+          "key": "ctRatio",
+          "type": "real",
+          "defaultValue": 240,
+          "unit": "",
+          "description": "Current transformer ratio"
+        },
+        {
+          "key": "instMult",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Instantaneous 50 high-set multiple (0 = disabled)"
+        }
+      ],
+      "wasmKernel": "OC_IEC_EI",
+      "archetypeId": 1,
+      "ansiCode": "51"
+    }
+  },
+  {
+    "name": "OC_IEC_LTI",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:OC_IEC_LTI",
+    "exports": [
+      "pickupA",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "ctRatio",
+      "instMult"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEC Long-Time Inverse Overcurrent Relay (51)",
+      "category": "Overcurrent Relay",
+      "domain": "electrical",
+      "description": "IEC 60255-151 Long-Time Inverse characteristic: t = TMS * (120.0 / (M - 1)).",
+      "provenance": "IEC 60255-151:2009 Table 1 (Long-Time Inverse)",
+      "aliases": [
+        "IEC_Long_Time_Inverse",
+        "C4",
+        "51_IEC_LTI"
+      ],
+      "parameters": [
+        {
+          "key": "pickupA",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "A",
+          "description": "Primary pickup current"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "TMS",
+          "description": "Time multiplier setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 120,
+          "unit": "",
+          "description": "IEC 60255-151 constant k"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "IEC 60255-151 additive constant c"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "IEC 60255-151 exponent alpha"
+        },
+        {
+          "key": "ctRatio",
+          "type": "real",
+          "defaultValue": 240,
+          "unit": "",
+          "description": "Current transformer ratio"
+        },
+        {
+          "key": "instMult",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Instantaneous 50 high-set multiple (0 = disabled)"
+        }
+      ],
+      "wasmKernel": "OC_IEC_LTI",
+      "archetypeId": 1,
+      "ansiCode": "51"
+    }
+  },
+  {
+    "name": "OC_US_CO8",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:OC_US_CO8",
+    "exports": [
+      "pickupA",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "ctRatio",
+      "instMult"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "US CO-8 Inverse Time-Overcurrent Relay (51)",
+      "category": "Overcurrent Relay",
+      "domain": "electrical",
+      "description": "Classical electromechanical CO-8 inverse overcurrent curve analytical fit per IEEE C37.112 / Blackburn.",
+      "provenance": "IEEE Std C37.112-2018 Annex A; Blackburn, Protective Relaying 4th Ed. Ch. 5",
+      "aliases": [
+        "US_CO8",
+        "CO8",
+        "CO-8"
+      ],
+      "parameters": [
+        {
+          "key": "pickupA",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "A",
+          "description": "Primary pickup current"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time dial setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 5.95,
+          "unit": "",
+          "description": "CO-8 analytical constant A"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.18,
+          "unit": "s",
+          "description": "CO-8 analytical constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "CO-8 analytical exponent p"
+        },
+        {
+          "key": "ctRatio",
+          "type": "real",
+          "defaultValue": 240,
+          "unit": "",
+          "description": "Current transformer ratio"
+        },
+        {
+          "key": "instMult",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Instantaneous 50 high-set multiple (0 = disabled)"
+        }
+      ],
+      "wasmKernel": "OC_US_CO8",
+      "archetypeId": 1,
+      "ansiCode": "51"
+    }
+  },
+  {
+    "name": "OC_US_IAC53",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:OC_US_IAC53",
+    "exports": [
+      "pickupA",
+      "timeDial",
+      "A",
+      "B",
+      "p",
+      "ctRatio",
+      "instMult"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "US IAC53 Very Inverse Time-Overcurrent Relay (51)",
+      "category": "Overcurrent Relay",
+      "domain": "electrical",
+      "description": "Classical electromechanical IAC53 very-inverse overcurrent curve analytical fit per IEEE C37.112 / Blackburn.",
+      "provenance": "IEEE Std C37.112-2018 Annex A; Blackburn, Protective Relaying 4th Ed. Ch. 5",
+      "aliases": [
+        "US_IAC53",
+        "IAC53",
+        "IAC-53"
+      ],
+      "parameters": [
+        {
+          "key": "pickupA",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "A",
+          "description": "Primary pickup current"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time dial setting"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 3.922,
+          "unit": "",
+          "description": "IAC53 analytical constant A"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.0982,
+          "unit": "s",
+          "description": "IAC53 analytical constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "IAC53 analytical exponent p"
+        },
+        {
+          "key": "ctRatio",
+          "type": "real",
+          "defaultValue": 240,
+          "unit": "",
+          "description": "Current transformer ratio"
+        },
+        {
+          "key": "instMult",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Instantaneous 50 high-set multiple (0 = disabled)"
+        }
+      ],
+      "wasmKernel": "OC_US_IAC53",
+      "archetypeId": 1,
+      "ansiCode": "51"
+    }
+  },
+  {
+    "name": "OC_INST_50",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:OC_INST_50",
+    "exports": [
+      "pickupA",
+      "ctRatio",
+      "delaySec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Instantaneous Overcurrent Relay (50)",
+      "category": "Overcurrent Relay",
+      "domain": "electrical",
+      "description": "ANSI 50 definite-time / instantaneous high-set overcurrent relay tripping when I_fault >= I_pickup.",
+      "provenance": "IEEE Std C37.2-2022 Device 50; IEEE Std C37.112-2018",
+      "aliases": [
+        "ANSI_50",
+        "50P",
+        "50G",
+        "INST50"
+      ],
+      "parameters": [
+        {
+          "key": "pickupA",
+          "type": "real",
+          "defaultValue": 4000,
+          "unit": "A",
+          "description": "Instantaneous primary pickup current"
+        },
+        {
+          "key": "ctRatio",
+          "type": "real",
+          "defaultValue": 240,
+          "unit": "",
+          "description": "Current transformer ratio"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0.0167,
+          "unit": "s",
+          "description": "Definite operating time (1 cycle at 60 Hz)"
+        }
+      ],
+      "wasmKernel": "OC_INST_50",
+      "archetypeId": 2,
+      "ansiCode": "50"
+    }
+  },
+  {
+    "name": "DIST_MHO_Z1",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:DIST_MHO_Z1",
+    "exports": [
+      "reachOhms",
+      "mtaDeg",
+      "delaySec",
+      "ctr",
+      "ptr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Zone 1 Mho Distance Relay (21)",
+      "category": "Distance & Differential",
+      "domain": "electrical",
+      "description": "ANSI 21 Zone 1 self-polarized mho circle distance element (80-85% line reach, instantaneous): |Z - Zr/2| <= |Zr|/2.",
+      "provenance": "IEEE Std C37.113-2015 Guide for Protective Relay Applications to Transmission Lines",
+      "aliases": [
+        "21_MHO_Z1",
+        "MHO_Z1",
+        "Z1_MHO"
+      ],
+      "parameters": [
+        {
+          "key": "reachOhms",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "Ohm",
+          "description": "Zone 1 mho circle diameter |Zr| (primary Ohms)"
+        },
+        {
+          "key": "mtaDeg",
+          "type": "real",
+          "defaultValue": 78,
+          "unit": "deg",
+          "description": "Relay maximum torque angle (MTA)"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Zone 1 operating time"
+        },
+        {
+          "key": "ctr",
+          "type": "real",
+          "defaultValue": 240,
+          "unit": "",
+          "description": "Current transformer ratio"
+        },
+        {
+          "key": "ptr",
+          "type": "real",
+          "defaultValue": 1200,
+          "unit": "",
+          "description": "Voltage transformer ratio"
+        }
+      ],
+      "wasmKernel": "DIST_MHO_Z1",
+      "archetypeId": 10,
+      "ansiCode": "21"
+    }
+  },
+  {
+    "name": "DIST_MHO_Z2",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:DIST_MHO_Z2",
+    "exports": [
+      "reachOhms",
+      "mtaDeg",
+      "delaySec",
+      "ctr",
+      "ptr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Zone 2 Mho Distance Relay (21)",
+      "category": "Distance & Differential",
+      "domain": "electrical",
+      "description": "ANSI 21 Zone 2 time-delayed mho circle distance element (120% line reach) for remote bus backup protection.",
+      "provenance": "IEEE Std C37.113-2015 Section 5.1; Blackburn, Protective Relaying 4th Ed. Ch. 12",
+      "aliases": [
+        "21_MHO_Z2",
+        "MHO_Z2",
+        "Z2_MHO"
+      ],
+      "parameters": [
+        {
+          "key": "reachOhms",
+          "type": "real",
+          "defaultValue": 18,
+          "unit": "Ohm",
+          "description": "Zone 2 mho circle diameter |Zr| (primary Ohms)"
+        },
+        {
+          "key": "mtaDeg",
+          "type": "real",
+          "defaultValue": 78,
+          "unit": "deg",
+          "description": "Relay maximum torque angle (MTA)"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0.35,
+          "unit": "s",
+          "description": "Zone 2 coordinating time delay"
+        },
+        {
+          "key": "ctr",
+          "type": "real",
+          "defaultValue": 240,
+          "unit": "",
+          "description": "Current transformer ratio"
+        },
+        {
+          "key": "ptr",
+          "type": "real",
+          "defaultValue": 1200,
+          "unit": "",
+          "description": "Voltage transformer ratio"
+        }
+      ],
+      "wasmKernel": "DIST_MHO_Z2",
+      "archetypeId": 10,
+      "ansiCode": "21"
+    }
+  },
+  {
+    "name": "DIST_QUAD_Z1",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:DIST_QUAD_Z1",
+    "exports": [
+      "xReachOhms",
+      "rReachOhms",
+      "mtaDeg",
+      "delaySec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Zone 1 Quadrilateral Distance Relay (21)",
+      "category": "Distance & Differential",
+      "domain": "electrical",
+      "description": "ANSI 21 Zone 1 quadrilateral distance element with independent reactive (X) reach and resistive (R) blinder for high-resistance fault coverage.",
+      "provenance": "IEEE Std C37.113-2015 Section 5.1.3; IEC 60255-121",
+      "aliases": [
+        "21_QUAD_Z1",
+        "QUAD_Z1",
+        "Z1_QUAD"
+      ],
+      "parameters": [
+        {
+          "key": "xReachOhms",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "Ohm",
+          "description": "Zone 1 reactive reach Xr (Ohms)"
+        },
+        {
+          "key": "rReachOhms",
+          "type": "real",
+          "defaultValue": 8,
+          "unit": "Ohm",
+          "description": "Zone 1 resistive blinder reach Rr (Ohms)"
+        },
+        {
+          "key": "mtaDeg",
+          "type": "real",
+          "defaultValue": 78,
+          "unit": "deg",
+          "description": "Directional line impedance angle"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Zone 1 operating time"
+        }
+      ],
+      "wasmKernel": "DIST_QUAD_Z1",
+      "archetypeId": 11,
+      "ansiCode": "21"
+    }
+  },
+  {
+    "name": "DIST_QUAD_Z2",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:DIST_QUAD_Z2",
+    "exports": [
+      "xReachOhms",
+      "rReachOhms",
+      "mtaDeg",
+      "delaySec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Zone 2 Quadrilateral Distance Relay (21)",
+      "category": "Distance & Differential",
+      "domain": "electrical",
+      "description": "ANSI 21 Zone 2 time-delayed quadrilateral distance element with independent reactive and resistive blinders.",
+      "provenance": "IEEE Std C37.113-2015 Section 5.1.3; IEC 60255-121",
+      "aliases": [
+        "21_QUAD_Z2",
+        "QUAD_Z2",
+        "Z2_QUAD"
+      ],
+      "parameters": [
+        {
+          "key": "xReachOhms",
+          "type": "real",
+          "defaultValue": 18,
+          "unit": "Ohm",
+          "description": "Zone 2 reactive reach Xr (Ohms)"
+        },
+        {
+          "key": "rReachOhms",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "Ohm",
+          "description": "Zone 2 resistive blinder reach Rr (Ohms)"
+        },
+        {
+          "key": "mtaDeg",
+          "type": "real",
+          "defaultValue": 78,
+          "unit": "deg",
+          "description": "Directional line impedance angle"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0.35,
+          "unit": "s",
+          "description": "Zone 2 coordinating time delay"
+        }
+      ],
+      "wasmKernel": "DIST_QUAD_Z2",
+      "archetypeId": 11,
+      "ansiCode": "21"
+    }
+  },
+  {
+    "name": "DIFF_87L",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:DIFF_87L",
+    "exports": [
+      "iPickupPu",
+      "slope1Pct",
+      "slope2Pct",
+      "breakpointPu",
+      "delaySec",
+      "harm2BlockPct"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Line Current Differential Relay (87L)",
+      "category": "Distance & Differential",
+      "domain": "electrical",
+      "description": "ANSI 87L dual-slope percentage-restraint current differential relay for pilot transmission line protection.",
+      "provenance": "IEEE Std C37.113-2015 Section 6.3; IEEE Std C37.243",
+      "aliases": [
+        "87L",
+        "LINE_DIFF"
+      ],
+      "parameters": [
+        {
+          "key": "iPickupPu",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "pu",
+          "description": "Minimum differential pickup current"
+        },
+        {
+          "key": "slope1Pct",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "%",
+          "description": "Percentage restraint slope 1"
+        },
+        {
+          "key": "slope2Pct",
+          "type": "real",
+          "defaultValue": 60,
+          "unit": "%",
+          "description": "High-current percentage restraint slope 2"
+        },
+        {
+          "key": "breakpointPu",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "pu",
+          "description": "Slope 1 to slope 2 restraint breakpoint"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Operating time including channel latency"
+        },
+        {
+          "key": "harm2BlockPct",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "%",
+          "description": "2nd-harmonic restraint block (0 = disabled)"
+        }
+      ],
+      "wasmKernel": "DIFF_87L",
+      "archetypeId": 20,
+      "ansiCode": "87L"
+    }
+  },
+  {
+    "name": "DIFF_87T",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:DIFF_87T",
+    "exports": [
+      "iPickupPu",
+      "slope1Pct",
+      "slope2Pct",
+      "breakpointPu",
+      "delaySec",
+      "harm2BlockPct"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Transformer Percentage Differential Relay (87T)",
+      "category": "Distance & Differential",
+      "domain": "electrical",
+      "description": "ANSI 87T dual-slope percentage-restraint transformer differential relay with 2nd-harmonic magnetizing inrush blocking.",
+      "provenance": "IEEE Std C37.91-2021 Guide for Protecting Power Transformers; Blackburn Ch. 8",
+      "aliases": [
+        "87T",
+        "XFMR_DIFF"
+      ],
+      "parameters": [
+        {
+          "key": "iPickupPu",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "pu",
+          "description": "Minimum differential pickup current"
+        },
+        {
+          "key": "slope1Pct",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "%",
+          "description": "Percentage restraint slope 1"
+        },
+        {
+          "key": "slope2Pct",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "%",
+          "description": "Percentage restraint slope 2"
+        },
+        {
+          "key": "breakpointPu",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "pu",
+          "description": "Slope breakpoint restraint current"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0.025,
+          "unit": "s",
+          "description": "Operating time"
+        },
+        {
+          "key": "harm2BlockPct",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "%",
+          "description": "2nd-harmonic inrush blocking threshold"
+        }
+      ],
+      "wasmKernel": "DIFF_87T",
+      "archetypeId": 20,
+      "ansiCode": "87T"
+    }
+  },
+  {
+    "name": "DIFF_87B",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:DIFF_87B",
+    "exports": [
+      "iPickupPu",
+      "slope1Pct",
+      "slope2Pct",
+      "breakpointPu",
+      "delaySec",
+      "harm2BlockPct"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Busbar Percentage Differential Relay (87B)",
+      "category": "Distance & Differential",
+      "domain": "electrical",
+      "description": "ANSI 87B low-impedance percentage-restraint busbar differential relay with high external-fault security.",
+      "provenance": "IEEE Std C37.234-2021 Guide for Protective Relay Applications to Power System Buses",
+      "aliases": [
+        "87B",
+        "BUS_DIFF"
+      ],
+      "parameters": [
+        {
+          "key": "iPickupPu",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "pu",
+          "description": "Minimum differential pickup current"
+        },
+        {
+          "key": "slope1Pct",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "%",
+          "description": "Percentage restraint slope 1"
+        },
+        {
+          "key": "slope2Pct",
+          "type": "real",
+          "defaultValue": 70,
+          "unit": "%",
+          "description": "High-current percentage restraint slope 2"
+        },
+        {
+          "key": "breakpointPu",
+          "type": "real",
+          "defaultValue": 2.5,
+          "unit": "pu",
+          "description": "Slope breakpoint restraint current"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0.018,
+          "unit": "s",
+          "description": "High-speed bus differential operating time"
+        },
+        {
+          "key": "harm2BlockPct",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "%",
+          "description": "2nd-harmonic restraint block (0 = disabled)"
+        }
+      ],
+      "wasmKernel": "DIFF_87B",
+      "archetypeId": 20,
+      "ansiCode": "87B"
+    }
+  },
+  {
+    "name": "DIR_67P",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:DIR_67P",
+    "exports": [
+      "pickupA",
+      "timeDial",
+      "mtaDeg",
+      "halfAngleDeg",
+      "A",
+      "B",
+      "p"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Phase Directional Overcurrent Relay (67P)",
+      "category": "Directional / Recloser / Fuse",
+      "domain": "electrical",
+      "description": "ANSI 67P quadrature-polarized phase directional overcurrent relay combining torque-angle supervision with IEEE Very Inverse timing.",
+      "provenance": "IEEE Std C37.113-2015; Blackburn, Protective Relaying 4th Ed. Ch. 5 & Ch. 11",
+      "aliases": [
+        "67P",
+        "67_PHASE"
+      ],
+      "parameters": [
+        {
+          "key": "pickupA",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "A",
+          "description": "Primary phase pickup current"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time dial setting"
+        },
+        {
+          "key": "mtaDeg",
+          "type": "real",
+          "defaultValue": -45,
+          "unit": "deg",
+          "description": "Maximum torque angle (current relative to polarizing voltage)"
+        },
+        {
+          "key": "halfAngleDeg",
+          "type": "real",
+          "defaultValue": 85,
+          "unit": "deg",
+          "description": "Forward directional half-angle"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 19.61,
+          "unit": "",
+          "description": "IEEE Very Inverse constant A"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.491,
+          "unit": "s",
+          "description": "IEEE Very Inverse constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "IEEE Very Inverse exponent p"
+        }
+      ],
+      "wasmKernel": "DIR_67P",
+      "archetypeId": 30,
+      "ansiCode": "67P"
+    }
+  },
+  {
+    "name": "DIR_67G",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:DIR_67G",
+    "exports": [
+      "pickupA",
+      "timeDial",
+      "mtaDeg",
+      "halfAngleDeg",
+      "A",
+      "B",
+      "p"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ground Directional Overcurrent Relay (67G)",
+      "category": "Directional / Recloser / Fuse",
+      "domain": "electrical",
+      "description": "ANSI 67G zero/negative-sequence polarized ground directional overcurrent relay with IEEE Moderately Inverse timing.",
+      "provenance": "IEEE Std C37.113-2015; Blackburn, Protective Relaying 4th Ed. Ch. 11",
+      "aliases": [
+        "67G",
+        "67N",
+        "67_GROUND"
+      ],
+      "parameters": [
+        {
+          "key": "pickupA",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "A",
+          "description": "Primary ground (3I0) pickup current"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time dial setting"
+        },
+        {
+          "key": "mtaDeg",
+          "type": "real",
+          "defaultValue": -60,
+          "unit": "deg",
+          "description": "Maximum torque angle (-60 deg lag for zero-seq inductive network)"
+        },
+        {
+          "key": "halfAngleDeg",
+          "type": "real",
+          "defaultValue": 85,
+          "unit": "deg",
+          "description": "Forward directional half-angle"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 0.0515,
+          "unit": "",
+          "description": "IEEE Moderately Inverse constant A"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.114,
+          "unit": "s",
+          "description": "IEEE Moderately Inverse constant B"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "",
+          "description": "IEEE Moderately Inverse exponent p"
+        }
+      ],
+      "wasmKernel": "DIR_67G",
+      "archetypeId": 30,
+      "ansiCode": "67G"
+    }
+  },
+  {
+    "name": "RECLOSER_79",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:RECLOSER_79",
+    "exports": [
+      "pickupA",
+      "fastDelaySec",
+      "recloseDead1Sec",
+      "recloseDead2Sec",
+      "maxShots"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Automatic Circuit Recloser (79)",
+      "category": "Directional / Recloser / Fuse",
+      "domain": "electrical",
+      "description": "ANSI 79 automatic recloser controller with configurable fast trip, dead-time intervals, and lockout shot count.",
+      "provenance": "IEEE Std C37.60 / IEC 62271-111; IEEE Std C37.104 Guide for Automatic Reclosing",
+      "aliases": [
+        "79",
+        "AUTO_RECLOSER"
+      ],
+      "parameters": [
+        {
+          "key": "pickupA",
+          "type": "real",
+          "defaultValue": 400,
+          "unit": "A",
+          "description": "Minimum trip pickup current"
+        },
+        {
+          "key": "fastDelaySec",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "s",
+          "description": "Fast curve clearing time"
+        },
+        {
+          "key": "recloseDead1Sec",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "s",
+          "description": "First open reclose dead time"
+        },
+        {
+          "key": "recloseDead2Sec",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "s",
+          "description": "Second open reclose dead time"
+        },
+        {
+          "key": "maxShots",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "",
+          "description": "Total operations to lockout"
+        }
+      ],
+      "wasmKernel": "RECLOSER_79",
+      "archetypeId": 31,
+      "ansiCode": "79"
+    }
+  },
+  {
+    "name": "FUSE_K_LINK",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:FUSE_K_LINK",
+    "exports": [
+      "ratedA",
+      "kCoeff",
+      "pExp",
+      "minMeltMult"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE Fast K-Link Expulsion Fuse",
+      "category": "Directional / Recloser / Fuse",
+      "domain": "electrical",
+      "description": "ANSI/IEEE C37.41 fast K-link expulsion fuse minimum-melting / total-clearing inverse-time model (speed ratio 6-8).",
+      "provenance": "IEEE Std C37.41 / ANSI C37.42 Distribution Fuse Links (Type K)",
+      "aliases": [
+        "K_LINK",
+        "FUSE_K",
+        "ANSI_K"
+      ],
+      "parameters": [
+        {
+          "key": "ratedA",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "A",
+          "description": "Nominal fuse link current rating"
+        },
+        {
+          "key": "kCoeff",
+          "type": "real",
+          "defaultValue": 18,
+          "unit": "s",
+          "description": "Fast K-link inverse-time melting constant"
+        },
+        {
+          "key": "pExp",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Thermal I^2*t melting exponent"
+        },
+        {
+          "key": "minMeltMult",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "pu",
+          "description": "Minimum melting current multiple of rating"
+        }
+      ],
+      "wasmKernel": "FUSE_K_LINK",
+      "archetypeId": 32,
+      "ansiCode": "FUSE-K"
+    }
+  },
+  {
+    "name": "FUSE_T_LINK",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:FUSE_T_LINK",
+    "exports": [
+      "ratedA",
+      "kCoeff",
+      "pExp",
+      "minMeltMult"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE Slow T-Link Expulsion Fuse",
+      "category": "Directional / Recloser / Fuse",
+      "domain": "electrical",
+      "description": "ANSI/IEEE C37.41 slow T-link expulsion fuse minimum-melting / total-clearing inverse-time model (speed ratio 10-13).",
+      "provenance": "IEEE Std C37.41 / ANSI C37.42 Distribution Fuse Links (Type T)",
+      "aliases": [
+        "T_LINK",
+        "FUSE_T",
+        "ANSI_T"
+      ],
+      "parameters": [
+        {
+          "key": "ratedA",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "A",
+          "description": "Nominal fuse link current rating"
+        },
+        {
+          "key": "kCoeff",
+          "type": "real",
+          "defaultValue": 42,
+          "unit": "s",
+          "description": "Slow T-link inverse-time melting constant"
+        },
+        {
+          "key": "pExp",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Thermal I^2*t melting exponent"
+        },
+        {
+          "key": "minMeltMult",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "pu",
+          "description": "Minimum melting current multiple of rating"
+        }
+      ],
+      "wasmKernel": "FUSE_T_LINK",
+      "archetypeId": 32,
+      "ansiCode": "FUSE-T"
+    }
+  },
+  {
+    "name": "BREAKER_52",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:BREAKER_52",
+    "exports": [
+      "ratedKv",
+      "interruptingKa",
+      "clearTimeCycles",
+      "freqHz"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "High-Voltage AC Circuit Breaker (52)",
+      "category": "Directional / Recloser / Fuse",
+      "domain": "electrical",
+      "description": "ANSI 52 AC high-voltage circuit breaker interrupting duty ratio and total clearing time model per IEEE C37.010.",
+      "provenance": "IEEE Std C37.010-2016 Application Guide for AC High-Voltage Circuit Breakers",
+      "aliases": [
+        "52",
+        "CB_52",
+        "CIRCUIT_BREAKER"
+      ],
+      "parameters": [
+        {
+          "key": "ratedKv",
+          "type": "real",
+          "defaultValue": 138,
+          "unit": "kV",
+          "description": "Rated maximum line-to-line voltage"
+        },
+        {
+          "key": "interruptingKa",
+          "type": "real",
+          "defaultValue": 40,
+          "unit": "kA",
+          "description": "Rated symmetrical short-circuit interrupting current"
+        },
+        {
+          "key": "clearTimeCycles",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "cyc",
+          "description": "Rated interrupting time in cycles"
+        },
+        {
+          "key": "freqHz",
+          "type": "real",
+          "defaultValue": 60,
+          "unit": "Hz",
+          "description": "System nominal frequency"
+        }
+      ],
+      "wasmKernel": "BREAKER_52",
+      "archetypeId": 33,
+      "ansiCode": "52"
+    }
+  },
+  {
+    "name": "LINE_138kV_ACSR",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:LINE_138kV_ACSR",
+    "exports": [
+      "r1OhmPerMi",
+      "x1OhmPerMi",
+      "r0OhmPerMi",
+      "x0OhmPerMi",
+      "b1uSPerMi",
+      "b0uSPerMi",
+      "ampacityA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "138 kV ACSR 795 kcmil Drake Transmission Line",
+      "category": "Sequence Equipment",
+      "domain": "electrical",
+      "description": "Standard 138 kV single-circuit overhead transmission line (795 kcmil ACSR Drake, 60 Hz) positive and zero-sequence impedances per mile.",
+      "provenance": "EPRI Transmission Line Reference Book (345 kV and Above); Glover-Sarma-Overbye Power System Analysis",
+      "aliases": [
+        "138kV_DRAKE",
+        "ACSR_795_138kV"
+      ],
+      "parameters": [
+        {
+          "key": "r1OhmPerMi",
+          "type": "real",
+          "defaultValue": 0.1288,
+          "unit": "Ohm/mi",
+          "description": "Positive-sequence resistance per mile"
+        },
+        {
+          "key": "x1OhmPerMi",
+          "type": "real",
+          "defaultValue": 0.788,
+          "unit": "Ohm/mi",
+          "description": "Positive-sequence reactance per mile"
+        },
+        {
+          "key": "r0OhmPerMi",
+          "type": "real",
+          "defaultValue": 0.415,
+          "unit": "Ohm/mi",
+          "description": "Zero-sequence resistance per mile (Carson earth return)"
+        },
+        {
+          "key": "x0OhmPerMi",
+          "type": "real",
+          "defaultValue": 2.32,
+          "unit": "Ohm/mi",
+          "description": "Zero-sequence reactance per mile"
+        },
+        {
+          "key": "b1uSPerMi",
+          "type": "real",
+          "defaultValue": 5.38,
+          "unit": "uS/mi",
+          "description": "Positive-sequence shunt susceptance per mile"
+        },
+        {
+          "key": "b0uSPerMi",
+          "type": "real",
+          "defaultValue": 3.25,
+          "unit": "uS/mi",
+          "description": "Zero-sequence shunt susceptance per mile"
+        },
+        {
+          "key": "ampacityA",
+          "type": "real",
+          "defaultValue": 900,
+          "unit": "A",
+          "description": "Continuous thermal ampacity"
+        }
+      ],
+      "wasmKernel": "LINE_138kV_ACSR",
+      "archetypeId": 40,
+      "ansiCode": "L138"
+    }
+  },
+  {
+    "name": "LINE_230kV_ACSR",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:LINE_230kV_ACSR",
+    "exports": [
+      "r1OhmPerMi",
+      "x1OhmPerMi",
+      "r0OhmPerMi",
+      "x0OhmPerMi",
+      "b1uSPerMi",
+      "b0uSPerMi",
+      "ampacityA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "230 kV ACSR 1272 kcmil Bittern Transmission Line",
+      "category": "Sequence Equipment",
+      "domain": "electrical",
+      "description": "Standard 230 kV single-circuit overhead transmission line (1272 kcmil ACSR Bittern, 60 Hz) positive and zero-sequence impedances per mile.",
+      "provenance": "EPRI Transmission Line Reference Book; Westinghouse Transmission & Distribution Reference Book",
+      "aliases": [
+        "230kV_BITTERN",
+        "ACSR_1272_230kV"
+      ],
+      "parameters": [
+        {
+          "key": "r1OhmPerMi",
+          "type": "real",
+          "defaultValue": 0.0825,
+          "unit": "Ohm/mi",
+          "description": "Positive-sequence resistance per mile"
+        },
+        {
+          "key": "x1OhmPerMi",
+          "type": "real",
+          "defaultValue": 0.765,
+          "unit": "Ohm/mi",
+          "description": "Positive-sequence reactance per mile"
+        },
+        {
+          "key": "r0OhmPerMi",
+          "type": "real",
+          "defaultValue": 0.368,
+          "unit": "Ohm/mi",
+          "description": "Zero-sequence resistance per mile"
+        },
+        {
+          "key": "x0OhmPerMi",
+          "type": "real",
+          "defaultValue": 2.28,
+          "unit": "Ohm/mi",
+          "description": "Zero-sequence reactance per mile"
+        },
+        {
+          "key": "b1uSPerMi",
+          "type": "real",
+          "defaultValue": 5.56,
+          "unit": "uS/mi",
+          "description": "Positive-sequence shunt susceptance per mile"
+        },
+        {
+          "key": "b0uSPerMi",
+          "type": "real",
+          "defaultValue": 3.42,
+          "unit": "uS/mi",
+          "description": "Zero-sequence shunt susceptance per mile"
+        },
+        {
+          "key": "ampacityA",
+          "type": "real",
+          "defaultValue": 1200,
+          "unit": "A",
+          "description": "Continuous thermal ampacity"
+        }
+      ],
+      "wasmKernel": "LINE_230kV_ACSR",
+      "archetypeId": 40,
+      "ansiCode": "L230"
+    }
+  },
+  {
+    "name": "LINE_500kV_BUNDLE",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:LINE_500kV_BUNDLE",
+    "exports": [
+      "r1OhmPerMi",
+      "x1OhmPerMi",
+      "r0OhmPerMi",
+      "x0OhmPerMi",
+      "b1uSPerMi",
+      "b0uSPerMi",
+      "ampacityA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "500 kV 3-Bundle ACSR 954 kcmil Cardinal Transmission Line",
+      "category": "Sequence Equipment",
+      "domain": "electrical",
+      "description": "Standard 500 kV 3-conductor bundle overhead EHV transmission line (3x954 kcmil ACSR Cardinal, 60 Hz) sequence parameters per mile.",
+      "provenance": "EPRI AC Transmission Line Reference Book — 200 kV and Above (3rd Ed.)",
+      "aliases": [
+        "500kV_CARDINAL",
+        "ACSR_3x954_500kV"
+      ],
+      "parameters": [
+        {
+          "key": "r1OhmPerMi",
+          "type": "real",
+          "defaultValue": 0.036,
+          "unit": "Ohm/mi",
+          "description": "Positive-sequence resistance per mile"
+        },
+        {
+          "key": "x1OhmPerMi",
+          "type": "real",
+          "defaultValue": 0.592,
+          "unit": "Ohm/mi",
+          "description": "Positive-sequence reactance per mile"
+        },
+        {
+          "key": "r0OhmPerMi",
+          "type": "real",
+          "defaultValue": 0.31,
+          "unit": "Ohm/mi",
+          "description": "Zero-sequence resistance per mile"
+        },
+        {
+          "key": "x0OhmPerMi",
+          "type": "real",
+          "defaultValue": 1.85,
+          "unit": "Ohm/mi",
+          "description": "Zero-sequence reactance per mile"
+        },
+        {
+          "key": "b1uSPerMi",
+          "type": "real",
+          "defaultValue": 7.18,
+          "unit": "uS/mi",
+          "description": "Positive-sequence shunt susceptance per mile"
+        },
+        {
+          "key": "b0uSPerMi",
+          "type": "real",
+          "defaultValue": 4.35,
+          "unit": "uS/mi",
+          "description": "Zero-sequence shunt susceptance per mile"
+        },
+        {
+          "key": "ampacityA",
+          "type": "real",
+          "defaultValue": 3000,
+          "unit": "A",
+          "description": "Continuous thermal ampacity"
+        }
+      ],
+      "wasmKernel": "LINE_500kV_BUNDLE",
+      "archetypeId": 40,
+      "ansiCode": "L500"
+    }
+  },
+  {
+    "name": "XFMR_YND1",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:XFMR_YND1",
+    "exports": [
+      "mvaRating",
+      "hvKv",
+      "lvKv",
+      "r1Pu",
+      "x1Pu",
+      "r0Pu",
+      "x0Pu",
+      "phaseShiftDeg"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Wye-Grounded / Delta-Lagging (YNd1) Power Transformer",
+      "category": "Sequence Equipment",
+      "domain": "electrical",
+      "description": "Two-winding grounded-wye / delta (YNd1, -30 deg phase shift) power transformer sequence impedance model blocking zero-sequence transfer across the delta winding.",
+      "provenance": "IEEE Std C57.12.00; Blackburn, Symmetrical Components for Power Systems Engineering",
+      "aliases": [
+        "YNd1",
+        "WYE_DELTA_XFMR"
+      ],
+      "parameters": [
+        {
+          "key": "mvaRating",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "MVA",
+          "description": "Base transformer MVA rating"
+        },
+        {
+          "key": "hvKv",
+          "type": "real",
+          "defaultValue": 230,
+          "unit": "kV",
+          "description": "High-voltage wye-grounded winding nominal voltage"
+        },
+        {
+          "key": "lvKv",
+          "type": "real",
+          "defaultValue": 138,
+          "unit": "kV",
+          "description": "Low-voltage delta winding nominal voltage"
+        },
+        {
+          "key": "r1Pu",
+          "type": "real",
+          "defaultValue": 0.004,
+          "unit": "pu",
+          "description": "Positive-sequence resistance on transformer base"
+        },
+        {
+          "key": "x1Pu",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "pu",
+          "description": "Positive-sequence leakage reactance on transformer base"
+        },
+        {
+          "key": "r0Pu",
+          "type": "real",
+          "defaultValue": 0.004,
+          "unit": "pu",
+          "description": "Zero-sequence resistance (HV wye-grounded to delta circulating path)"
+        },
+        {
+          "key": "x0Pu",
+          "type": "real",
+          "defaultValue": 0.095,
+          "unit": "pu",
+          "description": "Zero-sequence leakage reactance on transformer base"
+        },
+        {
+          "key": "phaseShiftDeg",
+          "type": "real",
+          "defaultValue": -30,
+          "unit": "deg",
+          "description": "ANSI/IEC YNd1 LV phase shift relative to HV"
+        }
+      ],
+      "wasmKernel": "XFMR_YND1",
+      "archetypeId": 41,
+      "ansiCode": "YNd1"
+    }
+  },
+  {
+    "name": "XFMR_YY_AUTO",
+    "kind": "oneliner_protection_model",
+    "namePath": "oneliner:XFMR_YY_AUTO",
+    "exports": [
+      "mvaRating",
+      "hvKv",
+      "lvKv",
+      "r1Pu",
+      "x1Pu",
+      "r0Pu",
+      "x0Pu",
+      "x3TertPu"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Wye-Grounded Autotransformer with Delta Tertiary (YNa0d1)",
+      "category": "Sequence Equipment",
+      "domain": "electrical",
+      "description": "Three-winding grounded-wye autotransformer with buried delta tertiary providing a low-impedance zero-sequence shunt path.",
+      "provenance": "IEEE Std C57.12.00; IEEE Std C37.91; Blackburn, Symmetrical Components",
+      "aliases": [
+        "YNa0d1",
+        "AUTO_XFMR",
+        "YY_AUTO"
+      ],
+      "parameters": [
+        {
+          "key": "mvaRating",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "MVA",
+          "description": "Base autotransformer MVA rating"
+        },
+        {
+          "key": "hvKv",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "kV",
+          "description": "High-voltage series winding nominal voltage"
+        },
+        {
+          "key": "lvKv",
+          "type": "real",
+          "defaultValue": 230,
+          "unit": "kV",
+          "description": "Low-voltage common winding nominal voltage"
+        },
+        {
+          "key": "r1Pu",
+          "type": "real",
+          "defaultValue": 0.0025,
+          "unit": "pu",
+          "description": "Positive-sequence HV-LV resistance on base"
+        },
+        {
+          "key": "x1Pu",
+          "type": "real",
+          "defaultValue": 0.085,
+          "unit": "pu",
+          "description": "Positive-sequence HV-LV leakage reactance on base"
+        },
+        {
+          "key": "r0Pu",
+          "type": "real",
+          "defaultValue": 0.003,
+          "unit": "pu",
+          "description": "Zero-sequence equivalent resistance"
+        },
+        {
+          "key": "x0Pu",
+          "type": "real",
+          "defaultValue": 0.072,
+          "unit": "pu",
+          "description": "Zero-sequence equivalent reactance (with delta tertiary)"
+        },
+        {
+          "key": "x3TertPu",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "pu",
+          "description": "Buried delta tertiary zero-sequence reactance"
+        }
+      ],
+      "wasmKernel": "XFMR_YY_AUTO",
+      "archetypeId": 41,
+      "ansiCode": "AUTO"
+    }
+  }
+]

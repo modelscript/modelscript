@@ -7,6 +7,7 @@
  * PSS/E .raw projector, LSP services, and linear-memory DAE arena lowering.
  */
 
+export * from "./catalog/index.js";
 export * from "./dae/powerworld-to-dae.js";
 export * from "./grammar/index.js";
 export * from "./indexing.js";

@@ -1,0 +1,4514 @@
+[
+  {
+    "name": "3PHVSRC",
+    "kind": "subroutine",
+    "group": "Sources",
+    "callers": [
+      "source_3"
+    ]
+  },
+  {
+    "name": "APLIN",
+    "kind": "function",
+    "group": "CSMF",
+    "callers": [
+      "nl_tfun"
+    ]
+  },
+  {
+    "name": "APPLE1_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "apple21"
+    ]
+  },
+  {
+    "name": "APPLE1_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "apple21"
+    ]
+  },
+  {
+    "name": "ARRESTERZNO_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "arrester"
+    ]
+  },
+  {
+    "name": "ARRESTERZNO_EXE",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "arrester"
+    ]
+  },
+  {
+    "name": "BANDPASSFILTER1_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "filter-band"
+    ]
+  },
+  {
+    "name": "BAPCR_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "block_avg"
+    ]
+  },
+  {
+    "name": "BAPCR_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "block_avg"
+    ]
+  },
+  {
+    "name": "BASICHYSTERESISCORE1_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "hysteresis_reactor"
+    ]
+  },
+  {
+    "name": "BASICHYSTERESISCORE1_EXE",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "hysteresis_reactor"
+    ]
+  },
+  {
+    "name": "BATTERYCOEFF1_CFG",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "battery"
+    ]
+  },
+  {
+    "name": "BATTERYCOEFF1_EXE",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "battery"
+    ]
+  },
+  {
+    "name": "BATTERYCURVE1_CFG",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "battery"
+    ]
+  },
+  {
+    "name": "BATTERYCURVE1_EXE",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "battery"
+    ]
+  },
+  {
+    "name": "BLOCK_FINDER_FULLBRIDGE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_FullCell"
+    ]
+  },
+  {
+    "name": "BLOCK_FINDER_HALFBRIDGE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_HalfCell"
+    ]
+  },
+  {
+    "name": "BRK_POWER",
+    "kind": "call",
+    "group": "Breakers Faults",
+    "callers": [
+      "breaker3"
+    ]
+  },
+  {
+    "name": "CAPLOAD_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "capacitive_load"
+    ]
+  },
+  {
+    "name": "CCVTRL1_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "ccvt1"
+    ]
+  },
+  {
+    "name": "CCVTRL1_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "ccvt1"
+    ]
+  },
+  {
+    "name": "CHECK_INEQUILITY",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "cfilter",
+      "Dload",
+      "Dload_3branch",
+      "filter",
+      "filter-band",
+      "hysteresis_reactor",
+      "rtcbranch",
+      "Yload",
+      "Yload_3branch"
+    ]
+  },
+  {
+    "name": "CHECK_PIR",
+    "kind": "call",
+    "group": "Breakers Faults",
+    "callers": [
+      "breaker1",
+      "breaker3"
+    ]
+  },
+  {
+    "name": "CMPX2ORD",
+    "kind": "function",
+    "group": "CSMF",
+    "callers": [
+      "complex"
+    ]
+  },
+  {
+    "name": "COMPONENT_ID",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "apple21",
+      "arrester",
+      "battery",
+      "breaker1",
+      "breaker3",
+      "capacitive_load",
+      "cinj",
+      "cmplx",
+      "counter",
+      "ct_single",
+      "current_scaler",
+      "ccvt1",
+      "dc_mac_2w",
+      "discretizer",
+      "downramp",
+      "dwt",
+      "excac",
+      "excac_2016",
+      "excdc",
+      "excdc_2016",
+      "excst",
+      "excst_2016",
+      "exc_scrx",
+      "fault_sw",
+      "fdne",
+      "fdtf",
+      "fft",
+      "fileread",
+      "filter",
+      "filter-band",
+      "filter-hp",
+      "freq-meas",
+      "g6p200",
+      "g6p200_2",
+      "hydro_gov",
+      "hy_gov",
+      "hy_tur",
+      "hysteresis_reactor",
+      "ic_engine",
+      "impulse",
+      "itoc51",
+      "lens21",
+      "mingam",
+      "mmc_FullCell",
+      "mmc_HalfCell",
+      "mmc_MultiDimCarrierGen",
+      "mrun",
+      "mrun_extra",
+      "multimass",
+      "multimass2",
+      "newpi",
+      "oos_lens68",
+      "oos_mho68",
+      "oos_poly68",
+      "optimum_run",
+      "peswitch",
+      "phasorimp",
+      "photovoltaic_source",
+      "pi_double_cct",
+      "pm_machine",
+      "polpi5",
+      "pss",
+      "pt1",
+      "pwm_hcc",
+      "ratio_changer_2w",
+      "recorder2_0",
+      "sat_reac",
+      "scale_changer",
+      "signalgen",
+      "sig_gen",
+      "source1",
+      "source3",
+      "source3R",
+      "source_vltg_dependent_voltage",
+      "spim_uw",
+      "sqc100",
+      "src_current_dependent_current",
+      "src_voltage_dependent_current",
+      "surge",
+      "surge1",
+      "svc",
+      "svcalloc1",
+      "svm",
+      "sync_machine",
+      "th_gov",
+      "th_tur",
+      "trans_fcn",
+      "trans_filt",
+      "trip_polygon",
+      "tvekta",
+      "txferfnc",
+      "umec-xfmr-2w",
+      "umec-xfmr-3w",
+      "umec-xfmr-3w2",
+      "umec-xfmr-4w",
+      "umec-xfmr-6w5L",
+      "upramp",
+      "varrlc",
+      "vdcl",
+      "wind_governor",
+      "wind_source",
+      "wind_turbine",
+      "wound_rotor",
+      "xfmr-2w",
+      "xfmr_2w_auto",
+      "xfmr_3w_auto",
+      "xfmr_3p2w_auto",
+      "xfmr_3p3w_auto",
+      "xfmr-3p2w",
+      "xfmr-3p3w",
+      "xfmr-3p3w2",
+      "xfmr-3p4w",
+      "xfmr-3p4w2",
+      "xfmr-3w",
+      "xfmr-3w2",
+      "xfmr-4w",
+      "xfmr_Nw",
+      "xyz_tf",
+      "xy_table",
+      "xy_transfer_function",
+      "Ztrans_fcnZ"
+    ]
+  },
+  {
+    "name": "CONVERT_SCALE1_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "scale_changer"
+    ]
+  },
+  {
+    "name": "CONVERT_SCALE1_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "scale_changer"
+    ]
+  },
+  {
+    "name": "COUNTER1_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "counter"
+    ]
+  },
+  {
+    "name": "COUNTER1_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "counter"
+    ]
+  },
+  {
+    "name": "COUPLED_PI3_TF_CFG",
+    "kind": "call",
+    "group": "PI sections",
+    "callers": [
+      "newpi"
+    ]
+  },
+  {
+    "name": "COUPLED_PI6_TF_CFG",
+    "kind": "call",
+    "group": "PI sections",
+    "callers": [
+      "pi_double_cct"
+    ]
+  },
+  {
+    "name": "CPSW_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "caps"
+    ]
+  },
+  {
+    "name": "CPSW_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "caps"
+    ]
+  },
+  {
+    "name": "CT1JA1_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "ct_single"
+    ]
+  },
+  {
+    "name": "CT1JA1_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "ct_single"
+    ]
+  },
+  {
+    "name": "CT1RL1_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "currenttf"
+    ]
+  },
+  {
+    "name": "CT1RL1_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "currenttf"
+    ]
+  },
+  {
+    "name": "CT2JA1_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "ct_double"
+    ]
+  },
+  {
+    "name": "CT2JA1_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "ct_double"
+    ]
+  },
+  {
+    "name": "CTYPEFILTER1_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "cfilter"
+    ]
+  },
+  {
+    "name": "CURRENT_SOURCE1_CFG",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "src_ccin_1",
+      "src_ccin_3"
+    ]
+  },
+  {
+    "name": "CURRENT_SOURCE1_EXE",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "src_ccin_1",
+      "src_ccin_3"
+    ]
+  },
+  {
+    "name": "CURRENT_SOURCE2_CFG",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "src_ccin_1"
+    ]
+  },
+  {
+    "name": "CUSTOM_HARMONICS1_CFG",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "harmdiffmag"
+    ]
+  },
+  {
+    "name": "DB_TF3P2W",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "db_xfmr_3p2w"
+    ]
+  },
+  {
+    "name": "DEC1A1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "DEC1A1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "DEC2A1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "DEC2A1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "DEC3A",
+    "kind": "subroutine",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "DEC3A1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "DEC3A1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "DELAY2_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "tdelay"
+    ]
+  },
+  {
+    "name": "DELAY2_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "tdelay"
+    ]
+  },
+  {
+    "name": "DERIV1",
+    "kind": "function",
+    "group": "CSMF",
+    "callers": [
+      "derivative"
+    ]
+  },
+  {
+    "name": "DGTL_RMS",
+    "kind": "subroutine",
+    "group": "Meters",
+    "callers": [
+      "multimeter",
+      "over_current",
+      "rms-inst"
+    ]
+  },
+  {
+    "name": "DGTL_RMS3",
+    "kind": "subroutine",
+    "group": "Meters",
+    "callers": [
+      "multimeter",
+      "rms3ph"
+    ]
+  },
+  {
+    "name": "DGTL_RMS3A",
+    "kind": "subroutine",
+    "group": "Meters",
+    "callers": [
+      "multimeter"
+    ]
+  },
+  {
+    "name": "DIFFPOLE",
+    "kind": "function",
+    "group": "CSMF",
+    "callers": [
+      "diffpole"
+    ]
+  },
+  {
+    "name": "DISCRETIZER1_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "discretizer"
+    ]
+  },
+  {
+    "name": "DISCRETIZER1_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "discretizer"
+    ]
+  },
+  {
+    "name": "DOBLE_STATE",
+    "kind": "subroutine",
+    "group": "(null)",
+    "callers": [
+      "doblestate"
+    ]
+  },
+  {
+    "name": "DWT_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "dwt"
+    ]
+  },
+  {
+    "name": "DWT_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "dwt"
+    ]
+  },
+  {
+    "name": "E_18HGOV1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hydro_gov"
+    ]
+  },
+  {
+    "name": "E_18HGOV1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hydro_gov"
+    ]
+  },
+  {
+    "name": "E_1PVSRC_CFG",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "source_1"
+    ]
+  },
+  {
+    "name": "E_3PVSRC_CFG",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "source_3"
+    ]
+  },
+  {
+    "name": "E_BRANCH_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "cfilter",
+      "db_xfmr_3p2w",
+      "Dload",
+      "Dload_3branch",
+      "filter",
+      "filter-band",
+      "g6p200",
+      "g6p200_2",
+      "hysteresis_reactor",
+      "newpi",
+      "peswitch",
+      "pi_double_cct",
+      "PUImpedanceBranch",
+      "rtcbranch",
+      "source3R",
+      "source_1",
+      "source_3",
+      "umec-xfmr-2w",
+      "umec-xfmr-3w",
+      "umec-xfmr-3w2",
+      "umec-xfmr-4w",
+      "umec-xfmr-6w5L",
+      "xfmr-2w",
+      "xfmr_2w_auto",
+      "xfmr_3w_auto",
+      "xfmr_3p2w_auto",
+      "xfmr_3p3w_auto",
+      "xfmr-3p2w",
+      "xfmr-3p3w",
+      "xfmr-3p3w2",
+      "xfmr-3p4w",
+      "xfmr-3p4w2",
+      "xfmr-3w",
+      "xfmr-3w2",
+      "xfmr-4w",
+      "xfmr_Nw",
+      "Yload",
+      "Yload_3branch"
+    ]
+  },
+  {
+    "name": "E_CTORMP",
+    "kind": "call",
+    "group": "Miscellaneous",
+    "callers": [
+      "unity"
+    ]
+  },
+  {
+    "name": "E_DCM2WDG2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "dc_mac_2w"
+    ]
+  },
+  {
+    "name": "E_DCM2WDG2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "dc_mac_2w"
+    ]
+  },
+  {
+    "name": "E_DIESELENG1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "ic_engine"
+    ]
+  },
+  {
+    "name": "E_DIESELENG1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "ic_engine"
+    ]
+  },
+  {
+    "name": "E_FWAV1_CFG",
+    "kind": "call",
+    "group": "Meters",
+    "callers": [
+      "freq-meas"
+    ]
+  },
+  {
+    "name": "E_FWAV1_EXE",
+    "kind": "call",
+    "group": "Meters",
+    "callers": [
+      "freq-meas"
+    ]
+  },
+  {
+    "name": "E_G6PVG1_CFG",
+    "kind": "call",
+    "group": "(null)",
+    "callers": [
+      "g6p200"
+    ]
+  },
+  {
+    "name": "E_G6PVG1_EXE",
+    "kind": "call",
+    "group": "(null)",
+    "callers": [
+      "g6p200"
+    ]
+  },
+  {
+    "name": "E_G6PVG2_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "g6p200_2"
+    ]
+  },
+  {
+    "name": "E_G6PVG2_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "g6p200_2"
+    ]
+  },
+  {
+    "name": "E_HARM",
+    "kind": "call",
+    "group": "Meters",
+    "callers": [
+      "phasorimp"
+    ]
+  },
+  {
+    "name": "E_HCINJ1_CFG",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "cinj"
+    ]
+  },
+  {
+    "name": "E_HCINJ1_EXE",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "cinj"
+    ]
+  },
+  {
+    "name": "E_HPF1_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "filter-hp"
+    ]
+  },
+  {
+    "name": "E_HPF1_EXE",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "filter-hp"
+    ]
+  },
+  {
+    "name": "E_L2GIMP1_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "l2g_imp"
+    ]
+  },
+  {
+    "name": "E_L2GIMP1_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "l2g_imp"
+    ]
+  },
+  {
+    "name": "E_L2LIMP1_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "l2l_imp"
+    ]
+  },
+  {
+    "name": "E_L2LIMP1_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "l2l_imp"
+    ]
+  },
+  {
+    "name": "E_MININ1CYCLE1_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mingam"
+    ]
+  },
+  {
+    "name": "E_MINMAXCYCLE1_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mingam"
+    ]
+  },
+  {
+    "name": "E_SOCMPLXPOLE_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "cmplx"
+    ]
+  },
+  {
+    "name": "E_SOCMPLXPOLE_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "cmplx"
+    ]
+  },
+  {
+    "name": "E_SORTER",
+    "kind": "call",
+    "group": "CSMF,MMC",
+    "callers": [
+      "sorter"
+    ]
+  },
+  {
+    "name": "E_SPARKGAP",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "spark_gap"
+    ]
+  },
+  {
+    "name": "E_SVCALOCT1_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "svcalloc1"
+    ]
+  },
+  {
+    "name": "E_SVCALOCT1_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "svcalloc1"
+    ]
+  },
+  {
+    "name": "E_TF2W_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr-2w",
+      "xfmr-3p2w"
+    ]
+  },
+  {
+    "name": "E_TF2WA_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr_2w_auto",
+      "xfmr_3p2w_auto"
+    ]
+  },
+  {
+    "name": "E_TF3W_CFG",
+    "kind": "call",
+    "group": "(null)",
+    "callers": [
+      "xfmr-3p3w",
+      "xfmr-3w"
+    ]
+  },
+  {
+    "name": "E_TF3W2_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr-3p3w2",
+      "xfmr-3w2"
+    ]
+  },
+  {
+    "name": "E_TF3WA_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr_3w_auto",
+      "xfmr_3p3w_auto"
+    ]
+  },
+  {
+    "name": "E_TF4W2_CFG",
+    "kind": "call",
+    "group": "(null)",
+    "callers": [
+      "xfmr-3p4w"
+    ]
+  },
+  {
+    "name": "E_TF4W3_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr-3p4w2",
+      "xfmr-4w"
+    ]
+  },
+  {
+    "name": "E_TFNW1_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr_Nw"
+    ]
+  },
+  {
+    "name": "E_VARIMPBRANCH",
+    "kind": "subroutine",
+    "group": "Passive",
+    "callers": [
+      "var_impedance"
+    ]
+  },
+  {
+    "name": "E_VARRLC1_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_FullCell",
+      "mmc_HalfCell",
+      "varrlc"
+    ]
+  },
+  {
+    "name": "E_VARRLC1_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_FullCell",
+      "mmc_HalfCell",
+      "varrlc"
+    ]
+  },
+  {
+    "name": "E_VZNO50",
+    "kind": "function",
+    "group": "Passive",
+    "callers": [
+      "arrester"
+    ]
+  },
+  {
+    "name": "E_XFLIP1_CFG",
+    "kind": "call",
+    "group": "Logical",
+    "callers": [
+      "flip_flop"
+    ]
+  },
+  {
+    "name": "E_XFLIP1_EXE",
+    "kind": "call",
+    "group": "Logical",
+    "callers": [
+      "flip_flop"
+    ]
+  },
+  {
+    "name": "E_XIGEN1_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "impulse"
+    ]
+  },
+  {
+    "name": "E_XIGEN1_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "impulse"
+    ]
+  },
+  {
+    "name": "E_XSGEN1_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_MultiDimCarrierGen",
+      "signalgen"
+    ]
+  },
+  {
+    "name": "E_XSGEN1_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_MultiDimCarrierGen",
+      "signalgen"
+    ]
+  },
+  {
+    "name": "E1PBRKR1_CFG",
+    "kind": "call",
+    "group": "Breakers Faults",
+    "callers": [
+      "breaker1"
+    ]
+  },
+  {
+    "name": "E1PBRKR1_EXE",
+    "kind": "call",
+    "group": "Breakers Faults",
+    "callers": [
+      "breaker1"
+    ]
+  },
+  {
+    "name": "E3PHFLT1_CFG",
+    "kind": "call",
+    "group": "Breakers Faults",
+    "callers": [
+      "tpflt"
+    ]
+  },
+  {
+    "name": "E3PHFLT1_EXE",
+    "kind": "call",
+    "group": "Breakers Faults",
+    "callers": [
+      "tpflt"
+    ]
+  },
+  {
+    "name": "EMTDC_1PVSRC",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "source_1"
+    ]
+  },
+  {
+    "name": "EMTDC_3PHVSRC",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "source3R",
+      "source_3"
+    ]
+  },
+  {
+    "name": "EMTDC_BREAKER1",
+    "kind": "call",
+    "group": "Breakers Faults",
+    "callers": [
+      "breaker3",
+      "fault_sw"
+    ]
+  },
+  {
+    "name": "EMTDC_FF",
+    "kind": "call",
+    "group": "(null)",
+    "callers": [
+      "flipflop"
+    ]
+  },
+  {
+    "name": "EMTDC_FF_RS",
+    "kind": "call",
+    "group": "(null)",
+    "callers": [
+      "rsff"
+    ]
+  },
+  {
+    "name": "EMTDC_IGFP",
+    "kind": "subroutine",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "fp_int"
+    ]
+  },
+  {
+    "name": "EMTDC_ITFP",
+    "kind": "subroutine",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "fp_int"
+    ]
+  },
+  {
+    "name": "EMTDC_MESSAGE",
+    "kind": "call",
+    "group": "PI sections",
+    "callers": [
+      "coupled_3lines",
+      "current_scaler",
+      "dynamic_datatap",
+      "log",
+      "sqrt",
+      "surge1"
+    ]
+  },
+  {
+    "name": "EMTDC_MUXN",
+    "kind": "call",
+    "group": "Logical",
+    "callers": [
+      "mux1"
+    ]
+  },
+  {
+    "name": "EMTDC_NRN",
+    "kind": "function",
+    "group": "Miscellaneous,I/O Devices",
+    "callers": [
+      "num_run"
+    ]
+  },
+  {
+    "name": "EMTDC_PAUSE",
+    "kind": "call",
+    "group": "I/O Devices",
+    "callers": [
+      "pause"
+    ]
+  },
+  {
+    "name": "EMTDC_QUIT",
+    "kind": "call",
+    "group": "PI sections",
+    "callers": [
+      "coupled_3lines",
+      "current_scaler",
+      "surge1"
+    ]
+  },
+  {
+    "name": "EMTDC_RANK",
+    "kind": "function",
+    "group": "Miscellaneous,I/O Devices",
+    "callers": [
+      "rank_number"
+    ]
+  },
+  {
+    "name": "EMTDC_RUN",
+    "kind": "function",
+    "group": "Miscellaneous,I/O Devices",
+    "callers": [
+      "run_num"
+    ]
+  },
+  {
+    "name": "EMTDC_SETTFPARM",
+    "kind": "call",
+    "group": "PI sections",
+    "callers": [
+      "coupled_2lines",
+      "coupled_3lines"
+    ]
+  },
+  {
+    "name": "EMTDC_SREGIS",
+    "kind": "call",
+    "group": "(null)",
+    "callers": [
+      "sregis"
+    ]
+  },
+  {
+    "name": "EMTDC_STOPRUN",
+    "kind": "call",
+    "group": "I/O Devices",
+    "callers": [
+      "stop"
+    ]
+  },
+  {
+    "name": "EMTDC_TBREAK",
+    "kind": "call",
+    "group": "(null)",
+    "callers": [
+      "tbreak"
+    ]
+  },
+  {
+    "name": "EMTDC_TFAULT",
+    "kind": "call",
+    "group": "(null)",
+    "callers": [
+      "tfault"
+    ]
+  },
+  {
+    "name": "EMTDC_VVDC",
+    "kind": "function",
+    "group": "Breakers Faults",
+    "callers": [
+      "breaker1",
+      "breaker3",
+      "g6p200",
+      "g6p200_2",
+      "multimeter",
+      "nodelabel",
+      "voltmeter",
+      "voltmetergnd"
+    ]
+  },
+  {
+    "name": "EMTDC_WARN",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "hardlimit"
+    ]
+  },
+  {
+    "name": "EMTDC_X2COMP",
+    "kind": "subroutine",
+    "group": "CSMF",
+    "callers": [
+      "compar",
+      "compare"
+    ]
+  },
+  {
+    "name": "EMTDC_XFLIP",
+    "kind": "subroutine",
+    "group": "(null)",
+    "callers": [
+      "ff_d",
+      "ff_jk",
+      "ff_rs",
+      "ff_t"
+    ]
+  },
+  {
+    "name": "EMTDC_XHBUFF",
+    "kind": "subroutine",
+    "group": "Logical",
+    "callers": [
+      "buffer"
+    ]
+  },
+  {
+    "name": "EMTDC_XINT",
+    "kind": "function",
+    "group": "CSMF",
+    "callers": [
+      "integral"
+    ]
+  },
+  {
+    "name": "EMTDC_XLGATE",
+    "kind": "subroutine",
+    "group": "Logical",
+    "callers": [
+      "logic_mult"
+    ]
+  },
+  {
+    "name": "EMTDC_XMSTAB",
+    "kind": "subroutine",
+    "group": "CSMF",
+    "callers": [
+      "monostable"
+    ]
+  },
+  {
+    "name": "EMTDC_XONDLAY",
+    "kind": "subroutine",
+    "group": "CSMF",
+    "callers": [
+      "delay",
+      "over_current"
+    ]
+  },
+  {
+    "name": "EMTDC_XPI",
+    "kind": "function",
+    "group": "CSMF",
+    "callers": [
+      "pi_ctlr"
+    ]
+  },
+  {
+    "name": "EMTDC_XPI2",
+    "kind": "function",
+    "group": "CSMF",
+    "callers": [
+      "pi_ctlr"
+    ]
+  },
+  {
+    "name": "EMTDC_XSHIFT",
+    "kind": "subroutine",
+    "group": "Logical",
+    "callers": [
+      "shiftreg"
+    ]
+  },
+  {
+    "name": "EMTDC_XTTRANS",
+    "kind": "subroutine",
+    "group": "CSMF,Logical",
+    "callers": [
+      "bin_delay"
+    ]
+  },
+  {
+    "name": "EMTDC_XZCD",
+    "kind": "subroutine",
+    "group": "CSMF",
+    "callers": [
+      "zerodetect"
+    ]
+  },
+  {
+    "name": "ESYS651_CFG",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "source1",
+      "source3",
+      "source3R"
+    ]
+  },
+  {
+    "name": "ESYS651_EXE",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "source1",
+      "source3",
+      "source3R"
+    ]
+  },
+  {
+    "name": "EXCAC10C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC10C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC11C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC11C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC1A2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC1A2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC1C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC1C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC2A2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC2A2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC2C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC2C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC3A2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC3A2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC3C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC3C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC4A2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC4A2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC4C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC4C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC5A2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC5A2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC5C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC5C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC6A2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC6A2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC6C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC6C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC7B2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC7B2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC7C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC7C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC8B1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC8B1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC8B2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC8B2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac"
+    ]
+  },
+  {
+    "name": "EXCAC8C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC8C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC9C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCAC9C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excac_2016"
+    ]
+  },
+  {
+    "name": "EXCDC1A2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excdc"
+    ]
+  },
+  {
+    "name": "EXCDC1A2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excdc"
+    ]
+  },
+  {
+    "name": "EXCDC1C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excdc_2016"
+    ]
+  },
+  {
+    "name": "EXCDC1C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excdc_2016"
+    ]
+  },
+  {
+    "name": "EXCDC2A2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excdc"
+    ]
+  },
+  {
+    "name": "EXCDC2A2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excdc"
+    ]
+  },
+  {
+    "name": "EXCDC2C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excdc_2016"
+    ]
+  },
+  {
+    "name": "EXCDC2C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excdc_2016"
+    ]
+  },
+  {
+    "name": "EXCDC3A1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excdc",
+      "excdc_2016"
+    ]
+  },
+  {
+    "name": "EXCDC3A1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excdc",
+      "excdc_2016"
+    ]
+  },
+  {
+    "name": "EXCDC4B1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excdc"
+    ]
+  },
+  {
+    "name": "EXCDC4B1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excdc"
+    ]
+  },
+  {
+    "name": "EXCDC4C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excdc_2016"
+    ]
+  },
+  {
+    "name": "EXCDC4C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excdc_2016"
+    ]
+  },
+  {
+    "name": "EXCI35",
+    "kind": "subroutine",
+    "group": "(null)",
+    "callers": [
+      "exci35defn"
+    ]
+  },
+  {
+    "name": "EXCST10C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST10C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST1A2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST1A2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST1C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST1C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST2A2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST2A2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST2C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST2C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST3A2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST3A2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST3C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST3C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST4B2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST4B2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST4C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST4C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST5B2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST5B2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST5B3_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST5B3_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST5C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST5C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST6B1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST6B1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST6C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST6C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST7B1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST7B1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst"
+    ]
+  },
+  {
+    "name": "EXCST7C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST7C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST8C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST8C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST9C1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXCST9C1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "excst_2016"
+    ]
+  },
+  {
+    "name": "EXGETDCO",
+    "kind": "call",
+    "group": "CSMF Control Blocks",
+    "callers": [
+      "Cosimulation"
+    ]
+  },
+  {
+    "name": "EXNEWCHCO",
+    "kind": "call",
+    "group": "CSMF Control Blocks",
+    "callers": [
+      "Cosimulation"
+    ]
+  },
+  {
+    "name": "EXPUTDCO",
+    "kind": "call",
+    "group": "CSMF Control Blocks",
+    "callers": [
+      "Cosimulation"
+    ]
+  },
+  {
+    "name": "EXSENDCO",
+    "kind": "call",
+    "group": "CSMF Control Blocks",
+    "callers": [
+      "Cosimulation"
+    ]
+  },
+  {
+    "name": "FDNE3_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "fdne"
+    ]
+  },
+  {
+    "name": "FDNE3_EXE",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "fdne"
+    ]
+  },
+  {
+    "name": "FDTF1_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "fdtf"
+    ]
+  },
+  {
+    "name": "FDTF1_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "fdtf"
+    ]
+  },
+  {
+    "name": "FILEREAD2",
+    "kind": "subroutine",
+    "group": "Data recorders Readers",
+    "callers": [
+      "fileread"
+    ]
+  },
+  {
+    "name": "FILN15",
+    "kind": "subroutine",
+    "group": "CSMF",
+    "callers": [
+      "trans_filt"
+    ]
+  },
+  {
+    "name": "FILN15_PRE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "trans_filt"
+    ]
+  },
+  {
+    "name": "FPLOT19",
+    "kind": "subroutine",
+    "group": "Transformers",
+    "callers": [
+      "umec-xfmr-2w",
+      "umec-xfmr-3w",
+      "umec-xfmr-3w2",
+      "umec-xfmr-4w",
+      "umec-xfmr-6w5L"
+    ]
+  },
+  {
+    "name": "FTN180",
+    "kind": "subroutine",
+    "group": "CSMF",
+    "callers": [
+      "fft"
+    ]
+  },
+  {
+    "name": "FTRAC2",
+    "kind": "subroutine",
+    "group": "CSMF",
+    "callers": [
+      "fft"
+    ]
+  },
+  {
+    "name": "FTSEQN",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "fft"
+    ]
+  },
+  {
+    "name": "FULLCELL_PB1_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_FullCell"
+    ]
+  },
+  {
+    "name": "FULLCELL1_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_FullCell"
+    ]
+  },
+  {
+    "name": "FULLCELL1_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_FullCell"
+    ]
+  },
+  {
+    "name": "GAMA18",
+    "kind": "subroutine",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mesgam"
+    ]
+  },
+  {
+    "name": "GAMME6",
+    "kind": "subroutine",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "appg1"
+    ]
+  },
+  {
+    "name": "GASDEV",
+    "kind": "function",
+    "group": "CSMF",
+    "callers": [
+      "random"
+    ]
+  },
+  {
+    "name": "GE87C1_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "dscd87"
+    ]
+  },
+  {
+    "name": "GE87C1_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "dscd87"
+    ]
+  },
+  {
+    "name": "GEC681_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "oos_lens68"
+    ]
+  },
+  {
+    "name": "GEC681_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "oos_lens68"
+    ]
+  },
+  {
+    "name": "HALFCELL_PB1_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_HalfCell"
+    ]
+  },
+  {
+    "name": "HALFCELL1_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_HalfCell"
+    ]
+  },
+  {
+    "name": "HALFCELL1_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_HalfCell"
+    ]
+  },
+  {
+    "name": "HGOV11_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hy_gov"
+    ]
+  },
+  {
+    "name": "HGOV11_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hy_gov"
+    ]
+  },
+  {
+    "name": "HGOV21_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hy_gov"
+    ]
+  },
+  {
+    "name": "HGOV21_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hy_gov"
+    ]
+  },
+  {
+    "name": "HGOV31_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hy_gov"
+    ]
+  },
+  {
+    "name": "HGOV31_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hy_gov"
+    ]
+  },
+  {
+    "name": "HGOV90",
+    "kind": "subroutine",
+    "group": "(null)",
+    "callers": [
+      "hgov90defn"
+    ]
+  },
+  {
+    "name": "HTUR11_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hy_tur"
+    ]
+  },
+  {
+    "name": "HTUR11_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hy_tur"
+    ]
+  },
+  {
+    "name": "HTUR21_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hy_tur"
+    ]
+  },
+  {
+    "name": "HTUR21_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hy_tur"
+    ]
+  },
+  {
+    "name": "HTUR31_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hy_tur"
+    ]
+  },
+  {
+    "name": "HTUR31_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hy_tur"
+    ]
+  },
+  {
+    "name": "HTUR41_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hy_tur"
+    ]
+  },
+  {
+    "name": "HTUR41_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "hy_tur"
+    ]
+  },
+  {
+    "name": "HYSTERESIS_JA1_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "hysteresis_reactor"
+    ]
+  },
+  {
+    "name": "HYSTERESIS_JA1_EXE",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "hysteresis_reactor"
+    ]
+  },
+  {
+    "name": "INDLOAD_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "reactive_load"
+    ]
+  },
+  {
+    "name": "INDUCMC2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "wound_rotor"
+    ]
+  },
+  {
+    "name": "INDUCMC2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "wound_rotor"
+    ]
+  },
+  {
+    "name": "ITOCR1_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "itoc51"
+    ]
+  },
+  {
+    "name": "ITOCR1_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "itoc51"
+    ]
+  },
+  {
+    "name": "JAHYSTERESISCORE1_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "hysteresis_reactor"
+    ]
+  },
+  {
+    "name": "JAHYSTERESISCORE1_EXE",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "hysteresis_reactor"
+    ]
+  },
+  {
+    "name": "LATCK2",
+    "kind": "subroutine",
+    "group": "(null)",
+    "callers": [
+      "latch"
+    ]
+  },
+  {
+    "name": "LDLGPOLE",
+    "kind": "function",
+    "group": "CSMF",
+    "callers": [
+      "leadlag"
+    ]
+  },
+  {
+    "name": "LENS1_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "lens21"
+    ]
+  },
+  {
+    "name": "LENS1_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "lens21"
+    ]
+  },
+  {
+    "name": "LIMIT",
+    "kind": "function",
+    "group": "CSMF",
+    "callers": [
+      "hardlimit",
+      "pss"
+    ]
+  },
+  {
+    "name": "LOAD1P1_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "fixed_load1"
+    ]
+  },
+  {
+    "name": "LOAD1P1_EXE",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "fixed_load1"
+    ]
+  },
+  {
+    "name": "LOAD1P2_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "fixed_load"
+    ]
+  },
+  {
+    "name": "LOAD1P2_EXE",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "fixed_load"
+    ]
+  },
+  {
+    "name": "LOAD3P2_EXE",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "fixed_load"
+    ]
+  },
+  {
+    "name": "MHO681_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "oos_mho68"
+    ]
+  },
+  {
+    "name": "MHO681_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "oos_mho68"
+    ]
+  },
+  {
+    "name": "MMASS1_CFG",
+    "kind": "call",
+    "group": "(null)",
+    "callers": [
+      "multimass"
+    ]
+  },
+  {
+    "name": "MMASS1_EXE",
+    "kind": "call",
+    "group": "(null)",
+    "callers": [
+      "multimass"
+    ]
+  },
+  {
+    "name": "MMASS2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "multimass2"
+    ]
+  },
+  {
+    "name": "MMASS2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "multimass2"
+    ]
+  },
+  {
+    "name": "MMC_FIRING_FULLBRIDGE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_FiringFullBridge"
+    ]
+  },
+  {
+    "name": "MMC_FIRING_HALFBRIDGE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_FiringHalfBridge"
+    ]
+  },
+  {
+    "name": "MNA_CDCS",
+    "kind": "call",
+    "group": "CSMF Control Blocks",
+    "callers": [
+      "current_scaler",
+      "src_current_dependent_current"
+    ]
+  },
+  {
+    "name": "MNA_TRANSFORMER",
+    "kind": "call",
+    "group": "Sources,Transformers",
+    "callers": [
+      "ratio_changer_2w"
+    ]
+  },
+  {
+    "name": "MNA_VDCS",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "src_voltage_dependent_current"
+    ]
+  },
+  {
+    "name": "MNA_VDVS",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "source_vltg_dependent_voltage"
+    ]
+  },
+  {
+    "name": "MPHASE1PS",
+    "kind": "subroutine",
+    "group": "Meters",
+    "callers": [
+      "multimeter"
+    ]
+  },
+  {
+    "name": "MPHASE3PS",
+    "kind": "subroutine",
+    "group": "Meters",
+    "callers": [
+      "multimeter"
+    ]
+  },
+  {
+    "name": "MPPT_IC1_EXE",
+    "kind": "subroutine",
+    "group": "Sources",
+    "callers": [
+      "mppt"
+    ]
+  },
+  {
+    "name": "MPPT_PO1_EXE",
+    "kind": "subroutine",
+    "group": "Sources",
+    "callers": [
+      "mppt"
+    ]
+  },
+  {
+    "name": "MPPT1_CFG",
+    "kind": "subroutine",
+    "group": "Sources",
+    "callers": [
+      "mppt"
+    ]
+  },
+  {
+    "name": "MRUNNUM",
+    "kind": "function",
+    "group": "I/O Devices",
+    "callers": [
+      "mrun"
+    ]
+  },
+  {
+    "name": "MRUNOB",
+    "kind": "call",
+    "group": "I/O Devices",
+    "callers": [
+      "mrun"
+    ]
+  },
+  {
+    "name": "MRUNOC",
+    "kind": "call",
+    "group": "I/O Devices",
+    "callers": [
+      "mrun"
+    ]
+  },
+  {
+    "name": "MRUNOI",
+    "kind": "call",
+    "group": "I/O Devices",
+    "callers": [
+      "mrun"
+    ]
+  },
+  {
+    "name": "MRUNOINI",
+    "kind": "call",
+    "group": "I/O Devices",
+    "callers": [
+      "mrun"
+    ]
+  },
+  {
+    "name": "MRUNOR",
+    "kind": "call",
+    "group": "I/O Devices",
+    "callers": [
+      "mrun"
+    ]
+  },
+  {
+    "name": "MRUNVI",
+    "kind": "call",
+    "group": "I/O Devices",
+    "callers": [
+      "mrun"
+    ]
+  },
+  {
+    "name": "MRUNVINI",
+    "kind": "call",
+    "group": "I/O Devices",
+    "callers": [
+      "mrun",
+      "optimum_run"
+    ]
+  },
+  {
+    "name": "MRUNVR",
+    "kind": "call",
+    "group": "I/O Devices",
+    "callers": [
+      "mrun"
+    ]
+  },
+  {
+    "name": "MRUNXTRAFILES",
+    "kind": "call",
+    "group": "I/O Devices,Data recorders Readers",
+    "callers": [
+      "mrun_extra"
+    ]
+  },
+  {
+    "name": "MRUNXTRAFILES_STATISTICS1",
+    "kind": "call",
+    "group": "I/O Devices,Data recorders Readers",
+    "callers": [
+      "mrun_extra"
+    ]
+  },
+  {
+    "name": "MRUNXTRALABELS",
+    "kind": "call",
+    "group": "I/O Devices,Data recorders Readers",
+    "callers": [
+      "mrun_extra"
+    ]
+  },
+  {
+    "name": "OPT_DIR",
+    "kind": "subroutine",
+    "group": "I/O Devices",
+    "callers": [
+      "optimum_run"
+    ]
+  },
+  {
+    "name": "OPT_GA",
+    "kind": "subroutine",
+    "group": "I/O Devices",
+    "callers": [
+      "optimum_run"
+    ]
+  },
+  {
+    "name": "OPT_GOLD",
+    "kind": "subroutine",
+    "group": "I/O Devices",
+    "callers": [
+      "optimum_run"
+    ]
+  },
+  {
+    "name": "OPT_GOLD_INIT",
+    "kind": "call",
+    "group": "I/O Devices",
+    "callers": [
+      "optimum_run"
+    ]
+  },
+  {
+    "name": "OPT_HJPAT",
+    "kind": "subroutine",
+    "group": "I/O Devices",
+    "callers": [
+      "optimum_run"
+    ]
+  },
+  {
+    "name": "OPT_SIMPLX",
+    "kind": "subroutine",
+    "group": "I/O Devices",
+    "callers": [
+      "optimum_run"
+    ]
+  },
+  {
+    "name": "ORUNFILE",
+    "kind": "call",
+    "group": "I/O Devices",
+    "callers": [
+      "optimum_run"
+    ]
+  },
+  {
+    "name": "P3PH2",
+    "kind": "function",
+    "group": "Meters",
+    "callers": [
+      "power"
+    ]
+  },
+  {
+    "name": "P3PH3",
+    "kind": "function",
+    "group": "Meters",
+    "callers": [
+      "multimeter",
+      "source3R"
+    ]
+  },
+  {
+    "name": "PESWITCH1_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_FullCell",
+      "mmc_HalfCell",
+      "peswitch"
+    ]
+  },
+  {
+    "name": "PESWITCH1_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_FullCell",
+      "mmc_HalfCell",
+      "peswitch"
+    ]
+  },
+  {
+    "name": "PHAS3P",
+    "kind": "function",
+    "group": "Meters",
+    "callers": [
+      "phasediff"
+    ]
+  },
+  {
+    "name": "PHD3",
+    "kind": "subroutine",
+    "group": "CSMF",
+    "callers": [
+      "phdx"
+    ]
+  },
+  {
+    "name": "PHOTOVOLT1_CFG",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "photovoltaic_source"
+    ]
+  },
+  {
+    "name": "PHOTOVOLT1_EXE",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "photovoltaic_source"
+    ]
+  },
+  {
+    "name": "PI_2CCTMUT_CFG",
+    "kind": "call",
+    "group": "PI sections",
+    "callers": [
+      "pi_double_cct"
+    ]
+  },
+  {
+    "name": "PI3_SECTION_CFG",
+    "kind": "call",
+    "group": "PI sections",
+    "callers": [
+      "newpi",
+      "pi_double_cct"
+    ]
+  },
+  {
+    "name": "PMMAC2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pm_machine"
+    ]
+  },
+  {
+    "name": "PMMAC2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pm_machine"
+    ]
+  },
+  {
+    "name": "PMR_FLAGS",
+    "kind": "call",
+    "group": "I/O Devices",
+    "callers": [
+      "mrun"
+    ]
+  },
+  {
+    "name": "POLPI1_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "polpi5"
+    ]
+  },
+  {
+    "name": "POLPI1_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "polpi5"
+    ]
+  },
+  {
+    "name": "POLYGON1_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "trip_polygon"
+    ]
+  },
+  {
+    "name": "POLYGON1_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "trip_polygon"
+    ]
+  },
+  {
+    "name": "PQVI1PH",
+    "kind": "subroutine",
+    "group": "Meters",
+    "callers": [
+      "multimeter"
+    ]
+  },
+  {
+    "name": "PREINSERT11",
+    "kind": "subroutine",
+    "group": "Breakers Faults",
+    "callers": [
+      "breaker1",
+      "breaker3"
+    ]
+  },
+  {
+    "name": "PREINSERT3",
+    "kind": "subroutine",
+    "group": "Breakers Faults",
+    "callers": [
+      "breaker3"
+    ]
+  },
+  {
+    "name": "PREINSERT33",
+    "kind": "call",
+    "group": "Breakers Faults",
+    "callers": [
+      "breaker3"
+    ]
+  },
+  {
+    "name": "PSCAD_AGI2",
+    "kind": "call",
+    "group": "Breakers Faults",
+    "callers": [
+      "breaker1",
+      "breaker3",
+      "fault_sw",
+      "multimeter",
+      "Sequencer_Breaker",
+      "Sequencer_Fault",
+      "Sequencer_SetVar",
+      "Sequencer_Start",
+      "Sequencer_Wait",
+      "tpflt"
+    ]
+  },
+  {
+    "name": "PSCAD_AGR2",
+    "kind": "call",
+    "group": "Breakers Faults",
+    "callers": [
+      "breaker3",
+      "multimeter"
+    ]
+  },
+  {
+    "name": "PSS1A1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "PSS1A1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "PSS2B1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "PSS2B1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "PSS3B1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "PSS3B1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "PSS3B2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "PSS3B2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "PSS4B1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "PSS4B1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "PSS4B2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "PSS4B2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "pss"
+    ]
+  },
+  {
+    "name": "PTRL1_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "pt1"
+    ]
+  },
+  {
+    "name": "PTRL1_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "pt1"
+    ]
+  },
+  {
+    "name": "PWM_HCC1_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "pwm_hcc"
+    ]
+  },
+  {
+    "name": "PWM_HCC1_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "pwm_hcc"
+    ]
+  },
+  {
+    "name": "Q3PH2",
+    "kind": "function",
+    "group": "Meters",
+    "callers": [
+      "power"
+    ]
+  },
+  {
+    "name": "Q3PH3",
+    "kind": "function",
+    "group": "Meters",
+    "callers": [
+      "multimeter",
+      "source3R"
+    ]
+  },
+  {
+    "name": "RAMP1_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "downramp",
+      "upramp"
+    ]
+  },
+  {
+    "name": "RAMP1_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "downramp",
+      "upramp"
+    ]
+  },
+  {
+    "name": "RAN1",
+    "kind": "function",
+    "group": "CSMF",
+    "callers": [
+      "random",
+      "Sequencer_Wait"
+    ]
+  },
+  {
+    "name": "RANDOM_MRUN",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "random"
+    ]
+  },
+  {
+    "name": "RATE_LIMITER",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "ratelimit"
+    ]
+  },
+  {
+    "name": "REALPOLE",
+    "kind": "function",
+    "group": "Meters",
+    "callers": [
+      "multimeter",
+      "realpole"
+    ]
+  },
+  {
+    "name": "RESLOAD_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "resistive_load"
+    ]
+  },
+  {
+    "name": "RETRIEVE_RMIN",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "mmc_FullCell"
+    ]
+  },
+  {
+    "name": "RMS3",
+    "kind": "function",
+    "group": "Meters",
+    "callers": [
+      "multimeter",
+      "over_current",
+      "rms-inst"
+    ]
+  },
+  {
+    "name": "RMS3PH",
+    "kind": "function",
+    "group": "Meters",
+    "callers": [
+      "multimeter"
+    ]
+  },
+  {
+    "name": "RTPS_A_VAR_DES",
+    "kind": "call",
+    "group": "Data recorders Readers",
+    "callers": [
+      "recorder2_0"
+    ]
+  },
+  {
+    "name": "RTPS_A_VAR_NAME",
+    "kind": "call",
+    "group": "Data recorders Readers",
+    "callers": [
+      "recorder2_0"
+    ]
+  },
+  {
+    "name": "RTPS_D_VAR_DES",
+    "kind": "call",
+    "group": "Data recorders Readers",
+    "callers": [
+      "recorder2_0"
+    ]
+  },
+  {
+    "name": "RTPS_D_VAR_NAME",
+    "kind": "call",
+    "group": "Data recorders Readers",
+    "callers": [
+      "recorder2_0"
+    ]
+  },
+  {
+    "name": "RTPS_HDR",
+    "kind": "call",
+    "group": "Data recorders Readers",
+    "callers": [
+      "recorder2_0"
+    ]
+  },
+  {
+    "name": "RTPS_MAIN",
+    "kind": "call",
+    "group": "Data recorders Readers",
+    "callers": [
+      "recorder2_0"
+    ]
+  },
+  {
+    "name": "SAMP5",
+    "kind": "function",
+    "group": "CSMF",
+    "callers": [
+      "sampler"
+    ]
+  },
+  {
+    "name": "SANDH2",
+    "kind": "subroutine",
+    "group": "CSMF",
+    "callers": [
+      "sandhdefn"
+    ]
+  },
+  {
+    "name": "SATREACT1_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "sat_reac"
+    ]
+  },
+  {
+    "name": "SATREACT1_EXE",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "sat_reac"
+    ]
+  },
+  {
+    "name": "SAVEAN",
+    "kind": "call",
+    "group": "Data recorders Readers",
+    "callers": [
+      "recorder2_0"
+    ]
+  },
+  {
+    "name": "SAVEDIG",
+    "kind": "call",
+    "group": "Data recorders Readers",
+    "callers": [
+      "recorder2_0"
+    ]
+  },
+  {
+    "name": "SAWTOOTH1_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "sig_gen"
+    ]
+  },
+  {
+    "name": "SAWTOOTH1_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "sig_gen"
+    ]
+  },
+  {
+    "name": "SCRX1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "exc_scrx"
+    ]
+  },
+  {
+    "name": "SCRX1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "exc_scrx"
+    ]
+  },
+  {
+    "name": "SE32L1_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "dir_neg32"
+    ]
+  },
+  {
+    "name": "SE32L1_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "dir_neg32"
+    ]
+  },
+  {
+    "name": "SEL681_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "oos_poly68"
+    ]
+  },
+  {
+    "name": "SEL681_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "oos_poly68"
+    ]
+  },
+  {
+    "name": "SEQFILTER",
+    "kind": "subroutine",
+    "group": "Protection",
+    "callers": [
+      "seq_filter"
+    ]
+  },
+  {
+    "name": "SER2PAR",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "source3"
+    ]
+  },
+  {
+    "name": "SET_NEW_PLOTSTEP",
+    "kind": "call",
+    "group": "I/O Devices",
+    "callers": [
+      "var_plotstep"
+    ]
+  },
+  {
+    "name": "SETSEED",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "random",
+      "Sequencer_Wait"
+    ]
+  },
+  {
+    "name": "SNC375",
+    "kind": "subroutine",
+    "group": "(null)",
+    "callers": [
+      "macdefn"
+    ]
+  },
+  {
+    "name": "SOURCE3R1_CFG",
+    "kind": "call",
+    "group": "Sources",
+    "callers": [
+      "source3R"
+    ]
+  },
+  {
+    "name": "SPIMW1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "spim_uw"
+    ]
+  },
+  {
+    "name": "SPIMW1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "spim_uw"
+    ]
+  },
+  {
+    "name": "SQCIM3P1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "sqc100"
+    ]
+  },
+  {
+    "name": "SQCIM3P1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "sqc100"
+    ]
+  },
+  {
+    "name": "STATBRK1_CFG",
+    "kind": "call",
+    "group": "Breakers Faults",
+    "callers": [
+      "statistical_breaker"
+    ]
+  },
+  {
+    "name": "STATBRK1_EXE",
+    "kind": "call",
+    "group": "Breakers Faults",
+    "callers": [
+      "statistical_breaker"
+    ]
+  },
+  {
+    "name": "SURGE_CIGRE1_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "surge1"
+    ]
+  },
+  {
+    "name": "SURGE_CIGRE1_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "surge1"
+    ]
+  },
+  {
+    "name": "SURGE_IEEE1_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "surge1"
+    ]
+  },
+  {
+    "name": "SURGE_IEEE1_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "surge1"
+    ]
+  },
+  {
+    "name": "SURGE1_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "surge"
+    ]
+  },
+  {
+    "name": "SURGE1_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "surge"
+    ]
+  },
+  {
+    "name": "SVC1_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "svc"
+    ]
+  },
+  {
+    "name": "SVC1_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "svc"
+    ]
+  },
+  {
+    "name": "SVM_EDGE1_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "svm"
+    ]
+  },
+  {
+    "name": "SVM_EDGE1_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "svm"
+    ]
+  },
+  {
+    "name": "SYNCMC3P0_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "sync_machine"
+    ]
+  },
+  {
+    "name": "SYNCMC3P2_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "sync_machine"
+    ]
+  },
+  {
+    "name": "SYNCMC3P2_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "sync_machine"
+    ]
+  },
+  {
+    "name": "TFNN35",
+    "kind": "subroutine",
+    "group": "CSMF",
+    "callers": [
+      "trans_fcn"
+    ]
+  },
+  {
+    "name": "TGOV11_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "th_gov"
+    ]
+  },
+  {
+    "name": "TGOV11_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "th_gov"
+    ]
+  },
+  {
+    "name": "TGOV21_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "th_gov"
+    ]
+  },
+  {
+    "name": "TGOV21_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "th_gov"
+    ]
+  },
+  {
+    "name": "TGOV31_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "th_gov"
+    ]
+  },
+  {
+    "name": "TGOV31_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "th_gov"
+    ]
+  },
+  {
+    "name": "TGOV41_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "th_gov"
+    ]
+  },
+  {
+    "name": "TGOV41_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "th_gov"
+    ]
+  },
+  {
+    "name": "TGOV51_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "th_gov"
+    ]
+  },
+  {
+    "name": "TGOV51_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "th_gov"
+    ]
+  },
+  {
+    "name": "THDN",
+    "kind": "function",
+    "group": "CSMF",
+    "callers": [
+      "thd"
+    ]
+  },
+  {
+    "name": "TIMER3",
+    "kind": "function",
+    "group": "CSMF",
+    "callers": [
+      "timer"
+    ]
+  },
+  {
+    "name": "TLDM34",
+    "kind": "call",
+    "group": "(null)",
+    "callers": [
+      "fload"
+    ]
+  },
+  {
+    "name": "TRB110",
+    "kind": "subroutine",
+    "group": "(null)",
+    "callers": [
+      "multimassdefn"
+    ]
+  },
+  {
+    "name": "TRDQO",
+    "kind": "subroutine",
+    "group": "CSMF",
+    "callers": [
+      "abcdq0",
+      "dq0"
+    ]
+  },
+  {
+    "name": "TRPCCL1_CFG",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "mho_circle"
+    ]
+  },
+  {
+    "name": "TRPCCL1_EXE",
+    "kind": "call",
+    "group": "Protection",
+    "callers": [
+      "mho_circle"
+    ]
+  },
+  {
+    "name": "TRTAP2WA1_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr_2w_auto",
+      "xfmr_3p2w_auto"
+    ]
+  },
+  {
+    "name": "TRTAP2WA1_EXE",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr_2w_auto",
+      "xfmr_3p2w_auto"
+    ]
+  },
+  {
+    "name": "TRTAP3WA1_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr_3w_auto",
+      "xfmr_3p3w_auto"
+    ]
+  },
+  {
+    "name": "TRTAP3WA1_EXE",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr_3w_auto",
+      "xfmr_3p3w_auto"
+    ]
+  },
+  {
+    "name": "TRTAP5",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr-2w",
+      "xfmr-3p2w",
+      "xfmr-3p3w",
+      "xfmr-3p3w2",
+      "xfmr-3p4w",
+      "xfmr-3p4w2",
+      "xfmr-3w",
+      "xfmr-3w2",
+      "xfmr-4w",
+      "xfmr_Nw"
+    ]
+  },
+  {
+    "name": "TRVENVELOPE2_CFG",
+    "kind": "call",
+    "group": "Breakers Faults",
+    "callers": [
+      "trv"
+    ]
+  },
+  {
+    "name": "TRVENVELOPE2_EXE",
+    "kind": "call",
+    "group": "Breakers Faults",
+    "callers": [
+      "trv"
+    ]
+  },
+  {
+    "name": "TSAT1_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr-2w",
+      "xfmr_2w_auto",
+      "xfmr_3w_auto",
+      "xfmr_3p2w_auto",
+      "xfmr_3p3w_auto",
+      "xfmr-3p2w",
+      "xfmr-3p3w",
+      "xfmr-3p3w2",
+      "xfmr-3p4w",
+      "xfmr-3p4w2",
+      "xfmr-3w",
+      "xfmr-3w2",
+      "xfmr-4w",
+      "xfmr_Nw"
+    ]
+  },
+  {
+    "name": "TSAT1_EXE",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr-2w",
+      "xfmr_2w_auto",
+      "xfmr_3w_auto",
+      "xfmr_3p2w_auto",
+      "xfmr_3p3w_auto",
+      "xfmr-3p2w",
+      "xfmr-3p3w",
+      "xfmr-3p3w2",
+      "xfmr-3p4w",
+      "xfmr-3p4w2",
+      "xfmr-3w",
+      "xfmr-3w2",
+      "xfmr-4w",
+      "xfmr_Nw"
+    ]
+  },
+  {
+    "name": "TSAT2_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr-2w",
+      "xfmr-3p2w",
+      "xfmr-3p3w",
+      "xfmr-3p3w2",
+      "xfmr-3p4w",
+      "xfmr-3p4w2",
+      "xfmr-3w",
+      "xfmr-3w2",
+      "xfmr-4w"
+    ]
+  },
+  {
+    "name": "TSAT2_EXE",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr-2w",
+      "xfmr-3p2w",
+      "xfmr-3p3w",
+      "xfmr-3p3w2",
+      "xfmr-3p4w",
+      "xfmr-3p4w2",
+      "xfmr-3w",
+      "xfmr-3w2",
+      "xfmr-4w"
+    ]
+  },
+  {
+    "name": "TSAT3_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr-2w",
+      "xfmr-3p2w",
+      "xfmr-3p3w",
+      "xfmr-3p3w2",
+      "xfmr-3p4w",
+      "xfmr-3p4w2",
+      "xfmr-3w",
+      "xfmr-3w2",
+      "xfmr-4w"
+    ]
+  },
+  {
+    "name": "TSAT3_EXE",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr-2w",
+      "xfmr-3p2w",
+      "xfmr-3p3w",
+      "xfmr-3p3w2",
+      "xfmr-3p4w",
+      "xfmr-3p4w2",
+      "xfmr-3w",
+      "xfmr-3w2",
+      "xfmr-4w"
+    ]
+  },
+  {
+    "name": "TSAT4_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr-2w",
+      "xfmr-3p2w",
+      "xfmr-3p3w",
+      "xfmr-3p3w2",
+      "xfmr-3p4w",
+      "xfmr-3p4w2",
+      "xfmr-3w",
+      "xfmr-3w2",
+      "xfmr-4w"
+    ]
+  },
+  {
+    "name": "TSAT4_EXE",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "xfmr-2w",
+      "xfmr-3p2w",
+      "xfmr-3p3w",
+      "xfmr-3p3w2",
+      "xfmr-3p4w",
+      "xfmr-3p4w2",
+      "xfmr-3w",
+      "xfmr-3w2",
+      "xfmr-4w"
+    ]
+  },
+  {
+    "name": "TTUR11_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "th_tur"
+    ]
+  },
+  {
+    "name": "TTUR21_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "th_tur"
+    ]
+  },
+  {
+    "name": "TUNEDFILTER1_CFG",
+    "kind": "call",
+    "group": "Passive",
+    "callers": [
+      "filter"
+    ]
+  },
+  {
+    "name": "TVEKA1_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "tvekta"
+    ]
+  },
+  {
+    "name": "TVEKA1_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "tvekta"
+    ]
+  },
+  {
+    "name": "TVEKT3",
+    "kind": "subroutine",
+    "group": "(null)",
+    "callers": [
+      "tvekt"
+    ]
+  },
+  {
+    "name": "TVPULN",
+    "kind": "subroutine",
+    "group": "(null)",
+    "callers": [
+      "tvekt",
+      "tvekta"
+    ]
+  },
+  {
+    "name": "TXFERFNC1_CFG",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "txferfnc"
+    ]
+  },
+  {
+    "name": "TXFERFNC1_EXE",
+    "kind": "call",
+    "group": "CSMF",
+    "callers": [
+      "txferfnc"
+    ]
+  },
+  {
+    "name": "UMEC2W_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "umec-xfmr-2w"
+    ]
+  },
+  {
+    "name": "UMEC3W_CFG",
+    "kind": "call",
+    "group": "(null)",
+    "callers": [
+      "umec-xfmr-3w"
+    ]
+  },
+  {
+    "name": "UMEC3W2_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "umec-xfmr-3w2"
+    ]
+  },
+  {
+    "name": "UMEC4W_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "umec-xfmr-4w"
+    ]
+  },
+  {
+    "name": "UMEC6W5L_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "umec-xfmr-6w5L"
+    ]
+  },
+  {
+    "name": "UMECSAT1_CFG",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "umec-xfmr-2w",
+      "umec-xfmr-3w",
+      "umec-xfmr-3w2",
+      "umec-xfmr-4w",
+      "umec-xfmr-6w5L"
+    ]
+  },
+  {
+    "name": "UMECSAT1_EXE",
+    "kind": "call",
+    "group": "Transformers",
+    "callers": [
+      "umec-xfmr-2w",
+      "umec-xfmr-3w",
+      "umec-xfmr-3w2",
+      "umec-xfmr-4w",
+      "umec-xfmr-6w5L"
+    ]
+  },
+  {
+    "name": "VBRANCH",
+    "kind": "function",
+    "group": "Breakers Faults",
+    "callers": [
+      "breaker1",
+      "breaker3",
+      "peswitch"
+    ]
+  },
+  {
+    "name": "VDCL31_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "vdcl"
+    ]
+  },
+  {
+    "name": "VDCL31_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "vdcl"
+    ]
+  },
+  {
+    "name": "VDCL71_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "vdcl"
+    ]
+  },
+  {
+    "name": "VDCL71_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "vdcl"
+    ]
+  },
+  {
+    "name": "VDVOCI",
+    "kind": "subroutine",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "vdvoci"
+    ]
+  },
+  {
+    "name": "VDVOCR",
+    "kind": "subroutine",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "vdvocr"
+    ]
+  },
+  {
+    "name": "VG6P1_CFG",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "vg6p18"
+    ]
+  },
+  {
+    "name": "VG6P1_EXE",
+    "kind": "call",
+    "group": "HVDC FACTS PE",
+    "callers": [
+      "vg6p18"
+    ]
+  },
+  {
+    "name": "VM3PH2",
+    "kind": "function",
+    "group": "Meters",
+    "callers": [
+      "multimeter",
+      "rms3ph",
+      "sync_machine"
+    ]
+  },
+  {
+    "name": "WINDGOV1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "wind_governor"
+    ]
+  },
+  {
+    "name": "WINDGOV1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "wind_governor"
+    ]
+  },
+  {
+    "name": "WINDSRC1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "wind_source"
+    ]
+  },
+  {
+    "name": "WINDSRC1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "wind_source"
+    ]
+  },
+  {
+    "name": "WINDTRB1_CFG",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "wind_turbine"
+    ]
+  },
+  {
+    "name": "WINDTRB1_EXE",
+    "kind": "call",
+    "group": "Machines",
+    "callers": [
+      "wind_turbine"
+    ]
+  },
+  {
+    "name": "XYFUNC",
+    "kind": "function",
+    "group": "CSMF,Data recorders Readers",
+    "callers": [
+      "xy_transfer_function"
+    ]
+  },
+  {
+    "name": "XYFUNC1_EXE",
+    "kind": "call",
+    "group": "CSMF,Data recorders Readers",
+    "callers": [
+      "xy_transfer_function"
+    ]
+  },
+  {
+    "name": "XYTABLE_F2",
+    "kind": "call",
+    "group": "CSMF,Data recorders Readers",
+    "callers": [
+      "xy_table"
+    ]
+  },
+  {
+    "name": "XYTABLE_T2_CFG",
+    "kind": "call",
+    "group": "CSMF,Data recorders Readers",
+    "callers": [
+      "xy_table"
+    ]
+  },
+  {
+    "name": "XYTABLE_T2_EXE",
+    "kind": "call",
+    "group": "CSMF,Data recorders Readers",
+    "callers": [
+      "xy_table"
+    ]
+  },
+  {
+    "name": "XYZ_T1_CFG",
+    "kind": "call",
+    "group": "CSMF,Data recorders Readers",
+    "callers": [
+      "xyz_tf"
+    ]
+  },
+  {
+    "name": "XYZ_T1_EXE",
+    "kind": "call",
+    "group": "CSMF,Data recorders Readers",
+    "callers": [
+      "xyz_tf"
+    ]
+  },
+  {
+    "name": "XYZFUNC",
+    "kind": "function",
+    "group": "CSMF,Data recorders Readers",
+    "callers": [
+      "xyz_tf"
+    ]
+  },
+  {
+    "name": "ZDELAY1_CFG",
+    "kind": "call",
+    "group": "ZDomain",
+    "callers": [
+      "Zdelay"
+    ]
+  },
+  {
+    "name": "ZDELAY1_EXE",
+    "kind": "call",
+    "group": "ZDomain",
+    "callers": [
+      "Zdelay"
+    ]
+  },
+  {
+    "name": "ZDERIV1",
+    "kind": "call",
+    "group": "ZDomain",
+    "callers": [
+      "Zderivative"
+    ]
+  },
+  {
+    "name": "ZDIFFPOLE1",
+    "kind": "call",
+    "group": "ZDomain",
+    "callers": [
+      "Zdiffpole"
+    ]
+  },
+  {
+    "name": "ZINTEGRATOR1",
+    "kind": "call",
+    "group": "ZDomain",
+    "callers": [
+      "Zintegral"
+    ]
+  },
+  {
+    "name": "ZLDLGPOLE1",
+    "kind": "call",
+    "group": "ZDomain",
+    "callers": [
+      "Zleadlag"
+    ]
+  },
+  {
+    "name": "ZPI1",
+    "kind": "call",
+    "group": "ZDomain",
+    "callers": [
+      "Zpi_ctlr"
+    ]
+  },
+  {
+    "name": "ZREALPOLE1",
+    "kind": "call",
+    "group": "ZDomain",
+    "callers": [
+      "Zrealpole"
+    ]
+  },
+  {
+    "name": "ZTRANSFUNZ1_EXE",
+    "kind": "call",
+    "group": "ZDomain",
+    "callers": [
+      "Ztrans_fcnZ"
+    ]
+  }
+]

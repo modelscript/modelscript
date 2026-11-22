@@ -1,11 +1,11 @@
 ---
 title: CLI Commands Reference
-description: Complete command, subcommand, and flag reference for the modelscript (msx) CLI across compilation, simulation, verification, digital thread, and 92 engineering domain formats.
+description: Complete command, subcommand, and flag reference for the modelscript (msx) CLI across compilation, simulation, verification, digital thread, and 93 engineering domain formats.
 ---
 
 # CLI Commands Reference
 
-This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **169 commands** (138 primary commands + 31 aliases) across **92 supported languages** can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
+This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **169 commands** (138 primary commands + 31 aliases) across **93 supported languages** can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
 
 ---
 
@@ -363,7 +363,7 @@ msx pscad verify-ieee2800 SolarPlant_250MW.pscx --tstop 3.0 --step 20us -o ieee2
 
 ### `polyglot`
 
-Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 92 supported languages.
+Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 93 supported languages.
 
 <CliCommand name="polyglot" :show-actions="false" />
 
@@ -1244,7 +1244,7 @@ Resolves semantic version constraints, verifies SHA-256 content-addressable dige
 
 ### `stdlib`
 
-Browses, searches, and bootstraps official standard libraries across all 92 engineering languages.
+Browses, searches, and bootstraps official standard libraries across all 93 engineering languages.
 
 <CliCommand name="stdlib" />
 

@@ -122,6 +122,62 @@ export async function activate(context: vscode.ExtensionContext) {
         sourceUri?: vscode.Uri;
       }) => hostBridgeService.publishSimulationResult(options),
     ),
+    vscode.commands.registerCommand("modelscript.alm.openExternal", async (webUrl?: string, itemId?: string) => {
+      if (!webUrl || !/^https?:\/\//i.test(webUrl)) {
+        vscode.window.showWarningMessage(`No valid external ALM URL available for '${itemId ?? "item"}'.`);
+        return;
+      }
+      await vscode.env.openExternal(vscode.Uri.parse(webUrl));
+    }),
+    vscode.commands.registerCommand("modelscript.alm.syncPull", async (_docUri?: string, itemId?: string) => {
+      const apiBase = vscode.workspace.getConfiguration("modelscript").get<string>("apiUrl", "").replace(/\/+$/, "");
+      const sourceUri = await vscode.window.showInputBox({
+        prompt: `Enter protocol-prefixed ALM remote URI to sync${itemId ? ` (for ${itemId})` : ""}`,
+        placeHolder: "oslc+https://elm.corp.com/rm/modules/MOD-42",
+      });
+      if (!sourceUri) return;
+      const token = await vscode.window.showInputBox({
+        prompt: "Enter ALM API Token / PAT (leave blank if using proxy session auth)",
+        password: true,
+      });
+
+      const endpoint = `${apiBase}/api/v1/alm/pull`;
+      try {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { "x-alm-token": token } : {}),
+          },
+          body: JSON.stringify({ spec: sourceUri }),
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          vscode.window.showErrorMessage(`ALM sync failed (${res.status}): ${errText.slice(0, 200)}`);
+          return;
+        }
+        const data = (await res.json()) as {
+          files?: Array<{ filename: string; content: string }>;
+          snapshotVersion?: string;
+        };
+        const rootUri = memfsRootUri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+        if (!rootUri) {
+          vscode.window.showErrorMessage("No workspace folder open to write synced ALM files.");
+          return;
+        }
+        const files = data.files ?? [];
+        const encoder = new TextEncoder();
+        for (const f of files) {
+          const destUri = vscode.Uri.joinPath(rootUri, ".modelscript", "packages", "alm-sync", f.filename);
+          await vscode.workspace.fs.writeFile(destUri, encoder.encode(f.content));
+        }
+        vscode.window.showInformationMessage(
+          `Synced ${files.length} ALM projection file(s) (${data.snapshotVersion ?? "latest"}).`,
+        );
+      } catch (err) {
+        vscode.window.showErrorMessage(`ALM sync error: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }),
   );
 
   // Register URI handler for vscode://modelscript.modelscript/install?package=xyz

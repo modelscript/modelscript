@@ -669,11 +669,30 @@ const tsEmt: CommandModule<CosimArgs, TsEmtArgs> = {
 
     const { parseRaw, PssePhasorParticipant } = await import("@modelscript/psse");
     const { parsePscx, extractEmtNetlist, PscadEmtParticipant } = await import("@modelscript/pscad");
-    const { runHybridPhasorEmtCoSimulation } = await import("@modelscript/exchange");
+    const { lintHybridBoundary, runHybridPhasorEmtCoSimulation } = await import("@modelscript/exchange");
 
     const pCase = parseRaw(rawContent);
     const pProj = parsePscx(pscxContent);
     const netlist = extractEmtNetlist(pProj);
+
+    const psseBusRec = pCase.buses.get(parseInt(psseBusId, 10));
+    const emtBusRec = netlist.buses.get(pscadBusId);
+    const preflightDiags = lintHybridBoundary({
+      phasorFrequencyHz: pCase.header.basfrq > 0 ? pCase.header.basfrq : 60.0,
+      emtFrequencyHz: pProj.settings?.frequencyHz ?? 60.0,
+      baseMva: pCase.header.sbase > 0 ? pCase.header.sbase : 100.0,
+      ports: [
+        {
+          phasorBusId: psseBusId,
+          emtBusId: pscadBusId,
+          phasorBaseKv: psseBusRec?.baseKv ?? 230.0,
+          emtBaseKv: emtBusRec?.baseKv ?? 230.0,
+        },
+      ],
+    });
+    for (const d of preflightDiags) {
+      console.log(`  [Preflight ${d.severity.toUpperCase()} ${d.code}] ${d.message}`);
+    }
 
     const phasorParticipant = new PssePhasorParticipant(pCase, { id: "PSS_E" });
     const emtParticipant = new PscadEmtParticipant(netlist, { id: "PSCAD_Plant_1" });
@@ -872,6 +891,22 @@ const multiTsEmt: CommandModule<CosimArgs, MultiTsEmtArgs> = {
     );
     console.log(`  Duration: ${args.duration} s | Extrapolation: ${args.extrapolation}`);
 
+    const { lintHybridBoundary } = await import("@modelscript/exchange");
+    const preflightDiags = lintHybridBoundary({
+      phasorFrequencyHz: pCase.header.basfrq > 0 ? pCase.header.basfrq : 60.0,
+      emtFrequencyHz: 60.0,
+      baseMva: pCase.header.sbase > 0 ? pCase.header.sbase : 100.0,
+      ports: plantSpecs.map((p) => ({
+        phasorBusId: p.psseBusId,
+        emtBusId: p.emtBusId,
+        phasorBaseKv: pCase.buses.get(parseInt(p.psseBusId, 10))?.baseKv ?? 230.0,
+        emtBaseKv: p.netlist.buses.get(p.emtBusId)?.baseKv ?? 230.0,
+      })),
+    });
+    for (const d of preflightDiags) {
+      console.log(`  [Preflight ${d.severity.toUpperCase()} ${d.code}] ${d.message}`);
+    }
+
     const phasorParticipant = new PssePhasorParticipant(pCase, { id: "PSS_E_BulkGrid" });
     const plants = plantSpecs.map((p) => ({
       id: p.id,
@@ -942,11 +977,20 @@ const sysmlHybridCosim: CommandModule<CosimArgs, SysmlHybridCosimArgs> = {
   handler: async (args) => {
     const fs = await import("node:fs");
     const path = await import("node:path");
-    const { runSysML2HybridCoSimulation } = await import("@modelscript/sysml2");
+    const { runSysML2FastStaticLints, runSysML2HybridCoSimulation } = await import("@modelscript/sysml2");
 
     const modelPath = path.resolve(args.model);
     const baseDir = path.dirname(modelPath);
     const sysmlSource = fs.readFileSync(modelPath, "utf-8");
+
+    const preflightDiags = runSysML2FastStaticLints(sysmlSource);
+    for (const d of preflightDiags) {
+      console.error(`[S${d.code}] (${d.severity}) ${d.message}`);
+    }
+    if (args.strict && preflightDiags.some((d) => d.severity === "error")) {
+      process.exitCode = 1;
+      return;
+    }
 
     const res = await runSysML2HybridCoSimulation(sysmlSource, {
       optionOverrides: args.mode ? { mode: args.mode } : undefined,

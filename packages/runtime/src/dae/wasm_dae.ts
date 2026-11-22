@@ -329,6 +329,8 @@ export const FLAG_VAR_PROTECTED = 1 << 7;
 export const FLAG_VAR_FINAL = 1 << 8;
 /** Bitmask flag indicating a compiler-synthesized virtual variable. */
 export const FLAG_VAR_VIRTUAL = 1 << 9;
+/** Bitmask flag indicating a parameter marked with `annotation(Evaluate = true)` or structural evaluation. */
+export const FLAG_VAR_EVALUATE = 1 << 10;
 
 /** Bitmask flag indicating an `initial equation`. */
 export const FLAG_EQ_INITIAL = 1 << 0;
@@ -1625,6 +1627,21 @@ export class WasmDaeBridge implements IDaeBuilder {
   setVarFinal(varIdx: number, isFinal = true): void {
     const flags = this.getVarFlags(varIdx);
     this.setVarFlags(varIdx, isFinal ? flags | FLAG_VAR_FINAL : flags & ~FLAG_VAR_FINAL);
+  }
+
+  /**
+   * Checks whether the variable at `varIdx` is marked for compile-time evaluation (`FLAG_VAR_EVALUATE`).
+   */
+  isVarEvaluate(varIdx: number): boolean {
+    return (this.getVarFlags(varIdx) & FLAG_VAR_EVALUATE) !== 0;
+  }
+
+  /**
+   * Sets or clears the `FLAG_VAR_EVALUATE` flag on `varIdx`.
+   */
+  setVarEvaluate(varIdx: number, isEvaluate = true): void {
+    const flags = this.getVarFlags(varIdx);
+    this.setVarFlags(varIdx, isEvaluate ? flags | FLAG_VAR_EVALUATE : flags & ~FLAG_VAR_EVALUATE);
   }
 
   /**

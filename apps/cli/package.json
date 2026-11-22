@@ -80,6 +80,7 @@
     "@modelscript/las": "*",
     "@modelscript/lps": "*",
     "@modelscript/lsp": "*",
+    "@modelscript/magicdraw": "*",
     "@modelscript/matpower": "*",
     "@modelscript/modelica": "*",
     "@modelscript/modelscript": "*",

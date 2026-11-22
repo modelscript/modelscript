@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  generateHtmlReport,
-  generateSarifReport,
-  parseInitialSetString,
-  UnifiedVerifier,
-  type UnifiedVerificationReport,
-} from "@modelscript/runtime";
+import { generateHtmlReport, generateSarifReport } from "@modelscript/runtime";
+import { parseInitialSetString, UnifiedVerifier, type UnifiedVerificationReport } from "@modelscript/simulate";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 

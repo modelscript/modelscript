@@ -94,6 +94,7 @@ const ALPHA_LANGUAGES = new Set([
   "openscenario",
   "opensim",
   "optical",
+  "magicdraw",
   "oscal",
   "pdb",
   "phreeqc",

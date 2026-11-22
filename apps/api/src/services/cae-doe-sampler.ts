@@ -6,7 +6,7 @@ import {
   Xoshiro256pp,
   type Distribution,
   type RandomVariable,
-} from "@modelscript/runtime";
+} from "@modelscript/simulate";
 
 export interface ParametricSweepVariable {
   name: string;

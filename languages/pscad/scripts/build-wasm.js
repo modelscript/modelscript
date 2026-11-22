@@ -29,8 +29,25 @@ for (const file of ["symbols.json", "diagrams.json"]) {
 const pkgJsonPath = path.join(masterLibDir, "package.json");
 const symbolsPath = path.join(masterLibSrc, "symbols.json");
 const diagramsPath = path.join(masterLibSrc, "diagrams.json");
-if (fs.existsSync(pkgJsonPath) && fs.existsSync(symbolsPath) && fs.existsSync(diagramsPath)) {
-  const pkgJsonText = fs.readFileSync(pkgJsonPath, "utf-8").trim();
+const defaultPkgJsonText = JSON.stringify(
+  {
+    name: "@modelscript/pscad-master-lib",
+    version: "0.1.0",
+    type: "module",
+    license: "AGPL-3.0-or-later",
+    modelscript: {
+      category: "library",
+      language: "pscad",
+      symbols: "./dist/symbols.json",
+      diagrams: "./dist/diagrams.json",
+      runtime: { wasm: "./dist/runtime.wasm" },
+    },
+  },
+  null,
+  2,
+);
+if (fs.existsSync(symbolsPath) && fs.existsSync(diagramsPath)) {
+  const pkgJsonText = fs.existsSync(pkgJsonPath) ? fs.readFileSync(pkgJsonPath, "utf-8").trim() : defaultPkgJsonText;
   const symbolsText = fs.readFileSync(symbolsPath, "utf-8").trim();
   const diagramsText = fs.readFileSync(diagramsPath, "utf-8").trim();
   const outTsPath = path.join(pscadDir, "src", "catalog", "pscad-master-lib-data.ts");

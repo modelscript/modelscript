@@ -1,0 +1,833 @@
+[
+  {
+    "namePath": "simpack:$F_PtP_SpringDamper",
+    "aliases": [
+      "PtP_SpringDamper",
+      "FE5",
+      "SpringDamper"
+    ],
+    "label": "Point-to-Point Spring-Damper",
+    "category": "Force Element",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">FRC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">PtP_SpringD</text></svg>",
+    "ports": [
+      {
+        "name": "markerI",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "markerJ",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$F_Cmp_Bushing",
+    "aliases": [
+      "Cmp_Bushing",
+      "FE43",
+      "Bushing6DOF"
+    ],
+    "label": "6-DOF Elastomer Bushing",
+    "category": "Force Element",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">FRC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Cmp_Bushing</text></svg>",
+    "ports": [
+      {
+        "name": "markerI",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "markerJ",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$F_Cmp_Bumpstop",
+    "aliases": [
+      "Cmp_Bumpstop",
+      "FE18",
+      "Bumpstop"
+    ],
+    "label": "Nonlinear Progressive Bumpstop",
+    "category": "Force Element",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">FRC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Cmp_Bumpsto</text></svg>",
+    "ports": [
+      {
+        "name": "markerI",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "markerJ",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$F_Cmp_Friction",
+    "aliases": [
+      "Cmp_Friction",
+      "FE19",
+      "StribeckFriction"
+    ],
+    "label": "Stribeck Dry Friction Element",
+    "category": "Force Element",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">FRC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Cmp_Frictio</text></svg>",
+    "ports": [
+      {
+        "name": "markerI",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "markerJ",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$F_Cmp_Hydromount",
+    "aliases": [
+      "Cmp_Hydromount",
+      "FE45",
+      "Hydromount"
+    ],
+    "label": "Hydraulic Engine / Cab Mount",
+    "category": "Force Element",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">FRC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Cmp_Hydromo</text></svg>",
+    "ports": [
+      {
+        "name": "markerI",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "markerJ",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$F_Cmp_AirSpring",
+    "aliases": [
+      "Cmp_AirSpring",
+      "FE84",
+      "AirSpring"
+    ],
+    "label": "Polytropic Pneumatic Air Spring",
+    "category": "Force Element",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">FRC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Cmp_AirSpri</text></svg>",
+    "ports": [
+      {
+        "name": "markerI",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "markerJ",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$F_Gear_Mesh",
+    "aliases": [
+      "Gear_Mesh",
+      "FE225",
+      "GearPair"
+    ],
+    "label": "Involute Gear Pair Mesh",
+    "category": "Force Element",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">FRC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Gear_Mesh</text></svg>",
+    "ports": [
+      {
+        "name": "markerI",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "markerJ",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$F_Bearing_Roller",
+    "aliases": [
+      "Bearing_Roller",
+      "FE88",
+      "RollerBearing"
+    ],
+    "label": "Hertzian Rolling-Element Bearing",
+    "category": "Force Element",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">FRC</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Bearing_Rol</text></svg>",
+    "ports": [
+      {
+        "name": "markerI",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "markerJ",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$J_Revolute",
+    "aliases": [
+      "Revolute",
+      "Joint2",
+      "RevJoint"
+    ],
+    "label": "Revolute Joint (1-DOF)",
+    "category": "Joint",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">JNT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Revolute</text></svg>",
+    "ports": [
+      {
+        "name": "fromMarker",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "toMarker",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$J_Prismatic",
+    "aliases": [
+      "Prismatic",
+      "Joint1",
+      "TransJoint"
+    ],
+    "label": "Prismatic Joint (1-DOF)",
+    "category": "Joint",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">JNT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Prismatic</text></svg>",
+    "ports": [
+      {
+        "name": "fromMarker",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "toMarker",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$J_Spherical",
+    "aliases": [
+      "Spherical",
+      "Joint5",
+      "BallJoint"
+    ],
+    "label": "Spherical / Ball Joint (3-DOF)",
+    "category": "Joint",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">JNT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Spherical</text></svg>",
+    "ports": [
+      {
+        "name": "fromMarker",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "toMarker",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$J_Universal",
+    "aliases": [
+      "Universal",
+      "Joint3",
+      "HookeJoint",
+      "CardanJoint"
+    ],
+    "label": "Universal / Cardan Joint (2-DOF)",
+    "category": "Joint",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">JNT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Universal</text></svg>",
+    "ports": [
+      {
+        "name": "fromMarker",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "toMarker",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$J_Cylindrical",
+    "aliases": [
+      "Cylindrical",
+      "Joint4",
+      "CylJoint"
+    ],
+    "label": "Cylindrical Joint (2-DOF)",
+    "category": "Joint",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">JNT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Cylindrical</text></svg>",
+    "ports": [
+      {
+        "name": "fromMarker",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "toMarker",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$J_Planar",
+    "aliases": [
+      "Planar",
+      "Joint6",
+      "PlanarJoint"
+    ],
+    "label": "Planar Joint (3-DOF)",
+    "category": "Joint",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">JNT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Planar</text></svg>",
+    "ports": [
+      {
+        "name": "fromMarker",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "toMarker",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$J_General6DOF",
+    "aliases": [
+      "General6DOF",
+      "Joint7",
+      "FreeJoint"
+    ],
+    "label": "General 6-DOF Floating Joint",
+    "category": "Joint",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">JNT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">General6DOF</text></svg>",
+    "ports": [
+      {
+        "name": "fromMarker",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "toMarker",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$J_TrackJoint",
+    "aliases": [
+      "TrackJoint",
+      "Joint9",
+      "RailTrackJoint"
+    ],
+    "label": "Railway Curvilinear Track Joint",
+    "category": "Joint",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">JNT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">TrackJoint</text></svg>",
+    "ports": [
+      {
+        "name": "fromMarker",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "toMarker",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$R_WheelRail_Kalker",
+    "aliases": [
+      "WheelRail_Kalker",
+      "FASTSIM",
+      "KalkerContact"
+    ],
+    "label": "Kalker Wheel-Rail Creep Contact",
+    "category": "Rail / Wheel-Rail",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">RAIL</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">WheelRail_K</text></svg>",
+    "ports": [
+      {
+        "name": "wheelMarker",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      },
+      {
+        "name": "railMarker",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 48
+      },
+      {
+        "name": "creepOut",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$R_WheelRail_Polach",
+    "aliases": [
+      "WheelRail_Polach",
+      "PolachContact",
+      "Polach"
+    ],
+    "label": "Polach Nonlinear Wheel-Rail Contact",
+    "category": "Rail / Wheel-Rail",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">RAIL</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">WheelRail_P</text></svg>",
+    "ports": [
+      {
+        "name": "wheelMarker",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      },
+      {
+        "name": "railMarker",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 48
+      },
+      {
+        "name": "creepOut",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$R_Track_UIC60",
+    "aliases": [
+      "Track_UIC60",
+      "60E1",
+      "UIC60"
+    ],
+    "label": "UIC 60 (60E1) Rail Profile",
+    "category": "Rail / Wheel-Rail",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">RAIL</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Track_UIC60</text></svg>",
+    "ports": [
+      {
+        "name": "wheelMarker",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      },
+      {
+        "name": "railMarker",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 48
+      },
+      {
+        "name": "creepOut",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$R_Wheel_S1002",
+    "aliases": [
+      "Wheel_S1002",
+      "S1002",
+      "ORE_S1002"
+    ],
+    "label": "ORE S1002 Railway Wheel Profile",
+    "category": "Rail / Wheel-Rail",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">RAIL</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Wheel_S1002</text></svg>",
+    "ports": [
+      {
+        "name": "wheelMarker",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      },
+      {
+        "name": "railMarker",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 48
+      },
+      {
+        "name": "creepOut",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$R_Track_Irregularity",
+    "aliases": [
+      "Track_Irregularity",
+      "ERRI_B176",
+      "TrackPSD"
+    ],
+    "label": "ERRI B176 Track Irregularity PSD",
+    "category": "Rail / Wheel-Rail",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">RAIL</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Track_Irreg</text></svg>",
+    "ports": [
+      {
+        "name": "wheelMarker",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      },
+      {
+        "name": "railMarker",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 48
+      },
+      {
+        "name": "creepOut",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$T_Pacejka_MF",
+    "aliases": [
+      "Pacejka_MF",
+      "MF52",
+      "MF61",
+      "MagicFormula"
+    ],
+    "label": "Pacejka Magic Formula Tire",
+    "category": "Tire",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">TIRE</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Pacejka_MF</text></svg>",
+    "ports": [
+      {
+        "name": "hubMarker",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      },
+      {
+        "name": "roadContact",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 48
+      },
+      {
+        "name": "slipOut",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$T_FTire_Simple",
+    "aliases": [
+      "FTire_Simple",
+      "FTire",
+      "FlexRingTire"
+    ],
+    "label": "Flexible-Ring Tire (Simplified FTire)",
+    "category": "Tire",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">TIRE</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">FTire_Simpl</text></svg>",
+    "ports": [
+      {
+        "name": "hubMarker",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      },
+      {
+        "name": "roadContact",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 48
+      },
+      {
+        "name": "slipOut",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$C_PID",
+    "aliases": [
+      "PID",
+      "Ctrl_PID",
+      "PIDController"
+    ],
+    "label": "PID Control Element",
+    "category": "Control",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CTRL</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">PID</text></svg>",
+    "ports": [
+      {
+        "name": "u",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$C_TransferFcn",
+    "aliases": [
+      "TransferFcn",
+      "Ctrl_TF",
+      "FirstOrderLag"
+    ],
+    "label": "Linear Transfer Function",
+    "category": "Control",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CTRL</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">TransferFcn</text></svg>",
+    "ports": [
+      {
+        "name": "u",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simpack:$C_Lookup1D",
+    "aliases": [
+      "Lookup1D",
+      "Ctrl_Lookup1D",
+      "InputFunction1D"
+    ],
+    "label": "1D Piecewise-Linear Lookup Table",
+    "category": "Control",
+    "domain": "mechanical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CTRL</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Lookup1D</text></svg>",
+    "ports": [
+      {
+        "name": "u",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  }
+]

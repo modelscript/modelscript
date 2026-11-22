@@ -13,7 +13,7 @@
  *   - Branch thermal flow overload probability: P(|F_l| > Rate_l) <= epsilon
  */
 
-import { Xoshiro256pp, sampleDistribution } from "@modelscript/runtime/wasm_monte_carlo.js";
+import { Xoshiro256pp, sampleDistribution } from "../../uq/monte-carlo.js";
 import { solveDcOpf } from "./dc-opf.js";
 import type { GenericPowerCase, OpfSolution } from "./types.js";
 

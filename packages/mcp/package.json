@@ -75,6 +75,7 @@
     "@modelscript/hec-hms": "*",
     "@modelscript/igtl": "*",
     "@modelscript/lsp": "*",
+    "@modelscript/magicdraw": "*",
     "@modelscript/matpower": "*",
     "@modelscript/modelica": "*",
     "@modelscript/nifti": "*",

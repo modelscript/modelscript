@@ -131,9 +131,19 @@ export function ${binaryGetterName}(): Uint8Array {
   console.log(`[${langName}] Compiling WebAssembly kernel (${entryFile}) with asc...`);
   fs.mkdirSync(path.dirname(outWasmPath), { recursive: true });
   const isWin = process.platform === "win32";
-  const ascBin = path.resolve(dir, "../../node_modules/.bin", isWin ? "asc.cmd" : "asc");
-  const cmd = fs.existsSync(ascBin) ? ascBin : isWin ? "npx.cmd" : "npx";
-  const args = fs.existsSync(ascBin)
+  let ascBin = "";
+  for (let cur = path.resolve(dir); ; ) {
+    const candidate = path.join(cur, "node_modules", ".bin", isWin ? "asc.cmd" : "asc");
+    if (fs.existsSync(candidate)) {
+      ascBin = candidate;
+      break;
+    }
+    const parent = path.dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  const cmd = ascBin || (isWin ? "npx.cmd" : "npx");
+  const args = ascBin
     ? [entryFile, "--config", "asconfig.json", "--outFile", outWasmFile]
     : ["asc", entryFile, "--config", "asconfig.json", "--outFile", outWasmFile];
 

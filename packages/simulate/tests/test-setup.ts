@@ -65,8 +65,3 @@ const origWriteFileSync = fs.writeFileSync;
   }
   return origWriteFileSync.apply(this, [file, ...args]);
 };
-
-import { simulateArena, simulateArenaAsync } from "../src/core/simulate-arena.js";
-import { registerArenaSimulator } from "../src/uq/monte-carlo.js";
-
-registerArenaSimulator(simulateArena, simulateArenaAsync);

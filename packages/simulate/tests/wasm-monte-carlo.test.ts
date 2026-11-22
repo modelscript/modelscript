@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { BinOp, DAEBuilder, EqKind, UnaryOp, VarType, Variability, initBltWasm } from "@modelscript/runtime";
+import { StaticTapeBuilder, TapeOpKind } from "@modelscript/runtime/wasm_tape.js";
+import assert from "node:assert";
 import {
   SobolSequence,
   WasmMonteCarloEngine,
@@ -15,14 +17,9 @@ import {
   runSensitivityAnalysisArena,
   sobolSample,
   type RandomVariable,
-} from "@modelscript/runtime/wasm_monte_carlo.js";
-import { StaticTapeBuilder, TapeOpKind } from "@modelscript/runtime/wasm_tape.js";
-import assert from "node:assert";
-import { simulateArena, simulateArenaAsync } from "../src/core/simulate-arena.js";
-import { registerArenaSimulator } from "../src/uq/monte-carlo.js";
+} from "../src/uq/monte-carlo.js";
 
 await initBltWasm();
-registerArenaSimulator(simulateArena, simulateArenaAsync);
 
 console.log("=== Testing WASM Monte Carlo & Uncertainty Quantification Engine ===");
 

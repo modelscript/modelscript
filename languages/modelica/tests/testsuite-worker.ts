@@ -35,7 +35,7 @@ import { NodeFileSystem } from "./node-filesystem.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const modelicaWasm = path.resolve(__dirname, "../dist/parser.wasm");
-const { parser, facade } = await createWasmParser(modelicaWasm);
+let { parser, facade } = await createWasmParser(modelicaWasm);
 Context.registerParser(".mo", parser as any);
 
 function cleanOmcOutput(text: string, keepDiagnosticLines = false): string {
@@ -1697,6 +1697,10 @@ async function main() {
       if (msg.type === "run") {
         const { id, testCase, testsuiteRoot, updateMode, omcMode, flattenerBackend } = msg;
         const result = runTestCase(testCase, testsuiteRoot, updateMode, omcMode || false, flattenerBackend);
+        if ((result.extra?.wasmBail as { reason?: string } | undefined)?.reason === "KernelTrap") {
+          ({ parser, facade } = await createWasmParser(modelicaWasm));
+          Context.registerParser(".mo", parser as any);
+        }
         if (typeof globalThis.gc === "function") {
           try {
             globalThis.gc();

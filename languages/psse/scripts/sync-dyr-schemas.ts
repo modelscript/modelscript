@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DYR_SCHEMA_LIST, resolveCanonicalDyrModelName } from "../src/schema/index.js";
 import type { DyrHeaderKind, PsseDyrCategory } from "../src/types.js";
+import { generateCleanroomDyrIcon } from "./icon-generator.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PSSE_DIR = path.resolve(__dirname, "..");
@@ -172,21 +173,17 @@ function generateSymbolsAndDiagrams(): { symbolsJson: string; diagramsJson: stri
   });
 
   const diagrams = DYR_SCHEMA_LIST.map((s) => {
-    const ex = exportsForSchema(s.category, s.subCategory);
-    const inPort = ex[0] ?? "In";
-    const outPort = ex[1] ?? "Out";
+    const icon = generateCleanroomDyrIcon(s.model, s.daeArchetype, s.category, s.subCategory);
     return {
       namePath: `psse:${s.model}`,
       aliases: [s.model],
       label: s.title,
       category: s.category,
       domain: domainForCategory(s.category, s.subCategory),
-      width: 72,
-      height: 44,
-      ports: [
-        { name: inPort, kind: "signal", side: "left", dx: -36, dy: 0 },
-        { name: outPort, kind: "signal", side: "right", dx: 36, dy: 0 },
-      ],
+      width: icon.width,
+      height: icon.height,
+      ports: icon.ports,
+      svg: icon.svg,
     };
   });
 

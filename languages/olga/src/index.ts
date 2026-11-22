@@ -11,6 +11,7 @@
  * - Pre-flight multiphase linting (M7001–M7005)
  */
 
+export * from "./catalog/index.js";
 export * from "./dae/index.js";
 export * from "./engine/index.js";
 export * from "./errors.js";

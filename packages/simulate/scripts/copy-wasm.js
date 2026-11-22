@@ -10,7 +10,7 @@ const srcWasm = path.join(pkgDir, "src", "wasm");
 const distWasm = path.join(pkgDir, "dist", "wasm");
 
 export function copyWasm() {
-  const dirs = [path.join(pkgDir, "src", "wasm"), path.join(pkgDir, "wasm")];
+  const dirs = [path.join(pkgDir, "src", "wasm"), path.join(pkgDir, "wasm"), path.join(pkgDir, "build")];
   for (const srcDir of dirs) {
     if (fs.existsSync(srcDir)) {
       fs.mkdirSync(distWasm, { recursive: true });

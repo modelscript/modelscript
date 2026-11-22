@@ -18,6 +18,7 @@
 
 import { luFactorFlat, luSolveFlat } from "@modelscript/runtime/wasm_gaussian.js";
 import { tryHessenbergQrEigenvaluesWasm } from "../control/frequency.js";
+import { wasmPalcBorderedSolve } from "../wasm/simulate-wasm.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public Types & Interfaces
@@ -419,18 +420,25 @@ function palcCorrectorStep(
     }
 
     evaluateJacobians(problem, x, p, Jx, Jp);
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) B[i * m + j] = Jx[i * n + j]!;
-      B[i * m + n] = Jp[i]!;
-    }
-    for (let j = 0; j < n; j++) B[n * m + j] = tx[j]!;
-    B[n * m + n] = tp;
+    const fRes = new Float64Array(n);
+    for (let i = 0; i < n; i++) fRes[i] = -rhs[i]!;
+    const wasmSol = wasmPalcBorderedSolve(Jx, Jp, tx, tp, fRes, arcRes, n);
+    if (wasmSol) {
+      rhs.set(wasmSol);
+    } else {
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) B[i * m + j] = Jx[i * n + j]!;
+        B[i * m + n] = Jp[i]!;
+      }
+      for (let j = 0; j < n; j++) B[n * m + j] = tx[j]!;
+      B[n * m + n] = tp;
 
-    try {
-      const fact = luFactorFlat(B, m);
-      luSolveFlat(fact, rhs);
-    } catch {
-      return { converged: false, x, p, iter };
+      try {
+        const fact = luFactorFlat(B, m);
+        luSolveFlat(fact, rhs);
+      } catch {
+        return { converged: false, x, p, iter };
+      }
     }
 
     let maxDelta = Math.abs(rhs[n]!);

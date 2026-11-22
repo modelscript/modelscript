@@ -10594,6 +10594,7 @@ export function instantiateElements(
               }
               if (fieldMap.size > 0) {
                 (state.recordVarFieldExprs ??= new Map()).set(name, fieldMap);
+                ((dae as any).recordVarFieldExprs ??= new Map()).set(name, fieldMap);
               }
             }
             applyModifiers(varIdx, []);

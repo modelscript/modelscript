@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { MANIFEST_FILENAME, parseModelScriptYaml } from "@modelscript/runtime";
 import AdmZip from "adm-zip";
 import fs from "node:fs";
 import path from "node:path";
@@ -13,6 +14,7 @@ export interface PackageFileEntry {
 
 export const DEFAULT_EXCLUDES = [
   /^\.git(\/|$)/,
+  /^\.modelscript(\/|$)/,
   /^node_modules(\/|$)/,
   /^\.env(\..+)?$/,
   /\.(pem|key|pkcs12|pfx|p12)$/i,
@@ -77,7 +79,7 @@ export function isFileIgnored(relPath: string, customPatterns: string[] = []): b
 
 /**
  * Collect all files to be packaged from a directory, applying ignore rules
- * and package.json 'files' whitelist if specified.
+ * and modelscript.yaml 'files' whitelist if specified.
  */
 export function collectPackageFiles(targetDir: string): PackageFileEntry[] {
   const ignorePatterns: string[] = [];
@@ -95,17 +97,19 @@ export function collectPackageFiles(targetDir: string): PackageFileEntry[] {
     ignorePatterns.push(...parseIgnorePatterns(gitIgnore));
   }
 
-  // Check for package.json "files" whitelist
+  // Check for modelscript.yaml "files" whitelist
   let filesWhitelist: string[] | null = null;
-  const pkgJsonPath = path.join(targetDir, "package.json");
-  if (fs.existsSync(pkgJsonPath)) {
+  const manifestPath = path.join(targetDir, MANIFEST_FILENAME);
+  if (fs.existsSync(manifestPath)) {
     try {
-      const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
-      if (Array.isArray(pkg.files) && pkg.files.length > 0) {
-        filesWhitelist = pkg.files.map((f: string) => f.replace(/^\.\//, "").replace(/\/$/, ""));
+      const manifest = parseModelScriptYaml(fs.readFileSync(manifestPath, "utf-8"), manifestPath) as unknown as {
+        files?: string[];
+      };
+      if (Array.isArray(manifest.files) && manifest.files.length > 0) {
+        filesWhitelist = manifest.files.map((f: string) => f.replace(/^\.\//, "").replace(/\/$/, ""));
       }
     } catch {
-      // Ignore JSON parse errors here, let main validator catch it
+      // Ignore parse errors here, let main validator catch it
     }
   }
 
@@ -128,7 +132,7 @@ export function collectPackageFiles(targetDir: string): PackageFileEntry[] {
         // If files whitelist is defined, ensure file matches or is a core root file
         if (filesWhitelist) {
           const isCoreRootFile =
-            relPath === "package.json" ||
+            relPath === MANIFEST_FILENAME ||
             relPath === "package.mo" ||
             /^readme(\..+)?$/i.test(relPath) ||
             /^licen[sc]e(\..+)?$/i.test(relPath);

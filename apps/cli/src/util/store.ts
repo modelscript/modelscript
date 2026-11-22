@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { MANIFEST_FILENAME, PACKAGES_DIR, parseModelScriptYaml } from "@modelscript/runtime";
 import AdmZip from "adm-zip";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -323,11 +324,18 @@ export class GlobalPackageStore {
     const dir = this.getCachedPackageDir(packageName, version);
     if (!dir) return null;
 
-    const pkgJsonPath = path.join(dir, "package.json");
-    if (fs.existsSync(pkgJsonPath)) {
+    const yamlPath = path.join(dir, MANIFEST_FILENAME);
+    if (fs.existsSync(yamlPath)) {
       try {
-        const data = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
-        const dependencies = { ...data.dependencies, ...data.modelscript?.dependencies };
+        const parsed = parseModelScriptYaml(fs.readFileSync(yamlPath, "utf-8"), yamlPath);
+        const dependencies: Record<string, string> = {};
+        if (parsed.dependencies) {
+          for (const [depName, depSpec] of Object.entries(parsed.dependencies)) {
+            if (typeof depSpec === "string") {
+              dependencies[depName] = depSpec;
+            }
+          }
+        }
         return { name: packageName, version, dependencies };
       } catch {}
     }
@@ -342,6 +350,27 @@ export class GlobalPackageStore {
     }
 
     return { name: packageName, version, dependencies: {} };
+  }
+
+  /**
+   * Hydrates a cached package into `<cwd>/.modelscript/packages/<packageName>` via symlink
+   * (falling back to recursive copy on filesystems without symlink support).
+   */
+  linkPackageToWorkspace(cwd: string, packageName: string, version: string): string | null {
+    const storeDir = this.getCachedPackageDir(packageName, version);
+    if (!storeDir) return null;
+
+    const targetDir = path.join(cwd, PACKAGES_DIR, ...packageName.split("/"));
+    fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+    if (fs.existsSync(targetDir)) {
+      fs.rmSync(targetDir, { recursive: true, force: true });
+    }
+    try {
+      fs.symlinkSync(storeDir, targetDir, "junction");
+    } catch {
+      fs.cpSync(storeDir, targetDir, { recursive: true });
+    }
+    return targetDir;
   }
 }
 

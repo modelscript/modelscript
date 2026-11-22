@@ -1212,6 +1212,41 @@ export const Lint: CommandModule<{}, LintArgs> = {
         } catch {}
       }
 
+      // Tier 1 (< 10 ms) fast static checks (M7801-M7804)
+      try {
+        const { runModelicaFastStaticLints, runModelicaFormalLints } = await import("@modelscript/modelica");
+        for (const item of modelicaItems) {
+          for (const d of runModelicaFastStaticLints(item.text)) {
+            diagnostics.push({
+              severity: d.severity,
+              lintName: d.rule,
+              code: `M${d.code}`,
+              domain: "modelica",
+              message: `[M${d.code}] ${d.message}`,
+              symbolId: null,
+              resourceId: item.uri,
+              startOffset: 0,
+              endOffset: 1,
+            });
+          }
+          if (args.formal) {
+            for (const d of runModelicaFormalLints(item.text)) {
+              diagnostics.push({
+                severity: d.severity,
+                lintName: d.rule,
+                code: `M${d.code}`,
+                domain: "modelica",
+                message: `[M${d.code}] ${d.message}`,
+                symbolId: null,
+                resourceId: item.uri,
+                startOffset: 0,
+                endOffset: 1,
+              });
+            }
+          }
+        }
+      } catch {}
+
       if (args.formal) {
         try {
           const { Context } = await import("@modelscript/modelica/context");
@@ -1277,6 +1312,41 @@ export const Lint: CommandModule<{}, LintArgs> = {
         }
       }
 
+      // Tier 1 (< 10 ms) fast static checks (S7007-S7009) & Tier 2 extended formal checks (S7010-S7013)
+      try {
+        const { runSysML2FastStaticLints, runSysML2FormalExtendedLints } = await import("@modelscript/sysml2");
+        for (const item of sysmlItems) {
+          for (const d of runSysML2FastStaticLints(item.text)) {
+            diagnostics.push({
+              severity: d.severity,
+              lintName: d.rule,
+              code: `S${d.code}`,
+              domain: "sysml2",
+              message: `[S${d.code}] ${d.message}`,
+              symbolId: null,
+              resourceId: item.uri,
+              startOffset: d.startOffset ?? 0,
+              endOffset: d.endOffset ?? 1,
+            });
+          }
+          if (args.formal) {
+            for (const d of runSysML2FormalExtendedLints(item.text)) {
+              diagnostics.push({
+                severity: d.severity,
+                lintName: d.rule,
+                code: `S${d.code}`,
+                domain: "sysml2",
+                message: `[S${d.code}] ${d.message}`,
+                symbolId: null,
+                resourceId: item.uri,
+                startOffset: d.startOffset ?? 0,
+                endOffset: d.endOffset ?? 1,
+              });
+            }
+          }
+        }
+      } catch {}
+
       if (args.formal) {
         try {
           const { verifySysML2Formal } = await import("@modelscript/sysml2");
@@ -1310,6 +1380,31 @@ export const Lint: CommandModule<{}, LintArgs> = {
         astMap,
         diagnostics,
       });
+
+      if (modelicaItems.length > 0 && sysmlItems.length > 0) {
+        try {
+          const { lintSysmlModelicaBridge } = await import("@modelscript/sysml2");
+          for (const sItem of sysmlItems) {
+            for (const mItem of modelicaItems) {
+              const bridgeReport = lintSysmlModelicaBridge(sItem.text, mItem.text);
+              for (const bd of bridgeReport.diagnostics) {
+                if (bd.code === "SM1004" && !args.formal) continue;
+                diagnostics.push({
+                  severity: bd.severity,
+                  lintName: bd.rule,
+                  code: bd.code,
+                  domain: "sysml2-modelica-bridge",
+                  message: `[${bd.code}] ${bd.message}`,
+                  symbolId: null,
+                  resourceId: sItem.uri,
+                  startOffset: 0,
+                  endOffset: 1,
+                });
+              }
+            }
+          }
+        } catch {}
+      }
     }
 
     const parsedPsseCases: Array<{ filePath: string; parsed: import("@modelscript/psse").PsseCase }> = [];
@@ -2161,6 +2256,89 @@ export const Lint: CommandModule<{}, LintArgs> = {
         message: d.message,
       };
     });
+
+    // Run ALM workspace policy lints (ALM001–ALM004) if modelscript.yaml declares remote dependencies
+    try {
+      const {
+        isRemoteDependency,
+        lintAlmWorkspace,
+        MANIFEST_FILENAME,
+        normalizeRemoteDependency,
+        PACKAGES_DIR,
+        parseMaterializedExternalItems,
+        parseModelScriptYaml,
+      } = await import("@modelscript/runtime");
+      const cwd = process.cwd();
+      const manifestPath = path.join(cwd, MANIFEST_FILENAME);
+      if (fs.existsSync(manifestPath)) {
+        const manifest = parseModelScriptYaml(fs.readFileSync(manifestPath, "utf-8"), manifestPath);
+        const hasRemotes = Object.values(manifest.dependencies ?? {}).some((d) => isRemoteDependency(d));
+        if (hasRemotes) {
+          let gitBranch: string | undefined;
+          try {
+            const { execFileSync } = await import("node:child_process");
+            gitBranch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+              cwd,
+              encoding: "utf-8",
+              stdio: ["ignore", "pipe", "ignore"],
+            }).trim();
+          } catch {
+            gitBranch = undefined;
+          }
+
+          const artifactsByPackage: Record<string, import("@modelscript/runtime").AlmArtifact[]> = {};
+          for (const [pkgName, depSpec] of Object.entries(manifest.dependencies ?? {})) {
+            if (!isRemoteDependency(depSpec)) continue;
+            const norm = normalizeRemoteDependency(depSpec);
+            if (!norm) continue;
+            const dir = norm.materialize
+              ? path.resolve(cwd, norm.materialize)
+              : path.join(cwd, PACKAGES_DIR, ...pkgName.split("/"));
+            const items: import("@modelscript/runtime").AlmArtifact[] = [];
+            if (fs.existsSync(dir)) {
+              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                if (!entry.isFile() || (!entry.name.endsWith(".sysml") && !entry.name.endsWith(".ms"))) continue;
+                const parsed = await parseMaterializedExternalItems(
+                  fs.readFileSync(path.join(dir, entry.name), "utf-8"),
+                );
+                for (const p of parsed) {
+                  items.push({
+                    externalId: p.externalId,
+                    kind: norm.connector === "jira" ? "change_request" : "requirement",
+                    uri: p.uri ?? "",
+                    webUrl: p.webUrl,
+                    title: p.title ?? p.externalId,
+                    text: p.text ?? "",
+                    status: p.status ?? "Unknown",
+                    priority: p.priority,
+                    revision: p.revision,
+                    attributes: {},
+                  });
+                }
+              }
+            }
+            artifactsByPackage[pkgName] = items;
+          }
+
+          const almDiags = lintAlmWorkspace({ manifest, gitBranch, artifactsByPackage });
+          for (const d of almDiags) {
+            rawFormattedDiags.push({
+              resource: manifestPath,
+              line: 1,
+              col: 1,
+              startOffset: 0,
+              endOffset: 0,
+              severity: d.severity,
+              code: d.code,
+              lintName: d.code,
+              message: d.message,
+            });
+          }
+        }
+      }
+    } catch {
+      // Non-fatal: do not block normal language linting if ALM manifest check fails
+    }
 
     // Deduplicate diagnostics by resource + line + col + code/lintName + message
     const seenKeys = new Set<string>();

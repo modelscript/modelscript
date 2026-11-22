@@ -1,0 +1,800 @@
+[
+  {
+    "namePath": "tough:eos1",
+    "aliases": [
+      "EOS1",
+      "EOS1_WATER",
+      "eos1_water",
+      "water"
+    ],
+    "label": "EOS1: Pure Water / Steam (IAPWS-IF97)",
+    "category": "EOS Module",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">EOS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">EOS1</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "state_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:eos2",
+    "aliases": [
+      "EOS2",
+      "EOS2_WATER_CO2",
+      "eos2_water_co2",
+      "water_co2"
+    ],
+    "label": "EOS2: Water + CO2 Non-Isothermal",
+    "category": "EOS Module",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">EOS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">EOS2</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "state_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:eos3",
+    "aliases": [
+      "EOS3",
+      "EOS3_WATER_AIR",
+      "eos3_water_air",
+      "water_air"
+    ],
+    "label": "EOS3: Water + Air Vadose / Saturated",
+    "category": "EOS Module",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">EOS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">EOS3</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "state_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:eos4",
+    "aliases": [
+      "EOS4",
+      "EOS4_VAPOR_LOWERING",
+      "eos4_vapor_lowering"
+    ],
+    "label": "EOS4: Water + Air with Vapor Pressure Lowering",
+    "category": "EOS Module",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">EOS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">EOS4</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "state_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:eos5",
+    "aliases": [
+      "EOS5",
+      "EOS5_WATER_H2",
+      "eos5_water_h2",
+      "water_h2"
+    ],
+    "label": "EOS5: Water + Hydrogen Gas",
+    "category": "EOS Module",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">EOS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">EOS5</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "state_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:eos7",
+    "aliases": [
+      "EOS7",
+      "EOS7_BRINE",
+      "eos7_brine",
+      "brine"
+    ],
+    "label": "EOS7: Water + Brine + Air",
+    "category": "EOS Module",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">EOS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">EOS7</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "state_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:eos7c",
+    "aliases": [
+      "EOS7C",
+      "EOS7C_CH4_CO2",
+      "eos7c_ch4_co2"
+    ],
+    "label": "EOS7C: Water + Brine + CH4 + CO2",
+    "category": "EOS Module",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">EOS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">EOS7C</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "state_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:eos9",
+    "aliases": [
+      "EOS9",
+      "EOS9_RICHARDS",
+      "eos9_richards",
+      "richards"
+    ],
+    "label": "EOS9: Richards Equation (Saturated / Unsaturated)",
+    "category": "EOS Module",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">EOS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">EOS9</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "state_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:eco2n",
+    "aliases": [
+      "ECO2N",
+      "ECO2N_CO2_BRINE",
+      "eco2n_co2_brine",
+      "eco2n_v2"
+    ],
+    "label": "ECO2N: Supercritical CO2 + Brine + Halite",
+    "category": "EOS Module",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">EOS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">ECO2N</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "state_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:ewasg",
+    "aliases": [
+      "EWASG",
+      "EWASG_SALT_GAS",
+      "ewasg_salt_gas"
+    ],
+    "label": "EWASG: Water + NaCl + Non-Condensible Gas",
+    "category": "EOS Module",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">EOS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">EWASG</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "state_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:tmvoc",
+    "aliases": [
+      "TMVOC",
+      "TMVOC_VOC",
+      "tmvoc_voc"
+    ],
+    "label": "TMVOC: Three-Phase Water + Air + VOCs",
+    "category": "EOS Module",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">EOS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">TMVOC</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "state_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:irp1",
+    "aliases": [
+      "IRP1",
+      "IRP1_LINEAR",
+      "irp1_linear",
+      "linear_rp"
+    ],
+    "label": "IRP=1: Linear Relative Permeability",
+    "category": "Relative Permeability",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">IRP</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">IRP1</text></svg>",
+    "ports": [
+      {
+        "name": "sl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "krl",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "krg",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "tough:irp3",
+    "aliases": [
+      "IRP3",
+      "IRP3_COREY",
+      "irp3_corey",
+      "corey"
+    ],
+    "label": "IRP=3: Corey (1954) Relative Permeability",
+    "category": "Relative Permeability",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">IRP</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">IRP3</text></svg>",
+    "ports": [
+      {
+        "name": "sl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "krl",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "krg",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "tough:irp4",
+    "aliases": [
+      "IRP4",
+      "IRP4_GRANT",
+      "irp4_grant",
+      "grant"
+    ],
+    "label": "IRP=4: Grant (1977) Geothermal Relative Permeability",
+    "category": "Relative Permeability",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">IRP</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">IRP4</text></svg>",
+    "ports": [
+      {
+        "name": "sl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "krl",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "krg",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "tough:irp7",
+    "aliases": [
+      "IRP7",
+      "IRP7_VANGENUCHTEN",
+      "irp7_vangenuchten",
+      "vangenuchten_rp",
+      "mualem"
+    ],
+    "label": "IRP=7: Van Genuchten-Mualem Relative Permeability",
+    "category": "Relative Permeability",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">IRP</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">IRP7</text></svg>",
+    "ports": [
+      {
+        "name": "sl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "krl",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "krg",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "tough:irp8",
+    "aliases": [
+      "IRP8",
+      "IRP8_VERMA",
+      "irp8_verma",
+      "verma"
+    ],
+    "label": "IRP=8: Verma (1985) Steam-Water Relative Permeability",
+    "category": "Relative Permeability",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">IRP</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">IRP8</text></svg>",
+    "ports": [
+      {
+        "name": "sl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "krl",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "krg",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "tough:irp11",
+    "aliases": [
+      "IRP11",
+      "IRP11_STONE",
+      "irp11_stone",
+      "stone"
+    ],
+    "label": "IRP=11: Stone (1970) Three-Phase Relative Permeability",
+    "category": "Relative Permeability",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">IRP</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">IRP11</text></svg>",
+    "ports": [
+      {
+        "name": "sl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "krl",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "krg",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "tough:icp1",
+    "aliases": [
+      "ICP1",
+      "ICP1_LINEAR",
+      "icp1_linear",
+      "linear_cp"
+    ],
+    "label": "ICP=1: Linear Capillary Pressure",
+    "category": "Capillary Pressure",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b234a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">ICP</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">ICP1</text></svg>",
+    "ports": [
+      {
+        "name": "sl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pcap",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:icp3",
+    "aliases": [
+      "ICP3",
+      "ICP3_PICKENS",
+      "icp3_pickens",
+      "pickens"
+    ],
+    "label": "ICP=3: Pickens (1979) Capillary Pressure",
+    "category": "Capillary Pressure",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b234a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">ICP</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">ICP3</text></svg>",
+    "ports": [
+      {
+        "name": "sl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pcap",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:icp4",
+    "aliases": [
+      "ICP4",
+      "ICP4_TRUST",
+      "icp4_trust",
+      "trust"
+    ],
+    "label": "ICP=4: TRUST / Narasimhan (1978) Capillary Pressure",
+    "category": "Capillary Pressure",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b234a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">ICP</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">ICP4</text></svg>",
+    "ports": [
+      {
+        "name": "sl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pcap",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:icp7",
+    "aliases": [
+      "ICP7",
+      "ICP7_VANGENUCHTEN",
+      "icp7_vangenuchten",
+      "vangenuchten_cp"
+    ],
+    "label": "ICP=7: Van Genuchten (1980) Capillary Pressure",
+    "category": "Capillary Pressure",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b234a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">ICP</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">ICP7</text></svg>",
+    "ports": [
+      {
+        "name": "sl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pcap",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "tough:icp8",
+    "aliases": [
+      "ICP8",
+      "ICP8_LEVERETT",
+      "icp8_leverett",
+      "leverett"
+    ],
+    "label": "ICP=8: Leverett (1941) J-Function Capillary Pressure",
+    "category": "Capillary Pressure",
+    "domain": "subsurface",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b234a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">ICP</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">ICP8</text></svg>",
+    "ports": [
+      {
+        "name": "sl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pcap",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  }
+]

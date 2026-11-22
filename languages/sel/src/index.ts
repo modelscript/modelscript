@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./analysis/selogic-evaluator.js";
+export * from "./catalog/index.js";
 export * from "./dae/sel-to-dae.js";
 export * from "./indexing.js";
 export * from "./language.js";

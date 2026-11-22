@@ -26,6 +26,7 @@ import {
   uriBasename,
   type NumericSpan,
 } from "../utils/lexical-utils.js";
+import { getAlmCodeActions } from "./almHover.js";
 
 function extractSysmlNodeName(node: CstNodeLike | null | undefined): string | undefined {
   const identNode = findCstNodesByType(node, "identification")[0] ?? findCstNodesByType(node, "identifier")[0];
@@ -562,6 +563,11 @@ export function registerWorkspaceFeaturesProvider(
     const docLines = splitLines(docText);
     const cursorRow = params.range.start.line;
     const cursorLine = docLines[cursorRow] ?? "";
+
+    // Synced External ALM CodeActions (Open in ALM Web UI, Sync remote)
+    if (isKindAllowed(CodeActionKind.Source)) {
+      actions.push(...getAlmCodeActions(docText, cursorRow, docUri));
+    }
 
     // Declaration-level CodeActions (CST-first, with zero-regex line header fallback)
     const allowDeclarations = isKindAllowed(CodeActionKind.Source) || isKindAllowed(CodeActionKind.Refactor);

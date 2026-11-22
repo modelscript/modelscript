@@ -9,6 +9,7 @@
  * multi-product batch tracking, and SysML v2 formal projections.
  */
 
+export * from "./catalog/index.js";
 export * from "./checkpoint/checkpoint-engine.js";
 export * from "./dae/index.js";
 export * from "./errors.js";

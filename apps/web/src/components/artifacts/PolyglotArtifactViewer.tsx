@@ -105,6 +105,8 @@ export function sanitizeSvgMarkup(rawSvg: string, options?: SanitizeSvgOptions):
         "data-kind",
         "data-line-index",
         "data-reqif-id",
+        "data-xmi-id",
+        "data-magicdraw-diagram",
       ],
     });
     baseSanitized = sanitized.replace(/<svg\b([^>]*)>/i, (_match, attrs: string) => {

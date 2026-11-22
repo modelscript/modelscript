@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { isRemoteDependency, MANIFEST_FILENAME, parseModelScriptYaml } from "@modelscript/runtime";
 import AdmZip from "adm-zip";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -71,21 +72,21 @@ export const Vendor: CommandModule<{}, VendorArgs> = {
     }
 
     const packagesToVendor: { name: string; version?: string | undefined }[] = [];
-    const pkgJsonPath = path.join(cwd, "package.json");
+    const manifestPath = path.join(cwd, MANIFEST_FILENAME);
     const lockfile = readLockfile(cwd);
 
-    if (existsSync(pkgJsonPath)) {
+    if (existsSync(manifestPath)) {
       try {
-        const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-        const deps = { ...pkgJson.dependencies, ...pkgJson.modelscript?.dependencies };
+        const manifest = parseModelScriptYaml(readFileSync(manifestPath, "utf-8"), manifestPath);
+        const deps = manifest.dependencies ?? {};
         for (const [depName, depVer] of Object.entries(deps)) {
-          if (typeof depVer === "string") {
+          if (typeof depVer === "string" && !isRemoteDependency(depVer) && !depVer.startsWith("file:")) {
             const cleanVer = depVer.replace(/^[\^~>=<]/, "");
             packagesToVendor.push({ name: depName, version: cleanVer });
           }
         }
       } catch {
-        console.error(`Error: Failed to parse package.json at ${pkgJsonPath}`);
+        console.error(`Error: Failed to parse ${MANIFEST_FILENAME} at ${manifestPath}`);
         process.exit(1);
       }
     }

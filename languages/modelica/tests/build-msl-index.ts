@@ -61,6 +61,7 @@ export function discoverModelsFromIndex(
   rawSymbols: [number, any][],
   libDir: string,
   rootPkgName = "Modelica",
+  cachedFqns?: Set<string>,
 ): DiscoveredModel[] {
   const symMap = new Map<number, any>(rawSymbols);
 
@@ -74,6 +75,29 @@ export function discoverModelsFromIndex(
     }
     return parts.join(".");
   }
+
+  const isConcreteInstantiableExample = (sym: any): boolean => {
+    const meta = sym.metadata ?? {};
+    if (meta.isPartial) return false;
+    const rawKind = String(meta.classPrefixes ?? meta.classKind ?? "model")
+      .toLowerCase()
+      .trim();
+    if (!rawKind) return true;
+    if (
+      rawKind.includes("partial") ||
+      rawKind.includes("package") ||
+      rawKind.includes("function") ||
+      rawKind.includes("connector") ||
+      rawKind.includes("record") ||
+      rawKind.includes("type") ||
+      rawKind.includes("operator")
+    ) {
+      return false;
+    }
+    const tokens = rawKind.split(/\s+/);
+    const spec = tokens[tokens.length - 1] ?? rawKind;
+    return spec === "model" || spec === "block" || spec === "class";
+  };
 
   const models: DiscoveredModel[] = [];
   const seenFqns = new Set<string>();
@@ -97,7 +121,8 @@ export function discoverModelsFromIndex(
       if (seenFqns.has(fqn)) continue;
       seenFqns.add(fqn);
 
-      const isExample = fqn.includes(".Examples.");
+      const isExample =
+        fqn.includes(".Examples.") && (Boolean(cachedFqns?.has(fqn)) || isConcreteInstantiableExample(sym));
       const pkg = fqn.split(".").slice(0, 3).join(".");
       models.push({
         fqn,
@@ -112,6 +137,16 @@ export function discoverModelsFromIndex(
   return models;
 }
 
+const omcFlatCacheDir = path.join(cacheDir, "omc", version, "flat");
+const cachedFlatFqns = fs.existsSync(omcFlatCacheDir)
+  ? new Set(
+      fs
+        .readdirSync(omcFlatCacheDir)
+        .filter((f) => f.endsWith(".mo"))
+        .map((f) => f.slice(0, -3)),
+    )
+  : undefined;
+
 if (!force && fs.existsSync(indexCachePath) && fs.existsSync(modelsCachePath)) {
   console.log(`[build-msl-index] Symbol index and model cache already exist at:`);
   console.log(`  ${indexCachePath}`);
@@ -123,7 +158,7 @@ if (!force && fs.existsSync(indexCachePath) && fs.existsSync(modelsCachePath)) {
 if (!force && fs.existsSync(indexCachePath)) {
   console.log(`[build-msl-index] Loading cached SymbolIndex from ${indexCachePath}...`);
   const raw = JSON.parse(fs.readFileSync(indexCachePath, "utf-8"));
-  const discovered = discoverModelsFromIndex(raw.symbols, raw.mslDir || raw.libDir, rootPkgName);
+  const discovered = discoverModelsFromIndex(raw.symbols, raw.mslDir || raw.libDir, rootPkgName, cachedFlatFqns);
   const examplesCount = discovered.filter((m) => m.isExample).length;
   console.log(`[build-msl-index] Found ${discovered.length} models (${examplesCount} in Examples packages)`);
   fs.writeFileSync(modelsCachePath, JSON.stringify(discovered, null, 2), "utf-8");
@@ -284,7 +319,7 @@ console.log(
 
 // 2. Discover and classify all models
 console.log(`[build-msl-index] Discovering models...`);
-const discoveredModels = discoverModelsFromIndex(serialized.symbols, libDir, rootPkgName);
+const discoveredModels = discoverModelsFromIndex(serialized.symbols, libDir, rootPkgName, cachedFlatFqns);
 const examplesCount = discoveredModels.filter((m) => m.isExample).length;
 console.log(`[build-msl-index] Found ${discoveredModels.length} models (${examplesCount} in Examples packages)`);
 

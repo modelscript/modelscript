@@ -382,7 +382,7 @@ function resolvePorts(model: PscadProjectModel, external?: ExternalDefinitions):
             name: p.name,
             x: inst.x + o.x,
             y: inst.y + o.y,
-            source: "definition" as const,
+            source: "catalog" as const,
             dim: p.kind === "electrical" ? 3 : 1,
             electype: p.kind === "electrical" ? 2 : 0,
             mode: 0,

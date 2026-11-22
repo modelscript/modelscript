@@ -543,6 +543,69 @@ export const PsseErrorCode = {
     message: (component: string, param: string, diffPct: number) =>
       `Cross-language parameter drift detected for '${component}.${param}' (${diffPct.toFixed(2)}% relative discrepancy across models).`,
   },
+  N1_UNSLACKED_ISLAND_BRIDGE: {
+    code: "P8011",
+    rule: "n1-unslacked-island-bridge",
+    severity: "warning" as const,
+    message: (fromBus: number, toBus: number, ckt: string, isolatedCount: number) =>
+      `N-1 topological bridge on branch ${fromBus}-${toBus} (ckt '${ckt}'): single outage isolates ${isolatedCount} bus(es) with no slack bus.`,
+  },
+  DYR_RAW_MISMATCH_OR_MONOTONICITY: {
+    code: "P8012",
+    rule: "dyr-raw-mismatch-or-monotonicity",
+    severity: "error" as const,
+    message: (model: string, busId: number, genId: string, detail: string) =>
+      `DYR model '${model}' on bus ${busId} (id '${genId}') failed static check: ${detail}.`,
+  },
+  SEQ_UNGROUNDED_ZERO_ISLAND: {
+    code: "P8013",
+    rule: "seq-ungrounded-zero-island",
+    severity: "error" as const,
+    message: (busCount: number, sampleBus: number) =>
+      `Zero-sequence network contains an ungrounded island of ${busCount} bus(es) (including bus ${sampleBus}) with no Yg/generator ground path; Y0 is singular for SLG faults.`,
+  },
+  HC4_STATIC_TRANSFER_INFEASIBLE: {
+    code: "P8014",
+    rule: "hc4-static-transfer-infeasible",
+    severity: "error" as const,
+    message: (location: string, detail: string) =>
+      `HC4 interval contractor proved static power-flow infeasibility at ${location}: ${detail}.`,
+  },
+  DYR_PROTECTION_DEADBAND_OVERLAP: {
+    code: "P8015",
+    rule: "dyr-protection-deadband-overlap",
+    severity: "warning" as const,
+    message: (model: string, busId: number, detail: string) =>
+      `Protection model '${model}' on bus ${busId} has overlapping/inverted stage thresholds: ${detail}.`,
+  },
+  SMT_PRC024_PROTECTION_VIOLATION: {
+    code: "P8016",
+    rule: "smt-prc024-protection-selectivity",
+    severity: "error" as const,
+    message: (model: string, busId: number, witness: string) =>
+      `SMT(LRA) NERC PRC-024 selectivity check failed for '${model}' on bus ${busId}: witness ${witness} trips inside the mandatory no-trip ride-through envelope.`,
+  },
+  NLSAT_PARAMETRIC_VOLTAGE_COLLAPSE: {
+    code: "P8017",
+    rule: "nlsat-parametric-voltage-collapse",
+    severity: "error" as const,
+    message: (busId: number, lambdaCrit: number, targetMargin: number) =>
+      `NLSAT parametric voltage-collapse proof found saddle-node bifurcation at bus ${busId} at load factor ${lambdaCrit.toFixed(3)}x (below required ${targetMargin.toFixed(2)}x margin).`,
+  },
+  SOS_MULTI_MACHINE_CCT_UNSAFE: {
+    code: "P8018",
+    rule: "sos-multi-machine-cct-unsafe",
+    severity: "warning" as const,
+    message: (busId: number, genId: string, cctEstSec: number, targetClearSec: number) =>
+      `SOS energy-barrier certificate indicates generator ${busId}:${genId} has insufficient critical clearing margin (estimated CCT ${(cctEstSec * 1e3).toFixed(1)} ms < target ${(targetClearSec * 1e3).toFixed(1)} ms).`,
+  },
+  FORMAL_PROOF_MANIFEST_SUMMARY: {
+    code: "P8019",
+    rule: "formal-proof-manifest-summary",
+    severity: "info" as const,
+    message: (passed: number, total: number, digest: string) =>
+      `Formal verification proof manifest generated (${passed}/${total} obligations certified, digest=${digest.slice(0, 12)}).`,
+  },
 } as const;
 
 export type PsseErrorCodeKey = keyof typeof PsseErrorCode;

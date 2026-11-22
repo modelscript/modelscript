@@ -39,7 +39,7 @@ const PRECEDENCE = {
   /** Logical conjunction `and`. */
   and: 4,
   /** Logical negation `not`. */
-  not: 9,
+  not: 5,
   /** Relational operators (`<`, `<=`, `>`, `>=`, `==`, `<>`). */
   relational: 6,
   /** Additive binary operators (`+`, `-`, `.+`, `.-`). */

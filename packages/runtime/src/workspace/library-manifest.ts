@@ -223,6 +223,8 @@ function tryInstantiateWasmSync(wasmBytes: Uint8Array | undefined): Record<strin
         abort: () => {
           throw new Error("Standard-pack WASM module aborted.");
         },
+        emtdc_host_io: (_op: number, _a0: number, a1: number) => a1,
+        emtdc_host_plot: () => {},
       },
     });
     return inst.exports as Record<string, unknown>;
@@ -389,6 +391,8 @@ export class LibraryPackageRegistry {
           abort: () => {
             throw new Error("Standard-pack WASM module aborted.");
           },
+          emtdc_host_io: (_op: number, _a0: number, a1: number) => a1,
+          emtdc_host_plot: () => {},
         },
       });
       pkg.wasmExports = instance.exports as Record<string, unknown>;
@@ -515,47 +519,56 @@ export class LibraryPackageRegistry {
   }
 
   /**
-   * Node.js helper: loads a `package.json#modelscript` library or standard-pack directory from disk.
+   * Node.js helper: loads a `modelscript.yaml` library or standard-pack directory from disk
+   * (typically located under `.modelscript/packages/<pkg>/`).
    */
   async loadLibraryFromDir(dirPath: string): Promise<LoadedLibraryPackage | undefined> {
     const fsId = "node:fs";
     const pathId = "node:path";
     const fs = await import(fsId);
     const path = await import(pathId);
-    const pkgPath = path.join(dirPath, "package.json");
-    if (!fs.existsSync(pkgPath)) return undefined;
+    const { MANIFEST_FILENAME, parseModelScriptYaml } = await import("./manifest.js");
 
-    const pkgJson = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-    if (!isModelscriptLibraryPackageJson(pkgJson)) return undefined;
+    const yamlPath = path.join(dirPath, MANIFEST_FILENAME);
+    if (!fs.existsSync(yamlPath)) return undefined;
+
+    const manifest = parseModelScriptYaml(fs.readFileSync(yamlPath, "utf-8"), yamlPath);
+    if (!manifest.library) return undefined;
+    const bundleMeta = {
+      name: manifest.name,
+      version: manifest.version,
+      modelscript: manifest.library,
+    };
+    if (!isModelscriptLibraryPackageJson(bundleMeta)) return undefined;
 
     let symbols: LibrarySymbolStub[] = [];
-    if (pkgJson.modelscript.symbols) {
-      const symbolsPath = path.resolve(dirPath, pkgJson.modelscript.symbols);
+    if (bundleMeta.modelscript.symbols) {
+      const symbolsPath = path.resolve(dirPath, bundleMeta.modelscript.symbols);
       if (fs.existsSync(symbolsPath)) {
         symbols = JSON.parse(fs.readFileSync(symbolsPath, "utf-8"));
       }
     }
 
     let diagrams: DiagramComponentSpec[] | undefined;
-    if (pkgJson.modelscript.diagrams) {
-      const diagPath = path.resolve(dirPath, pkgJson.modelscript.diagrams);
+    if (bundleMeta.modelscript.diagrams) {
+      const diagPath = path.resolve(dirPath, bundleMeta.modelscript.diagrams);
       if (fs.existsSync(diagPath)) {
         diagrams = JSON.parse(fs.readFileSync(diagPath, "utf-8"));
       }
     }
 
     let wasmBytes: Uint8Array | undefined;
-    if (pkgJson.modelscript.runtime?.wasm) {
-      const wasmPath = path.resolve(dirPath, pkgJson.modelscript.runtime.wasm);
+    if (bundleMeta.modelscript.runtime?.wasm) {
+      const wasmPath = path.resolve(dirPath, bundleMeta.modelscript.runtime.wasm);
       if (fs.existsSync(wasmPath)) {
         wasmBytes = new Uint8Array(fs.readFileSync(wasmPath));
       }
     }
 
     let tables: Record<string, unknown> | undefined;
-    if (pkgJson.modelscript.runtime?.tables) {
+    if (bundleMeta.modelscript.runtime?.tables) {
       tables = {};
-      for (const [key, relPath] of Object.entries(pkgJson.modelscript.runtime.tables)) {
+      for (const [key, relPath] of Object.entries(bundleMeta.modelscript.runtime.tables)) {
         const tablePath = path.resolve(dirPath, relPath);
         if (fs.existsSync(tablePath)) {
           tables[key] = JSON.parse(fs.readFileSync(tablePath, "utf-8"));
@@ -563,7 +576,7 @@ export class LibraryPackageRegistry {
       }
     }
 
-    const loaded = this.registerLibraryBundle(pkgJson, { symbols, diagrams, wasmBytes, tables });
+    const loaded = this.registerLibraryBundle(bundleMeta, { symbols, diagrams, wasmBytes, tables });
     if (loaded.wasmBytes && !loaded.wasmExports) {
       await this.ensureWasmInstantiated(loaded);
     }

@@ -4,6 +4,7 @@
  * @modelscript/adams — MSC Adams Multibody Dynamics (MBD) for ModelScript.
  */
 
+export * from "./catalog/index.js";
 export * from "./dae/index.js";
 export * from "./diagram/index.js";
 export * from "./errors.js";

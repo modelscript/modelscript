@@ -1,0 +1,26 @@
+{
+  "targets": {
+    "debug": {
+      "outFile": "build/simulate-debug.wasm",
+      "sourceMap": true,
+      "debug": true,
+      "enable": ["simd"]
+    },
+    "release": {
+      "outFile": "build/simulate.wasm",
+      "sourceMap": false,
+      "optimizeLevel": 3,
+      "shrinkLevel": 0,
+      "converge": false,
+      "noAssert": false,
+      "enable": ["simd"]
+    }
+  },
+  "options": {
+    "bindings": "raw",
+    "initialMemory": 64,
+    "maximumMemory": 32768,
+    "exportRuntime": true,
+    "disableWarning": ["235"]
+  }
+}

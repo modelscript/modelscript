@@ -18,16 +18,16 @@ describe("CLI Packaging Safety, Ignore Rules & Dry-Run", () => {
 
     // Create a realistic project structure with sensitive and ignored files
     fs.writeFileSync(
-      path.join(testDir, "package.json"),
-      JSON.stringify(
-        {
-          name: "@acme/drone-flight",
-          version: "1.2.0",
-          files: ["src", "models", "data/measurements.csv"],
-        },
-        null,
-        2,
-      ),
+      path.join(testDir, "modelscript.yaml"),
+      [
+        'name: "@acme/drone-flight"',
+        'version: "1.2.0"',
+        "files:",
+        "  - src",
+        "  - models",
+        "  - data/measurements.csv",
+        "",
+      ].join("\n"),
     );
 
     // Valid files
@@ -47,8 +47,11 @@ describe("CLI Packaging Safety, Ignore Rules & Dry-Run", () => {
     fs.mkdirSync(path.join(testDir, ".git"), { recursive: true });
     fs.writeFileSync(path.join(testDir, ".git", "config"), "[core]\nrepositoryformatversion = 0");
 
-    fs.mkdirSync(path.join(testDir, "node_modules", "leftpad"), { recursive: true });
-    fs.writeFileSync(path.join(testDir, "node_modules", "leftpad", "package.json"), "{}");
+    fs.mkdirSync(path.join(testDir, ".modelscript", "packages", "cached"), { recursive: true });
+    fs.writeFileSync(
+      path.join(testDir, ".modelscript", "packages", "cached", "modelscript.yaml"),
+      "name: cached\nversion: 1.0.0\n",
+    );
 
     fs.writeFileSync(path.join(testDir, ".env"), "DATABASE_PASSWORD=supersecret");
     fs.writeFileSync(path.join(testDir, ".env.production"), "API_KEY=live_xyz123");
@@ -69,7 +72,7 @@ describe("CLI Packaging Safety, Ignore Rules & Dry-Run", () => {
 
   test("isFileIgnored identifies sensitive patterns and system files", () => {
     assert.equal(isFileIgnored(".git/HEAD"), true);
-    assert.equal(isFileIgnored("node_modules/foo/index.js"), true);
+    assert.equal(isFileIgnored(".modelscript/packages/foo/modelscript.yaml"), true);
     assert.equal(isFileIgnored(".env"), true);
     assert.equal(isFileIgnored(".env.local"), true);
     assert.equal(isFileIgnored("id_rsa"), true);
@@ -84,7 +87,7 @@ describe("CLI Packaging Safety, Ignore Rules & Dry-Run", () => {
     const relPaths = files.map((f) => f.relPath);
 
     // Should include whitelisted and root metadata
-    assert.ok(relPaths.includes("package.json"));
+    assert.ok(relPaths.includes("modelscript.yaml"));
     assert.ok(relPaths.includes("README.md"));
     assert.ok(relPaths.includes("LICENSE"));
     assert.ok(relPaths.includes("src/index.ts"));
@@ -93,7 +96,7 @@ describe("CLI Packaging Safety, Ignore Rules & Dry-Run", () => {
 
     // MUST NOT include sensitive files
     assert.ok(!relPaths.some((p) => p.startsWith(".git")));
-    assert.ok(!relPaths.some((p) => p.startsWith("node_modules")));
+    assert.ok(!relPaths.some((p) => p.startsWith(".modelscript")));
     assert.ok(!relPaths.some((p) => p.includes(".env")));
     assert.ok(!relPaths.some((p) => p.includes("id_rsa")));
     assert.ok(!relPaths.some((p) => p.includes("server.key")));
@@ -130,7 +133,7 @@ describe("CLI Packaging Safety, Ignore Rules & Dry-Run", () => {
 
       const output = logs.join("\n");
       assert.ok(output.includes("Packaging @acme/drone-flight@1.2.0"));
-      assert.ok(output.includes("package.json"));
+      assert.ok(output.includes("modelscript.yaml"));
       assert.ok(output.includes("src/index.ts"));
       assert.ok(output.includes("Tarball Details:"));
       assert.ok(output.includes("Dist-Tag: beta"));

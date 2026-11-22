@@ -61,10 +61,11 @@
   "files": [
     "src/**",
     "dist/**",
-    "src-gen/**"
+    "src-gen/**",
+    "assets/**"
   ],
   "scripts": {
-    "build": "node ../../scripts/build-language-parser.js && tsc",
+    "build": "node ../../scripts/build-language-parser.js && node scripts/build-stdlib.js && tsc",
     "build:parser": "node ../../scripts/build-language-parser.js --force",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",

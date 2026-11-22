@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { LockfileRemoteState } from "@modelscript/runtime";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -17,14 +18,16 @@ export interface LockfilePackageEntry {
   dependencies?: Record<string, string> | undefined;
   peerDependencies?: Record<string, string> | undefined;
   isDirect?: boolean | undefined;
+  /** Protocol/API sync state for remote ALM/RM dependencies (DOORS Next, Jama, Codebeamer, Polarion, Jira). */
+  remote?: LockfileRemoteState | undefined;
 }
 
 export interface ModelScriptLockfile {
-  lockfileVersion: number; // 1 or 2
+  lockfileVersion: number; // 2
   packages: Record<string, LockfilePackageEntry>;
 }
 
-export const LOCKFILE_NAME = "msx.lock";
+export const LOCKFILE_NAME = "modelscript.lock";
 
 /**
  * Computes sha256 integrity string for a binary buffer.
@@ -34,7 +37,7 @@ export function computeBufferIntegrity(buffer: Buffer): string {
 }
 
 /**
- * Reads and parses `msx.lock` from the given directory.
+ * Reads and parses `modelscript.lock` from the given directory.
  */
 export function readLockfile(cwd: string): ModelScriptLockfile | null {
   const lockPath = path.join(cwd, LOCKFILE_NAME);
@@ -53,7 +56,7 @@ export function readLockfile(cwd: string): ModelScriptLockfile | null {
 }
 
 /**
- * Writes `msx.lock` to the given directory deterministically with sorted package keys.
+ * Writes `modelscript.lock` to the given directory deterministically with sorted package keys.
  */
 export function writeLockfile(cwd: string, lockfile: ModelScriptLockfile): void {
   const lockPath = path.join(cwd, LOCKFILE_NAME);
@@ -65,7 +68,7 @@ export function writeLockfile(cwd: string, lockfile: ModelScriptLockfile): void 
   }
 
   const payload: ModelScriptLockfile = {
-    lockfileVersion: lockfile.lockfileVersion || 1,
+    lockfileVersion: lockfile.lockfileVersion || 2,
     packages: sortedPackages,
   };
 
@@ -81,7 +84,7 @@ export function updateLockfilePackage(
   entry: LockfilePackageEntry,
 ): ModelScriptLockfile {
   const lockfile = readLockfile(cwd) || {
-    lockfileVersion: 1,
+    lockfileVersion: 2,
     packages: {},
   };
 

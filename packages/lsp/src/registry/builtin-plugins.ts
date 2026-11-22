@@ -164,6 +164,13 @@ import { getLandgemDocumentSymbols, getLandgemHover, landgemLanguage, validateLa
 import lasLangFallback from "@modelscript/las/language";
 import { getLpsDocumentSymbols, getLpsHover, lpsActionHandlers, lpsLanguage, validateLps } from "@modelscript/lps";
 import {
+  getMagicDrawDiagnostics,
+  getMagicDrawDocumentSymbols,
+  getMagicDrawHover,
+  magicDrawActionHandlers,
+  magicDrawLanguage,
+} from "@modelscript/magicdraw";
+import {
   extractMatpowerTheoryConstraints,
   getDiagnostics as getMatpowerDiagnostics,
   getDocumentSymbols as getMatpowerDocumentSymbols,
@@ -1209,6 +1216,20 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         getReqifReferences(text, offset, uri ?? "file:///requirements.reqif", workspaceManager.unifiedWorkspace),
     },
     actionHandlers: reqifActionHandlers,
+  });
+
+  // 15b. MagicDraw / Cameo (.mdzip, .mdxml, .xmi)
+  registerStandardPlugin({
+    id: "magicdraw",
+    name: "MagicDraw / Cameo",
+    extensions: [".mdzip", ".mdxml", ".xmi"],
+    languageDef: magicDrawLanguage,
+    symbols: getMagicDrawDocumentSymbols,
+    validate: (text: string) => getMagicDrawDiagnostics(text),
+    customHandlers: {
+      hover: (offset: number, text: string) => getMagicDrawHover(text, offset),
+    },
+    actionHandlers: magicDrawActionHandlers,
   });
 
   // 16. SPICE

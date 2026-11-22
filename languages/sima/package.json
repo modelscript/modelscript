@@ -58,11 +58,13 @@
     "src/**",
     "dist/**",
     "assembly/**",
-    "src-gen/**"
+    "src-gen/**",
+    "assets/**"
   ],
   "scripts": {
-    "build": "node ../../scripts/build-language-parser.js && npm run build:wasm && tsc",
+    "build": "node ../../scripts/build-language-parser.js && npm run build:wasm && node scripts/build-stdlib.js && tsc",
     "build:parser": "node ../../scripts/build-language-parser.js --force",
+    "build:stdlib": "node scripts/build-stdlib.js --force",
     "build:wasm": "node scripts/build-wasm.js",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",

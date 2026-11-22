@@ -1256,7 +1256,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
 
     const cleanUriLower = (params.uri || "").split("?")[0]!.toLowerCase();
     const isKnownNonModelicaExt =
-      /\.(scad|sysml2?|spice|cir|sp|ssp|ssd|reqif|arxml|adm|cmd|acf|spck|sim|mbs|xodr|urdf|sdf|xacro|vhdl?|sv|v|f90|c|cpp|h|py|json|xml|yaml|yml)$/.test(
+      /\.(scad|sysml2?|spice|cir|sp|ssp|ssd|reqif|mdzip|mdxml|xmi|arxml|adm|cmd|acf|spck|sim|mbs|xodr|urdf|sdf|xacro|vhdl?|sv|v|f90|c|cpp|h|py|json|xml|yaml|yml)$/.test(
         cleanUriLower,
       );
 

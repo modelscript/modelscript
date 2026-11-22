@@ -1,0 +1,778 @@
+[
+  {
+    "namePath": "gproms:PML_CSTR",
+    "aliases": [
+      "cstr",
+      "CSTR",
+      "PML.CSTR"
+    ],
+    "label": "Continuous Stirred-Tank Reactor (CSTR)",
+    "category": "Reactor",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#3b1d2e\" stroke=\"#f472b6\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f472b6\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f472b6\">RXN</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CSTR</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "coolant",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 38
+      },
+      {
+        "name": "effluent",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_PFR",
+    "aliases": [
+      "pfr",
+      "PFR",
+      "PlugFlowReactor"
+    ],
+    "label": "Plug Flow Reactor (PFR)",
+    "category": "Reactor",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#3b1d2e\" stroke=\"#f472b6\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f472b6\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f472b6\">RXN</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PFR</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "coolant",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 38
+      },
+      {
+        "name": "effluent",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_BatchReactor",
+    "aliases": [
+      "batch_reactor",
+      "BatchReactor"
+    ],
+    "label": "Dynamic Batch Reactor",
+    "category": "Reactor",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#3b1d2e\" stroke=\"#f472b6\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f472b6\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f472b6\">RXN</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BatchReact</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "coolant",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 38
+      },
+      {
+        "name": "effluent",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_FlashDrum",
+    "aliases": [
+      "flash",
+      "FlashDrum",
+      "VLEFlash"
+    ],
+    "label": "Dynamic Vapor-Liquid Flash Drum",
+    "category": "Separator",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SEP</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FlashDrum</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "vapor_top",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 14
+      },
+      {
+        "name": "liquid_bot",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 38
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_DistillationTray",
+    "aliases": [
+      "tray",
+      "DistillationTray",
+      "EquilibriumStage"
+    ],
+    "label": "Equilibrium Distillation Tray",
+    "category": "Separator",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SEP</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Distillati</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "vapor_top",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 14
+      },
+      {
+        "name": "liquid_bot",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 38
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_Crystallizer",
+    "aliases": [
+      "crystallizer",
+      "MSMPR"
+    ],
+    "label": "MSMPR Population-Balance Crystallizer",
+    "category": "Separator",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SEP</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Crystalliz</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "vapor_top",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 14
+      },
+      {
+        "name": "liquid_bot",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 38
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_MembraneSep",
+    "aliases": [
+      "membrane",
+      "MembraneSep"
+    ],
+    "label": "Membrane Separation Module",
+    "category": "Separator",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SEP</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MembraneSe</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "vapor_top",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 14
+      },
+      {
+        "name": "liquid_bot",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 38
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_FuelCellStack",
+    "aliases": [
+      "fuel_cell",
+      "PEMFC",
+      "SOFC"
+    ],
+    "label": "Electrochemical Fuel Cell Stack",
+    "category": "Reactor",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#3b1d2e\" stroke=\"#f472b6\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f472b6\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f472b6\">RXN</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FuelCellSt</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "coolant",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 38
+      },
+      {
+        "name": "effluent",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_HeatExchanger",
+    "aliases": [
+      "hx",
+      "HeatExchanger",
+      "LMTD_HX"
+    ],
+    "label": "Shell-and-Tube Heat Exchanger (LMTD)",
+    "category": "Flowsheet / Thermal",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">FLW</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">HeatExchan</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 46,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_Pump",
+    "aliases": [
+      "pump",
+      "CentrifugalPump"
+    ],
+    "label": "Centrifugal Process Pump",
+    "category": "Flowsheet / Thermal",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">FLW</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Pump</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 46,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_Compressor",
+    "aliases": [
+      "compressor",
+      "PolytropicCompressor"
+    ],
+    "label": "Polytropic Gas Compressor",
+    "category": "Flowsheet / Thermal",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">FLW</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Compressor</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 46,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_ControlValve",
+    "aliases": [
+      "valve",
+      "ControlValve",
+      "CvValve"
+    ],
+    "label": "ISA-75.01 Control Valve",
+    "category": "Flowsheet / Thermal",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">FLW</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ControlVal</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 46,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_Pipe",
+    "aliases": [
+      "pipe",
+      "PipeSegment"
+    ],
+    "label": "Darcy-Weisbach Process Pipe",
+    "category": "Flowsheet / Thermal",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">FLW</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Pipe</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 46,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_Mixer",
+    "aliases": [
+      "mixer",
+      "StreamMixer"
+    ],
+    "label": "Adiabatic Stream Mixer",
+    "category": "Flowsheet / Thermal",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">FLW</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Mixer</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 46,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_Splitter",
+    "aliases": [
+      "splitter",
+      "StreamSplitter"
+    ],
+    "label": "Isenthalpic Stream Splitter",
+    "category": "Flowsheet / Thermal",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">FLW</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Splitter</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 46,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_TankBuffer",
+    "aliases": [
+      "tank",
+      "BufferTank",
+      "SurgeDrum"
+    ],
+    "label": "Dynamic Buffer / Surge Tank",
+    "category": "Flowsheet / Thermal",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">FLW</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TankBuffer</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 46,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_PIDController",
+    "aliases": [
+      "pid",
+      "PID",
+      "PIDController"
+    ],
+    "label": "ISA-Standard PID Controller",
+    "category": "Control",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">CTL</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PIDControl</text></svg>",
+    "ports": [
+      {
+        "name": "pv",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "sp",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "mv",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PML_Sensor",
+    "aliases": [
+      "sensor",
+      "Transmitter"
+    ],
+    "label": "Process Measurement Transmitter",
+    "category": "Control",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">CTL</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Sensor</text></svg>",
+    "ports": [
+      {
+        "name": "pv",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "sp",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "mv",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PROP_PengRobinson",
+    "aliases": [
+      "pr",
+      "PengRobinson",
+      "PR_EOS"
+    ],
+    "label": "Peng-Robinson Cubic EOS",
+    "category": "Property Package",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#a78bfa\">PRP</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PengRobins</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PROP_NRTL",
+    "aliases": [
+      "nrtl",
+      "NRTL"
+    ],
+    "label": "NRTL Activity Coefficient Model",
+    "category": "Property Package",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#a78bfa\">PRP</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">NRTL</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:PROP_IAPWS_IF97",
+    "aliases": [
+      "iapws",
+      "IF97",
+      "SteamTables"
+    ],
+    "label": "IAPWS-IF97 Industrial Water & Steam",
+    "category": "Property Package",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#a78bfa\">PRP</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">IAPWS_IF97</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gproms:CAPE_OPEN_ForeignObject",
+    "aliases": [
+      "cape_open",
+      "ForeignObject",
+      "CAPEOPEN"
+    ],
+    "label": "CAPE-OPEN 1.1 Foreign Object Wrapper",
+    "category": "Property Package",
+    "domain": "chemical",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#a78bfa\">PRP</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ForeignObj</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  }
+]

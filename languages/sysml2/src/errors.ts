@@ -857,6 +857,54 @@ export const SysML2ErrorCode = {
     message: (modelName: string, detail: string) =>
       `[DAE/Barrier] Continuous safety reachability violation in '${modelName}': ${detail}.`,
   },
+  EGRAPH_REQUIREMENT_CONFLICT_OR_REDUNDANCY: {
+    code: 7007,
+    rule: "egraph-requirement-contradiction-or-redundancy",
+    severity: "error" as DiagnosticSeverity,
+    message: (reqA: string, reqB: string, detail: string) =>
+      `[E-Graph] Requirement '${reqA}' and '${reqB}' exhibit ${detail}.`,
+  },
+  HC4_ROLLUP_BUDGET_INFEASIBLE: {
+    code: 7008,
+    rule: "hc4-rollup-budget-infeasible",
+    severity: "error" as DiagnosticSeverity,
+    message: (attrName: string, detail: string) => `[HC4] Rollup budget infeasibility on '${attrName}': ${detail}.`,
+  },
+  TARJAN_CYCLIC_BINDING_OR_FLOW_DEADLOCK: {
+    code: 7009,
+    rule: "tarjan-cyclic-binding-or-flow-deadlock",
+    severity: "error" as DiagnosticSeverity,
+    message: (cycleDesc: string) =>
+      `[Tarjan SCC] Cyclic binding or synchronous item-flow deadlock detected: ${cycleDesc}.`,
+  },
+  CHC_ACTION_LOOP_TERMINATION: {
+    code: 7010,
+    rule: "chc-action-loop-termination",
+    severity: "warning" as DiagnosticSeverity,
+    message: (actionName: string, detail: string) =>
+      `[CHC/Invariant] Looping action '${actionName}' failed inductive termination check: ${detail}.`,
+  },
+  DDE_CYBERPHYSICAL_LATENCY_INSTABILITY: {
+    code: 7011,
+    rule: "dde-cyberphysical-latency-instability",
+    severity: "error" as DiagnosticSeverity,
+    message: (partName: string, detail: string) =>
+      `[DDE Flowpipe] Cyber-physical latency chain in '${partName}' exceeds stability phase margin: ${detail}.`,
+  },
+  HJI_ADVERSARIAL_HAZARD_REACHABLE: {
+    code: 7012,
+    rule: "hji-adversarial-hazard-reachable",
+    severity: "error" as DiagnosticSeverity,
+    message: (hazardName: string, detail: string) =>
+      `[HJI Reachability] Adversarial disturbance can trigger hazard '${hazardName}': ${detail}.`,
+  },
+  STARSET_DECISION_TABLE_BREACH: {
+    code: 7013,
+    rule: "starset-decision-table-gap-or-breach",
+    severity: "warning" as DiagnosticSeverity,
+    message: (calcName: string, detail: string) =>
+      `[Star-Set] Piecewise-linear calc/decision table '${calcName}' violates output envelope: ${detail}.`,
+  },
 } as const;
 
 /**

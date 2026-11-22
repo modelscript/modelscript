@@ -47,6 +47,7 @@ export class RtmIndexEngine {
       rule === "ConcernDefinition" ||
       rule === "ConcernUsage" ||
       rule === "reqif_requirement" ||
+      rule === "magicdraw_requirement" ||
       rule === "SpecObject" ||
       (entry.language === "reqif" && entry.kind === "Class")
     ) {

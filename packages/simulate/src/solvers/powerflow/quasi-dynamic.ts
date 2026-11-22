@@ -11,8 +11,9 @@
  * - Aggregate energy metrics: MWh delivered, MWh losses, voltage envelope, and peak branch loading
  */
 
-import { solveLinearSystemSparse } from "../sparse-solver-bridge.js";
+import { wasmAcPowerflowNR } from "../../wasm/simulate-wasm.js";
 import type { GenericPowerCase } from "../opf/types.js";
+import { solveLinearSystemSparse } from "../sparse-solver-bridge.js";
 
 /**
  * Normalized or physical time-series profile for load or generation.
@@ -117,16 +118,20 @@ export interface QdslStepResult {
   totalLoadReactiveMvar: number;
   totalLossesActiveMw: number;
   totalLossesReactiveMvar: number;
-  bessStates?: Array<{
-    busNumber: number;
-    genId: string;
-    soc: number;
-    powerMw: number;
-  }> | undefined;
-  tapPositions?: Array<{
-    transformerIndex: number;
-    tapRatio: number;
-  }> | undefined;
+  bessStates?:
+    | Array<{
+        busNumber: number;
+        genId: string;
+        soc: number;
+        powerMw: number;
+      }>
+    | undefined;
+  tapPositions?:
+    | Array<{
+        transformerIndex: number;
+        tapRatio: number;
+      }>
+    | undefined;
 }
 
 /**
@@ -189,10 +194,7 @@ export function evaluateProfile(profile: QdslProfile, t: number): number {
 /**
  * Executes a Quasi-Dynamic (time-series) power flow simulation on a GenericPowerCase.
  */
-export function runQuasiDynamicSimulation(
-  baseCase: GenericPowerCase,
-  options: QdslOptions = {},
-): QdslResult {
+export function runQuasiDynamicSimulation(baseCase: GenericPowerCase, options: QdslOptions = {}): QdslResult {
   const sbase = baseCase.header.sbase > 0 ? baseCase.header.sbase : 100.0;
   const dt = options.timeStepHours ?? 1.0;
   const maxIter = options.maxIterations ?? 30;
@@ -406,8 +408,7 @@ export function runQuasiDynamicSimulation(
     for (const load of baseLoads) {
       if (load.status === 0) continue;
       const specificProf =
-        options.loadProfiles?.get(load.busNumber) ??
-        options.loadProfiles?.get(String(load.busNumber));
+        options.loadProfiles?.get(load.busNumber) ?? options.loadProfiles?.get(String(load.busNumber));
       const prof = specificProf ?? options.defaultLoadProfile;
       const mult = prof ? evaluateProfile(prof, tHours) : 1.0;
 
@@ -424,8 +425,8 @@ export function runQuasiDynamicSimulation(
 
       const etaChg = bess.config.chargeEfficiency ?? 0.95;
       const etaDis = bess.config.dischargeEfficiency ?? 0.95;
-      const minSoc = bess.config.minSoc ?? 0.10;
-      const maxSoc = bess.config.maxSoc ?? 0.90;
+      const minSoc = bess.config.minSoc ?? 0.1;
+      const maxSoc = bess.config.maxSoc ?? 0.9;
       const capMwh = bess.config.ratedCapacityMwh;
 
       let actualMw = 0;
@@ -459,9 +460,7 @@ export function runQuasiDynamicSimulation(
     for (const gen of baseGens) {
       if (gen.stat === 0) continue;
       const genKey = `${gen.busNumber}_${gen.id.trim()}`;
-      const prof =
-        options.generationProfiles?.get(genKey) ??
-        options.generationProfiles?.get(gen.busNumber);
+      const prof = options.generationProfiles?.get(genKey) ?? options.generationProfiles?.get(gen.busNumber);
       const mult = prof ? evaluateProfile(prof, tHours) : 1.0;
 
       // Slack generator power is solved by load flow, others follow profile
@@ -480,142 +479,163 @@ export function runQuasiDynamicSimulation(
     for (let oltcIter = 0; oltcIter < 5; oltcIter++) {
       const { Gbus, Bbus } = buildYbus(tapStates);
 
-      for (nrIter = 0; nrIter < maxIter; nrIter++) {
-        Pcalc.fill(0);
-        Qcalc.fill(0);
-
-        for (let i = 0; i < N; i++) {
-          const vi = Vm[i]!;
-          for (let k = 0; k < N; k++) {
-            const vk = Vm[k]!;
-            const th = Va[i]! - Va[k]!;
-            const g = Gbus[i * N + k]!;
-            const b = Bbus[i * N + k]!;
-            const cosTh = Math.cos(th);
-            const sinTh = Math.sin(th);
-            Pcalc[i] = (Pcalc[i] ?? 0) + vi * vk * (g * cosTh + b * sinTh);
-            Qcalc[i] = (Qcalc[i] ?? 0) + vi * vk * (g * sinTh - b * cosTh);
-          }
-        }
-
-        // Active power mismatch dP (in per-unit) for all non-slack buses
-        const dP = new Float64Array(nP);
-        let maxMismatch = 0;
-        for (let r = 0; r < nP; r++) {
-          const i = nonSlackIndices[r]!;
-          const pNetPu = (PgenMw[i]! - PloadMw[i]!) / sbase;
-          dP[r] = pNetPu - Pcalc[i]!;
-          maxMismatch = Math.max(maxMismatch, Math.abs(dP[r]!));
-        }
-
-        // Reactive power mismatch dQ (in per-unit) for PQ buses
-        const dQ = new Float64Array(nQ);
-        for (let r = 0; r < nQ; r++) {
-          const i = pqIndices[r]!;
-          const qNetPu = (QgenMvar[i]! - QloadMvar[i]!) / sbase;
-          dQ[r] = qNetPu - Qcalc[i]!;
-          maxMismatch = Math.max(maxMismatch, Math.abs(dQ[r]!));
-        }
-
-        if (maxMismatch < tol) {
-          converged = true;
-          break;
-        }
-
-        // Build Jacobian:
-        // [ dP/dVa (nP x nP)   dP/dVm (nP x nQ) ]
-        // [ dQ/dVa (nQ x nP)   dQ/dVm (nQ x nQ) ]
-        const Jac = new Float64Array(nVars * nVars);
-        const rhs = new Float64Array(nVars);
-
-        for (let r = 0; r < nP; r++) rhs[r] = dP[r]!;
-        for (let r = 0; r < nQ; r++) rhs[nP + r] = dQ[r]!;
-
-        // 1. dP / dVa (nP x nP)
-        for (let r = 0; r < nP; r++) {
-          const i = nonSlackIndices[r]!;
-          const vi = Vm[i]!;
-          for (let c = 0; c < nP; c++) {
-            const k = nonSlackIndices[c]!;
-            if (i === k) {
-              Jac[r * nVars + c] = -Qcalc[i]! - vi * vi * Bbus[i * N + i]!;
-            } else {
-              const th = Va[i]! - Va[k]!;
-              const g = Gbus[i * N + k]!;
-              const b = Bbus[i * N + k]!;
-              Jac[r * nVars + c] = vi * Vm[k]! * (g * Math.sin(th) - b * Math.cos(th));
-            }
-          }
-        }
-
-        // 2. dP / dVm (nP x nQ)
-        for (let r = 0; r < nP; r++) {
-          const i = nonSlackIndices[r]!;
-          const vi = Vm[i]!;
-          for (let c = 0; c < nQ; c++) {
-            const k = pqIndices[c]!;
-            const col = nP + c;
-            if (i === k) {
-              Jac[r * nVars + col] = Pcalc[i]! / vi + vi * Gbus[i * N + i]!;
-            } else {
-              const th = Va[i]! - Va[k]!;
-              const g = Gbus[i * N + k]!;
-              const b = Bbus[i * N + k]!;
-              Jac[r * nVars + col] = vi * (g * Math.cos(th) + b * Math.sin(th));
-            }
-          }
-        }
-
-        // 3. dQ / dVa (nQ x nP)
-        for (let r = 0; r < nQ; r++) {
-          const i = pqIndices[r]!;
-          const row = nP + r;
-          const vi = Vm[i]!;
-          for (let c = 0; c < nP; c++) {
-            const k = nonSlackIndices[c]!;
-            if (i === k) {
-              Jac[row * nVars + c] = Pcalc[i]! - vi * vi * Gbus[i * N + i]!;
-            } else {
-              const th = Va[i]! - Va[k]!;
-              const g = Gbus[i * N + k]!;
-              const b = Bbus[i * N + k]!;
-              Jac[row * nVars + c] = -vi * Vm[k]! * (g * Math.cos(th) + b * Math.sin(th));
-            }
-          }
-        }
-
-        // 4. dQ / dVm (nQ x nQ)
-        for (let r = 0; r < nQ; r++) {
-          const i = pqIndices[r]!;
-          const row = nP + r;
-          const vi = Vm[i]!;
-          for (let c = 0; c < nQ; c++) {
-            const k = pqIndices[c]!;
-            const col = nP + c;
-            if (i === k) {
-              Jac[row * nVars + col] = Qcalc[i]! / vi - vi * Bbus[i * N + i]!;
-            } else {
-              const th = Va[i]! - Va[k]!;
-              const g = Gbus[i * N + k]!;
-              const b = Bbus[i * N + k]!;
-              Jac[row * nVars + col] = vi * (g * Math.sin(th) - b * Math.cos(th));
-            }
-          }
-        }
-
-        // Solve Jac * delta = rhs in-place
-        if (!solveLinearSystemSparse(Jac, rhs, nVars)) break;
-
-        for (let r = 0; r < nP; r++) {
-          const idx = nonSlackIndices[r]!;
-          Va[idx] = (Va[idx] ?? 0) + (rhs[r] ?? 0);
-        }
-        for (let r = 0; r < nQ; r++) {
-          const k = pqIndices[r]!;
-          const newV = (Vm[k] ?? 1.0) + (rhs[nP + r] ?? 0);
-          Vm[k] = Math.max(0.5, Math.min(1.5, newV));
-        }
+      // Fast-path: execute full AC Powerflow Newton-Raphson in simulate.wasm linear memory
+      const busTypes = new Uint8Array(N);
+      busTypes.fill(3); // default slack
+      for (let r = 0; r < nP; r++) busTypes[nonSlackIndices[r]!] = 2; // PV
+      for (let r = 0; r < nQ; r++) busTypes[pqIndices[r]!] = 1; // PQ
+      const pSpecPu = new Float64Array(N);
+      const qSpecPu = new Float64Array(N);
+      for (let i = 0; i < N; i++) {
+        pSpecPu[i] = (PgenMw[i]! - PloadMw[i]!) / sbase;
+        qSpecPu[i] = (QgenMvar[i]! - QloadMvar[i]!) / sbase;
       }
+      converged = false;
+      const wasmPf = wasmAcPowerflowNR(N, busTypes, Gbus, Bbus, pSpecPu, qSpecPu, Vm, Va, tol, maxIter);
+      if (wasmPf && wasmPf.converged) {
+        Vm.set(wasmPf.vm);
+        Va.set(wasmPf.va);
+        converged = true;
+        nrIter = wasmPf.iterations;
+      }
+
+      if (!converged)
+        for (nrIter = 0; nrIter < maxIter; nrIter++) {
+          Pcalc.fill(0);
+          Qcalc.fill(0);
+
+          for (let i = 0; i < N; i++) {
+            const vi = Vm[i]!;
+            for (let k = 0; k < N; k++) {
+              const vk = Vm[k]!;
+              const th = Va[i]! - Va[k]!;
+              const g = Gbus[i * N + k]!;
+              const b = Bbus[i * N + k]!;
+              const cosTh = Math.cos(th);
+              const sinTh = Math.sin(th);
+              Pcalc[i] = (Pcalc[i] ?? 0) + vi * vk * (g * cosTh + b * sinTh);
+              Qcalc[i] = (Qcalc[i] ?? 0) + vi * vk * (g * sinTh - b * cosTh);
+            }
+          }
+
+          // Active power mismatch dP (in per-unit) for all non-slack buses
+          const dP = new Float64Array(nP);
+          let maxMismatch = 0;
+          for (let r = 0; r < nP; r++) {
+            const i = nonSlackIndices[r]!;
+            const pNetPu = (PgenMw[i]! - PloadMw[i]!) / sbase;
+            dP[r] = pNetPu - Pcalc[i]!;
+            maxMismatch = Math.max(maxMismatch, Math.abs(dP[r]!));
+          }
+
+          // Reactive power mismatch dQ (in per-unit) for PQ buses
+          const dQ = new Float64Array(nQ);
+          for (let r = 0; r < nQ; r++) {
+            const i = pqIndices[r]!;
+            const qNetPu = (QgenMvar[i]! - QloadMvar[i]!) / sbase;
+            dQ[r] = qNetPu - Qcalc[i]!;
+            maxMismatch = Math.max(maxMismatch, Math.abs(dQ[r]!));
+          }
+
+          if (maxMismatch < tol) {
+            converged = true;
+            break;
+          }
+
+          // Build Jacobian:
+          // [ dP/dVa (nP x nP)   dP/dVm (nP x nQ) ]
+          // [ dQ/dVa (nQ x nP)   dQ/dVm (nQ x nQ) ]
+          const Jac = new Float64Array(nVars * nVars);
+          const rhs = new Float64Array(nVars);
+
+          for (let r = 0; r < nP; r++) rhs[r] = dP[r]!;
+          for (let r = 0; r < nQ; r++) rhs[nP + r] = dQ[r]!;
+
+          // 1. dP / dVa (nP x nP)
+          for (let r = 0; r < nP; r++) {
+            const i = nonSlackIndices[r]!;
+            const vi = Vm[i]!;
+            for (let c = 0; c < nP; c++) {
+              const k = nonSlackIndices[c]!;
+              if (i === k) {
+                Jac[r * nVars + c] = -Qcalc[i]! - vi * vi * Bbus[i * N + i]!;
+              } else {
+                const th = Va[i]! - Va[k]!;
+                const g = Gbus[i * N + k]!;
+                const b = Bbus[i * N + k]!;
+                Jac[r * nVars + c] = vi * Vm[k]! * (g * Math.sin(th) - b * Math.cos(th));
+              }
+            }
+          }
+
+          // 2. dP / dVm (nP x nQ)
+          for (let r = 0; r < nP; r++) {
+            const i = nonSlackIndices[r]!;
+            const vi = Vm[i]!;
+            for (let c = 0; c < nQ; c++) {
+              const k = pqIndices[c]!;
+              const col = nP + c;
+              if (i === k) {
+                Jac[r * nVars + col] = Pcalc[i]! / vi + vi * Gbus[i * N + i]!;
+              } else {
+                const th = Va[i]! - Va[k]!;
+                const g = Gbus[i * N + k]!;
+                const b = Bbus[i * N + k]!;
+                Jac[r * nVars + col] = vi * (g * Math.cos(th) + b * Math.sin(th));
+              }
+            }
+          }
+
+          // 3. dQ / dVa (nQ x nP)
+          for (let r = 0; r < nQ; r++) {
+            const i = pqIndices[r]!;
+            const row = nP + r;
+            const vi = Vm[i]!;
+            for (let c = 0; c < nP; c++) {
+              const k = nonSlackIndices[c]!;
+              if (i === k) {
+                Jac[row * nVars + c] = Pcalc[i]! - vi * vi * Gbus[i * N + i]!;
+              } else {
+                const th = Va[i]! - Va[k]!;
+                const g = Gbus[i * N + k]!;
+                const b = Bbus[i * N + k]!;
+                Jac[row * nVars + c] = -vi * Vm[k]! * (g * Math.cos(th) + b * Math.sin(th));
+              }
+            }
+          }
+
+          // 4. dQ / dVm (nQ x nQ)
+          for (let r = 0; r < nQ; r++) {
+            const i = pqIndices[r]!;
+            const row = nP + r;
+            const vi = Vm[i]!;
+            for (let c = 0; c < nQ; c++) {
+              const k = pqIndices[c]!;
+              const col = nP + c;
+              if (i === k) {
+                Jac[row * nVars + col] = Qcalc[i]! / vi - vi * Bbus[i * N + i]!;
+              } else {
+                const th = Va[i]! - Va[k]!;
+                const g = Gbus[i * N + k]!;
+                const b = Bbus[i * N + k]!;
+                Jac[row * nVars + col] = vi * (g * Math.sin(th) - b * Math.cos(th));
+              }
+            }
+          }
+
+          // Solve Jac * delta = rhs in-place
+          if (!solveLinearSystemSparse(Jac, rhs, nVars)) break;
+
+          for (let r = 0; r < nP; r++) {
+            const idx = nonSlackIndices[r]!;
+            Va[idx] = (Va[idx] ?? 0) + (rhs[r] ?? 0);
+          }
+          for (let r = 0; r < nQ; r++) {
+            const k = pqIndices[r]!;
+            const newV = (Vm[k] ?? 1.0) + (rhs[nP + r] ?? 0);
+            Vm[k] = Math.max(0.5, Math.min(1.5, newV));
+          }
+        }
 
       // Check OLTC tap changes
       let tapChanged = false;
@@ -675,7 +695,7 @@ export function runQuasiDynamicSimulation(
       stepLossMvar += qLoss;
 
       const sMva = Math.sqrt(pFrom * pFrom + qFrom * qFrom);
-      const rateA = br.rateA && br.rateA > 0 ? br.rateA : (br.ratea && br.ratea > 0 ? br.ratea : sbase);
+      const rateA = br.rateA && br.rateA > 0 ? br.rateA : br.ratea && br.ratea > 0 ? br.ratea : sbase;
       const loadingPct = (sMva / rateA) * 100.0;
       branchLoadings.push(loadingPct);
 
@@ -770,8 +790,7 @@ export function runQuasiDynamicSimulation(
     });
   }
 
-  const lossPct =
-    totalEnergySuppliedMwh > 0 ? (totalEnergyLossesMwh / totalEnergySuppliedMwh) * 100.0 : 0.0;
+  const lossPct = totalEnergySuppliedMwh > 0 ? (totalEnergyLossesMwh / totalEnergySuppliedMwh) * 100.0 : 0.0;
 
   return {
     steps: stepResults,

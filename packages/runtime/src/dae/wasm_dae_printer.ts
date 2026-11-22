@@ -344,6 +344,26 @@ export class ArenaDAEPrinter {
         const op = a.getExprData1(id) as BinOp;
         const isHigh = HIGH_PREC_OPS.has(op);
 
+        const startsWithMinus = (nid: number): boolean => {
+          let cur = nid;
+          for (let d = 0; d < 32 && cur >= 0; d++) {
+            const k = a.getExprKind(cur);
+            if (k === ExprKind.Negate) return true;
+            if (k === ExprKind.Unary && (a.getExprData1(cur) as UnaryOp) === UnaryOp.Negate) return true;
+            if (k === ExprKind.RealLiteral && a.getExprRealValue(cur) < 0) return true;
+            if (k === ExprKind.IntLiteral && a.getExprData1(cur) < 0) return true;
+            if (k === ExprKind.Binary) {
+              const bop = a.getExprData1(cur) as BinOp;
+              if (HIGH_PREC_OPS.has(bop)) {
+                cur = a.getExprLeft(cur);
+                continue;
+              }
+            }
+            return false;
+          }
+          return false;
+        };
+
         const needsParens = (childId: number, isRhs = false): boolean => {
           if (childId < 0) return false;
           const ck = a.getExprKind(childId);
@@ -360,7 +380,7 @@ export class ArenaDAEPrinter {
               return op !== BinOp.And && op !== BinOp.Or;
             }
             if (uop !== UnaryOp.Negate) return true; // other unary ops need parens
-            // Negate needs parens on Add, on RHS of Sub or relational ops, and inside high-prec ops
+            // Negate needs parens on Add, on RHS of Sub or relational ops, and inside high-prec ops (except LHS of Mul/Div in newInst)
             if (op === BinOp.Add) return true;
             if (isRhs && isRelOp) return true;
             if (
@@ -371,7 +391,7 @@ export class ArenaDAEPrinter {
             ) {
               return true;
             }
-            if (isHigh) return true;
+            if (isHigh) return isRhs || op === BinOp.Pow || op === BinOp.ElemPow || this.isOldFrontend;
             return false;
           }
           // Dedicated Negate node: same logic
@@ -386,8 +406,18 @@ export class ArenaDAEPrinter {
             ) {
               return true;
             }
-            if (isHigh) return true;
+            if (isHigh) return isRhs || op === BinOp.Pow || op === BinOp.ElemPow || this.isOldFrontend;
             return false;
+          }
+          if (
+            !this.isOldFrontend &&
+            isRhs &&
+            (op === BinOp.Add || op === BinOp.Sub || op === BinOp.ElemAdd || op === BinOp.ElemSub) &&
+            ck === ExprKind.Binary &&
+            HIGH_PREC_OPS.has(a.getExprData1(childId) as BinOp) &&
+            startsWithMinus(childId)
+          ) {
+            return true;
           }
           if (isHigh && ck === ExprKind.RealLiteral && a.getExprRealValue(childId) < 0) return true;
           if (isHigh && ck === ExprKind.IntLiteral && a.getExprData1(childId) < 0) return true;
@@ -408,10 +438,119 @@ export class ArenaDAEPrinter {
           return false;
         };
 
+        const isNegatedExpr = (nid: number): boolean => {
+          let cur = nid;
+          for (let d = 0; d < 16 && cur >= 0; d++) {
+            const k = a.getExprKind(cur);
+            if (k === ExprKind.Negate) return true;
+            if (k === ExprKind.Unary && (a.getExprData1(cur) as UnaryOp) === UnaryOp.Negate) return true;
+            if (k === ExprKind.Binary) {
+              const bop = a.getExprData1(cur) as BinOp;
+              if (bop === BinOp.Mul || bop === BinOp.Div || bop === BinOp.ElemMul || bop === BinOp.ElemDiv) {
+                cur = a.getExprLeft(cur);
+                continue;
+              }
+            }
+            return false;
+          }
+          return false;
+        };
+
+        const printUnnegatedExpr = (nid: number, inMul = false): void => {
+          const k = a.getExprKind(nid);
+          if (k === ExprKind.Negate || (k === ExprKind.Unary && (a.getExprData1(nid) as UnaryOp) === UnaryOp.Negate)) {
+            const inner = a.getExprLeft(nid);
+            const ik = inner >= 0 ? a.getExprKind(inner) : -1;
+            const iNeedP =
+              (inMul && ik === ExprKind.Binary && LOW_PREC_OPS.has(a.getExprData1(inner) as BinOp)) ||
+              ik === ExprKind.IfElse ||
+              ik === ExprKind.Range;
+            if (iNeedP) this.out.write("(");
+            this.printExpr(inner);
+            if (iNeedP) this.out.write(")");
+            return;
+          }
+          if (k === ExprKind.Binary) {
+            const bop = a.getExprData1(nid) as BinOp;
+            if (bop === BinOp.Mul || bop === BinOp.Div || bop === BinOp.ElemMul || bop === BinOp.ElemDiv) {
+              const bl = a.getExprLeft(nid);
+              const br = a.getExprRight(nid);
+              printUnnegatedExpr(bl, true);
+              this.out.write(" " + (binOpStr[bop] ?? "*") + " ");
+              const brk = br >= 0 ? a.getExprKind(br) : -1;
+              const rNeedP =
+                (brk === ExprKind.Binary &&
+                  (LOW_PREC_OPS.has(a.getExprData1(br) as BinOp) ||
+                    ((bop === BinOp.Div || bop === BinOp.ElemDiv) &&
+                      (a.getExprData1(br) as BinOp) !== BinOp.Pow &&
+                      (a.getExprData1(br) as BinOp) !== BinOp.ElemPow))) ||
+                brk === ExprKind.IfElse ||
+                brk === ExprKind.Range ||
+                startsWithMinus(br);
+              if (rNeedP) this.out.write("(");
+              this.printExpr(br);
+              if (rNeedP) this.out.write(")");
+              return;
+            }
+          }
+          this.printExpr(nid);
+        };
+
+        const addTermNeedsParens = (tid: number): boolean => {
+          if (tid < 0) return false;
+          const tk = a.getExprKind(tid);
+          if (tk === ExprKind.Binary) {
+            const tbop = a.getExprData1(tid) as BinOp;
+            return tbop !== BinOp.Add && !HIGH_PREC_OPS.has(tbop);
+          }
+          return tk === ExprKind.IfElse || tk === ExprKind.Range;
+        };
+
+        // ── OMC newInst canonicalization: -(a + b) - c → -(a + b + c) ──
+        if (this.omcCompatibility && !this.isOldFrontend && op === BinOp.Sub) {
+          const subTerms: number[] = [];
+          let cur = id;
+          while (cur >= 0 && a.getExprKind(cur) === ExprKind.Binary && a.getExprData1(cur) === BinOp.Sub) {
+            const r = a.getExprRight(cur);
+            if (startsWithMinus(r)) break;
+            subTerms.unshift(r);
+            cur = a.getExprLeft(cur);
+          }
+          const isNegNode =
+            cur >= 0 &&
+            (a.getExprKind(cur) === ExprKind.Negate ||
+              (a.getExprKind(cur) === ExprKind.Unary && (a.getExprData1(cur) as UnaryOp) === UnaryOp.Negate));
+          if (isNegNode && subTerms.length > 0) {
+            const negInner = a.getExprLeft(cur);
+            if (
+              negInner >= 0 &&
+              a.getExprKind(negInner) === ExprKind.Binary &&
+              a.getExprData1(negInner) === BinOp.Add
+            ) {
+              this.out.write("-(");
+              this.printExpr(negInner);
+              for (const st of subTerms) {
+                this.out.write(" + ");
+                const sNeedP = addTermNeedsParens(st);
+                if (sNeedP) this.out.write("(");
+                this.printExpr(st);
+                if (sNeedP) this.out.write(")");
+              }
+              this.out.write(")");
+              break;
+            }
+          }
+        }
+
         // ── OMC algebraic identity: a - lit → -lit + a ──
         // Rewrite subtraction of a numeric literal into addition with
         // negated literal, then fall through to the Add associative path.
-        if (this.omcCompatibility && op === BinOp.Sub && this.isNumericLiteral(a.getExprRight(id))) {
+        if (
+          this.omcCompatibility &&
+          this.isOldFrontend &&
+          op === BinOp.Sub &&
+          this.isNumericLiteral(a.getExprRight(id))
+        ) {
           const lhsId = a.getExprLeft(id);
           const rhsVal = this.getNumericValue(a.getExprRight(id));
           // Collect additive operands: flatten the LHS if it's also Add/Sub
@@ -484,7 +623,12 @@ export class ArenaDAEPrinter {
         // ── OMC algebraic identity: a / lit → (1/lit) * a ──
         // Rewrite division by a numeric literal into multiplication by
         // its reciprocal, then fall through to the Mul associative path.
-        if (this.omcCompatibility && op === BinOp.Div && this.isNumericLiteral(a.getExprRight(id))) {
+        if (
+          this.omcCompatibility &&
+          Boolean(this.arena.extensionMetadata?.["isOldFrontend"]) &&
+          op === BinOp.Div &&
+          this.isNumericLiteral(a.getExprRight(id))
+        ) {
           let lhsId = a.getExprLeft(id);
           const rhsVal = this.getNumericValue(a.getExprRight(id));
           if (rhsVal !== 0) {
@@ -552,7 +696,7 @@ export class ArenaDAEPrinter {
           }
         }
 
-        if (this.omcCompatibility && op === BinOp.Mul) {
+        if (this.omcCompatibility && Boolean(this.arena.extensionMetadata?.["isOldFrontend"]) && op === BinOp.Mul) {
           const leftId = a.getExprLeft(id);
           if (leftId >= 0 && a.getExprKind(leftId) === ExprKind.Binary && a.getExprData1(leftId) === BinOp.Div) {
             // (a / b) * c => a * c / b
@@ -639,7 +783,7 @@ export class ArenaDAEPrinter {
             !isStringConcat &&
             (a.classKind !== "function" || Boolean(a.extensionMetadata?.["isOldFrontend"])) &&
             (op === BinOp.Mul || this.isInsideAlgorithm || !hasCall) &&
-            (op === BinOp.Add || (!this.isInsideAlgorithm && op === BinOp.Mul))
+            ((this.isOldFrontend && op === BinOp.Add) || (!this.isInsideAlgorithm && op === BinOp.Mul))
           ) {
             // OMC canonicalization: bubble literals to the front
             const literals: number[] = [];
@@ -695,7 +839,12 @@ export class ArenaDAEPrinter {
               if (vIdx >= 0 && (a.getVarShape(vIdx)?.length ?? 0) > 0) return true;
               return false;
             };
-            if (op === BinOp.Mul && a.classKind !== "function" && !nonLiterals.some(isArrayName)) {
+            if (
+              this.isOldFrontend &&
+              op === BinOp.Mul &&
+              a.classKind !== "function" &&
+              !nonLiterals.some(isArrayName)
+            ) {
               nonLiterals.sort((x, y) => {
                 const xKind = a.getExprKind(x);
                 const yKind = a.getExprKind(y);
@@ -740,6 +889,36 @@ export class ArenaDAEPrinter {
             }
           }
 
+          if (this.omcCompatibility && !this.isOldFrontend && op === BinOp.Add && operands.length === 2) {
+            const op0 = operands[0]!;
+            const op1 = operands[1]!;
+            const tryPrintSubAsNegSum = (subNode: number, posTerm: number): boolean => {
+              if (subNode < 0 || posTerm < 0) return false;
+              if (startsWithMinus(posTerm)) return false;
+              if (a.getExprKind(subNode) !== ExprKind.Binary || a.getExprData1(subNode) !== BinOp.Sub) return false;
+              const sLeft = a.getExprLeft(subNode);
+              const sRight = a.getExprRight(subNode);
+              if (!isNegatedExpr(sLeft) || startsWithMinus(sRight)) return false;
+              const pk = a.getExprKind(posTerm);
+              const pNeedP = pk === ExprKind.IfElse || pk === ExprKind.Range;
+              if (pNeedP) this.out.write("(");
+              this.printExpr(posTerm);
+              if (pNeedP) this.out.write(")");
+              this.out.write(" - (");
+              printUnnegatedExpr(sLeft);
+              this.out.write(" + ");
+              const srNeedP = addTermNeedsParens(sRight);
+              if (srNeedP) this.out.write("(");
+              this.printExpr(sRight);
+              if (srNeedP) this.out.write(")");
+              this.out.write(")");
+              return true;
+            };
+            if (tryPrintSubAsNegSum(op0, op1) || tryPrintSubAsNegSum(op1, op0)) {
+              break;
+            }
+          }
+
           for (let i = 0; i < operands.length; i++) {
             if (i > 0) {
               this.out.write(" " + (binOpStr[op] ?? "+") + " ");
@@ -760,7 +939,10 @@ export class ArenaDAEPrinter {
         const rhs = a.getExprRight(id);
         let finalLhs = lhs;
         let finalRhs = rhs;
-        if (this.omcCompatibility && (op === BinOp.Add || (!this.isInsideAlgorithm && op === BinOp.Mul))) {
+        if (
+          this.omcCompatibility &&
+          ((this.isOldFrontend && op === BinOp.Add) || (!this.isInsideAlgorithm && op === BinOp.Mul))
+        ) {
           const isArrayName = (nid: number): boolean => {
             if (nid < 0 || a.getExprKind(nid) !== ExprKind.Name) return false;
             const nameId = a.getExprData1(nid);
@@ -786,6 +968,7 @@ export class ArenaDAEPrinter {
             finalLhs = rhs;
             finalRhs = lhs;
           } else if (
+            this.isOldFrontend &&
             op === BinOp.Mul &&
             !isArrayName(lhs) &&
             !isArrayName(rhs) &&
@@ -830,7 +1013,13 @@ export class ArenaDAEPrinter {
                 finalRhs = lhs;
               }
             }
-          } else if (op === BinOp.Mul && !isArrayName(rhs) && lKind === ExprKind.Call && rKind === ExprKind.Name) {
+          } else if (
+            this.isOldFrontend &&
+            op === BinOp.Mul &&
+            !isArrayName(rhs) &&
+            lKind === ExprKind.Call &&
+            rKind === ExprKind.Name
+          ) {
             const callName = a.interner.resolve(a.getExprData1(lhs));
             if (callName !== "$OMC$PositiveMax") {
               finalLhs = rhs;
@@ -884,7 +1073,10 @@ export class ArenaDAEPrinter {
             a.getExprData1(operand) === BinOp.Lte ||
             a.getExprData1(operand) === BinOp.Gt ||
             a.getExprData1(operand) === BinOp.Gte);
-        const needsP = operand >= 0 && a.getExprKind(operand) === ExprKind.Binary && !isPow && !isRel;
+        const needsP =
+          operand >= 0 &&
+          ((a.getExprKind(operand) === ExprKind.Binary && !isPow && !isRel) ||
+            a.getExprKind(operand) === ExprKind.IfElse);
         if (needsP) this.out.write("(");
         this.printExpr(operand);
         if (needsP) this.out.write(")");
@@ -898,7 +1090,9 @@ export class ArenaDAEPrinter {
           operand >= 0 &&
           a.getExprKind(operand) === ExprKind.Binary &&
           (a.getExprData1(operand) === BinOp.Pow || a.getExprData1(operand) === BinOp.ElemPow);
-        const needsP = operand >= 0 && a.getExprKind(operand) === ExprKind.Binary && !isPow;
+        const needsP =
+          operand >= 0 &&
+          ((a.getExprKind(operand) === ExprKind.Binary && !isPow) || a.getExprKind(operand) === ExprKind.IfElse);
         if (needsP) this.out.write("(");
         this.printExpr(operand);
         if (needsP) this.out.write(")");
@@ -2093,6 +2287,7 @@ export class ArenaDAEPrinter {
 
     const walkEquations = (builder: DAEBuilder) => {
       for (let i = 0; i < builder.eqCount; i++) {
+        if (builder.isEqRemoved(i)) continue;
         walkExprCalls(builder, builder.getEqLhs(i));
         walkExprCalls(builder, builder.getEqRhs(i));
         const ifMeta = builder.getIfEquationMeta(i);
@@ -2504,6 +2699,7 @@ export class ArenaDAEPrinter {
     // Initial equations
     let hasInitEq = false;
     for (let i = 0; i < dae.eqCount; i++) {
+      if (dae.isEqRemoved(i)) continue;
       const ek = dae.getEqKind(i);
       if (ek === EqKind.InitialSimple || ek === EqKind.InitialFor || ek === EqKind.InitialFunctionCall) {
         if (!hasInitEq) {
@@ -2546,6 +2742,7 @@ export class ArenaDAEPrinter {
     }
 
     for (const i of eqIndices) {
+      if (dae.isEqRemoved(i)) continue;
       if (stateEqIndices.has(i)) continue;
       const ek = dae.getEqKind(i);
       if (

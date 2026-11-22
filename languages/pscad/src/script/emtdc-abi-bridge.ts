@@ -29,6 +29,8 @@ import {
   registerDrmShims,
   X86Cpu,
 } from "@modelscript/exchange";
+import { ensureBuiltInPscadLibraryRegistered } from "../catalog/library-package-adapter.js";
+import { type CleanRoomEmtdcWasmRuntime, createCleanRoomEmtdcWasmRuntime } from "../catalog/wasm-companion-loader.js";
 import { extractEmtNetlist } from "../netlist/emt-netlist.js";
 import { parsePscx } from "../parser/pscx-parser.js";
 import { EmtSolver, type EmtSolverResult } from "../solver/emt-solver.js";
@@ -109,6 +111,7 @@ export interface EmtdcHostBridgeOptions {
 export class EmtdcHostBridge {
   public readonly state: EmtdcCommonBlockState;
   private readonly udms: EmtdcRegisteredUdm[] = [];
+  private readonly wasmRuntime?: CleanRoomEmtdcWasmRuntime | undefined;
   private totalRealAllocated = 1; // 1-based Fortran indexing
   private totalIntAllocated = 1;
   private totalLogicalAllocated = 1;
@@ -140,6 +143,14 @@ export class EmtdcHostBridge {
       CCIN: new Float64Array(maxNodes + 1),
       GGIN: new Float64Array(maxNodes + 1),
     };
+
+    try {
+      ensureBuiltInPscadLibraryRegistered();
+      this.wasmRuntime = createCleanRoomEmtdcWasmRuntime();
+      this.wasmRuntime?.reset();
+    } catch {
+      this.wasmRuntime = undefined;
+    }
   }
 
   /**
@@ -185,6 +196,16 @@ export class EmtdcHostBridge {
    * Wraps an `EmtCustomFortranBlock` compiled by `@modelscript/pscad` into the EMTDC ABI bridge.
    */
   public registerCustomFortranBlock(block: EmtCustomFortranBlock): EmtdcRegisteredUdm {
+    const makeDispatcher = (state: EmtdcCommonBlockState) =>
+      this.wasmRuntime
+        ? (subName: string, args: number[]): number | undefined => {
+            if (!this.wasmRuntime!.hasSubroutine(subName)) return undefined;
+            this.wasmRuntime!.setContext(state.TIME, state.DELT, state.TIMEZERO, state.FIRSTSTEP, state.LASTSTEP);
+            this.wasmRuntime!.setCursors(state.NSTORF, state.NSTORI, state.NSTORL, state.NSTORC);
+            return this.wasmRuntime!.callSubroutine(subName, args);
+          }
+        : undefined;
+
     return this.registerUdm({
       id: block.id,
       subroutineName: block.name,
@@ -200,6 +221,7 @@ export class EmtdcHostBridge {
               time: state.TIME,
               dt: state.DELT,
               firstStep: state.FIRSTSTEP,
+              invokeExternalSubroutine: makeDispatcher(state),
             });
           }
         : undefined,
@@ -213,6 +235,7 @@ export class EmtdcHostBridge {
               time: state.TIME,
               dt: state.DELT,
               firstStep: state.FIRSTSTEP,
+              invokeExternalSubroutine: makeDispatcher(state),
             });
           }
         : undefined,

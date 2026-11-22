@@ -4,6 +4,7 @@
  * @modelscript/simulink — Native MATLAB Simulink Compiler, Linter & DAE Lowering.
  */
 
+export * from "./catalog/index.js";
 export * from "./dae/index.js";
 export * from "./diagram-backend.js";
 export * from "./diagram/index.js";

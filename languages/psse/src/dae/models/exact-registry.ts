@@ -45,6 +45,8 @@ export const CANONICAL_EXACT_MODELS = new Set<string>([
   "GGOV1",
   "HYGOV",
   "PIDGOV",
+  "LCFB1",
+  "DEGOV1",
   "WTDTA1",
   "WTPTA1",
   "WTTQA1",
@@ -56,8 +58,12 @@ export const CANONICAL_EXACT_MODELS = new Set<string>([
   "PSS4B",
   // IBRs, Renewables & Dynamic Loads
   "REGC_A",
+  "REGC_B",
   "REEC_A",
+  "REEC_C",
+  "REEC_D",
   "REPC_A",
+  "REPC_B",
   "DER_A",
   "REGFM_A1",
   "CMPLDW",
@@ -67,10 +73,13 @@ export const CANONICAL_EXACT_MODELS = new Set<string>([
   "LD1PAC",
   // HVDC, FACTS & Protection Relays
   "CSVGN1",
+  "SVSMO1",
+  "SVSMO3",
   "CDC4T",
   "VSC_DC",
   "FRQTPAT",
   "VTGTPAT",
+  "DISTRL",
   "BUSFRQ",
 ]);
 
@@ -92,21 +101,14 @@ export const ARCHETYPE_MAPPED_MODELS = new Set<string>([
   "MOTOR1",
   // Exciters
   "EX2000",
-  // Governors
-  "LCFB1",
-  "DEGOV1",
   // Stabilizers
   "STAB2A",
   "STAB3",
   "PSS3B",
   "PTIST1",
   // IBRs & Dynamic Loads
-  "REGC_B",
   "REGC_C",
   "REEC_B",
-  "REEC_C",
-  "REEC_D",
-  "REPC_B",
   "REAX4B1",
   "CMLDBL",
   "CMLDAL",
@@ -137,13 +139,10 @@ export const ARCHETYPE_MAPPED_MODELS = new Set<string>([
   "LDFRZL",
   "LDFROW",
   // FACTS & Protection
-  "SVSMO1",
-  "SVSMO3",
   "CSTCNT",
   "LDSHBL",
   "LVSHBL",
   "OOSR1",
-  "DISTRL",
 ]);
 
 export type DyrLoweringTier = "canonical_exact" | "archetype_mapped" | "unmapped";
