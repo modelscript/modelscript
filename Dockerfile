@@ -172,7 +172,7 @@ COPY languages languages
 COPY apps/ide apps/ide
 RUN npx nx build @modelscript/ide
 
-FROM alpine:3.21 AS build-ide-true
+FROM alpine:3.24 AS build-ide-true
 WORKDIR /app
 COPY apps/ide/dist apps/ide/dist
 COPY apps/ide/vscode-web apps/ide/vscode-web
