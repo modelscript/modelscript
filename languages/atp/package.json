@@ -59,6 +59,7 @@
   },
   "dependencies": {
     "@modelscript/dsl": "workspace:*",
+    "@modelscript/exchange": "workspace:*",
     "@modelscript/runtime": "workspace:*"
   },
   "devDependencies": {

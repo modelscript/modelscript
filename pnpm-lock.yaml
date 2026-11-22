@@ -1365,6 +1365,9 @@ importers:
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
+      '@modelscript/exchange':
+        specifier: workspace:*
+        version: link:../../packages/exchange
       '@modelscript/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -1381,6 +1384,9 @@ importers:
       '@modelscript/design-tokens':
         specifier: workspace:*
         version: link:../../packages/design-tokens
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../../packages/diagram
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
@@ -1552,6 +1558,9 @@ importers:
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
+      '@modelscript/exchange':
+        specifier: workspace:*
+        version: link:../../packages/exchange
       '@modelscript/psse':
         specifier: workspace:*
         version: link:../psse
@@ -1619,6 +1628,9 @@ importers:
       '@modelscript/design-tokens':
         specifier: workspace:*
         version: link:../../packages/design-tokens
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../../packages/diagram
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
@@ -1660,6 +1672,9 @@ importers:
       '@modelscript/design-tokens':
         specifier: workspace:*
         version: link:../../packages/design-tokens
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../../packages/diagram
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
@@ -2106,6 +2121,9 @@ importers:
       '@modelscript/design-tokens':
         specifier: workspace:*
         version: link:../../packages/design-tokens
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../../packages/diagram
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
@@ -2405,6 +2423,9 @@ importers:
 
   languages/opendrive:
     dependencies:
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../../packages/diagram
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
@@ -2468,6 +2489,9 @@ importers:
       '@modelscript/design-tokens':
         specifier: workspace:*
         version: link:../../packages/design-tokens
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../../packages/diagram
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
@@ -2515,6 +2539,9 @@ importers:
       '@modelscript/design-tokens':
         specifier: workspace:*
         version: link:../../packages/design-tokens
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../../packages/diagram
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
@@ -2644,6 +2671,9 @@ importers:
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
+      '@modelscript/exchange':
+        specifier: workspace:*
+        version: link:../../packages/exchange
       '@modelscript/psse':
         specifier: workspace:*
         version: link:../psse
@@ -2719,6 +2749,9 @@ importers:
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
+      '@modelscript/exchange':
+        specifier: workspace:*
+        version: link:../../packages/exchange
       '@modelscript/psse':
         specifier: workspace:*
         version: link:../psse
@@ -2788,6 +2821,9 @@ importers:
       '@modelscript/design-tokens':
         specifier: workspace:*
         version: link:../../packages/design-tokens
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../../packages/diagram
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
@@ -2873,6 +2909,9 @@ importers:
       '@modelscript/design-tokens':
         specifier: workspace:*
         version: link:../../packages/design-tokens
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../../packages/diagram
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
@@ -3075,6 +3114,9 @@ importers:
 
   languages/simulink:
     dependencies:
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../../packages/diagram
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
@@ -3128,9 +3170,15 @@ importers:
       '@modelscript/design-tokens':
         specifier: workspace:*
         version: link:../../packages/design-tokens
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../../packages/diagram
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
+      '@modelscript/exchange':
+        specifier: workspace:*
+        version: link:../../packages/exchange
       '@modelscript/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -3147,6 +3195,9 @@ importers:
 
   languages/ssp:
     dependencies:
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../../packages/diagram
       '@modelscript/dsl':
         specifier: workspace:*
         version: link:../../packages/dsl
@@ -3549,6 +3600,9 @@ importers:
       '@modelscript/epanet':
         specifier: workspace:*
         version: link:../../languages/epanet
+      '@modelscript/fortran':
+        specifier: workspace:*
+        version: link:../../languages/fortran
       '@modelscript/gensys':
         specifier: workspace:*
         version: link:../../languages/gensys

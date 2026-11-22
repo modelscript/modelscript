@@ -80,7 +80,9 @@
   },
   "dependencies": {
     "@modelscript/cad": "workspace:*",
+    "@modelscript/diagram": "workspace:*",
     "@modelscript/dsl": "workspace:*",
+    "@modelscript/exchange": "workspace:*",
     "@modelscript/runtime": "workspace:*"
   },
   "devDependencies": {

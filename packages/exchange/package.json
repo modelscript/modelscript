@@ -106,6 +106,7 @@
   "dependencies": {
     "@modelscript/dsl": "workspace:*",
     "@modelscript/epanet": "workspace:*",
+    "@modelscript/fortran": "workspace:*",
     "@modelscript/gensys": "workspace:*",
     "@modelscript/lps": "workspace:*",
     "@modelscript/olga": "workspace:*",

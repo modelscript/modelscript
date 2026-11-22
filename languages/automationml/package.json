@@ -70,6 +70,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelscript/diagram": "workspace:*",
     "@modelscript/dsl": "workspace:*",
     "@modelscript/plcopen": "workspace:*",
     "@modelscript/runtime": "workspace:*"

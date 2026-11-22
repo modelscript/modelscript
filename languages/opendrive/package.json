@@ -65,6 +65,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelscript/diagram": "workspace:*",
     "@modelscript/dsl": "workspace:*",
     "@modelscript/runtime": "workspace:*"
   },

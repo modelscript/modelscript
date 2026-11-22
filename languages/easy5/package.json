@@ -78,6 +78,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelscript/diagram": "workspace:*",
     "@modelscript/dsl": "workspace:*",
     "@modelscript/fortran": "workspace:*",
     "@modelscript/modelica": "workspace:*",
