@@ -14,7 +14,10 @@
  *       IO[6]=vdc, IO[7]=idc, IO[8]=vd, IO[9]=vq, IO[10]=v0,
  *       IO[11]=theta, IO[12]=omega, IO[13]=freqHz, IO[14]=ref, IO[15]=meas,
  *       IO[16]=ctrlOut, IO[17]=trip, IO[18]=gEq, IO[19]=iHist,
- *       IO[20]=pOut, IO[21]=qOut, IO[22]=va2, IO[23]=ia2
+ *       IO[20]=pOut, IO[21]=qOut, IO[22]=va2, IO[23]=ia2,
+ *       IO[24]=vb2, IO[25]=vc2, IO[26]=ib2, IO[27]=ic2,
+ *       IO[28]=iHistB, IO[29]=iHistC,
+ *       IO[30]=vCapUpper, IO[31]=vCapLower, IO[32]=iArmUpper, IO[33]=iArmLower
  */
 
 const OFF_PARAM: usize = 0x080;
@@ -151,13 +154,31 @@ export function rtdsModelInit(archetypeId: i32, slotPtr: usize, paramCount: i32)
     return 3;
   }
 
+  if (archetypeId == ARCH_MMC_SUBSTEP) {
+    const vdcNom = Math.max(10.0, getParam(slotPtr, paramCount, 0, 640000.0));
+    const nSm = Math.max(1.0, getParam(slotPtr, paramCount, 1, 400.0));
+    const vCap0 = vdcNom / nSm;
+    // STATE[0..2]=upper arm Dommel RL, STATE[3..5]=lower arm Dommel RL
+    // STATE[6]=vCapUpper, STATE[7]=vCapLower
+    setState(slotPtr, 6, vCap0);
+    setState(slotPtr, 7, vCap0);
+    setIo(slotPtr, 6, vdcNom);
+    setIo(slotPtr, 30, vCap0);
+    setIo(slotPtr, 31, vCap0);
+    setIo(slotPtr, 32, 0.0);
+    setIo(slotPtr, 33, 0.0);
+    return 8;
+  }
+
   if (archetypeId == ARCH_BERGERON_LINE || archetypeId == ARCH_FD_LINE) {
     const zc = Math.max(1.0, getParam(slotPtr, paramCount, 0, 300.0));
     const rTot = Math.max(0.0, getParam(slotPtr, paramCount, 2, 2.0));
     const zEff = zc + 0.25 * rTot;
     setIo(slotPtr, 18, 1.0 / zEff);
     setIo(slotPtr, 19, 0.0);
-    return 65;
+    setIo(slotPtr, 28, 0.0);
+    setIo(slotPtr, 29, 0.0);
+    return archetypeId == ARCH_FD_LINE ? 88 : 65;
   }
 
   if (archetypeId == ARCH_BREAKER) {
@@ -197,13 +218,14 @@ export function rtdsModelInit(archetypeId: i32, slotPtr: usize, paramCount: i32)
 }
 
 /**
- * Helper: Dommel trapezoidal companion-circuit step for a series R-L-C branch.
+ * Helper: Dommel trapezoidal companion-circuit step for a single RLC mode stored at `stateOff`.
+ * Writes `[iNow, gEq, iHist]` into scratch or returns `iNow` while storing `gEq` & `iHist` in caller vars.
  */
 @inline
-function stepDommelRlc(slotPtr: usize, dt: f64, r: f64, l: f64, c: f64, vDiff: f64): void {
-  const iPrev = getState(slotPtr, 0);
-  const vLPrev = getState(slotPtr, 1);
-  const vCPrev = getState(slotPtr, 2);
+function stepDommelRlcAt(slotPtr: usize, stateOff: i32, dt: f64, r: f64, l: f64, c: f64, vDiff: f64): f64 {
+  const iPrev = getState(slotPtr, stateOff + 0);
+  const vLPrev = getState(slotPtr, stateOff + 1);
+  const vCPrev = getState(slotPtr, stateOff + 2);
 
   const rL = l > 0.0 ? (2.0 * l) / dt : 0.0;
   const rC = c > 0.0 ? dt / (2.0 * c) : 0.0;
@@ -217,9 +239,34 @@ function stepDommelRlc(slotPtr: usize, dt: f64, r: f64, l: f64, c: f64, vDiff: f
   const vLNow = l > 0.0 ? rL * (iNow - iPrev) - vLPrev : 0.0;
   const vCNow = c > 0.0 ? vCPrev + rC * (iNow + iPrev) : 0.0;
 
-  setState(slotPtr, 0, iNow);
-  setState(slotPtr, 1, vLNow);
-  setState(slotPtr, 2, vCNow);
+  setState(slotPtr, stateOff + 0, iNow);
+  setState(slotPtr, stateOff + 1, vLNow);
+  setState(slotPtr, stateOff + 2, vCNow);
+  return iNow;
+}
+
+@inline
+function computeDommelHistAt(slotPtr: usize, stateOff: i32, dt: f64, r: f64, l: f64, c: f64): f64 {
+  const iPrev = getState(slotPtr, stateOff + 0);
+  const vLPrev = getState(slotPtr, stateOff + 1);
+  const vCPrev = getState(slotPtr, stateOff + 2);
+  const rL = l > 0.0 ? (2.0 * l) / dt : 0.0;
+  const rC = c > 0.0 ? dt / (2.0 * c) : 0.0;
+  const gEq = 1.0 / Math.max(1e-9, r + rL + rC);
+  return gEq * ((rL - rC) * iPrev + (l > 0.0 ? vLPrev : 0.0) - (c > 0.0 ? vCPrev : 0.0));
+}
+
+/**
+ * Helper: Dommel trapezoidal companion-circuit step for a series R-L-C branch.
+ */
+@inline
+function stepDommelRlc(slotPtr: usize, dt: f64, r: f64, l: f64, c: f64, vDiff: f64): void {
+  const rL = l > 0.0 ? (2.0 * l) / dt : 0.0;
+  const rC = c > 0.0 ? dt / (2.0 * c) : 0.0;
+  const gEq = 1.0 / Math.max(1e-9, r + rL + rC);
+  const iHist = computeDommelHistAt(slotPtr, 0, dt, r, l, c);
+  const iNow = stepDommelRlcAt(slotPtr, 0, dt, r, l, c, vDiff);
+
   setIo(slotPtr, 3, iNow);
   setIo(slotPtr, 18, gEq);
   setIo(slotPtr, 19, iHist);
@@ -237,32 +284,80 @@ export function rtdsModelStep(
 ): void {
   const hDt = dt > 1e-9 ? dt : 50e-6;
 
-  // ── 1. Three-Phase AC Voltage Source ───────────────────────────────────────
+  // ── 1. Three-Phase AC Voltage Source (Balanced / Unbalanced Dommel Companion) ─
   if (archetypeId == ARCH_SOURCE_3P) {
     const vllRms = getParam(slotPtr, paramCount, 0, 230000.0);
     const freqHz = getParam(slotPtr, paramCount, 1, 60.0);
     const phaseRad = (getParam(slotPtr, paramCount, 2, 0.0) * Math.PI) / 180.0;
     const rSrc = Math.max(1e-6, getParam(slotPtr, paramCount, 3, 0.5));
     const lSrc = Math.max(0.0, getParam(slotPtr, paramCount, 4, 0.005));
+    const r0Src = Math.max(1e-6, getParam(slotPtr, paramCount, 5, rSrc));
+    const l0Src = Math.max(0.0, getParam(slotPtr, paramCount, 6, lSrc));
+    const unbalRatio = clamp(getParam(slotPtr, paramCount, 7, 0.0), 0.0, 0.5);
 
     const vPeak = vllRms * SQRT2_OVER_SQRT3;
     const omega = TWO_PI * freqHz;
     const theta = wrapAngle(omega * t + phaseRad);
 
-    const va = vPeak * Math.cos(theta);
-    const vb = vPeak * Math.cos(theta - TWO_PI_3);
-    const vc = vPeak * Math.cos(theta + TWO_PI_3);
+    // Positive-sequence + optional negative-sequence unbalance internal EMF
+    const va = vPeak * (Math.cos(theta) + unbalRatio * Math.cos(theta));
+    const vb = vPeak * (Math.cos(theta - TWO_PI_3) + unbalRatio * Math.cos(theta + TWO_PI_3));
+    const vc = vPeak * (Math.cos(theta + TWO_PI_3) + unbalRatio * Math.cos(theta - TWO_PI_3));
+
+    // Coupled 3-phase Dommel companion circuit in Clarke (0, alpha, beta) coordinates
+    const vda = va - getIo(slotPtr, 22);
+    const vdb = vb - getIo(slotPtr, 24);
+    const vdcTerm = vc - getIo(slotPtr, 25);
+
+    const inv3: f64 = 1.0 / 3.0;
+    const invSqrt3: f64 = 0.5773502691896257;
+    const sqrt3Over2: f64 = 0.8660254037844386;
+
+    const v0 = inv3 * (vda + vdb + vdcTerm);
+    const vAlpha = inv3 * (2.0 * vda - vdb - vdcTerm);
+    const vBeta = invSqrt3 * (vdb - vdcTerm);
+
     const gEq = 1.0 / (rSrc + (2.0 * lSrc) / hDt);
+    const g0 = 1.0 / (r0Src + (2.0 * l0Src) / hDt);
+
+    const iH0 = computeDommelHistAt(slotPtr, 1, hDt, r0Src, l0Src, 0.0);
+    const iHAlpha = computeDommelHistAt(slotPtr, 4, hDt, rSrc, lSrc, 0.0);
+    const iHBeta = computeDommelHistAt(slotPtr, 7, hDt, rSrc, lSrc, 0.0);
+
+    const i0 = stepDommelRlcAt(slotPtr, 1, hDt, r0Src, l0Src, 0.0, v0);
+    const iAlpha = stepDommelRlcAt(slotPtr, 4, hDt, rSrc, lSrc, 0.0, vAlpha);
+    const iBeta = stepDommelRlcAt(slotPtr, 7, hDt, rSrc, lSrc, 0.0, vBeta);
+
+    const ia = i0 + iAlpha;
+    const ib = i0 - 0.5 * iAlpha + sqrt3Over2 * iBeta;
+    const ic = i0 - 0.5 * iAlpha - sqrt3Over2 * iBeta;
+
+    // Norton companion history injections (including internal source EMF contribution)
+    const e0 = inv3 * (va + vb + vc);
+    const eAlpha = inv3 * (2.0 * va - vb - vc);
+    const eBeta = invSqrt3 * (vb - vc);
+    const n0 = g0 * e0 + iH0;
+    const nAlpha = gEq * eAlpha + iHAlpha;
+    const nBeta = gEq * eBeta + iHBeta;
+    const iHistA = n0 + nAlpha;
+    const iHistB = n0 - 0.5 * nAlpha + sqrt3Over2 * nBeta;
+    const iHistC = n0 - 0.5 * nAlpha - sqrt3Over2 * nBeta;
 
     setState(slotPtr, 0, theta);
     setIo(slotPtr, 0, va);
     setIo(slotPtr, 1, vb);
     setIo(slotPtr, 2, vc);
+    setIo(slotPtr, 3, ia);
+    setIo(slotPtr, 4, ib);
+    setIo(slotPtr, 5, ic);
     setIo(slotPtr, 11, theta);
     setIo(slotPtr, 12, omega);
     setIo(slotPtr, 13, freqHz);
     setIo(slotPtr, 18, gEq);
-    setIo(slotPtr, 19, gEq * va);
+    setIo(slotPtr, 19, iHistA);
+    setIo(slotPtr, 28, iHistB);
+    setIo(slotPtr, 29, iHistC);
+    setIo(slotPtr, 20, va * ia + vb * ib + vc * ic);
     return;
   }
 
@@ -305,22 +400,77 @@ export function rtdsModelStep(
     return;
   }
 
-  // ── 4. Dommel Trapezoidal RLC Branch ───────────────────────────────────────
+  // ── 4. Dommel Trapezoidal RLC Branch (Single-Phase & Coupled 3-Phase) ──────
   if (archetypeId == ARCH_RLC_BRANCH) {
     const r = Math.max(0.0, getParam(slotPtr, paramCount, 0, 1.0));
     const l = Math.max(0.0, getParam(slotPtr, paramCount, 1, 0.01));
     const c = Math.max(0.0, getParam(slotPtr, paramCount, 2, 0.0));
-    const vDiff = getIo(slotPtr, 0) - getIo(slotPtr, 1);
-    stepDommelRlc(slotPtr, hDt, r, l, c, vDiff);
+    const rMut = getParam(slotPtr, paramCount, 3, 0.0);
+    const lMut = getParam(slotPtr, paramCount, 4, 0.0);
+    const threePhase = getParam(slotPtr, paramCount, 5, 0.0) > 0.5 || rMut != 0.0 || lMut != 0.0;
+
+    if (!threePhase) {
+      const vDiff = getIo(slotPtr, 0) - getIo(slotPtr, 1);
+      stepDommelRlc(slotPtr, hDt, r, l, c, vDiff);
+      return;
+    }
+
+    // Coupled 3-phase balanced/unbalanced Dommel step via Clarke modal decoupling
+    const vda = getIo(slotPtr, 0) - getIo(slotPtr, 22);
+    const vdb = getIo(slotPtr, 1) - getIo(slotPtr, 24);
+    const vdc = getIo(slotPtr, 2) - getIo(slotPtr, 25);
+
+    const inv3: f64 = 1.0 / 3.0;
+    const invSqrt3: f64 = 0.5773502691896257;
+    const sqrt3Over2: f64 = 0.8660254037844386;
+
+    const v0 = inv3 * (vda + vdb + vdc);
+    const vAlpha = inv3 * (2.0 * vda - vdb - vdc);
+    const vBeta = invSqrt3 * (vdb - vdc);
+
+    const r0 = Math.max(1e-9, r + 2.0 * rMut);
+    const l0 = Math.max(0.0, l + 2.0 * lMut);
+    const r1 = Math.max(1e-9, r - rMut);
+    const l1 = Math.max(0.0, l - lMut);
+
+    const iH0 = computeDommelHistAt(slotPtr, 0, hDt, r0, l0, c);
+    const iHAlpha = computeDommelHistAt(slotPtr, 3, hDt, r1, l1, c);
+    const iHBeta = computeDommelHistAt(slotPtr, 6, hDt, r1, l1, c);
+
+    const i0 = stepDommelRlcAt(slotPtr, 0, hDt, r0, l0, c, v0);
+    const iAlpha = stepDommelRlcAt(slotPtr, 3, hDt, r1, l1, c, vAlpha);
+    const iBeta = stepDommelRlcAt(slotPtr, 6, hDt, r1, l1, c, vBeta);
+
+    const ia = i0 + iAlpha;
+    const ib = i0 - 0.5 * iAlpha + sqrt3Over2 * iBeta;
+    const ic = i0 - 0.5 * iAlpha - sqrt3Over2 * iBeta;
+
+    const iHistA = iH0 + iHAlpha;
+    const iHistB = iH0 - 0.5 * iHAlpha + sqrt3Over2 * iHBeta;
+    const iHistC = iH0 - 0.5 * iHAlpha - sqrt3Over2 * iHBeta;
+
+    const rL1 = l1 > 0.0 ? (2.0 * l1) / hDt : 0.0;
+    const rC1 = c > 0.0 ? hDt / (2.0 * c) : 0.0;
+    const gEq1 = 1.0 / Math.max(1e-9, r1 + rL1 + rC1);
+
+    setIo(slotPtr, 3, ia);
+    setIo(slotPtr, 4, ib);
+    setIo(slotPtr, 5, ic);
+    setIo(slotPtr, 23, -ia);
+    setIo(slotPtr, 26, -ib);
+    setIo(slotPtr, 27, -ic);
+    setIo(slotPtr, 18, gEq1);
+    setIo(slotPtr, 19, iHistA);
+    setIo(slotPtr, 28, iHistB);
+    setIo(slotPtr, 29, iHistC);
     return;
   }
 
-  // ── 5. Bergeron & Frequency-Dependent Travelling-Wave Line ─────────────────
-  if (archetypeId == ARCH_BERGERON_LINE || archetypeId == ARCH_FD_LINE) {
+  // ── 5a. Bergeron Travelling-Wave Line ──────────────────────────────────────
+  if (archetypeId == ARCH_BERGERON_LINE) {
     const zc = Math.max(1.0, getParam(slotPtr, paramCount, 0, 300.0));
     const tau = Math.max(hDt, getParam(slotPtr, paramCount, 1, 500e-6));
     const rTotal = Math.max(0.0, getParam(slotPtr, paramCount, 2, 2.0));
-    const damp = archetypeId == ARCH_FD_LINE ? clamp(1.0 - getParam(slotPtr, paramCount, 3, 0.02), 0.5, 1.0) : 1.0;
 
     const zEff = zc + 0.25 * rTotal;
     const gEq = 1.0 / zEff;
@@ -344,8 +494,8 @@ export function rtdsModelStep(
     const im = gEq * vm + iHistM;
 
     // Launch new travelling waves into ring buffer
-    const newHK = damp * (-gEq * vm - lossK * im);
-    const newHM = damp * (-gEq * vk - lossK * ik);
+    const newHK = -gEq * vm - lossK * im;
+    const newHM = -gEq * vk - lossK * ik;
     setState(slotPtr, 16 + head, newHK);
     setState(slotPtr, 48 + head, newHM);
     setState(slotPtr, 0, <f64>((head + 1) & 31));
@@ -354,6 +504,150 @@ export function rtdsModelStep(
     setIo(slotPtr, 23, im);
     setIo(slotPtr, 18, gEq);
     setIo(slotPtr, 19, iHistK);
+    return;
+  }
+
+  // ── 5b. Frequency-Dependent 3-Phase Line (Clarke Modal + 2-Pole VF Conv) ───
+  if (archetypeId == ARCH_FD_LINE) {
+    const zc1 = Math.max(1.0, getParam(slotPtr, paramCount, 0, 280.0));
+    const tau1 = Math.max(hDt, getParam(slotPtr, paramCount, 1, 400e-6));
+    const rDc = Math.max(0.0, getParam(slotPtr, paramCount, 2, 1.5));
+    const alphaDamp = clamp(getParam(slotPtr, paramCount, 3, 0.02), 0.0, 0.45);
+    const zc0 = Math.max(1.0, getParam(slotPtr, paramCount, 4, zc1 * 1.6));
+    const tau0 = Math.max(hDt, getParam(slotPtr, paramCount, 5, tau1 * 1.35));
+    const pole1 = Math.max(100.0, getParam(slotPtr, paramCount, 6, 20000.0));
+    const pole2 = Math.max(10.0, getParam(slotPtr, paramCount, 7, 2000.0));
+
+    // Clarke transform terminal K (va, vb, vc) and terminal M (va2, vb2, vc2)
+    const inv3: f64 = 1.0 / 3.0;
+    const invSqrt3: f64 = 0.5773502691896257;
+    const sqrt3Over2: f64 = 0.8660254037844386;
+
+    const vaK = getIo(slotPtr, 0);
+    const vbK = getIo(slotPtr, 1);
+    const vcK = getIo(slotPtr, 2);
+    const vaM = getIo(slotPtr, 22);
+    const vbM = getIo(slotPtr, 24);
+    const vcM = getIo(slotPtr, 25);
+
+    const vK0 = inv3 * (vaK + vbK + vcK);
+    const vKa = inv3 * (2.0 * vaK - vbK - vcK);
+    const vKb = invSqrt3 * (vbK - vcK);
+
+    const vM0 = inv3 * (vaM + vbM + vcM);
+    const vMa = inv3 * (2.0 * vaM - vbM - vcM);
+    const vMb = invSqrt3 * (vbM - vcM);
+
+    const ringLen: i32 = 12;
+    const head = <i32>getState(slotPtr, 0) % ringLen;
+
+    let d1 = <i32>Math.round(tau1 / hDt);
+    if (d1 < 1) d1 = 1;
+    if (d1 >= ringLen) d1 = ringLen - 1;
+
+    let d0 = <i32>Math.round(tau0 / hDt);
+    if (d0 < 1) d0 = 1;
+    if (d0 >= ringLen) d0 = ringLen - 1;
+
+    const readIdx1 = (head + ringLen - d1) % ringLen;
+    const readIdx0 = (head + ringLen - d0) % ringLen;
+
+    const e1 = Math.exp(-pole1 * hDt);
+    const e2 = Math.exp(-pole2 * hDt);
+    const damp1 = 1.0 - alphaDamp;
+    const damp0 = 1.0 - clamp(alphaDamp * 2.5, 0.0, 0.55);
+
+    // 2-pole vector-fitting recursive convolution weights
+    const c1_1 = 0.65 * damp1 * (1.0 - e1);
+    const c2_1 = 0.35 * damp1 * (1.0 - e2);
+    const c1_0 = 0.65 * damp0 * (1.0 - e1);
+    const c2_0 = 0.35 * damp0 * (1.0 - e2);
+
+    // Mode 0 (ground mode): ring K at STATE[16..27], ring M at STATE[28..39], VF states STATE[1..4]
+    const zEff0 = zc0 + 0.25 * (rDc * 2.5);
+    const gEq0 = 1.0 / zEff0;
+    const lossK0 = (zc0 - 0.25 * (rDc * 2.5)) / zEff0;
+    const rawK0 = getState(slotPtr, 16 + readIdx0);
+    const rawM0 = getState(slotPtr, 28 + readIdx0);
+    const h1K0 = e1 * getState(slotPtr, 1) + c1_0 * rawK0;
+    const h2K0 = e2 * getState(slotPtr, 2) + c2_0 * rawK0;
+    const h1M0 = e1 * getState(slotPtr, 3) + c1_0 * rawM0;
+    const h2M0 = e2 * getState(slotPtr, 4) + c2_0 * rawM0;
+    setState(slotPtr, 1, h1K0);
+    setState(slotPtr, 2, h2K0);
+    setState(slotPtr, 3, h1M0);
+    setState(slotPtr, 4, h2M0);
+    const iHK0 = h1K0 + h2K0;
+    const iHM0 = h1M0 + h2M0;
+    const iK0 = gEq0 * vK0 + iHK0;
+    const iM0 = gEq0 * vM0 + iHM0;
+    setState(slotPtr, 16 + head, -gEq0 * vM0 - lossK0 * iM0);
+    setState(slotPtr, 28 + head, -gEq0 * vK0 - lossK0 * iK0);
+
+    // Mode alpha (aerial mode 1): ring K at STATE[40..51], ring M at STATE[52..63], VF states STATE[5..8]
+    const zEff1 = zc1 + 0.25 * rDc;
+    const gEq1 = 1.0 / zEff1;
+    const lossK1 = (zc1 - 0.25 * rDc) / zEff1;
+    const rawKa = getState(slotPtr, 40 + readIdx1);
+    const rawMa = getState(slotPtr, 52 + readIdx1);
+    const h1Ka = e1 * getState(slotPtr, 5) + c1_1 * rawKa;
+    const h2Ka = e2 * getState(slotPtr, 6) + c2_1 * rawKa;
+    const h1Ma = e1 * getState(slotPtr, 7) + c1_1 * rawMa;
+    const h2Ma = e2 * getState(slotPtr, 8) + c2_1 * rawMa;
+    setState(slotPtr, 5, h1Ka);
+    setState(slotPtr, 6, h2Ka);
+    setState(slotPtr, 7, h1Ma);
+    setState(slotPtr, 8, h2Ma);
+    const iHKa = h1Ka + h2Ka;
+    const iHMa = h1Ma + h2Ma;
+    const iKa = gEq1 * vKa + iHKa;
+    const iMa = gEq1 * vMa + iHMa;
+    setState(slotPtr, 40 + head, -gEq1 * vMa - lossK1 * iMa);
+    setState(slotPtr, 52 + head, -gEq1 * vKa - lossK1 * iKa);
+
+    // Mode beta (aerial mode 2): ring K at STATE[64..75], ring M at STATE[76..87], VF states STATE[9..12]
+    const rawKb = getState(slotPtr, 64 + readIdx1);
+    const rawMb = getState(slotPtr, 76 + readIdx1);
+    const h1Kb = e1 * getState(slotPtr, 9) + c1_1 * rawKb;
+    const h2Kb = e2 * getState(slotPtr, 10) + c2_1 * rawKb;
+    const h1Mb = e1 * getState(slotPtr, 11) + c1_1 * rawMb;
+    const h2Mb = e2 * getState(slotPtr, 12) + c2_1 * rawMb;
+    setState(slotPtr, 9, h1Kb);
+    setState(slotPtr, 10, h2Kb);
+    setState(slotPtr, 11, h1Mb);
+    setState(slotPtr, 12, h2Mb);
+    const iHKb = h1Kb + h2Kb;
+    const iHMb = h1Mb + h2Mb;
+    const iKb = gEq1 * vKb + iHKb;
+    const iMb = gEq1 * vMb + iHMb;
+    setState(slotPtr, 64 + head, -gEq1 * vMb - lossK1 * iMb);
+    setState(slotPtr, 76 + head, -gEq1 * vKb - lossK1 * iKb);
+
+    setState(slotPtr, 0, <f64>((head + 1) % ringLen));
+
+    // Inverse Clarke transform to phase domain (a, b, c)
+    const iaK = iK0 + iKa;
+    const ibK = iK0 - 0.5 * iKa + sqrt3Over2 * iKb;
+    const icK = iK0 - 0.5 * iKa - sqrt3Over2 * iKb;
+
+    const iaM = iM0 + iMa;
+    const ibM = iM0 - 0.5 * iMa + sqrt3Over2 * iMb;
+    const icM = iM0 - 0.5 * iMa - sqrt3Over2 * iMb;
+
+    const iHistA = iHK0 + iHKa;
+    const iHistB = iHK0 - 0.5 * iHKa + sqrt3Over2 * iHKb;
+    const iHistC = iHK0 - 0.5 * iHKa - sqrt3Over2 * iHKb;
+
+    setIo(slotPtr, 3, iaK);
+    setIo(slotPtr, 4, ibK);
+    setIo(slotPtr, 5, icK);
+    setIo(slotPtr, 23, iaM);
+    setIo(slotPtr, 26, ibM);
+    setIo(slotPtr, 27, icM);
+    setIo(slotPtr, 18, gEq1);
+    setIo(slotPtr, 19, iHistA);
+    setIo(slotPtr, 28, iHistB);
+    setIo(slotPtr, 29, iHistC);
     return;
   }
 
@@ -428,11 +722,11 @@ export function rtdsModelStep(
     return;
   }
 
-  // ── 9. Power Electronics / Substep (VSC 2L, 3L NPC, MMC) ───────────────────
-  if (archetypeId == ARCH_VSC_2LVL || archetypeId == ARCH_VSC_3LVL_NPC || archetypeId == ARCH_MMC_SUBSTEP) {
+  // ── 9a. Power Electronics / Substep (VSC 2L, 3L NPC) ───────────────────────
+  if (archetypeId == ARCH_VSC_2LVL || archetypeId == ARCH_VSC_3LVL_NPC) {
     const vdcNom = Math.max(10.0, getParam(slotPtr, paramCount, 0, 1200.0));
-    const rFilt = Math.max(1e-4, getParam(slotPtr, paramCount, archetypeId == ARCH_MMC_SUBSTEP ? 2 : 1, 0.05));
-    const lFilt = Math.max(1e-5, getParam(slotPtr, paramCount, archetypeId == ARCH_MMC_SUBSTEP ? 3 : 2, 0.002));
+    const rFilt = Math.max(1e-4, getParam(slotPtr, paramCount, 1, 0.05));
+    const lFilt = Math.max(1e-5, getParam(slotPtr, paramCount, 2, 0.002));
     const vdc = getIo(slotPtr, 6) > 1.0 ? getIo(slotPtr, 6) : vdcNom;
     const mRef = clamp(getIo(slotPtr, 14), -1.0, 1.0);
     const vConv = 0.5 * mRef * vdc;
@@ -444,6 +738,62 @@ export function rtdsModelStep(
     setIo(slotPtr, 7, pAc / vdc);
     setIo(slotPtr, 16, vConv);
     setIo(slotPtr, 20, pAc);
+    return;
+  }
+
+  // ── 9b. Modular Multilevel Converter (MMC) Substep with Arm Capacitor Balancing ─
+  if (archetypeId == ARCH_MMC_SUBSTEP) {
+    const vdcNom = Math.max(10.0, getParam(slotPtr, paramCount, 0, 640000.0));
+    const nSm = Math.max(1.0, getParam(slotPtr, paramCount, 1, 400.0));
+    const rArm = Math.max(1e-4, getParam(slotPtr, paramCount, 2, 1.2));
+    const lArm = Math.max(1e-5, getParam(slotPtr, paramCount, 3, 0.05));
+    const cSm = Math.max(1e-6, getParam(slotPtr, paramCount, 4, 0.01));
+
+    const vdc = getIo(slotPtr, 6) > 1.0 ? getIo(slotPtr, 6) : vdcNom;
+    const mRef = clamp(getIo(slotPtr, 14), -1.0, 1.0);
+    const vGrid = getIo(slotPtr, 0);
+
+    let vCapUpper = getState(slotPtr, 6);
+    let vCapLower = getState(slotPtr, 7);
+    if (vCapUpper <= 0.0 && vCapLower <= 0.0) {
+      vCapUpper = vdc / nSm;
+      vCapLower = vdc / nSm;
+    }
+
+    // Nearest-level submodule insertion counts (upper & lower arms)
+    const nInsUpper = clamp(Math.round(0.5 * nSm * (1.0 - mRef)), 0.0, nSm);
+    const nInsLower = clamp(Math.round(0.5 * nSm * (1.0 + mRef)), 0.0, nSm);
+
+    const vArmUpper = nInsUpper * vCapUpper;
+    const vArmLower = nInsLower * vCapLower;
+
+    // Dommel RL arm current steps:
+    //   Upper arm: +Vdc/2 - vArmUpper - vGrid = rArm * iUpper + lArm * diUpper/dt
+    //   Lower arm: +Vdc/2 - vArmLower + vGrid = rArm * iLower + lArm * diLower/dt
+    const iUpper = stepDommelRlcAt(slotPtr, 0, hDt, rArm, lArm, 0.0, 0.5 * vdc - vArmUpper - vGrid);
+    const iLower = stepDommelRlcAt(slotPtr, 3, hDt, rArm, lArm, 0.0, 0.5 * vdc - vArmLower + vGrid);
+
+    // Submodule capacitor voltage balancing ODE: C_sm * dv_c/dt = i_arm * (n_ins / N_sm)
+    vCapUpper = Math.max(0.0, vCapUpper + (hDt / cSm) * iUpper * (nInsUpper / nSm));
+    vCapLower = Math.max(0.0, vCapLower + (hDt / cSm) * iLower * (nInsLower / nSm));
+
+    const ia = iUpper - iLower;
+    const iDc = 0.5 * (iUpper + iLower);
+    const vConv = 0.5 * (vArmLower - vArmUpper);
+    const gEqArm = 1.0 / (rArm + (2.0 * lArm) / hDt);
+
+    setState(slotPtr, 6, vCapUpper);
+    setState(slotPtr, 7, vCapLower);
+
+    setIo(slotPtr, 3, ia);
+    setIo(slotPtr, 7, iDc);
+    setIo(slotPtr, 16, vConv);
+    setIo(slotPtr, 18, 2.0 * gEqArm);
+    setIo(slotPtr, 20, vConv * ia);
+    setIo(slotPtr, 30, vCapUpper);
+    setIo(slotPtr, 31, vCapLower);
+    setIo(slotPtr, 32, iUpper);
+    setIo(slotPtr, 33, iLower);
     return;
   }
 

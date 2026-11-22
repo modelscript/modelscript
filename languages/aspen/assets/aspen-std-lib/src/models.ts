@@ -25,10 +25,28 @@
  *         IO[14] = K1 / Z_liq / dP     IO[15] = K2 / residual
  */
 
+import {
+  evalIapws97PsatMPa,
+  evalIapws97TsatK,
+  evalMulticompRachfordRice,
+  evalPengRobinsonPhi,
+  evalPengRobinsonZ,
+  solveTridiagonalThomas,
+} from "../../../../../packages/runtime/assembly/physics/thermo-eos";
+
 const OFF_CON: usize = 0x080;
 const OFF_STATE: usize = 0x580;
 const OFF_DSTATE: usize = 0x680;
 const OFF_IO: usize = 0x780;
+
+// Static zero-GC scratch buffers for multicomponent Rachford-Rice & RadFrac TDMA
+const FLASH_Z_PTR: usize = memory.data(16 * 8);
+const FLASH_K_PTR: usize = memory.data(16 * 8);
+const TDMA_A_PTR: usize = memory.data(32 * 8);
+const TDMA_B_PTR: usize = memory.data(32 * 8);
+const TDMA_C_PTR: usize = memory.data(32 * 8);
+const TDMA_D_PTR: usize = memory.data(32 * 8);
+const TDMA_X_PTR: usize = memory.data(32 * 8);
 
 const R_GAS: f64 = 8.31446261815324; // J / (mol * K)
 const LN10: f64 = 2.302585092994046;
@@ -188,10 +206,14 @@ function solveCubicEos(
   let lnPhiBest: f64 = 0.0;
 
   if (disc > 0.0) {
-    const sqrtD = Math.sqrt(disc);
-    const u = cbrtSafe(-q * 0.5 + sqrtD);
-    const v = cbrtSafe(-q * 0.5 - sqrtD);
-    zBest = Math.max(B + 1e-9, u + v - c2 / 3.0);
+    if (!isSrk) {
+      zBest = evalPengRobinsonZ(T, P, Tc, Pc, omega);
+    } else {
+      const sqrtD = Math.sqrt(disc);
+      const u = cbrtSafe(-q * 0.5 + sqrtD);
+      const v = cbrtSafe(-q * 0.5 - sqrtD);
+      zBest = Math.max(B + 1e-9, u + v - c2 / 3.0);
+    }
     zLiq = zBest;
     lnPhiBest = isSrk ? srkLnPhi(zBest, A, B) : prLnPhi(zBest, A, B);
   } else {
@@ -226,7 +248,16 @@ function solveCubicEos(
     }
   }
 
-  const phi = Math.exp(clamp(lnPhiBest, -40.0, 40.0));
+  let phi: f64;
+  let kVle: f64 = 0.0;
+  if (!isSrk) {
+    const phiV = evalPengRobinsonPhi(T, P, Tc, Pc, omega, 0);
+    const phiL = evalPengRobinsonPhi(T, P, Tc, Pc, omega, 1);
+    phi = phiL < phiV ? phiL : phiV;
+    kVle = phiV > 1e-12 ? phiL / phiV : 1.0;
+  } else {
+    phi = Math.exp(clamp(lnPhiBest, -40.0, 40.0));
+  }
   setState(slotPtr, 0, zBest);
   setState(slotPtr, 1, zLiq);
   setState(slotPtr, 2, phi);
@@ -235,49 +266,7 @@ function solveCubicEos(
   setIo(slotPtr, 12, zBest);
   setIo(slotPtr, 13, phi);
   setIo(slotPtr, 14, zLiq);
-  setIo(slotPtr, 15, 0.0);
-}
-
-/**
- * Solves the binary Rachford-Rice equation for vapor fraction beta in [0, 1].
- */
-function solveRachfordRiceBinary(z1: f64, K1: f64, K2: f64): f64 {
-  const z2 = 1.0 - z1;
-  const f0 = z1 * (K1 - 1.0) + z2 * (K2 - 1.0);
-  if (f0 <= 0.0) return 0.0; // Subcooled liquid
-
-  const f1 = z1 * (1.0 - 1.0 / Math.max(1e-12, K1)) + z2 * (1.0 - 1.0 / Math.max(1e-12, K2));
-  if (f1 >= 0.0) return 1.0; // Superheated vapor
-
-  // Analytical solution for binary Rachford-Rice:
-  // z1*(K1-1)/(1+b*(K1-1)) + z2*(K2-1)/(1+b*(K2-1)) = 0
-  // Safeguarded Newton-Raphson + bisection for generality and numerical robustness
-  let lo: f64 = 0.0;
-  let hi: f64 = 1.0;
-  let beta: f64 = 0.5;
-  const d1 = K1 - 1.0;
-  const d2 = K2 - 1.0;
-
-  for (let iter: i32 = 0; iter < 40; iter++) {
-    const den1 = 1.0 + beta * d1;
-    const den2 = 1.0 + beta * d2;
-    const f = (z1 * d1) / den1 + (z2 * d2) / den2;
-    if (Math.abs(f) < 1e-12) break;
-
-    if (f > 0.0) {
-      lo = beta;
-    } else {
-      hi = beta;
-    }
-
-    const df = -(z1 * d1 * d1) / (den1 * den1) - (z2 * d2 * d2) / (den2 * den2);
-    let next = Math.abs(df) > 1e-15 ? beta - f / df : 0.5 * (lo + hi);
-    if (next <= lo || next >= hi) {
-      next = 0.5 * (lo + hi);
-    }
-    beta = next;
-  }
-  return clamp(beta, 0.0, 1.0);
+  setIo(slotPtr, 15, kVle);
 }
 
 /**
@@ -336,7 +325,11 @@ export function aspenModelEval(archetypeId: i32, slotPtr: usize, conCount: i32):
 
     const K1 = antoinePsatPa(T_flash, A1, B1, C1) / Math.max(1.0, P_flash);
     const K2 = antoinePsatPa(T_flash, A2, B2, C2) / Math.max(1.0, P_flash);
-    const beta = solveRachfordRiceBinary(z1, K1, K2);
+    store<f64>(FLASH_Z_PTR, z1);
+    store<f64>(FLASH_Z_PTR + 8, 1.0 - z1);
+    store<f64>(FLASH_K_PTR, Math.max(1e-12, K1));
+    store<f64>(FLASH_K_PTR + 8, Math.max(1e-12, K2));
+    const beta = evalMulticompRachfordRice(2, FLASH_Z_PTR, FLASH_K_PTR);
     const x1 = clamp(z1 / (1.0 + beta * (K1 - 1.0)), 0.0, 1.0);
     const y1 = clamp(K1 * x1, 0.0, 1.0);
     const Q_duty = F_in * (Cp_liq * (T_flash - T_in) + beta * dH_vap);
@@ -360,13 +353,49 @@ export function aspenModelEval(archetypeId: i32, slotPtr: usize, conCount: i32):
     const nStages = archetypeId == ARCH_RADFRAC ? Math.max(2.0, getCon(slotPtr, conCount, 0, 20.0)) : 12.0;
     const dOverF = archetypeId == ARCH_RADFRAC ? clamp(getCon(slotPtr, conCount, 2, 0.5), 0.01, 0.99) : clamp(z1, 0.05, 0.95);
     const P_top = archetypeId == ARCH_RADFRAC ? getCon(slotPtr, conCount, 3, P_in) : getCon(slotPtr, conCount, 4, P_in);
+    const reflux = archetypeId == ARCH_RADFRAC ? Math.max(0.1, getCon(slotPtr, conCount, 1, 2.0)) : 2.0;
 
-    // Fenske separation factor alpha^N_eff
-    const sepFactor = Math.pow(alpha, Math.min(nStages * 0.65, 30.0));
-    const ratio = (z1 / Math.max(1e-6, 1.0 - z1)) * Math.sqrt(sepFactor);
-    const xDist = clamp(ratio / (1.0 + ratio), 0.0, 0.9999);
-    const xBot = clamp((z1 - dOverF * xDist) / Math.max(1e-6, 1.0 - dOverF), 0.0001, 1.0);
-    const Q_reb = F_in * dOverF * (1.0 + getCon(slotPtr, conCount, 1, 2.0)) * 32000.0;
+    // Stage-by-stage MESH component tridiagonal balance via Thomas TDMA for RadFrac
+    let xDist: f64;
+    let xBot: f64;
+    const nMesh = <i32>clamp(Math.round(nStages), 3.0, 32.0);
+    if (archetypeId == ARCH_RADFRAC) {
+      const feedStage = nMesh >> 1;
+      const L = reflux * dOverF;
+      const V = (reflux + 1.0) * dOverF;
+      const B = Math.max(1e-4, 1.0 - dOverF);
+      const Lstrip = L + 1.0;
+      // Geometric mean K for light component around K_light = sqrt(alpha)
+      const kLight = Math.sqrt(alpha);
+      for (let j = 0; j < nMesh; j++) {
+        const off = <usize>j << 3;
+        const lIn = j == 0 ? 0.0 : j <= feedStage ? L : Lstrip;
+        const lOut = j < feedStage ? L : j < nMesh - 1 ? Lstrip : B;
+        const vOut = j == 0 ? dOverF : V;
+        const vIn = j < nMesh - 1 ? V : 0.0;
+        store<f64>(TDMA_A_PTR + off, lIn);
+        store<f64>(TDMA_B_PTR + off, -(lOut + vOut * kLight));
+        store<f64>(TDMA_C_PTR + off, vIn * kLight);
+        store<f64>(TDMA_D_PTR + off, j == feedStage ? -z1 : 0.0);
+      }
+      const rc = solveTridiagonalThomas(nMesh, TDMA_A_PTR, TDMA_B_PTR, TDMA_C_PTR, TDMA_D_PTR, TDMA_X_PTR);
+      if (rc == 0) {
+        xDist = clamp(load<f64>(TDMA_X_PTR) * kLight, 0.0, 0.9999);
+        xBot = clamp(load<f64>(TDMA_X_PTR + (<usize>(nMesh - 1) << 3)), 0.0001, 1.0);
+      } else {
+        const sepFactor = Math.pow(alpha, Math.min(nStages * 0.65, 30.0));
+        const ratio = (z1 / Math.max(1e-6, 1.0 - z1)) * Math.sqrt(sepFactor);
+        xDist = clamp(ratio / (1.0 + ratio), 0.0, 0.9999);
+        xBot = clamp((z1 - dOverF * xDist) / Math.max(1e-6, 1.0 - dOverF), 0.0001, 1.0);
+      }
+    } else {
+      // Fenske shortcut separation factor alpha^N_eff
+      const sepFactor = Math.pow(alpha, Math.min(nStages * 0.65, 30.0));
+      const ratio = (z1 / Math.max(1e-6, 1.0 - z1)) * Math.sqrt(sepFactor);
+      xDist = clamp(ratio / (1.0 + ratio), 0.0, 0.9999);
+      xBot = clamp((z1 - dOverF * xDist) / Math.max(1e-6, 1.0 - dOverF), 0.0001, 1.0);
+    }
+    const Q_reb = F_in * dOverF * (1.0 + reflux) * 32000.0;
 
     setIo(slotPtr, 8, T_in);
     setIo(slotPtr, 9, P_top);
@@ -625,6 +654,13 @@ export function aspenModelEval(archetypeId: i32, slotPtr: usize, conCount: i32):
     const Pc = getCon(slotPtr, conCount, 1, 4599200.0);
     const omega = getCon(slotPtr, conCount, 2, 0.01142);
     solveCubicEos(slotPtr, T_in, P_in, Tc, Pc, omega, archetypeId == ARCH_EOS_SRK);
+    if (archetypeId == ARCH_THERMO_STEAM_TA) {
+      const tSat = evalIapws97TsatK(P_in * 1e-6);
+      const pSatPa = evalIapws97PsatMPa(T_in) * 1.0e6;
+      setState(slotPtr, 3, tSat);
+      setState(slotPtr, 4, pSatPa);
+      setIo(slotPtr, 13, pSatPa);
+    }
     return 0;
   }
 

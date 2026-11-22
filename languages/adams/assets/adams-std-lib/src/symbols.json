@@ -2005,7 +2005,15 @@
       "Dy",
       "Ey",
       "fz0",
-      "trail"
+      "trail",
+      "rBx1",
+      "rCx1",
+      "rBy1",
+      "rCy1",
+      "kGamma",
+      "Bt",
+      "Ct",
+      "Et"
     ],
     "inherits": [],
     "metadata": {
@@ -2088,7 +2096,63 @@
           "type": "real",
           "defaultValue": 0.03,
           "unit": "m",
-          "description": "Nominal pneumatic trail t_p for aligning torque M_z"
+          "description": "Nominal pneumatic trail t_p0 for aligning torque M_z"
+        },
+        {
+          "key": "rBx1",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "1",
+          "description": "Combined-slip longitudinal weighting slope factor B_xalpha"
+        },
+        {
+          "key": "rCx1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Combined-slip longitudinal weighting shape factor C_xalpha"
+        },
+        {
+          "key": "rBy1",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "1",
+          "description": "Combined-slip lateral weighting slope factor B_ykappa"
+        },
+        {
+          "key": "rCy1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Combined-slip lateral weighting shape factor C_ykappa"
+        },
+        {
+          "key": "kGamma",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "1",
+          "description": "Camber thrust equivalent slip stiffness factor"
+        },
+        {
+          "key": "Bt",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "1/rad",
+          "description": "Pneumatic trail stiffness factor B_t"
+        },
+        {
+          "key": "Ct",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Pneumatic trail shape factor C_t"
+        },
+        {
+          "key": "Et",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "1",
+          "description": "Pneumatic trail curvature factor E_t"
         }
       ],
       "wasmKernel": "pac2002_tire",

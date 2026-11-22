@@ -19,6 +19,12 @@
  *       IO[7] = peripheralOut — peripheral amount or TMDD complex RC
  *       IO[8] = depotOut — depot amount or TMDD free target Rfree
  *       IO[9] = aucOut — analytical or accumulated AUC
+ *       IO[10] = ii (h) — inter-dose interval tau (<=0 = single dose)
+ *       IO[11] = addl — number of additional doses (0 = single dose)
+ *       IO[12] = ss — steady-state flag (0 = off, >=0.5 = steady-state)
+ *       IO[13] = alag (h) — absorption/dosing lag time override (>0 overrides param)
+ *       IO[14] = rate (mg/h) — zero-order infusion rate (>0 sets tinf = dose/rate)
+ *       IO[15] = f1 — bioavailability fraction override (>0 overrides param F)
  */
 
 const OFF_PARAM: usize = 0x080;
@@ -483,14 +489,85 @@ export function mlxModelEval(
   const concIn = Math.max(0.0, getIo(slotPtr, 3));
   setIo(slotPtr, 0, time);
 
-  // 1. 1-Compartment IV Bolus (analytical)
+  // 1. 1-Compartment IV Bolus (analytical, with multi-dose superposition & steady-state)
   if (archetypeId == ARCH_BOLUS_1CPT) {
     const V = Math.max(1e-9, getParam(slotPtr, paramCount, 0, 10.0));
     const Cl = Math.max(0.0, getParam(slotPtr, paramCount, 1, 1.0));
+    const fParam = getParam(slotPtr, paramCount, 2, 1.0);
+    const tlagParam = Math.max(0.0, getParam(slotPtr, paramCount, 3, 0.0));
+    const fIo = getIo(slotPtr, 15);
+    const f1 = fIo > 0.0 ? fIo : fParam;
+    const alagIo = getIo(slotPtr, 13);
+    const alag = alagIo > 0.0 ? alagIo : tlagParam;
+    const rateIo = getIo(slotPtr, 14);
+    const ii = getIo(slotPtr, 10);
+    const addl = ii > 0.0 ? <i32>Math.max(0.0, Math.floor(getIo(slotPtr, 11))) : 0;
+    const ss = getIo(slotPtr, 12) >= 0.5 && ii > 0.0;
     const ke = Cl / V;
-    const ac = dose * Math.exp(-ke * time);
+    const isInf = rateIo > 0.0 && dose > 0.0;
+    const infDur = isInf ? dose / rateIo : 0.0;
+
+    let ac: f64 = 0.0;
+    if (ss && ke > 1e-12) {
+      const te0 = time - alag;
+      const denom = 1.0 - Math.exp(-ke * ii);
+      if (isInf) {
+        const tEff = te0 >= 0.0 ? te0 : te0 + ii;
+        const past = ((f1 * rateIo) / ke) * (1.0 - Math.exp(-ke * infDur)) * (Math.exp(-ke * (ii - infDur)) / denom) * Math.exp(-ke * tEff);
+        ac += past;
+        if (te0 >= 0.0) {
+          if (te0 <= infDur) {
+            ac += ((f1 * rateIo) / ke) * (1.0 - Math.exp(-ke * te0));
+          } else {
+            ac += ((f1 * rateIo) / ke) * (1.0 - Math.exp(-ke * infDur)) * Math.exp(-ke * (te0 - infDur));
+          }
+        }
+      } else {
+        const tEff = te0 >= 0.0 ? te0 : te0 + ii;
+        ac += ((f1 * dose) / denom) * Math.exp(-ke * tEff);
+      }
+      for (let m: i32 = 1; m <= addl; m++) {
+        const dtM = time - <f64>m * ii - alag;
+        if (dtM < 0.0) break;
+        if (isInf) {
+          if (dtM <= infDur) {
+            ac += ((f1 * rateIo) / ke) * (1.0 - Math.exp(-ke * dtM));
+          } else {
+            ac += ((f1 * rateIo) / ke) * (1.0 - Math.exp(-ke * infDur)) * Math.exp(-ke * (dtM - infDur));
+          }
+        } else {
+          ac += f1 * dose * Math.exp(-ke * dtM);
+        }
+      }
+    } else {
+      for (let m: i32 = 0; m <= addl; m++) {
+        const dtM = time - <f64>m * ii - alag;
+        if (dtM < 0.0) break;
+        if (isInf) {
+          if (ke > 1e-12) {
+            if (dtM <= infDur) {
+              ac += ((f1 * rateIo) / ke) * (1.0 - Math.exp(-ke * dtM));
+            } else {
+              ac += ((f1 * rateIo) / ke) * (1.0 - Math.exp(-ke * infDur)) * Math.exp(-ke * (dtM - infDur));
+            }
+          } else {
+            ac += f1 * rateIo * Math.min(dtM, infDur);
+          }
+        } else {
+          ac += f1 * dose * Math.exp(-ke * dtM);
+        }
+      }
+    }
+
     const cc = ac / V;
-    const auc = Cl > 1e-12 ? (dose / Cl) * (1.0 - Math.exp(-ke * time)) : cc * time;
+    const auc =
+      !ss && addl == 0 && !isInf && alag == 0.0
+        ? Cl > 1e-12
+          ? ((f1 * dose) / Cl) * (1.0 - Math.exp(-ke * time))
+          : cc * time
+        : Cl > 1e-12
+          ? (f1 * dose) / Cl
+          : cc * time;
     setState(slotPtr, 0, ac);
     setIo(slotPtr, 4, cc);
     setIo(slotPtr, 9, auc);
@@ -535,37 +612,134 @@ export function mlxModelEval(
     return cc;
   }
 
-  // 4. 1-Compartment IV Infusion (analytical)
+  // 4. 1-Compartment IV Infusion (analytical, with multi-dose superposition & steady-state)
   if (archetypeId == ARCH_INFUSION_1CPT) {
     const V = Math.max(1e-9, getParam(slotPtr, paramCount, 0, 10.0));
     const Cl = Math.max(1e-9, getParam(slotPtr, paramCount, 1, 1.0));
+    const fParam = getParam(slotPtr, paramCount, 2, 1.0);
+    const tlagParam = Math.max(0.0, getParam(slotPtr, paramCount, 3, 0.0));
+    const fIo = getIo(slotPtr, 15);
+    const f1 = fIo > 0.0 ? fIo : fParam;
+    const alagIo = getIo(slotPtr, 13);
+    const alag = alagIo > 0.0 ? alagIo : tlagParam;
+    const rateIo = getIo(slotPtr, 14);
+    const infDur = rateIo > 0.0 && dose > 0.0 ? dose / rateIo : tinf;
+    const r0 = (f1 * dose) / Math.max(1e-9, infDur);
+    const ii = getIo(slotPtr, 10);
+    const addl = ii > 0.0 ? <i32>Math.max(0.0, Math.floor(getIo(slotPtr, 11))) : 0;
+    const ss = getIo(slotPtr, 12) >= 0.5 && ii > 0.0;
     const ke = Cl / V;
-    const r0 = dose / tinf;
-    let cc: f64;
-    if (time <= tinf) {
-      cc = (r0 / Cl) * (1.0 - Math.exp(-ke * time));
+
+    let cc: f64 = 0.0;
+    if (ss && ke > 1e-12) {
+      const te0 = time - alag;
+      const tEff = te0 >= 0.0 ? te0 : te0 + ii;
+      const denom = 1.0 - Math.exp(-ke * ii);
+      cc += (r0 / Cl) * (1.0 - Math.exp(-ke * infDur)) * (Math.exp(-ke * (ii - infDur)) / denom) * Math.exp(-ke * tEff);
+      if (te0 >= 0.0) {
+        if (te0 <= infDur) {
+          cc += (r0 / Cl) * (1.0 - Math.exp(-ke * te0));
+        } else {
+          cc += (r0 / Cl) * (1.0 - Math.exp(-ke * infDur)) * Math.exp(-ke * (te0 - infDur));
+        }
+      }
+      for (let m: i32 = 1; m <= addl; m++) {
+        const dtM = time - <f64>m * ii - alag;
+        if (dtM < 0.0) break;
+        if (dtM <= infDur) {
+          cc += (r0 / Cl) * (1.0 - Math.exp(-ke * dtM));
+        } else {
+          cc += (r0 / Cl) * (1.0 - Math.exp(-ke * infDur)) * Math.exp(-ke * (dtM - infDur));
+        }
+      }
     } else {
-      cc = (r0 / Cl) * (1.0 - Math.exp(-ke * tinf)) * Math.exp(-ke * (time - tinf));
+      for (let m: i32 = 0; m <= addl; m++) {
+        const dtM = time - <f64>m * ii - alag;
+        if (dtM < 0.0) break;
+        if (dtM <= infDur) {
+          cc += (r0 / Cl) * (1.0 - Math.exp(-ke * dtM));
+        } else {
+          cc += (r0 / Cl) * (1.0 - Math.exp(-ke * infDur)) * Math.exp(-ke * (dtM - infDur));
+        }
+      }
     }
     setState(slotPtr, 0, cc * V);
     setIo(slotPtr, 4, cc);
     return cc;
   }
 
-  // 5. 1-Compartment First-Order Oral (Bateman analytical)
+  // 5. 1-Compartment First-Order Oral (Bateman analytical, with multi-dose superposition & steady-state)
   if (archetypeId == ARCH_ORAL1_1CPT) {
     const ka = Math.max(1e-9, getParam(slotPtr, paramCount, 0, 1.0));
     const V = Math.max(1e-9, getParam(slotPtr, paramCount, 1, 10.0));
     const Cl = Math.max(0.0, getParam(slotPtr, paramCount, 2, 1.0));
-    const F = getParam(slotPtr, paramCount, 3, 1.0);
+    const fParam = getParam(slotPtr, paramCount, 3, 1.0);
+    const tlagParam = Math.max(0.0, getParam(slotPtr, paramCount, 4, 0.0));
+    const fIo = getIo(slotPtr, 15);
+    const F = fIo > 0.0 ? fIo : fParam;
+    const alagIo = getIo(slotPtr, 13);
+    const alag = alagIo > 0.0 ? alagIo : tlagParam;
+    const ii = getIo(slotPtr, 10);
+    const addl = ii > 0.0 ? <i32>Math.max(0.0, Math.floor(getIo(slotPtr, 11))) : 0;
+    const ss = getIo(slotPtr, 12) >= 0.5 && ii > 0.0;
     const ke = Cl / V;
-    const ad = F * dose * Math.exp(-ka * time);
-    let cc: f64;
-    if (Math.abs(ka - ke) > 1e-7) {
-      cc = ((F * dose * ka) / (V * (ka - ke))) * (Math.exp(-ke * time) - Math.exp(-ka * time));
+
+    let ad: f64 = 0.0;
+    let cc: f64 = 0.0;
+
+    if (ss && ke > 1e-12 && ka > 1e-12) {
+      const te0 = time - alag;
+      const tEff = te0 >= 0.0 ? te0 : te0 + ii;
+      const denomKa = 1.0 - Math.exp(-ka * ii);
+      const denomKe = 1.0 - Math.exp(-ke * ii);
+      ad += (F * dose * Math.exp(-ka * tEff)) / denomKa;
+      if (te0 < 0.0) {
+        ad += F * dose;
+      }
+      if (Math.abs(ka - ke) > 1e-7) {
+        cc +=
+          ((F * dose * ka) / (V * (ka - ke))) *
+          (Math.exp(-ke * tEff) / denomKe - Math.exp(-ka * tEff) / denomKa);
+      } else {
+        const ek = Math.exp(-ke * ii);
+        cc +=
+          ((F * dose * ka) / V) *
+          Math.exp(-ke * tEff) *
+          (tEff / denomKe + (ii * ek) / (denomKe * denomKe));
+      }
+      for (let m: i32 = 1; m <= addl; m++) {
+        const tDose = <f64>m * ii;
+        if (time < tDose) break;
+        const dtM = time - tDose - alag;
+        if (dtM <= 0.0) {
+          ad += F * dose;
+        } else {
+          ad += F * dose * Math.exp(-ka * dtM);
+          if (Math.abs(ka - ke) > 1e-7) {
+            cc += ((F * dose * ka) / (V * (ka - ke))) * (Math.exp(-ke * dtM) - Math.exp(-ka * dtM));
+          } else {
+            cc += ((F * dose * ka * dtM) / V) * Math.exp(-ke * dtM);
+          }
+        }
+      }
     } else {
-      cc = ((F * dose * ka * time) / V) * Math.exp(-ke * time);
+      for (let m: i32 = 0; m <= addl; m++) {
+        const tDose = <f64>m * ii;
+        if (time < tDose) break;
+        const dtM = time - tDose - alag;
+        if (dtM <= 0.0) {
+          ad += F * dose;
+        } else {
+          ad += F * dose * Math.exp(-ka * dtM);
+          if (Math.abs(ka - ke) > 1e-7) {
+            cc += ((F * dose * ka) / (V * (ka - ke))) * (Math.exp(-ke * dtM) - Math.exp(-ka * dtM));
+          } else {
+            cc += ((F * dose * ka * dtM) / V) * Math.exp(-ke * dtM);
+          }
+        }
+      }
     }
+
     setState(slotPtr, 0, ad);
     setState(slotPtr, 1, cc * V);
     setIo(slotPtr, 4, cc);

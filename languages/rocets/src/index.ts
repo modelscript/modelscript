@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./catalog/index.js";
-export { lowerRocetsToDae, rocetsToDae, type RocetsDaeLoweringResult, type RocetsToDaeOptions } from "./dae/index.js";
+export {
+  lowerRocetsToDae,
+  resolveRocetsSchemaParamDefaults,
+  rocetsToDae,
+  type RocetsDaeLoweringResult,
+  type RocetsToDaeOptions,
+} from "./dae/index.js";
 export {
   buildRocetsDiagramData,
   renderRocetsPidSvg,

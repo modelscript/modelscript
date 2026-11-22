@@ -8,13 +8,41 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInAmplLibraryRegistered, lookupAmplModelSchema } from "../catalog/library-package-adapter.js";
 import type { InstantiatedProblem } from "../types.js";
 
 export interface AmplDaeOptions {
   builder?: DAEBuilder | undefined;
 }
 
+/**
+ * Resolves parameter defaults for an AMPL model from `@modelscript/ampl-std-lib`,
+ * merging any user-specified named overrides over the cleanroom schema defaults.
+ */
+export function resolveAmplSchemaParamDefaults(
+  modelName: string,
+  overrides: Record<string, number> = {},
+): Record<string, number> {
+  ensureBuiltInAmplLibraryRegistered();
+  const resolved: Record<string, number> = {};
+  const schema = lookupAmplModelSchema(modelName);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (typeof p.defaultValue === "number" && Number.isFinite(p.defaultValue)) {
+        resolved[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (Number.isFinite(v)) {
+      resolved[k] = v;
+    }
+  }
+  return resolved;
+}
+
 export function lowerAmplToDae(problem: InstantiatedProblem, options?: AmplDaeOptions): DAEBuilder {
+  ensureBuiltInAmplLibraryRegistered();
   const safeName = (problem.name || "AmplModel").replace(/[^a-zA-Z0-9_]/g, "_");
   const dae = options?.builder ?? new DAEBuilder(undefined, safeName);
 
@@ -22,13 +50,7 @@ export function lowerAmplToDae(problem: InstantiatedProblem, options?: AmplDaeOp
   const daeVarIds = new Map<number, number>();
   for (const v of problem.variables) {
     const varType = v.type === "integer" || v.type === "binary" ? VarType.Integer : VarType.Real;
-    const vId = dae.addVariable(
-      v.name,
-      varType,
-      Variability.Continuous,
-      Causality.Local,
-      v.initVal ?? 0.0,
-    );
+    const vId = dae.addVariable(v.name, varType, Variability.Continuous, Causality.Local, v.initVal ?? 0.0);
     daeVarIds.set(v.id, vId);
   }
 
@@ -45,11 +67,7 @@ export function lowerAmplToDae(problem: InstantiatedProblem, options?: AmplDaeOp
   for (const term of problem.objective.expr.linearTerms) {
     const vId = daeVarIds.get(term.varId);
     if (vId !== undefined) {
-      const termExpr = dae.addBinaryExpr(
-        BinOp.Mul,
-        dae.addRealLiteral(term.coeff),
-        dae.addName(vId),
-      );
+      const termExpr = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(term.coeff), dae.addName(vId));
       objExprId = dae.addBinaryExpr(BinOp.Add, objExprId, termExpr);
     }
   }
@@ -58,20 +76,13 @@ export function lowerAmplToDae(problem: InstantiatedProblem, options?: AmplDaeOp
   // 3. Lower Constraints
   for (const con of problem.constraints) {
     // Check if equality constraint: lb == ub
-    const isEq =
-      Number.isFinite(con.lb) &&
-      Number.isFinite(con.ub) &&
-      Math.abs(con.lb - con.ub) < 1e-9;
+    const isEq = Number.isFinite(con.lb) && Number.isFinite(con.ub) && Math.abs(con.lb - con.ub) < 1e-9;
 
     let exprId = dae.addRealLiteral(con.expr.constant);
     for (const term of con.expr.linearTerms) {
       const vId = daeVarIds.get(term.varId);
       if (vId !== undefined) {
-        const termExpr = dae.addBinaryExpr(
-          BinOp.Mul,
-          dae.addRealLiteral(term.coeff),
-          dae.addName(vId),
-        );
+        const termExpr = dae.addBinaryExpr(BinOp.Mul, dae.addRealLiteral(term.coeff), dae.addName(vId));
         exprId = dae.addBinaryExpr(BinOp.Add, exprId, termExpr);
       }
     }
@@ -89,11 +100,7 @@ export function lowerAmplToDae(problem: InstantiatedProblem, options?: AmplDaeOp
         0.0,
       );
       const withSlack = dae.addBinaryExpr(BinOp.Add, exprId, dae.addName(slackVarId));
-      dae.addEquation(
-        EqKind.Simple,
-        withSlack,
-        dae.addRealLiteral(Number.isFinite(con.ub) ? con.ub : con.lb),
-      );
+      dae.addEquation(EqKind.Simple, withSlack, dae.addRealLiteral(Number.isFinite(con.ub) ? con.ub : con.lb));
     }
   }
 

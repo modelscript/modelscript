@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { BinOp, DAEBuilder } from "@modelscript/runtime";
+import { ensureBuiltInOlgaLibraryRegistered, lookupOlgaModelSchema } from "../catalog/library-package-adapter.js";
 import { lowerFlowpathToDae, type DaeCellMeta, type FlowpathJunctionCoupling } from "../solver/drift-flux-dae.js";
 import type { OlgaModel } from "../types.js";
 
@@ -10,10 +11,37 @@ export interface OlgaDaeOptions {
 }
 
 /**
+ * Resolves parameter defaults for an OLGA model from `@modelscript/olga-std-lib`,
+ * merging any user-specified named overrides over the cleanroom schema defaults.
+ */
+export function resolveOlgaSchemaParamDefaults(
+  modelName: string,
+  overrides: Record<string, number> = {},
+): Record<string, number> {
+  ensureBuiltInOlgaLibraryRegistered();
+  const resolved: Record<string, number> = {};
+  const schema = lookupOlgaModelSchema(modelName);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (typeof p.defaultValue === "number" && Number.isFinite(p.defaultValue)) {
+        resolved[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (Number.isFinite(v)) {
+      resolved[k] = v;
+    }
+  }
+  return resolved;
+}
+
+/**
  * Direct lowering of OLGA multiphase flow networks into ModelScript's linear-memory DAE arena.
  * Couples feeding and receiving flowpaths across shared INTERNAL manifold/tee junction nodes.
  */
 export function lowerOlgaToDae(model: OlgaModel, options?: OlgaDaeOptions): DAEBuilder {
+  ensureBuiltInOlgaLibraryRegistered();
   const modelName = options?.modelName ?? model.flowpaths[0]?.name ?? "OlgaPipeline";
   const dae = options?.builder ?? new DAEBuilder(undefined, modelName);
 

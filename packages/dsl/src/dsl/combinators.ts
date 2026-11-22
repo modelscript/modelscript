@@ -8,13 +8,39 @@ import type { ASTQueryFunction, LintResult, QueryFnOrObject } from "./query-type
 import type { QueryDB, SymbolEntry } from "./types.js";
 
 /**
+ * Known built-in DSL grammar rule node kinds.
+ */
+export type RuleKind =
+  | "SYMBOL"
+  | "TOKEN"
+  | "TOKEN_IMMEDIATE"
+  | "SEQ"
+  | "CHOICE"
+  | "REPEAT"
+  | "REPEAT1"
+  | "OPTIONAL"
+  | "BLANK"
+  | "FIELD"
+  | "ALIAS"
+  | "PREC"
+  | "PREC_LEFT"
+  | "PREC_RIGHT"
+  | "PREC_DYNAMIC"
+  | "DEF"
+  | "REF"
+  | "RESERVED"
+  | "SEMANTIC"
+  | "SYNTAX_TOKEN"
+  | "SYNC";
+
+/**
  * Represents a single rule in the grammar's AST representation.
  */
 export interface Rule<F extends string = string> {
   /** Phantom type brand tracking AST field names declared within this rule. */
   __fields?: F | undefined;
   /** The type of the rule (e.g., 'SEQ', 'CHOICE', 'TOKEN', 'FIELD', etc.) */
-  type: string;
+  type: RuleKind | (string & {});
   /** Optional metadata or literal value for the rule (e.g., field name, regex string, precedence level) */
   value?: unknown;
   /** Child rules that this rule composes */
@@ -143,10 +169,20 @@ export function field<F extends string = string>(name: F, rule: RuleLike<string>
 }
 
 /**
+ * Combinator interface for lexical tokens, including `token.immediate` for adjacency-constrained tokens.
+ */
+export interface TokenFunction {
+  /** Defines a lexer token. For strings and RegExps, defines the match pattern; for composite rules, groups them into a single monolithic token. */
+  <F extends string = string>(pattern: RuleLike<F>): Rule<F>;
+  /** Matches a token immediately adjacent to the previous token without allowing intervening extras/whitespace. */
+  immediate<F extends string = string>(rule: RuleLike<F>): Rule<F>;
+}
+
+/**
  * Defines a lexer token. For strings and RegExps, defines the match pattern.
  * For other rules, groups them into a single monolithic token in the lexer.
  */
-export function token<F extends string = string>(pattern: RuleLike<F>): Rule<F> {
+export const token: TokenFunction = function <F extends string = string>(pattern: RuleLike<F>): Rule<F> {
   if (
     typeof pattern === "string" ||
     pattern instanceof RegExp ||
@@ -155,15 +191,11 @@ export function token<F extends string = string>(pattern: RuleLike<F>): Rule<F> 
     return { type: "TOKEN", value: pattern };
   }
   return { type: "TOKEN", children: [toRule(pattern)] };
-}
+} as TokenFunction;
 
-/**
- * Matches a token immediately adjacent to the previous token without allowing intervening extras/whitespace.
- */
-(token as typeof token & { immediate: <F extends string = string>(rule: RuleLike<F>) => Rule<F> }).immediate =
-  function <F extends string = string>(rule: RuleLike<F>): Rule<F> {
-    return { type: "TOKEN_IMMEDIATE", children: [toRule(rule)] };
-  };
+token.immediate = function <F extends string = string>(rule: RuleLike<F>): Rule<F> {
+  return { type: "TOKEN_IMMEDIATE", children: [toRule(rule)] };
+};
 
 /**
  * Renames a matched rule in the AST output. Useful for overriding generic rule names with specific context.
@@ -548,11 +580,11 @@ export function fact(predicate: string, ...args: string[]) {
 export const Fact = fact;
 
 /**
- * Proxy object that dynamically creates `REF` rule references on property access (e.g., `$.expression`).
+ * Proxy object that dynamically creates `SYMBOL` rule references on property access (e.g., `$.expression`).
  */
 export const $: Record<string, Rule<string>> = new Proxy({} as Record<string, Rule<string>>, {
   get(_target, prop: string) {
-    return { type: "REF", value: prop };
+    return { type: "SYMBOL", value: prop };
   },
 });
 

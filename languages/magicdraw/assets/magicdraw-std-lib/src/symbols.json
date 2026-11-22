@@ -1,0 +1,2100 @@
+[
+  {
+    "name": "MD_Customization_for_SysML",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:MD_Customization_for_SysML",
+    "exports": [
+      "ownValue",
+      "contingencyMarginPct",
+      "multiplier",
+      "budgetLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MD Customization for SysML Profile",
+      "category": "MD Customization",
+      "domain": "systems",
+      "description": "Cleanroom representation of the MagicDraw / Cameo SysML customization profile defining PartProperty, ReferenceProperty, and ValueProperty stereotypes.",
+      "provenance": "OMG SysML 1.6 (formal/2019-11-01) / OMG UML 2.5.1 Profile Extension Mechanism",
+      "aliases": [
+        "MD Customization for SysML",
+        "MD_Customization",
+        "SysMLCustomization"
+      ],
+      "parameters": [
+        {
+          "key": "ownValue",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Self contribution to rollup aggregation (mass, power, or cost)"
+        },
+        {
+          "key": "contingencyMarginPct",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "%",
+          "description": "Design contingency margin percentage"
+        },
+        {
+          "key": "multiplier",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Multiplicity scaling factor"
+        },
+        {
+          "key": "budgetLimit",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Optional upper budget limit (0 = unlimited)"
+        }
+      ],
+      "wasmKernel": "MD_Customization_for_SysML",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "MD_Block",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:MD_Block",
+    "exports": [
+      "ownValue",
+      "contingencyMarginPct",
+      "multiplier",
+      "budgetLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SysML Block",
+      "category": "MD Customization",
+      "domain": "systems",
+      "description": "Modular structural unit in SysML representing hardware, software, physical, or logical system entities.",
+      "provenance": "OMG SysML 1.6 Specification, Section 8.3.2.3 (Block)",
+      "aliases": [
+        "Block",
+        "sysml:Block"
+      ],
+      "parameters": [
+        {
+          "key": "ownValue",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Self contribution to rollup aggregation (mass, power, or cost)"
+        },
+        {
+          "key": "contingencyMarginPct",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "%",
+          "description": "Design contingency margin percentage"
+        },
+        {
+          "key": "multiplier",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Multiplicity scaling factor"
+        },
+        {
+          "key": "budgetLimit",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Optional upper budget limit (0 = unlimited)"
+        }
+      ],
+      "wasmKernel": "MD_Block",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "MD_ConstraintBlock",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:MD_ConstraintBlock",
+    "exports": [
+      "tolerance",
+      "mode",
+      "scale"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SysML ConstraintBlock",
+      "category": "MD Customization",
+      "domain": "systems",
+      "description": "Reusable parametric mathematical constraint block binding constraint parameters via equality or inequality residuals.",
+      "provenance": "OMG SysML 1.6 Specification, Section 10.3.2.1 (ConstraintBlock)",
+      "aliases": [
+        "ConstraintBlock",
+        "sysml:ConstraintBlock"
+      ],
+      "parameters": [
+        {
+          "key": "tolerance",
+          "type": "real",
+          "defaultValue": 0.000001,
+          "unit": "",
+          "description": "Absolute tolerance for residual satisfaction |lhs - rhs| <= tol"
+        },
+        {
+          "key": "mode",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Comparison mode (0: |lhs-rhs|<=tol, 1: lhs<=rhs+tol, 2: lhs>=rhs-tol)"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Residual normalization scale"
+        }
+      ],
+      "wasmKernel": "MD_ConstraintBlock",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "MD_FlowPort",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:MD_FlowPort",
+    "exports": [
+      "gain",
+      "conjugated"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SysML FlowPort",
+      "category": "MD Customization",
+      "domain": "systems",
+      "description": "Interaction point specifying input/output flow of matter, energy, or data across block boundaries.",
+      "provenance": "OMG SysML 1.6 Specification, Annex C.3.2.2 (Deprecated FlowPort Compatibility)",
+      "aliases": [
+        "FlowPort",
+        "sysml:FlowPort"
+      ],
+      "parameters": [
+        {
+          "key": "gain",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Signal/flow pass-through gain"
+        },
+        {
+          "key": "conjugated",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Conjugated port flag (0: normal, 1: conjugated)"
+        }
+      ],
+      "wasmKernel": "MD_FlowPort",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "MD_ProxyPort",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:MD_ProxyPort",
+    "exports": [
+      "gain",
+      "conjugated"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SysML ProxyPort",
+      "category": "MD Customization",
+      "domain": "systems",
+      "description": "Port exposing features of the owning block or its internal parts typed by an InterfaceBlock.",
+      "provenance": "OMG SysML 1.6 Specification, Section 9.3.2.12 (ProxyPort)",
+      "aliases": [
+        "ProxyPort",
+        "sysml:ProxyPort"
+      ],
+      "parameters": [
+        {
+          "key": "gain",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Signal/flow pass-through gain"
+        },
+        {
+          "key": "conjugated",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Conjugated port flag (0: normal, 1: conjugated)"
+        }
+      ],
+      "wasmKernel": "MD_ProxyPort",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "MD_FullPort",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:MD_FullPort",
+    "exports": [
+      "gain",
+      "conjugated"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SysML FullPort",
+      "category": "MD Customization",
+      "domain": "systems",
+      "description": "Port representing a distinct physical or behavioral boundary component with its own internal structure.",
+      "provenance": "OMG SysML 1.6 Specification, Section 9.3.2.8 (FullPort)",
+      "aliases": [
+        "FullPort",
+        "sysml:FullPort"
+      ],
+      "parameters": [
+        {
+          "key": "gain",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Signal/flow pass-through gain"
+        },
+        {
+          "key": "conjugated",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Conjugated port flag (0: normal, 1: conjugated)"
+        }
+      ],
+      "wasmKernel": "MD_FullPort",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "MD_InterfaceBlock",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:MD_InterfaceBlock",
+    "exports": [
+      "gain",
+      "conjugated"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SysML InterfaceBlock",
+      "category": "MD Customization",
+      "domain": "systems",
+      "description": "Block without internal behaviors defining flow properties and operations exposed on ProxyPorts.",
+      "provenance": "OMG SysML 1.6 Specification, Section 9.3.2.9 (InterfaceBlock)",
+      "aliases": [
+        "InterfaceBlock",
+        "sysml:InterfaceBlock"
+      ],
+      "parameters": [
+        {
+          "key": "gain",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Signal/flow pass-through gain"
+        },
+        {
+          "key": "conjugated",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Conjugated port flag (0: normal, 1: conjugated)"
+        }
+      ],
+      "wasmKernel": "MD_InterfaceBlock",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "MD_ValueType",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:MD_ValueType",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SysML ValueType",
+      "category": "MD Customization",
+      "domain": "systems",
+      "description": "Quantifiable DataType associating a physical Unit and QuantityKind with value properties.",
+      "provenance": "OMG SysML 1.6 Specification, Section 8.3.2.15 (ValueType)",
+      "aliases": [
+        "ValueType",
+        "sysml:ValueType"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "MD_ValueType",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "MD_Requirement",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:MD_Requirement",
+    "exports": [
+      "targetLimit",
+      "comparisonOp",
+      "tolerance",
+      "minMarginPct"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SysML Requirement",
+      "category": "MD Customization",
+      "domain": "systems",
+      "description": "Textual and quantitative capability or condition that a system must satisfy, with automated margin verification.",
+      "provenance": "OMG SysML 1.6 Specification, Section 16.3.2.4 (Requirement)",
+      "aliases": [
+        "Requirement",
+        "sysml:Requirement"
+      ],
+      "parameters": [
+        {
+          "key": "targetLimit",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "",
+          "description": "Required threshold value for verification"
+        },
+        {
+          "key": "comparisonOp",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Comparison operator (0: actual<=limit, 1: actual>=limit, 2: equality)"
+        },
+        {
+          "key": "tolerance",
+          "type": "real",
+          "defaultValue": 0.000001,
+          "unit": "",
+          "description": "Numerical verification tolerance"
+        },
+        {
+          "key": "minMarginPct",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "%",
+          "description": "Minimum required verification margin percentage"
+        }
+      ],
+      "wasmKernel": "MD_Requirement",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "MD_ExtendedRequirement",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:MD_ExtendedRequirement",
+    "exports": [
+      "targetLimit",
+      "comparisonOp",
+      "tolerance",
+      "minMarginPct"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SysML ExtendedRequirement",
+      "category": "MD Customization",
+      "domain": "systems",
+      "description": "Non-normative SysML requirement stereotype adding risk, source, and verificationMethod attributes.",
+      "provenance": "OMG SysML 1.6 Specification, Annex E.8 (Non-normative Requirement Extensions)",
+      "aliases": [
+        "ExtendedRequirement",
+        "sysml:ExtendedRequirement"
+      ],
+      "parameters": [
+        {
+          "key": "targetLimit",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "",
+          "description": "Required threshold value for verification"
+        },
+        {
+          "key": "comparisonOp",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Comparison operator (0: actual<=limit, 1: actual>=limit, 2: equality)"
+        },
+        {
+          "key": "tolerance",
+          "type": "real",
+          "defaultValue": 0.000001,
+          "unit": "",
+          "description": "Numerical verification tolerance"
+        },
+        {
+          "key": "minMarginPct",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "%",
+          "description": "Minimum required verification margin percentage"
+        }
+      ],
+      "wasmKernel": "MD_ExtendedRequirement",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "MD_TestCase",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:MD_TestCase",
+    "exports": [
+      "targetLimit",
+      "comparisonOp",
+      "tolerance",
+      "minMarginPct"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SysML TestCase",
+      "category": "MD Customization",
+      "domain": "systems",
+      "description": "Verification behavior evaluating whether a system satisfies one or more Requirements with pass/fail verdict.",
+      "provenance": "OMG SysML 1.6 Specification, Section 16.3.2.7 (TestCase)",
+      "aliases": [
+        "TestCase",
+        "sysml:TestCase"
+      ],
+      "parameters": [
+        {
+          "key": "targetLimit",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "",
+          "description": "Required threshold value for verification"
+        },
+        {
+          "key": "comparisonOp",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Comparison operator (0: actual<=limit, 1: actual>=limit, 2: equality)"
+        },
+        {
+          "key": "tolerance",
+          "type": "real",
+          "defaultValue": 0.000001,
+          "unit": "",
+          "description": "Numerical verification tolerance"
+        },
+        {
+          "key": "minMarginPct",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "%",
+          "description": "Minimum required verification margin percentage"
+        }
+      ],
+      "wasmKernel": "MD_TestCase",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "MD_PartProperty",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:MD_PartProperty",
+    "exports": [
+      "ownValue",
+      "contingencyMarginPct",
+      "multiplier",
+      "budgetLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MD PartProperty Stereotype",
+      "category": "MD Customization",
+      "domain": "systems",
+      "description": "Composite structural property typed by a Block representing an owned subsystem part participating in rollups.",
+      "provenance": "OMG SysML 1.6 Section 8.3.2.3 / OMG UML 2.5.1 Composite Aggregation",
+      "aliases": [
+        "PartProperty",
+        "partProperty"
+      ],
+      "parameters": [
+        {
+          "key": "ownValue",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Self contribution to rollup aggregation (mass, power, or cost)"
+        },
+        {
+          "key": "contingencyMarginPct",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "%",
+          "description": "Design contingency margin percentage"
+        },
+        {
+          "key": "multiplier",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Multiplicity scaling factor"
+        },
+        {
+          "key": "budgetLimit",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Optional upper budget limit (0 = unlimited)"
+        }
+      ],
+      "wasmKernel": "MD_PartProperty",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "MD_ReferenceProperty",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:MD_ReferenceProperty",
+    "exports": [
+      "ownValue",
+      "contingencyMarginPct",
+      "multiplier",
+      "budgetLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MD ReferenceProperty Stereotype",
+      "category": "MD Customization",
+      "domain": "systems",
+      "description": "Non-composite reference property linking a Block to an external peer or shared resource.",
+      "provenance": "OMG SysML 1.6 Section 8.3.2.3 / OMG UML 2.5.1 Shared/None Aggregation",
+      "aliases": [
+        "ReferenceProperty",
+        "referenceProperty"
+      ],
+      "parameters": [
+        {
+          "key": "ownValue",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Self contribution to rollup aggregation (mass, power, or cost)"
+        },
+        {
+          "key": "contingencyMarginPct",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "%",
+          "description": "Design contingency margin percentage"
+        },
+        {
+          "key": "multiplier",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Multiplicity scaling factor"
+        },
+        {
+          "key": "budgetLimit",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Optional upper budget limit (0 = unlimited)"
+        }
+      ],
+      "wasmKernel": "MD_ReferenceProperty",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "SI_Meter",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:SI_Meter",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SI Meter (m)",
+      "category": "SI / QUDV ValueType",
+      "domain": "systems",
+      "description": "SI base unit of length (L^1) with linear scaling y = a*x + b to coherent meters.",
+      "provenance": "SI Brochure 9th Ed. (BIPM 2019) / ISO 80000-3 / OMG SysML 1.6 Annex E.5 QUDV",
+      "aliases": [
+        "m",
+        "meter",
+        "metre",
+        "SI::metre"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "SI_Meter",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SI_Kilogram",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:SI_Kilogram",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SI Kilogram (kg)",
+      "category": "SI / QUDV ValueType",
+      "domain": "systems",
+      "description": "SI base unit of mass (M^1) with linear scaling to coherent kilograms.",
+      "provenance": "SI Brochure 9th Ed. (BIPM 2019) / ISO 80000-4 / OMG SysML 1.6 Annex E.5 QUDV",
+      "aliases": [
+        "kg",
+        "kilogram",
+        "SI::kilogram"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "kg",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "kg",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "SI_Kilogram",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SI_Second",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:SI_Second",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SI Second (s)",
+      "category": "SI / QUDV ValueType",
+      "domain": "systems",
+      "description": "SI base unit of time duration (T^1) with linear scaling to coherent seconds.",
+      "provenance": "SI Brochure 9th Ed. (BIPM 2019) / ISO 80000-3 / OMG SysML 1.6 Annex E.5 QUDV",
+      "aliases": [
+        "s",
+        "second",
+        "SI::second"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "SI_Second",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SI_Ampere",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:SI_Ampere",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SI Ampere (A)",
+      "category": "SI / QUDV ValueType",
+      "domain": "systems",
+      "description": "SI base unit of electric current (I^1) with linear scaling to coherent amperes.",
+      "provenance": "SI Brochure 9th Ed. (BIPM 2019) / ISO 80000-6 / OMG SysML 1.6 Annex E.5 QUDV",
+      "aliases": [
+        "A",
+        "ampere",
+        "SI::ampere"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "A",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "A",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "SI_Ampere",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SI_Kelvin",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:SI_Kelvin",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SI Kelvin (K)",
+      "category": "SI / QUDV ValueType",
+      "domain": "systems",
+      "description": "SI base unit of thermodynamic temperature (Theta^1) supporting affine offset conversions (e.g. Celsius + 273.15).",
+      "provenance": "SI Brochure 9th Ed. (BIPM 2019) / ISO 80000-5 / OMG SysML 1.6 Annex E.5 QUDV",
+      "aliases": [
+        "K",
+        "kelvin",
+        "SI::kelvin"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "K",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "K",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "SI_Kelvin",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SI_Newton",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:SI_Newton",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SI Newton (N)",
+      "category": "SI / QUDV ValueType",
+      "domain": "systems",
+      "description": "SI coherent derived unit of force (kg*m/s^2, L^1 M^1 T^-2).",
+      "provenance": "SI Brochure 9th Ed. (BIPM 2019) / ISO 80000-4 / OMG SysML 1.6 Annex E.5 QUDV",
+      "aliases": [
+        "N",
+        "newton",
+        "SI::newton"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "N",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": -2,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "SI_Newton",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SI_Pascal",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:SI_Pascal",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SI Pascal (Pa)",
+      "category": "SI / QUDV ValueType",
+      "domain": "systems",
+      "description": "SI coherent derived unit of pressure and mechanical stress (N/m^2, L^-1 M^1 T^-2).",
+      "provenance": "SI Brochure 9th Ed. (BIPM 2019) / ISO 80000-4 / OMG SysML 1.6 Annex E.5 QUDV",
+      "aliases": [
+        "Pa",
+        "pascal",
+        "SI::pascal"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "Pa",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "Pa",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": -2,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "SI_Pascal",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SI_Joule",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:SI_Joule",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SI Joule (J)",
+      "category": "SI / QUDV ValueType",
+      "domain": "systems",
+      "description": "SI coherent derived unit of energy, work, and heat (N*m, L^2 M^1 T^-2).",
+      "provenance": "SI Brochure 9th Ed. (BIPM 2019) / ISO 80000-4 / OMG SysML 1.6 Annex E.5 QUDV",
+      "aliases": [
+        "J",
+        "joule",
+        "SI::joule"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "J",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "J",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": -2,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "SI_Joule",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SI_Watt",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:SI_Watt",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SI Watt (W)",
+      "category": "SI / QUDV ValueType",
+      "domain": "systems",
+      "description": "SI coherent derived unit of power and radiant flux (J/s, L^2 M^1 T^-3).",
+      "provenance": "SI Brochure 9th Ed. (BIPM 2019) / ISO 80000-4 / OMG SysML 1.6 Annex E.5 QUDV",
+      "aliases": [
+        "W",
+        "watt",
+        "SI::watt"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "W",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "W",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": -3,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "SI_Watt",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SI_Volt",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:SI_Volt",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SI Volt (V)",
+      "category": "SI / QUDV ValueType",
+      "domain": "systems",
+      "description": "SI coherent derived unit of electric potential difference (W/A, L^2 M^1 T^-3 I^-1).",
+      "provenance": "SI Brochure 9th Ed. (BIPM 2019) / ISO 80000-6 / OMG SysML 1.6 Annex E.5 QUDV",
+      "aliases": [
+        "V",
+        "volt",
+        "SI::volt"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "V",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "V",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": -3,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "SI_Volt",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SI_Ohm",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:SI_Ohm",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SI Ohm (Ω)",
+      "category": "SI / QUDV ValueType",
+      "domain": "systems",
+      "description": "SI coherent derived unit of electrical resistance (V/A, L^2 M^1 T^-3 I^-2).",
+      "provenance": "SI Brochure 9th Ed. (BIPM 2019) / ISO 80000-6 / OMG SysML 1.6 Annex E.5 QUDV",
+      "aliases": [
+        "ohm",
+        "Ohm",
+        "SI::ohm"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "Ohm",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "Ohm",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": -3,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": -2,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "SI_Ohm",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SI_Hertz",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:SI_Hertz",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SI Hertz (Hz)",
+      "category": "SI / QUDV ValueType",
+      "domain": "systems",
+      "description": "SI coherent derived unit of frequency (1/s, T^-1).",
+      "provenance": "SI Brochure 9th Ed. (BIPM 2019) / ISO 80000-3 / OMG SysML 1.6 Annex E.5 QUDV",
+      "aliases": [
+        "Hz",
+        "hertz",
+        "SI::hertz"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "Hz",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "Hz",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "SI_Hertz",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "QUDV_Unit",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:QUDV_Unit",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "QUDV Conversion Unit",
+      "category": "SI / QUDV ValueType",
+      "domain": "systems",
+      "description": "OMG SysML QUDV Unit supporting affine/linear dimensional conversion y = factor*x + offset to a reference unit.",
+      "provenance": "OMG SysML 1.6 Specification, Annex E.5 (QUDV — Quantities, Units, Dimensions, Values)",
+      "aliases": [
+        "Unit",
+        "QUDV::Unit",
+        "AffineConversionUnit",
+        "LinearConversionUnit"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "QUDV_Unit",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "QUDV_QuantityKind",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:QUDV_QuantityKind",
+    "exports": [
+      "factor",
+      "offset",
+      "dimL",
+      "dimM",
+      "dimT",
+      "dimI",
+      "dimTheta"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "QUDV QuantityKind",
+      "category": "SI / QUDV ValueType",
+      "domain": "systems",
+      "description": "OMG SysML QUDV QuantityKind capturing ISO 80000 dimensional exponents (L, M, T, I, Theta).",
+      "provenance": "OMG SysML 1.6 Specification, Annex E.5 (QUDV) / ISO 80000-1",
+      "aliases": [
+        "QuantityKind",
+        "QUDV::QuantityKind"
+      ],
+      "parameters": [
+        {
+          "key": "factor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Linear conversion factor a in y = a*x + b to SI coherent unit"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Affine conversion offset b in y = a*x + b"
+        },
+        {
+          "key": "dimL",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 length dimension exponent (L)"
+        },
+        {
+          "key": "dimM",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 mass dimension exponent (M)"
+        },
+        {
+          "key": "dimT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 time dimension exponent (T)"
+        },
+        {
+          "key": "dimI",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 electric current dimension exponent (I)"
+        },
+        {
+          "key": "dimTheta",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "ISO 80000 thermodynamic temperature dimension exponent (Theta)"
+        }
+      ],
+      "wasmKernel": "QUDV_QuantityKind",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "CST_SimulationConfig",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:CST_SimulationConfig",
+    "exports": [
+      "startTime",
+      "stopTime",
+      "stepSize",
+      "sampleCount"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cameo Simulation Configuration",
+      "category": "Cameo Simulation Toolkit",
+      "domain": "systems",
+      "description": "Execution configuration defining simulation time window, fixed step size, and target execution block.",
+      "provenance": "OMG fUML 1.5 / OMG SysML 1.6 / Cameo Simulation Toolkit Public Execution Semantics",
+      "aliases": [
+        "SimulationConfig",
+        "CST::SimulationConfig"
+      ],
+      "parameters": [
+        {
+          "key": "startTime",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Simulation start time"
+        },
+        {
+          "key": "stopTime",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Simulation stop time"
+        },
+        {
+          "key": "stepSize",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "s",
+          "description": "Fixed time-step increment"
+        },
+        {
+          "key": "sampleCount",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "",
+          "description": "Sample count for time-series or Monte Carlo runs"
+        }
+      ],
+      "wasmKernel": "CST_SimulationConfig",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "CST_TimeSeriesChart",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:CST_TimeSeriesChart",
+    "exports": [
+      "startTime",
+      "stopTime",
+      "stepSize",
+      "sampleCount"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cameo TimeSeriesChart Recorder",
+      "category": "Cameo Simulation Toolkit",
+      "domain": "systems",
+      "description": "Runtime telemetry recorder tracking running mean, min/max bounds, and sample count over simulation time.",
+      "provenance": "OMG SysML 1.6 Parametric Simulation / Cameo Simulation Toolkit Telemetry Pattern",
+      "aliases": [
+        "TimeSeriesChart",
+        "CST::TimeSeriesChart"
+      ],
+      "parameters": [
+        {
+          "key": "startTime",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Simulation start time"
+        },
+        {
+          "key": "stopTime",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Simulation stop time"
+        },
+        {
+          "key": "stepSize",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "s",
+          "description": "Fixed time-step increment"
+        },
+        {
+          "key": "sampleCount",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "",
+          "description": "Sample count for time-series or Monte Carlo runs"
+        }
+      ],
+      "wasmKernel": "CST_TimeSeriesChart",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "CST_ConstraintEvaluator",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:CST_ConstraintEvaluator",
+    "exports": [
+      "tolerance",
+      "mode",
+      "scale"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cameo Parametric Constraint Evaluator",
+      "category": "Cameo Simulation Toolkit",
+      "domain": "systems",
+      "description": "Evaluates parametric constraint residuals |lhs - rhs| <= tol and reports pass/fail satisfaction status.",
+      "provenance": "OMG SysML 1.6 Section 10 (Constraint Blocks) / Parametric Solver Semantics",
+      "aliases": [
+        "ConstraintEvaluator",
+        "CST::ConstraintEvaluator"
+      ],
+      "parameters": [
+        {
+          "key": "tolerance",
+          "type": "real",
+          "defaultValue": 0.000001,
+          "unit": "",
+          "description": "Absolute tolerance for residual satisfaction |lhs - rhs| <= tol"
+        },
+        {
+          "key": "mode",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Comparison mode (0: |lhs-rhs|<=tol, 1: lhs<=rhs+tol, 2: lhs>=rhs-tol)"
+        },
+        {
+          "key": "scale",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Residual normalization scale"
+        }
+      ],
+      "wasmKernel": "CST_ConstraintEvaluator",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "CST_RollupPattern",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:CST_RollupPattern",
+    "exports": [
+      "ownValue",
+      "contingencyMarginPct",
+      "multiplier",
+      "budgetLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cameo Mass / Power / Cost Rollup Pattern",
+      "category": "Cameo Simulation Toolkit",
+      "domain": "systems",
+      "description": "Hierarchical bottom-up aggregation pattern summing own value and child part contributions with contingency margin.",
+      "provenance": "OMG SysML 1.6 Section 10 / INCOSE Systems Engineering Handbook Rollup Pattern",
+      "aliases": [
+        "RollupPattern",
+        "MassRollup",
+        "PowerRollup",
+        "CostRollup",
+        "CST::RollupPattern"
+      ],
+      "parameters": [
+        {
+          "key": "ownValue",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Self contribution to rollup aggregation (mass, power, or cost)"
+        },
+        {
+          "key": "contingencyMarginPct",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "%",
+          "description": "Design contingency margin percentage"
+        },
+        {
+          "key": "multiplier",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Multiplicity scaling factor"
+        },
+        {
+          "key": "budgetLimit",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Optional upper budget limit (0 = unlimited)"
+        }
+      ],
+      "wasmKernel": "CST_RollupPattern",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "CST_MonteCarloConfig",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:CST_MonteCarloConfig",
+    "exports": [
+      "startTime",
+      "stopTime",
+      "stepSize",
+      "sampleCount"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cameo Monte Carlo Analysis Configuration",
+      "category": "Cameo Simulation Toolkit",
+      "domain": "systems",
+      "description": "Stochastic parameter sweep configuration aggregating sample statistics across N Monte Carlo trials.",
+      "provenance": "OMG SysML 1.6 Parametric Trade Studies / ISO/IEC Guide 98-3 (GUM Supplement 1)",
+      "aliases": [
+        "MonteCarloConfig",
+        "CST::MonteCarloConfig"
+      ],
+      "parameters": [
+        {
+          "key": "startTime",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Simulation start time"
+        },
+        {
+          "key": "stopTime",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Simulation stop time"
+        },
+        {
+          "key": "stepSize",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "s",
+          "description": "Fixed time-step increment"
+        },
+        {
+          "key": "sampleCount",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "",
+          "description": "Sample count for time-series or Monte Carlo runs"
+        }
+      ],
+      "wasmKernel": "CST_MonteCarloConfig",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "UML_Standard_Profile",
+    "kind": "magicdraw_std_element",
+    "namePath": "magicdraw:UML_Standard_Profile",
+    "exports": [
+      "gain",
+      "conjugated"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "OMG UML 2.5.1 Standard Profile",
+      "category": "Cameo Simulation Toolkit",
+      "domain": "systems",
+      "description": "Standard OMG UML 2.5.1 stereotypes («Refine», «Trace», «Derive», «Create», «Destroy», «Instantiate», «Specification»).",
+      "provenance": "OMG UML 2.5.1 Specification, Section 22 (Standard Profile)",
+      "aliases": [
+        "StandardProfile",
+        "UML::StandardProfile"
+      ],
+      "parameters": [
+        {
+          "key": "gain",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Signal/flow pass-through gain"
+        },
+        {
+          "key": "conjugated",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Conjugated port flag (0: normal, 1: conjugated)"
+        }
+      ],
+      "wasmKernel": "UML_Standard_Profile",
+      "archetypeId": 5
+    }
+  }
+]

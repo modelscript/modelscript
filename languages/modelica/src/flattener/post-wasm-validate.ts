@@ -786,7 +786,14 @@ function collectComponentPrefixWords(
       return;
     }
     for (const ch of node.children) {
-      if (ch.type === "type_specifier" || ch.type === "component_list") break;
+      if (
+        ch.type === "type_specifier" ||
+        ch.type === "component_list" ||
+        ch.type === "component_declaration" ||
+        ch.type === "component_declaration1" ||
+        ch.type === "declaration"
+      )
+        break;
       collectLeaves(ch);
     }
   };
@@ -798,7 +805,14 @@ function collectComponentPrefixWords(
   }
   if (declClause?.type === "component_clause") {
     for (const ch of declClause.children) {
-      if (ch.type === "type_specifier" || ch.type === "component_list") break;
+      if (
+        ch.type === "type_specifier" ||
+        ch.type === "component_list" ||
+        ch.type === "component_declaration" ||
+        ch.type === "component_declaration1" ||
+        ch.type === "declaration"
+      )
+        break;
       collectLeaves(ch);
     }
   }

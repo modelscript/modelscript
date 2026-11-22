@@ -306,7 +306,7 @@ export declare class LspFacade {
    */
   scheduleCompaction(immediate?: boolean): void;
   /**
-   * Trigger 2: Checks if allocated memory exceeds high-water mark quota.
+   * Trigger 2: Checks if live allocated arena memory exceeds high-water mark quota.
    */
   checkMemoryQuota(): void;
   /**
@@ -1486,14 +1486,14 @@ export declare enum SyntaxKind {
   _START = 112,
   EmptyStatement = 115,
   _EmptyStatement = 115,
-  INCLUDEDIRECTIVE = 162,
-  INCLUDE_DIRECTIVE = 162,
-  USEDIRECTIVE = 163,
-  USE_DIRECTIVE = 163,
-  IDENTIFIER = 164,
-  NUMBER = 165,
-  STRING = 166,
-  UNDEF = 168,
+  INCLUDEDIRECTIVE = 148,
+  INCLUDE_DIRECTIVE = 148,
+  USEDIRECTIVE = 149,
+  USE_DIRECTIVE = 149,
+  IDENTIFIER = 150,
+  NUMBER = 151,
+  STRING = 152,
+  UNDEF = 154,
   EOF = 1023,
 }
 

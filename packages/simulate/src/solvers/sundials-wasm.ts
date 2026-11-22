@@ -594,7 +594,9 @@ export class CvodeFmuDirectSolver {
     let eventFn: EventFunction | undefined = undefined;
 
     if (nEvents > 0 && fmuInstance.getEventIndicators) {
-      eventFn = (_t: number, _y: Float64Array, gout: Float64Array): number => {
+      eventFn = (t: number, y: Float64Array, gout: Float64Array): number => {
+        if (fmuInstance.fmiSetTime) fmuInstance.fmiSetTime(t);
+        if (fmuInstance.setContinuousStates) fmuInstance.setContinuousStates(y);
         const ind = fmuInstance.getEventIndicators!();
         for (let i = 0; i < nEvents; i++) gout[i] = ind[i] ?? 0;
         return 0;

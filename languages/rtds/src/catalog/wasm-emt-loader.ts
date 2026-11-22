@@ -40,6 +40,8 @@ export interface RtdsEmtIO {
   meas?: number | undefined;
   va2?: number | undefined;
   ia2?: number | undefined;
+  vb2?: number | undefined;
+  vc2?: number | undefined;
 }
 
 export interface RtdsEmtStepOutput {
@@ -65,6 +67,16 @@ export interface RtdsEmtStepOutput {
   qOut: number;
   va2: number;
   ia2: number;
+  vb2?: number | undefined;
+  vc2?: number | undefined;
+  ib2?: number | undefined;
+  ic2?: number | undefined;
+  iHistB?: number | undefined;
+  iHistC?: number | undefined;
+  vCapUpper?: number | undefined;
+  vCapLower?: number | undefined;
+  iArmUpper?: number | undefined;
+  iArmLower?: number | undefined;
 }
 
 export interface RtdsLinkedEmtInstance {
@@ -118,6 +130,8 @@ function writeIo(views: CachedMemoryViews, slotPtr: number, io?: RtdsEmtIO): voi
   if (io.meas !== undefined) views.f64[base + 15] = io.meas;
   if (io.va2 !== undefined) views.f64[base + 22] = io.va2;
   if (io.ia2 !== undefined) views.f64[base + 23] = io.ia2;
+  if (io.vb2 !== undefined) views.f64[base + 24] = io.vb2;
+  if (io.vc2 !== undefined) views.f64[base + 25] = io.vc2;
 }
 
 function readOutput(views: CachedMemoryViews, slotPtr: number): RtdsEmtStepOutput {
@@ -145,6 +159,16 @@ function readOutput(views: CachedMemoryViews, slotPtr: number): RtdsEmtStepOutpu
     qOut: views.f64[base + 21] ?? 0,
     va2: views.f64[base + 22] ?? 0,
     ia2: views.f64[base + 23] ?? 0,
+    vb2: views.f64[base + 24] ?? 0,
+    vc2: views.f64[base + 25] ?? 0,
+    ib2: views.f64[base + 26] ?? 0,
+    ic2: views.f64[base + 27] ?? 0,
+    iHistB: views.f64[base + 28] ?? 0,
+    iHistC: views.f64[base + 29] ?? 0,
+    vCapUpper: views.f64[base + 30] ?? 0,
+    vCapLower: views.f64[base + 31] ?? 0,
+    iArmUpper: views.f64[base + 32] ?? 0,
+    iArmLower: views.f64[base + 33] ?? 0,
   };
 }
 

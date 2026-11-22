@@ -9,6 +9,7 @@
  */
 
 import { BinOp, Causality, EqKind, type IDaeBuilder, VarType, Variability } from "@modelscript/runtime";
+import { ensureBuiltInEasy5LibraryRegistered, lookupEasy5ModelSchema } from "../catalog/library-package-adapter.js";
 import { lowerUserComponentToDae } from "../script/user-code.js";
 import type { Easy5Component, Easy5Model } from "../types.js";
 
@@ -18,7 +19,32 @@ export interface Easy5DaeLoweringResult {
   variableMap: Map<string, number>;
 }
 
+/**
+ * Resolves parameter defaults for an EASY5 component model from `@modelscript/easy5-std-lib`,
+ * merging any user-specified overrides over the cleanroom schema defaults.
+ */
+export function resolveEasy5SchemaParamDefaults(
+  modelType: string,
+  overrides: Record<string, number | string | boolean> = {},
+): Record<string, number | string | boolean> {
+  ensureBuiltInEasy5LibraryRegistered();
+  const out: Record<string, number | string | boolean> = {};
+  const schema = lookupEasy5ModelSchema(modelType);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (p.defaultValue !== undefined) {
+        out[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
+
 export function lowerEasy5ToDae(builder: IDaeBuilder, model: Easy5Model): Easy5DaeLoweringResult {
+  ensureBuiltInEasy5LibraryRegistered();
   const variableMap = new Map<string, number>();
   const stateVarIndices: number[] = [];
   let equationCount = 0;

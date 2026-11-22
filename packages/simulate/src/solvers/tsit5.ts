@@ -28,7 +28,18 @@
  */
 
 import { getDefaultWasmExports } from "@modelscript/runtime";
+import { WasmScratchPool, type WasmMemoryHost, type WasmScratchScope } from "@modelscript/solve";
 import type { CommonSolverResult, ODEProblem, SolverStats } from "../core/problem-types.js";
+
+const _tsit5ScratchPools = new WeakMap<object, WasmScratchPool>();
+function getTsit5Pool(wasm: WasmMemoryHost): WasmScratchPool {
+  let pool = _tsit5ScratchPools.get(wasm);
+  if (!pool) {
+    pool = new WasmScratchPool(wasm, 65536);
+    _tsit5ScratchPools.set(wasm, pool);
+  }
+  return pool;
+}
 
 // ── Butcher Tableau for Tsitouras 5(4) ──
 
@@ -285,8 +296,10 @@ export function tsit5(
   let b5Ptr = 0;
   let ePtr = 0;
 
+  let wasmScope: WasmScratchScope | null = null;
   if (hasWasm && wasm?.__new) {
-    const alloc = (bytes: number): number => wasm.__new!(bytes, 0);
+    wasmScope = getTsit5Pool(wasm).scope();
+    const alloc = (bytes: number): number => wasmScope!.allocU8(bytes).ptr;
     yPtr = alloc(n * 8);
     kBasePtr = alloc(7 * n * 8);
     yStagePtr = alloc(n * 8);
@@ -313,309 +326,317 @@ export function tsit5(
     new Float64Array(wasm.memory.buffer, kBasePtr, n).set(kBuffer.subarray(0, n));
   }
 
-  let prevEventVals: number[] = [];
-  if (effEventFunctions && effEventFunctions.length > 0) {
-    prevEventVals = computeEventValuesWithProbe(t, y);
-  }
-
-  while ((tEnd > t0 ? t < tEnd - 1e-14 : t > tEnd + 1e-14) && stats.acceptedSteps + stats.rejectedSteps < maxSteps) {
-    if (tEnd > t0) {
-      if (t + h > tEnd) h = tEnd - t;
-    } else {
-      if (t + h < tEnd) h = tEnd - t;
+  try {
+    let prevEventVals: number[] = [];
+    if (effEventFunctions && effEventFunctions.length > 0) {
+      prevEventVals = computeEventValuesWithProbe(t, y);
     }
 
-    if (Math.abs(h) < minStep) {
-      stats.converged = false;
-      break;
-    }
+    while ((tEnd > t0 ? t < tEnd - 1e-14 : t > tEnd + 1e-14) && stats.acceptedSteps + stats.rejectedSteps < maxSteps) {
+      if (tEnd > t0) {
+        if (t + h > tEnd) h = tEnd - t;
+      } else {
+        if (t + h < tEnd) h = tEnd - t;
+      }
 
-    let maxErrorRatio = 0.0;
+      if (Math.abs(h) < minStep) {
+        stats.converged = false;
+        break;
+      }
 
-    if (hasWasm && wasm?.tsit5_combine_stage && wasm.tsit5_compute_step_and_error) {
-      const kView = new Float64Array(wasm.memory.buffer, kBasePtr, 7 * n);
-      const stageOutView = new Float64Array(wasm.memory.buffer, yStagePtr, n);
+      let maxErrorRatio = 0.0;
 
-      // Stages 1 to 5 via WASM SIMD / linear memory kernel
-      for (let s = 1; s <= 5; s++) {
-        const c_s = TSIT5_C[s]!;
-        wasm.tsit5_combine_stage(n, yPtr, kBasePtr, aRowPtrs[s - 1]!, s, h, yStagePtr);
-        for (let i = 0; i < n; i++) {
-          yStage[i] = stageOutView[i]!;
+      if (hasWasm && wasm?.tsit5_combine_stage && wasm.tsit5_compute_step_and_error) {
+        const kView = new Float64Array(wasm.memory.buffer, kBasePtr, 7 * n);
+        const stageOutView = new Float64Array(wasm.memory.buffer, yStagePtr, n);
+
+        // Stages 1 to 5 via WASM SIMD / linear memory kernel
+        for (let s = 1; s <= 5; s++) {
+          const c_s = TSIT5_C[s]!;
+          wasm.tsit5_combine_stage(n, yPtr, kBasePtr, aRowPtrs[s - 1]!, s, h, yStagePtr);
+          for (let i = 0; i < n; i++) {
+            yStage[i] = stageOutView[i]!;
+          }
+          const fs = f(t + c_s * h, yStage);
+          k[s] = fs;
+          const sOffset = s * n;
+          for (let i = 0; i < n; i++) {
+            const val = fs[i] ?? 0;
+            kBuffer[sOffset + i] = val;
+            kView[sOffset + i] = val;
+          }
+          stats.fEvals++;
         }
-        const fs = f(t + c_s * h, yStage);
-        k[s] = fs;
-        const sOffset = s * n;
+
+        // Compute candidate state yNew
+        wasm.tsit5_combine_stage(n, yPtr, kBasePtr, b5Ptr, 6, h, yNewPtr);
+        const yNewView = new Float64Array(wasm.memory.buffer, yNewPtr, n);
         for (let i = 0; i < n; i++) {
-          const val = fs[i] ?? 0;
-          kBuffer[sOffset + i] = val;
-          kView[sOffset + i] = val;
+          yNew[i] = yNewView[i]!;
+        }
+
+        // Stage 6 (FSAL evaluation: f at new candidate state)
+        const f6 = f(t + h, yNew);
+        k[6] = f6;
+        const offset6 = 6 * n;
+        for (let i = 0; i < n; i++) {
+          const val = f6[i] ?? 0;
+          kBuffer[offset6 + i] = val;
+          kView[offset6 + i] = val;
         }
         stats.fEvals++;
-      }
 
-      // Compute candidate state yNew
-      wasm.tsit5_combine_stage(n, yPtr, kBasePtr, b5Ptr, 6, h, yNewPtr);
-      const yNewView = new Float64Array(wasm.memory.buffer, yNewPtr, n);
-      for (let i = 0; i < n; i++) {
-        yNew[i] = yNewView[i]!;
-      }
+        // Compute normalized embedded error norm in WASM
+        maxErrorRatio = wasm.tsit5_compute_step_and_error(n, yPtr, kBasePtr, b5Ptr, ePtr, h, atol, rtol, yNewPtr);
+      } else {
+        // TypeScript fallback for environments without WASM exports
+        // Stages 1 to 5
+        for (let s = 1; s <= 5; s++) {
+          const a_row = TSIT5_A[s]!;
+          const c_s = TSIT5_C[s]!;
+          for (let i = 0; i < n; i++) {
+            let sum = 0;
+            for (let j = 0; j < s; j++) {
+              sum += (a_row[j] ?? 0) * kBuffer[j * n + i]!;
+            }
+            yStage[i] = (y[i] ?? 0) + h * sum;
+          }
+          const fs = f(t + c_s * h, yStage);
+          k[s] = fs;
+          const sOffset = s * n;
+          for (let i = 0; i < n; i++) {
+            kBuffer[sOffset + i] = fs[i] ?? 0;
+          }
+          stats.fEvals++;
+        }
 
-      // Stage 6 (FSAL evaluation: f at new candidate state)
-      const f6 = f(t + h, yNew);
-      k[6] = f6;
-      const offset6 = 6 * n;
-      for (let i = 0; i < n; i++) {
-        const val = f6[i] ?? 0;
-        kBuffer[offset6 + i] = val;
-        kView[offset6 + i] = val;
-      }
-      stats.fEvals++;
-
-      // Compute normalized embedded error norm in WASM
-      maxErrorRatio = wasm.tsit5_compute_step_and_error(n, yPtr, kBasePtr, b5Ptr, ePtr, h, atol, rtol, yNewPtr);
-    } else {
-      // TypeScript fallback for environments without WASM exports
-      // Stages 1 to 5
-      for (let s = 1; s <= 5; s++) {
-        const a_row = TSIT5_A[s]!;
-        const c_s = TSIT5_C[s]!;
+        // Candidate new state yNew (using 5th-order weights TSIT5_B5)
         for (let i = 0; i < n; i++) {
           let sum = 0;
-          for (let j = 0; j < s; j++) {
-            sum += (a_row[j] ?? 0) * kBuffer[j * n + i]!;
+          for (let j = 0; j <= 5; j++) {
+            sum += (TSIT5_B5[j] ?? 0) * kBuffer[j * n + i]!;
           }
-          yStage[i] = (y[i] ?? 0) + h * sum;
+          yNew[i] = (y[i] ?? 0) + h * sum;
         }
-        const fs = f(t + c_s * h, yStage);
-        k[s] = fs;
-        const sOffset = s * n;
+
+        // Stage 6 (FSAL evaluation: f at new candidate state)
+        const f6 = f(t + h, yNew);
+        k[6] = f6;
+        const offset6 = 6 * n;
         for (let i = 0; i < n; i++) {
-          kBuffer[sOffset + i] = fs[i] ?? 0;
+          kBuffer[offset6 + i] = f6[i] ?? 0;
         }
         stats.fEvals++;
-      }
 
-      // Candidate new state yNew (using 5th-order weights TSIT5_B5)
-      for (let i = 0; i < n; i++) {
-        let sum = 0;
-        for (let j = 0; j <= 5; j++) {
-          sum += (TSIT5_B5[j] ?? 0) * kBuffer[j * n + i]!;
-        }
-        yNew[i] = (y[i] ?? 0) + h * sum;
-      }
-
-      // Stage 6 (FSAL evaluation: f at new candidate state)
-      const f6 = f(t + h, yNew);
-      k[6] = f6;
-      const offset6 = 6 * n;
-      for (let i = 0; i < n; i++) {
-        kBuffer[offset6 + i] = f6[i] ?? 0;
-      }
-      stats.fEvals++;
-
-      // Compute error estimate: err = h * sum(E[j] * k[j])
-      for (let i = 0; i < n; i++) {
-        let err_i = 0;
-        for (let j = 0; j <= 6; j++) {
-          err_i += (TSIT5_E[j] ?? 0) * kBuffer[j * n + i]!;
-        }
-        err_i = Math.abs(h * err_i);
-        const sc_i = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(yNew[i] ?? 0));
-        const ratio = err_i / sc_i;
-        if (ratio > maxErrorRatio) {
-          maxErrorRatio = ratio;
-        }
-      }
-    }
-
-    // Step acceptance check
-    if (maxErrorRatio <= 1.0) {
-      // Step accepted
-      stats.acceptedSteps++;
-
-      // Event detection between t and t+h
-      if (effEventFunctions && effEventFunctions.length > 0) {
-        const currEventVals = effEventFunctions.map((ef) => ef(t + h, yNew));
-        let eventTriggered = -1;
-        let eventDir: 1 | -1 = 1;
-        let bestTEvent = tEnd >= t0 ? Infinity : -Infinity;
-        let bestYEvent: number[] = [...yNew];
-
-        for (let ei = 0; ei < effEventFunctions.length; ei++) {
-          const vPrev = prevEventVals[ei] ?? 0;
-          const vCurr = currEventVals[ei] ?? 0;
-          const expectedDir = effEventDirections?.[ei] ?? 0;
-
-          if (vPrev * vCurr < 0 && Math.max(Math.abs(vPrev), Math.abs(vCurr)) > 1e-14) {
-            const dir: 1 | -1 = vCurr > vPrev ? 1 : -1;
-            if (expectedDir === 0 || expectedDir === dir) {
-              // Bisection root finding for candidate ei
-              let tLeft = t;
-              let tRight = t + h;
-              let yCand = [...yNew];
-              let valLeft = vPrev;
-
-              for (let iter = 0; iter < 30; iter++) {
-                const tMid = 0.5 * (tLeft + tRight);
-                const thetaMid = (tMid - t) / h;
-                const yMid = tsit5Interpolate(y, yNew, k, h, thetaMid);
-                const valMid = effEventFunctions[ei]!(tMid, yMid);
-
-                if (Math.abs(valMid) < 1e-12 || Math.abs(tRight - tLeft) < 1e-14) {
-                  yCand = yMid;
-                  tRight = tMid;
-                  break;
-                }
-                if (valLeft * valMid <= 0) {
-                  tRight = tMid;
-                } else {
-                  tLeft = tMid;
-                  valLeft = valMid;
-                }
-                yCand = yMid;
-              }
-
-              const isEarlier = tEnd >= t0 ? tRight < bestTEvent : tRight > bestTEvent;
-              if (isEarlier) {
-                bestTEvent = tRight;
-                bestYEvent = yCand;
-                eventTriggered = ei;
-                eventDir = dir;
-              }
-            }
+        // Compute error estimate: err = h * sum(E[j] * k[j])
+        for (let i = 0; i < n; i++) {
+          let err_i = 0;
+          for (let j = 0; j <= 6; j++) {
+            err_i += (TSIT5_E[j] ?? 0) * kBuffer[j * n + i]!;
           }
-        }
-
-        if (eventTriggered >= 0) {
-          const tEvent = bestTEvent;
-          const yEvent = bestYEvent;
-          const hasOutputGrid = denseOutputs && options.equidistantOutput !== false;
-
-          if (hasOutputGrid && outputTimes) {
-            while (outIdx < outputTimes.length) {
-              const tTarget = outputTimes[outIdx]!;
-              const beforeEvent = tEnd >= t0 ? tTarget < tEvent - 1e-14 : tTarget > tEvent + 1e-14;
-              if (beforeEvent) {
-                const theta = (tTarget - t) / h;
-                const yTarget = tsit5Interpolate(y, yNew, k, h, theta);
-                resultTimes.push(tTarget);
-                resultStates.push(yTarget);
-                outIdx++;
-              } else {
-                break;
-              }
-            }
-          }
-
-          if (effEventCallback) {
-            y = effEventCallback(tEvent, yEvent, eventTriggered, eventDir);
-          } else {
-            y = yEvent;
-          }
-
-          if (hasOutputGrid && outputTimes) {
-            if (outIdx < outputTimes.length && Math.abs(outputTimes[outIdx]! - tEvent) <= 1e-14) {
-              resultTimes.push(outputTimes[outIdx]!);
-              resultStates.push([...y]);
-              outIdx++;
-            }
-          } else {
-            resultTimes.push(tEvent);
-            resultStates.push([...y]);
-          }
-
-          t = tEvent;
-          k[0] = f(t, y);
-          for (let i = 0; i < n; i++) kBuffer[i] = k[0][i] ?? 0;
-          stats.fEvals++;
-          prevEventVals = computeEventValuesWithProbe(t, y);
-
-          if (hasWasm && wasm) {
-            new Float64Array(wasm.memory.buffer, yPtr, n).set(y);
-            new Float64Array(wasm.memory.buffer, kBasePtr, n).set(kBuffer.subarray(0, n));
-          }
-
-          h = Math.max(minStep, Math.min(h * 0.5, maxStep));
-          continue;
-        }
-        prevEventVals = currEventVals;
-      }
-
-      // Dense output extraction if requested
-      if (denseOutputs && outputTimes) {
-        while (outIdx < outputTimes.length) {
-          const tTarget = outputTimes[outIdx]!;
-          if ((tEnd > t0 && tTarget <= t + h) || (tEnd < t0 && tTarget >= t + h)) {
-            const theta = (tTarget - t) / h;
-            const yTarget = tsit5Interpolate(y, yNew, k, h, theta);
-            resultTimes.push(tTarget);
-            resultStates.push(yTarget);
-            outIdx++;
-          } else {
+          err_i = Math.abs(h * err_i);
+          const sc_i = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(yNew[i] ?? 0));
+          const ratio = err_i / sc_i;
+          if (!Number.isFinite(ratio)) {
+            maxErrorRatio = Infinity;
             break;
           }
-        }
-      } else {
-        resultTimes.push(t + h);
-        resultStates.push([...yNew]);
-      }
-
-      // Advance state and time
-      t += h;
-      for (let i = 0; i < n; i++) {
-        y[i] = yNew[i]!;
-      }
-
-      if (hasWasm && wasm) {
-        new Float64Array(wasm.memory.buffer, yPtr, n).set(new Float64Array(wasm.memory.buffer, yNewPtr, n));
-      }
-
-      // Step online STL monitors
-      if (options.stlMonitors && options.stlMonitors.length > 0) {
-        let earlyStop = false;
-        for (const m of options.stlMonitors) {
-          const stepRes = m.step(t, y);
-          if (stepRes.shouldTerminate) {
-            earlyStop = true;
+          if (ratio > maxErrorRatio) {
+            maxErrorRatio = ratio;
           }
         }
-        if (earlyStop) break;
       }
 
-      // FSAL: k[0] of next step is k[6] of current step
-      k[0] = k[6]!;
-      kBuffer.copyWithin(0, 6 * n, 7 * n);
-      if (hasWasm && wasm) {
-        new Float64Array(wasm.memory.buffer, kBasePtr, 7 * n).copyWithin(0, 6 * n, 7 * n);
+      // Step acceptance check
+      if (maxErrorRatio <= 1.0) {
+        // Step accepted
+        stats.acceptedSteps++;
+
+        // Event detection between t and t+h
+        if (effEventFunctions && effEventFunctions.length > 0) {
+          const currEventVals = effEventFunctions.map((ef) => ef(t + h, yNew));
+          let eventTriggered = -1;
+          let eventDir: 1 | -1 = 1;
+          let bestTEvent = tEnd >= t0 ? Infinity : -Infinity;
+          let bestYEvent: number[] = [...yNew];
+
+          for (let ei = 0; ei < effEventFunctions.length; ei++) {
+            const vPrev = prevEventVals[ei] ?? 0;
+            const vCurr = currEventVals[ei] ?? 0;
+            const expectedDir = effEventDirections?.[ei] ?? 0;
+
+            if (vPrev * vCurr < 0 && Math.max(Math.abs(vPrev), Math.abs(vCurr)) > 1e-14) {
+              const dir: 1 | -1 = vCurr > vPrev ? 1 : -1;
+              if (expectedDir === 0 || expectedDir === dir) {
+                // Bisection root finding for candidate ei
+                let tLeft = t;
+                let tRight = t + h;
+                let yCand = [...yNew];
+                let valLeft = vPrev;
+
+                for (let iter = 0; iter < 30; iter++) {
+                  const tMid = 0.5 * (tLeft + tRight);
+                  const thetaMid = (tMid - t) / h;
+                  const yMid = tsit5Interpolate(y, yNew, k, h, thetaMid);
+                  const valMid = effEventFunctions[ei]!(tMid, yMid);
+
+                  if (Math.abs(valMid) < 1e-12 || Math.abs(tRight - tLeft) < 1e-14) {
+                    yCand = yMid;
+                    tRight = tMid;
+                    break;
+                  }
+                  if (valLeft * valMid <= 0) {
+                    tRight = tMid;
+                  } else {
+                    tLeft = tMid;
+                    valLeft = valMid;
+                  }
+                  yCand = yMid;
+                }
+
+                const isEarlier = tEnd >= t0 ? tRight < bestTEvent : tRight > bestTEvent;
+                if (isEarlier) {
+                  bestTEvent = tRight;
+                  bestYEvent = yCand;
+                  eventTriggered = ei;
+                  eventDir = dir;
+                }
+              }
+            }
+          }
+
+          if (eventTriggered >= 0) {
+            const tEvent = bestTEvent;
+            const yEvent = bestYEvent;
+            const hasOutputGrid = denseOutputs && options.equidistantOutput !== false;
+
+            if (hasOutputGrid && outputTimes) {
+              while (outIdx < outputTimes.length) {
+                const tTarget = outputTimes[outIdx]!;
+                const beforeEvent = tEnd >= t0 ? tTarget < tEvent - 1e-14 : tTarget > tEvent + 1e-14;
+                if (beforeEvent) {
+                  const theta = (tTarget - t) / h;
+                  const yTarget = tsit5Interpolate(y, yNew, k, h, theta);
+                  resultTimes.push(tTarget);
+                  resultStates.push(yTarget);
+                  outIdx++;
+                } else {
+                  break;
+                }
+              }
+            }
+
+            if (effEventCallback) {
+              y = effEventCallback(tEvent, yEvent, eventTriggered, eventDir);
+            } else {
+              y = yEvent;
+            }
+
+            if (hasOutputGrid && outputTimes) {
+              if (outIdx < outputTimes.length && Math.abs(outputTimes[outIdx]! - tEvent) <= 1e-14) {
+                resultTimes.push(outputTimes[outIdx]!);
+                resultStates.push([...y]);
+                outIdx++;
+              }
+            } else {
+              resultTimes.push(tEvent);
+              resultStates.push([...y]);
+            }
+
+            t = tEvent;
+            k[0] = f(t, y);
+            for (let i = 0; i < n; i++) kBuffer[i] = k[0][i] ?? 0;
+            stats.fEvals++;
+            prevEventVals = computeEventValuesWithProbe(t, y);
+
+            if (hasWasm && wasm) {
+              new Float64Array(wasm.memory.buffer, yPtr, n).set(y);
+              new Float64Array(wasm.memory.buffer, kBasePtr, n).set(kBuffer.subarray(0, n));
+            }
+
+            h = Math.max(minStep, Math.min(h * 0.5, maxStep));
+            continue;
+          }
+          prevEventVals = currEventVals;
+        }
+
+        // Dense output extraction if requested
+        if (denseOutputs && outputTimes) {
+          while (outIdx < outputTimes.length) {
+            const tTarget = outputTimes[outIdx]!;
+            if ((tEnd > t0 && tTarget <= t + h) || (tEnd < t0 && tTarget >= t + h)) {
+              const theta = (tTarget - t) / h;
+              const yTarget = tsit5Interpolate(y, yNew, k, h, theta);
+              resultTimes.push(tTarget);
+              resultStates.push(yTarget);
+              outIdx++;
+            } else {
+              break;
+            }
+          }
+        } else {
+          resultTimes.push(t + h);
+          resultStates.push([...yNew]);
+        }
+
+        // Advance state and time
+        t += h;
+        for (let i = 0; i < n; i++) {
+          y[i] = yNew[i]!;
+        }
+
+        if (hasWasm && wasm) {
+          new Float64Array(wasm.memory.buffer, yPtr, n).set(new Float64Array(wasm.memory.buffer, yNewPtr, n));
+        }
+
+        // Step online STL monitors
+        if (options.stlMonitors && options.stlMonitors.length > 0) {
+          let earlyStop = false;
+          for (const m of options.stlMonitors) {
+            const stepRes = m.step(t, y);
+            if (stepRes.shouldTerminate) {
+              earlyStop = true;
+            }
+          }
+          if (earlyStop) break;
+        }
+
+        // FSAL: k[0] of next step is k[6] of current step
+        k[0] = k[6]!;
+        kBuffer.copyWithin(0, 6 * n, 7 * n);
+        if (hasWasm && wasm) {
+          new Float64Array(wasm.memory.buffer, kBasePtr, 7 * n).copyWithin(0, 6 * n, 7 * n);
+        }
+
+        // Step size adaptation (5th order: factor ~ (1/err)^(1/5))
+        const factor = Math.min(5.0, Math.max(0.2, 0.9 * Math.pow(maxErrorRatio, -0.2)));
+        h = Math.min(maxStep, Math.max(minStep, h * factor));
+      } else {
+        // Step rejected
+        stats.rejectedSteps++;
+        const factor = Math.min(1.0, Math.max(0.1, 0.9 * Math.pow(maxErrorRatio, -0.25)));
+        h = Math.max(minStep, h * factor);
       }
-
-      // Step size adaptation (5th order: factor ~ (1/err)^(1/5))
-      const factor = Math.min(5.0, Math.max(0.2, 0.9 * Math.pow(maxErrorRatio, -0.2)));
-      h = Math.min(maxStep, Math.max(minStep, h * factor));
-    } else {
-      // Step rejected
-      stats.rejectedSteps++;
-      const factor = Math.min(1.0, Math.max(0.1, 0.9 * Math.pow(maxErrorRatio, -0.25)));
-      h = Math.max(minStep, h * factor);
     }
-  }
 
-  // Ensure last output point is saved if denseOutputs specified
-  if (denseOutputs && outputTimes && outIdx < outputTimes.length) {
-    while (outIdx < outputTimes.length) {
-      resultTimes.push(outputTimes[outIdx]!);
-      resultStates.push([...y]);
-      outIdx++;
+    // Ensure last output point is saved if denseOutputs specified
+    if (denseOutputs && outputTimes && outIdx < outputTimes.length) {
+      while (outIdx < outputTimes.length) {
+        resultTimes.push(outputTimes[outIdx]!);
+        resultStates.push([...y]);
+        outIdx++;
+      }
     }
-  }
 
-  return {
-    times: resultTimes,
-    states: resultStates,
-    stats,
-    stlResults: options.stlMonitors ? options.stlMonitors.map((m) => m.finish()) : undefined,
-  };
+    return {
+      times: resultTimes,
+      states: resultStates,
+      stats,
+      stlResults: options.stlMonitors ? options.stlMonitors.map((m) => m.finish()) : undefined,
+    };
+  } finally {
+    wasmScope?.dispose();
+  }
 }
 
 /**

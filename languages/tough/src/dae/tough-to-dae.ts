@@ -10,13 +10,41 @@ import {
   Variability,
   VarType,
 } from "@modelscript/runtime";
+import { ensureBuiltInToughLibraryRegistered, lookupToughModelSchema } from "../catalog/library-package-adapter.js";
 import type { ToughDeck } from "../types.js";
+
+/**
+ * Resolves parameter defaults for a TOUGH model from `@modelscript/tough-std-lib`,
+ * merging any user-specified named overrides over the cleanroom schema defaults.
+ */
+export function resolveToughSchemaParamDefaults(
+  modelName: string,
+  overrides: Record<string, number> = {},
+): Record<string, number> {
+  ensureBuiltInToughLibraryRegistered();
+  const resolved: Record<string, number> = {};
+  const schema = lookupToughModelSchema(modelName);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (typeof p.defaultValue === "number" && Number.isFinite(p.defaultValue)) {
+        resolved[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (Number.isFinite(v)) {
+      resolved[k] = v;
+    }
+  }
+  return resolved;
+}
 
 /**
  * Lowers TOUGH2/TOUGH3 non-isothermal reservoir grid blocks and inter-element flux connections
  * directly into ModelScript's zero-overhead DAEBuilder linear arena.
  */
 export function lowerToughToDae(deck: ToughDeck, arenaTitle?: string): DAEBuilder {
+  ensureBuiltInToughLibraryRegistered();
   const title = arenaTitle ?? deck.title ?? "TOUGH_Geothermal_Reservoir";
   const interner = new StringInterner();
   const arena = new DAEBuilder(interner, title);

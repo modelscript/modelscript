@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { type ActionExecutionContext, choice, field, language, optional, repeat, seq } from "@modelscript/dsl";
+import { registerBuiltInEasy5LibrarySync } from "./catalog/library-package-adapter.js";
 import { indexEasy5Document } from "./indexing.js";
 import { Easy5ErrorCode } from "./lints/index.js";
 import { easy5PolyglotConfig, type SyncOptions } from "./tgg/index.js";
@@ -278,3 +279,6 @@ export const easy5Language = language({
 
   polyglot: easy5PolyglotConfig,
 });
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInEasy5LibrarySync();

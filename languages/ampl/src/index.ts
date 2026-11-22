@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./analysis.js";
+export * from "./catalog/index.js";
 export * from "./dae/index.js";
 export * from "./errors.js";
 export * from "./indexing.js";

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./catalog/index.js";
 export * from "./dae/dae-lower.js";
 export * from "./diagram-backend.js";
 export * from "./diagram/index.js";

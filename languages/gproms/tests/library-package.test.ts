@@ -172,4 +172,50 @@ describe("@modelscript/gproms — Cleanroom Standard Library (modelscript.yaml, 
     assert.equal(out.tempOut, 355.0);
     assert.equal(out.conversion, 0.62);
   });
+
+  it("solves 8-cell 1D method-of-lines axial-dispersion PML_PFR PDE and verifies Damkohler conversion vs CSTR", () => {
+    // Isothermal first-order reaction: Ea=0 => k = A = 0.2 1/s, V = 0.5 m^3, F = 0.05 m^3/s => tau = 10 s, Da = 2.0
+    // Exact N=8 tanks-in-series (D_ax -> 0) conversion: X_PFR8 = 1 - (1 + Da/8)^(-8) = 1 - 1.25^(-8) = 0.83223
+    // Single CSTR conversion: X_CSTR = Da / (1 + Da) = 2/3 = 0.66667
+    const io = { flowIn: 0.05, concIn: 100.0, tempIn: 350.0, pressureIn: 101325.0, coolantTemp: 350.0 };
+
+    const pfrPlug = instantiateGpromsWasmModel({
+      unitName: "PFR_LOW_DISP",
+      modelType: "PML_PFR",
+      // [V, A, Ea, dHrxn, rho, Cp, UA, L, D_ax, alpha_th]
+      params: [0.5, 0.2, 0.0, 0.0, 900.0, 2500.0, 0.0, 2.0, 1.0e-5, 1.0e-5],
+    });
+    assert.ok(pfrPlug, "Expected PML_PFR WASM instance");
+    assert.equal(pfrPlug.init(io), 16, "Expected 16 MOL states (8 C + 8 T)");
+
+    let pfrOut = pfrPlug.doStep(0.0, 0.1, io);
+    for (let k = 1; k < 400; k++) {
+      pfrOut = pfrPlug.doStep(k * 0.1, 0.1, io);
+    }
+
+    const expectedTanks8 = 1.0 - Math.pow(1.0 + 2.0 / 8.0, -8);
+    assert.ok(
+      Math.abs(pfrOut.conversion - expectedTanks8) < 0.015,
+      `Expected low-dispersion 8-cell PFR conversion ~ ${expectedTanks8.toFixed(4)}, got ${pfrOut.conversion.toFixed(4)}`,
+    );
+
+    // Higher axial dispersion (lower Peclet number) shifts conversion down toward CSTR limit
+    const pfrDisp = instantiateGpromsWasmModel({
+      unitName: "PFR_HIGH_DISP",
+      modelType: "PML_PFR",
+      params: [0.5, 0.2, 0.0, 0.0, 900.0, 2500.0, 0.0, 2.0, 0.25, 0.25],
+    });
+    assert.ok(pfrDisp);
+    pfrDisp.init(io);
+    let dispOut = pfrDisp.doStep(0.0, 0.02, io);
+    for (let k = 1; k < 2000; k++) {
+      dispOut = pfrDisp.doStep(k * 0.02, 0.02, io);
+    }
+
+    const cstrConv = 2.0 / 3.0;
+    assert.ok(
+      dispOut.conversion < pfrOut.conversion - 0.03 && dispOut.conversion > cstrConv,
+      `Expected axial-dispersion conversion (${dispOut.conversion.toFixed(4)}) strictly between CSTR (${cstrConv.toFixed(4)}) and plug-flow (${pfrOut.conversion.toFixed(4)})`,
+    );
+  });
 });

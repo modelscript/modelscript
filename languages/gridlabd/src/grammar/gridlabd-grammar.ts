@@ -101,6 +101,6 @@ export const gridlabdGrammar = language({
     Identifier: () => /[a-zA-Z_][a-zA-Z0-9_.:-]*/,
 
     LineComment: () => /\/\/[^\n]*/,
-    BlockComment: () => /\/\*[\s\S]*?\*\//,
+    BlockComment: () => /\/\*([^*]|\*+[^*/])*\*+\//,
   },
 });

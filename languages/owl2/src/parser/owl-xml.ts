@@ -529,10 +529,10 @@ export function parseOwlXmlToAxioms(source: string): OWL2Axiom[] {
             const chainIris = child.children.map((c) => resolveEntityIri(c));
             if (chainIris.length >= 2) {
               axioms.push({
-                type: "SubObjectPropertyChainOf",
-                propertyChainIris: chainIris,
+                type: "SubPropertyChainOf",
+                subPropertyChain: chainIris,
                 superPropertyIri: subjIri,
-              } as unknown as OWL2Axiom);
+              });
             }
           }
         }
@@ -704,10 +704,10 @@ export function parseOwlXmlToAxioms(source: string): OWL2Axiom[] {
           const chainIris = first.children.map((c) => resolveEntityIri(c));
           if (chainIris.length >= 2) {
             axioms.push({
-              type: "SubObjectPropertyChainOf",
-              propertyChainIris: chainIris,
+              type: "SubPropertyChainOf",
+              subPropertyChain: chainIris,
               superPropertyIri: supProp,
-            } as unknown as OWL2Axiom);
+            });
           }
         } else {
           const subProp = resolveEntityIri(first);

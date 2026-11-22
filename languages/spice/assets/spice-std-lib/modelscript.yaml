@@ -1,0 +1,11 @@
+name: "@modelscript/spice-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom SPICE / LTspice / PSpice standard semiconductor & behavioral primitive library (28 schemas, cleanroom SVG icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: spice
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

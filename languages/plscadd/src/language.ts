@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { cardDeckRules, language, type ActionExecutionContext } from "@modelscript/dsl";
+import { registerBuiltInPlsCaddLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerPlsCaddToDae } from "./dae/plscadd-to-dae.js";
 import { canIndexPlsCadd, indexPlsCaddDocument } from "./indexing.js";
 import { lintPlsCadd } from "./lints/index.js";
@@ -77,3 +78,6 @@ export const plscaddLanguage = language({
 });
 
 export default plscaddLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInPlsCaddLibrarySync();

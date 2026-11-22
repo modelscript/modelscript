@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { BinOp, Causality, EqKind, type IDaeBuilder, VarType, Variability } from "@modelscript/runtime";
+import { ensureBuiltInGtSuiteLibraryRegistered, lookupGtSuiteModelSchema } from "../catalog/library-package-adapter.js";
 import type {
   GtCylinderComponent,
   GtModel,
@@ -17,10 +18,35 @@ export interface GtDaeLoweringResult {
 }
 
 /**
+ * Resolves parameter defaults for a GT-SUITE engine/flow template from `@modelscript/gtsuite-std-lib`,
+ * merging any user-specified overrides over the cleanroom schema defaults.
+ */
+export function resolveGtSuiteSchemaParamDefaults(
+  modelType: string,
+  overrides: Record<string, number | string | boolean> = {},
+): Record<string, number | string | boolean> {
+  ensureBuiltInGtSuiteLibraryRegistered();
+  const out: Record<string, number | string | boolean> = {};
+  const schema = lookupGtSuiteModelSchema(modelType);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (p.defaultValue !== undefined) {
+        out[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
+
+/**
  * Lowers a GT-SUITE engine model into @modelscript/runtime's IDaeBuilder linear memory representation
  * using Mean-Value Engine Model (MVEM) continuous differential-algebraic equations.
  */
 export function lowerGtSuiteToDae(builder: IDaeBuilder, model: GtModel): GtDaeLoweringResult {
+  ensureBuiltInGtSuiteLibraryRegistered();
   const variableMap = new Map<string, number>();
   const stateVarIndices: number[] = [];
   let equationCount = 0;

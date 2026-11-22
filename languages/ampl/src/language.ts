@@ -5,6 +5,7 @@
  */
 
 import { cardDeckRules, language, type ActionExecutionContext } from "@modelscript/dsl";
+import { registerBuiltInAmplLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerAmplToDae } from "./dae/index.js";
 import { canIndexAmpl, indexAmplDocument } from "./indexing.js";
 import { instantiateAmpl } from "./instantiator/index.js";
@@ -262,3 +263,6 @@ export const amplLanguage = language({
 });
 
 export default amplLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInAmplLibrarySync();

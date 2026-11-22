@@ -159,6 +159,97 @@ describe("@modelscript/gtsuite — Cleanroom Standard Library (modelscript.yaml,
     assert.ok(tmOut.tempK > 300.5, `Expected ThermalMass temperature rise, got ${tmOut.tempK}`);
   });
 
+  it("propagates 1D Euler acoustic pressure waves in PipeRound (N=8 HLL cells) and evaluates 2D turbo maps", () => {
+    // 1. PipeRound: 1D Finite-Volume Euler wave-action propagation across 8 cells
+    const pipe = instantiateGtSuiteWasmModel({
+      id: "pipe_1",
+      modelType: "PipeRound",
+      params: { diameter: 0.05, length: 0.5, frictionFactor: 0.02 },
+    });
+    assert.ok(pipe, "Expected PipeRound WASM instance");
+    assert.equal(pipe.init({ pIn: 101325.0, tIn: 300.0, pOut: 101325.0, massFlow: 0.0 }), 24);
+    assert.ok(
+      pipe.checkFlatStart() < 1e-6,
+      `Expected uniform pipe flat-start residual ~0, got ${pipe.checkFlatStart()}`,
+    );
+
+    // Apply inlet compression pulse (160 kPa vs 101.325 kPa outlet)
+    // At t = 0.0008 s, acoustic wave (c ~ 347 m/s) travels ~0.28 m -> reaches midpoint cell 3 before outlet cell 7
+    const waveMid = pipe.doStep(0.0, 0.0008, { pIn: 160000.0, tIn: 300.0, pOut: 101325.0, massFlow: 0.0 });
+    assert.ok(
+      waveMid.auxOut > 105000.0,
+      `Expected acoustic compression wave to raise midpoint cell pressure > 105 kPa, got ${waveMid.auxOut}`,
+    );
+    assert.ok(
+      waveMid.auxOut > waveMid.pOut,
+      `Expected finite-speed wave propagation (pMid=${waveMid.auxOut} > pOut=${waveMid.pOut})`,
+    );
+
+    // Advance to t = 0.003 s -> pressure wave reaches outlet and establishes positive outflow
+    let waveLate = waveMid;
+    for (let k = 0; k < 4; k++) {
+      waveLate = pipe.doStep(0.0008 + k * 0.0006, 0.0006, { pIn: 160000.0, tIn: 300.0, pOut: 101325.0, massFlow: 0.0 });
+    }
+    assert.ok(waveLate.pOut > 105000.0, `Expected outlet cell pressure rise after wave transit, got ${waveLate.pOut}`);
+    assert.ok(
+      waveLate.massFlow > 0.05,
+      `Expected positive gas mass flow driven by pressure wave, got ${waveLate.massFlow}`,
+    );
+
+    // 2. Compressor & Turbine: 2D corrected-speed / pressure-ratio efficiency map penalties off-design
+    const comp = instantiateGtSuiteWasmModel({
+      id: "comp_map",
+      modelType: "Compressor",
+      params: { pressureRatio: 2.0, efficiency: 0.78, gamma: 1.4, cp: 1005.0, designMassFlow: 0.15 },
+    });
+    assert.ok(comp);
+    comp.init();
+    const compDes = comp.doStep(0.0, 0.001, {
+      pIn: 100000.0,
+      tIn: 300.0,
+      pOut: 200000.0,
+      massFlow: 0.15,
+      speedRpm: 100000.0,
+    });
+    const compOff = comp.doStep(0.001, 0.001, {
+      pIn: 100000.0,
+      tIn: 300.0,
+      pOut: 200000.0,
+      massFlow: 0.15,
+      speedRpm: 60000.0,
+    });
+    assert.ok(
+      compOff.tOut > compDes.tOut && compOff.powerW > compDes.powerW,
+      `Expected off-design compressor map penalty (tOut ${compOff.tOut} > ${compDes.tOut})`,
+    );
+
+    const turb = instantiateGtSuiteWasmModel({
+      id: "turb_map",
+      modelType: "Turbine",
+      params: { expansionRatio: 2.0, efficiency: 0.75, gamma: 1.34, cp: 1150.0, designMassFlow: 0.15 },
+    });
+    assert.ok(turb);
+    turb.init();
+    const turbDes = turb.doStep(0.0, 0.001, {
+      pIn: 200000.0,
+      tIn: 900.0,
+      pOut: 100000.0,
+      massFlow: 0.15,
+      speedRpm: 100000.0,
+    });
+    const turbOff = turb.doStep(0.001, 0.001, {
+      pIn: 200000.0,
+      tIn: 900.0,
+      pOut: 100000.0,
+      massFlow: 0.15,
+      speedRpm: 50000.0,
+    });
+    assert.ok(
+      turbOff.powerW < turbDes.powerW && turbOff.tOut > turbDes.tOut,
+      `Expected off-design turbine map efficiency drop (powerW ${turbOff.powerW} < ${turbDes.powerW})`,
+    );
+  });
+
   it("projects and links an FMI 2.0/3.0 user-defined FMU via FMI_CoSim", () => {
     const proj = fmuToGtSuiteBlock(
       {

@@ -168,6 +168,65 @@ describe("@modelscript/rocets — Cleanroom Standard Library (modelscript.yaml, 
     assert.ok(Number.isFinite(loxOut.enthalpy), "Expected finite LOX specific enthalpy");
   });
 
+  it("evaluates 2D turbopump psi(phi)/eta(phi) maps, NPSH cavitation breakdown, and cryogenic Tait EOS", () => {
+    // 1. PUMP psi(phi) drooping head curve & NPSH cavitation head breakdown
+    const pump = instantiateRocetsWasmModel({ id: "LOX_TP", modelType: "PUMP" });
+    assert.ok(pump);
+    pump.init();
+    const nom = pump.doStep(0.0, 0.01, { pIn: 3.5e5, tIn: 90.2, mdotIn: 50.0, speedRpm: 30000.0, density: 1141.0 });
+    const lowFlow = pump.doStep(0.01, 0.01, {
+      pIn: 3.5e5,
+      tIn: 90.2,
+      mdotIn: 10.0,
+      speedRpm: 30000.0,
+      density: 1141.0,
+    });
+    assert.ok(
+      lowFlow.headM > nom.headM,
+      `Expected higher shutoff-side head psi(phi=0.2) > psi(phi=1.0): ${lowFlow.headM} > ${nom.headM}`,
+    );
+
+    // Drop inlet pressure near LOX vapor pressure -> NPSH_a < NPSH_r triggers cavitation head breakdown
+    const cav = pump.doStep(0.02, 0.01, { pIn: 1.3e5, tIn: 90.2, mdotIn: 50.0, speedRpm: 30000.0, density: 1141.0 });
+    assert.ok(
+      cav.headM < 0.5 * nom.headM,
+      `Expected severe cavitation head breakdown at low NPSH: ${cav.headM} < ${0.5 * nom.headM}`,
+    );
+
+    // 2. TURBINE 2D velocity-ratio U/C0 efficiency map
+    const turb = instantiateRocetsWasmModel({ id: "DRIVE_TURB", modelType: "TURBINE" });
+    assert.ok(turb);
+    turb.init();
+    const turbDes = turb.doStep(0.0, 0.01, { pIn: 1.85e7, pOut: 1.0e7, tIn: 950.0, mdotIn: 15.0, speedRpm: 30000.0 });
+    const turbOff = turb.doStep(0.01, 0.01, { pIn: 1.85e7, pOut: 1.0e7, tIn: 950.0, mdotIn: 15.0, speedRpm: 15000.0 });
+    assert.ok(
+      turbOff.powerW < turbDes.powerW,
+      `Expected off-design turbine U/C0 efficiency penalty: ${turbOff.powerW} < ${turbDes.powerW}`,
+    );
+
+    // 3. Real-fluid cryogenic Tait compressibility for FLUID_LH2 & FLUID_CH4
+    const lh2 = instantiateRocetsWasmModel({ id: "LH2_TBL", modelType: "FLUID_LH2" });
+    assert.ok(lh2);
+    lh2.init();
+    const lh2LowP = lh2.doStep(0.0, 0.01, { pIn: 2.0e5, tIn: 20.27, mdotIn: 10.0 });
+    const lh2HighP = lh2.doStep(0.01, 0.01, { pIn: 3.0e7, tIn: 20.27, mdotIn: 10.0 });
+    assert.ok(
+      lh2HighP.density > lh2LowP.density * 1.15,
+      `Expected significant LH2 compressibility at 30 MPa: ${lh2HighP.density} vs ${lh2LowP.density}`,
+    );
+    assert.ok(lh2HighP.headM > 800.0, `Expected realistic LH2 acoustic sound speed in IO[15], got ${lh2HighP.headM}`);
+
+    const ch4 = instantiateRocetsWasmModel({ id: "CH4_TBL", modelType: "FLUID_CH4" });
+    assert.ok(ch4);
+    ch4.init();
+    const ch4LowP = ch4.doStep(0.0, 0.01, { pIn: 3.0e5, tIn: 111.67, mdotIn: 20.0 });
+    const ch4HighP = ch4.doStep(0.01, 0.01, { pIn: 2.5e7, tIn: 111.67, mdotIn: 20.0 });
+    assert.ok(
+      ch4HighP.density > ch4LowP.density,
+      `Expected LCH4 density compression at 25 MPa: ${ch4HighP.density} > ${ch4LowP.density}`,
+    );
+  });
+
   it("projects and links an FMI 2.0/3.0 user-defined FMU via USER_ROUTINE", () => {
     const proj = fmuToRocetsModule(
       {

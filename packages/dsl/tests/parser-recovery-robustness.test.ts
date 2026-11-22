@@ -36,7 +36,7 @@ const robustnessGrammar = language({
     Identifier: ($) => semanticToken("variable", /[a-zA-Z_][a-zA-Z0-9_]*/),
     Number: ($) => semanticToken("number", /[0-9]+(?:\.[0-9]+)?/),
     LineComment: ($) => semanticToken("comment", /\/\/[^\n]*/),
-    BlockComment: ($) => semanticToken("comment", /\/\*[\s\S]*?\*\//),
+    BlockComment: ($) => semanticToken("comment", /\/\*([^*]|\*+[^*/])*\*+\//),
   },
   extras: ($) => [/\s/, $.LineComment, $.BlockComment],
   lints: {

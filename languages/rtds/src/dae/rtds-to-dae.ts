@@ -5,7 +5,32 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInRtdsLibraryRegistered, lookupRtdsModelSchema } from "../catalog/library-package-adapter.js";
 import type { RtdsDraft } from "../types.js";
+
+/**
+ * Resolves parameter defaults for an RTDS EMT model from `@modelscript/rtds-std-lib`,
+ * merging any user-specified overrides over the cleanroom schema defaults.
+ */
+export function resolveRtdsSchemaParamDefaults(
+  modelType: string,
+  overrides: Record<string, number | string | boolean> = {},
+): Record<string, number | string | boolean> {
+  ensureBuiltInRtdsLibraryRegistered();
+  const out: Record<string, number | string | boolean> = {};
+  const schema = lookupRtdsModelSchema(modelType);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (p.defaultValue !== undefined) {
+        out[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
 
 function sanitize(name: string): string {
   return name.replace(/[^a-zA-Z0-9_]/g, "_");
@@ -16,6 +41,7 @@ function isGnd(node: string | undefined): boolean {
 }
 
 export function lowerRtdsToDae(draft: RtdsDraft, builder?: DAEBuilder): DAEBuilder {
+  ensureBuiltInRtdsLibraryRegistered();
   const dae = builder ?? new DAEBuilder(undefined, sanitize(draft.name || "RTDS_Case"));
   const nodeTerms = new Map<string, { exprId: number; isLeaving: boolean }[]>();
 

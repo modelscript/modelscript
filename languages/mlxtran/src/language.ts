@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { registerBuiltInMlxtranLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerMlxtranToDae } from "./dae/mlxtran-to-dae.js";
 import { mlxtranGrammar } from "./grammar/mlxtran-grammar.js";
 import { lintMlxtran } from "./lints/mlxtran-linter.js";
@@ -198,3 +199,6 @@ export const mlxtranLanguage = language({
     },
   ],
 });
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInMlxtranLibrarySync();

@@ -9,6 +9,10 @@
  */
 
 import { Causality, DAEBuilder, EqKind, ExprKind, StringInterner, Variability, VarType } from "@modelscript/runtime";
+import {
+  ensureBuiltInPowerFactoryLibraryRegistered,
+  lookupPowerFactoryModelSchema,
+} from "../catalog/library-package-adapter.js";
 import type { PowerFactoryModel } from "../types.js";
 
 export interface PowerFactoryDaeOptions {
@@ -21,14 +25,25 @@ function sanitizeId(raw: string): string {
   return raw.replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
+function resolvePowerFactorySchemaDefault(modelType: string | undefined, paramKey: string, fallback: number): number {
+  if (!modelType) return fallback;
+  const schema = lookupPowerFactoryModelSchema(modelType);
+  if (!schema) return fallback;
+  const keyLower = paramKey.toLowerCase();
+  const param = schema.parameters.find((p) => p.key.toLowerCase() === keyLower);
+  return typeof param?.defaultValue === "number" && Number.isFinite(param.defaultValue) ? param.defaultValue : fallback;
+}
+
 /**
  * Lowers a parsed PowerFactoryModel directly into a DAEBuilder arena.
  */
 export function lowerPowerFactoryToDae(model: PowerFactoryModel, options?: PowerFactoryDaeOptions): DAEBuilder {
+  ensureBuiltInPowerFactoryLibraryRegistered();
   const modelName = sanitizeId(options?.modelName ?? model.name ?? "PowerFactory_Grid");
   const interner = new StringInterner();
   const dae = options?.builder ?? new DAEBuilder(interner, modelName);
   const baseMVA = options?.baseMVA ?? 100.0;
+  const defaultNominalKv = resolvePowerFactorySchemaDefault("TypLne_OHL_110kV", "uline", 110.0);
 
   dae.addVariable("baseMVA", VarType.Real, Variability.Constant, Causality.Local, baseMVA);
 
@@ -39,16 +54,23 @@ export function lowerPowerFactoryToDae(model: PowerFactoryModel, options?: Power
     dae.addVariable(`V_${tId}_ang`, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
     dae.addVariable(`P_${tId}_inj`, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
     dae.addVariable(`Q_${tId}_inj`, VarType.Real, Variability.Continuous, Causality.Local, 0.0);
-    dae.addVariable(`U_${tId}_nom`, VarType.Real, Variability.Parameter, Causality.Local, term.uknom || 110.0);
+    dae.addVariable(
+      `U_${tId}_nom`,
+      VarType.Real,
+      Variability.Parameter,
+      Causality.Local,
+      term.uknom || defaultNominalKv,
+    );
   }
 
   // 2. Synchronous & static generators
   for (const gen of model.generators.values()) {
     if (gen.outserv) continue;
     const gId = sanitizeId(gen.id || gen.loc_name);
+    const defaultUset = resolvePowerFactorySchemaDefault(gen.typId, "usetp", 1.0);
     dae.addVariable(`P_gen_${gId}`, VarType.Real, Variability.Continuous, Causality.Local, gen.pgini);
     dae.addVariable(`Q_gen_${gId}`, VarType.Real, Variability.Continuous, Causality.Local, gen.qgini);
-    dae.addVariable(`U_set_${gId}`, VarType.Real, Variability.Parameter, Causality.Local, gen.usetp || 1.0);
+    dae.addVariable(`U_set_${gId}`, VarType.Real, Variability.Parameter, Causality.Local, gen.usetp || defaultUset);
   }
 
   for (const sgen of model.staticGenerators.values()) {

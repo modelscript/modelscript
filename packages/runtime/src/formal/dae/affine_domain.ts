@@ -358,11 +358,17 @@ export class AffineDomain implements ExprDomain<Aff>, AffineDomainHandle {
     if (w <= 1e-14) return this.fresh(direct);
 
     if (aVal > 0) {
-      const alpha = -1.0 / (aVal * bVal);
-      const dMin = 2.0 / Math.sqrt(aVal * bVal);
-      const dMax = (aVal + bVal) / (aVal * bVal);
+      const ab = aVal * bVal;
+      if (!Number.isFinite(ab) || ab <= 0) return this.fresh(direct);
+      const alpha = -1.0 / ab;
+      const dMin = 2.0 / Math.sqrt(ab);
+      const dMax = (aVal + bVal) / ab;
+      if (!Number.isFinite(dMin) || !Number.isFinite(dMax)) return this.fresh(direct);
       const zeta = 0.5 * (dMax + dMin);
-      const delta = nextUp(0.5 * (dMax - dMin));
+      const halfDiff = Math.max(0, subUp(dMax, dMin) * 0.5);
+      // Add conservative ULP padding on dMax/dMin/zeta so Chebyshev enclosure is strictly outward
+      const ulpPad = nextUp(Math.abs(zeta) + Math.abs(alpha) * bVal) - (Math.abs(zeta) + Math.abs(alpha) * bVal);
+      const delta = addUp(nextUp(halfDiff), nextUp(4 * ulpPad));
       const res = this.affineMap(a, alpha, zeta, delta);
       if (res.isTop) return this.fresh(direct);
       const hw = res.hull();

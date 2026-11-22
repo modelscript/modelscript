@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { OWL2Axiom } from "@modelscript/runtime";
-import { BUILTIN_OWL2_PREFIXES } from "../cst-lowering.js";
+import { BUILTIN_OWL2_PREFIXES, lowerCstToAxioms, type CstNodeLike } from "../cst-lowering.js";
 import { detectOwl2Format, parseOwlXmlToAxioms, parseTurtleToOwl2Axioms } from "../parser/index.js";
 
 // ── SROIQ(D) Class Expressions & Facets ──────────────────────────────────────
@@ -58,6 +58,8 @@ export interface PropertyChainAxiom {
 
 export interface Owl2ReasoningResult {
   consistent: boolean;
+  /** Set to `true` if tableau saturation hit an iteration or anonymous-witness bound. */
+  truncated?: boolean | undefined;
   unsatisfiableClasses: string[];
   clashes: string[];
   inferredSubClasses: Map<string, Set<string>>;
@@ -451,6 +453,7 @@ interface TableauAxiomInput {
   count?: unknown;
   subPropertyIri?: unknown;
   superPropertyIri?: unknown;
+  subPropertyChain?: unknown[];
   propertyChainIris?: unknown[];
   inversePropertyIri?: unknown;
   propertyIris?: unknown[];
@@ -526,8 +529,12 @@ export class Owl2TableauReasoner {
   /**
    * Parses OWL 2 Functional-Style Syntax (`.ofn`), Turtle (`.ttl`), or OWL/XML / RDF/XML (`.owx` / `.owl`)
    * text directly into the $\mathcal{SROIQ}(D)$ knowledge base.
+   * When `options.ofnParser` is provided, uses the native WASM GLR parser + `lowerCstToAxioms`.
    */
-  public loadSource(source: string): void {
+  public loadSource(
+    source: string,
+    options?: { ofnParser?: { parse(text: string): { rootNode: CstNodeLike } } | undefined },
+  ): void {
     const format = detectOwl2Format(source);
     if (format === "ttl") {
       this.addAxioms(parseTurtleToOwl2Axioms(source));
@@ -536,6 +543,13 @@ export class Owl2TableauReasoner {
     if (format === "owx") {
       this.addAxioms(parseOwlXmlToAxioms(source));
       return;
+    }
+    if (options?.ofnParser) {
+      const tree = options.ofnParser.parse(source);
+      if (tree?.rootNode) {
+        this.addAxioms(lowerCstToAxioms(tree.rootNode, source));
+        return;
+      }
     }
     const tokens = tokenizeOwlFunctional(source);
     const sexprs = parseSExprList(tokens);
@@ -1227,8 +1241,14 @@ export class Owl2TableauReasoner {
         this.subObjectProperties.push({ sub, sup });
         break;
       }
+      case "SubPropertyChainOf":
       case "SubObjectPropertyChainOf": {
-        const chain: string[] = Array.isArray(a.propertyChainIris) ? a.propertyChainIris.map(String) : [];
+        const rawChain = Array.isArray(a.subPropertyChain)
+          ? a.subPropertyChain
+          : Array.isArray(a.propertyChainIris)
+            ? a.propertyChainIris
+            : [];
+        const chain: string[] = rawChain.map(String);
         const sup = String(a.superPropertyIri);
         for (const p of chain) this.objectProperties.add(p);
         this.objectProperties.add(sup);
@@ -1545,16 +1565,29 @@ export class Owl2TableauReasoner {
   }
 
   /**
-   * Subset / ancestor blocking for anonymous witnesses (`_:anonN`):
-   * Returns `true` if `ind` is an anonymous individual and has an ancestor `anc`
-   * in the witness tree whose concept label is a superset of `ind`'s concept label
-   * ($\mathcal{L}(\text{ind}) \subseteq \mathcal{L}(\text{anc})$).
+   * Pairwise ancestor blocking for $\mathcal{SROIQ}$ anonymous witnesses (`_:anonN`):
+   * Returns `true` if `ind` is an anonymous individual and has an anonymous ancestor `anc`
+   * such that $\mathcal{L}(\text{ind}) \subseteq \mathcal{L}(\text{anc})$, and when `ind`'s
+   * parent is also anonymous, $\mathcal{L}(\text{parent}(\text{ind})) \subseteq \mathcal{L}(\text{parent}(\text{anc}))$.
    */
   private isBlocked(st: TableauState, ind: string): boolean {
     if (!ind.startsWith("_:anon")) return false;
     if (st.nextAnonId > 256) return true;
     const indConcepts = st.conceptsByInd.get(ind);
     if (!indConcepts || indConcepts.size === 0) return false;
+
+    const isConceptSubset = (sub: Map<string, TableauClassExpr>, sup: Map<string, TableauClassExpr>): boolean => {
+      if (sup.size < sub.size) return false;
+      for (const k of sub.keys()) {
+        if (!sup.has(k)) return false;
+      }
+      return true;
+    };
+
+    const indParentRaw = st.parentOf.get(ind);
+    const indParent = indParentRaw ? this.getRep(st, indParentRaw) : undefined;
+    const indParentIsAnon = Boolean(indParent && indParent.startsWith("_:anon"));
+    const indParentConcepts = indParentIsAnon && indParent ? st.conceptsByInd.get(indParent) : undefined;
 
     const visited = new Set<string>([ind]);
     let curr = st.parentOf.get(ind);
@@ -1563,15 +1596,16 @@ export class Owl2TableauReasoner {
       const anc = this.getRep(st, curr);
       if (anc.startsWith("_:anon")) {
         const ancConcepts = st.conceptsByInd.get(anc);
-        if (ancConcepts && ancConcepts.size >= indConcepts.size) {
-          let isSubset = true;
-          for (const k of indConcepts.keys()) {
-            if (!ancConcepts.has(k)) {
-              isSubset = false;
-              break;
-            }
+        if (ancConcepts && isConceptSubset(indConcepts, ancConcepts)) {
+          if (!indParentIsAnon || !indParentConcepts) {
+            return true;
           }
-          if (isSubset) return true;
+          const ancParentRaw = st.parentOf.get(anc);
+          const ancParent = ancParentRaw ? this.getRep(st, ancParentRaw) : undefined;
+          const ancParentConcepts = ancParent ? st.conceptsByInd.get(ancParent) : undefined;
+          if (ancParentConcepts && isConceptSubset(indParentConcepts, ancParentConcepts)) {
+            return true;
+          }
         }
       }
       curr = st.parentOf.get(curr);
@@ -1686,9 +1720,11 @@ export class Owl2TableauReasoner {
   private saturateDeterministic(st: TableauState): {
     clash?: string | undefined;
     branches?: Array<() => TableauState | null> | undefined;
+    truncated?: boolean | undefined;
   } {
     let changed = true;
     let iterations = 0;
+    let truncated = false;
 
     while (changed && ++iterations < 200) {
       changed = false;
@@ -2335,11 +2371,17 @@ export class Owl2TableauReasoner {
           }
         }
       }
+      if (changed && iterations >= 200) {
+        truncated = true;
+      }
+    }
+    if (st.nextAnonId > 256) {
+      truncated = true;
     }
 
     // Check clashes again after saturation
     const finalClash = this.detectClash(st);
-    if (finalClash) return { clash: finalClash };
+    if (finalClash) return { clash: finalClash, truncated };
 
     // ── Nondeterministic Branching Rules (Or-Rule, OneOf-Rule, MaxCard Choose & Merge Rules) ──
 
@@ -2446,7 +2488,7 @@ export class Owl2TableauReasoner {
       }
     }
 
-    return {};
+    return truncated ? { truncated: true } : {};
   }
 
   private satisfiesConceptDeterministically(st: TableauState, ind: string, expr: TableauClassExpr): boolean {
@@ -2623,7 +2665,59 @@ export class Owl2TableauReasoner {
       }
     }
 
-    // 3. Datatype interval & literal clashes (D)
+    // 3. Datatype disjointness, interval & literal clashes (D)
+    const datatypeFamily = (dt: string): "numeric" | "string" | "boolean" | "other" => {
+      const short = dt.includes("#") ? `xsd:${dt.split("#").pop()}` : dt;
+      if (
+        INTEGER_DATATYPES.has(short) ||
+        short === "xsd:decimal" ||
+        short === "xsd:double" ||
+        short === "xsd:float" ||
+        short === "owl:real"
+      ) {
+        return "numeric";
+      }
+      if (short === "xsd:string" || short === "rdf:PlainLiteral") return "string";
+      if (short === "xsd:boolean") return "boolean";
+      return "other";
+    };
+
+    for (const ind of st.individuals) {
+      const conceptMap = st.conceptsByInd.get(ind);
+      if (!conceptMap) continue;
+      const allFamiliesByProp = new Map<string, Set<string>>();
+      const someFamiliesByProp = new Map<string, Set<string>>();
+      for (const c of conceptMap.values()) {
+        if (c.kind === "DataAllValuesFrom") {
+          const fam = datatypeFamily(c.range.datatypeIri);
+          if (fam !== "other") {
+            const set = allFamiliesByProp.get(c.property) ?? new Set<string>();
+            set.add(fam);
+            allFamiliesByProp.set(c.property, set);
+          }
+        } else if (c.kind === "DataSomeValuesFrom") {
+          const fam = datatypeFamily(c.range.datatypeIri);
+          if (fam !== "other") {
+            const set = someFamiliesByProp.get(c.property) ?? new Set<string>();
+            set.add(fam);
+            someFamiliesByProp.set(c.property, set);
+          }
+        }
+      }
+      for (const [prop, someFams] of someFamiliesByProp) {
+        const allFams = allFamiliesByProp.get(prop);
+        if (allFams) {
+          for (const sf of someFams) {
+            for (const af of allFams) {
+              if (sf !== af) {
+                return `Disjoint datatype clash on '${ind}|${prop}': DataSomeValuesFrom(${sf}) contradicts DataAllValuesFrom(${af})`;
+              }
+            }
+          }
+        }
+      }
+    }
+
     for (const [key, iv] of st.dataIntervals) {
       const lits = st.dataLiterals.get(key);
       const someList = st.dataSomeRanges.get(key);
@@ -2692,11 +2786,16 @@ export class Owl2TableauReasoner {
    * Depth-first backtracking tableau search. Returns a clash-free completed `TableauState`
    * if one exists, or `{ model: null, clashes }` if all branches close with a clash.
    */
-  private solveTableau(initialState: TableauState, maxDepth = 64): { model: TableauState | null; clashes: string[] } {
+  private solveTableau(
+    initialState: TableauState,
+    maxDepth = 64,
+  ): { model: TableauState | null; clashes: string[]; truncated: boolean } {
     const clashes: string[] = [];
+    let truncated = false;
 
     const dfs = (st: TableauState, depth: number): TableauState | null => {
       const res = this.saturateDeterministic(st);
+      if (res.truncated) truncated = true;
       if (res.clash) {
         clashes.push(res.clash);
         return null;
@@ -2705,6 +2804,7 @@ export class Owl2TableauReasoner {
         return st;
       }
       if (depth >= maxDepth) {
+        truncated = true;
         clashes.push(`Maximum tableau branching depth (${maxDepth}) exceeded`);
         return null;
       }
@@ -2718,7 +2818,7 @@ export class Owl2TableauReasoner {
     };
 
     const model = dfs(initialState, 0);
-    return { model, clashes };
+    return { model, clashes, truncated };
   }
 
   // ── Public Reasoning API ───────────────────────────────────────────────────
@@ -2741,10 +2841,11 @@ export class Owl2TableauReasoner {
       };
     }
 
-    const { model, clashes } = this.solveTableau(init.state);
+    const { model, clashes, truncated } = this.solveTableau(init.state);
     if (!model) {
       return {
         consistent: false,
+        truncated: truncated || undefined,
         unsatisfiableClasses: [],
         clashes,
         inferredSubClasses: new Map(),
@@ -2807,15 +2908,44 @@ export class Owl2TableauReasoner {
       }
     }
 
-    // Compute inferred SubClassOf hierarchy among satisfiable named classes
+    // Compute inferred SubClassOf hierarchy using enhanced traversal (propagating told &
+    // already-discovered transitive superclasses to avoid redundant O(N^2) tableau calls)
     const inferredSubClasses = new Map<string, Set<string>>();
     const namedClassList = [...this.classes].filter((c) => c !== "owl:Nothing");
+    const toldSupers = new Map<string, Set<string>>();
+    for (const ax of this.subClassAxioms) {
+      if (ax.sub.kind === "NamedClass" && ax.sup.kind === "NamedClass") {
+        const s = toldSupers.get(ax.sub.iri) ?? new Set<string>();
+        s.add(ax.sup.iri);
+        toldSupers.set(ax.sub.iri, s);
+      }
+    }
+    const unsatSet = new Set(unsatisfiableClasses);
     for (const sub of namedClassList) {
       const supers = new Set<string>(["owl:Thing", sub]);
+      if (unsatSet.has(sub)) {
+        for (const sup of namedClassList) supers.add(sup);
+        inferredSubClasses.set(sub, supers);
+        continue;
+      }
+      // Seed with transitive told superclasses
+      const stack = [...(toldSupers.get(sub) ?? [])];
+      while (stack.length > 0) {
+        const t = stack.pop()!;
+        if (!supers.has(t) && t !== "owl:Nothing") {
+          supers.add(t);
+          const next = toldSupers.get(t);
+          if (next) for (const n of next) stack.push(n);
+        }
+      }
       for (const sup of namedClassList) {
-        if (sub !== sup && sup !== "owl:Thing") {
+        if (sub !== sup && sup !== "owl:Thing" && !supers.has(sup)) {
           if (this.isSubClassOf(sub, sup)) {
             supers.add(sup);
+            const knownSup = inferredSubClasses.get(sup);
+            if (knownSup) {
+              for (const k of knownSup) supers.add(k);
+            }
           }
         }
       }
@@ -2824,6 +2954,7 @@ export class Owl2TableauReasoner {
 
     return {
       consistent: true,
+      truncated: truncated || undefined,
       unsatisfiableClasses,
       clashes: [],
       inferredSubClasses,

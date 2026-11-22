@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 import { choice, field, language, repeat, seq } from "@modelscript/dsl";
+import { registerBuiltInAdamsLibrarySync } from "./catalog/library-package-adapter.js";
 import { indexAdamsDocument } from "./indexing.js";
 import { adamsPolyglotConfig } from "./tgg/index.js";
 
@@ -136,3 +137,6 @@ export const adamsLanguage = language({
 });
 
 export default adamsLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInAdamsLibrarySync();

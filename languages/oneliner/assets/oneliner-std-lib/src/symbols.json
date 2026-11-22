@@ -791,7 +791,11 @@
       "mtaDeg",
       "delaySec",
       "ctr",
-      "ptr"
+      "ptr",
+      "polMode",
+      "zSourceOhms",
+      "zSourceAngDeg",
+      "polFactor"
     ],
     "inherits": [],
     "metadata": {
@@ -840,6 +844,34 @@
           "defaultValue": 1200,
           "unit": "",
           "description": "Voltage transformer ratio"
+        },
+        {
+          "key": "polMode",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Polarization mode (0=self, 1=cross-polarized, 2=pos-seq memory)"
+        },
+        {
+          "key": "zSourceOhms",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "Ohm",
+          "description": "Source impedance magnitude |Zs| behind relay"
+        },
+        {
+          "key": "zSourceAngDeg",
+          "type": "real",
+          "defaultValue": 85,
+          "unit": "deg",
+          "description": "Source impedance angle"
+        },
+        {
+          "key": "polFactor",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Polarizing expansion factor k_pol (<0 uses mode default)"
         }
       ],
       "wasmKernel": "DIST_MHO_Z1",
@@ -856,7 +888,11 @@
       "mtaDeg",
       "delaySec",
       "ctr",
-      "ptr"
+      "ptr",
+      "polMode",
+      "zSourceOhms",
+      "zSourceAngDeg",
+      "polFactor"
     ],
     "inherits": [],
     "metadata": {
@@ -905,6 +941,34 @@
           "defaultValue": 1200,
           "unit": "",
           "description": "Voltage transformer ratio"
+        },
+        {
+          "key": "polMode",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Polarization mode (0=self, 1=cross-polarized, 2=pos-seq memory)"
+        },
+        {
+          "key": "zSourceOhms",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "Ohm",
+          "description": "Source impedance magnitude |Zs| behind relay"
+        },
+        {
+          "key": "zSourceAngDeg",
+          "type": "real",
+          "defaultValue": 85,
+          "unit": "deg",
+          "description": "Source impedance angle"
+        },
+        {
+          "key": "polFactor",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Polarizing expansion factor k_pol (<0 uses mode default)"
         }
       ],
       "wasmKernel": "DIST_MHO_Z2",

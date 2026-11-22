@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInFeaLibraryRegistered, lookupFeaCardSchema } from "../catalog/library-package-adapter.js";
 import type { FeaModelData } from "../types.js";
 
 export interface FeaDaeOptions {
@@ -11,10 +12,37 @@ export interface FeaDaeOptions {
 }
 
 /**
+ * Resolves parameter defaults for an FEA card/model from `@modelscript/fea-std-lib`,
+ * merging any user-specified named overrides over the cleanroom schema defaults.
+ */
+export function resolveFeaSchemaParamDefaults(
+  cardName: string,
+  overrides: Record<string, number> = {},
+): Record<string, number> {
+  ensureBuiltInFeaLibraryRegistered();
+  const resolved: Record<string, number> = {};
+  const schema = lookupFeaCardSchema(cardName);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (typeof p.defaultValue === "number" && Number.isFinite(p.defaultValue)) {
+        resolved[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (Number.isFinite(v)) {
+      resolved[k] = v;
+    }
+  }
+  return resolved;
+}
+
+/**
  * Lowers a Finite Element Analysis structural model directly into ModelScript's
  * zero-GC WebAssembly DAEBuilder struct-of-arrays arena.
  */
 export function feaToDae(model: FeaModelData, options?: FeaDaeOptions): DAEBuilder {
+  ensureBuiltInFeaLibraryRegistered();
   const modelName = (options?.modelName ?? model.heading ?? "FeaStructure").replace(/[^a-zA-Z0-9_]/g, "_");
   const dae = options?.builder ?? new DAEBuilder(undefined, modelName);
 

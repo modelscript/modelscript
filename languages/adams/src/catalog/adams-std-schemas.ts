@@ -179,7 +179,15 @@ const PAC2002_PARAMS: AdamsModelSpec["params"] = [
   ["Dy", 0.95, "1", "Lateral peak friction coefficient mu_y (D_y = mu_y * Fz)"],
   ["Ey", -0.5, "1", "Lateral curvature factor E_y"],
   ["fz0", 4000.0, "N", "Nominal vertical tire load F_z0"],
-  ["trail", 0.03, "m", "Nominal pneumatic trail t_p for aligning torque M_z"],
+  ["trail", 0.03, "m", "Nominal pneumatic trail t_p0 for aligning torque M_z"],
+  ["rBx1", 12.0, "1", "Combined-slip longitudinal weighting slope factor B_xalpha"],
+  ["rCx1", 1.0, "1", "Combined-slip longitudinal weighting shape factor C_xalpha"],
+  ["rBy1", 10.0, "1", "Combined-slip lateral weighting slope factor B_ykappa"],
+  ["rCy1", 1.0, "1", "Combined-slip lateral weighting shape factor C_ykappa"],
+  ["kGamma", 0.08, "1", "Camber thrust equivalent slip stiffness factor"],
+  ["Bt", 10.0, "1/rad", "Pneumatic trail stiffness factor B_t"],
+  ["Ct", 1.0, "1", "Pneumatic trail shape factor C_t"],
+  ["Et", -0.5, "1", "Pneumatic trail curvature factor E_t"],
 ];
 
 /**

@@ -1,25 +1,72 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createWasmParser } from "@modelscript/dsl/bindings";
+import { executeSparqlQuery, type GenericSyntaxNode } from "@modelscript/sparql";
 import express, { Router as createRouter, type Request, type Response, type Router } from "express";
-import { DataFactory } from "n3";
+import { DataFactory, Writer } from "n3";
+import { createRequire } from "node:module";
 
 import { SqliteRdfSource } from "../database-rdf.js";
 import type { LibraryDatabase } from "../database.js";
 
+const require = createRequire(import.meta.url);
+
+type SparqlQueryForm = "SELECT" | "ASK" | "CONSTRUCT" | "DESCRIBE" | "UNKNOWN";
+
 /**
- * Creates the Express router exposing W3C SPARQL 1.1 `SELECT` and `ASK` query endpoints
- * (`/api/v1/libraries/:name/:version/sparql` and `/api/v1/libraries/sparql/:name/:version/sparql`)
- * backed by `SqliteRdfSource` and Comunica.
+ * Strips leading `#` comments, `BASE <...>`, and `PREFIX ...: <...>` prologues
+ * to reliably identify the W3C SPARQL 1.1 query form.
+ */
+export function detectSparqlQueryForm(query: string): SparqlQueryForm {
+  let rest = query;
+  while (rest.length > 0) {
+    rest = rest.trimStart();
+    if (rest.startsWith("#")) {
+      const nl = rest.indexOf("\n");
+      rest = nl === -1 ? "" : rest.slice(nl + 1);
+      continue;
+    }
+    const prefixMatch = rest.match(/^PREFIX\s+[A-Za-z0-9_-]*:\s*<[^>]*>/i);
+    if (prefixMatch) {
+      rest = rest.slice(prefixMatch[0].length);
+      continue;
+    }
+    const baseMatch = rest.match(/^BASE\s*<[^>]*>/i);
+    if (baseMatch) {
+      rest = rest.slice(baseMatch[0].length);
+      continue;
+    }
+    break;
+  }
+  const head = rest.match(/^([A-Za-z]+)/)?.[1]?.toUpperCase();
+  if (head === "SELECT" || head === "ASK" || head === "CONSTRUCT" || head === "DESCRIBE") {
+    return head;
+  }
+  return "UNKNOWN";
+}
+
+let cachedSparqlParserPromise: Promise<{ parse(text: string): { rootNode: GenericSyntaxNode } }> | null = null;
+
+function getSparqlParser(): Promise<{ parse(text: string): { rootNode: GenericSyntaxNode } }> {
+  if (!cachedSparqlParserPromise) {
+    const wasmPath = require.resolve("@modelscript/sparql/parser.wasm");
+    cachedSparqlParserPromise = createWasmParser(wasmPath).then(
+      ({ parser }) => parser as unknown as { parse(text: string): { rootNode: GenericSyntaxNode } },
+    );
+  }
+  return cachedSparqlParserPromise;
+}
+
+/**
+ * Creates the Express router exposing W3C SPARQL 1.1 `SELECT`, `ASK`, `CONSTRUCT`, and `DESCRIBE`
+ * query endpoints (`/api/v1/libraries/:name/:version/sparql` and
+ * `/api/v1/libraries/:scope/:name/:version/sparql`) backed by `SqliteRdfSource` and our native
+ * `@modelscript/sparql` WebAssembly GLR parser + algebra engine.
  */
 export function sparqlRouter(database: LibraryDatabase): Router {
   const router = createRouter();
   const urlencodedParser = express.urlencoded({ extended: false });
 
-  /**
-   * GET/POST /api/v1/libraries/:name/:version/sparql
-   *
-   * Execute a SPARQL query against the library metadata.
-   */
   router.all(
     ["/:name/:version/sparql", "/:scope/:name/:version/sparql"],
     urlencodedParser,
@@ -34,7 +81,6 @@ export function sparqlRouter(database: LibraryDatabase): Router {
         return;
       }
 
-      // Extract the SPARQL query from the request
       const MAX_SPARQL_BYTES = 64 * 1024;
       let query: string | undefined;
       if (req.method === "GET") {
@@ -69,57 +115,55 @@ export function sparqlRouter(database: LibraryDatabase): Router {
         return;
       }
 
-      if (/\bSERVICE(?:\s+SILENT)?\s*[<a-zA-Z?(]/i.test(query)) {
-        res.status(400).json({ error: "Federated SPARQL SERVICE clauses are not permitted" });
+      const queryForm = detectSparqlQueryForm(query);
+      if (queryForm === "UNKNOWN") {
+        res.status(400).json({ error: "Only SELECT, ASK, CONSTRUCT, and DESCRIBE queries are supported" });
         return;
       }
 
-      // Build streaming SQL-backed source
       const source = new SqliteRdfSource(database.db, name, version);
 
       try {
-        // Dynamically import comunica and reuse a singleton QueryEngine instance
-        const { QueryEngine } = await import("@comunica/query-sparql-rdfjs");
-        const globalAny = globalThis as { __msxSparqlEngine?: InstanceType<typeof QueryEngine> | undefined };
-        if (!globalAny.__msxSparqlEngine) {
-          globalAny.__msxSparqlEngine = new QueryEngine();
-        }
-        const engine = globalAny.__msxSparqlEngine;
+        const parser = await getSparqlParser();
+        const result = executeSparqlQuery(parser, query, source.asSparqlSource(), {
+          disallowService: true,
+          maxBindings: 5000,
+        });
 
-        const queryType = query.trim().toUpperCase();
-
-        if (queryType.startsWith("SELECT") || queryType.startsWith("PREFIX")) {
-          const bindingsStream = await engine.queryBindings(query, { sources: [source] });
-          const bindings = await bindingsStream.toArray({ limit: 5000 });
-
-          const firstBinding = bindings[0];
-          const variables = firstBinding ? [...firstBinding.keys()].map((v) => v.value) : [];
-
-          const results = bindings.map((binding) => {
-            const row: Record<string, { type: string; value: string }> = {};
-            for (const variable of variables) {
-              const term = binding.get(variable) ?? binding.get(DataFactory.variable(variable));
-              if (term) {
-                row[variable] = {
-                  type: term.termType === "NamedNode" ? "uri" : "literal",
-                  value: term.value,
-                };
-              }
-            }
-            return row;
-          });
-
+        if (result.queryType === "SELECT" || result.queryType === "ASK") {
           res.setHeader("Content-Type", "application/sparql-results+json");
-          res.json({
-            head: { vars: variables },
-            results: { bindings: results },
-          });
-        } else if (queryType.startsWith("ASK")) {
-          const result = await engine.queryBoolean(query, { sources: [source] });
-          res.setHeader("Content-Type", "application/sparql-results+json");
-          res.json({ head: {}, boolean: result });
+          res.json(result.json);
         } else {
-          res.status(400).json({ error: "Only SELECT, ASK, and PREFIX queries are supported" });
+          const accept = req.accepts(["text/turtle", "application/n-triples"]);
+          const format = accept === "application/n-triples" ? "N-Triples" : "Turtle";
+          const contentType = format === "N-Triples" ? "application/n-triples" : "text/turtle";
+
+          const writer = new Writer({ format });
+          for (const q of result.quads) {
+            const subj =
+              q.subject.termType === "BlankNode"
+                ? DataFactory.blankNode(q.subject.value)
+                : DataFactory.namedNode(q.subject.value);
+            const pred = DataFactory.namedNode(q.predicate.value);
+            const obj =
+              q.object.termType === "NamedNode"
+                ? DataFactory.namedNode(q.object.value)
+                : q.object.termType === "BlankNode"
+                  ? DataFactory.blankNode(q.object.value)
+                  : q.object.language
+                    ? DataFactory.literal(q.object.value, q.object.language)
+                    : q.object.datatype
+                      ? DataFactory.literal(q.object.value, DataFactory.namedNode(q.object.datatype))
+                      : DataFactory.literal(q.object.value);
+            writer.addQuad(subj, pred, obj);
+          }
+
+          const serialized = await new Promise<string>((resolve, reject) => {
+            writer.end((err, out) => (err ? reject(err) : resolve(out)));
+          });
+
+          res.setHeader("Content-Type", contentType);
+          res.send(serialized);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "SPARQL query execution failed";

@@ -22,6 +22,7 @@
 
 const OFF_CON: usize = 0x080;
 const OFF_STATE: usize = 0x380;
+const OFF_AUX: usize = 0x680;
 const OFF_IO: usize = 0x780;
 
 // Archetype IDs (must match `AtpArchetypeId` in atp-std-schemas.ts)
@@ -80,6 +81,11 @@ function getState(slotPtr: usize, idx: i32): f64 {
 @inline
 function setState(slotPtr: usize, idx: i32, v: f64): void {
   store<f64>(slotPtr + OFF_STATE + (<usize>idx << 3), v);
+}
+
+@inline
+function setAux(slotPtr: usize, idx: i32, v: f64): void {
+  store<f64>(slotPtr + OFF_AUX + (<usize>idx << 3), v);
 }
 
 @inline
@@ -182,7 +188,30 @@ export function atpModelInit(archetypeId: i32, slotPtr: usize, conCount: i32): i
     return 0;
   }
 
-  if (archetypeId == ARCH_MACH_SYNC_59 || archetypeId == ARCH_MACH_UNIVERSAL_19) {
+  if (archetypeId == ARCH_MACH_SYNC_59) {
+    // Full 3-phase Park d-q-0 synchronous machine states:
+    // STATE[0]=thetaRad, STATE[1]=omegaRadS,
+    // STATE[2]=Eq' (pu), STATE[3]=Ed' (pu), STATE[4]=psi_kd (pu), STATE[5]=psi_kq (pu),
+    // STATE[6]=id (pu), STATE[7]=iq (pu), STATE[8]=i0 (pu)
+    const freqHz = Math.max(1.0, getCon(slotPtr, conCount, 1, 60.0));
+    const omega0 = 2.0 * Math.PI * freqHz;
+    setState(slotPtr, 0, 0.0);
+    setState(slotPtr, 1, omega0);
+    setState(slotPtr, 2, 1.0); // Eq'
+    setState(slotPtr, 3, 0.0); // Ed'
+    setState(slotPtr, 4, 1.0); // psi_kd
+    setState(slotPtr, 5, 0.0); // psi_kq
+    setAux(slotPtr, 0, 0.0); // Ed'
+    setAux(slotPtr, 1, 1.0); // Eq'
+    setAux(slotPtr, 2, 1.0); // psi_kd
+    setAux(slotPtr, 3, 0.0); // psi_kq
+    setIo(slotPtr, 10, 1.0);
+    setIo(slotPtr, 12, omega0);
+    setIo(slotPtr, 13, 0.0);
+    return 9;
+  }
+
+  if (archetypeId == ARCH_MACH_UNIVERSAL_19) {
     // STATE[0]=thetaRad, STATE[1]=omegaRadS
     const freqHz = Math.max(1.0, getCon(slotPtr, conCount, 1, 60.0));
     const omega0 = 2.0 * Math.PI * freqHz;
@@ -350,13 +379,38 @@ export function atpModelStep(
     let iHist2Raw = getState(slotPtr, 4 + readIdx);
 
     if (isFd && tauAtten > 0.0) {
-      const alpha = h / (tauAtten + h);
-      const f1 = getState(slotPtr, 1) + alpha * (iHist1Raw - getState(slotPtr, 1));
-      const f2 = getState(slotPtr, 2) + alpha * (iHist2Raw - getState(slotPtr, 2));
-      setState(slotPtr, 1, f1);
-      setState(slotPtr, 2, f2);
-      iHist1Raw = f1;
-      iHist2Raw = f2;
+      // Recursive 2-pole exponential vector-fitting propagation convolution:
+      //   h_k(t) = exp(-alpha_k * dt) * h_k(t - dt) + c_k * u(t)
+      // where c_k = w_k * (1 - exp(-alpha_k * dt)) preserves unit DC step gain (w1 + w2 = 1).
+      const tau1 = Math.max(h, tauAtten);
+      const tau2 = Math.max(2.0 * h, getCon(slotPtr, conCount, 4, tau1 * 8.0));
+      const alpha1 = 1.0 / tau1;
+      const alpha2 = 1.0 / tau2;
+      const e1 = Math.exp(-alpha1 * h);
+      const e2 = Math.exp(-alpha2 * h);
+      const w1: f64 = archetypeId == ARCH_LINE_SEMLYEN_FD ? 0.7 : 0.65;
+      const w2: f64 = 1.0 - w1;
+      const c1 = w1 * (1.0 - e1);
+      const c2 = w2 * (1.0 - e2);
+
+      // End 1 two-pole convolution states: STATE[1]=h1_1, STATE[2]=h2_1
+      const h1_1 = e1 * getState(slotPtr, 1) + c1 * iHist1Raw;
+      const h2_1 = e2 * getState(slotPtr, 2) + c2 * iHist1Raw;
+      setState(slotPtr, 1, h1_1);
+      setState(slotPtr, 2, h2_1);
+
+      // End 2 two-pole convolution states: STATE[68]=h1_2, STATE[69]=h2_2
+      const h1_2 = e1 * getState(slotPtr, 68) + c1 * iHist2Raw;
+      const h2_2 = e2 * getState(slotPtr, 69) + c2 * iHist2Raw;
+      setState(slotPtr, 68, h1_2);
+      setState(slotPtr, 69, h2_2);
+
+      iHist1Raw = h1_1 + h2_1;
+      iHist2Raw = h1_2 + h2_2;
+      setAux(slotPtr, 0, h1_1);
+      setAux(slotPtr, 1, h2_1);
+      setAux(slotPtr, 2, h1_2);
+      setAux(slotPtr, 3, h2_2);
     }
 
     const i12 = gEq * v1 + iHist1Raw;
@@ -647,14 +701,146 @@ export function atpModelStep(
   }
 
   // -------------------------------------------------------------------------
-  // 9. Machines (Type 59 Synchronous Machine & Type 19 Universal Machine)
+  // 9a. Type 59 Synchronous Machine — Full 3-Phase Park d-q-0 Subtransient Model
+  //     Tracks transient & subtransient flux linkages: Ed', Eq', psi_kd, psi_kq
   // -------------------------------------------------------------------------
-  if (archetypeId == ARCH_MACH_SYNC_59 || archetypeId == ARCH_MACH_UNIVERSAL_19) {
+  if (archetypeId == ARCH_MACH_SYNC_59) {
     const vRated = Math.max(1.0, getCon(slotPtr, conCount, 0, 20000.0));
     const freqHz = Math.max(1.0, getCon(slotPtr, conCount, 1, 60.0));
     const hSec = Math.max(0.1, getCon(slotPtr, conCount, 2, 4.0));
-    const xInt = Math.max(1.0e-4, getCon(slotPtr, conCount, 3, 0.2));
+    const xdppIn = Math.max(1.0e-4, getCon(slotPtr, conCount, 3, 0.2));
     const pMech = getCon(slotPtr, conCount, 4, 1.0e6);
+
+    // Optional IEEE Std 1110 / Brandwajn Type 59 d-q-0 machine reactances & time constants (pu / s)
+    const xd = Math.max(0.2, getCon(slotPtr, conCount, 5, 1.8));
+    const xq = Math.max(0.2, getCon(slotPtr, conCount, 6, 1.7));
+    const xdp = Math.max(0.05, getCon(slotPtr, conCount, 7, 0.3));
+    const xqp = Math.max(0.05, getCon(slotPtr, conCount, 8, 0.55));
+    const xdpp = clamp(getCon(slotPtr, conCount, 9, xdppIn <= 1.0 ? xdppIn : 0.2), 0.05, xdp * 0.95);
+    const xqpp = clamp(getCon(slotPtr, conCount, 10, xdpp * 1.1), 0.05, xqp * 0.95);
+    const xl = Math.min(0.5 * xdpp, 0.1);
+    const td0p = Math.max(0.05, getCon(slotPtr, conCount, 11, 6.5));
+    const tq0p = Math.max(0.05, getCon(slotPtr, conCount, 12, 0.85));
+    const td0pp = Math.max(0.005, getCon(slotPtr, conCount, 13, 0.035));
+    const tq0pp = Math.max(0.005, getCon(slotPtr, conCount, 14, 0.06));
+    const efCtrl = getIo(slotPtr, 8);
+    const ef = efCtrl > 0.0 ? efCtrl : getCon(slotPtr, conCount, 15, 1.05);
+
+    const omegaSync = 2.0 * Math.PI * freqHz;
+    let theta = getState(slotPtr, 0);
+    let omega = getState(slotPtr, 1);
+    if (omega <= 0.0) omega = omegaSync;
+
+    let eqp = getState(slotPtr, 2);
+    let edp = getState(slotPtr, 3);
+    let psiKd = getState(slotPtr, 4);
+    let psiKq = getState(slotPtr, 5);
+    if (eqp == 0.0 && psiKd == 0.0) {
+      eqp = 1.0;
+      psiKd = 1.0;
+    }
+
+    // Subtransient internal voltages (Sauer-Pai / IEEE 1110 Model 2.2)
+    const kD1 = (xdpp - xl) / Math.max(1e-6, xdp - xl);
+    const kD2 = (xdp - xdpp) / Math.max(1e-6, xdp - xl);
+    const kQ1 = (xqpp - xl) / Math.max(1e-6, xqp - xl);
+    const kQ2 = (xqp - xqpp) / Math.max(1e-6, xqp - xl);
+    const eqpp = kD1 * eqp + kD2 * psiKd;
+    const edpp = kQ1 * edp - kQ2 * psiKq;
+
+    // Terminal voltage per-unit Park d-q-0 projection (balanced 3-phase from v1 or 0 during 3-phase fault)
+    const vBasePeak = vRated * 0.816496580927726; // V_LL_rms * sqrt(2/3)
+    const sBase = Math.max(1.0e6, Math.abs(pMech) * 1.25);
+    const zBase = (vRated * vRated) / sBase;
+    const iBasePeak = sBase / (1.5 * vBasePeak);
+
+    const vaPu = v1 / vBasePeak;
+    const vbPu = (v1 * Math.cos(theta - 2.0943951023931953) / (Math.abs(Math.cos(theta)) > 0.2 ? Math.cos(theta) : 1.0)) * (v1 == 0.0 ? 0.0 : 0.0) +
+      (v2 != 0.0 ? v2 / vBasePeak : -0.5 * vaPu);
+    const vcPu = -(vaPu + vbPu);
+
+    const c0 = Math.cos(theta);
+    const c1 = Math.cos(theta - 2.0943951023931953);
+    const c2 = Math.cos(theta + 2.0943951023931953);
+    const s0 = Math.sin(theta);
+    const s1 = Math.sin(theta - 2.0943951023931953);
+    const s2 = Math.sin(theta + 2.0943951023931953);
+
+    const vd = (2.0 / 3.0) * (vaPu * c0 + vbPu * c1 + vcPu * c2);
+    const vq = (-2.0 / 3.0) * (vaPu * s0 + vbPu * s1 + vcPu * s2);
+    const v0 = (1.0 / 3.0) * (vaPu + vbPu + vcPu);
+
+    // Subtransient stator algebraic equations with Ra = 0.003 pu
+    const ra: f64 = 0.003;
+    const det = ra * ra + xdpp * xqpp;
+    const rhsD = edpp - vd;
+    const rhsQ = eqpp - vq;
+    const id = (ra * rhsD + xqpp * rhsQ) / det;
+    const iq = (-xdpp * rhsD + ra * rhsQ) / det;
+    const i0 = -v0 / Math.max(0.05, xl);
+
+    // Transient & subtransient rotor flux-linkage ODEs
+    const dEqp = (ef - eqp - (xd - xdp) * id) / td0p;
+    const dEdp = (-edp + (xq - xqp) * iq) / tq0p;
+    const dPsiKd = (eqp - psiKd - (xdp - xl) * id) / td0pp;
+    const dPsiKq = (-edp - psiKq + (xqp - xl) * iq) / tq0pp;
+
+    eqp += dEqp * h;
+    edp += dEdp * h;
+    psiKd += dPsiKd * h;
+    psiKq += dPsiKq * h;
+
+    // Electromagnetic torque & swing dynamics (pu)
+    const tElecPu = edpp * id + eqpp * iq + (xqpp - xdpp) * id * iq;
+    const tMechPu = pMech / sBase;
+    const slip = (omega - omegaSync) / omegaSync;
+    const dOmega = (omegaSync / (2.0 * hSec)) * (tMechPu - tElecPu - 1.5 * slip);
+    omega += dOmega * h;
+    theta += omega * h;
+
+    // Inverse Park to Phase A terminal interface
+    const eIntA = (edpp * c0 - eqpp * s0) * vBasePeak;
+    const iOutA = (id * c0 - iq * s0 + i0) * iBasePeak;
+    const xSubOhm = Math.max(1e-4, xdpp * zBase);
+
+    setState(slotPtr, 0, theta);
+    setState(slotPtr, 1, omega);
+    setState(slotPtr, 2, eqp);
+    setState(slotPtr, 3, edp);
+    setState(slotPtr, 4, psiKd);
+    setState(slotPtr, 5, psiKq);
+    setState(slotPtr, 6, id);
+    setState(slotPtr, 7, iq);
+    setState(slotPtr, 8, i0);
+
+    setAux(slotPtr, 0, edp);
+    setAux(slotPtr, 1, eqp);
+    setAux(slotPtr, 2, psiKd);
+    setAux(slotPtr, 3, psiKq);
+    setAux(slotPtr, 4, id);
+    setAux(slotPtr, 5, iq);
+
+    setIo(slotPtr, 6, eIntA);
+    setIo(slotPtr, 2, iOutA);
+    setIo(slotPtr, 3, 1.0 / xSubOhm);
+    setIo(slotPtr, 4, eIntA / xSubOhm);
+    setIo(slotPtr, 10, Math.sqrt(psiKd * psiKd + psiKq * psiKq));
+    setIo(slotPtr, 11, tElecPu * sBase);
+    setIo(slotPtr, 12, omega);
+    setIo(slotPtr, 13, (tElecPu * sBase) / omega);
+    setIo(slotPtr, 15, Math.sqrt(edp * edp + eqp * eqp));
+    return;
+  }
+
+  // -------------------------------------------------------------------------
+  // 9b. Type 19 Universal Machine
+  // -------------------------------------------------------------------------
+  if (archetypeId == ARCH_MACH_UNIVERSAL_19) {
+    const vRated = Math.max(1.0, getCon(slotPtr, conCount, 0, 4160.0));
+    const freqHz = Math.max(1.0, getCon(slotPtr, conCount, 1, 60.0));
+    const hSec = Math.max(0.1, getCon(slotPtr, conCount, 2, 1.5));
+    const xInt = Math.max(1.0e-4, getCon(slotPtr, conCount, 3, 0.15));
+    const pMech = getCon(slotPtr, conCount, 4, 500.0);
 
     const omegaSync = 2.0 * Math.PI * freqHz;
     let theta = getState(slotPtr, 0);
@@ -665,7 +851,7 @@ export function atpModelStep(
     const iOut = (eInt - v1) / xInt;
     const pElec = v1 * iOut;
     const tElec = pElec / omega;
-    const tMech = archetypeId == ARCH_MACH_SYNC_59 ? pMech / omegaSync : -pMech;
+    const tMech = -pMech;
     const inertiaJ = (2.0 * hSec * Math.max(1.0e3, Math.abs(pMech))) / (omegaSync * omegaSync);
 
     omega += ((tMech - tElec) / Math.max(1.0, inertiaJ)) * h;

@@ -9,6 +9,7 @@
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
+  globalAlmConnectorRegistry,
   isRemoteDependency,
   lintAlmWorkspace,
   MANIFEST_FILENAME,
@@ -162,6 +163,53 @@ export function registerAlmTools(server: McpServer, ctx: ServerContext): void {
 
       return {
         content: [{ type: "text", text: JSON.stringify({ query, impactedCount: hits.length, hits }, null, 2) }],
+      };
+    },
+  );
+
+  server.tool(
+    "alm_list_protocols",
+    "List all built-in ALM, PLM, MBSE, CAD, ECAD, DevOps, Test, SQL/Excel, and RESTful connector protocols registered in ModelScript.",
+    {},
+    async () => {
+      const protocols = globalAlmConnectorRegistry.listProtocols();
+      return {
+        content: [{ type: "text", text: JSON.stringify({ count: protocols.length, protocols }, null, 2) }],
+      };
+    },
+  );
+
+  server.tool(
+    "alm_discover_remote",
+    "Probe a remote ALM/PLM/CAD repository URI (e.g. 'windchill+https://...', 'azdo+https://...') and return its server capabilities.",
+    {
+      source: z.string().describe("Protocol-prefixed remote URI (e.g. 'oslc+https://...', 'windchill+https://...')"),
+      token: z.string().optional().describe("Optional Bearer token or PAT for authenticated discovery"),
+    },
+    async ({ source, token }) => {
+      const norm = normalizeRemoteDependency(source);
+      if (!norm) {
+        return {
+          content: [{ type: "text", text: JSON.stringify({ error: `Invalid protocol URI: ${source}` }) }],
+        };
+      }
+      const connector = globalAlmConnectorRegistry.get(norm.connector ?? norm.parsed.protocol);
+      if (!connector) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                error: `Unsupported protocol '${norm.connector ?? norm.parsed.protocol}'.`,
+                knownProtocols: globalAlmConnectorRegistry.listProtocols(),
+              }),
+            },
+          ],
+        };
+      }
+      const capabilities = await connector.discover({ ...norm, packageName: "@mcp/probe" }, { token });
+      return {
+        content: [{ type: "text", text: JSON.stringify(capabilities, null, 2) }],
       };
     },
   );

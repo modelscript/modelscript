@@ -89,6 +89,80 @@ function setIo(slotPtr: usize, idx: i32, v: f64): void {
 }
 
 /**
+ * Piecewise-linear interpolation helper over a 4-column table stored in `CON` starting at `baseIdx`.
+ * Each row `i` occupies `[baseIdx + 4*i + 0 .. +3]` = `[x_i, y1_i, y2_i, y3_i]` with ascending `x_i`.
+ * Writes interpolated `(y1, y2, y3)` to `IO[8..10]` and returns the clamped interpolation coordinate.
+ */
+function interpTable4Col(
+  slotPtr: usize,
+  conCount: i32,
+  baseIdx: i32,
+  nRows: i32,
+  x: f64,
+): void {
+  const xFirst = getCon(slotPtr, conCount, baseIdx, 0.0);
+  const lastBase = baseIdx + (nRows - 1) * 4;
+  const xLast = getCon(slotPtr, conCount, lastBase, xFirst);
+
+  if (x <= xFirst) {
+    setIo(slotPtr, 8, getCon(slotPtr, conCount, baseIdx + 1, 0.0));
+    setIo(slotPtr, 9, getCon(slotPtr, conCount, baseIdx + 2, 0.0));
+    setIo(slotPtr, 10, getCon(slotPtr, conCount, baseIdx + 3, 0.0));
+    return;
+  }
+  if (x >= xLast) {
+    setIo(slotPtr, 8, getCon(slotPtr, conCount, lastBase + 1, 0.0));
+    setIo(slotPtr, 9, getCon(slotPtr, conCount, lastBase + 2, 0.0));
+    setIo(slotPtr, 10, getCon(slotPtr, conCount, lastBase + 3, 0.0));
+    return;
+  }
+
+  for (let i: i32 = 0; i < nRows - 1; i++) {
+    const r0 = baseIdx + i * 4;
+    const r1 = r0 + 4;
+    const x0 = getCon(slotPtr, conCount, r0, 0.0);
+    const x1 = getCon(slotPtr, conCount, r1, x0);
+    if (x <= x1 || i == nRows - 2) {
+      const span = x1 - x0;
+      const w = span > 1e-12 ? clamp((x - x0) / span, 0.0, 1.0) : 0.0;
+      const y1 = getCon(slotPtr, conCount, r0 + 1, 0.0) + w * (getCon(slotPtr, conCount, r1 + 1, 0.0) - getCon(slotPtr, conCount, r0 + 1, 0.0));
+      const y2 = getCon(slotPtr, conCount, r0 + 2, 0.0) + w * (getCon(slotPtr, conCount, r1 + 2, 0.0) - getCon(slotPtr, conCount, r0 + 2, 0.0));
+      const y3 = getCon(slotPtr, conCount, r0 + 3, 0.0) + w * (getCon(slotPtr, conCount, r1 + 3, 0.0) - getCon(slotPtr, conCount, r0 + 3, 0.0));
+      setIo(slotPtr, 8, y1);
+      setIo(slotPtr, 9, y2);
+      setIo(slotPtr, 10, y3);
+      return;
+    }
+  }
+}
+
+/**
+ * Finds lower bracket index and weight `w in [0, 1]` on a 1D ascending axis in `CON[axisBase .. axisBase + len - 1]`.
+ * Packs `idx` into the integer part and `w` via out-helper `findAxisWeight`.
+ */
+@inline
+function findAxisIdx(slotPtr: usize, conCount: i32, axisBase: i32, len: i32, x: f64): i32 {
+  if (len <= 1) return 0;
+  const x0 = getCon(slotPtr, conCount, axisBase, 0.0);
+  if (x <= x0) return 0;
+  const xLast = getCon(slotPtr, conCount, axisBase + len - 1, x0);
+  if (x >= xLast) return len - 2;
+  for (let i: i32 = 0; i < len - 1; i++) {
+    const hi = getCon(slotPtr, conCount, axisBase + i + 1, x0);
+    if (x <= hi) return i;
+  }
+  return len - 2;
+}
+
+@inline
+function axisWeight(slotPtr: usize, conCount: i32, axisBase: i32, idx: i32, x: f64): f64 {
+  const lo = getCon(slotPtr, conCount, axisBase + idx, 0.0);
+  const hi = getCon(slotPtr, conCount, axisBase + idx + 1, lo);
+  const span = hi - lo;
+  return span > 1e-12 ? clamp((x - lo) / span, 0.0, 1.0) : 0.0;
+}
+
+/**
  * Solves cubic equation Z^3 + c2*Z^2 + c1*Z + c0 = 0 via Newton-Raphson from vapor/liquid initial guesses
  * and returns the largest physically valid real root (Z > bFactor).
  */
@@ -161,11 +235,33 @@ export function eclModelEval(archetypeId: i32, slotPtr: usize, conCount: i32): i
   // 1. PVT & EOS Models
   // =========================================================================
   if (archetypeId == ARCH_PVTO_LIVE_OIL) {
+    // Tabulated PVTO piecewise-linear interpolation when CON[5] = nRows >= 2:
+    //   CON[2] = pb (psia), CON[3] = co (1/psi), CON[5] = nRows (<= 32), CON[6] = cmu (1/psi)
+    //   CON[7 + 4*i + 0..3] = [P_i, Rs_i, Bo_i, muO_i] (ascending P_i)
+    const pb = Math.max(14.7, getCon(slotPtr, conCount, 2, 2500.0));
+    const co = Math.max(0.0, getCon(slotPtr, conCount, 3, 1.5e-5));
+    const nRowsRaw = <i32>Math.floor(getCon(slotPtr, conCount, 5, 0.0));
+    if (nRowsRaw >= 2 && conCount >= 7 + nRowsRaw * 4) {
+      const nRows = nRowsRaw > 32 ? 32 : nRowsRaw;
+      const cmu = Math.max(0.0, getCon(slotPtr, conCount, 6, 0.0));
+      const pSat = pressure < pb ? pressure : pb;
+      interpTable4Col(slotPtr, conCount, 7, nRows, pSat);
+      const rs = getIo(slotPtr, 8);
+      const boSat = getIo(slotPtr, 9);
+      const muSat = getIo(slotPtr, 10);
+      const dpOver = pressure > pb ? pressure - pb : 0.0;
+      const bo = dpOver > 0.0 ? boSat * Math.exp(-co * dpOver) : boSat;
+      const muO = dpOver > 0.0 ? muSat * (1.0 + cmu * dpOver) : muSat;
+      setIo(slotPtr, 8, rs);
+      setIo(slotPtr, 9, bo);
+      setIo(slotPtr, 10, muO);
+      setIo(slotPtr, 11, pb);
+      return 0;
+    }
+
     // Standing (1947) live-oil Rs(P) and Bo(P) + Beggs-Robinson live-oil viscosity
     const api = getCon(slotPtr, conCount, 0, 35.0);
     const gammaG = Math.max(0.5, getCon(slotPtr, conCount, 1, 0.75));
-    const pb = Math.max(14.7, getCon(slotPtr, conCount, 2, 2500.0));
-    const co = Math.max(0.0, getCon(slotPtr, conCount, 3, 1.5e-5));
     const muDead = Math.max(0.05, getCon(slotPtr, conCount, 4, 2.0));
 
     const pSat = pressure < pb ? pressure : pb;
@@ -328,6 +424,19 @@ export function eclModelEval(archetypeId: i32, slotPtr: usize, conCount: i32): i
   // 2. Relative Permeability & SCAL
   // =========================================================================
   if (archetypeId == ARCH_SWOF_COREY) {
+    // Tabulated SWOF piecewise-linear interpolation when CON[7] = nRows >= 2:
+    //   CON[8 + 4*i + 0..3] = [Sw_i, krw_i, krow_i, Pcow_i] (ascending Sw_i)
+    const nRowsRaw = <i32>Math.floor(getCon(slotPtr, conCount, 7, 0.0));
+    if (nRowsRaw >= 2 && conCount >= 8 + nRowsRaw * 4) {
+      const nRows = nRowsRaw > 32 ? 32 : nRowsRaw;
+      interpTable4Col(slotPtr, conCount, 8, nRows, sw);
+      const swMin = getCon(slotPtr, conCount, 8, 0.0);
+      const swMax = getCon(slotPtr, conCount, 8 + (nRows - 1) * 4, 1.0);
+      const se = clamp((sw - swMin) / Math.max(1e-6, swMax - swMin), 0.0, 1.0);
+      setIo(slotPtr, 11, se);
+      return 0;
+    }
+
     // Corey (1954) oil-water relative permeability
     const swc = getCon(slotPtr, conCount, 0, 0.2);
     const sor = getCon(slotPtr, conCount, 1, 0.2);
@@ -351,6 +460,19 @@ export function eclModelEval(archetypeId: i32, slotPtr: usize, conCount: i32): i
   }
 
   if (archetypeId == ARCH_SGOF_COREY) {
+    // Tabulated SGOF piecewise-linear interpolation when CON[8] = nRows >= 2:
+    //   CON[9 + 4*i + 0..3] = [Sg_i, krg_i, krog_i, Pcog_i] (ascending Sg_i)
+    const nRowsRaw = <i32>Math.floor(getCon(slotPtr, conCount, 8, 0.0));
+    if (nRowsRaw >= 2 && conCount >= 9 + nRowsRaw * 4) {
+      const nRows = nRowsRaw > 32 ? 32 : nRowsRaw;
+      interpTable4Col(slotPtr, conCount, 9, nRows, sg);
+      const sgMin = getCon(slotPtr, conCount, 9, 0.0);
+      const sgMax = getCon(slotPtr, conCount, 9 + (nRows - 1) * 4, 1.0);
+      const sgEff = clamp((sg - sgMin) / Math.max(1e-6, sgMax - sgMin), 0.0, 1.0);
+      setIo(slotPtr, 11, sgEff);
+      return 0;
+    }
+
     const sgc = getCon(slotPtr, conCount, 0, 0.05);
     const sorg = getCon(slotPtr, conCount, 1, 0.15);
     const swc = getCon(slotPtr, conCount, 2, 0.2);
@@ -527,6 +649,43 @@ export function eclModelEval(archetypeId: i32, slotPtr: usize, conCount: i32): i
   }
 
   if (archetypeId == ARCH_VFPPROD_LIFT) {
+    // 2D Tabulated VFPPROD bilinear BHP(rate, THP) lookup when CON[4]=nRate >= 2 and CON[5]=nThp >= 2:
+    //   CON[6 .. 6+nRate-1]                   = ascending rate axis Q
+    //   CON[6+nRate .. 6+nRate+nThp-1]        = ascending THP axis
+    //   CON[6+nRate+nThp .. +nRate*nThp-1]    = BHP[iThp * nRate + iRate]
+    const nRate = <i32>Math.floor(getCon(slotPtr, conCount, 4, 0.0));
+    const nThp = <i32>Math.floor(getCon(slotPtr, conCount, 5, 0.0));
+    if (nRate >= 2 && nThp >= 2 && conCount >= 6 + nRate + nThp + nRate * nThp) {
+      const qAxis = 6;
+      const thpAxis = 6 + nRate;
+      const bhpGrid = thpAxis + nThp;
+      const q = Math.max(0.0, rateIn);
+      const thpIn = pressure;
+
+      const iq = findAxisIdx(slotPtr, conCount, qAxis, nRate, q);
+      const it = findAxisIdx(slotPtr, conCount, thpAxis, nThp, thpIn);
+      const wq = axisWeight(slotPtr, conCount, qAxis, iq, q);
+      const wt = axisWeight(slotPtr, conCount, thpAxis, it, thpIn);
+
+      const b00 = getCon(slotPtr, conCount, bhpGrid + it * nRate + iq, 0.0);
+      const b01 = getCon(slotPtr, conCount, bhpGrid + it * nRate + iq + 1, b00);
+      const b10 = getCon(slotPtr, conCount, bhpGrid + (it + 1) * nRate + iq, b00);
+      const b11 = getCon(slotPtr, conCount, bhpGrid + (it + 1) * nRate + iq + 1, b00);
+
+      const row0 = b00 + wq * (b01 - b00);
+      const row1 = b10 + wq * (b11 - b10);
+      const reqBhp = row0 + wt * (row1 - row0);
+
+      const dq = Math.max(1e-12, getCon(slotPtr, conCount, qAxis + iq + 1, 1.0) - getCon(slotPtr, conCount, qAxis + iq, 0.0));
+      const dBhpDq = ((1.0 - wt) * (b01 - b00) + wt * (b11 - b10)) / dq;
+
+      setIo(slotPtr, 8, thpIn);
+      setIo(slotPtr, 9, reqBhp);
+      setIo(slotPtr, 10, reqBhp - thpIn);
+      setIo(slotPtr, 11, dBhpDq);
+      return 0;
+    }
+
     const depth = Math.max(0.0, getCon(slotPtr, conCount, 0, 8000.0));
     const gradHydro = Math.max(0.0, getCon(slotPtr, conCount, 1, 0.35));
     const fricCoeff = Math.max(0.0, getCon(slotPtr, conCount, 2, 1.5e-5));

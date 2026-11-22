@@ -180,7 +180,7 @@ export const keyValueBlockRules = {
   KvIdentifier: (): RuleLike<string> => /[A-Za-z_][A-Za-z0-9_.:/-]*/,
   KvNumber: (): RuleLike<string> => /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?[0-9]+)?/,
   KvString: (): RuleLike<string> => /"([^"\\]|\\.)*"/,
-  KvComment: (): RuleLike<string> => token(choice(/\/\/[^\r\n]*/, /\/\*[\s\S]*?\*\//, /#[^\r\n]*/)),
+  KvComment: (): RuleLike<string> => token(choice(/\/\/[^\r\n]*/, /\/\*([^*]|\*+[^*/])*\*+\//, /#[^\r\n]*/)),
 } satisfies Record<KvKey, RuleBuilder<KvKey, string>>;
 
 /**

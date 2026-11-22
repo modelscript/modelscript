@@ -8,6 +8,7 @@
  */
 
 import { Causality, DAEBuilder, EqKind, ExprKind, StringInterner, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInSelLibraryRegistered, lookupSelElementSchema } from "../catalog/library-package-adapter.js";
 import type { SELRelaySettings, SettingsGroup } from "../types.js";
 
 export interface SelDaeOptions {
@@ -16,9 +17,34 @@ export interface SelDaeOptions {
 }
 
 /**
+ * Resolves parameter defaults for an SEL protection element from `@modelscript/sel-std-lib`,
+ * merging any user-specified overrides over the cleanroom schema defaults.
+ */
+export function resolveSelSchemaParamDefaults(
+  elementType: string,
+  overrides: Record<string, number | string | boolean> = {},
+): Record<string, number | string | boolean> {
+  ensureBuiltInSelLibraryRegistered();
+  const out: Record<string, number | string | boolean> = {};
+  const schema = lookupSelElementSchema(elementType);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (p.defaultValue !== undefined) {
+        out[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
+
+/**
  * Lowers SEL relay settings into a DAEBuilder linear-memory arena.
  */
 export function lowerSELToDae(settings: SELRelaySettings, options?: SelDaeOptions): DAEBuilder {
+  ensureBuiltInSelLibraryRegistered();
   const rawName = options?.modelName ?? settings.relayId ?? "SEL_Relay";
   const modelName = rawName.replace(/[^a-zA-Z0-9_]/g, "_");
   const interner = new StringInterner();

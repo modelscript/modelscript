@@ -1,7 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInSimpackLibraryRegistered, lookupSimpackModelSchema } from "../catalog/library-package-adapter.js";
 import type { JointType, SimpackJoint, SimpackMarker, SimpackModel, Vector3D } from "../types.js";
+
+/**
+ * Resolves parameter defaults for a SIMPACK multibody element from `@modelscript/simpack-std-lib`,
+ * merging any user-specified overrides over the cleanroom schema defaults.
+ */
+export function resolveSimpackSchemaParamDefaults(
+  modelType: string,
+  overrides: Record<string, number | string | boolean> = {},
+): Record<string, number | string | boolean> {
+  ensureBuiltInSimpackLibraryRegistered();
+  const out: Record<string, number | string | boolean> = {};
+  const schema = lookupSimpackModelSchema(modelType);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (p.defaultValue !== undefined) {
+        out[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
 
 export interface SimpackDaeOptions {
   /** Constraint stabilization method: "baumgarte" | "algebraic" | "lagrange". Default: "algebraic". */
@@ -63,6 +88,7 @@ export function getSimpackJointConstraintSpec(jointOrType: SimpackJoint | JointT
  *    multipliers or Baumgarte stabilization.
  */
 export function lowerSimpackToDae(model: SimpackModel, builder?: DAEBuilder, options?: SimpackDaeOptions): DAEBuilder {
+  ensureBuiltInSimpackLibraryRegistered();
   const dae = builder ?? new DAEBuilder(undefined, model.name);
   const isBaumgarte = options?.stabilization === "baumgarte";
   const omegaN = options?.baumgarteOmega ?? 50.0;

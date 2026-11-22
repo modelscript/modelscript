@@ -19,6 +19,7 @@ import type {
   PhasorTrajectoryResult,
 } from "@modelscript/exchange";
 import { PssePhasorParticipant } from "@modelscript/psse";
+import { ensureBuiltInPowerFactoryLibraryRegistered } from "../catalog/library-package-adapter.js";
 import { powerFactoryToPsse, type PowerFactoryToPsseOptions } from "../projections/powerfactory-to-psse.js";
 import type { PowerFactoryModel } from "../types.js";
 
@@ -31,6 +32,7 @@ export class PowerFactoryPhasorParticipant implements PhasorNetworkParticipant {
   private readonly busToTermMap: Map<string, string>;
 
   constructor(model: PowerFactoryModel, options?: PowerFactoryToPsseOptions & { id?: string }) {
+    ensureBuiltInPowerFactoryLibraryRegistered();
     this.id = options?.id ?? "PowerFactory_Grid";
     const { psseCase, termToBusMap } = powerFactoryToPsse(model, options);
     this.termToBusMap = termToBusMap;

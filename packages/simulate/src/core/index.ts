@@ -3,6 +3,7 @@
 export * from "./ad-transforms.js";
 export * from "./adjoint-integrator.js";
 export * from "./callbacks.js";
+export * from "./compile-arena-function.js";
 export * from "./continuum-participant.js";
 export * from "./dae-adjoint-solver.js";
 export * from "./dense-checkpoint-tape.js";
@@ -13,6 +14,7 @@ export * from "./hybrid-adjoint.js";
 export * from "./live-cosim-orchestrator.js";
 export * from "./multiphysics-port-coupler.js";
 export * from "./problem-types.js";
+export * from "./register-solve-backends.js";
 export * from "./simulate-arena.js";
 export * from "./simulation.js";
 export * from "./solver-options.js";

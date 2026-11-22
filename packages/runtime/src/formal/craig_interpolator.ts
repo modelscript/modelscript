@@ -358,48 +358,69 @@ export class CraigInterpolator {
           }
 
           const mem = wasm.memory as WebAssembly.Memory;
-          const dPtr = wasm.__new(m * 8, 0);
-          if (dPtr !== 0) {
-            const dView = new Float64Array(mem.buffer, dPtr, m);
-            for (let i = 0; i < m; i++) dView[i] = d[i]!;
+          const allocBytes = (bytes: number): { ptr: number; free: () => void } => {
+            if (typeof wasm.atomicChunkAlloc === "function") {
+              const p = wasm.atomicChunkAlloc(bytes) >>> 0;
+              return { ptr: p, free: () => p && wasm.atomicChunkFree?.(p) };
+            }
+            if (typeof wasm.arena_alloc === "function") {
+              const p = wasm.arena_alloc(bytes) >>> 0;
+              return { ptr: p, free: () => p && (wasm.arena_free?.(p) ?? wasm.atomicChunkFree?.(p)) };
+            }
+            const p = wasm.__new(bytes, 0) >>> 0;
+            if (p && typeof wasm.__pin === "function") wasm.__pin(p);
+            return { ptr: p, free: () => p && wasm.__unpin?.(p) };
+          };
+          const dAlloc = allocBytes(m * 8);
+          try {
+            if (dAlloc.ptr !== 0) {
+              const dView = new Float64Array(mem.buffer, dAlloc.ptr, m);
+              for (let i = 0; i < m; i++) dView[i] = d[i]!;
 
-            const solveRes = wasm.simplex_solveTwoPhaseFarkas(sPtr, m, n, dPtr);
-            if (solveRes === 2 /* SIMPLEX_RESULT_INFEASIBLE */) {
-              return {
-                status: "CONSISTENT",
-                sharedVars,
-                summary: "Consistent: no Farkas dual multipliers satisfy variable balance.",
-              };
-            } else if (solveRes === 1 /* SIMPLEX_RESULT_OPTIMAL */) {
-              const actualZ = wasm.simplex_getOptimalValue(sPtr);
-              const multPtr = wasm.__new(m * 8, 0);
-              const lambda = new Array<number>(m).fill(0);
-              if (multPtr !== 0) {
-                wasm.simplex_getMultipliers(sPtr, multPtr, m);
-                const multView = new Float64Array(mem.buffer, multPtr, m);
-                for (let i = 0; i < m; i++) lambda[i] = multView[i]!;
-              }
-
-              const lambdaA = lambda.slice(0, mA);
-              const lambdaB = lambda.slice(mA);
-
-              if (actualZ >= -1e-6) {
+              const solveRes = wasm.simplex_solveTwoPhaseFarkas(sPtr, m, n, dAlloc.ptr);
+              if (solveRes === 2 /* SIMPLEX_RESULT_INFEASIBLE */) {
                 return {
                   status: "CONSISTENT",
                   sharedVars,
-                  farkasMultipliers: { lambdaA, lambdaB },
-                  summary: `Consistent: optimal dual Farkas value Z* = ${actualZ.toFixed(6)} >= 0.`,
+                  summary: "Consistent: no Farkas dual multipliers satisfy variable balance.",
                 };
-              }
+              } else if (solveRes === 1 /* SIMPLEX_RESULT_OPTIMAL */) {
+                const actualZ = wasm.simplex_getOptimalValue(sPtr);
+                const multAlloc = allocBytes(m * 8);
+                const lambda = new Array<number>(m).fill(0);
+                try {
+                  if (multAlloc.ptr !== 0) {
+                    wasm.simplex_getMultipliers(sPtr, multAlloc.ptr, m);
+                    const multView = new Float64Array(mem.buffer, multAlloc.ptr, m);
+                    for (let i = 0; i < m; i++) lambda[i] = multView[i]!;
+                  }
+                } finally {
+                  multAlloc.free();
+                }
 
-              return CraigInterpolator.extractHyperplaneFromMultipliers(
-                lambdaA,
-                constraintsA,
-                sharedVars,
-                lambdaB,
-                actualZ,
-              );
+                const lambdaA = lambda.slice(0, mA);
+                const lambdaB = lambda.slice(mA);
+
+                if (actualZ >= -1e-6) {
+                  return {
+                    status: "CONSISTENT",
+                    sharedVars,
+                    farkasMultipliers: { lambdaA, lambdaB },
+                    summary: `Consistent: optimal dual Farkas value Z* = ${actualZ.toFixed(6)} >= 0.`,
+                  };
+                }
+
+                return CraigInterpolator.extractHyperplaneFromMultipliers(
+                  lambdaA,
+                  constraintsA,
+                  sharedVars,
+                  lambdaB,
+                  actualZ,
+                );
+              }
             }
+          } finally {
+            dAlloc.free();
           }
         } finally {
           if (typeof wasm.simplex_destroy === "function") {

@@ -351,6 +351,13 @@ export function kencarp4(problem: IMEXODEProblem | ODEProblem, options: KenCarp4
 
     const errNorm = Math.sqrt(errSq / Math.max(1, n));
 
+    if (!Number.isFinite(errNorm)) {
+      rejectedSteps++;
+      hAbs = Math.max(minStep, hAbs * 0.25);
+      if (rejectedSteps > maxSteps * 4 || hAbs <= minStep) break;
+      continue;
+    }
+
     if (errNorm <= 1.0 || hAbs <= minStep) {
       acceptedSteps++;
       t += h;

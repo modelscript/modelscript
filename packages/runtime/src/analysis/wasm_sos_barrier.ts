@@ -66,16 +66,18 @@ export class SosBarrierSynthesizer {
 
     // For linear / linearized system dx/dt = A x near origin:
     // P A + A^T P <= -Q
-    // Numerical Jacobian estimation around origin
+    // Numerical Jacobian estimation around origin (subtracting f(0)!)
     const eps = 1e-4;
+    const fZero = system.f(new Array<number>(n).fill(0));
     const A: number[][] = [];
     for (let i = 0; i < n; i++) {
       const row = new Array<number>(n).fill(0);
+      const f0i = fZero[i] ?? 0;
       for (let j = 0; j < n; j++) {
         const xPert = new Array<number>(n).fill(0);
         xPert[j] = eps;
         const fPert = system.f(xPert)[i] ?? 0;
-        row[j] = fPert / eps;
+        row[j] = (fPert - f0i) / eps;
       }
       A.push(row);
     }
@@ -193,23 +195,19 @@ export class SosBarrierSynthesizer {
       }
     }
 
-    const verdict: VerificationVerdict = isCertified
-      ? {
-          kind: "proven",
-          rigor: "rigorous",
-          detail: `Rigorous Lyapunov barrier certificate B(x) = x^T P x verified with positive definite Gram matrix (min lambda = ${lambdaMinP.toFixed(4)}) and strict level-set separation (${maxInitialVal.toFixed(4)} < ${minUnsafeVal.toFixed(4)}).`,
-        }
-      : SOS_NOT_RIGOROUS;
+    // Strict rigor contract: FD linearization + heuristic SDP yields a candidate only,
+    // NEVER a formally certified nonlinear safety proof.
+    const verdict: VerificationVerdict = SOS_NOT_RIGOROUS;
 
     return {
-      isCertifiedSafe: isCertified,
+      isCertifiedSafe: false,
       verdict,
       candidateFound: isCertified,
       barrierCoefficients: coeffs,
       barrierDegree: 2,
       lyapunovDecayRate: Number.isFinite(minDecayRate) && minDecayRate > 0 ? minDecayRate : Math.abs(A[0]?.[0] ?? 0.1),
       summary: isCertified
-        ? `Quadratic barrier certificate certified safe: B(x) = x^T P x strictly separates initial and unsafe sets with negative definite Lie derivative.`
+        ? `Quadratic barrier candidate found (heuristic linearization; NOT rigorously certified for nonlinear dynamics).`
         : `Quadratic barrier unverified: B(x) = x^T P x did not achieve strict separation or positive definiteness.`,
     };
   }
@@ -276,25 +274,19 @@ export class SosBarrierSynthesizer {
       quarticCoeffs.push(Math.max(1e-4, sdpRes4.X[i]?.[i] ?? 0.1));
     }
 
-    const isHigherCertified = quadRes.isCertifiedSafe && SdpSolver.isPsd(sdpRes4.X);
-    const higherVerdict: VerificationVerdict = isHigherCertified
-      ? {
-          kind: "proven",
-          rigor: "rigorous",
-          detail: `Higher-degree (degree 4) SOS barrier certificate certified safe with PSD Gram matrix.`,
-        }
-      : SOS_NOT_RIGOROUS;
+    const candidateFound = quadRes.candidateFound && SdpSolver.isPsd(sdpRes4.X);
+    const higherVerdict: VerificationVerdict = SOS_NOT_RIGOROUS;
 
     return {
-      isCertifiedSafe: isHigherCertified,
+      isCertifiedSafe: false,
       verdict: higherVerdict,
-      candidateFound: SdpSolver.isPsd(sdpRes4.X),
+      candidateFound,
       barrierCoefficients: quarticCoeffs,
       barrierDegree: degree,
       lyapunovDecayRate: quadRes.lyapunovDecayRate,
-      summary: isHigherCertified
-        ? `Degree-${degree} SOS barrier certified safe with positive semidefinite Gram matrix.`
-        : `Degree-${degree} barrier candidate found (heuristic, NOT verified); safety for all time is not proven.`,
+      summary: candidateFound
+        ? `Degree-${degree} barrier candidate found (heuristic, NOT formally verified); safety for all time is not proven.`
+        : `Degree-${degree} barrier candidate not found for given bounds.`,
     };
   }
 }

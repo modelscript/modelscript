@@ -333,6 +333,10 @@ export const ONELINER_MODEL_SPECS: OneLinerModelSpec[] = [
       ["delaySec", 0.02, "s", "Zone 1 operating time"],
       ["ctr", 240.0, "", "Current transformer ratio"],
       ["ptr", 1200.0, "", "Voltage transformer ratio"],
+      ["polMode", 0.0, "", "Polarization mode (0=self, 1=cross-polarized, 2=pos-seq memory)"],
+      ["zSourceOhms", 0.0, "Ohm", "Source impedance magnitude |Zs| behind relay"],
+      ["zSourceAngDeg", 85.0, "deg", "Source impedance angle"],
+      ["polFactor", -1.0, "", "Polarizing expansion factor k_pol (<0 uses mode default)"],
     ],
   },
   {
@@ -351,6 +355,10 @@ export const ONELINER_MODEL_SPECS: OneLinerModelSpec[] = [
       ["delaySec", 0.35, "s", "Zone 2 coordinating time delay"],
       ["ctr", 240.0, "", "Current transformer ratio"],
       ["ptr", 1200.0, "", "Voltage transformer ratio"],
+      ["polMode", 0.0, "", "Polarization mode (0=self, 1=cross-polarized, 2=pos-seq memory)"],
+      ["zSourceOhms", 0.0, "Ohm", "Source impedance magnitude |Zs| behind relay"],
+      ["zSourceAngDeg", 85.0, "deg", "Source impedance angle"],
+      ["polFactor", -1.0, "", "Polarizing expansion factor k_pol (<0 uses mode default)"],
     ],
   },
   {

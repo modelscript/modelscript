@@ -537,8 +537,8 @@ export class NativeRuntime {
   }
 }
 export const SYNTAX_NAMES =
-  typeof ["ERROR","/\\s/","/#.*/","\"Prefix\"","\"(\"","\"=\"","\")\"","/[a-zA-Z_][a-zA-Z0-9_]*/","/[0-9]+/","\":\"","/<[^>]*>/","/\"[^\"]*\"(?:\\^\\^(?:<[^>]*>|[a-zA-Z_][a-zA-Z0-9_]*:[a-zA-Z_][a-zA-Z0-9_]*))?(?:@[a-zA-Z-]+)?/","\"Ontology\"","\"Import\"","\"Declaration\"","\"Class\"","\"ObjectProperty\"","\"DataProperty\"","\"NamedIndividual\"","\"ObjectIntersectionOf\"","\"ObjectUnionOf\"","\"ObjectComplementOf\"","\"ObjectSomeValuesFrom\"","\"ObjectAllValuesFrom\"","\"ObjectHasSelf\"","\"ObjectHasValue\"","\"ObjectOneOf\"","\"ObjectMinCardinality\"","\"ObjectMaxCardinality\"","\"ObjectExactCardinality\"","\"DataSomeValuesFrom\"","\"DataAllValuesFrom\"","\"DataHasValue\"","\"DataMinCardinality\"","\"DataMaxCardinality\"","\"DataExactCardinality\"","\"DatatypeRestriction\"","\"DataIntersectionOf\"","\"DataUnionOf\"","\"DataOneOf\"","\"SubClassOf\"","\"EquivalentClasses\"","\"DisjointClasses\"","\"DisjointUnion\"","\"ObjectPropertyChain\"","\"SubObjectPropertyOf\"","\"SubDataPropertyOf\"","\"InverseObjectProperties\"","\"DisjointObjectProperties\"","\"ObjectPropertyDomain\"","\"ObjectPropertyRange\"","\"DataPropertyDomain\"","\"DataPropertyRange\"","\"FunctionalObjectProperty\"","\"InverseFunctionalObjectProperty\"","\"ReflexiveObjectProperty\"","\"IrreflexiveObjectProperty\"","\"SymmetricObjectProperty\"","\"AsymmetricObjectProperty\"","\"TransitiveObjectProperty\"","\"FunctionalDataProperty\"","\"ObjectPropertyAssertion\"","\"DataPropertyAssertion\"","\"NegativeObjectPropertyAssertion\"","\"NegativeDataPropertyAssertion\"","\"ClassAssertion\"","\"SameIndividual\"","\"DifferentIndividuals\"","OntologyDocument","PrefixDeclaration","PrefixName","AbbreviatedIRI","IRI","Ontology","ImportDeclaration","_Axiom","Declaration","_Entity","ClassEntity","ObjectPropertyEntity","DataPropertyEntity","NamedIndividualEntity","_ClassExpression","ObjectIntersectionOf","ObjectUnionOf","ObjectComplementOf","ObjectSomeValuesFrom","ObjectAllValuesFrom","ObjectHasSelf","ObjectHasValue","ObjectOneOf","ObjectMinCardinality","ObjectMaxCardinality","ObjectExactCardinality","DataSomeValuesFrom","DataAllValuesFrom","DataHasValue","DataMinCardinality","DataMaxCardinality","DataExactCardinality","FacetRestriction","DatatypeRestriction","DataIntersectionOf","DataUnionOf","DataOneOf","DataRange","SubClassOfAxiom","EquivalentClassesAxiom","DisjointClassesAxiom","DisjointUnionAxiom","ObjectPropertyChain","SubObjectPropertyOfAxiom","SubDataPropertyOfAxiom","InverseObjectPropertiesAxiom","DisjointObjectPropertiesAxiom","ObjectPropertyDomainAxiom","ObjectPropertyRangeAxiom","DataPropertyDomainAxiom","DataPropertyRangeAxiom","FunctionalObjectPropertyAxiom","InverseFunctionalObjectPropertyAxiom","ReflexiveObjectPropertyAxiom","IrreflexiveObjectPropertyAxiom","SymmetricObjectPropertyAxiom","AsymmetricObjectPropertyAxiom","TransitiveObjectPropertyAxiom","FunctionalDataPropertyAxiom","ObjectPropertyAssertionAxiom","DataPropertyAssertionAxiom","NegativeObjectPropertyAssertionAxiom","NegativeDataPropertyAssertionAxiom","ClassAssertionAxiom","SameIndividualAxiom","DifferentIndividualsAxiom","_START","_PrefixDeclaration*","_PrefixName?","IDENT","INTEGER","_((IDENT \":\") | \":\")","FullIRI","_((IDENT \":\" IDENT) | (\":\" IDENT))","_(FullIRI | AbbreviatedIRI)","StringLiteral","_IRI?","_ImportDeclaration*","__Axiom*","_(Declaration | SubClassOfAxiom | Equival_e725657e","_(ClassEntity | ObjectPropertyEntity | Da_d59eb105","_(IRI | ObjectIntersectionOf | ObjectUnio_a32e4a2b","__ClassExpression*","_IRI*","__ClassExpression?","_DataRange?","_FacetRestriction*","_DataRange*","_StringLiteral*","_(IRI | DatatypeRestriction | DataInterse_2566c9c3","__ClassExpression*_1","__ClassExpression*_2","_IRI*_1","_(IRI | ObjectPropertyChain)","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
-    ? ["ERROR","/\\s/","/#.*/","\"Prefix\"","\"(\"","\"=\"","\")\"","/[a-zA-Z_][a-zA-Z0-9_]*/","/[0-9]+/","\":\"","/<[^>]*>/","/\"[^\"]*\"(?:\\^\\^(?:<[^>]*>|[a-zA-Z_][a-zA-Z0-9_]*:[a-zA-Z_][a-zA-Z0-9_]*))?(?:@[a-zA-Z-]+)?/","\"Ontology\"","\"Import\"","\"Declaration\"","\"Class\"","\"ObjectProperty\"","\"DataProperty\"","\"NamedIndividual\"","\"ObjectIntersectionOf\"","\"ObjectUnionOf\"","\"ObjectComplementOf\"","\"ObjectSomeValuesFrom\"","\"ObjectAllValuesFrom\"","\"ObjectHasSelf\"","\"ObjectHasValue\"","\"ObjectOneOf\"","\"ObjectMinCardinality\"","\"ObjectMaxCardinality\"","\"ObjectExactCardinality\"","\"DataSomeValuesFrom\"","\"DataAllValuesFrom\"","\"DataHasValue\"","\"DataMinCardinality\"","\"DataMaxCardinality\"","\"DataExactCardinality\"","\"DatatypeRestriction\"","\"DataIntersectionOf\"","\"DataUnionOf\"","\"DataOneOf\"","\"SubClassOf\"","\"EquivalentClasses\"","\"DisjointClasses\"","\"DisjointUnion\"","\"ObjectPropertyChain\"","\"SubObjectPropertyOf\"","\"SubDataPropertyOf\"","\"InverseObjectProperties\"","\"DisjointObjectProperties\"","\"ObjectPropertyDomain\"","\"ObjectPropertyRange\"","\"DataPropertyDomain\"","\"DataPropertyRange\"","\"FunctionalObjectProperty\"","\"InverseFunctionalObjectProperty\"","\"ReflexiveObjectProperty\"","\"IrreflexiveObjectProperty\"","\"SymmetricObjectProperty\"","\"AsymmetricObjectProperty\"","\"TransitiveObjectProperty\"","\"FunctionalDataProperty\"","\"ObjectPropertyAssertion\"","\"DataPropertyAssertion\"","\"NegativeObjectPropertyAssertion\"","\"NegativeDataPropertyAssertion\"","\"ClassAssertion\"","\"SameIndividual\"","\"DifferentIndividuals\"","OntologyDocument","PrefixDeclaration","PrefixName","AbbreviatedIRI","IRI","Ontology","ImportDeclaration","_Axiom","Declaration","_Entity","ClassEntity","ObjectPropertyEntity","DataPropertyEntity","NamedIndividualEntity","_ClassExpression","ObjectIntersectionOf","ObjectUnionOf","ObjectComplementOf","ObjectSomeValuesFrom","ObjectAllValuesFrom","ObjectHasSelf","ObjectHasValue","ObjectOneOf","ObjectMinCardinality","ObjectMaxCardinality","ObjectExactCardinality","DataSomeValuesFrom","DataAllValuesFrom","DataHasValue","DataMinCardinality","DataMaxCardinality","DataExactCardinality","FacetRestriction","DatatypeRestriction","DataIntersectionOf","DataUnionOf","DataOneOf","DataRange","SubClassOfAxiom","EquivalentClassesAxiom","DisjointClassesAxiom","DisjointUnionAxiom","ObjectPropertyChain","SubObjectPropertyOfAxiom","SubDataPropertyOfAxiom","InverseObjectPropertiesAxiom","DisjointObjectPropertiesAxiom","ObjectPropertyDomainAxiom","ObjectPropertyRangeAxiom","DataPropertyDomainAxiom","DataPropertyRangeAxiom","FunctionalObjectPropertyAxiom","InverseFunctionalObjectPropertyAxiom","ReflexiveObjectPropertyAxiom","IrreflexiveObjectPropertyAxiom","SymmetricObjectPropertyAxiom","AsymmetricObjectPropertyAxiom","TransitiveObjectPropertyAxiom","FunctionalDataPropertyAxiom","ObjectPropertyAssertionAxiom","DataPropertyAssertionAxiom","NegativeObjectPropertyAssertionAxiom","NegativeDataPropertyAssertionAxiom","ClassAssertionAxiom","SameIndividualAxiom","DifferentIndividualsAxiom","_START","_PrefixDeclaration*","_PrefixName?","IDENT","INTEGER","_((IDENT \":\") | \":\")","FullIRI","_((IDENT \":\" IDENT) | (\":\" IDENT))","_(FullIRI | AbbreviatedIRI)","StringLiteral","_IRI?","_ImportDeclaration*","__Axiom*","_(Declaration | SubClassOfAxiom | Equival_e725657e","_(ClassEntity | ObjectPropertyEntity | Da_d59eb105","_(IRI | ObjectIntersectionOf | ObjectUnio_a32e4a2b","__ClassExpression*","_IRI*","__ClassExpression?","_DataRange?","_FacetRestriction*","_DataRange*","_StringLiteral*","_(IRI | DatatypeRestriction | DataInterse_2566c9c3","__ClassExpression*_1","__ClassExpression*_2","_IRI*_1","_(IRI | ObjectPropertyChain)","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
+  typeof ["ERROR","/\\s/","/#.*/","\"Prefix\"","\"(\"","\"=\"","\")\"","/[a-zA-Z_][a-zA-Z0-9_-]*/","/[0-9]+/","\":\"","/<[^>]*>/","/\"(?:[^\"\\\\]|\\\\.)*\"(?:\\^\\^(?:<[^>]*>|[a-zA-Z_][a-zA-Z0-9_-]*:[a-zA-Z_][a-zA-Z0-9_-]*))?(?:@[a-zA-Z-]+)?/","\"Annotation\"","\"Ontology\"","\"Import\"","\"Declaration\"","\"AnnotationAssertion\"","\"Class\"","\"ObjectProperty\"","\"DataProperty\"","\"AnnotationProperty\"","\"Datatype\"","\"NamedIndividual\"","\"ObjectInverseOf\"","\"ObjectIntersectionOf\"","\"ObjectUnionOf\"","\"ObjectComplementOf\"","\"ObjectSomeValuesFrom\"","\"ObjectAllValuesFrom\"","\"ObjectHasSelf\"","\"ObjectHasValue\"","\"ObjectOneOf\"","\"ObjectMinCardinality\"","\"ObjectMaxCardinality\"","\"ObjectExactCardinality\"","\"DataSomeValuesFrom\"","\"DataAllValuesFrom\"","\"DataHasValue\"","\"DataMinCardinality\"","\"DataMaxCardinality\"","\"DataExactCardinality\"","\"DatatypeRestriction\"","\"DataIntersectionOf\"","\"DataUnionOf\"","\"DataComplementOf\"","\"DataOneOf\"","\"SubClassOf\"","\"EquivalentClasses\"","\"DisjointClasses\"","\"DisjointUnion\"","\"ObjectPropertyChain\"","\"SubObjectPropertyOf\"","\"EquivalentObjectProperties\"","\"SubDataPropertyOf\"","\"EquivalentDataProperties\"","\"InverseObjectProperties\"","\"DisjointObjectProperties\"","\"DisjointDataProperties\"","\"HasKey\"","\"ObjectPropertyDomain\"","\"ObjectPropertyRange\"","\"DataPropertyDomain\"","\"DataPropertyRange\"","\"FunctionalObjectProperty\"","\"InverseFunctionalObjectProperty\"","\"ReflexiveObjectProperty\"","\"IrreflexiveObjectProperty\"","\"SymmetricObjectProperty\"","\"AsymmetricObjectProperty\"","\"TransitiveObjectProperty\"","\"FunctionalDataProperty\"","\"ObjectPropertyAssertion\"","\"DataPropertyAssertion\"","\"NegativeObjectPropertyAssertion\"","\"NegativeDataPropertyAssertion\"","\"ClassAssertion\"","\"SameIndividual\"","\"DifferentIndividuals\"","OntologyDocument","PrefixDeclaration","PrefixName","AbbreviatedIRI","IRI","Annotation","Ontology","ImportDeclaration","_Axiom","Declaration","AnnotationAssertionAxiom","_Entity","ClassEntity","ObjectPropertyEntity","DataPropertyEntity","AnnotationPropertyEntity","DatatypeEntity","NamedIndividualEntity","ObjectInverseOf","_ObjectPropertyExpression","_ClassExpression","ObjectIntersectionOf","ObjectUnionOf","ObjectComplementOf","ObjectSomeValuesFrom","ObjectAllValuesFrom","ObjectHasSelf","ObjectHasValue","ObjectOneOf","ObjectMinCardinality","ObjectMaxCardinality","ObjectExactCardinality","DataSomeValuesFrom","DataAllValuesFrom","DataHasValue","DataMinCardinality","DataMaxCardinality","DataExactCardinality","FacetRestriction","DatatypeRestriction","DataIntersectionOf","DataUnionOf","DataComplementOf","DataOneOf","DataRange","SubClassOfAxiom","EquivalentClassesAxiom","DisjointClassesAxiom","DisjointUnionAxiom","ObjectPropertyChain","SubObjectPropertyOfAxiom","EquivalentObjectPropertiesAxiom","SubDataPropertyOfAxiom","EquivalentDataPropertiesAxiom","InverseObjectPropertiesAxiom","DisjointObjectPropertiesAxiom","DisjointDataPropertiesAxiom","HasKeyAxiom","ObjectPropertyDomainAxiom","ObjectPropertyRangeAxiom","DataPropertyDomainAxiom","DataPropertyRangeAxiom","FunctionalObjectPropertyAxiom","InverseFunctionalObjectPropertyAxiom","ReflexiveObjectPropertyAxiom","IrreflexiveObjectPropertyAxiom","SymmetricObjectPropertyAxiom","AsymmetricObjectPropertyAxiom","TransitiveObjectPropertyAxiom","FunctionalDataPropertyAxiom","ObjectPropertyAssertionAxiom","DataPropertyAssertionAxiom","NegativeObjectPropertyAssertionAxiom","NegativeDataPropertyAssertionAxiom","ClassAssertionAxiom","SameIndividualAxiom","DifferentIndividualsAxiom","_START","_PrefixDeclaration*","_PrefixName?","IDENT","INTEGER","_((IDENT \":\") | \":\")","FullIRI","_((IDENT \":\" IDENT) | (\":\" IDENT))","_(FullIRI | AbbreviatedIRI)","StringLiteral","_(IRI | StringLiteral)","_IRI?","_(IRI IRI?)?","_ImportDeclaration*","_Annotation*","__Axiom*","_(Declaration | AnnotationAssertionAxiom _c3cffea8","_Annotation*_1","_(ClassEntity | ObjectPropertyEntity | Da_98f2cad3","_(IRI | ObjectInverseOf)","_(IRI | ObjectIntersectionOf | ObjectUnio_a32e4a2b","__ClassExpression*","_IRI*","__ClassExpression?","_DataRange?","_FacetRestriction*","_DataRange*","_StringLiteral*","_(IRI | DatatypeRestriction | DataInterse_a09c7f52","__ClassExpression*_1","__ClassExpression*_2","_IRI*_1","_(_ObjectPropertyExpression | ObjectPrope_5e82d7b6","__ObjectPropertyExpression*","__ObjectPropertyExpression*_1","_IRI*_2","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
+    ? ["ERROR","/\\s/","/#.*/","\"Prefix\"","\"(\"","\"=\"","\")\"","/[a-zA-Z_][a-zA-Z0-9_-]*/","/[0-9]+/","\":\"","/<[^>]*>/","/\"(?:[^\"\\\\]|\\\\.)*\"(?:\\^\\^(?:<[^>]*>|[a-zA-Z_][a-zA-Z0-9_-]*:[a-zA-Z_][a-zA-Z0-9_-]*))?(?:@[a-zA-Z-]+)?/","\"Annotation\"","\"Ontology\"","\"Import\"","\"Declaration\"","\"AnnotationAssertion\"","\"Class\"","\"ObjectProperty\"","\"DataProperty\"","\"AnnotationProperty\"","\"Datatype\"","\"NamedIndividual\"","\"ObjectInverseOf\"","\"ObjectIntersectionOf\"","\"ObjectUnionOf\"","\"ObjectComplementOf\"","\"ObjectSomeValuesFrom\"","\"ObjectAllValuesFrom\"","\"ObjectHasSelf\"","\"ObjectHasValue\"","\"ObjectOneOf\"","\"ObjectMinCardinality\"","\"ObjectMaxCardinality\"","\"ObjectExactCardinality\"","\"DataSomeValuesFrom\"","\"DataAllValuesFrom\"","\"DataHasValue\"","\"DataMinCardinality\"","\"DataMaxCardinality\"","\"DataExactCardinality\"","\"DatatypeRestriction\"","\"DataIntersectionOf\"","\"DataUnionOf\"","\"DataComplementOf\"","\"DataOneOf\"","\"SubClassOf\"","\"EquivalentClasses\"","\"DisjointClasses\"","\"DisjointUnion\"","\"ObjectPropertyChain\"","\"SubObjectPropertyOf\"","\"EquivalentObjectProperties\"","\"SubDataPropertyOf\"","\"EquivalentDataProperties\"","\"InverseObjectProperties\"","\"DisjointObjectProperties\"","\"DisjointDataProperties\"","\"HasKey\"","\"ObjectPropertyDomain\"","\"ObjectPropertyRange\"","\"DataPropertyDomain\"","\"DataPropertyRange\"","\"FunctionalObjectProperty\"","\"InverseFunctionalObjectProperty\"","\"ReflexiveObjectProperty\"","\"IrreflexiveObjectProperty\"","\"SymmetricObjectProperty\"","\"AsymmetricObjectProperty\"","\"TransitiveObjectProperty\"","\"FunctionalDataProperty\"","\"ObjectPropertyAssertion\"","\"DataPropertyAssertion\"","\"NegativeObjectPropertyAssertion\"","\"NegativeDataPropertyAssertion\"","\"ClassAssertion\"","\"SameIndividual\"","\"DifferentIndividuals\"","OntologyDocument","PrefixDeclaration","PrefixName","AbbreviatedIRI","IRI","Annotation","Ontology","ImportDeclaration","_Axiom","Declaration","AnnotationAssertionAxiom","_Entity","ClassEntity","ObjectPropertyEntity","DataPropertyEntity","AnnotationPropertyEntity","DatatypeEntity","NamedIndividualEntity","ObjectInverseOf","_ObjectPropertyExpression","_ClassExpression","ObjectIntersectionOf","ObjectUnionOf","ObjectComplementOf","ObjectSomeValuesFrom","ObjectAllValuesFrom","ObjectHasSelf","ObjectHasValue","ObjectOneOf","ObjectMinCardinality","ObjectMaxCardinality","ObjectExactCardinality","DataSomeValuesFrom","DataAllValuesFrom","DataHasValue","DataMinCardinality","DataMaxCardinality","DataExactCardinality","FacetRestriction","DatatypeRestriction","DataIntersectionOf","DataUnionOf","DataComplementOf","DataOneOf","DataRange","SubClassOfAxiom","EquivalentClassesAxiom","DisjointClassesAxiom","DisjointUnionAxiom","ObjectPropertyChain","SubObjectPropertyOfAxiom","EquivalentObjectPropertiesAxiom","SubDataPropertyOfAxiom","EquivalentDataPropertiesAxiom","InverseObjectPropertiesAxiom","DisjointObjectPropertiesAxiom","DisjointDataPropertiesAxiom","HasKeyAxiom","ObjectPropertyDomainAxiom","ObjectPropertyRangeAxiom","DataPropertyDomainAxiom","DataPropertyRangeAxiom","FunctionalObjectPropertyAxiom","InverseFunctionalObjectPropertyAxiom","ReflexiveObjectPropertyAxiom","IrreflexiveObjectPropertyAxiom","SymmetricObjectPropertyAxiom","AsymmetricObjectPropertyAxiom","TransitiveObjectPropertyAxiom","FunctionalDataPropertyAxiom","ObjectPropertyAssertionAxiom","DataPropertyAssertionAxiom","NegativeObjectPropertyAssertionAxiom","NegativeDataPropertyAssertionAxiom","ClassAssertionAxiom","SameIndividualAxiom","DifferentIndividualsAxiom","_START","_PrefixDeclaration*","_PrefixName?","IDENT","INTEGER","_((IDENT \":\") | \":\")","FullIRI","_((IDENT \":\" IDENT) | (\":\" IDENT))","_(FullIRI | AbbreviatedIRI)","StringLiteral","_(IRI | StringLiteral)","_IRI?","_(IRI IRI?)?","_ImportDeclaration*","_Annotation*","__Axiom*","_(Declaration | AnnotationAssertionAxiom _c3cffea8","_Annotation*_1","_(ClassEntity | ObjectPropertyEntity | Da_98f2cad3","_(IRI | ObjectInverseOf)","_(IRI | ObjectIntersectionOf | ObjectUnio_a32e4a2b","__ClassExpression*","_IRI*","__ClassExpression?","_DataRange?","_FacetRestriction*","_DataRange*","_StringLiteral*","_(IRI | DatatypeRestriction | DataInterse_a09c7f52","__ClassExpression*_1","__ClassExpression*_2","_IRI*_1","_(_ObjectPropertyExpression | ObjectPrope_5e82d7b6","__ObjectPropertyExpression*","__ObjectPropertyExpression*_1","_IRI*_2","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
     : [];
 export const LINT_MESSAGES =
   typeof {} !== "undefined"
@@ -552,7 +552,7 @@ export const LINT_CODES =
   typeof {} !== "undefined" ? {} : {};
 export const EXTRAS_PATTERN = "\\s";
 export const FIELD_NAMES =
-  typeof {"name":1,"iri":2,"import":3,"axiom":4,"entity":5,"property":6,"individual":7,"cardinality":8,"filler":9,"value":10,"range":11,"facet":12,"datatype":13,"subClass":14,"superClass":15,"classExpr":16,"class":17,"disjointClass":18,"subProperty":19,"superProperty":20,"inverseProperty":21,"domain":22,"subject":23,"object":24} !== "undefined" ? {"name":1,"iri":2,"import":3,"axiom":4,"entity":5,"property":6,"individual":7,"cardinality":8,"filler":9,"value":10,"range":11,"facet":12,"datatype":13,"subClass":14,"superClass":15,"classExpr":16,"class":17,"disjointClass":18,"subProperty":19,"superProperty":20,"inverseProperty":21,"domain":22,"subject":23,"object":24} : {};
+  typeof {"name":1,"iri":2,"property":3,"value":4,"versionIri":5,"import":6,"annotation":7,"axiom":8,"entity":9,"subject":10,"individual":11,"cardinality":12,"filler":13,"range":14,"facet":15,"datatype":16,"subClass":17,"superClass":18,"classExpr":19,"class":20,"disjointClass":21,"subProperty":22,"superProperty":23,"inverseProperty":24,"objectProperty":25,"dataProperty":26,"domain":27,"object":28} !== "undefined" ? {"name":1,"iri":2,"property":3,"value":4,"versionIri":5,"import":6,"annotation":7,"axiom":8,"entity":9,"subject":10,"individual":11,"cardinality":12,"filler":13,"range":14,"facet":15,"datatype":16,"subClass":17,"superClass":18,"classExpr":19,"class":20,"disjointClass":21,"subProperty":22,"superProperty":23,"inverseProperty":24,"objectProperty":25,"dataProperty":26,"domain":27,"object":28} : {};
 let ID_TO_FIELD_NAME = null;
 export function getFieldNameById(id) {
   if (ID_TO_FIELD_NAME === null) {
@@ -846,10 +846,13 @@ export class LspFacade {
     }
   }
   /**
-   * Trigger 2: Checks if allocated memory exceeds high-water mark quota.
+   * Trigger 2: Checks if live allocated arena memory exceeds high-water mark quota.
    */
   checkMemoryQuota() {
-    const allocatedBytes = this.wasmMemory?.buffer?.byteLength ?? 0;
+    const allocatedBytes =
+      typeof this.exports?.arena_getMemoryUsage === "function"
+        ? this.exports.arena_getMemoryUsage()
+        : (this.wasmMemory?.buffer?.byteLength ?? 0);
     if (allocatedBytes >= this._maxMemoryQuotaBytes) {
       this.gcCompact();
     }
@@ -939,6 +942,14 @@ export class LspFacade {
     const getInputBuf =
       this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
+    // Multi-file safety: if the shared WASM input buffer currently holds another document's
+    // text, reload this document's previous text before applying an in-place edit.
+    if (uri && this._lastInputBufferUri !== uri) {
+      const cachedSrc = this.uriSourceCode.get(uri);
+      if (cachedSrc !== undefined) {
+        this.loadSource(cachedSrc);
+      }
+    }
     // Invalidate cached line starts on every edit.
     // The full rescan in getLineStarts() is O(N) but runs lazily once per edit.
     this._cachedLineStarts = null;
@@ -974,16 +985,7 @@ export class LspFacade {
     const textPtr = this.exports.ensureInputBuffer
       ? this.exports.ensureInputBuffer(lenBytesAlloc)
       : oldTextPtr;
-    // If the buffer was reallocated, move the old text into it. `ensureInputBuffer` never
-    // frees the previous buffer, so its contents are still valid in linear memory; this
-    // avoids snapshotting the whole document on every keystroke.
-    if (oldTextPtr !== textPtr && oldTotalLength > 0) {
-      new Uint8Array(this.wasmMemory.buffer).copyWithin(
-        textPtr,
-        oldTextPtr,
-        oldTextPtr + oldTotalLength * 2,
-      );
-    }
+    // `ensureInputBuffer` preserves existing input bytes across buffer reallocation before freeing the old buffer.
     const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
     if (changeText.length !== rangeLength) {
       const sourceIndex = rangeOffset + rangeLength;
@@ -1082,6 +1084,12 @@ export class LspFacade {
       this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
     if (!edits || edits.length === 0) return this.getDocumentRoot(uri);
+    if (uri && this._lastInputBufferUri !== uri) {
+      const cachedSrc = this.uriSourceCode.get(uri);
+      if (cachedSrc !== undefined) {
+        this.loadSource(cachedSrc);
+      }
+    }
     this._cachedLineStarts = null;
     this._childTailCache.clear();
     // First, compute the bounding box of all edits in original coordinates
@@ -1127,14 +1135,7 @@ export class LspFacade {
     const textPtr = this.exports.ensureInputBuffer
       ? this.exports.ensureInputBuffer(lenBytesAlloc)
       : oldTextPtr;
-    // Old input buffers are never freed, so relocated text can be copied in place.
-    if (oldTextPtr !== textPtr && oldTotalLength > 0) {
-      new Uint8Array(this.wasmMemory.buffer).copyWithin(
-        textPtr,
-        oldTextPtr,
-        oldTextPtr + oldTotalLength * 2,
-      );
-    }
+    // `ensureInputBuffer` preserves existing input bytes across reallocation before freeing the old buffer.
     const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
     // Sort edits in descending order so mutations at higher offsets do not shift lower offsets
     const sortedEdits = edits
@@ -1160,6 +1161,8 @@ export class LspFacade {
     }
     this._cachedLineStarts = null;
     this.currentInputLength = newTotalLength;
+    this._lastInputBufferUri = uri;
+    this._lastInputBufferLength = Math.max(0, newTotalLength);
     this._inputEncoding = 1;
     const div = this.getEncodingDiv();
     const inputLen = this.isCharOffsetKernel() ? newTotalLength : lenBytes;
@@ -6417,7 +6420,7 @@ export class LspWorkspaceManager {
   indexFile(uri, content, keepAst = false) {
     const fileId = this.getFileId(uri);
     this.facade.clearFileStubs(fileId);
-    const astRoot = this.facade.parse(content);
+    const astRoot = this.facade.parse(content, 0, 0, 0, uri);
     const symbols = this.facade.getDocumentSymbols(astRoot);
     for (let i = 0; i < symbols.length; i++) {
       const s = symbols[i];
@@ -6906,81 +6909,93 @@ export const semanticLegend = { tokenTypes: ["identifier","number"], tokenModifi
 
 export const SyntaxKind = {
   ERROR: 0,
-  OntologyDocument: 68,
-  PrefixDeclaration: 69,
-  PrefixName: 70,
-  AbbreviatedIRI: 71,
-  IRI: 72,
-  Ontology: 73,
-  ImportDeclaration: 74,
-  Axiom: 75,
-  _Axiom: 75,
-  Declaration: 76,
-  Entity: 77,
-  _Entity: 77,
-  ClassEntity: 78,
-  ObjectPropertyEntity: 79,
-  DataPropertyEntity: 80,
-  NamedIndividualEntity: 81,
-  ClassExpression: 82,
-  _ClassExpression: 82,
-  ObjectIntersectionOf: 83,
-  ObjectUnionOf: 84,
-  ObjectComplementOf: 85,
-  ObjectSomeValuesFrom: 86,
-  ObjectAllValuesFrom: 87,
-  ObjectHasSelf: 88,
-  ObjectHasValue: 89,
-  ObjectOneOf: 90,
-  ObjectMinCardinality: 91,
-  ObjectMaxCardinality: 92,
-  ObjectExactCardinality: 93,
-  DataSomeValuesFrom: 94,
-  DataAllValuesFrom: 95,
-  DataHasValue: 96,
-  DataMinCardinality: 97,
-  DataMaxCardinality: 98,
-  DataExactCardinality: 99,
-  FacetRestriction: 100,
-  DatatypeRestriction: 101,
-  DataIntersectionOf: 102,
-  DataUnionOf: 103,
-  DataOneOf: 104,
-  DataRange: 105,
-  SubClassOfAxiom: 106,
-  EquivalentClassesAxiom: 107,
-  DisjointClassesAxiom: 108,
-  DisjointUnionAxiom: 109,
-  ObjectPropertyChain: 110,
-  SubObjectPropertyOfAxiom: 111,
-  SubDataPropertyOfAxiom: 112,
-  InverseObjectPropertiesAxiom: 113,
-  DisjointObjectPropertiesAxiom: 114,
-  ObjectPropertyDomainAxiom: 115,
-  ObjectPropertyRangeAxiom: 116,
-  DataPropertyDomainAxiom: 117,
-  DataPropertyRangeAxiom: 118,
-  FunctionalObjectPropertyAxiom: 119,
-  InverseFunctionalObjectPropertyAxiom: 120,
-  ReflexiveObjectPropertyAxiom: 121,
-  IrreflexiveObjectPropertyAxiom: 122,
-  SymmetricObjectPropertyAxiom: 123,
-  AsymmetricObjectPropertyAxiom: 124,
-  TransitiveObjectPropertyAxiom: 125,
-  FunctionalDataPropertyAxiom: 126,
-  ObjectPropertyAssertionAxiom: 127,
-  DataPropertyAssertionAxiom: 128,
-  NegativeObjectPropertyAssertionAxiom: 129,
-  NegativeDataPropertyAssertionAxiom: 130,
-  ClassAssertionAxiom: 131,
-  SameIndividualAxiom: 132,
-  DifferentIndividualsAxiom: 133,
-  START: 134,
-  _START: 134,
-  IDENT: 137,
-  INTEGER: 138,
-  FullIRI: 140,
-  StringLiteral: 143,
+  OntologyDocument: 78,
+  PrefixDeclaration: 79,
+  PrefixName: 80,
+  AbbreviatedIRI: 81,
+  IRI: 82,
+  Annotation: 83,
+  Ontology: 84,
+  ImportDeclaration: 85,
+  Axiom: 86,
+  _Axiom: 86,
+  Declaration: 87,
+  AnnotationAssertionAxiom: 88,
+  Entity: 89,
+  _Entity: 89,
+  ClassEntity: 90,
+  ObjectPropertyEntity: 91,
+  DataPropertyEntity: 92,
+  AnnotationPropertyEntity: 93,
+  DatatypeEntity: 94,
+  NamedIndividualEntity: 95,
+  ObjectInverseOf: 96,
+  ObjectPropertyExpression: 97,
+  _ObjectPropertyExpression: 97,
+  ClassExpression: 98,
+  _ClassExpression: 98,
+  ObjectIntersectionOf: 99,
+  ObjectUnionOf: 100,
+  ObjectComplementOf: 101,
+  ObjectSomeValuesFrom: 102,
+  ObjectAllValuesFrom: 103,
+  ObjectHasSelf: 104,
+  ObjectHasValue: 105,
+  ObjectOneOf: 106,
+  ObjectMinCardinality: 107,
+  ObjectMaxCardinality: 108,
+  ObjectExactCardinality: 109,
+  DataSomeValuesFrom: 110,
+  DataAllValuesFrom: 111,
+  DataHasValue: 112,
+  DataMinCardinality: 113,
+  DataMaxCardinality: 114,
+  DataExactCardinality: 115,
+  FacetRestriction: 116,
+  DatatypeRestriction: 117,
+  DataIntersectionOf: 118,
+  DataUnionOf: 119,
+  DataComplementOf: 120,
+  DataOneOf: 121,
+  DataRange: 122,
+  SubClassOfAxiom: 123,
+  EquivalentClassesAxiom: 124,
+  DisjointClassesAxiom: 125,
+  DisjointUnionAxiom: 126,
+  ObjectPropertyChain: 127,
+  SubObjectPropertyOfAxiom: 128,
+  EquivalentObjectPropertiesAxiom: 129,
+  SubDataPropertyOfAxiom: 130,
+  EquivalentDataPropertiesAxiom: 131,
+  InverseObjectPropertiesAxiom: 132,
+  DisjointObjectPropertiesAxiom: 133,
+  DisjointDataPropertiesAxiom: 134,
+  HasKeyAxiom: 135,
+  ObjectPropertyDomainAxiom: 136,
+  ObjectPropertyRangeAxiom: 137,
+  DataPropertyDomainAxiom: 138,
+  DataPropertyRangeAxiom: 139,
+  FunctionalObjectPropertyAxiom: 140,
+  InverseFunctionalObjectPropertyAxiom: 141,
+  ReflexiveObjectPropertyAxiom: 142,
+  IrreflexiveObjectPropertyAxiom: 143,
+  SymmetricObjectPropertyAxiom: 144,
+  AsymmetricObjectPropertyAxiom: 145,
+  TransitiveObjectPropertyAxiom: 146,
+  FunctionalDataPropertyAxiom: 147,
+  ObjectPropertyAssertionAxiom: 148,
+  DataPropertyAssertionAxiom: 149,
+  NegativeObjectPropertyAssertionAxiom: 150,
+  NegativeDataPropertyAssertionAxiom: 151,
+  ClassAssertionAxiom: 152,
+  SameIndividualAxiom: 153,
+  DifferentIndividualsAxiom: 154,
+  START: 155,
+  _START: 155,
+  IDENT: 158,
+  INTEGER: 159,
+  FullIRI: 161,
+  StringLiteral: 164,
   EOF: 1023,
 };
 
@@ -6989,50 +7004,58 @@ export const FieldId = {
   name: 1,
   Iri: 2,
   iri: 2,
-  Import: 3,
-  import: 3,
-  Axiom: 4,
-  axiom: 4,
-  Entity: 5,
-  entity: 5,
-  Property: 6,
-  property: 6,
-  Individual: 7,
-  individual: 7,
-  Cardinality: 8,
-  cardinality: 8,
-  Filler: 9,
-  filler: 9,
-  Value: 10,
-  value: 10,
-  Range: 11,
-  range: 11,
-  Facet: 12,
-  facet: 12,
-  Datatype: 13,
-  datatype: 13,
-  SubClass: 14,
-  subClass: 14,
-  SuperClass: 15,
-  superClass: 15,
-  ClassExpr: 16,
-  classExpr: 16,
-  Class: 17,
-  class: 17,
-  DisjointClass: 18,
-  disjointClass: 18,
-  SubProperty: 19,
-  subProperty: 19,
-  SuperProperty: 20,
-  superProperty: 20,
-  InverseProperty: 21,
-  inverseProperty: 21,
-  Domain: 22,
-  domain: 22,
-  Subject: 23,
-  subject: 23,
-  ObjectNode: 24,
-  object: 24,
+  Property: 3,
+  property: 3,
+  Value: 4,
+  value: 4,
+  VersionIri: 5,
+  versionIri: 5,
+  Import: 6,
+  import: 6,
+  Annotation: 7,
+  annotation: 7,
+  Axiom: 8,
+  axiom: 8,
+  Entity: 9,
+  entity: 9,
+  Subject: 10,
+  subject: 10,
+  Individual: 11,
+  individual: 11,
+  Cardinality: 12,
+  cardinality: 12,
+  Filler: 13,
+  filler: 13,
+  Range: 14,
+  range: 14,
+  Facet: 15,
+  facet: 15,
+  Datatype: 16,
+  datatype: 16,
+  SubClass: 17,
+  subClass: 17,
+  SuperClass: 18,
+  superClass: 18,
+  ClassExpr: 19,
+  classExpr: 19,
+  Class: 20,
+  class: 20,
+  DisjointClass: 21,
+  disjointClass: 21,
+  SubProperty: 22,
+  subProperty: 22,
+  SuperProperty: 23,
+  superProperty: 23,
+  InverseProperty: 24,
+  inverseProperty: 24,
+  ObjectProperty: 25,
+  objectProperty: 25,
+  DataProperty: 26,
+  dataProperty: 26,
+  Domain: 27,
+  domain: 27,
+  ObjectNode: 28,
+  object: 28,
 };
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -7048,218 +7071,248 @@ export function cstKind(node) {
   return node ? normalizeToken(node.type) : "";
 }
 export function isOntologyDocument(node) {
-  return node != null && node.typeId === 68;
-}
-export function isPrefixDeclaration(node) {
-  return node != null && node.typeId === 69;
-}
-export function isPrefixName(node) {
-  return node != null && node.typeId === 70;
-}
-export function isAbbreviatedIRI(node) {
-  return node != null && node.typeId === 71;
-}
-export function isIRI(node) {
-  return node != null && node.typeId === 72;
-}
-export function isOntology(node) {
-  return node != null && node.typeId === 73;
-}
-export function isImportDeclaration(node) {
-  return node != null && node.typeId === 74;
-}
-export function isDeclaration(node) {
-  return node != null && node.typeId === 76;
-}
-export function isClassEntity(node) {
   return node != null && node.typeId === 78;
 }
-export function isObjectPropertyEntity(node) {
+export function isPrefixDeclaration(node) {
   return node != null && node.typeId === 79;
 }
-export function isDataPropertyEntity(node) {
+export function isPrefixName(node) {
   return node != null && node.typeId === 80;
 }
-export function isNamedIndividualEntity(node) {
+export function isAbbreviatedIRI(node) {
   return node != null && node.typeId === 81;
 }
-export function isObjectIntersectionOf(node) {
+export function isIRI(node) {
+  return node != null && node.typeId === 82;
+}
+export function isAnnotation(node) {
   return node != null && node.typeId === 83;
 }
-export function isObjectUnionOf(node) {
+export function isOntology(node) {
   return node != null && node.typeId === 84;
 }
-export function isObjectComplementOf(node) {
+export function isImportDeclaration(node) {
   return node != null && node.typeId === 85;
 }
-export function isObjectSomeValuesFrom(node) {
-  return node != null && node.typeId === 86;
-}
-export function isObjectAllValuesFrom(node) {
+export function isDeclaration(node) {
   return node != null && node.typeId === 87;
 }
-export function isObjectHasSelf(node) {
+export function isAnnotationAssertionAxiom(node) {
   return node != null && node.typeId === 88;
 }
-export function isObjectHasValue(node) {
-  return node != null && node.typeId === 89;
-}
-export function isObjectOneOf(node) {
+export function isClassEntity(node) {
   return node != null && node.typeId === 90;
 }
-export function isObjectMinCardinality(node) {
+export function isObjectPropertyEntity(node) {
   return node != null && node.typeId === 91;
 }
-export function isObjectMaxCardinality(node) {
+export function isDataPropertyEntity(node) {
   return node != null && node.typeId === 92;
 }
-export function isObjectExactCardinality(node) {
+export function isAnnotationPropertyEntity(node) {
   return node != null && node.typeId === 93;
 }
-export function isDataSomeValuesFrom(node) {
+export function isDatatypeEntity(node) {
   return node != null && node.typeId === 94;
 }
-export function isDataAllValuesFrom(node) {
+export function isNamedIndividualEntity(node) {
   return node != null && node.typeId === 95;
 }
-export function isDataHasValue(node) {
+export function isObjectInverseOf(node) {
   return node != null && node.typeId === 96;
 }
-export function isDataMinCardinality(node) {
-  return node != null && node.typeId === 97;
-}
-export function isDataMaxCardinality(node) {
-  return node != null && node.typeId === 98;
-}
-export function isDataExactCardinality(node) {
+export function isObjectIntersectionOf(node) {
   return node != null && node.typeId === 99;
 }
-export function isFacetRestriction(node) {
+export function isObjectUnionOf(node) {
   return node != null && node.typeId === 100;
 }
-export function isDatatypeRestriction(node) {
+export function isObjectComplementOf(node) {
   return node != null && node.typeId === 101;
 }
-export function isDataIntersectionOf(node) {
+export function isObjectSomeValuesFrom(node) {
   return node != null && node.typeId === 102;
 }
-export function isDataUnionOf(node) {
+export function isObjectAllValuesFrom(node) {
   return node != null && node.typeId === 103;
 }
-export function isDataOneOf(node) {
+export function isObjectHasSelf(node) {
   return node != null && node.typeId === 104;
 }
-export function isDataRange(node) {
+export function isObjectHasValue(node) {
   return node != null && node.typeId === 105;
 }
-export function isSubClassOfAxiom(node) {
+export function isObjectOneOf(node) {
   return node != null && node.typeId === 106;
 }
-export function isEquivalentClassesAxiom(node) {
+export function isObjectMinCardinality(node) {
   return node != null && node.typeId === 107;
 }
-export function isDisjointClassesAxiom(node) {
+export function isObjectMaxCardinality(node) {
   return node != null && node.typeId === 108;
 }
-export function isDisjointUnionAxiom(node) {
+export function isObjectExactCardinality(node) {
   return node != null && node.typeId === 109;
 }
-export function isObjectPropertyChain(node) {
+export function isDataSomeValuesFrom(node) {
   return node != null && node.typeId === 110;
 }
-export function isSubObjectPropertyOfAxiom(node) {
+export function isDataAllValuesFrom(node) {
   return node != null && node.typeId === 111;
 }
-export function isSubDataPropertyOfAxiom(node) {
+export function isDataHasValue(node) {
   return node != null && node.typeId === 112;
 }
-export function isInverseObjectPropertiesAxiom(node) {
+export function isDataMinCardinality(node) {
   return node != null && node.typeId === 113;
 }
-export function isDisjointObjectPropertiesAxiom(node) {
+export function isDataMaxCardinality(node) {
   return node != null && node.typeId === 114;
 }
-export function isObjectPropertyDomainAxiom(node) {
+export function isDataExactCardinality(node) {
   return node != null && node.typeId === 115;
 }
-export function isObjectPropertyRangeAxiom(node) {
+export function isFacetRestriction(node) {
   return node != null && node.typeId === 116;
 }
-export function isDataPropertyDomainAxiom(node) {
+export function isDatatypeRestriction(node) {
   return node != null && node.typeId === 117;
 }
-export function isDataPropertyRangeAxiom(node) {
+export function isDataIntersectionOf(node) {
   return node != null && node.typeId === 118;
 }
-export function isFunctionalObjectPropertyAxiom(node) {
+export function isDataUnionOf(node) {
   return node != null && node.typeId === 119;
 }
-export function isInverseFunctionalObjectPropertyAxiom(node) {
+export function isDataComplementOf(node) {
   return node != null && node.typeId === 120;
 }
-export function isReflexiveObjectPropertyAxiom(node) {
+export function isDataOneOf(node) {
   return node != null && node.typeId === 121;
 }
-export function isIrreflexiveObjectPropertyAxiom(node) {
+export function isDataRange(node) {
   return node != null && node.typeId === 122;
 }
-export function isSymmetricObjectPropertyAxiom(node) {
+export function isSubClassOfAxiom(node) {
   return node != null && node.typeId === 123;
 }
-export function isAsymmetricObjectPropertyAxiom(node) {
+export function isEquivalentClassesAxiom(node) {
   return node != null && node.typeId === 124;
 }
-export function isTransitiveObjectPropertyAxiom(node) {
+export function isDisjointClassesAxiom(node) {
   return node != null && node.typeId === 125;
 }
-export function isFunctionalDataPropertyAxiom(node) {
+export function isDisjointUnionAxiom(node) {
   return node != null && node.typeId === 126;
 }
-export function isObjectPropertyAssertionAxiom(node) {
+export function isObjectPropertyChain(node) {
   return node != null && node.typeId === 127;
 }
-export function isDataPropertyAssertionAxiom(node) {
+export function isSubObjectPropertyOfAxiom(node) {
   return node != null && node.typeId === 128;
 }
-export function isNegativeObjectPropertyAssertionAxiom(node) {
+export function isEquivalentObjectPropertiesAxiom(node) {
   return node != null && node.typeId === 129;
 }
-export function isNegativeDataPropertyAssertionAxiom(node) {
+export function isSubDataPropertyOfAxiom(node) {
   return node != null && node.typeId === 130;
 }
-export function isClassAssertionAxiom(node) {
+export function isEquivalentDataPropertiesAxiom(node) {
   return node != null && node.typeId === 131;
 }
-export function isSameIndividualAxiom(node) {
+export function isInverseObjectPropertiesAxiom(node) {
   return node != null && node.typeId === 132;
 }
-export function isDifferentIndividualsAxiom(node) {
+export function isDisjointObjectPropertiesAxiom(node) {
   return node != null && node.typeId === 133;
 }
-export function isIDENT(node) {
+export function isDisjointDataPropertiesAxiom(node) {
+  return node != null && node.typeId === 134;
+}
+export function isHasKeyAxiom(node) {
+  return node != null && node.typeId === 135;
+}
+export function isObjectPropertyDomainAxiom(node) {
+  return node != null && node.typeId === 136;
+}
+export function isObjectPropertyRangeAxiom(node) {
   return node != null && node.typeId === 137;
 }
-export function isINTEGER(node) {
+export function isDataPropertyDomainAxiom(node) {
   return node != null && node.typeId === 138;
 }
-export function isFullIRI(node) {
+export function isDataPropertyRangeAxiom(node) {
+  return node != null && node.typeId === 139;
+}
+export function isFunctionalObjectPropertyAxiom(node) {
   return node != null && node.typeId === 140;
 }
-export function isStringLiteral(node) {
+export function isInverseFunctionalObjectPropertyAxiom(node) {
+  return node != null && node.typeId === 141;
+}
+export function isReflexiveObjectPropertyAxiom(node) {
+  return node != null && node.typeId === 142;
+}
+export function isIrreflexiveObjectPropertyAxiom(node) {
   return node != null && node.typeId === 143;
+}
+export function isSymmetricObjectPropertyAxiom(node) {
+  return node != null && node.typeId === 144;
+}
+export function isAsymmetricObjectPropertyAxiom(node) {
+  return node != null && node.typeId === 145;
+}
+export function isTransitiveObjectPropertyAxiom(node) {
+  return node != null && node.typeId === 146;
+}
+export function isFunctionalDataPropertyAxiom(node) {
+  return node != null && node.typeId === 147;
+}
+export function isObjectPropertyAssertionAxiom(node) {
+  return node != null && node.typeId === 148;
+}
+export function isDataPropertyAssertionAxiom(node) {
+  return node != null && node.typeId === 149;
+}
+export function isNegativeObjectPropertyAssertionAxiom(node) {
+  return node != null && node.typeId === 150;
+}
+export function isNegativeDataPropertyAssertionAxiom(node) {
+  return node != null && node.typeId === 151;
+}
+export function isClassAssertionAxiom(node) {
+  return node != null && node.typeId === 152;
+}
+export function isSameIndividualAxiom(node) {
+  return node != null && node.typeId === 153;
+}
+export function isDifferentIndividualsAxiom(node) {
+  return node != null && node.typeId === 154;
+}
+export function isIDENT(node) {
+  return node != null && node.typeId === 158;
+}
+export function isINTEGER(node) {
+  return node != null && node.typeId === 159;
+}
+export function isFullIRI(node) {
+  return node != null && node.typeId === 161;
+}
+export function isStringLiteral(node) {
+  return node != null && node.typeId === 164;
 }
 export const Cst = {
   kind: cstKind,
   normalize: normalizeToken,
   OntologyDocument: {
-    typeId: 68,
+    typeId: 78,
     type: "OntologyDocument",
-    is(node) { return node != null && node.typeId === 68; },
+    is(node) { return node != null && node.typeId === 78; },
   },
   PrefixDeclaration: {
-    typeId: 69,
+    typeId: 79,
     type: "PrefixDeclaration",
-    is(node) { return node != null && node.typeId === 69; },
+    is(node) { return node != null && node.typeId === 79; },
     name(node) {
       return node ? node.childForFieldId(1) : null;
     },
@@ -7274,47 +7327,76 @@ export const Cst = {
     },
   },
   PrefixName: {
-    typeId: 70,
+    typeId: 80,
     type: "PrefixName",
-    is(node) { return node != null && node.typeId === 70; },
+    is(node) { return node != null && node.typeId === 80; },
   },
   AbbreviatedIRI: {
-    typeId: 71,
+    typeId: 81,
     type: "AbbreviatedIRI",
-    is(node) { return node != null && node.typeId === 71; },
+    is(node) { return node != null && node.typeId === 81; },
   },
   IRI: {
-    typeId: 72,
+    typeId: 82,
     type: "IRI",
-    is(node) { return node != null && node.typeId === 72; },
+    is(node) { return node != null && node.typeId === 82; },
+  },
+  Annotation: {
+    typeId: 83,
+    type: "Annotation",
+    is(node) { return node != null && node.typeId === 83; },
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
+    },
+    value(node) {
+      return node ? node.childForFieldId(4) : null;
+    },
+    valueList(node) {
+      return node ? node.childrenForFieldId(4) : [];
+    },
   },
   Ontology: {
-    typeId: 73,
+    typeId: 84,
     type: "Ontology",
-    is(node) { return node != null && node.typeId === 73; },
+    is(node) { return node != null && node.typeId === 84; },
     iri(node) {
       return node ? node.childForFieldId(2) : null;
     },
     iriList(node) {
       return node ? node.childrenForFieldId(2) : [];
     },
+    versionIri(node) {
+      return node ? node.childForFieldId(5) : null;
+    },
+    versionIriList(node) {
+      return node ? node.childrenForFieldId(5) : [];
+    },
     import(node) {
-      return node ? node.childForFieldId(3) : null;
+      return node ? node.childForFieldId(6) : null;
     },
     importList(node) {
-      return node ? node.childrenForFieldId(3) : [];
+      return node ? node.childrenForFieldId(6) : [];
+    },
+    annotation(node) {
+      return node ? node.childForFieldId(7) : null;
+    },
+    annotationList(node) {
+      return node ? node.childrenForFieldId(7) : [];
     },
     axiom(node) {
-      return node ? node.childForFieldId(4) : null;
+      return node ? node.childForFieldId(8) : null;
     },
     axiomList(node) {
-      return node ? node.childrenForFieldId(4) : [];
+      return node ? node.childrenForFieldId(8) : [];
     },
   },
   ImportDeclaration: {
-    typeId: 74,
+    typeId: 85,
     type: "ImportDeclaration",
-    is(node) { return node != null && node.typeId === 74; },
+    is(node) { return node != null && node.typeId === 85; },
     iri(node) {
       return node ? node.childForFieldId(2) : null;
     },
@@ -7323,20 +7405,43 @@ export const Cst = {
     },
   },
   Declaration: {
-    typeId: 76,
+    typeId: 87,
     type: "Declaration",
-    is(node) { return node != null && node.typeId === 76; },
+    is(node) { return node != null && node.typeId === 87; },
     entity(node) {
-      return node ? node.childForFieldId(5) : null;
+      return node ? node.childForFieldId(9) : null;
     },
     entityList(node) {
-      return node ? node.childrenForFieldId(5) : [];
+      return node ? node.childrenForFieldId(9) : [];
+    },
+  },
+  AnnotationAssertionAxiom: {
+    typeId: 88,
+    type: "AnnotationAssertionAxiom",
+    is(node) { return node != null && node.typeId === 88; },
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
+    },
+    subject(node) {
+      return node ? node.childForFieldId(10) : null;
+    },
+    subjectList(node) {
+      return node ? node.childrenForFieldId(10) : [];
+    },
+    value(node) {
+      return node ? node.childForFieldId(4) : null;
+    },
+    valueList(node) {
+      return node ? node.childrenForFieldId(4) : [];
     },
   },
   ClassEntity: {
-    typeId: 78,
+    typeId: 90,
     type: "ClassEntity",
-    is(node) { return node != null && node.typeId === 78; },
+    is(node) { return node != null && node.typeId === 90; },
     iri(node) {
       return node ? node.childForFieldId(2) : null;
     },
@@ -7345,9 +7450,9 @@ export const Cst = {
     },
   },
   ObjectPropertyEntity: {
-    typeId: 79,
+    typeId: 91,
     type: "ObjectPropertyEntity",
-    is(node) { return node != null && node.typeId === 79; },
+    is(node) { return node != null && node.typeId === 91; },
     iri(node) {
       return node ? node.childForFieldId(2) : null;
     },
@@ -7356,9 +7461,31 @@ export const Cst = {
     },
   },
   DataPropertyEntity: {
-    typeId: 80,
+    typeId: 92,
     type: "DataPropertyEntity",
-    is(node) { return node != null && node.typeId === 80; },
+    is(node) { return node != null && node.typeId === 92; },
+    iri(node) {
+      return node ? node.childForFieldId(2) : null;
+    },
+    iriList(node) {
+      return node ? node.childrenForFieldId(2) : [];
+    },
+  },
+  AnnotationPropertyEntity: {
+    typeId: 93,
+    type: "AnnotationPropertyEntity",
+    is(node) { return node != null && node.typeId === 93; },
+    iri(node) {
+      return node ? node.childForFieldId(2) : null;
+    },
+    iriList(node) {
+      return node ? node.childrenForFieldId(2) : [];
+    },
+  },
+  DatatypeEntity: {
+    typeId: 94,
+    type: "DatatypeEntity",
+    is(node) { return node != null && node.typeId === 94; },
     iri(node) {
       return node ? node.childForFieldId(2) : null;
     },
@@ -7367,9 +7494,9 @@ export const Cst = {
     },
   },
   NamedIndividualEntity: {
-    typeId: 81,
+    typeId: 95,
     type: "NamedIndividualEntity",
-    is(node) { return node != null && node.typeId === 81; },
+    is(node) { return node != null && node.typeId === 95; },
     iri(node) {
       return node ? node.childForFieldId(2) : null;
     },
@@ -7377,717 +7504,789 @@ export const Cst = {
       return node ? node.childrenForFieldId(2) : [];
     },
   },
-  ObjectIntersectionOf: {
-    typeId: 83,
-    type: "ObjectIntersectionOf",
-    is(node) { return node != null && node.typeId === 83; },
-  },
-  ObjectUnionOf: {
-    typeId: 84,
-    type: "ObjectUnionOf",
-    is(node) { return node != null && node.typeId === 84; },
-  },
-  ObjectComplementOf: {
-    typeId: 85,
-    type: "ObjectComplementOf",
-    is(node) { return node != null && node.typeId === 85; },
-  },
-  ObjectSomeValuesFrom: {
-    typeId: 86,
-    type: "ObjectSomeValuesFrom",
-    is(node) { return node != null && node.typeId === 86; },
-  },
-  ObjectAllValuesFrom: {
-    typeId: 87,
-    type: "ObjectAllValuesFrom",
-    is(node) { return node != null && node.typeId === 87; },
-  },
-  ObjectHasSelf: {
-    typeId: 88,
-    type: "ObjectHasSelf",
-    is(node) { return node != null && node.typeId === 88; },
+  ObjectInverseOf: {
+    typeId: 96,
+    type: "ObjectInverseOf",
+    is(node) { return node != null && node.typeId === 96; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
+    },
+  },
+  ObjectIntersectionOf: {
+    typeId: 99,
+    type: "ObjectIntersectionOf",
+    is(node) { return node != null && node.typeId === 99; },
+  },
+  ObjectUnionOf: {
+    typeId: 100,
+    type: "ObjectUnionOf",
+    is(node) { return node != null && node.typeId === 100; },
+  },
+  ObjectComplementOf: {
+    typeId: 101,
+    type: "ObjectComplementOf",
+    is(node) { return node != null && node.typeId === 101; },
+  },
+  ObjectSomeValuesFrom: {
+    typeId: 102,
+    type: "ObjectSomeValuesFrom",
+    is(node) { return node != null && node.typeId === 102; },
+  },
+  ObjectAllValuesFrom: {
+    typeId: 103,
+    type: "ObjectAllValuesFrom",
+    is(node) { return node != null && node.typeId === 103; },
+  },
+  ObjectHasSelf: {
+    typeId: 104,
+    type: "ObjectHasSelf",
+    is(node) { return node != null && node.typeId === 104; },
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
     },
   },
   ObjectHasValue: {
-    typeId: 89,
+    typeId: 105,
     type: "ObjectHasValue",
-    is(node) { return node != null && node.typeId === 89; },
+    is(node) { return node != null && node.typeId === 105; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
     individual(node) {
-      return node ? node.childForFieldId(7) : null;
+      return node ? node.childForFieldId(11) : null;
     },
     individualList(node) {
-      return node ? node.childrenForFieldId(7) : [];
+      return node ? node.childrenForFieldId(11) : [];
     },
   },
   ObjectOneOf: {
-    typeId: 90,
+    typeId: 106,
     type: "ObjectOneOf",
-    is(node) { return node != null && node.typeId === 90; },
+    is(node) { return node != null && node.typeId === 106; },
     individual(node) {
-      return node ? node.childForFieldId(7) : null;
+      return node ? node.childForFieldId(11) : null;
     },
     individualList(node) {
-      return node ? node.childrenForFieldId(7) : [];
+      return node ? node.childrenForFieldId(11) : [];
     },
   },
   ObjectMinCardinality: {
-    typeId: 91,
+    typeId: 107,
     type: "ObjectMinCardinality",
-    is(node) { return node != null && node.typeId === 91; },
+    is(node) { return node != null && node.typeId === 107; },
     cardinality(node) {
-      return node ? node.childForFieldId(8) : null;
-    },
-    cardinalityList(node) {
-      return node ? node.childrenForFieldId(8) : [];
-    },
-    property(node) {
-      return node ? node.childForFieldId(6) : null;
-    },
-    propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
-    },
-    filler(node) {
-      return node ? node.childForFieldId(9) : null;
-    },
-    fillerList(node) {
-      return node ? node.childrenForFieldId(9) : [];
-    },
-  },
-  ObjectMaxCardinality: {
-    typeId: 92,
-    type: "ObjectMaxCardinality",
-    is(node) { return node != null && node.typeId === 92; },
-    cardinality(node) {
-      return node ? node.childForFieldId(8) : null;
-    },
-    cardinalityList(node) {
-      return node ? node.childrenForFieldId(8) : [];
-    },
-    property(node) {
-      return node ? node.childForFieldId(6) : null;
-    },
-    propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
-    },
-    filler(node) {
-      return node ? node.childForFieldId(9) : null;
-    },
-    fillerList(node) {
-      return node ? node.childrenForFieldId(9) : [];
-    },
-  },
-  ObjectExactCardinality: {
-    typeId: 93,
-    type: "ObjectExactCardinality",
-    is(node) { return node != null && node.typeId === 93; },
-    cardinality(node) {
-      return node ? node.childForFieldId(8) : null;
-    },
-    cardinalityList(node) {
-      return node ? node.childrenForFieldId(8) : [];
-    },
-    property(node) {
-      return node ? node.childForFieldId(6) : null;
-    },
-    propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
-    },
-    filler(node) {
-      return node ? node.childForFieldId(9) : null;
-    },
-    fillerList(node) {
-      return node ? node.childrenForFieldId(9) : [];
-    },
-  },
-  DataSomeValuesFrom: {
-    typeId: 94,
-    type: "DataSomeValuesFrom",
-    is(node) { return node != null && node.typeId === 94; },
-  },
-  DataAllValuesFrom: {
-    typeId: 95,
-    type: "DataAllValuesFrom",
-    is(node) { return node != null && node.typeId === 95; },
-  },
-  DataHasValue: {
-    typeId: 96,
-    type: "DataHasValue",
-    is(node) { return node != null && node.typeId === 96; },
-    property(node) {
-      return node ? node.childForFieldId(6) : null;
-    },
-    propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
-    },
-    value(node) {
-      return node ? node.childForFieldId(10) : null;
-    },
-    valueList(node) {
-      return node ? node.childrenForFieldId(10) : [];
-    },
-  },
-  DataMinCardinality: {
-    typeId: 97,
-    type: "DataMinCardinality",
-    is(node) { return node != null && node.typeId === 97; },
-    cardinality(node) {
-      return node ? node.childForFieldId(8) : null;
-    },
-    cardinalityList(node) {
-      return node ? node.childrenForFieldId(8) : [];
-    },
-    property(node) {
-      return node ? node.childForFieldId(6) : null;
-    },
-    propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
-    },
-    range(node) {
-      return node ? node.childForFieldId(11) : null;
-    },
-    rangeList(node) {
-      return node ? node.childrenForFieldId(11) : [];
-    },
-  },
-  DataMaxCardinality: {
-    typeId: 98,
-    type: "DataMaxCardinality",
-    is(node) { return node != null && node.typeId === 98; },
-    cardinality(node) {
-      return node ? node.childForFieldId(8) : null;
-    },
-    cardinalityList(node) {
-      return node ? node.childrenForFieldId(8) : [];
-    },
-    property(node) {
-      return node ? node.childForFieldId(6) : null;
-    },
-    propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
-    },
-    range(node) {
-      return node ? node.childForFieldId(11) : null;
-    },
-    rangeList(node) {
-      return node ? node.childrenForFieldId(11) : [];
-    },
-  },
-  DataExactCardinality: {
-    typeId: 99,
-    type: "DataExactCardinality",
-    is(node) { return node != null && node.typeId === 99; },
-    cardinality(node) {
-      return node ? node.childForFieldId(8) : null;
-    },
-    cardinalityList(node) {
-      return node ? node.childrenForFieldId(8) : [];
-    },
-    property(node) {
-      return node ? node.childForFieldId(6) : null;
-    },
-    propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
-    },
-    range(node) {
-      return node ? node.childForFieldId(11) : null;
-    },
-    rangeList(node) {
-      return node ? node.childrenForFieldId(11) : [];
-    },
-  },
-  FacetRestriction: {
-    typeId: 100,
-    type: "FacetRestriction",
-    is(node) { return node != null && node.typeId === 100; },
-    facet(node) {
       return node ? node.childForFieldId(12) : null;
     },
-    facetList(node) {
+    cardinalityList(node) {
       return node ? node.childrenForFieldId(12) : [];
     },
-    value(node) {
-      return node ? node.childForFieldId(10) : null;
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
     },
-    valueList(node) {
-      return node ? node.childrenForFieldId(10) : [];
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
     },
-  },
-  DatatypeRestriction: {
-    typeId: 101,
-    type: "DatatypeRestriction",
-    is(node) { return node != null && node.typeId === 101; },
-    datatype(node) {
+    filler(node) {
       return node ? node.childForFieldId(13) : null;
     },
-    datatypeList(node) {
+    fillerList(node) {
       return node ? node.childrenForFieldId(13) : [];
     },
   },
-  DataIntersectionOf: {
-    typeId: 102,
-    type: "DataIntersectionOf",
-    is(node) { return node != null && node.typeId === 102; },
+  ObjectMaxCardinality: {
+    typeId: 108,
+    type: "ObjectMaxCardinality",
+    is(node) { return node != null && node.typeId === 108; },
+    cardinality(node) {
+      return node ? node.childForFieldId(12) : null;
+    },
+    cardinalityList(node) {
+      return node ? node.childrenForFieldId(12) : [];
+    },
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
+    },
+    filler(node) {
+      return node ? node.childForFieldId(13) : null;
+    },
+    fillerList(node) {
+      return node ? node.childrenForFieldId(13) : [];
+    },
   },
-  DataUnionOf: {
-    typeId: 103,
-    type: "DataUnionOf",
-    is(node) { return node != null && node.typeId === 103; },
+  ObjectExactCardinality: {
+    typeId: 109,
+    type: "ObjectExactCardinality",
+    is(node) { return node != null && node.typeId === 109; },
+    cardinality(node) {
+      return node ? node.childForFieldId(12) : null;
+    },
+    cardinalityList(node) {
+      return node ? node.childrenForFieldId(12) : [];
+    },
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
+    },
+    filler(node) {
+      return node ? node.childForFieldId(13) : null;
+    },
+    fillerList(node) {
+      return node ? node.childrenForFieldId(13) : [];
+    },
   },
-  DataOneOf: {
-    typeId: 104,
-    type: "DataOneOf",
-    is(node) { return node != null && node.typeId === 104; },
+  DataSomeValuesFrom: {
+    typeId: 110,
+    type: "DataSomeValuesFrom",
+    is(node) { return node != null && node.typeId === 110; },
   },
-  DataRange: {
-    typeId: 105,
-    type: "DataRange",
-    is(node) { return node != null && node.typeId === 105; },
+  DataAllValuesFrom: {
+    typeId: 111,
+    type: "DataAllValuesFrom",
+    is(node) { return node != null && node.typeId === 111; },
   },
-  SubClassOfAxiom: {
-    typeId: 106,
-    type: "SubClassOfAxiom",
-    is(node) { return node != null && node.typeId === 106; },
-    subClass(node) {
+  DataHasValue: {
+    typeId: 112,
+    type: "DataHasValue",
+    is(node) { return node != null && node.typeId === 112; },
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
+    },
+    value(node) {
+      return node ? node.childForFieldId(4) : null;
+    },
+    valueList(node) {
+      return node ? node.childrenForFieldId(4) : [];
+    },
+  },
+  DataMinCardinality: {
+    typeId: 113,
+    type: "DataMinCardinality",
+    is(node) { return node != null && node.typeId === 113; },
+    cardinality(node) {
+      return node ? node.childForFieldId(12) : null;
+    },
+    cardinalityList(node) {
+      return node ? node.childrenForFieldId(12) : [];
+    },
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
+    },
+    range(node) {
       return node ? node.childForFieldId(14) : null;
     },
-    subClassList(node) {
+    rangeList(node) {
       return node ? node.childrenForFieldId(14) : [];
     },
-    superClass(node) {
+  },
+  DataMaxCardinality: {
+    typeId: 114,
+    type: "DataMaxCardinality",
+    is(node) { return node != null && node.typeId === 114; },
+    cardinality(node) {
+      return node ? node.childForFieldId(12) : null;
+    },
+    cardinalityList(node) {
+      return node ? node.childrenForFieldId(12) : [];
+    },
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
+    },
+    range(node) {
+      return node ? node.childForFieldId(14) : null;
+    },
+    rangeList(node) {
+      return node ? node.childrenForFieldId(14) : [];
+    },
+  },
+  DataExactCardinality: {
+    typeId: 115,
+    type: "DataExactCardinality",
+    is(node) { return node != null && node.typeId === 115; },
+    cardinality(node) {
+      return node ? node.childForFieldId(12) : null;
+    },
+    cardinalityList(node) {
+      return node ? node.childrenForFieldId(12) : [];
+    },
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
+    },
+    range(node) {
+      return node ? node.childForFieldId(14) : null;
+    },
+    rangeList(node) {
+      return node ? node.childrenForFieldId(14) : [];
+    },
+  },
+  FacetRestriction: {
+    typeId: 116,
+    type: "FacetRestriction",
+    is(node) { return node != null && node.typeId === 116; },
+    facet(node) {
       return node ? node.childForFieldId(15) : null;
     },
-    superClassList(node) {
+    facetList(node) {
       return node ? node.childrenForFieldId(15) : [];
     },
+    value(node) {
+      return node ? node.childForFieldId(4) : null;
+    },
+    valueList(node) {
+      return node ? node.childrenForFieldId(4) : [];
+    },
   },
-  EquivalentClassesAxiom: {
-    typeId: 107,
-    type: "EquivalentClassesAxiom",
-    is(node) { return node != null && node.typeId === 107; },
-    classExpr(node) {
+  DatatypeRestriction: {
+    typeId: 117,
+    type: "DatatypeRestriction",
+    is(node) { return node != null && node.typeId === 117; },
+    datatype(node) {
       return node ? node.childForFieldId(16) : null;
     },
-    classExprList(node) {
+    datatypeList(node) {
       return node ? node.childrenForFieldId(16) : [];
     },
   },
-  DisjointClassesAxiom: {
-    typeId: 108,
-    type: "DisjointClassesAxiom",
-    is(node) { return node != null && node.typeId === 108; },
-    classExpr(node) {
-      return node ? node.childForFieldId(16) : null;
-    },
-    classExprList(node) {
-      return node ? node.childrenForFieldId(16) : [];
-    },
+  DataIntersectionOf: {
+    typeId: 118,
+    type: "DataIntersectionOf",
+    is(node) { return node != null && node.typeId === 118; },
   },
-  DisjointUnionAxiom: {
-    typeId: 109,
-    type: "DisjointUnionAxiom",
-    is(node) { return node != null && node.typeId === 109; },
-    class(node) {
+  DataUnionOf: {
+    typeId: 119,
+    type: "DataUnionOf",
+    is(node) { return node != null && node.typeId === 119; },
+  },
+  DataComplementOf: {
+    typeId: 120,
+    type: "DataComplementOf",
+    is(node) { return node != null && node.typeId === 120; },
+  },
+  DataOneOf: {
+    typeId: 121,
+    type: "DataOneOf",
+    is(node) { return node != null && node.typeId === 121; },
+  },
+  DataRange: {
+    typeId: 122,
+    type: "DataRange",
+    is(node) { return node != null && node.typeId === 122; },
+  },
+  SubClassOfAxiom: {
+    typeId: 123,
+    type: "SubClassOfAxiom",
+    is(node) { return node != null && node.typeId === 123; },
+    subClass(node) {
       return node ? node.childForFieldId(17) : null;
     },
-    classList(node) {
+    subClassList(node) {
       return node ? node.childrenForFieldId(17) : [];
     },
-    disjointClass(node) {
+    superClass(node) {
       return node ? node.childForFieldId(18) : null;
     },
-    disjointClassList(node) {
+    superClassList(node) {
       return node ? node.childrenForFieldId(18) : [];
     },
   },
-  ObjectPropertyChain: {
-    typeId: 110,
-    type: "ObjectPropertyChain",
-    is(node) { return node != null && node.typeId === 110; },
-    property(node) {
-      return node ? node.childForFieldId(6) : null;
-    },
-    propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
-    },
-  },
-  SubObjectPropertyOfAxiom: {
-    typeId: 111,
-    type: "SubObjectPropertyOfAxiom",
-    is(node) { return node != null && node.typeId === 111; },
-    subProperty(node) {
+  EquivalentClassesAxiom: {
+    typeId: 124,
+    type: "EquivalentClassesAxiom",
+    is(node) { return node != null && node.typeId === 124; },
+    classExpr(node) {
       return node ? node.childForFieldId(19) : null;
     },
-    subPropertyList(node) {
+    classExprList(node) {
       return node ? node.childrenForFieldId(19) : [];
     },
-    superProperty(node) {
-      return node ? node.childForFieldId(20) : null;
-    },
-    superPropertyList(node) {
-      return node ? node.childrenForFieldId(20) : [];
-    },
   },
-  SubDataPropertyOfAxiom: {
-    typeId: 112,
-    type: "SubDataPropertyOfAxiom",
-    is(node) { return node != null && node.typeId === 112; },
-    subProperty(node) {
+  DisjointClassesAxiom: {
+    typeId: 125,
+    type: "DisjointClassesAxiom",
+    is(node) { return node != null && node.typeId === 125; },
+    classExpr(node) {
       return node ? node.childForFieldId(19) : null;
     },
-    subPropertyList(node) {
+    classExprList(node) {
       return node ? node.childrenForFieldId(19) : [];
     },
-    superProperty(node) {
+  },
+  DisjointUnionAxiom: {
+    typeId: 126,
+    type: "DisjointUnionAxiom",
+    is(node) { return node != null && node.typeId === 126; },
+    class(node) {
       return node ? node.childForFieldId(20) : null;
     },
-    superPropertyList(node) {
+    classList(node) {
       return node ? node.childrenForFieldId(20) : [];
     },
-  },
-  InverseObjectPropertiesAxiom: {
-    typeId: 113,
-    type: "InverseObjectPropertiesAxiom",
-    is(node) { return node != null && node.typeId === 113; },
-    property(node) {
-      return node ? node.childForFieldId(6) : null;
-    },
-    propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
-    },
-    inverseProperty(node) {
+    disjointClass(node) {
       return node ? node.childForFieldId(21) : null;
     },
-    inversePropertyList(node) {
+    disjointClassList(node) {
       return node ? node.childrenForFieldId(21) : [];
     },
   },
-  DisjointObjectPropertiesAxiom: {
-    typeId: 114,
-    type: "DisjointObjectPropertiesAxiom",
-    is(node) { return node != null && node.typeId === 114; },
+  ObjectPropertyChain: {
+    typeId: 127,
+    type: "ObjectPropertyChain",
+    is(node) { return node != null && node.typeId === 127; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
+    },
+  },
+  SubObjectPropertyOfAxiom: {
+    typeId: 128,
+    type: "SubObjectPropertyOfAxiom",
+    is(node) { return node != null && node.typeId === 128; },
+    subProperty(node) {
+      return node ? node.childForFieldId(22) : null;
+    },
+    subPropertyList(node) {
+      return node ? node.childrenForFieldId(22) : [];
+    },
+    superProperty(node) {
+      return node ? node.childForFieldId(23) : null;
+    },
+    superPropertyList(node) {
+      return node ? node.childrenForFieldId(23) : [];
+    },
+  },
+  EquivalentObjectPropertiesAxiom: {
+    typeId: 129,
+    type: "EquivalentObjectPropertiesAxiom",
+    is(node) { return node != null && node.typeId === 129; },
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
+    },
+  },
+  SubDataPropertyOfAxiom: {
+    typeId: 130,
+    type: "SubDataPropertyOfAxiom",
+    is(node) { return node != null && node.typeId === 130; },
+    subProperty(node) {
+      return node ? node.childForFieldId(22) : null;
+    },
+    subPropertyList(node) {
+      return node ? node.childrenForFieldId(22) : [];
+    },
+    superProperty(node) {
+      return node ? node.childForFieldId(23) : null;
+    },
+    superPropertyList(node) {
+      return node ? node.childrenForFieldId(23) : [];
+    },
+  },
+  EquivalentDataPropertiesAxiom: {
+    typeId: 131,
+    type: "EquivalentDataPropertiesAxiom",
+    is(node) { return node != null && node.typeId === 131; },
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
+    },
+  },
+  InverseObjectPropertiesAxiom: {
+    typeId: 132,
+    type: "InverseObjectPropertiesAxiom",
+    is(node) { return node != null && node.typeId === 132; },
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
+    },
+    inverseProperty(node) {
+      return node ? node.childForFieldId(24) : null;
+    },
+    inversePropertyList(node) {
+      return node ? node.childrenForFieldId(24) : [];
+    },
+  },
+  DisjointObjectPropertiesAxiom: {
+    typeId: 133,
+    type: "DisjointObjectPropertiesAxiom",
+    is(node) { return node != null && node.typeId === 133; },
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
+    },
+  },
+  DisjointDataPropertiesAxiom: {
+    typeId: 134,
+    type: "DisjointDataPropertiesAxiom",
+    is(node) { return node != null && node.typeId === 134; },
+    property(node) {
+      return node ? node.childForFieldId(3) : null;
+    },
+    propertyList(node) {
+      return node ? node.childrenForFieldId(3) : [];
+    },
+  },
+  HasKeyAxiom: {
+    typeId: 135,
+    type: "HasKeyAxiom",
+    is(node) { return node != null && node.typeId === 135; },
+    classExpr(node) {
+      return node ? node.childForFieldId(19) : null;
+    },
+    classExprList(node) {
+      return node ? node.childrenForFieldId(19) : [];
+    },
+    objectProperty(node) {
+      return node ? node.childForFieldId(25) : null;
+    },
+    objectPropertyList(node) {
+      return node ? node.childrenForFieldId(25) : [];
+    },
+    dataProperty(node) {
+      return node ? node.childForFieldId(26) : null;
+    },
+    dataPropertyList(node) {
+      return node ? node.childrenForFieldId(26) : [];
     },
   },
   ObjectPropertyDomainAxiom: {
-    typeId: 115,
+    typeId: 136,
     type: "ObjectPropertyDomainAxiom",
-    is(node) { return node != null && node.typeId === 115; },
+    is(node) { return node != null && node.typeId === 136; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
     domain(node) {
-      return node ? node.childForFieldId(22) : null;
+      return node ? node.childForFieldId(27) : null;
     },
     domainList(node) {
-      return node ? node.childrenForFieldId(22) : [];
+      return node ? node.childrenForFieldId(27) : [];
     },
   },
   ObjectPropertyRangeAxiom: {
-    typeId: 116,
+    typeId: 137,
     type: "ObjectPropertyRangeAxiom",
-    is(node) { return node != null && node.typeId === 116; },
+    is(node) { return node != null && node.typeId === 137; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
     range(node) {
-      return node ? node.childForFieldId(11) : null;
+      return node ? node.childForFieldId(14) : null;
     },
     rangeList(node) {
-      return node ? node.childrenForFieldId(11) : [];
+      return node ? node.childrenForFieldId(14) : [];
     },
   },
   DataPropertyDomainAxiom: {
-    typeId: 117,
+    typeId: 138,
     type: "DataPropertyDomainAxiom",
-    is(node) { return node != null && node.typeId === 117; },
+    is(node) { return node != null && node.typeId === 138; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
     domain(node) {
-      return node ? node.childForFieldId(22) : null;
+      return node ? node.childForFieldId(27) : null;
     },
     domainList(node) {
-      return node ? node.childrenForFieldId(22) : [];
+      return node ? node.childrenForFieldId(27) : [];
     },
   },
   DataPropertyRangeAxiom: {
-    typeId: 118,
+    typeId: 139,
     type: "DataPropertyRangeAxiom",
-    is(node) { return node != null && node.typeId === 118; },
+    is(node) { return node != null && node.typeId === 139; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
     range(node) {
-      return node ? node.childForFieldId(11) : null;
+      return node ? node.childForFieldId(14) : null;
     },
     rangeList(node) {
-      return node ? node.childrenForFieldId(11) : [];
+      return node ? node.childrenForFieldId(14) : [];
     },
   },
   FunctionalObjectPropertyAxiom: {
-    typeId: 119,
+    typeId: 140,
     type: "FunctionalObjectPropertyAxiom",
-    is(node) { return node != null && node.typeId === 119; },
+    is(node) { return node != null && node.typeId === 140; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
   },
   InverseFunctionalObjectPropertyAxiom: {
-    typeId: 120,
+    typeId: 141,
     type: "InverseFunctionalObjectPropertyAxiom",
-    is(node) { return node != null && node.typeId === 120; },
+    is(node) { return node != null && node.typeId === 141; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
   },
   ReflexiveObjectPropertyAxiom: {
-    typeId: 121,
+    typeId: 142,
     type: "ReflexiveObjectPropertyAxiom",
-    is(node) { return node != null && node.typeId === 121; },
+    is(node) { return node != null && node.typeId === 142; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
   },
   IrreflexiveObjectPropertyAxiom: {
-    typeId: 122,
+    typeId: 143,
     type: "IrreflexiveObjectPropertyAxiom",
-    is(node) { return node != null && node.typeId === 122; },
+    is(node) { return node != null && node.typeId === 143; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
   },
   SymmetricObjectPropertyAxiom: {
-    typeId: 123,
+    typeId: 144,
     type: "SymmetricObjectPropertyAxiom",
-    is(node) { return node != null && node.typeId === 123; },
+    is(node) { return node != null && node.typeId === 144; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
   },
   AsymmetricObjectPropertyAxiom: {
-    typeId: 124,
+    typeId: 145,
     type: "AsymmetricObjectPropertyAxiom",
-    is(node) { return node != null && node.typeId === 124; },
+    is(node) { return node != null && node.typeId === 145; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
   },
   TransitiveObjectPropertyAxiom: {
-    typeId: 125,
+    typeId: 146,
     type: "TransitiveObjectPropertyAxiom",
-    is(node) { return node != null && node.typeId === 125; },
+    is(node) { return node != null && node.typeId === 146; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
   },
   FunctionalDataPropertyAxiom: {
-    typeId: 126,
+    typeId: 147,
     type: "FunctionalDataPropertyAxiom",
-    is(node) { return node != null && node.typeId === 126; },
+    is(node) { return node != null && node.typeId === 147; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
   },
   ObjectPropertyAssertionAxiom: {
-    typeId: 127,
+    typeId: 148,
     type: "ObjectPropertyAssertionAxiom",
-    is(node) { return node != null && node.typeId === 127; },
+    is(node) { return node != null && node.typeId === 148; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
     subject(node) {
-      return node ? node.childForFieldId(23) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     subjectList(node) {
-      return node ? node.childrenForFieldId(23) : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
     object(node) {
-      return node ? node.childForFieldId(24) : null;
+      return node ? node.childForFieldId(28) : null;
     },
     objectList(node) {
-      return node ? node.childrenForFieldId(24) : [];
+      return node ? node.childrenForFieldId(28) : [];
     },
   },
   DataPropertyAssertionAxiom: {
-    typeId: 128,
+    typeId: 149,
     type: "DataPropertyAssertionAxiom",
-    is(node) { return node != null && node.typeId === 128; },
+    is(node) { return node != null && node.typeId === 149; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
     subject(node) {
-      return node ? node.childForFieldId(23) : null;
-    },
-    subjectList(node) {
-      return node ? node.childrenForFieldId(23) : [];
-    },
-    value(node) {
       return node ? node.childForFieldId(10) : null;
     },
-    valueList(node) {
+    subjectList(node) {
       return node ? node.childrenForFieldId(10) : [];
+    },
+    value(node) {
+      return node ? node.childForFieldId(4) : null;
+    },
+    valueList(node) {
+      return node ? node.childrenForFieldId(4) : [];
     },
   },
   NegativeObjectPropertyAssertionAxiom: {
-    typeId: 129,
+    typeId: 150,
     type: "NegativeObjectPropertyAssertionAxiom",
-    is(node) { return node != null && node.typeId === 129; },
+    is(node) { return node != null && node.typeId === 150; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
     subject(node) {
-      return node ? node.childForFieldId(23) : null;
+      return node ? node.childForFieldId(10) : null;
     },
     subjectList(node) {
-      return node ? node.childrenForFieldId(23) : [];
+      return node ? node.childrenForFieldId(10) : [];
     },
     object(node) {
-      return node ? node.childForFieldId(24) : null;
+      return node ? node.childForFieldId(28) : null;
     },
     objectList(node) {
-      return node ? node.childrenForFieldId(24) : [];
+      return node ? node.childrenForFieldId(28) : [];
     },
   },
   NegativeDataPropertyAssertionAxiom: {
-    typeId: 130,
+    typeId: 151,
     type: "NegativeDataPropertyAssertionAxiom",
-    is(node) { return node != null && node.typeId === 130; },
+    is(node) { return node != null && node.typeId === 151; },
     property(node) {
-      return node ? node.childForFieldId(6) : null;
+      return node ? node.childForFieldId(3) : null;
     },
     propertyList(node) {
-      return node ? node.childrenForFieldId(6) : [];
+      return node ? node.childrenForFieldId(3) : [];
     },
     subject(node) {
-      return node ? node.childForFieldId(23) : null;
-    },
-    subjectList(node) {
-      return node ? node.childrenForFieldId(23) : [];
-    },
-    value(node) {
       return node ? node.childForFieldId(10) : null;
     },
-    valueList(node) {
+    subjectList(node) {
       return node ? node.childrenForFieldId(10) : [];
+    },
+    value(node) {
+      return node ? node.childForFieldId(4) : null;
+    },
+    valueList(node) {
+      return node ? node.childrenForFieldId(4) : [];
     },
   },
   ClassAssertionAxiom: {
-    typeId: 131,
+    typeId: 152,
     type: "ClassAssertionAxiom",
-    is(node) { return node != null && node.typeId === 131; },
+    is(node) { return node != null && node.typeId === 152; },
     classExpr(node) {
-      return node ? node.childForFieldId(16) : null;
+      return node ? node.childForFieldId(19) : null;
     },
     classExprList(node) {
-      return node ? node.childrenForFieldId(16) : [];
+      return node ? node.childrenForFieldId(19) : [];
     },
     individual(node) {
-      return node ? node.childForFieldId(7) : null;
+      return node ? node.childForFieldId(11) : null;
     },
     individualList(node) {
-      return node ? node.childrenForFieldId(7) : [];
+      return node ? node.childrenForFieldId(11) : [];
     },
   },
   SameIndividualAxiom: {
-    typeId: 132,
+    typeId: 153,
     type: "SameIndividualAxiom",
-    is(node) { return node != null && node.typeId === 132; },
+    is(node) { return node != null && node.typeId === 153; },
     individual(node) {
-      return node ? node.childForFieldId(7) : null;
+      return node ? node.childForFieldId(11) : null;
     },
     individualList(node) {
-      return node ? node.childrenForFieldId(7) : [];
+      return node ? node.childrenForFieldId(11) : [];
     },
   },
   DifferentIndividualsAxiom: {
-    typeId: 133,
+    typeId: 154,
     type: "DifferentIndividualsAxiom",
-    is(node) { return node != null && node.typeId === 133; },
+    is(node) { return node != null && node.typeId === 154; },
     individual(node) {
-      return node ? node.childForFieldId(7) : null;
+      return node ? node.childForFieldId(11) : null;
     },
     individualList(node) {
-      return node ? node.childrenForFieldId(7) : [];
+      return node ? node.childrenForFieldId(11) : [];
     },
   },
   IDENT: {
-    typeId: 137,
+    typeId: 158,
     type: "IDENT",
-    is(node) { return node != null && node.typeId === 137; },
+    is(node) { return node != null && node.typeId === 158; },
   },
   INTEGER: {
-    typeId: 138,
+    typeId: 159,
     type: "INTEGER",
-    is(node) { return node != null && node.typeId === 138; },
+    is(node) { return node != null && node.typeId === 159; },
   },
   FullIRI: {
-    typeId: 140,
+    typeId: 161,
     type: "FullIRI",
-    is(node) { return node != null && node.typeId === 140; },
+    is(node) { return node != null && node.typeId === 161; },
   },
   StringLiteral: {
-    typeId: 143,
+    typeId: 164,
     type: "StringLiteral",
-    is(node) { return node != null && node.typeId === 143; },
+    is(node) { return node != null && node.typeId === 164; },
   },
 };

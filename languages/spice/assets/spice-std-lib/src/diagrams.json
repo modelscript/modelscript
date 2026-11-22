@@ -1,0 +1,1013 @@
+[
+  {
+    "namePath": "spice:D_1N4148",
+    "aliases": [
+      "1N4148",
+      "D1N4148"
+    ],
+    "label": "1N4148 Fast Switching Silicon Signal Diode",
+    "category": "Diode",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">DIO</text><polygon points=\"56,9 66,14 56,19\" fill=\"#60a5fa\"/><line x1=\"67\" y1=\"9\" x2=\"67\" y2=\"19\" stroke=\"#60a5fa\" stroke-width=\"1.6\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">D_1N4148</text></svg>",
+    "ports": [
+      {
+        "name": "anode",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "cathode",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:D_1N4007",
+    "aliases": [
+      "1N4007",
+      "D1N4007"
+    ],
+    "label": "1N4007 1000V 1A General-Purpose Rectifier Diode",
+    "category": "Diode",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">DIO</text><polygon points=\"56,9 66,14 56,19\" fill=\"#60a5fa\"/><line x1=\"67\" y1=\"9\" x2=\"67\" y2=\"19\" stroke=\"#60a5fa\" stroke-width=\"1.6\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">D_1N4007</text></svg>",
+    "ports": [
+      {
+        "name": "anode",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "cathode",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:D_1N5819_SCHOTTKY",
+    "aliases": [
+      "1N5819",
+      "D1N5819"
+    ],
+    "label": "1N5819 40V 1A Schottky Barrier Rectifier Diode",
+    "category": "Diode",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">DIO</text><polygon points=\"56,9 66,14 56,19\" fill=\"#60a5fa\"/><line x1=\"67\" y1=\"9\" x2=\"67\" y2=\"19\" stroke=\"#60a5fa\" stroke-width=\"1.6\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">D_1N5819_S</text></svg>",
+    "ports": [
+      {
+        "name": "anode",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "cathode",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:D_BZX84C5V1_ZENER",
+    "aliases": [
+      "BZX84C5V1",
+      "BZX84C5V1L",
+      "ZENER_5V1"
+    ],
+    "label": "BZX84C5V1 5.1V Zener Voltage Reference Diode",
+    "category": "Diode",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">DIO</text><polygon points=\"56,9 66,14 56,19\" fill=\"#60a5fa\"/><line x1=\"67\" y1=\"9\" x2=\"67\" y2=\"19\" stroke=\"#60a5fa\" stroke-width=\"1.6\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">D_BZX84C5V</text></svg>",
+    "ports": [
+      {
+        "name": "anode",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "cathode",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:Q_2N2222_NPN",
+    "aliases": [
+      "2N2222",
+      "2N2222A",
+      "PN2222"
+    ],
+    "label": "2N2222 General-Purpose NPN Silicon BJT",
+    "category": "BJT",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">BJT</text><line x1=\"58\" y1=\"8\" x2=\"58\" y2=\"20\" stroke=\"#c084fc\" stroke-width=\"1.6\"/><line x1=\"58\" y1=\"11\" x2=\"67\" y2=\"8\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><line x1=\"58\" y1=\"17\" x2=\"67\" y2=\"20\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">Q_2N2222_N</text></svg>",
+    "ports": [
+      {
+        "name": "base",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "collector",
+        "kind": "electrical",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "emitter",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "spice:Q_2N3904_NPN",
+    "aliases": [
+      "2N3904",
+      "MMBT3904"
+    ],
+    "label": "2N3904 Small-Signal NPN Silicon BJT",
+    "category": "BJT",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">BJT</text><line x1=\"58\" y1=\"8\" x2=\"58\" y2=\"20\" stroke=\"#c084fc\" stroke-width=\"1.6\"/><line x1=\"58\" y1=\"11\" x2=\"67\" y2=\"8\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><line x1=\"58\" y1=\"17\" x2=\"67\" y2=\"20\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">Q_2N3904_N</text></svg>",
+    "ports": [
+      {
+        "name": "base",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "collector",
+        "kind": "electrical",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "emitter",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "spice:Q_2N3906_PNP",
+    "aliases": [
+      "2N3906",
+      "MMBT3906"
+    ],
+    "label": "2N3906 Small-Signal PNP Silicon BJT",
+    "category": "BJT",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">BJT</text><line x1=\"58\" y1=\"8\" x2=\"58\" y2=\"20\" stroke=\"#c084fc\" stroke-width=\"1.6\"/><line x1=\"58\" y1=\"11\" x2=\"67\" y2=\"8\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><line x1=\"58\" y1=\"17\" x2=\"67\" y2=\"20\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">Q_2N3906_P</text></svg>",
+    "ports": [
+      {
+        "name": "base",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "collector",
+        "kind": "electrical",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "emitter",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "spice:Q_BC547_NPN",
+    "aliases": [
+      "BC547",
+      "BC547B",
+      "BC547C"
+    ],
+    "label": "BC547 Low-Noise Audio/General NPN BJT",
+    "category": "BJT",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">BJT</text><line x1=\"58\" y1=\"8\" x2=\"58\" y2=\"20\" stroke=\"#c084fc\" stroke-width=\"1.6\"/><line x1=\"58\" y1=\"11\" x2=\"67\" y2=\"8\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><line x1=\"58\" y1=\"17\" x2=\"67\" y2=\"20\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">Q_BC547_NP</text></svg>",
+    "ports": [
+      {
+        "name": "base",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "collector",
+        "kind": "electrical",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "emitter",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "spice:M_2N7002_NMOS",
+    "aliases": [
+      "2N7002",
+      "2N7000"
+    ],
+    "label": "2N7002 60V Small-Signal N-Channel Enhancement MOSFET",
+    "category": "MOSFET / JFET",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">FET</text><line x1=\"58\" y1=\"8\" x2=\"58\" y2=\"20\" stroke=\"#34d399\" stroke-width=\"1.6\"/><line x1=\"58\" y1=\"11\" x2=\"67\" y2=\"8\" stroke=\"#34d399\" stroke-width=\"1.4\"/><line x1=\"58\" y1=\"17\" x2=\"67\" y2=\"20\" stroke=\"#34d399\" stroke-width=\"1.4\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">M_2N7002_N</text></svg>",
+    "ports": [
+      {
+        "name": "gate",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "drain",
+        "kind": "electrical",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "source",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "spice:M_IRF540_NMOS",
+    "aliases": [
+      "IRF540",
+      "IRF540N"
+    ],
+    "label": "IRF540 100V 28A Power N-Channel MOSFET",
+    "category": "MOSFET / JFET",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">FET</text><line x1=\"58\" y1=\"8\" x2=\"58\" y2=\"20\" stroke=\"#34d399\" stroke-width=\"1.6\"/><line x1=\"58\" y1=\"11\" x2=\"67\" y2=\"8\" stroke=\"#34d399\" stroke-width=\"1.4\"/><line x1=\"58\" y1=\"17\" x2=\"67\" y2=\"20\" stroke=\"#34d399\" stroke-width=\"1.4\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">M_IRF540_N</text></svg>",
+    "ports": [
+      {
+        "name": "gate",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "drain",
+        "kind": "electrical",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "source",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "spice:M_BS250_PMOS",
+    "aliases": [
+      "BS250",
+      "BS250P"
+    ],
+    "label": "BS250 -45V Small-Signal P-Channel Enhancement MOSFET",
+    "category": "MOSFET / JFET",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">FET</text><line x1=\"58\" y1=\"8\" x2=\"58\" y2=\"20\" stroke=\"#34d399\" stroke-width=\"1.6\"/><line x1=\"58\" y1=\"11\" x2=\"67\" y2=\"8\" stroke=\"#34d399\" stroke-width=\"1.4\"/><line x1=\"58\" y1=\"17\" x2=\"67\" y2=\"20\" stroke=\"#34d399\" stroke-width=\"1.4\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">M_BS250_PM</text></svg>",
+    "ports": [
+      {
+        "name": "gate",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "drain",
+        "kind": "electrical",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "source",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "spice:J_2N5457_JFET",
+    "aliases": [
+      "2N5457",
+      "J2N5457"
+    ],
+    "label": "2N5457 General-Purpose N-Channel JFET",
+    "category": "MOSFET / JFET",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">FET</text><line x1=\"58\" y1=\"8\" x2=\"58\" y2=\"20\" stroke=\"#34d399\" stroke-width=\"1.6\"/><line x1=\"58\" y1=\"11\" x2=\"67\" y2=\"8\" stroke=\"#34d399\" stroke-width=\"1.4\"/><line x1=\"58\" y1=\"17\" x2=\"67\" y2=\"20\" stroke=\"#34d399\" stroke-width=\"1.4\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">J_2N5457_J</text></svg>",
+    "ports": [
+      {
+        "name": "gate",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "drain",
+        "kind": "electrical",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "source",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "spice:A_AND",
+    "aliases": [
+      "AND",
+      "AND2"
+    ],
+    "label": "Behavioral Digital AND Gate (A-Device)",
+    "category": "Digital / Mixed-Signal",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">DIG</text><path d=\"M54,18 L59,18 L62,10 L68,10\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">A_AND</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:A_OR",
+    "aliases": [
+      "OR",
+      "OR2"
+    ],
+    "label": "Behavioral Digital OR Gate (A-Device)",
+    "category": "Digital / Mixed-Signal",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">DIG</text><path d=\"M54,18 L59,18 L62,10 L68,10\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">A_OR</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:A_XOR",
+    "aliases": [
+      "XOR",
+      "XOR2"
+    ],
+    "label": "Behavioral Digital XOR Gate (A-Device)",
+    "category": "Digital / Mixed-Signal",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">DIG</text><path d=\"M54,18 L59,18 L62,10 L68,10\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">A_XOR</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:A_SCHMITT",
+    "aliases": [
+      "SCHMITT",
+      "SCHMITT_BUF"
+    ],
+    "label": "Schmitt Trigger Buffer with Hysteresis (A-Device)",
+    "category": "Digital / Mixed-Signal",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">DIG</text><path d=\"M54,18 L59,18 L62,10 L68,10\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">A_SCHMITT</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:A_DFLOP",
+    "aliases": [
+      "DFLOP",
+      "DFF"
+    ],
+    "label": "Rising-Edge D Flip-Flop (A-Device)",
+    "category": "Digital / Mixed-Signal",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">DIG</text><path d=\"M54,18 L59,18 L62,10 L68,10\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">A_DFLOP</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:A_SRFLOP",
+    "aliases": [
+      "SRFLOP",
+      "SR_LATCH"
+    ],
+    "label": "Set-Reset Flip-Flop Latch (A-Device)",
+    "category": "Digital / Mixed-Signal",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">DIG</text><path d=\"M54,18 L59,18 L62,10 L68,10\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">A_SRFLOP</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:A_OTA",
+    "aliases": [
+      "OTA"
+    ],
+    "label": "Operational Transconductance Amplifier (A-Device)",
+    "category": "Digital / Mixed-Signal",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">DIG</text><path d=\"M54,18 L59,18 L62,10 L68,10\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">A_OTA</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:A_MODULATE",
+    "aliases": [
+      "MODULATE",
+      "VCO"
+    ],
+    "label": "Voltage-Controlled AM/FM Oscillator Modulator (A-Device)",
+    "category": "Digital / Mixed-Signal",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">DIG</text><path d=\"M54,18 L59,18 L62,10 L68,10\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">A_MODULATE</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:B_VSRC",
+    "aliases": [
+      "BV",
+      "B_VOLTAGE"
+    ],
+    "label": "Arbitrary Behavioral Voltage Source (B-Device)",
+    "category": "Behavioral / Switch",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">BEH</text><line x1=\"54\" y1=\"16\" x2=\"65\" y2=\"9\" stroke=\"#2dd4bf\" stroke-width=\"1.6\"/><circle cx=\"54\" cy=\"16\" r=\"1.5\" fill=\"#2dd4bf\"/><circle cx=\"67\" cy=\"16\" r=\"1.5\" fill=\"#2dd4bf\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">B_VSRC</text></svg>",
+    "ports": [
+      {
+        "name": "ctrl_p",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "ctrl_n",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "p",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "n",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "spice:B_ISRC",
+    "aliases": [
+      "BI",
+      "B_CURRENT"
+    ],
+    "label": "Arbitrary Behavioral Current Source (B-Device)",
+    "category": "Behavioral / Switch",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">BEH</text><line x1=\"54\" y1=\"16\" x2=\"65\" y2=\"9\" stroke=\"#2dd4bf\" stroke-width=\"1.6\"/><circle cx=\"54\" cy=\"16\" r=\"1.5\" fill=\"#2dd4bf\"/><circle cx=\"67\" cy=\"16\" r=\"1.5\" fill=\"#2dd4bf\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">B_ISRC</text></svg>",
+    "ports": [
+      {
+        "name": "ctrl_p",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "ctrl_n",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "p",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "n",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "spice:S_VSWITCH",
+    "aliases": [
+      "VSWITCH",
+      "SW"
+    ],
+    "label": "Smooth Voltage-Controlled Switch (S-Device)",
+    "category": "Behavioral / Switch",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">BEH</text><line x1=\"54\" y1=\"16\" x2=\"65\" y2=\"9\" stroke=\"#2dd4bf\" stroke-width=\"1.6\"/><circle cx=\"54\" cy=\"16\" r=\"1.5\" fill=\"#2dd4bf\"/><circle cx=\"67\" cy=\"16\" r=\"1.5\" fill=\"#2dd4bf\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">S_VSWITCH</text></svg>",
+    "ports": [
+      {
+        "name": "ctrl_p",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "ctrl_n",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "p",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "n",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "spice:W_CSWITCH",
+    "aliases": [
+      "CSWITCH",
+      "CSW"
+    ],
+    "label": "Smooth Current-Controlled Switch (W-Device)",
+    "category": "Behavioral / Switch",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">BEH</text><line x1=\"54\" y1=\"16\" x2=\"65\" y2=\"9\" stroke=\"#2dd4bf\" stroke-width=\"1.6\"/><circle cx=\"54\" cy=\"16\" r=\"1.5\" fill=\"#2dd4bf\"/><circle cx=\"67\" cy=\"16\" r=\"1.5\" fill=\"#2dd4bf\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">W_CSWITCH</text></svg>",
+    "ports": [
+      {
+        "name": "ctrl_p",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "ctrl_n",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "p",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "n",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "spice:OPAMP_UNIVERSAL",
+    "aliases": [
+      "UniversalOpamp2",
+      "OPAMP"
+    ],
+    "label": "Universal Single-Pole Behavioral Op-Amp",
+    "category": "Op-Amp / Regulator",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">AMP</text><polygon points=\"55,8 69,14 55,20\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.5\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OPAMP_UNIV</text></svg>",
+    "ports": [
+      {
+        "name": "inp",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "inn",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:OPAMP_LM741",
+    "aliases": [
+      "LM741",
+      "uA741"
+    ],
+    "label": "LM741 General-Purpose Bipolar Op-Amp Macromodel",
+    "category": "Op-Amp / Regulator",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">AMP</text><polygon points=\"55,8 69,14 55,20\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.5\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OPAMP_LM74</text></svg>",
+    "ports": [
+      {
+        "name": "inp",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "inn",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:OPAMP_TL072",
+    "aliases": [
+      "TL072",
+      "TL071",
+      "TL074"
+    ],
+    "label": "TL072 Low-Noise JFET-Input Op-Amp Macromodel",
+    "category": "Op-Amp / Regulator",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">AMP</text><polygon points=\"55,8 69,14 55,20\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.5\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OPAMP_TL07</text></svg>",
+    "ports": [
+      {
+        "name": "inp",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "inn",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "spice:REG_LM7805",
+    "aliases": [
+      "LM7805",
+      "7805"
+    ],
+    "label": "LM7805 +5V 1.5A Linear Voltage Regulator",
+    "category": "Op-Amp / Regulator",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">AMP</text><polygon points=\"55,8 69,14 55,20\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.5\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">REG_LM7805</text></svg>",
+    "ports": [
+      {
+        "name": "inp",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "inn",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  }
+]

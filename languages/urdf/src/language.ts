@@ -93,7 +93,7 @@ export const urdfLanguage = language({
     AttrIdentifier: () => /[A-Za-z_:][A-Za-z0-9_:-]*/,
     StringLiteral: () => /"[^"]*"|'[^']*'/,
     TextContent: () => /[^<]+/,
-    Comment: () => /<!--[\s\S]*?-->/,
+    Comment: () => /<!--([^-]|-[^-]|--[^>])*-->/,
   },
 });
 

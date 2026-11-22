@@ -8,6 +8,8 @@ import {
   t_activeHeads,
   activeHeadsCount,
   GssEdge,
+  t_nextSummary,
+  g_expectedVersion,
 } from "./gss";
 import { logInt } from "../parser";
 import {
@@ -17,18 +19,25 @@ import {
   MAX_TERMINAL_ID,
   action_offsets,
   action_data,
+  goto_offsets,
+  goto_data,
+  mrd_data,
   ACTION_SHIFT,
   ACTION_REDUCE,
+  ACTION_ACCEPT,
   NODE_TYPE_ERROR,
   lookupGoto,
+  isReachableZeroDist,
   prod_lengths,
   prod_lhs,
   inputLength,
   token_insert_costs,
+  type_is_structural,
   token_delete_costs,
   token_bracket_deltas,
   token_is_word,
   precomputed_repairs,
+  precomputed_nt_repairs,
   token_string_offsets,
   token_string_bytes,
   prod_is_list,
@@ -57,7 +66,15 @@ import {
   setNodeFlags,
   allocGen0,
 } from "../arena";
-import { MAX_SUMMARY_DEPTH } from "./recovery-config";
+import {
+  MAX_SUMMARY_DEPTH,
+  MAX_COST_DIFFERENCE,
+  MAX_LOCAL_EDITS,
+  MAX_LOCAL_EXPANSIONS,
+  MAX_LOCAL_NODES,
+  LOCAL_CONFIRM_SHIFTS,
+  MAX_EOF_COMPLETIONS,
+} from "./recovery-config";
 import {
   lexPos,
   lexLen,
@@ -78,6 +95,59 @@ export const ERROR_COST_PER_MISSING_TREE: i32 = 100;
 export const ERROR_COST_PER_SKIPPED_CHAR: i32 = 1;
 export const PENALTY_DELETE_NEWLINE_CROSS: i32 = 5000;
 export const PENALTY_DELETE_LINE_END_DANGLING: i32 = 100;
+export const PENALTY_STRUCTURAL_UNWIND: i32 = 800;
+export const PENALTY_DELETE_CLOSE_BRACKET: i32 = 400;
+
+// ----------------------------------------------------------------------------
+// 4-Slot Unmanaged Recovery Lookahead Cache (cleared on frontier advance)
+// ----------------------------------------------------------------------------
+const REC_CACHE_SIZE: i32 = 4;
+const recCachePos = new StaticArray<u32>(REC_CACHE_SIZE);
+const recCacheState = new StaticArray<i32>(REC_CACHE_SIZE);
+const recCacheVer = new StaticArray<u32>(REC_CACHE_SIZE);
+const recCacheTok = new StaticArray<i32>(REC_CACHE_SIZE);
+const recCacheLen = new StaticArray<u32>(REC_CACHE_SIZE);
+const recCacheEnd = new StaticArray<u32>(REC_CACHE_SIZE);
+let recCacheValidMask: u32 = 0;
+let recCacheNextSlot: i32 = 0;
+let recLastPeekLen: u32 = 0;
+let recLastPeekEnd: u32 = 0;
+
+/** Invalidates the 4-slot recovery lookahead cache in O(1) when the frontier moves. */
+export function resetRecoveryLookaheadCache(): void {
+  recCacheValidMask = 0;
+  recCacheNextSlot = 0;
+}
+
+/**
+ * Memoized wrapper around `peekNextTokenInState` keyed by `(pos, state, g_expectedVersion)`.
+ * Stores matched token length and end offset in `recLastPeekLen` / `recLastPeekEnd`.
+ */
+function cachedPeekNextTokenInState(pos: u32, state: i32): i32 {
+  let ver = g_expectedVersion;
+  for (let i: i32 = 0; i < REC_CACHE_SIZE; i++) {
+    if ((recCacheValidMask & (1 << i)) != 0) {
+      if (unchecked(recCachePos[i]) == pos && unchecked(recCacheState[i]) == state && unchecked(recCacheVer[i]) == ver) {
+        recLastPeekLen = unchecked(recCacheLen[i]);
+        recLastPeekEnd = unchecked(recCacheEnd[i]);
+        return unchecked(recCacheTok[i]);
+      }
+    }
+  }
+  let tok = peekNextTokenInState(pos, state);
+  let slot = recCacheNextSlot;
+  recCacheNextSlot = (recCacheNextSlot + 1) & 3;
+  unchecked(recCachePos[slot] = pos);
+  unchecked(recCacheState[slot] = state);
+  unchecked(recCacheVer[slot] = ver);
+  unchecked(recCacheTok[slot] = tok);
+  unchecked(recCacheLen[slot] = lastPeekedTokenLen);
+  unchecked(recCacheEnd[slot] = lastPeekedTokenEnd);
+  recCacheValidMask |= (1 << slot);
+  recLastPeekLen = lastPeekedTokenLen;
+  recLastPeekEnd = lastPeekedTokenEnd;
+  return tok;
+}
 
 /**
  * Searches the action table for a SHIFT transition for the given state and terminal token.
@@ -202,7 +272,7 @@ export function recordStackSummary(head: ParseHead): void {
   let curr = head.prev;
   let d: u32 = 1;
   while (curr != null && d <= MAX_SUMMARY_DEPTH && count < MAX_SUMMARY_DEPTH) {
-    if (!(curr.pos == 0 && head.pos > 20 && d > 2)) {
+    if (!(curr.pos == 0 && head.pos > 20 && d >= 2)) {
       if (!hasSummaryAncestor(summaryMem, count, curr)) {
         let entryPtr = summaryMem + count * SIZEOF_STACK_SUMMARY_ENTRY;
         let entry = changetype<StackSummaryEntry>(entryPtr);
@@ -268,6 +338,41 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
     if (ancState >= 0 && ancState < action_offsets.length) {
       let canAccept = stateCanAccept(anc, ancState, token, 0, 0);
       if (canAccept > 0) {
+        // Compute structural/bracket unwind penalty and check dominance BEFORE allocating AST clones
+        let structuralPenalty: i32 = 0;
+        let scanH: ParseHead | null = head;
+        let scanHops: u32 = depth + 2;
+        while (scanH != null && scanH != anc && scanHops-- > 0) {
+          let sNode = scanH.astNode;
+          if (sNode != 0) {
+            let sType = getNodeType(sNode) as i32;
+            if (sType > 0 && sType < type_is_structural.length && type_is_structural[sType] == 1) {
+              structuralPenalty += PENALTY_STRUCTURAL_UNWIND;
+            }
+            if ((getNodeFlags(sNode) & FLAG_IS_LIST) != 0) {
+              structuralPenalty += PENALTY_STRUCTURAL_UNWIND;
+            }
+            if (sType > 0 && sType < token_bracket_deltas.length && token_bracket_deltas[sType] > 0) {
+              structuralPenalty += PENALTY_DELETE_CLOSE_BRACKET;
+            }
+          }
+          scanH = scanH.prev;
+        }
+        let approxCost: i32 = currentCost + ((depth as i32) * ERROR_COST_PER_SKIPPED_TREE) + structuralPenalty;
+        if (
+          changetype<usize>(t_nextSummary) != 0 &&
+          !t_nextSummary.hasOverflow &&
+          t_nextSummary.healthyCount > 0 &&
+          t_nextSummary.unconfirmedRepairs == 0 &&
+          t_nextSummary.minHealthyCost < approxCost &&
+          t_nextSummary.minHealthyCostPos >= pos
+        ) {
+          let costDiff = approxCost - t_nextSummary.minHealthyCost;
+          if ((costDiff as i64) * (1 + (t_nextSummary.maxHealthyNodeCount as i64)) > (MAX_COST_DIFFERENCE as i64)) {
+            continue;
+          }
+        }
+
         let errNode = wrapPoppedNodesInError(head, anc, pos);
         let firstPad: u32 = getNodePadding(errNode);
 
@@ -318,7 +423,7 @@ export function recoverStackSummary(head: ParseHead, token: i32, pos: u32): bool
         }
 
         let errLen = diagEnd > diagStart ? diagEnd - diagStart : 1;
-        let penalty: i32 = ((depth as i32) * ERROR_COST_PER_SKIPPED_TREE) + ((errLen as i32) * ERROR_COST_PER_SKIPPED_CHAR);
+        let penalty: i32 = ((depth as i32) * ERROR_COST_PER_SKIPPED_TREE) + ((errLen as i32) * ERROR_COST_PER_SKIPPED_CHAR) + structuralPenalty;
         let exp = getExpectedTokensForState(ancState);
         let nextTail = pushDiagnostic(anc.errorTail, diagStart, diagEnd, token as u32, 2, (exp & 0xffffffff) as u32, ((exp >>> 32) & 0xffffffff) as u32);
 
@@ -432,6 +537,10 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
   let nlPenalty: i32 = crossedNl ? PENALTY_DELETE_NEWLINE_CROSS : (hasNl ? PENALTY_DELETE_LINE_END_DANGLING : 0);
 
   let unconfirmedPenalty: i32 = head.successfulShifts < 2 ? 60 : 0;
+  let closeBracketPenalty: i32 =
+    head.balanceHash > 0 && token >= 0 && token < token_bracket_deltas.length && token_bracket_deltas[token] < 0
+      ? PENALTY_DELETE_CLOSE_BRACKET
+      : 0;
   let parentHead: ParseHead | null = head.errorNode != 0 ? head.prev : head;
   let skippedHead = allocParseHead(
     head.state,
@@ -439,7 +548,7 @@ export function recoverSkipToken(head: ParseHead, token: i32, pos: u32): void {
     parentHead,
     newPos,
     head.scannerState,
-    head.errorCost + ERROR_COST_PER_SKIPPED_TREE + unconfirmedPenalty + nlPenalty + (tLen as i32) * ERROR_COST_PER_SKIPPED_CHAR,
+    head.errorCost + ERROR_COST_PER_SKIPPED_TREE + unconfirmedPenalty + nlPenalty + closeBracketPenalty + (tLen as i32) * ERROR_COST_PER_SKIPPED_CHAR,
     0,
     head.balanceHash,
     0,
@@ -522,12 +631,12 @@ function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32, state: i3
   let combinedMatch = false;
   if (matchChars == inputCharCount && matchChars < kwLen) {
     let remainingKw = kwLen - matchChars;
-    let nextTok = peekNextTokenInState(currP, state);
+    let nextTok = cachedPeekNextTokenInState(currP, state);
     let isNextWord = nextTok > 0 && nextTok <= MAX_TERMINAL_ID && token_is_word.length > nextTok && token_is_word[nextTok] == 1;
-    if (isNextWord && lastPeekedTokenLen == remainingKw && lastPeekedTokenEnd >= remainingKw) {
-      let scanP = lastPeekedTokenEnd - remainingKw;
+    if (isNextWord && recLastPeekLen == remainingKw && recLastPeekEnd >= remainingKw) {
+      let scanP = recLastPeekEnd - remainingKw;
       let nextMatch: u32 = 0;
-      while (nextMatch < remainingKw && scanP < lastPeekedTokenEnd) {
+      while (nextMatch < remainingKw && scanP < recLastPeekEnd) {
         let ch = peekChar(scanP);
         let chLen = peekCharLen(scanP);
         if (chLen == 0) chLen = 1;
@@ -543,7 +652,7 @@ function computeKeywordSimilarityPenalty(pos: u32, len: u32, sym: i32, state: i3
       }
       if (nextMatch == remainingKw) {
         combinedMatch = true;
-        lastKeywordMatchSpan = lastPeekedTokenEnd - pos;
+        lastKeywordMatchSpan = recLastPeekEnd - pos;
       }
     }
   }
@@ -659,11 +768,12 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
   }
 
   // 1. O(1) Precomputed Fast Path for missing token insertions
+  let fastCheapInsertionConfirmed = false;
   if (depth == 0 && changetype<usize>(precomputed_repairs) != 0 && token >= 0 && token <= MAX_TERMINAL_ID) {
     let bestRep = precomputed_repairs[state * (MAX_TERMINAL_ID + 1) + token];
     if (bestRep > 0 && bestRep <= MAX_TERMINAL_ID) {
       let insCost = token_insert_costs.length > bestRep ? (token_insert_costs[bestRep] as i32) : 1;
-      let isDelimLookahead = token >= 0 && token < token_insert_costs.length && token_insert_costs[token] == 1;
+      let isDelimLookahead = token >= 0 && token < token_insert_costs.length && token_insert_costs[token] <= 3;
       if (insCost < 50 || (isDelimLookahead && insCost <= 50) || bestRep == 1) {
         let aTarget = findShiftTarget(state, bestRep as u16);
         if (aTarget != -1 && stateCanAccept(head, aTarget, token, 0, 1) > 0) {
@@ -690,7 +800,40 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
           pushNextHead(changetype<u32>(insHead));
           precomputedInsertedSym = bestRep;
           foundAny = true;
+          if (insCost == 1) {
+            fastCheapInsertionConfirmed = true;
+          }
         }
+      }
+    }
+  }
+
+  // 1b. O(1) Precomputed Non-Terminal Placeholder Insertion (GOTO-based recovery for e.g. `Real x = ;`)
+  if (depth == 0 && !fastCheapInsertionConfirmed && changetype<usize>(precomputed_nt_repairs) != 0 && token > 0 && token <= MAX_TERMINAL_ID) {
+    let bestNt = precomputed_nt_repairs[state * (MAX_TERMINAL_ID + 1) + token];
+    if (bestNt > 0) {
+      let ntTarget = lookupGoto(state, bestNt);
+      if (ntTarget != -1 && stateCanAccept(head, ntTarget, token, 0, 1) > 0) {
+        let ntNode = allocNode(bestNt as u16, 0, 0, 0, false);
+        setNodeFlags(ntNode, FLAG_IS_INSERTED | FLAG_HAS_ERROR);
+
+        let nextTail = pushDiagnostic(head.errorTail, insDiagStart, insDiagEnd, bestNt as u32, 1, bestNt as u32, 0);
+        let ntHead = allocParseHead(
+          ntTarget,
+          ntNode,
+          head,
+          pos,
+          head.scannerState,
+          head.errorCost + ERROR_COST_PER_MISSING_TREE + 20,
+          0,
+          head.balanceHash,
+          head.consecutiveInsertions + 1,
+          head.dynamicPrec,
+          head.pendingPadding,
+          nextTail
+        );
+        pushNextHead(changetype<u32>(ntHead));
+        foundAny = true;
       }
     }
   }
@@ -721,8 +864,65 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
     let actCount = action_data[rIdx++];
     let isWordSym = sym > 0 && sym <= MAX_TERMINAL_ID && token_is_word.length > sym ? (token_is_word[sym] == 1) : false;
 
-    // Strategy A: Keyword / Token Substitution (evaluated once per symbol `sym`)
-    if (isInputWord && isWordSym) {
+    // Strategy A: Keyword / Token Substitution & Merged-Token Prefix Split
+    if (isInputWord && isWordSym && !fastCheapInsertionConfirmed) {
+      // Strategy A2: Merged-token prefix split (e.g. "endM;" -> "end" + "M;", "Realx;" -> "Real" + "x;")
+      // Read-only on input buffer: emits a leaf of length kwLen and advances pos to curSrcLexPos + kwLen.
+      if (
+        depth == 0 &&
+        sym != token &&
+        curTLen >= 3 &&
+        changetype<usize>(token_string_offsets) != 0 &&
+        sym < token_string_offsets.length
+      ) {
+        let kwOff = token_string_offsets[sym];
+        if (kwOff >= 0 && kwOff < token_string_bytes.length) {
+          let kwLen = token_string_bytes[kwOff] as u32;
+          if (kwLen >= 2 && kwLen < curTLen && curSrcLexPos + kwLen < inputLength) {
+            let prefixOk = true;
+            let scanP = curSrcLexPos;
+            for (let ki: u32 = 0; ki < kwLen; ki++) {
+              let ch = peekChar(scanP);
+              let chLen = peekCharLen(scanP);
+              if (chLen == 0) chLen = 1;
+              if (ch != token_string_bytes[kwOff + 1 + ki]) {
+                prefixOk = false;
+                break;
+              }
+              scanP += chLen;
+            }
+            if (prefixOk && scanP == curSrcLexPos + kwLen) {
+              let splitTarget = findShiftTarget(state, sym as u16);
+              if (splitTarget != -1) {
+                let remTok = cachedPeekNextTokenInState(scanP, splitTarget);
+                if (stateCanAccept(head, splitTarget, remTok, 0, 1) > 0) {
+                  let splitPad = (curSrcLexPos > pos ? curSrcLexPos - pos : 0) + head.pendingPadding;
+                  let splitNode = allocNode(sym as u16, splitPad, kwLen, 0, false);
+                  setNodeFlags(splitNode, FLAG_HAS_ERROR);
+                  let nextTail = pushDiagnostic(head.errorTail, curSrcLexPos, curSrcLexPos + curTLen, sym as u32, 2, sym as u32, 0);
+                  let splitHead = allocParseHead(
+                    splitTarget,
+                    splitNode,
+                    head,
+                    scanP,
+                    head.scannerState,
+                    head.errorCost + ERROR_COST_PER_MISSING_TREE + 10,
+                    0,
+                    computeNextBalanceHash(head.balanceHash, sym),
+                    0,
+                    head.dynamicPrec,
+                    0,
+                    nextTail
+                  );
+                  pushNextHead(changetype<u32>(splitHead));
+                  foundAny = true;
+                }
+              }
+            }
+          }
+        }
+      }
+
       let simPenalty = computeKeywordSimilarityPenalty(curSrcLexPos, curTLen, sym, state);
       if (simPenalty < bestSubstPenalty) {
         let span = lastKeywordMatchSpan;
@@ -730,7 +930,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
         let resolvedHead = findShiftTargetThroughEpsilons(head, state, sym);
         if (resolvedHead != null) {
           let nextPosAfterTok = curSrcLexPos + span;
-          let nextTok = peekNextTokenInState(nextPosAfterTok, resolvedHead.state);
+          let nextTok = cachedPeekNextTokenInState(nextPosAfterTok, resolvedHead.state);
           let canAcceptAfterSubst = stateCanAccept(resolvedHead, resolvedHead.state, nextTok, 0, 0);
           if (canAcceptAfterSubst > 0) {
             let confirmed = true;
@@ -740,9 +940,9 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
               confirmed = false;
               if (canAcceptAfterSubst >= 1) {
                 let shiftedState = canAcceptAfterSubst - 1;
-                let nextPos2 = lastPeekedTokenEnd;
+                let nextPos2 = recLastPeekEnd;
                 if (nextPos2 < inputLength) {
-                  let nextTok2 = peekNextTokenInState(nextPos2, shiftedState);
+                  let nextTok2 = cachedPeekNextTokenInState(nextPos2, shiftedState);
                   if (stateCanAccept(null, shiftedState, nextTok2, 0, 0) > 0 || lookupActions(shiftedState, nextTok2) > 0) {
                     confirmed = true;
                   }
@@ -754,7 +954,7 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 
             // Guard: If the very next token at nextPosAfterTok in `state` is ALREADY the target keyword `sym`,
             // this is a stray token before the actual keyword, NOT a keyword substitution!
-            if (confirmed && peekNextTokenInState(nextPosAfterTok, state) == sym) {
+            if (confirmed && cachedPeekNextTokenInState(nextPosAfterTok, state) == sym) {
               confirmed = false;
             }
 
@@ -774,11 +974,11 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
       let aTarget = action_data[rIdx++];
 
       if (aType == ACTION_SHIFT && sym > 0 && sym <= MAX_TERMINAL_ID) {
-        let isDelimLookahead = token >= 0 && token < token_insert_costs.length && token_insert_costs[token] == 1;
-        let isDelimSym = token_insert_costs.length > sym && token_insert_costs[sym] == 1;
+        let isDelimLookahead = token >= 0 && token < token_insert_costs.length && token_insert_costs[token] <= 3;
+        let isDelimSym = token_insert_costs.length > sym && token_insert_costs[sym] <= 3;
         if (!isInputWord && isDelimLookahead && isDelimSym) {
           let nextPosAfterTok = curSrcLexPos + curTLen;
-          let nextTok = peekNextTokenInState(nextPosAfterTok, aTarget);
+          let nextTok = cachedPeekNextTokenInState(nextPosAfterTok, aTarget);
           let canAcceptAfterSubst = stateCanAccept(head, aTarget, nextTok, 0, 1);
           if (canAcceptAfterSubst > 0) {
             let pad = (curSrcLexPos > pos ? curSrcLexPos - pos : 0) + head.pendingPadding;
@@ -809,7 +1009,8 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
         }
 
         // Strategy B: Missing Token Insertion (0-width sym, keeping current token in stream)
-        if (sym != precomputedInsertedSym) {
+        // Fast-path bitset gate: skip stateCanAccept when token is not reachable at distance 0 from aTarget.
+        if (sym != precomputedInsertedSym && isReachableZeroDist(aTarget, token)) {
           let insCost: i32 = token_insert_costs.length > sym ? (token_insert_costs[sym] as i32) : 1;
           if (insCost < 50 || (isDelimLookahead && insCost <= 50) || sym == 1 || pos == 0) {
             let canAcceptNext = stateCanAccept(head, aTarget, token, 0, 1);
@@ -908,13 +1109,390 @@ function tryRecoverMissingInState(head: ParseHead, state: i32, token: i32, pos: 
 }
 
 /**
- * Tree-sitter 1-Token Missing Insertion.
- * Checks if inserting a single expected delimiter (such as ';' or ')') allows shifting
- * the upcoming lookahead token. If so, inserts a zero-width MISSING leaf and retries.
+ * MRD-Guided EOF Completion: inserts up to `MAX_EOF_COMPLETIONS` minimal closing delimiters
+ * (e.g. `)`, `]`, `}`, `;`, `end`) when hitting `TOKEN_EOF` inside an incomplete construct.
+ * Read-only on existing heads; allocates new `ParseHead`s in Gen0 only along the completing chain.
+ */
+function recoverAtEof(head: ParseHead, pos: u32): boolean {
+  if (head.consecutiveInsertions >= 6) return false;
+  let currHead = head;
+  let currState = head.state;
+  let inserted = 0;
+
+  let diagStart = pos;
+  let diagEnd = pos;
+  if (pos > 0) {
+    let prevSpan = getRightmostLeafSpan(head, pos);
+    let pStart = (prevSpan >>> 32) as u32;
+    let pEnd = (prevSpan & 0xffffffff) as u32;
+    if (pEnd > pStart && pEnd == pos) {
+      diagStart = pStart;
+      diagEnd = pEnd;
+    }
+  }
+
+  for (let step = 0; step < MAX_EOF_COMPLETIONS; step++) {
+    if (currState < 0 || currState >= action_offsets.length) break;
+    // Stop as soon as EOF can already be accepted/reduced
+    if (stateCanAccept(currHead, currState, TOKEN_EOF, 0, 0) > 0) break;
+
+    let actionOffset = action_offsets[currState];
+    if (actionOffset < 0 || actionOffset >= action_data.length) break;
+    let curMrd: i32 = currState < mrd_data.length ? (mrd_data[currState] as i32) : 255;
+
+    let bestSym: i32 = -1;
+    let bestTarget: i32 = -1;
+    let bestScore: i32 = 999999;
+
+    let rCount = action_data[actionOffset];
+    let rIdx = actionOffset + 1;
+    for (let j = 0; j < rCount; j++) {
+      let sym = action_data[rIdx++];
+      let actCount = action_data[rIdx++];
+      for (let a = 0; a < actCount; a++) {
+        let aType = action_data[rIdx++];
+        let aTarget = action_data[rIdx++];
+        if (aType == ACTION_SHIFT && sym > 0 && sym <= MAX_TERMINAL_ID) {
+          let insCost: i32 = sym < token_insert_costs.length ? (token_insert_costs[sym] as i32) : 50;
+          if (insCost <= 5) {
+            let targetMrd: i32 = aTarget >= 0 && aTarget < mrd_data.length ? (mrd_data[aTarget] as i32) : 255;
+            let closesBracket = currHead.balanceHash > 0 && sym < token_bracket_deltas.length && token_bracket_deltas[sym] < 0;
+            if (targetMrd < curMrd || targetMrd == 0 || closesBracket) {
+              let score = targetMrd * 10 + insCost - (closesBracket ? 5 : 0);
+              if (score < bestScore || (score == bestScore && (bestSym == -1 || sym < bestSym))) {
+                bestScore = score;
+                bestSym = sym;
+                bestTarget = aTarget;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (bestSym == -1 || bestTarget == -1) break;
+    let insCost: i32 = bestSym < token_insert_costs.length ? (token_insert_costs[bestSym] as i32) : 1;
+    let trailingPad: u32 = inserted == 0 && inputLength > pos ? inputLength - pos : 0;
+    let insPad: u32 = inserted == 0 ? currHead.pendingPadding + trailingPad : 0;
+    let insNode = allocNode(bestSym as u16, insPad, 0, 0, false);
+    setNodeFlags(insNode, FLAG_IS_INSERTED | FLAG_HAS_ERROR);
+    let nextTail = pushDiagnostic(currHead.errorTail, diagStart, diagEnd, bestSym as u32, 1, bestSym as u32, 0);
+    currHead = allocParseHead(
+      bestTarget,
+      insNode,
+      currHead,
+      inputLength,
+      currHead.scannerState,
+      currHead.errorCost + insCost * ERROR_COST_PER_MISSING_TREE,
+      0,
+      computeNextBalanceHash(currHead.balanceHash, bestSym),
+      currHead.consecutiveInsertions + 1,
+      currHead.dynamicPrec,
+      0,
+      nextTail
+    );
+    currState = bestTarget;
+    inserted++;
+  }
+
+  if (inserted > 0) {
+    pushNextHead(changetype<u32>(currHead));
+    return true;
+  }
+  return false;
+}
+
+// ----------------------------------------------------------------------------
+// Bounded Local A* / CPCT+ Multi-Edit Repair Search (Dedicated Scratch Pool)
+// Completely isolated from GSS buffers and existing ParseHead/ASTNode memory.
+// ----------------------------------------------------------------------------
+const LOP_ROOT: u8 = 0;
+const LOP_SHIFT: u8 = 1;
+const LOP_INSERT_TERM: u8 = 2;
+const LOP_INSERT_NT: u8 = 3;
+const LOP_DELETE: u8 = 4;
+
+const localParent = new StaticArray<i32>(MAX_LOCAL_NODES);
+const localState = new StaticArray<i32>(MAX_LOCAL_NODES);
+const localPos = new StaticArray<u32>(MAX_LOCAL_NODES);
+const localOp = new StaticArray<u8>(MAX_LOCAL_NODES);
+const localSym = new StaticArray<i32>(MAX_LOCAL_NODES);
+const localCost = new StaticArray<i32>(MAX_LOCAL_NODES);
+const localFScore = new StaticArray<i32>(MAX_LOCAL_NODES);
+const localEdits = new StaticArray<u8>(MAX_LOCAL_NODES);
+const localShifts = new StaticArray<u8>(MAX_LOCAL_NODES);
+const localExpanded = new StaticArray<u8>(MAX_LOCAL_NODES);
+const localPathBuf = new StaticArray<i32>(MAX_LOCAL_NODES);
+
+/**
+ * Bounded deterministic A* local repair search (up to `MAX_LOCAL_EDITS` edits,
+ * `MAX_LOCAL_EXPANSIONS` expansions, confirmed by `LOCAL_CONFIRM_SHIFTS` real token shifts).
+ * Materializes only the confirmed edit prefix onto `head` so real tokens are shifted normally
+ * by the main GLR loop. Never mutates existing heads; always falls through cleanly if exhausted.
+ */
+export function tryLocalAStarRepair(head: ParseHead, token: i32, pos: u32): boolean {
+  if (head.consecutiveInsertions >= 5 || token == TOKEN_EOF) return false;
+  if (head.state < 0 || head.state >= action_offsets.length) return false;
+
+  let nodeCount: i32 = 1;
+  unchecked(localParent[0] = -1);
+  unchecked(localState[0] = head.state);
+  unchecked(localPos[0] = pos);
+  unchecked(localOp[0] = LOP_ROOT);
+  unchecked(localSym[0] = 0);
+  unchecked(localCost[0] = 0);
+  let rootMrd: i32 = head.state < mrd_data.length ? (mrd_data[head.state] as i32) : 0;
+  unchecked(localFScore[0] = rootMrd * 10);
+  unchecked(localEdits[0] = 0);
+  unchecked(localShifts[0] = 0);
+  unchecked(localExpanded[0] = 0);
+
+  let expansions: i32 = 0;
+  let emittedCount: i32 = 0;
+
+  while (expansions < MAX_LOCAL_EXPANSIONS) {
+    // Deterministic min-select over unexpanded scratch nodes: (fScore, edits, nodeIdx)
+    let bestIdx: i32 = -1;
+    let bestF: i32 = 0x7fffffff;
+    let bestE: u8 = 255;
+    for (let i: i32 = 0; i < nodeCount; i++) {
+      if (unchecked(localExpanded[i]) != 0) continue;
+      let f = unchecked(localFScore[i]);
+      let e = unchecked(localEdits[i]);
+      if (f < bestF || (f == bestF && e < bestE)) {
+        bestF = f;
+        bestE = e;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx == -1) break;
+    unchecked(localExpanded[bestIdx] = 1);
+    expansions++;
+
+    let curSt = unchecked(localState[bestIdx]);
+    let curP = unchecked(localPos[bestIdx]);
+    let curCost = unchecked(localCost[bestIdx]);
+    let curEdits = unchecked(localEdits[bestIdx]);
+    let curShifts = unchecked(localShifts[bestIdx]);
+
+    // Determine lookahead token at (curP, curSt)
+    let curTok: i32;
+    let curTokEnd: u32;
+    if (curP == pos && curEdits == 0) {
+      curTok = token;
+      let tL = lexLen > 0 ? lexLen : 1;
+      curTokEnd = srcLexPos + tL;
+    } else if (curP >= inputLength) {
+      curTok = TOKEN_EOF;
+      curTokEnd = inputLength;
+    } else {
+      curTok = cachedPeekNextTokenInState(curP, curSt);
+      curTokEnd = recLastPeekEnd > curP ? recLastPeekEnd : curP + 1;
+    }
+
+    // Check confirmation: >= LOCAL_CONFIRM_SHIFTS real shifts after >= 1 edit,
+    // OR reached EOF with a state that can accept/reduce on EOF after >= 1 edit.
+    let confirmedByShifts = curEdits > 0 && (curShifts as i32) >= LOCAL_CONFIRM_SHIFTS;
+    let confirmedByEof = curEdits > 0 && curTok == TOKEN_EOF && stateCanAccept(null, curSt, TOKEN_EOF, 0, 0) > 0;
+    if (confirmedByShifts || confirmedByEof) {
+      // Reconstruct path from root to bestIdx into localPathBuf
+      let pathLen: i32 = 0;
+      let walk: i32 = bestIdx;
+      while (walk > 0 && pathLen < MAX_LOCAL_NODES) {
+        unchecked(localPathBuf[pathLen++] = walk);
+        walk = unchecked(localParent[walk]);
+      }
+      // Materialize ONLY the leading edit operations (stop at first LOP_SHIFT)
+      let matHead = head;
+      let matBalance = head.balanceHash;
+      let matPos = pos;
+      let matEdits = 0;
+      let diagStart = srcLexPos;
+      let diagEnd = srcLexPos + (lexLen > 0 ? lexLen : 1);
+
+      for (let pi: i32 = pathLen - 1; pi >= 0; pi--) {
+        let ni = unchecked(localPathBuf[pi]);
+        let op = unchecked(localOp[ni]);
+        if (op == LOP_SHIFT) break;
+        let sym = unchecked(localSym[ni]);
+        let nextSt = unchecked(localState[ni]);
+        let nextP = unchecked(localPos[ni]);
+        if (op == LOP_INSERT_TERM || op == LOP_INSERT_NT) {
+          let insNode = allocNode(sym as u16, 0, 0, 0, false);
+          setNodeFlags(insNode, FLAG_IS_INSERTED | FLAG_HAS_ERROR);
+          let stepCost: i32 =
+            op == LOP_INSERT_NT
+              ? ERROR_COST_PER_MISSING_TREE + 20
+              : (sym < token_insert_costs.length ? (token_insert_costs[sym] as i32) : 1) * ERROR_COST_PER_MISSING_TREE;
+          let nextTail = pushDiagnostic(matHead.errorTail, diagStart, diagEnd, sym as u32, 1, sym as u32, 0);
+          matBalance = op == LOP_INSERT_TERM ? computeNextBalanceHash(matBalance, sym) : matBalance;
+          matHead = allocParseHead(
+            nextSt,
+            insNode,
+            matHead,
+            matPos,
+            matHead.scannerState,
+            matHead.errorCost + stepCost,
+            0,
+            matBalance,
+            matHead.consecutiveInsertions + 1,
+            matHead.dynamicPrec,
+            matHead.pendingPadding,
+            nextTail
+          );
+          matEdits++;
+        } else if (op == LOP_DELETE) {
+          let delLen = nextP > matPos ? nextP - matPos : 1;
+          let errLeaf = allocNode(NODE_TYPE_ERROR, 0, delLen, 0, false);
+          setNodeFlags(errLeaf, FLAG_HAS_ERROR);
+          let nextTail = pushDiagnostic(matHead.errorTail, matPos, nextP, sym as u32, 2, 0, 0);
+          matPos = nextP;
+          matHead = allocParseHead(
+            nextSt,
+            errLeaf,
+            matHead,
+            matPos,
+            matHead.scannerState,
+            matHead.errorCost + ERROR_COST_PER_SKIPPED_TREE,
+            0,
+            matBalance,
+            0,
+            matHead.dynamicPrec,
+            0,
+            nextTail
+          );
+          matEdits++;
+        }
+      }
+
+      if (matEdits > 0) {
+        pushNextHead(changetype<u32>(matHead));
+        emittedCount++;
+        if (emittedCount >= 2) return true;
+      }
+      continue;
+    }
+
+    // Transition 1: Real shift (cost 0, increments shiftsConfirmed)
+    if (curTok != TOKEN_EOF && nodeCount < MAX_LOCAL_NODES) {
+      let shiftTarget = findShiftTarget(curSt, curTok as u16);
+      if (shiftTarget != -1) {
+        let idx = nodeCount++;
+        unchecked(localParent[idx] = bestIdx);
+        unchecked(localState[idx] = shiftTarget);
+        unchecked(localPos[idx] = curTokEnd);
+        unchecked(localOp[idx] = LOP_SHIFT);
+        unchecked(localSym[idx] = curTok);
+        unchecked(localCost[idx] = curCost);
+        let hMrd: i32 = shiftTarget < mrd_data.length ? (mrd_data[shiftTarget] as i32) : 0;
+        unchecked(localFScore[idx] = curCost + hMrd * 10);
+        unchecked(localEdits[idx] = curEdits);
+        unchecked(localShifts[idx] = curShifts + 1);
+        unchecked(localExpanded[idx] = 0);
+      }
+    }
+
+    // Only allow edits before real shifts begin (prefix repair model) and within MAX_LOCAL_EDITS
+    if (curShifts == 0 && (curEdits as i32) < MAX_LOCAL_EDITS && curSt >= 0 && curSt < action_offsets.length) {
+      // Transition 2: Cheap terminal insertion (up to 4 lowest-MRD candidates)
+      let actOff = action_offsets[curSt];
+      if (actOff >= 0 && actOff < action_data.length) {
+        let rCount = action_data[actOff];
+        let rIdx = actOff + 1;
+        let insertedCands = 0;
+        for (let j = 0; j < rCount && insertedCands < 4 && nodeCount < MAX_LOCAL_NODES; j++) {
+          let sym = action_data[rIdx++];
+          let actCount = action_data[rIdx++];
+          for (let a = 0; a < actCount; a++) {
+            let aType = action_data[rIdx++];
+            let aTarget = action_data[rIdx++];
+            if (aType == ACTION_SHIFT && sym > 0 && sym <= MAX_TERMINAL_ID) {
+              let insCost: i32 = sym < token_insert_costs.length ? (token_insert_costs[sym] as i32) : 50;
+              if (insCost <= 5 && insertedCands < 4 && nodeCount < MAX_LOCAL_NODES) {
+                let nCost = curCost + insCost * ERROR_COST_PER_MISSING_TREE;
+                let hMrd: i32 = aTarget >= 0 && aTarget < mrd_data.length ? (mrd_data[aTarget] as i32) : 0;
+                let idx = nodeCount++;
+                unchecked(localParent[idx] = bestIdx);
+                unchecked(localState[idx] = aTarget);
+                unchecked(localPos[idx] = curP);
+                unchecked(localOp[idx] = LOP_INSERT_TERM);
+                unchecked(localSym[idx] = sym);
+                unchecked(localCost[idx] = nCost);
+                unchecked(localFScore[idx] = nCost + hMrd * 10);
+                unchecked(localEdits[idx] = curEdits + 1);
+                unchecked(localShifts[idx] = 0);
+                unchecked(localExpanded[idx] = 0);
+                insertedCands++;
+              }
+            }
+          }
+        }
+      }
+
+      // Transition 3: Non-terminal placeholder insertion via precomputed_nt_repairs
+      if (
+        changetype<usize>(precomputed_nt_repairs) != 0 &&
+        curTok > 0 &&
+        curTok <= MAX_TERMINAL_ID &&
+        nodeCount < MAX_LOCAL_NODES
+      ) {
+        let bestNt = precomputed_nt_repairs[curSt * (MAX_TERMINAL_ID + 1) + curTok];
+        if (bestNt > 0) {
+          let ntTarget = lookupGoto(curSt, bestNt);
+          if (ntTarget != -1) {
+            let nCost = curCost + ERROR_COST_PER_MISSING_TREE + 20;
+            let hMrd: i32 = ntTarget < mrd_data.length ? (mrd_data[ntTarget] as i32) : 0;
+            let idx = nodeCount++;
+            unchecked(localParent[idx] = bestIdx);
+            unchecked(localState[idx] = ntTarget);
+            unchecked(localPos[idx] = curP);
+            unchecked(localOp[idx] = LOP_INSERT_NT);
+            unchecked(localSym[idx] = bestNt);
+            unchecked(localCost[idx] = nCost);
+            unchecked(localFScore[idx] = nCost + hMrd * 10);
+            unchecked(localEdits[idx] = curEdits + 1);
+            unchecked(localShifts[idx] = 0);
+            unchecked(localExpanded[idx] = 0);
+          }
+        }
+      }
+
+      // Transition 4: Delete current token (blocked on sync tokens & closing brackets when balanced)
+      if (
+        curTok != TOKEN_EOF &&
+        nodeCount < MAX_LOCAL_NODES &&
+        !(curTok >= 0 && curTok < token_delete_costs.length && token_delete_costs[curTok] >= 1000) &&
+        !(head.balanceHash > 0 && curTok >= 0 && curTok < token_bracket_deltas.length && token_bracket_deltas[curTok] < 0)
+      ) {
+        let nCost = curCost + ERROR_COST_PER_SKIPPED_TREE;
+        let hMrd: i32 = curSt < mrd_data.length ? (mrd_data[curSt] as i32) : 0;
+        let idx = nodeCount++;
+        unchecked(localParent[idx] = bestIdx);
+        unchecked(localState[idx] = curSt);
+        unchecked(localPos[idx] = curTokEnd);
+        unchecked(localOp[idx] = LOP_DELETE);
+        unchecked(localSym[idx] = curTok);
+        unchecked(localCost[idx] = nCost);
+        unchecked(localFScore[idx] = nCost + hMrd * 10);
+        unchecked(localEdits[idx] = curEdits + 1);
+        unchecked(localShifts[idx] = 0);
+        unchecked(localExpanded[idx] = 0);
+      }
+    }
+  }
+
+  return emittedCount > 0;
+}
+
+/**
+ * Tree-sitter 1-Token Missing Insertion + MRD EOF Completion.
+ * Checks if inserting a single expected delimiter or non-terminal placeholder allows shifting
+ * the upcoming lookahead token. At EOF, performs MRD-guided completion.
  */
 export function recoverMissingToken(head: ParseHead, token: i32, pos: u32): boolean {
-  // Recovery fix: exponential cost instead of hard cutoff at 3
-  // Allow up to 6 consecutive insertions but with escalating cost
-  if (head.consecutiveInsertions >= 6 || token == TOKEN_EOF) return false;
+  if (head.consecutiveInsertions >= 6) return false;
+  if (token == TOKEN_EOF) {
+    return recoverAtEof(head, pos);
+  }
   return tryRecoverMissingInState(head, head.state, token, pos, 0);
 }

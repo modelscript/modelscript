@@ -11,6 +11,7 @@ import {
   type LoweringContext,
 } from "./cst-lowering.js";
 import { Owl2ErrorCode, type Owl2DiagnosticSeverity, type Owl2ErrorCodeDef } from "./errors.js";
+import { Owl2TableauReasoner } from "./reasoner/tableau.js";
 
 /**
  * Diagnostic emitted by the OWL 2 static and semantic linter (`lintOwl2Document`),
@@ -487,6 +488,7 @@ export function lintOwl2Document(
         !t.startsWith("DataMaxCardinality") &&
         !t.startsWith("DataExactCardinality") &&
         ![
+          "Annotation",
           "Prefix",
           "Ontology",
           "Import",
@@ -1461,6 +1463,34 @@ export function lintOwl2Document(
 
       const explanation = consistency.explanation ?? "Logical contradiction detected in ontology axioms.";
       emit(Owl2ErrorCode.ONTOLOGY_INCONSISTENT, rootNode, [explanation]);
+    } else if (
+      axioms.some(
+        (a) =>
+          a.type === "QualifiedCardinality" ||
+          a.type === "ObjectOneOf" ||
+          a.type === "NominalClass" ||
+          a.type === "DisjunctiveClass" ||
+          a.type === "SubPropertyChainOf",
+      )
+    ) {
+      // SROIQ(D) DL verification pass via Owl2TableauReasoner for expressive DL constructs
+      const tableau = new Owl2TableauReasoner(axioms);
+      const tRes = tableau.checkConsistency();
+      if (!tRes.consistent) {
+        const explanation = tRes.clashes[0] ?? "Logical contradiction detected by SROIQ(D) tableau reasoner.";
+        emit(Owl2ErrorCode.ONTOLOGY_INCONSISTENT, rootNode, [explanation]);
+      } else {
+        for (const unsat of tRes.unsatisfiableClasses) {
+          if (unsat === "owl:Nothing" || unsat.startsWith("__aux_") || unsatisfiableClasses.has(unsat)) continue;
+          const targetNode = declaredClasses.get(unsat) ?? firstAxiomNodeByIri.get(unsat) ?? rootNode;
+          emit(
+            Owl2ErrorCode.UNSATISFIABLE_CLASS,
+            targetNode,
+            [unsat, `Class '${unsat}' is unsatisfiable under SROIQ(D) tableau reasoning`],
+            unsat,
+          );
+        }
+      }
     }
   }
 

@@ -38,7 +38,7 @@ export class UnmanagedSet64 {
     /**
      * Initializes or re-initializes the hash set.
      * Reuses existing key memory block if capacity matches, avoiding redundant allocations.
-     * 
+     *
      * @param initialCapacity Requested initial capacity. Automatically rounded up to next power of 2 (min 16).
      */
     @inline init(initialCapacity: u32 = 16): void {
@@ -50,14 +50,15 @@ export class UnmanagedSet64 {
 
         // Reallocate memory block only if uninitialized or requested capacity changed
         if (this.keys == 0 || this.capacity != initialCapacity) {
-            this.keys = atomicChunkAlloc(initialCapacity * 8) as usize; // 8 bytes per u64 key
+            if (this.keys != 0) atomicChunkFree(this.keys);
+            this.keys = atomicChunkAlloc(initialCapacity * 8) as usize; // 8 bytes per u64 key (already zeroed)
             this.capacity = initialCapacity;
+        } else {
+            // Zero-fill reused key memory buffer to mark all slots as empty (0 = empty slot)
+            memory.fill(this.keys, 0, this.capacity * 8);
         }
         this.size = 0;
         this.isActive = true;
-
-        // Zero-fill key memory buffer to mark all slots as empty (0 = empty slot)
-        memory.fill(this.keys, 0, this.capacity * 8);
     }
 
     @inline clear(): void {
@@ -69,7 +70,7 @@ export class UnmanagedSet64 {
 
     /**
      * Inserts a 64-bit hash key into the set.
-     * 
+     *
      * @param hash 64-bit integer key to insert.
      */
     add(hash: u64): void {
@@ -78,10 +79,10 @@ export class UnmanagedSet64 {
 
         // Maintain 50% max load factor; double capacity if load exceeds threshold
         if (this.size * 2 >= this.capacity) this._resize();
-        
+
         let mask = this.capacity - 1;
         let idx = ((hash as u32) ^ ((hash >> 32) as u32)) & mask; // Bit-mix 64-bit key to avoid high/low bit collision clustering
-        
+
         // Linear probing loop: scan sequentially until empty slot or matching key is found
         while (true) {
             let k = load<u64>(this.keys + (idx * 8));
@@ -98,7 +99,7 @@ export class UnmanagedSet64 {
 
     /**
      * Checks if a 64-bit hash key exists in the set.
-     * 
+     *
      * @param hash 64-bit integer key to query.
      * @returns True if the key exists in the set, false otherwise.
      */
@@ -106,7 +107,7 @@ export class UnmanagedSet64 {
         if (hash == 0) hash = 1;
         let mask = this.capacity - 1;
         let idx = ((hash as u32) ^ ((hash >> 32) as u32)) & mask;
-        
+
         // Linear probing search loop
         while (true) {
             let k = load<u64>(this.keys + (idx * 8));
@@ -122,11 +123,10 @@ export class UnmanagedSet64 {
     _resize(): void {
         let oldCap = this.capacity;
         let oldKeys = this.keys;
-        
+
         let newCap = oldCap * 2;
         let newKeys = atomicChunkAlloc(newCap * 8) as usize;
-        memory.fill(newKeys, 0, newCap * 8);
-        
+
         let mask = newCap - 1;
         for (let i: u32 = 0; i < oldCap; i++) {
             let k = load<u64>(oldKeys + (i * 8));
@@ -138,7 +138,7 @@ export class UnmanagedSet64 {
                 store<u64>(newKeys + (idx * 8), k);
             }
         }
-        
+
         atomicChunkFree(oldKeys);
         this.capacity = newCap;
         this.keys = newKeys;
@@ -161,6 +161,13 @@ export class UnmanagedSet64 {
         if (UnmanagedSet64.poolDepth < 16) {
             store<usize>(UnmanagedSet64.poolBuf + (UnmanagedSet64.poolDepth * sizeof<usize>()), changetype<usize>(this));
             UnmanagedSet64.poolDepth++;
+        } else {
+            if (this.keys != 0) {
+                atomicChunkFree(this.keys);
+                this.keys = 0;
+            }
+            this.capacity = 0;
+            atomicChunkFree(changetype<usize>(this));
         }
     }
 
@@ -205,7 +212,7 @@ export class UnmanagedMap64 {
     /**
      * Initializes or re-initializes the hash map.
      * Reuses existing key/value buffers if capacity matches.
-     * 
+     *
      * @param initialCapacity Requested initial capacity (rounded to power of 2, min 16).
      */
     @inline init(initialCapacity: u32 = 16): void {
@@ -215,16 +222,18 @@ export class UnmanagedMap64 {
         initialCapacity = cap;
 
         if (this.keys == 0 || this.capacity != initialCapacity) {
-            this.keys = atomicChunkAlloc(initialCapacity * 8) as usize;  // 8 bytes per u64 key
-            this.values = atomicChunkAlloc(initialCapacity * 4) as usize; // 4 bytes per u32 value
+            if (this.keys != 0) atomicChunkFree(this.keys);
+            if (this.values != 0) atomicChunkFree(this.values);
+            this.keys = atomicChunkAlloc(initialCapacity * 8) as usize;  // 8 bytes per u64 key (already zeroed)
+            this.values = atomicChunkAlloc(initialCapacity * 4) as usize; // 4 bytes per u32 value (already zeroed)
             this.capacity = initialCapacity;
+        } else {
+            // Zero-fill reused key and value buffers (0 = empty slot)
+            memory.fill(this.keys, 0, this.capacity * 8);
+            memory.fill(this.values, 0, this.capacity * 4);
         }
         this.size = 0;
         this.isActive = true;
-
-        // Zero-fill key and value buffers (0 = empty slot)
-        memory.fill(this.keys, 0, this.capacity * 8);
-        memory.fill(this.values, 0, this.capacity * 4);
     }
 
     @inline clear(): void {
@@ -239,17 +248,17 @@ export class UnmanagedMap64 {
 
     /**
      * Sets or updates a key-value pair in the map.
-     * 
+     *
      * @param hash 64-bit key.
      * @param value 32-bit value.
      */
     set(hash: u64, value: u32): void {
         if (hash == 0) hash = 1;
         if (this.size * 2 >= this.capacity) this._resize();
-        
+
         let mask = this.capacity - 1;
         let idx = ((hash as u32) ^ ((hash >> 32) as u32)) & mask;
-        
+
         while (true) {
             let k = load<u64>(this.keys + (idx * 8));
             if (k == 0) {
@@ -270,7 +279,7 @@ export class UnmanagedMap64 {
 
     /**
      * Looks up the value associated with the given 64-bit key.
-     * 
+     *
      * @param hash 64-bit key.
      * @returns The associated 32-bit value, or 0 if not found.
      */
@@ -279,7 +288,7 @@ export class UnmanagedMap64 {
         if (hash == 0) hash = 1;
         let mask = this.capacity - 1;
         let idx = ((hash as u32) ^ ((hash >> 32) as u32)) & mask;
-        
+
         let probes: u32 = 0;
         while (probes < this.capacity) {
             let k = load<u64>(this.keys + (idx * 8));
@@ -308,19 +317,58 @@ export class UnmanagedMap64 {
     }
 
     /**
+     * Removes a key from the map using backward-shift deletion (no tombstones).
+     * Returns true if the key was present and removed.
+     */
+    delete(hash: u64): boolean {
+        if (this.keys == 0 || this.capacity == 0 || this.size == 0) return false;
+        if (hash == 0) hash = 1;
+        let mask = this.capacity - 1;
+        let idx = ((hash as u32) ^ ((hash >> 32) as u32)) & mask;
+        let probes: u32 = 0;
+        while (probes < this.capacity) {
+            let k = load<u64>(this.keys + (idx * 8));
+            if (k == 0) return false;
+            if (k == hash) {
+                // Backward-shift subsequent entries in the probe cluster
+                let hole = idx;
+                let curr = (idx + 1) & mask;
+                while (true) {
+                    let nextK = load<u64>(this.keys + (curr * 8));
+                    if (nextK == 0) break;
+                    let natural = ((nextK as u32) ^ ((nextK >> 32) as u32)) & mask;
+                    let distToHole = (hole - natural) & mask;
+                    let distToCurr = (curr - natural) & mask;
+                    if (distToHole < distToCurr) {
+                        store<u64>(this.keys + (hole * 8), nextK);
+                        store<u32>(this.values + (hole * 4), load<u32>(this.values + (curr * 4)));
+                        hole = curr;
+                    }
+                    curr = (curr + 1) & mask;
+                }
+                store<u64>(this.keys + (hole * 8), 0);
+                store<u32>(this.values + (hole * 4), 0);
+                this.size--;
+                return true;
+            }
+            idx = (idx + 1) & mask;
+            probes++;
+        }
+        return false;
+    }
+
+    /**
      * Internal helper to double capacity and re-hash map entries.
      */
     _resize(): void {
         let oldCap = this.capacity;
         let oldKeys = this.keys;
         let oldValues = this.values;
-        
+
         let newCap = oldCap * 2;
         let newKeys = atomicChunkAlloc(newCap * 8) as usize;
         let newValues = atomicChunkAlloc(newCap * 4) as usize;
-        memory.fill(newKeys, 0, newCap * 8);
-        memory.fill(newValues, 0, newCap * 4);
-        
+
         let mask = newCap - 1;
         for (let i: u32 = 0; i < oldCap; i++) {
             let k = load<u64>(oldKeys + (i * 8));
@@ -334,7 +382,7 @@ export class UnmanagedMap64 {
                 store<u32>(newValues + (idx * 4), v);
             }
         }
-        
+
         atomicChunkFree(oldKeys);
         atomicChunkFree(oldValues);
         this.capacity = newCap;
@@ -361,6 +409,17 @@ export class UnmanagedMap64 {
         if (UnmanagedMap64.poolDepth < 16) {
             store<usize>(UnmanagedMap64.poolBuf + (UnmanagedMap64.poolDepth * sizeof<usize>()), changetype<usize>(this));
             UnmanagedMap64.poolDepth++;
+        } else {
+            if (this.keys != 0) {
+                atomicChunkFree(this.keys);
+                this.keys = 0;
+            }
+            if (this.values != 0) {
+                atomicChunkFree(this.values);
+                this.values = 0;
+            }
+            this.capacity = 0;
+            atomicChunkFree(changetype<usize>(this));
         }
     }
 
@@ -401,13 +460,18 @@ export class UnmanagedMap64To64 {
         if (initialCapacity < 16) initialCapacity = 16;
         let cap: u32 = 16;
         while (cap < initialCapacity) cap <<= 1;
-        this.capacity = cap;
+        if (this.keys == 0 || this.capacity != cap) {
+            if (this.keys != 0) atomicChunkFree(this.keys);
+            if (this.values != 0) atomicChunkFree(this.values);
+            this.keys = atomicChunkAlloc(cap * 8) as usize;
+            this.values = atomicChunkAlloc(cap * 8) as usize;
+            this.capacity = cap;
+        } else {
+            memory.fill(this.keys, 0, cap * 8);
+            memory.fill(this.values, 0, cap * 8);
+        }
         this.size = 0;
         this.isActive = true;
-        this.keys = atomicChunkAlloc(cap * 8) as usize;
-        this.values = atomicChunkAlloc(cap * 8) as usize;
-        memory.fill(this.keys, 0, cap * 8);
-        memory.fill(this.values, 0, cap * 8);
     }
 
     @inline clear(): void {
@@ -423,10 +487,10 @@ export class UnmanagedMap64To64 {
     set(hash: u64, value: u64): void {
         if (hash == 0) hash = 1;
         if (this.size * 2 >= this.capacity) this._resize();
-        
+
         let mask = this.capacity - 1;
         let idx = ((hash as u32) ^ ((hash >> 32) as u32)) & mask;
-        
+
         while (true) {
             let k = load<u64>(this.keys + (idx * 8));
             if (k == 0) {
@@ -448,7 +512,7 @@ export class UnmanagedMap64To64 {
         if (hash == 0) hash = 1;
         let mask = this.capacity - 1;
         let idx = ((hash as u32) ^ ((hash >> 32) as u32)) & mask;
-        
+
         let probes: u32 = 0;
         while (probes < this.capacity) {
             let k = load<u64>(this.keys + (idx * 8));
@@ -476,17 +540,51 @@ export class UnmanagedMap64To64 {
         return false;
     }
 
+    delete(hash: u64): boolean {
+        if (this.keys == 0 || this.capacity == 0 || this.size == 0) return false;
+        if (hash == 0) hash = 1;
+        let mask = this.capacity - 1;
+        let idx = ((hash as u32) ^ ((hash >> 32) as u32)) & mask;
+        let probes: u32 = 0;
+        while (probes < this.capacity) {
+            let k = load<u64>(this.keys + (idx * 8));
+            if (k == 0) return false;
+            if (k == hash) {
+                let hole = idx;
+                let curr = (idx + 1) & mask;
+                while (true) {
+                    let nextK = load<u64>(this.keys + (curr * 8));
+                    if (nextK == 0) break;
+                    let natural = ((nextK as u32) ^ ((nextK >> 32) as u32)) & mask;
+                    let distToHole = (hole - natural) & mask;
+                    let distToCurr = (curr - natural) & mask;
+                    if (distToHole < distToCurr) {
+                        store<u64>(this.keys + (hole * 8), nextK);
+                        store<u64>(this.values + (hole * 8), load<u64>(this.values + (curr * 8)));
+                        hole = curr;
+                    }
+                    curr = (curr + 1) & mask;
+                }
+                store<u64>(this.keys + (hole * 8), 0);
+                store<u64>(this.values + (hole * 8), 0);
+                this.size--;
+                return true;
+            }
+            idx = (idx + 1) & mask;
+            probes++;
+        }
+        return false;
+    }
+
     _resize(): void {
         let oldCap = this.capacity;
         let oldKeys = this.keys;
         let oldValues = this.values;
-        
+
         let newCap = oldCap * 2;
         let newKeys = atomicChunkAlloc(newCap * 8) as usize;
         let newValues = atomicChunkAlloc(newCap * 8) as usize;
-        memory.fill(newKeys, 0, newCap * 8);
-        memory.fill(newValues, 0, newCap * 8);
-        
+
         let mask = newCap - 1;
         for (let i: u32 = 0; i < oldCap; i++) {
             let k = load<u64>(oldKeys + (i * 8));
@@ -500,7 +598,7 @@ export class UnmanagedMap64To64 {
                 store<u64>(newValues + (idx * 8), v);
             }
         }
-        
+
         atomicChunkFree(oldKeys);
         atomicChunkFree(oldValues);
         this.capacity = newCap;
@@ -524,6 +622,17 @@ export class UnmanagedMap64To64 {
         if (UnmanagedMap64To64.poolDepth < 16) {
             store<usize>(UnmanagedMap64To64.poolBuf + (UnmanagedMap64To64.poolDepth * sizeof<usize>()), changetype<usize>(this));
             UnmanagedMap64To64.poolDepth++;
+        } else {
+            if (this.keys != 0) {
+                atomicChunkFree(this.keys);
+                this.keys = 0;
+            }
+            if (this.values != 0) {
+                atomicChunkFree(this.values);
+                this.values = 0;
+            }
+            this.capacity = 0;
+            atomicChunkFree(changetype<usize>(this));
         }
     }
 

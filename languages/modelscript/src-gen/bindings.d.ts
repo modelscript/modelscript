@@ -306,7 +306,7 @@ export declare class LspFacade {
    */
   scheduleCompaction(immediate?: boolean): void;
   /**
-   * Trigger 2: Checks if allocated memory exceeds high-water mark quota.
+   * Trigger 2: Checks if live allocated arena memory exceeds high-water mark quota.
    */
   checkMemoryQuota(): void;
   /**
@@ -1482,11 +1482,11 @@ export declare enum SyntaxKind {
   BOOLEAN = 115,
   START = 116,
   _START = 116,
-  EmptyStatement = 144,
-  _EmptyStatement = 144,
-  IDENTIFIER = 181,
-  NUMBER = 182,
-  STRING = 183,
+  EmptyStatement = 143,
+  _EmptyStatement = 143,
+  IDENTIFIER = 169,
+  NUMBER = 170,
+  STRING = 171,
   EOF = 1023,
 }
 
@@ -2065,12 +2065,12 @@ export declare namespace Cst {
     propertyList(node: SyntaxNode | null | undefined): SyntaxNode[];
     callee(node: SyntaxNode | null | undefined): SyntaxNode | null;
     calleeList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    arguments(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    argumentsList(node: SyntaxNode | null | undefined): SyntaxNode[];
     array(node: SyntaxNode | null | undefined): SyntaxNode | null;
     arrayList(node: SyntaxNode | null | undefined): SyntaxNode[];
     index(node: SyntaxNode | null | undefined): SyntaxNode | null;
     indexList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    arguments(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    argumentsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ArgumentList: {
     readonly typeId: number;

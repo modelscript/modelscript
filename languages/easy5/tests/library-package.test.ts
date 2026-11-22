@@ -133,6 +133,60 @@ describe("@modelscript/easy5 — Cleanroom Standard Library (modelscript.yaml, W
     assert.ok(Math.abs(tropopause.y2 - 216.65) < 1e-3, `Expected 11km T=216.65 K, got ${tropopause.y2}`);
   });
 
+  it("integrates HC/PI_HC bulk-modulus capacitance and GD/VO real-gas energy/pressure states", () => {
+    // 1. HC/PI_HC — Hydraulic pipe bulk-modulus compressibility dP/dt = (beta / V) * (Q_in - Q_out)
+    const length = 2.0;
+    const diam = 0.02;
+    const vol = 0.25 * Math.PI * diam * diam * length;
+    const beta = 1.4e9;
+    const pipe = instantiateEasy5WasmModel({
+      id: "PI01",
+      type: "HC/PI_HC",
+      parameters: { LENGTH: length, DIAM: diam, RHO: 850.0, RF: 1e7 },
+    });
+    assert.ok(pipe, "Expected HC/PI_HC WASM instance");
+    assert.equal(pipe.init({ u0: 1.0e6, u1: 1.0e6 }), 2, "Expected 2 states (Q, P_pipe)");
+
+    const qIn = 1.0e-6; // 1 cm^3/s net inflow
+    const dtPipe = 0.001;
+    const pipeOut = pipe.doStep(0.0, dtPipe, { u0: 1.0e6, u1: 1.0e6, u2: qIn, u3: 0.0 });
+    const expectedP = 1.0e6 + (beta / vol) * qIn * dtPipe;
+    assert.ok(
+      Math.abs(pipeOut.y1 - expectedP) / expectedP < 1e-4,
+      `Expected bulk-modulus pressure rise to ${expectedP} Pa, got ${pipeOut.y1} Pa`,
+    );
+    assert.ok(pipeOut.y3 > 1000.0, `Expected hydraulic acoustic wave speed > 1000 m/s, got ${pipeOut.y3}`);
+
+    // 2. GD/VO — Real-gas open-system energy/pressure integration with Virial compressibility Z(P, T)
+    const gasVol = instantiateEasy5WasmModel({
+      id: "VO01",
+      type: "GD/VO",
+      parameters: { VOL: 0.05, R_GAS: 287.05, GAMMA: 1.4, P0: 101325.0, T0: 293.15 },
+    });
+    assert.ok(gasVol, "Expected GD/VO WASM instance");
+    assert.equal(gasVol.init({ u0: 0.0, u1: 0.0, u2: 293.15, u3: 0.0 }), 2);
+    assert.ok(gasVol.checkFlatStart() < 1e-9, `Expected GD/VO flat-start residual ~0, got ${gasVol.checkFlatStart()}`);
+
+    // Adiabatic charging with 0.05 kg/s of 300 K air -> both pressure AND temperature rise (compression heating)
+    let voOut = gasVol.doStep(0.0, 0.01, { u0: 0.05, u1: 0.0, u2: 300.0, u3: 0.0 });
+    for (let k = 1; k < 20; k++) {
+      voOut = gasVol.doStep(k * 0.01, 0.01, { u0: 0.05, u1: 0.0, u2: 300.0, u3: 0.0 });
+    }
+    assert.ok(voOut.y0 > 120000.0, `Expected gas volume pressure rise during charging, got ${voOut.y0}`);
+    assert.ok(voOut.y2 > 310.0, `Expected first-law adiabatic compression heating T > 310 K, got ${voOut.y2}`);
+
+    // High-pressure real-gas compressibility check (P0 = 15 MPa -> Virial Z != 1)
+    const hpVol = instantiateEasy5WasmModel({
+      id: "VO_HP",
+      type: "GD/VO",
+      parameters: { VOL: 0.05, R_GAS: 287.05, GAMMA: 1.4, P0: 1.5e7, T0: 250.0 },
+    });
+    assert.ok(hpVol);
+    hpVol.init({ u0: 0.0, u1: 0.0, u2: 250.0, u3: 0.0 });
+    const hpOut = hpVol.doStep(0.0, 0.001, { u0: 0.0, u1: 0.0, u2: 250.0, u3: 0.0 });
+    assert.ok(Math.abs(hpOut.y1 - 1.0) > 1e-3, `Expected non-ideal Virial Z(P,T) != 1 at 15 MPa, got ${hpOut.y1}`);
+  });
+
   it("projects and links an FMI 2.0/3.0 user-defined FMU via GP/UG", () => {
     const proj = fmuToEasy5Block(
       {

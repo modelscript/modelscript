@@ -19,8 +19,38 @@ import {
   Variability,
   VarType,
 } from "@modelscript/runtime";
+import {
+  ensureBuiltInMagicDrawLibraryRegistered,
+  lookupMagicDrawModelSchema,
+} from "../catalog/library-package-adapter.js";
 import { parseMagicDraw } from "../parser/index.js";
 import type { MagicDrawDocument } from "../types.js";
+
+/**
+ * Resolves parameter defaults for a MagicDraw model from `@modelscript/magicdraw-std-lib`,
+ * merging any user-specified named overrides over the cleanroom schema defaults.
+ */
+export function resolveMagicDrawSchemaParamDefaults(
+  modelName: string,
+  overrides: Record<string, number> = {},
+): Record<string, number> {
+  ensureBuiltInMagicDrawLibraryRegistered();
+  const resolved: Record<string, number> = {};
+  const schema = lookupMagicDrawModelSchema(modelName);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (typeof p.defaultValue === "number" && Number.isFinite(p.defaultValue)) {
+        resolved[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (Number.isFinite(v)) {
+      resolved[k] = v;
+    }
+  }
+  return resolved;
+}
 
 function sanitizeIdent(name: string): string {
   const cleaned = name.trim().replace(/[^A-Za-z0-9_]/g, "_");
@@ -125,6 +155,7 @@ function lowerSimpleExprToArena(exprText: string, prefix: string, arena: DAEBuil
  * ModelScript's linear-memory `DAEBuilder` arena.
  */
 export function lowerMagicDrawParametricsToDae(docOrText: MagicDrawDocument | string, arenaTitle?: string): DAEBuilder {
+  ensureBuiltInMagicDrawLibraryRegistered();
   const doc = typeof docOrText === "string" ? parseMagicDraw(docOrText) : docOrText;
   const title = arenaTitle ?? sanitizeIdent(doc.metadata.projectName ?? "MagicDraw_Parametric");
   const interner = new StringInterner();

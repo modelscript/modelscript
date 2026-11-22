@@ -39,9 +39,15 @@ function mergeArrayOrFn<T>(a: T, b: T): T {
   if (Array.isArray(a) && Array.isArray(b)) {
     return [...a, ...b] as unknown as T;
   }
+  type Fn = (arg: unknown) => unknown[];
   if (typeof a === "function" && typeof b === "function") {
-    type Fn = (arg: unknown) => unknown[];
     return (($: unknown) => [...(a as Fn)($), ...(b as Fn)($)]) as unknown as T;
+  }
+  if (Array.isArray(a) && typeof b === "function") {
+    return (($: unknown) => [...a, ...(b as Fn)($)]) as unknown as T;
+  }
+  if (typeof a === "function" && Array.isArray(b)) {
+    return (($: unknown) => [...(a as Fn)($), ...b]) as unknown as T;
   }
   return b;
 }

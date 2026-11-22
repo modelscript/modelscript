@@ -70,6 +70,83 @@ export interface FlattenContext {
   dynamicPrec?: number | undefined;
   /** Active AST field name enclosing the current rule subtree. */
   field?: string | undefined;
+  /** True when a `prec*()` wrapper can attach directly to the enclosing production without synthesizing a wrapper non-terminal. */
+  canAttachPrec?: boolean | undefined;
+}
+
+function escapeRegexLiteral(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+}
+
+/**
+ * Compiles a composite lexical rule tree (`token(seq(...))`, `token(choice(...))`, etc.)
+ * into a single monolithic regular expression body string, or returns `null` if the rule
+ * contains non-lexical constructs (such as non-terminal `SYMBOL` references or flagged regexes).
+ */
+export function compileRuleToRegex(rule: GrammarRuleInput): string | null {
+  if (rule === null || rule === undefined) return null;
+  if (typeof rule === "string") return escapeRegexLiteral(rule);
+  if (rule instanceof RegExp || Object.prototype.toString.call(rule) === "[object RegExp]") {
+    const re = rule as RegExp;
+    if (re.flags && re.flags.length > 0) return null;
+    return `(?:${re.source})`;
+  }
+  const t = (rule.type || "").toUpperCase();
+  const children =
+    rule.children || rule.args || (rule.arg !== undefined ? [rule.arg as GrammarRuleNode | string | RegExp] : []);
+  if (t === "TOKEN") {
+    if (rule.value !== undefined) {
+      if (typeof rule.value === "string") {
+        if (rule.value.startsWith("/") && rule.value.endsWith("/") && rule.value.length > 1) {
+          return `(?:${rule.value.slice(1, -1)})`;
+        }
+        return escapeRegexLiteral(rule.value);
+      }
+      if (rule.value instanceof RegExp || Object.prototype.toString.call(rule.value) === "[object RegExp]") {
+        const re = rule.value as RegExp;
+        if (re.flags && re.flags.length > 0) return null;
+        return `(?:${re.source})`;
+      }
+      return null;
+    }
+    if (children.length === 1) return compileRuleToRegex(children[0]);
+    return null;
+  }
+  if (t === "BLANK") return "";
+  if (t === "SEQ") {
+    const parts: string[] = [];
+    for (const c of children) {
+      const compiled = compileRuleToRegex(c);
+      if (compiled === null) return null;
+      parts.push(compiled);
+    }
+    return `(?:${parts.join("")})`;
+  }
+  if (t === "CHOICE") {
+    const parts: string[] = [];
+    for (const c of children) {
+      const compiled = compileRuleToRegex(c);
+      if (compiled === null) return null;
+      parts.push(compiled);
+    }
+    return parts.length > 0 ? `(?:${parts.join("|")})` : null;
+  }
+  if (t === "REPEAT") {
+    const inner = compileRuleToRegex(children[0]);
+    return inner !== null ? `(?:${inner})*` : null;
+  }
+  if (t === "REPEAT1") {
+    const inner = compileRuleToRegex(children[0]);
+    return inner !== null ? `(?:${inner})+` : null;
+  }
+  if (t === "OPTIONAL") {
+    const inner = compileRuleToRegex(children[0]);
+    return inner !== null ? `(?:${inner})?` : null;
+  }
+  if (t === "SYNTAX_TOKEN" || t === "ALIAS" || t === "SEMANTIC" || t === "TOKEN_IMMEDIATE" || t === "RESERVED") {
+    return compileRuleToRegex(rule.rule || children[0]);
+  }
+  return null;
 }
 
 /** The result of flattening a rule: a flat sequence of symbol names and their metadata. */
@@ -105,7 +182,7 @@ export interface RuleNormalizer {
   ): string;
 }
 
-/** Normalizes a direct symbol reference. */
+/** Normalizes a direct symbol reference, expanding non-recursive `inline` rules directly into their call sites. */
 export class SymbolNormalizer implements RuleNormalizer {
   /** Returns a single `FlattenResult` referencing the target symbol name with the inherited field context. */
   normalize(
@@ -117,6 +194,18 @@ export class SymbolNormalizer implements RuleNormalizer {
   ): FlattenResult[] {
     if (typeof rule.value === "string") {
       g.recordSymbolRef(ctx, rule.value);
+      if (
+        g.inlineSet.has(rule.value) &&
+        !g.inliningStack.has(rule.value) &&
+        g.evaluatedRules[rule.value] !== undefined
+      ) {
+        g.inliningStack.add(rule.value);
+        try {
+          return g.flatten(ctx, g.evaluatedRules[rule.value]!, p);
+        } finally {
+          g.inliningStack.delete(rule.value);
+        }
+      }
     }
     return [{ sym: String(rule.value), field: p.field }];
   }
@@ -137,6 +226,12 @@ export class TokenNormalizer implements RuleNormalizer {
     p: FlattenContext,
   ): FlattenResult[] {
     if (rule.children && rule.children.length > 0 && rule.value === undefined) {
+      const compiledRegex = compileRuleToRegex(rule.children[0]);
+      if (compiledRegex !== null && compiledRegex.length > 0) {
+        const tokenName = `/${compiledRegex}/`;
+        g.terminals.add(tokenName);
+        return [{ sym: tokenName, field: p.field }];
+      }
       return g.flatten(ctx, rule.children[0], p);
     }
     const val = rule.value !== undefined ? rule.value : rule.arg;
@@ -178,7 +273,7 @@ export class SeqNormalizer implements RuleNormalizer {
   ): FlattenResult[] {
     const seqSyms: FlattenResult[] = [];
     for (const child of children) {
-      seqSyms.push(...g.flatten(ctx, child, { ...p }));
+      seqSyms.push(...g.flatten(ctx, child, { ...p, canAttachPrec: false }));
     }
     return seqSyms;
   }
@@ -209,7 +304,7 @@ export class ChoiceNormalizer implements RuleNormalizer {
     if (g.nonTerminals.has(choiceSym)) return [{ sym: choiceSym, field: p.field }];
 
     for (const child of children) {
-      const childP: FlattenContext = { ...p };
+      const childP: FlattenContext = { ...p, canAttachPrec: true };
       const childSyms = g.flatten(ctx, child, childP);
       g.addProduction(choiceSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
     }
@@ -238,7 +333,7 @@ export class RepeatNormalizer implements RuleNormalizer {
     children: (GrammarRuleNode | string | RegExp)[],
     p: FlattenContext,
   ): FlattenResult[] {
-    const childP: FlattenContext = { ...p };
+    const childP: FlattenContext = { ...p, canAttachPrec: true };
     const childSyms = g.flatten(ctx, children[0], childP);
     const repeatSym = g.nextSynthetic(g.getEBNF(rule), p, rule, ctx);
 
@@ -264,7 +359,7 @@ export class Repeat1Normalizer implements RuleNormalizer {
     children: (GrammarRuleNode | string | RegExp)[],
     p: FlattenContext,
   ): FlattenResult[] {
-    const childP: FlattenContext = { ...p };
+    const childP: FlattenContext = { ...p, canAttachPrec: true };
     const childSyms = g.flatten(ctx, children[0], childP);
     const repeatSym = g.nextSynthetic(g.getEBNF(rule), p, rule, ctx);
 
@@ -280,7 +375,12 @@ export class Repeat1Normalizer implements RuleNormalizer {
   }
 }
 
-/** Shared helper for precedence normalizers; avoids creating X -> X self-loop productions when the child rule reuses `precSym`. */
+/**
+ * Shared helper for precedence normalizers.
+ * When `p.canAttachPrec` is true (direct rule body, choice branch, repeat/optional body), attaches
+ * precedence directly onto `p` so the enclosing production carries it without allocating a synthetic
+ * wrapper non-terminal. Otherwise synthesizes a helper non-terminal while avoiding `X -> X` self-loops.
+ */
 function normalizePrec(
   g: NormalizedGrammar,
   ctx: string,
@@ -289,12 +389,19 @@ function normalizePrec(
   p: FlattenContext,
   childP: FlattenContext,
 ): FlattenResult[] {
+  if (p.canAttachPrec) {
+    p.prec = childP.prec;
+    p.assoc = childP.assoc;
+    p.dynamicPrec = childP.dynamicPrec;
+    return g.flatten(ctx, children[0], p);
+  }
   const precSym = g.nextSynthetic(g.getEBNF(rule), childP, rule, ctx);
   if (g.nonTerminals.has(precSym)) return [{ sym: precSym, field: p.field }];
 
-  const childSyms = g.flatten(ctx, children[0], childP);
+  const innerP: FlattenContext = { ...childP, canAttachPrec: true };
+  const childSyms = g.flatten(ctx, children[0], innerP);
   if (childSyms.length !== 1 || childSyms[0]!.sym !== precSym) {
-    g.addProduction(precSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
+    g.addProduction(precSym, childSyms, innerP.prec, innerP.assoc, false, innerP.dynamicPrec);
   }
   return [{ sym: precSym, field: p.field }];
 }
@@ -404,6 +511,62 @@ export class DefRefNormalizer implements RuleNormalizer {
   }
 }
 
+/** Normalizes `reserved(wordset, rule)`, recording the referenced wordset and flattening the inner rule. */
+export class ReservedNormalizer implements RuleNormalizer {
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
+    if (typeof rule.value === "string" && rule.value.length > 0) {
+      g.usedReservedWordsets.add(rule.value);
+    }
+    return g.flatten(ctx, rule.rule || children[0], p);
+  }
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
+    return g.getEBNF(getChild(rule));
+  }
+}
+
+/** Normalizes `token.immediate(...)`, recording matched terminals as adjacency-constrained (no intervening extras). */
+export class TokenImmediateNormalizer implements RuleNormalizer {
+  normalize(
+    g: NormalizedGrammar,
+    ctx: string,
+    rule: GrammarRuleNode,
+    children: (GrammarRuleNode | string | RegExp)[],
+    p: FlattenContext,
+  ): FlattenResult[] {
+    const inner = rule.rule || children[0];
+    const compiledRegex = compileRuleToRegex(inner);
+    if (
+      compiledRegex !== null &&
+      compiledRegex.length > 0 &&
+      typeof inner === "object" &&
+      inner !== null &&
+      "type" in inner &&
+      (inner as GrammarRuleNode).type !== "TOKEN"
+    ) {
+      const tokenName = `/${compiledRegex}/`;
+      g.terminals.add(tokenName);
+      g.immediateTerminals.add(tokenName);
+      return [{ sym: tokenName, field: p.field }];
+    }
+    const res = g.flatten(ctx, inner, p);
+    for (const r of res) {
+      if (g.terminals.has(r.sym)) {
+        g.immediateTerminals.add(r.sym);
+      }
+    }
+    return res;
+  }
+  getEBNF(g: NormalizedGrammar, rule: GrammarRuleNode, getChild: (r: GrammarRuleNode) => GrammarRuleInput): string {
+    return g.getEBNF(getChild(rule));
+  }
+}
+
 /** Normalizes an optional rule (?) by creating an empty epsilon production. */
 export class OptionalNormalizer implements RuleNormalizer {
   /** Synthesizes a helper non-terminal with one production matching the child rule and one empty epsilon production. */
@@ -417,8 +580,9 @@ export class OptionalNormalizer implements RuleNormalizer {
     const optSym = g.nextSynthetic(g.getEBNF(rule), p, rule, ctx);
     if (g.nonTerminals.has(optSym)) return [{ sym: optSym, field: p.field }];
 
-    const childSyms = g.flatten(ctx, children[0], p);
-    g.addProduction(optSym, childSyms, p.prec, p.assoc, false, p.dynamicPrec);
+    const childP: FlattenContext = { ...p, canAttachPrec: true };
+    const childSyms = g.flatten(ctx, children[0], childP);
+    g.addProduction(optSym, childSyms, childP.prec, childP.assoc, false, childP.dynamicPrec);
     g.addProduction(optSym, [], undefined, undefined, false);
     return [{ sym: optSym, field: p.field }];
   }
@@ -578,8 +742,8 @@ export const RULE_NORMALIZERS: Record<string, RuleNormalizer> = {
   OPTIONAL: new OptionalNormalizer(),
   BLANK: new BlankNormalizer(),
   FIELD: new FieldNormalizer(),
-  RESERVED: new DefRefNormalizer(),
-  TOKEN_IMMEDIATE: new DefRefNormalizer(),
+  RESERVED: new ReservedNormalizer(),
+  TOKEN_IMMEDIATE: new TokenImmediateNormalizer(),
   ALIAS: new AliasNormalizer(),
   SEMANTIC: new SemanticNormalizer(),
   SYNTAX_TOKEN: new SyntaxTokenNormalizer(), // Transparently pass through syntax tokens
@@ -629,12 +793,20 @@ export class NormalizedGrammar {
   extras: Rule<string>[] = [];
   /** List of rule names marked to be inlined / hidden from the public CST. */
   inlineRules: string[] = [];
+  /** Fast lookup set for `inlineRules`. */
+  inlineSet = new Set<string>();
+  /** Active inlining recursion stack to prevent infinite expansion on recursive inline rules. */
+  inliningStack = new Set<string>();
+  /** Terminals wrapped in `token.immediate(...)` that must match with zero intervening extras. */
+  immediateTerminals = new Set<string>();
   /** Mapping from supertype rule names to their constituent subtype symbol names. */
   supertypes = new Map<string, string[]>();
   /** Global precedence levels keyed by rule or precedence group name. */
   globalPrecedences = new Map<string, number>();
   /** Named sets of reserved keyword tokens keyed by wordset name. */
   reservedKeywords = new Map<string, Set<string>>();
+  /** Wordset names explicitly referenced by per-rule `reserved(wordset, rule)` wrappers. */
+  usedReservedWordsets = new Set<string>();
   /** Keyword string literals automatically extracted using the grammar's `word` token pattern. */
   extractedKeywords?: string[] | undefined;
   /** Symbol references (`$['name']`) recorded per rule context for static grammar validation. */
@@ -745,11 +917,23 @@ export class NormalizedGrammar {
     } else {
       this.inlineRules = grammar.inline || [];
     }
+    this.inlineSet = new Set(this.inlineRules);
     this.startSymbol = Object.keys(grammar.rules ?? {})[0]!; // First rule is start
 
     if (grammar.primitives && grammar.primitives.multiWordKeywords) {
       for (const mwk of grammar.primitives.multiWordKeywords) {
         this.terminals.add(`"${mwk}"`);
+      }
+    }
+    if (grammar.primitives && grammar.primitives.layout) {
+      const { indent, dedent } = grammar.primitives.layout;
+      if (indent) {
+        this.terminals.add(indent);
+        this.entrySymbols.add(indent);
+      }
+      if (dedent) {
+        this.terminals.add(dedent);
+        this.entrySymbols.add(dedent);
       }
     }
 
@@ -788,7 +972,20 @@ export class NormalizedGrammar {
             const extractSymbols = (r: Rule<string>) => {
               if (r.type === "SYMBOL") {
                 subTypes.push(r.value as string);
-              } else if (r.type === "CHOICE" && r.children) {
+              } else if (
+                (r.type === "CHOICE" ||
+                  r.type === "SEMANTIC" ||
+                  r.type === "SYNTAX_TOKEN" ||
+                  r.type === "ALIAS" ||
+                  r.type === "FIELD" ||
+                  r.type === "PREC" ||
+                  r.type === "PREC_LEFT" ||
+                  r.type === "PREC_RIGHT" ||
+                  r.type === "PREC_DYNAMIC" ||
+                  r.type === "DEF" ||
+                  r.type === "REF") &&
+                r.children
+              ) {
                 r.children.forEach(extractSymbols);
               }
             };
@@ -830,14 +1027,12 @@ export class NormalizedGrammar {
       }
 
       if (wordRegex) {
-        const extractedKeywords: string[] = [];
+        const extractedKeywordSet = new Set<string>();
 
         function findKeywords(r: Rule<string>) {
           if (r.type === "TOKEN" && r.value && typeof r.value === "string" && !r.value.startsWith("/")) {
             if (wordRegex!.test(r.value)) {
-              if (!extractedKeywords.includes(r.value)) {
-                extractedKeywords.push(r.value);
-              }
+              extractedKeywordSet.add(r.value);
             }
           }
           if (r.children) {
@@ -851,8 +1046,8 @@ export class NormalizedGrammar {
           findKeywords(this.evaluatedRules[rName]!);
         }
 
-        if (extractedKeywords.length > 0) {
-          this.extractedKeywords = extractedKeywords;
+        if (extractedKeywordSet.size > 0) {
+          this.extractedKeywords = Array.from(extractedKeywordSet);
         }
       }
     }
@@ -873,8 +1068,7 @@ export class NormalizedGrammar {
 
     // Flatten rules
     for (const [name, rule] of Object.entries(this.evaluatedRules)) {
-      const p: { prec?: number | undefined; assoc?: "left" | "right" | undefined; dynamicPrec?: number | undefined } =
-        {};
+      const p: FlattenContext = { canAttachPrec: true };
       const globalPrec = this.globalPrecedences.get(name);
       if (globalPrec !== undefined) p.prec = globalPrec;
       const right = this.flatten(name, rule, p);
@@ -906,10 +1100,8 @@ export class NormalizedGrammar {
     }
 
     // Ensure symbols that have productions (nonTerminals) are not classified as terminals
-    for (const nt of this.nonTerminals) {
-      if (this.productions.some((p) => p.left === nt)) {
-        this.terminals.delete(nt);
-      }
+    for (const prod of this.productions) {
+      this.terminals.delete(prod.left);
     }
 
     // Build symToInt mapping
@@ -926,6 +1118,15 @@ export class NormalizedGrammar {
     this.symToInt.set("EOF", 1023);
 
     this.diagnostics = validateGrammar(this);
+    if (grammar.strictGrammar || process.env["STRICT_GRAMMAR_VALIDATION"] === "true") {
+      const fatalErrors = this.diagnostics.filter((d) => d.severity === "error");
+      if (fatalErrors.length > 0) {
+        throw new Error(
+          `Grammar '${this.name}' failed static validation with ${fatalErrors.length} error(s):\n` +
+            fatalErrors.map((d) => `  [${d.code}] ${d.message}`).join("\n"),
+        );
+      }
+    }
   }
 
   /**
@@ -1286,8 +1487,8 @@ export function validateGrammar(grammar: NormalizedGrammar): GrammarDiagnostic[]
       for (const r of refs) queue.push(r);
     }
   }
-  while (queue.length > 0) {
-    const sym = queue.shift()!;
+  for (let qHead = 0; qHead < queue.length; qHead++) {
+    const sym = queue[qHead]!;
     if (reachable.has(sym)) continue;
     reachable.add(sym);
     const prods = prodsByLhs.get(sym);
@@ -1300,7 +1501,7 @@ export function validateGrammar(grammar: NormalizedGrammar): GrammarDiagnostic[]
     }
   }
   for (const ruleName of declaredRules) {
-    if (!reachable.has(ruleName)) {
+    if (!reachable.has(ruleName) && !grammar.inlineSet.has(ruleName)) {
       diagnostics.push({
         code: "unreachable-rule",
         severity: "warning",

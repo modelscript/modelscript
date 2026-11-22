@@ -25,10 +25,12 @@
  *       IO[11] = eps1 (residual error draw 1)
  *       IO[12] = eps2 (residual error draw 2)
  *       IO[13] = dt (ODE step size for numerical ADVANs, default 0.01 h)
- *       IO[14] = aux0
- *       IO[15] = aux1
+ *       IO[14] = ii (inter-dose interval tau in h; <=0 = single dose)
+ *       IO[15] = addl (number of additional doses; 0 = single dose)
+ *       META[0] = ss (steady-state flag: 0 = off, 1 = steady-state)
  */
 
+const OFF_META: usize = 0x000;
 const OFF_CON: usize = 0x080;
 const OFF_STATE: usize = 0x580;
 const OFF_DSTATE: usize = 0x680;
@@ -86,6 +88,11 @@ function setState(slotPtr: usize, idx: i32, v: f64): void {
 @inline
 function setDState(slotPtr: usize, idx: i32, v: f64): void {
   store<f64>(slotPtr + OFF_DSTATE + (<usize>idx << 3), v);
+}
+
+@inline
+function getMeta(slotPtr: usize, idx: i32): i32 {
+  return load<i32>(slotPtr + OFF_META + (<usize>idx << 2));
 }
 
 @inline
@@ -312,27 +319,69 @@ export function nmModelEval(
   const rate = getIo(slotPtr, 2);
   setIo(slotPtr, 0, time);
 
-  // === ADVAN1: 1-Compartment IV Bolus / Zero-Order Infusion ===
+  // === ADVAN1: 1-Compartment IV Bolus / Zero-Order Infusion (Multi-Dose Superposition & SS) ===
   if (archetypeId == ARCH_ADVAN1) {
     const cl = Math.max(0.0, getCon(slotPtr, conCount, 0, 5.0));
     const v = Math.max(1e-9, getCon(slotPtr, conCount, 1, 50.0));
     const f1 = getCon(slotPtr, conCount, 2, 1.0);
+    const alag = Math.max(0.0, getCon(slotPtr, conCount, 3, 0.0));
     const k = cl / v;
 
-    let a1: f64;
-    if (rate > 0.0 && dose > 0.0) {
-      const tInf = dose / rate;
-      if (k > 1e-12) {
-        if (time <= tInf) {
-          a1 = ((f1 * rate) / k) * (1.0 - Math.exp(-k * time));
-        } else {
-          a1 = ((f1 * rate) / k) * (1.0 - Math.exp(-k * tInf)) * Math.exp(-k * (time - tInf));
+    const ii = getIo(slotPtr, 14);
+    const addl = ii > 0.0 ? <i32>Math.max(0.0, Math.floor(getIo(slotPtr, 15))) : 0;
+    const ss = getMeta(slotPtr, 0) != 0 && ii > 0.0;
+    const isInf = rate > 0.0 && dose > 0.0;
+    const tInf = isInf ? dose / rate : 0.0;
+
+    let a1: f64 = 0.0;
+    if (ss && k > 1e-12) {
+      const te0 = time - alag;
+      const denom = 1.0 - Math.exp(-k * ii);
+      if (isInf) {
+        const tEff = te0 >= 0.0 ? te0 : te0 + ii;
+        a1 += ((f1 * rate) / k) * (1.0 - Math.exp(-k * tInf)) * (Math.exp(-k * (ii - tInf)) / denom) * Math.exp(-k * tEff);
+        if (te0 >= 0.0) {
+          if (te0 <= tInf) {
+            a1 += ((f1 * rate) / k) * (1.0 - Math.exp(-k * te0));
+          } else {
+            a1 += ((f1 * rate) / k) * (1.0 - Math.exp(-k * tInf)) * Math.exp(-k * (te0 - tInf));
+          }
         }
       } else {
-        a1 = f1 * rate * Math.min(time, tInf);
+        const tEff = te0 >= 0.0 ? te0 : te0 + ii;
+        a1 += ((f1 * dose) / denom) * Math.exp(-k * tEff);
+      }
+      for (let m: i32 = 1; m <= addl; m++) {
+        const dtM = time - <f64>m * ii - alag;
+        if (dtM < 0.0) break;
+        if (isInf) {
+          if (dtM <= tInf) {
+            a1 += ((f1 * rate) / k) * (1.0 - Math.exp(-k * dtM));
+          } else {
+            a1 += ((f1 * rate) / k) * (1.0 - Math.exp(-k * tInf)) * Math.exp(-k * (dtM - tInf));
+          }
+        } else {
+          a1 += f1 * dose * Math.exp(-k * dtM);
+        }
       }
     } else {
-      a1 = f1 * dose * Math.exp(-k * time);
+      for (let m: i32 = 0; m <= addl; m++) {
+        const dtM = time - <f64>m * ii - alag;
+        if (dtM < 0.0) break;
+        if (isInf) {
+          if (k > 1e-12) {
+            if (dtM <= tInf) {
+              a1 += ((f1 * rate) / k) * (1.0 - Math.exp(-k * dtM));
+            } else {
+              a1 += ((f1 * rate) / k) * (1.0 - Math.exp(-k * tInf)) * Math.exp(-k * (dtM - tInf));
+            }
+          } else {
+            a1 += f1 * rate * Math.min(dtM, tInf);
+          }
+        } else {
+          a1 += f1 * dose * Math.exp(-k * dtM);
+        }
+      }
     }
 
     const c = a1 / v;
@@ -344,36 +393,79 @@ export function nmModelEval(
     return c;
   }
 
-  // === ADVAN2: 1-Compartment First-Order Oral Absorption (Bateman Equation) ===
+  // === ADVAN2: 1-Compartment First-Order Oral Absorption (Bateman Multi-Dose Superposition & SS) ===
   if (archetypeId == ARCH_ADVAN2) {
     const cl = Math.max(0.0, getCon(slotPtr, conCount, 0, 5.0));
     const v = Math.max(1e-9, getCon(slotPtr, conCount, 1, 50.0));
     const ka = Math.max(1e-9, getCon(slotPtr, conCount, 2, 1.2));
     const f1 = getCon(slotPtr, conCount, 3, 1.0);
     const alag = Math.max(0.0, getCon(slotPtr, conCount, 4, 0.0));
-
     const k = cl / v;
-    const te = time - alag;
-    if (te <= 0.0) {
-      const aDep = f1 * dose;
-      setState(slotPtr, 0, aDep);
-      setState(slotPtr, 1, 0.0);
-      setIo(slotPtr, 3, 0.0);
-      setIo(slotPtr, 4, 0.0);
-      setIo(slotPtr, 5, aDep);
-      setIo(slotPtr, 9, 0.0);
-      return 0.0;
-    }
 
-    const aDepot = f1 * dose * Math.exp(-ka * te);
-    let aCentral: f64;
-    if (Math.abs(ka - k) > 1e-9) {
-      aCentral = ((f1 * dose * ka) / (ka - k)) * (Math.exp(-k * te) - Math.exp(-ka * te));
+    const ii = getIo(slotPtr, 14);
+    const addl = ii > 0.0 ? <i32>Math.max(0.0, Math.floor(getIo(slotPtr, 15))) : 0;
+    const ss = getMeta(slotPtr, 0) != 0 && ii > 0.0;
+
+    let aDepot: f64 = 0.0;
+    let aCentral: f64 = 0.0;
+
+    if (ss && k > 1e-12 && ka > 1e-12) {
+      const te0 = time - alag;
+      const tEff = te0 >= 0.0 ? te0 : te0 + ii;
+      const denomKa = 1.0 - Math.exp(-ka * ii);
+      const denomK = 1.0 - Math.exp(-k * ii);
+      aDepot += (f1 * dose * Math.exp(-ka * tEff)) / denomKa;
+      if (te0 < 0.0) {
+        // Dose at t=0 is still sitting in depot awaiting alag
+        aDepot += f1 * dose;
+      }
+      if (Math.abs(ka - k) > 1e-9) {
+        aCentral +=
+          ((f1 * dose * ka) / (ka - k)) *
+          (Math.exp(-k * tEff) / denomK - Math.exp(-ka * tEff) / denomKa);
+      } else {
+        const ek = Math.exp(-k * ii);
+        aCentral +=
+          f1 *
+          dose *
+          k *
+          Math.exp(-k * tEff) *
+          (tEff / denomK + (ii * ek) / (denomK * denomK));
+      }
+      for (let m: i32 = 1; m <= addl; m++) {
+        const tDose = <f64>m * ii;
+        if (time < tDose) break;
+        const dtM = time - tDose - alag;
+        if (dtM <= 0.0) {
+          aDepot += f1 * dose;
+        } else {
+          aDepot += f1 * dose * Math.exp(-ka * dtM);
+          if (Math.abs(ka - k) > 1e-9) {
+            aCentral += ((f1 * dose * ka) / (ka - k)) * (Math.exp(-k * dtM) - Math.exp(-ka * dtM));
+          } else {
+            aCentral += f1 * dose * k * dtM * Math.exp(-k * dtM);
+          }
+        }
+      }
     } else {
-      aCentral = f1 * dose * k * te * Math.exp(-k * te);
+      for (let m: i32 = 0; m <= addl; m++) {
+        const tDose = <f64>m * ii;
+        if (time < tDose) break;
+        const dtM = time - tDose - alag;
+        if (dtM <= 0.0) {
+          aDepot += f1 * dose;
+        } else {
+          aDepot += f1 * dose * Math.exp(-ka * dtM);
+          if (Math.abs(ka - k) > 1e-9) {
+            aCentral += ((f1 * dose * ka) / (ka - k)) * (Math.exp(-k * dtM) - Math.exp(-ka * dtM));
+          } else {
+            aCentral += f1 * dose * k * dtM * Math.exp(-k * dtM);
+          }
+        }
+      }
     }
-    const c = aCentral / v;
 
+    const c = aCentral / v;
     setState(slotPtr, 0, aDepot);
     setState(slotPtr, 1, aCentral);
     setDState(slotPtr, 0, -ka * aDepot);
@@ -385,13 +477,14 @@ export function nmModelEval(
     return c;
   }
 
-  // === ADVAN3: 2-Compartment IV Biexponential ===
+  // === ADVAN3: 2-Compartment IV Biexponential (Bolus/Infusion Multi-Dose Superposition & SS) ===
   if (archetypeId == ARCH_ADVAN3) {
     const cl = Math.max(0.0, getCon(slotPtr, conCount, 0, 5.0));
     const v1 = Math.max(1e-9, getCon(slotPtr, conCount, 1, 20.0));
     const q = Math.max(0.0, getCon(slotPtr, conCount, 2, 10.0));
     const v2 = Math.max(1e-9, getCon(slotPtr, conCount, 3, 40.0));
     const f1 = getCon(slotPtr, conCount, 4, 1.0);
+    const alag = Math.max(0.0, getCon(slotPtr, conCount, 5, 0.0));
 
     const k10 = cl / v1;
     const k12 = q / v1;
@@ -404,16 +497,103 @@ export function nmModelEval(
     const beta = 0.5 * (sum - disc);
     const diff = Math.max(1e-12, alpha - beta);
 
-    const eAlpha = Math.exp(-alpha * time);
-    const eBeta = Math.exp(-beta * time);
-
     const coefA = (alpha - k21) / diff;
     const coefB = (k21 - beta) / diff;
+    const coefP = k12 / diff;
 
-    const a1 = f1 * dose * (coefA * eAlpha + coefB * eBeta);
-    const a2 = f1 * dose * (k12 / diff) * (eBeta - eAlpha);
+    const ii = getIo(slotPtr, 14);
+    const addl = ii > 0.0 ? <i32>Math.max(0.0, Math.floor(getIo(slotPtr, 15))) : 0;
+    const ss = getMeta(slotPtr, 0) != 0 && ii > 0.0;
+    const isInf = rate > 0.0 && dose > 0.0;
+    const tInf = isInf ? dose / rate : 0.0;
+
+    let a1: f64 = 0.0;
+    let a2: f64 = 0.0;
+
+    if (ss && alpha > 1e-12 && beta > 1e-12) {
+      const te0 = time - alag;
+      const tEff = te0 >= 0.0 ? te0 : te0 + ii;
+      const dAlpha = 1.0 - Math.exp(-alpha * ii);
+      const dBeta = 1.0 - Math.exp(-beta * ii);
+      if (isInf) {
+        const pAlpha =
+          ((1.0 - Math.exp(-alpha * tInf)) / alpha) *
+          (Math.exp(-alpha * (ii - tInf)) / dAlpha) *
+          Math.exp(-alpha * tEff);
+        const pBeta =
+          ((1.0 - Math.exp(-beta * tInf)) / beta) *
+          (Math.exp(-beta * (ii - tInf)) / dBeta) *
+          Math.exp(-beta * tEff);
+        a1 += f1 * rate * (coefA * pAlpha + coefB * pBeta);
+        a2 += f1 * rate * coefP * (pBeta - pAlpha);
+        if (te0 >= 0.0) {
+          const iA =
+            te0 <= tInf
+              ? (1.0 - Math.exp(-alpha * te0)) / alpha
+              : ((1.0 - Math.exp(-alpha * tInf)) / alpha) * Math.exp(-alpha * (te0 - tInf));
+          const iB =
+            te0 <= tInf
+              ? (1.0 - Math.exp(-beta * te0)) / beta
+              : ((1.0 - Math.exp(-beta * tInf)) / beta) * Math.exp(-beta * (te0 - tInf));
+          a1 += f1 * rate * (coefA * iA + coefB * iB);
+          a2 += f1 * rate * coefP * (iB - iA);
+        }
+      } else {
+        const eA = Math.exp(-alpha * tEff) / dAlpha;
+        const eB = Math.exp(-beta * tEff) / dBeta;
+        a1 += f1 * dose * (coefA * eA + coefB * eB);
+        a2 += f1 * dose * coefP * (eB - eA);
+      }
+      for (let m: i32 = 1; m <= addl; m++) {
+        const dtM = time - <f64>m * ii - alag;
+        if (dtM < 0.0) break;
+        if (isInf) {
+          const iA =
+            dtM <= tInf
+              ? (1.0 - Math.exp(-alpha * dtM)) / alpha
+              : ((1.0 - Math.exp(-alpha * tInf)) / alpha) * Math.exp(-alpha * (dtM - tInf));
+          const iB =
+            dtM <= tInf
+              ? (1.0 - Math.exp(-beta * dtM)) / beta
+              : ((1.0 - Math.exp(-beta * tInf)) / beta) * Math.exp(-beta * (dtM - tInf));
+          a1 += f1 * rate * (coefA * iA + coefB * iB);
+          a2 += f1 * rate * coefP * (iB - iA);
+        } else {
+          const eA = Math.exp(-alpha * dtM);
+          const eB = Math.exp(-beta * dtM);
+          a1 += f1 * dose * (coefA * eA + coefB * eB);
+          a2 += f1 * dose * coefP * (eB - eA);
+        }
+      }
+    } else {
+      for (let m: i32 = 0; m <= addl; m++) {
+        const dtM = time - <f64>m * ii - alag;
+        if (dtM < 0.0) break;
+        if (isInf) {
+          const iA =
+            alpha > 1e-12
+              ? dtM <= tInf
+                ? (1.0 - Math.exp(-alpha * dtM)) / alpha
+                : ((1.0 - Math.exp(-alpha * tInf)) / alpha) * Math.exp(-alpha * (dtM - tInf))
+              : Math.min(dtM, tInf);
+          const iB =
+            beta > 1e-12
+              ? dtM <= tInf
+                ? (1.0 - Math.exp(-beta * dtM)) / beta
+                : ((1.0 - Math.exp(-beta * tInf)) / beta) * Math.exp(-beta * (dtM - tInf))
+              : Math.min(dtM, tInf);
+          a1 += f1 * rate * (coefA * iA + coefB * iB);
+          a2 += f1 * rate * coefP * (iB - iA);
+        } else {
+          const eAlpha = Math.exp(-alpha * dtM);
+          const eBeta = Math.exp(-beta * dtM);
+          a1 += f1 * dose * (coefA * eAlpha + coefB * eBeta);
+          a2 += f1 * dose * coefP * (eBeta - eAlpha);
+        }
+      }
+    }
+
     const c = a1 / v1;
-
     setState(slotPtr, 0, a1);
     setState(slotPtr, 1, a2);
     setIo(slotPtr, 3, c);

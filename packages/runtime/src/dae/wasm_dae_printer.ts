@@ -101,6 +101,8 @@ export class ArenaDAEPrinter {
   private insideState = false;
   /** Whether the arena was produced under OpenModelica old-frontend compatibility mode. */
   private isOldFrontend = false;
+  /** True while printing the direct numerator (`finalLhs`) of `BinOp.Div` / `BinOp.ElemDiv`. */
+  private insideDivLhs = false;
 
   /**
    * Creates a new `ArenaDAEPrinter`.
@@ -263,6 +265,8 @@ export class ArenaDAEPrinter {
    * @param id - Expression arena ID.
    */
   printExpr(id: number): void {
+    const isDirectDivLhs = this.insideDivLhs;
+    this.insideDivLhs = false;
     if (id < 0) {
       this.out.write("?");
       return;
@@ -289,13 +293,19 @@ export class ArenaDAEPrinter {
           this.out.write("0.0");
           break;
         }
-        if (Number.isInteger(v) && (Math.abs(v) < 1e5 || (Math.abs(v) < 1e6 && Math.abs(v) % 100000 !== 0))) {
+        if (
+          Number.isInteger(v) &&
+          (Math.abs(v) < 1e4 ||
+            (Math.abs(v) < 1e5 && Math.abs(v) % 10000 !== 0) ||
+            (Math.abs(v) >= 1e5 && Math.abs(v) < 1e6 && Math.abs(v) % 100000 !== 0))
+        ) {
           this.out.write(v.toFixed(1));
           break;
         }
         let s: string;
-        if (Number.isInteger(v) && Math.abs(v) >= 1e5) s = v.toExponential();
-        else if (!Number.isInteger(v) && Math.abs(v) >= 1e6) s = v.toExponential();
+        if (Number.isInteger(v) && (Math.abs(v) >= 1e5 || (Math.abs(v) >= 1e4 && Math.abs(v) % 10000 === 0))) {
+          s = v.toExponential();
+        } else if (!Number.isInteger(v) && Math.abs(v) >= 1e6) s = v.toExponential();
         else if (Math.abs(v) < 0.001 && Math.abs(v) > 0)
           s = v.toExponential().replace(/^(-?\d)\.((\d)\3{14})\3e/, "$1.$2e");
         else s = v.toString();
@@ -408,6 +418,9 @@ export class ArenaDAEPrinter {
             }
             if (isHigh) return isRhs || op === BinOp.Pow || op === BinOp.ElemPow || this.isOldFrontend;
             return false;
+          }
+          if (!this.isOldFrontend && isRhs && isRelOp && startsWithMinus(childId)) {
+            return true;
           }
           if (
             !this.isOldFrontend &&
@@ -889,33 +902,94 @@ export class ArenaDAEPrinter {
             }
           }
 
-          if (this.omcCompatibility && !this.isOldFrontend && op === BinOp.Add && operands.length === 2) {
-            const op0 = operands[0]!;
-            const op1 = operands[1]!;
-            const tryPrintSubAsNegSum = (subNode: number, posTerm: number): boolean => {
-              if (subNode < 0 || posTerm < 0) return false;
-              if (startsWithMinus(posTerm)) return false;
-              if (a.getExprKind(subNode) !== ExprKind.Binary || a.getExprData1(subNode) !== BinOp.Sub) return false;
-              const sLeft = a.getExprLeft(subNode);
-              const sRight = a.getExprRight(subNode);
-              if (!isNegatedExpr(sLeft) || startsWithMinus(sRight)) return false;
+          if (this.omcCompatibility && !this.isOldFrontend && op === BinOp.Add) {
+            const unnegNeedsParens = (negNode: number): boolean => {
+              const nk = a.getExprKind(negNode);
+              if (
+                nk !== ExprKind.Negate &&
+                !(nk === ExprKind.Unary && (a.getExprData1(negNode) as UnaryOp) === UnaryOp.Negate)
+              ) {
+                return false;
+              }
+              const inner = a.getExprLeft(negNode);
+              const ik = inner >= 0 ? a.getExprKind(inner) : -1;
+              return (
+                (ik === ExprKind.Binary && LOW_PREC_OPS.has(a.getExprData1(inner) as BinOp)) ||
+                ik === ExprKind.IfElse ||
+                ik === ExprKind.Range
+              );
+            };
+            const printPosTerm = (posTerm: number) => {
               const pk = a.getExprKind(posTerm);
               const pNeedP = pk === ExprKind.IfElse || pk === ExprKind.Range;
               if (pNeedP) this.out.write("(");
               this.printExpr(posTerm);
               if (pNeedP) this.out.write(")");
-              this.out.write(" - (");
-              printUnnegatedExpr(sLeft);
-              this.out.write(" + ");
-              const srNeedP = addTermNeedsParens(sRight);
-              if (srNeedP) this.out.write("(");
-              this.printExpr(sRight);
-              if (srNeedP) this.out.write(")");
-              this.out.write(")");
-              return true;
             };
-            if (tryPrintSubAsNegSum(op0, op1) || tryPrintSubAsNegSum(op1, op0)) {
-              break;
+            const printUnnegSafe = (negNode: number) => {
+              if (unnegNeedsParens(negNode)) {
+                this.out.write("(");
+                printUnnegatedExpr(negNode);
+                this.out.write(")");
+              } else {
+                printUnnegatedExpr(negNode);
+              }
+            };
+            if (operands.length === 2) {
+              const op0 = operands[0]!;
+              const op1 = operands[1]!;
+              const tryPrintSubAsNegSum = (subNode: number, posTerm: number): boolean => {
+                if (subNode < 0 || posTerm < 0) return false;
+                if (startsWithMinus(posTerm)) return false;
+                if (a.getExprKind(subNode) !== ExprKind.Binary || a.getExprData1(subNode) !== BinOp.Sub) return false;
+                const sLeft = a.getExprLeft(subNode);
+                const sRight = a.getExprRight(subNode);
+                if (!isNegatedExpr(sLeft) || startsWithMinus(sRight)) return false;
+                printPosTerm(posTerm);
+                this.out.write(" - (");
+                printUnnegatedExpr(sLeft);
+                this.out.write(" + ");
+                const srNeedP = addTermNeedsParens(sRight);
+                if (srNeedP) this.out.write("(");
+                this.printExpr(sRight);
+                if (srNeedP) this.out.write(")");
+                this.out.write(")");
+                return true;
+              };
+              const tryPrintNegPlusPos = (negNode: number, posTerm: number): boolean => {
+                if (negNode < 0 || posTerm < 0) return false;
+                if (startsWithMinus(posTerm) || !isNegatedExpr(negNode)) return false;
+                printPosTerm(posTerm);
+                this.out.write(" - ");
+                printUnnegSafe(negNode);
+                return true;
+              };
+              if (
+                tryPrintSubAsNegSum(op0, op1) ||
+                tryPrintSubAsNegSum(op1, op0) ||
+                tryPrintNegPlusPos(op0, op1) ||
+                tryPrintNegPlusPos(op1, op0)
+              ) {
+                break;
+              }
+            } else if (isDirectDivLhs && operands.length >= 3) {
+              const posTerms: number[] = [];
+              const negTerms: number[] = [];
+              for (const t of operands) {
+                if (t < 0) continue;
+                if (isNegatedExpr(t)) negTerms.push(t);
+                else if (!startsWithMinus(t)) posTerms.push(t);
+              }
+              if (posTerms.length === 1 && negTerms.length === operands.length - 1 && negTerms.length >= 2) {
+                printPosTerm(posTerms[0]!);
+                this.out.write(" - (");
+                for (let ni = 0; ni < negTerms.length; ni++) {
+                  if (ni > 0) this.out.write(" + ");
+                  printUnnegSafe(negTerms[ni]!);
+                }
+                this.out.write(")");
+                break;
+              }
             }
           }
 
@@ -1034,11 +1108,19 @@ export class ArenaDAEPrinter {
           }
         }
 
-        if (needsParens(finalLhs)) {
-          this.out.write("(");
-          this.printExpr(finalLhs);
-          this.out.write(")");
-        } else this.printExpr(finalLhs);
+        const prevDivLhs = this.insideDivLhs;
+        if (op === BinOp.Div || op === BinOp.ElemDiv) {
+          this.insideDivLhs = true;
+        }
+        try {
+          if (needsParens(finalLhs)) {
+            this.out.write("(");
+            this.printExpr(finalLhs);
+            this.out.write(")");
+          } else this.printExpr(finalLhs);
+        } finally {
+          this.insideDivLhs = prevDivLhs;
+        }
 
         if (op === BinOp.Colon) {
           this.out.write(":");

@@ -12,6 +12,7 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInEclipseLibraryRegistered, lookupEclipseModelSchema } from "../catalog/library-package-adapter.js";
 import type { EclipseDeck } from "../types.js";
 
 export interface EclipseDaeOptions {
@@ -19,7 +20,34 @@ export interface EclipseDaeOptions {
   modelName?: string | undefined;
 }
 
+/**
+ * Resolves parameter defaults for an ECLIPSE model from `@modelscript/eclipse-std-lib`,
+ * merging any user-specified named overrides over the cleanroom schema defaults.
+ */
+export function resolveEclipseSchemaParamDefaults(
+  modelName: string,
+  overrides: Record<string, number> = {},
+): Record<string, number> {
+  ensureBuiltInEclipseLibraryRegistered();
+  const resolved: Record<string, number> = {};
+  const schema = lookupEclipseModelSchema(modelName);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (typeof p.defaultValue === "number" && Number.isFinite(p.defaultValue)) {
+        resolved[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (Number.isFinite(v)) {
+      resolved[k] = v;
+    }
+  }
+  return resolved;
+}
+
 export function lowerEclipseToDae(deck: EclipseDeck, options?: EclipseDaeOptions): DAEBuilder {
+  ensureBuiltInEclipseLibraryRegistered();
   const modelName = (options?.modelName ?? (deck.title || "EclipseReservoir")).replace(/[^a-zA-Z0-9_]/g, "_");
   const dae = options?.builder ?? new DAEBuilder(undefined, modelName);
 

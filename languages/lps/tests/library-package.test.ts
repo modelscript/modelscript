@@ -112,6 +112,24 @@ describe("@modelscript/lps — Cleanroom Standard Library (modelscript.yaml, WAS
       `Expected realistic acoustic speed, got ${eosOut.waveSpeedMs}`,
     );
 
+    // 3b. EOS_AGA8 at 5 MPa, 300 K (ISO 20765-1 benchmark) & GERG-2008 H2 blend effect
+    const eos5MPa = aga8.eval({ pinPa: 5.0e6, tinK: 300.0 });
+    assert.ok(
+      eos5MPa.zFactor > 0.87 && eos5MPa.zFactor < 0.94,
+      `Expected AGA-8 Z(5 MPa, 300 K) in (0.87, 0.94), got ${eos5MPa.zFactor}`,
+    );
+    const gergH2 = instantiateLpsWasmModel({
+      id: "EOS_H2",
+      modelType: "EOS_GERG2008",
+      params: { hydrogenFraction: 0.25 },
+    });
+    assert.ok(gergH2, "Expected EOS_GERG2008 WASM instance");
+    const gergOut = gergH2.eval({ pinPa: 5.0e6, tinK: 300.0 });
+    assert.ok(
+      gergOut.zFactor > eos5MPa.zFactor,
+      `Expected 25% H2 blend to increase Z: ${gergOut.zFactor} vs ${eos5MPa.zFactor}`,
+    );
+
     // 4. PIPE_LIQUID: Darcy-Weisbach pressure drop + Joukowsky water-hammer surge (DeltaP = rho * a * DeltaV)
     const liqPipe = instantiateLpsWasmModel({
       id: "L_TRUNK_1",

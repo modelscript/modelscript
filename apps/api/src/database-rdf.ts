@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { SparqlQuad, SparqlTerm, SparqlTripleSource } from "@modelscript/sparql";
 import type { Literal, NamedNode, Quad, Source, Term } from "@rdfjs/types";
 import type { Database } from "better-sqlite3";
 import { DataFactory } from "n3";
@@ -22,6 +23,7 @@ export class SqliteRdfSource implements Source {
   #allQuads: Quad[] | null = null;
   #bySubject: Map<string, Quad[]> | null = null;
   #byPredicate: Map<string, Quad[]> | null = null;
+  #byObject: Map<string, Quad[]> | null = null;
 
   constructor(db: Database, libraryName: string, libraryVersion: string) {
     this.#db = db;
@@ -59,6 +61,7 @@ export class SqliteRdfSource implements Source {
     const allQuads: Quad[] = [];
     const bySubject = new Map<string, Quad[]>();
     const byPredicate = new Map<string, Quad[]>();
+    const byObject = new Map<string, Quad[]>();
 
     const classes = this.#db
       .prepare(
@@ -72,6 +75,7 @@ export class SqliteRdfSource implements Source {
       this.#allQuads = allQuads;
       this.#bySubject = bySubject;
       this.#byPredicate = byPredicate;
+      this.#byObject = byObject;
       return;
     }
 
@@ -133,6 +137,9 @@ export class SqliteRdfSource implements Source {
       const pList = byPredicate.get(p);
       if (pList) pList.push(q);
       else byPredicate.set(p, [q]);
+      const oList = byObject.get(o.value);
+      if (oList) oList.push(q);
+      else byObject.set(o.value, [q]);
     };
 
     const emitUri = (s: string, p: string, oStr: string) => addQuad(s, p, namedNode(oStr));
@@ -185,6 +192,61 @@ export class SqliteRdfSource implements Source {
     this.#allQuads = allQuads;
     this.#bySubject = bySubject;
     this.#byPredicate = byPredicate;
+    this.#byObject = byObject;
+  }
+
+  /**
+   * Exposes this SQLite RDF source directly as a native `@modelscript/sparql` `SparqlTripleSource`
+   * (zero Comunica overhead, using the in-memory SPO / POS / OSP maps).
+   */
+  asSparqlSource(): SparqlTripleSource {
+    return {
+      match: (
+        subject?: Exclude<SparqlTerm, { termType: "Variable" }> | null,
+        predicate?: { termType: "NamedNode"; value: string } | null,
+        object?: Exclude<SparqlTerm, { termType: "Variable" }> | null,
+      ): Iterable<SparqlQuad> => {
+        this.#ensureLoaded();
+        const sValue = subject?.value;
+        const pValue = predicate?.value;
+        const oValue = object?.value;
+
+        let candidates: Quad[];
+        if (sValue) {
+          candidates = this.#bySubject?.get(sValue) ?? [];
+        } else if (oValue) {
+          candidates = this.#byObject?.get(oValue) ?? [];
+        } else if (pValue) {
+          candidates = this.#byPredicate?.get(pValue) ?? [];
+        } else {
+          candidates = this.#allQuads ?? [];
+        }
+
+        const out: SparqlQuad[] = [];
+        for (const q of candidates) {
+          if (sValue && q.subject.value !== sValue) continue;
+          if (pValue && q.predicate.value !== pValue) continue;
+          if (oValue && q.object.value !== oValue) continue;
+          const oTerm: Exclude<SparqlTerm, { termType: "Variable" }> =
+            q.object.termType === "NamedNode"
+              ? { termType: "NamedNode", value: q.object.value }
+              : q.object.termType === "BlankNode"
+                ? { termType: "BlankNode", value: q.object.value }
+                : {
+                    termType: "Literal",
+                    value: q.object.value,
+                    datatype: q.object.termType === "Literal" ? q.object.datatype?.value : undefined,
+                    language: q.object.termType === "Literal" ? q.object.language || undefined : undefined,
+                  };
+          out.push({
+            subject: { termType: "NamedNode", value: q.subject.value },
+            predicate: { termType: "NamedNode", value: q.predicate.value },
+            object: oTerm,
+          });
+        }
+        return out;
+      },
+    };
   }
 
   #executeMatch(stream: Readable, subject?: Term | null, predicate?: Term | null, object?: Term | null): void {
@@ -197,6 +259,8 @@ export class SqliteRdfSource implements Source {
     let candidates: Quad[];
     if (sValue) {
       candidates = this.#bySubject?.get(sValue) ?? [];
+    } else if (oValue) {
+      candidates = this.#byObject?.get(oValue) ?? [];
     } else if (pValue) {
       candidates = this.#byPredicate?.get(pValue) ?? [];
     } else {

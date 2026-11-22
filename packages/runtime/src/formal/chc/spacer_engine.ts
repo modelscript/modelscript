@@ -205,6 +205,11 @@ export class SpacerEngine {
       return { isSat: true, model };
     }
 
+    if (res.status === "UNKNOWN") {
+      // Never treat solver timeout / UNKNOWN as UNSAT (which would produce false SAFE proofs)
+      return { isSat: true, model: new Map() };
+    }
+
     return { isSat: false, model: new Map() };
   }
 

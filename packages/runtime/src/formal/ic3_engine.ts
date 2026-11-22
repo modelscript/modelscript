@@ -82,7 +82,7 @@ export class IC3Engine {
     for (const c of ts.transClauses) {
       for (const l of c) if (Math.abs(l) > maxVar) maxVar = Math.abs(l);
     }
-    this.auxVarCounter = maxVar + 10000;
+    this.auxVarCounter = maxVar + 1;
   }
 
   private primeLit(lit: LitId): LitId {
@@ -146,7 +146,12 @@ export class IC3Engine {
     let currentClause = cube.map((l) => -l); // clause = ~cube
     if (level === 0) return currentClause;
 
-    const initSolver = this.getFrameSolver(0);
+    // Initiation solver contains ONLY initClauses (not transClauses) so dead-end Init states
+    // cannot falsely validate an initiation check.
+    const initSolver = new CdclSatSolver();
+    for (const c of this.ts.initClauses) {
+      initSolver.addClause(c);
+    }
     const solver = this.getFrameSolver(level - 1);
 
     for (let i = 0; i < currentClause.length; i++) {

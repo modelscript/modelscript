@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Web IDE ALM Sync Proxy Router (`/api/v1/alm`).
+ * Web IDE ALM/PLM/Digital-Thread Sync Proxy Router (`/api/v1/alm`).
  *
  * Allows the browser-based ModelScript Web IDE (`apps/ide`) to discover, pull,
- * and push ALM remotes (DOORS Next, Jama, Codebeamer, Polarion, Jira) without
- * browser CORS restrictions while keeping the in-browser WASM compiler 100% file-based.
+ * and push external remotes (DOORS Next/OSLC, Jama, Codebeamer, Polarion, Jira,
+ * Azure DevOps, TestRail, Xray, PTC Windchill, Siemens Teamcenter, Aras Innovator,
+ * GitHub, GitLab, Bitbucket, Confluence, PTC Onshape, JFrog Artifactory, Apache
+ * Airflow, Vitech GENESYS, Teamwork Cloud, Zuken DS-CR/DS-E3, and Generic REST)
+ * without browser CORS restrictions while keeping the in-browser WASM compiler
+ * 100% file-based.
  */
 
 import {
@@ -221,6 +225,43 @@ export function normalizeAlmWebhookPayload(protocol: string, payload: Record<str
     eventType = String(payload["event"] ?? "WORKITEM_UPDATED");
     if (payload["workItemId"]) affectedIds.push(String(payload["workItemId"]));
     if (payload["revision"]) baselineOrRevision = String(payload["revision"]);
+  } else if (protocol === "github" || protocol === "gh") {
+    eventType = String(payload["action"] ?? "issues");
+    const issue = (payload["issue"] ?? payload["pull_request"]) as Record<string, unknown> | undefined;
+    const prefix = payload["pull_request"] ? "PR" : "GH";
+    if (issue?.["number"] !== undefined) affectedIds.push(`${prefix}-${String(issue["number"])}`);
+  } else if (protocol === "gitlab" || protocol === "gl") {
+    eventType = String(payload["object_kind"] ?? "issue");
+    const attrs = payload["object_attributes"] as Record<string, unknown> | undefined;
+    if (attrs?.["iid"] !== undefined) affectedIds.push(`GL-${String(attrs["iid"])}`);
+  } else if (protocol === "bitbucket" || protocol === "bb") {
+    eventType = String(payload["eventKey"] ?? "pr:modified");
+    const pr = payload["pullRequest"] as Record<string, unknown> | undefined;
+    if (pr?.["id"] !== undefined) affectedIds.push(`BB-PR-${String(pr["id"])}`);
+  } else if (protocol === "azdo" || protocol === "azure-devops" || protocol === "ado") {
+    eventType = String(payload["eventType"] ?? "workitem.updated");
+    const resource = payload["resource"] as Record<string, unknown> | undefined;
+    const wiId = resource?.["workItemId"] ?? resource?.["id"];
+    if (wiId !== undefined) affectedIds.push(`WI-${String(wiId)}`);
+    if (resource?.["rev"] !== undefined) baselineOrRevision = String(resource["rev"]);
+  } else if (protocol === "windchill" || protocol === "ptc-windchill") {
+    eventType = String(payload["eventType"] ?? "part.modified");
+    if (payload["Number"] ?? payload["partNumber"])
+      affectedIds.push(String(payload["Number"] ?? payload["partNumber"]));
+    if (payload["Version"]) baselineOrRevision = String(payload["Version"]);
+  } else if (protocol === "teamcenter" || protocol === "tc") {
+    eventType = String(payload["eventType"] ?? "item.modified");
+    if (payload["item_id"]) affectedIds.push(String(payload["item_id"]));
+    if (payload["item_revision_id"]) baselineOrRevision = String(payload["item_revision_id"]);
+  } else if (protocol === "aras" || protocol === "aras-innovator") {
+    eventType = String(payload["eventType"] ?? "item.updated");
+    if (payload["item_number"] ?? payload["id"]) affectedIds.push(String(payload["item_number"] ?? payload["id"]));
+    if (payload["major_rev"]) baselineOrRevision = String(payload["major_rev"]);
+  } else if (protocol === "artifactory" || protocol === "jfrog") {
+    eventType = String(payload["event_type"] ?? "deployed");
+    const data = payload["data"] as Record<string, unknown> | undefined;
+    if (data?.["repo_key"] && data?.["path"]) affectedIds.push(`${String(data["repo_key"])}/${String(data["path"])}`);
+    if (data?.["sha256"]) baselineOrRevision = String(data["sha256"]);
   } else {
     // OSLC / DOORS Next TRS or generic webhook
     eventType = String(payload["eventType"] ?? payload["type"] ?? "trs:Modification");

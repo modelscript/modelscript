@@ -51,11 +51,42 @@ describe("Native Sum-of-Squares (SOS) Barrier Certificate & SDP Solver Suite", (
     };
 
     const res = SdpSolver.solve(problem);
-    assert.strictEqual(res.status, "FEASIBLE");
+    assert.ok(res.status === "OPTIMAL" || res.status === "FEASIBLE", `Unexpected status: ${res.status}`);
+    assert(SdpSolver.isPsd(res.X));
+    assert.ok(res.residual < 1e-4, `Primal residual too large: ${res.residual}`);
+  });
+
+  it("should solve an optimization SDP to certified OPTIMAL with near-zero duality gap", () => {
+    // min <[[2, 1], [1, 2]], X> s.t. X_00 = 1, X_11 = 1, X >= 0
+    // Optimal X* = [[1, -1], [-1, 1]] with primalObj = 2*1 + 2*(-1) + 2*1 = 2.0
+    const problem: SdpProblem = {
+      n: 2,
+      m: 2,
+      C: [
+        [2, 1],
+        [1, 2],
+      ],
+      A: [
+        [
+          [1, 0],
+          [0, 0],
+        ],
+        [
+          [0, 0],
+          [0, 1],
+        ],
+      ],
+      b: [1.0, 1.0],
+    };
+
+    const res = SdpSolver.solve(problem, 60, 1e-5);
+    assert.strictEqual(res.status, "OPTIMAL");
+    assert.ok(Math.abs(res.primalObj - 2.0) < 1e-3, `Expected optimal obj 2.0, got ${res.primalObj}`);
+    assert.ok((res.dualityGap ?? Infinity) < 1e-3, `Expected duality gap < 1e-3, got ${res.dualityGap}`);
     assert(SdpSolver.isPsd(res.X));
   });
 
-  it("should synthesize and certify a formal Lyapunov barrier certificate", () => {
+  it("should synthesize a heuristic Lyapunov barrier candidate without falsely claiming rigorous certification", () => {
     // Stable damped system: dx0/dt = -2 * x0, dx1/dt = -3 * x1
     // Initial set: ||x|| <= 1.0
     // Unsafe set: ||x|| >= 3.0
@@ -70,12 +101,26 @@ describe("Native Sum-of-Squares (SOS) Barrier Certificate & SDP Solver Suite", (
       },
     );
 
-    assert.strictEqual(result.isCertifiedSafe, true);
-    assert.strictEqual(result.verdict.kind, "proven");
-    assert.strictEqual((result.verdict as any).rigor, "rigorous");
+    assert.strictEqual(result.isCertifiedSafe, false);
+    assert.strictEqual(result.verdict.kind, "unknown");
+    assert.strictEqual((result.verdict as any).reason, "not-rigorous");
     assert(result.candidateFound, `Barrier candidate should be found: ${result.summary}`);
     assert.strictEqual(result.barrierDegree, 2);
     assert(result.barrierCoefficients.length === 4);
+
+    // Nonlinear blow-up system dx/dt = -x + x^3 must NEVER be certified safe
+    const blowupRes = SosBarrierSynthesizer.synthesizeQuadratic(
+      {
+        numVars: 1,
+        f: (x) => [-x[0]! + x[0]! * x[0]! * x[0]!],
+      },
+      {
+        initialRadius: 1.5,
+        unsafeRadius: 3.0,
+      },
+    );
+    assert.strictEqual(blowupRes.isCertifiedSafe, false);
+    assert.strictEqual(blowupRes.verdict.kind, "unknown");
 
     // Higher-degree (quartic) SOS barrier synthesis
     const higherRes = SosBarrierSynthesizer.synthesizeHigherDegree(
@@ -89,9 +134,9 @@ describe("Native Sum-of-Squares (SOS) Barrier Certificate & SDP Solver Suite", (
       },
       4,
     );
-    assert.strictEqual(higherRes.isCertifiedSafe, true);
-    assert.strictEqual(higherRes.verdict.kind, "proven");
-    assert.strictEqual((higherRes.verdict as any).rigor, "rigorous");
+    assert.strictEqual(higherRes.isCertifiedSafe, false);
+    assert.strictEqual(higherRes.verdict.kind, "unknown");
+    assert.strictEqual(higherRes.candidateFound, true);
     assert.strictEqual(higherRes.barrierDegree, 4);
   });
 });

@@ -16,7 +16,14 @@ const OFF_IO = 0x780;
 
 export interface MlxtranModelEvalIO {
   dose?: number | undefined;
+  amt?: number | undefined;
   tinf?: number | undefined;
+  rate?: number | undefined;
+  ii?: number | undefined;
+  addl?: number | undefined;
+  ss?: number | boolean | undefined;
+  alag?: number | undefined;
+  f1?: number | undefined;
   concIn?: number | undefined;
 }
 
@@ -61,9 +68,18 @@ export function resolveMlxtranStdLibWasmBytes(): Uint8Array {
 function writeIo(views: CachedMemoryViews, slotPtr: number, io?: MlxtranModelEvalIO): void {
   if (!io) return;
   const base = (slotPtr + OFF_IO) >> 3;
-  if (io.dose !== undefined) views.f64[base + 1] = io.dose;
+  const doseVal = io.dose ?? io.amt;
+  if (doseVal !== undefined) views.f64[base + 1] = doseVal;
   if (io.tinf !== undefined) views.f64[base + 2] = io.tinf;
   if (io.concIn !== undefined) views.f64[base + 3] = io.concIn;
+  if (io.ii !== undefined) views.f64[base + 10] = io.ii;
+  if (io.addl !== undefined) views.f64[base + 11] = io.addl;
+  if (io.ss !== undefined) {
+    views.f64[base + 12] = io.ss === true || (typeof io.ss === "number" && io.ss !== 0) ? 1.0 : 0.0;
+  }
+  if (io.alag !== undefined) views.f64[base + 13] = io.alag;
+  if (io.rate !== undefined) views.f64[base + 14] = io.rate;
+  if (io.f1 !== undefined) views.f64[base + 15] = io.f1;
 }
 
 function readOutput(views: CachedMemoryViews, slotPtr: number, primary: number): MlxtranModelEvalOutput {

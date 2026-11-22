@@ -172,4 +172,36 @@ describe("@modelscript/cyme — Cleanroom Standard Library (modelscript.yaml, WA
     const out = fmuInst.evaluate({ vPu: 0.96 });
     assert.ok(Math.abs(out.qOutPu - 0.2) < 1e-9, `Expected FMU qOutPu=0.20, got ${out.qOutPu}`);
   });
+
+  it("computes full 3x3 Carson's equations with Kron neutral reduction for OH_ACSR and UG_XLPE cables", () => {
+    const oh = instantiateCymeWasmModel({ equipmentId: "OH_1", modelType: "OH_ACSR_336_LINNET" });
+    const ug = instantiateCymeWasmModel({ equipmentId: "UG_1", modelType: "UG_XLPE_500MCM_15kV" });
+    assert.ok(oh && ug);
+    oh.init();
+    ug.init();
+
+    const ohOut = oh.evaluate({ lengthKm: 1.0, freqHz: 60.0, rhoOhmM: 100.0 });
+    const ugOut = ug.evaluate({ lengthKm: 1.0, freqHz: 60.0, rhoOhmM: 100.0 });
+
+    assert.ok(ohOut.zAbc && ohOut.zAbc.length === 18, "Expected 3x3 complex Z_abc matrix (18 f64s)");
+    const z = ohOut.zAbc;
+    // Symmetry: Z_ab == Z_ba and Z_ac == Z_ca
+    assert.ok(Math.abs(z[2]! - z[6]!) < 1e-12 && Math.abs(z[3]! - z[7]!) < 1e-12, "Expected Z_ab == Z_ba");
+    assert.ok(Math.abs(z[4]! - z[12]!) < 1e-12 && Math.abs(z[5]! - z[13]!) < 1e-12, "Expected Z_ac == Z_ca");
+
+    // Exact Fortescue identity from Kron-reduced Z_abc
+    const rSelfAvg = (z[0]! + z[8]! + z[16]!) / 3.0;
+    const xSelfAvg = (z[1]! + z[9]! + z[17]!) / 3.0;
+    const rMutAvg = (z[2]! + z[6]! + z[10]! + z[14]! + z[4]! + z[12]!) / 6.0;
+    const xMutAvg = (z[3]! + z[7]! + z[11]! + z[15]! + z[5]! + z[13]!) / 6.0;
+
+    assert.ok(Math.abs(ohOut.r1Ohm - (rSelfAvg - rMutAvg)) < 1e-12);
+    assert.ok(Math.abs(ohOut.x1Ohm - (xSelfAvg - xMutAvg)) < 1e-12);
+    assert.ok(Math.abs(ohOut.r0Ohm - (rSelfAvg + 2.0 * rMutAvg)) < 1e-12);
+    assert.ok(Math.abs(ohOut.x0Ohm - (xSelfAvg + 2.0 * xMutAvg)) < 1e-12);
+
+    // Underground XLPE cable has tighter spacing & concentric neutral -> lower X1 and X0 than overhead ACSR
+    assert.ok(ugOut.x1Ohm > 0 && ugOut.x1Ohm < ohOut.x1Ohm, `Expected UG x1 (${ugOut.x1Ohm}) < OH x1 (${ohOut.x1Ohm})`);
+    assert.ok(ugOut.x0Ohm > 0 && ugOut.x0Ohm < ohOut.x0Ohm, `Expected UG x0 (${ugOut.x0Ohm}) < OH x0 (${ohOut.x0Ohm})`);
+  });
 });

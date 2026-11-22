@@ -711,7 +711,16 @@ export class BufferPool {
       count++;
     }
 
-    return 0; // Fallback to frame 0 if all are pinned
+    // Fallback to frame 0 if all are pinned: still flush dirty data and clear its old page mapping
+    let fallbackPageId = this.getFramePageId(0);
+    if (fallbackPageId != 0 && fallbackPageId < 0x7fffffff) {
+      if (this.getFrameDirty(0) != 0) {
+        this._writeFrameToDisk(0, fallbackPageId);
+        this.setFrameDirty(0, 0);
+      }
+      this.setPageFrameVal(fallbackPageId, 0);
+    }
+    return 0;
   }
 
   private _loadNewPageIntoFrame(fIdx: u32, pageId: u32, pageType: u16, txId: u64 = 1): void {

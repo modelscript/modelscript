@@ -581,10 +581,8 @@ export class Hc4Contractor {
 
         let tLo = -Infinity;
         let tHi = Infinity;
-        if (constraint.rel === "<=") tHi = constraint.rhs;
-        else if (constraint.rel === "<") tHi = constraint.rhs - 1e-9;
-        else if (constraint.rel === ">=") tLo = constraint.rhs;
-        else if (constraint.rel === ">") tLo = constraint.rhs + 1e-9;
+        if (constraint.rel === "<=" || constraint.rel === "<") tHi = constraint.rhs;
+        else if (constraint.rel === ">=" || constraint.rel === ">") tLo = constraint.rhs;
         else if (constraint.rel === "==") {
           tLo = constraint.rhs;
           tHi = constraint.rhs;
@@ -615,29 +613,24 @@ export class Hc4Contractor {
         targetInterval = new Interval(-Infinity, constraint.rhs);
         break;
       case "<":
-        targetInterval = new Interval(-Infinity, constraint.rhs - 1e-9);
+        if (exprInterval.lo >= constraint.rhs) return false;
+        targetInterval = new Interval(-Infinity, constraint.rhs);
         break;
       case ">=":
         targetInterval = new Interval(constraint.rhs, Infinity);
         break;
       case ">":
-        targetInterval = new Interval(constraint.rhs + 1e-9, Infinity);
+        if (exprInterval.hi <= constraint.rhs) return false;
+        targetInterval = new Interval(constraint.rhs, Infinity);
         break;
       case "==":
         targetInterval = new Interval(constraint.rhs, constraint.rhs);
         break;
       case "!=": {
-        if (Math.abs(exprInterval.lo - constraint.rhs) < 1e-9 && Math.abs(exprInterval.hi - constraint.rhs) < 1e-9) {
+        if (exprInterval.lo === constraint.rhs && exprInterval.hi === constraint.rhs) {
           return false;
         }
-        if (Math.abs(exprInterval.hi - constraint.rhs) < 1e-9) {
-          targetInterval = new Interval(-Infinity, constraint.rhs - 1e-9);
-        } else if (Math.abs(exprInterval.lo - constraint.rhs) < 1e-9) {
-          targetInterval = new Interval(constraint.rhs + 1e-9, Infinity);
-        } else {
-          return true;
-        }
-        break;
+        return true;
       }
       default:
         targetInterval = new Interval(-Infinity, Infinity);

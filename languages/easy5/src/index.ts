@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export * from "./catalog/index.js";
-export { easy5ToDae, lowerEasy5ToDae, type Easy5DaeLoweringResult, type Easy5ToDaeOptions } from "./dae/index.js";
+export {
+  easy5ToDae,
+  lowerEasy5ToDae,
+  resolveEasy5SchemaParamDefaults,
+  type Easy5DaeLoweringResult,
+  type Easy5ToDaeOptions,
+} from "./dae/index.js";
 export {
   buildEasy5DiagramData,
   renderEasy5SchematicSvg,

@@ -16,6 +16,7 @@ import type {
   PsseDyrRecord,
   TransformerRecord,
 } from "@modelscript/psse";
+import { ensureBuiltInPslfLibraryRegistered } from "../catalog/library-package-adapter.js";
 import type { PslfDydCase, PslfEpcCase } from "../types.js";
 
 /**
@@ -45,6 +46,7 @@ const PSLF_TO_PSSE_MODEL_MAP: Record<string, string> = {
  * Converts a PSLF .epc power flow case into a PSS/E RAW case.
  */
 export function pslfEpcToPsseRaw(epcCase: PslfEpcCase): PsseCase {
+  ensureBuiltInPslfLibraryRegistered();
   const buses = new Map<number, BusRecord>();
   for (const b of epcCase.buses.values()) {
     buses.set(b.busNumber, {

@@ -77,7 +77,7 @@
     "typescript": "^5.9.3"
   },
   "modelscript": {
-    "tier": "alpha",
+    "tier": "beta",
     "category": "language"
   }
 }

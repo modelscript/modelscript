@@ -199,6 +199,7 @@ function tokenizeTurtle(source: string): string[] {
 export function parseTurtleToOwl2Axioms(source: string): OWL2Axiom[] {
   const tokens = tokenizeTurtle(source);
   const prefixes = new Map<string, string>(BUILTIN_OWL2_PREFIXES);
+  let baseIri: string | undefined;
   const triples: RdfTriple[] = [];
   const collections = new Map<string, string[]>();
   let bnodeCounter = 0;
@@ -211,10 +212,17 @@ export function parseTurtleToOwl2Axioms(source: string): OWL2Axiom[] {
     if (trimmed === "a") return "rdf:type";
     if (isBlankNode(trimmed) || isLiteral(trimmed)) return trimmed;
     if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
-      const fullIri = trimmed.slice(1, -1);
-      for (const [pfx, baseIri] of prefixes) {
-        if (baseIri && fullIri.startsWith(baseIri) && fullIri.length > baseIri.length) {
-          const local = fullIri.slice(baseIri.length);
+      let fullIri = trimmed.slice(1, -1);
+      if (baseIri && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(fullIri)) {
+        try {
+          fullIri = new URL(fullIri, baseIri).toString();
+        } catch {
+          fullIri = `${baseIri}${fullIri}`;
+        }
+      }
+      for (const [pfx, nsIri] of prefixes) {
+        if (nsIri && fullIri.startsWith(nsIri) && fullIri.length > nsIri.length) {
+          const local = fullIri.slice(nsIri.length);
           if (/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(local)) {
             return `${pfx}${local}`;
           }
@@ -302,6 +310,7 @@ export function parseTurtleToOwl2Axioms(source: string): OWL2Axiom[] {
       const iriRaw = tokens[pos++] ?? "";
       if (tokens[pos] === ".") pos++;
       const cleanIri = iriRaw.startsWith("<") && iriRaw.endsWith(">") ? iriRaw.slice(1, -1) : iriRaw;
+      baseIri = cleanIri;
       if (!prefixes.has(":")) prefixes.set(":", cleanIri);
       continue;
     }
@@ -747,10 +756,10 @@ export function parseTurtleToOwl2Axioms(source: string): OWL2Axiom[] {
       const chainIris = getListItems(chainList);
       if (chainIris.length >= 2) {
         axioms.push({
-          type: "SubObjectPropertyChainOf",
-          propertyChainIris: chainIris,
+          type: "SubPropertyChainOf",
+          subPropertyChain: chainIris,
           superPropertyIri: subj,
-        } as unknown as OWL2Axiom);
+        });
       }
     }
     for (const dom of getObjs(subj, "rdfs:domain")) {

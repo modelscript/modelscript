@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { compileRegexToDFA } from "../../dsl/automata.js";
-import { NormalizedGrammar } from "../../dsl/grammar.js";
+import { compileRuleToRegex, NormalizedGrammar } from "../../dsl/grammar.js";
 import type { LanguageOptions, Rule } from "../../dsl/language.js";
 import { toRule } from "../../dsl/language.js";
+import { buildSymIntToEnumNameMap } from "../emitters/types.js";
 import { transpileQuery } from "../transpiler/transpiler.js";
 
 /**
@@ -50,6 +51,25 @@ export function generateLexer(grammar: LanguageOptions, normalized: NormalizedGr
     const meta = rule as unknown as LexerRuleMeta;
     const ruleType = (rule.type || "").toUpperCase();
     const ruleValue = rule.value !== undefined ? rule.value : meta.arg;
+    if (ruleType === "TOKEN" && ruleValue === undefined && rule.children && rule.children.length > 0) {
+      const compiled = compileRuleToRegex(rule.children[0]);
+      if (compiled !== null && compiled.length > 0) {
+        const key = `/${compiled}/`;
+        regexTokens.set(key, key);
+        return;
+      }
+    }
+    if (ruleType === "TOKEN_IMMEDIATE" && rule.children && rule.children.length > 0) {
+      const inner = rule.children[0]!;
+      if ((inner.type || "").toUpperCase() !== "TOKEN") {
+        const compiled = compileRuleToRegex(inner);
+        if (compiled !== null && compiled.length > 0) {
+          const key = `/${compiled}/`;
+          regexTokens.set(key, key);
+          return;
+        }
+      }
+    }
     if (ruleType === "TOKEN" && ruleValue) {
       const isRegex =
         ruleValue instanceof RegExp ||
@@ -167,56 +187,89 @@ export function generateLexer(grammar: LanguageOptions, normalized: NormalizedGr
   lexerCode += `\nexport let is_extra_token: usize = 0;\n`;
   lexerCode += `export function initExtras(): void {\n`;
   lexerCode += `  if (is_extra_token == 0) {\n    let extraCap: u32 = ((MAX_TERMINAL_ID as u32) + 1) > 2048 ? ((MAX_TERMINAL_ID as u32) + 1) : 2048;\n    is_extra_token = atomicChunkAlloc(extraCap);\n    memory.fill(is_extra_token, 0, extraCap);\n  }\n`;
-  const findUnderlyingTokenValue = (r: unknown): unknown => {
-    if (!r || typeof r !== "object") return undefined;
+  const idToEnumName = buildSymIntToEnumNameMap(normalized);
+  const extraTerminalIds = new Set<number>();
+  const extraTokenPatterns: (string | RegExp)[] = [];
+
+  const collectExtraTokens = (r: unknown, visited: Set<string>) => {
+    if (!r) return;
+    if (typeof r === "string") {
+      extraTokenPatterns.push(r);
+      const id = normalized.symToInt.get(`"${r}"`) ?? normalized.symToInt.get(r);
+      if (id !== undefined) extraTerminalIds.add(id);
+      return;
+    }
+    if (r instanceof RegExp || Object.prototype.toString.call(r) === "[object RegExp]") {
+      extraTokenPatterns.push(r as RegExp);
+      const id = normalized.symToInt.get((r as RegExp).toString());
+      if (id !== undefined) extraTerminalIds.add(id);
+      return;
+    }
+    if (typeof r !== "object") return;
     const obj = r as LexerRuleMeta & { child?: unknown };
     const t = (obj.type || "").toUpperCase();
-    if (t === "TOKEN") {
-      return obj.value !== undefined ? obj.value : (obj.arg ?? obj.child ?? obj.children);
+    if (t === "SYMBOL") {
+      const symName = obj.name || String(obj.value ?? "");
+      const symInt = normalized.symToInt.get(symName);
+      if (symInt !== undefined) extraTerminalIds.add(symInt);
+      if (symName && !visited.has(symName) && normalized.evaluatedRules[symName]) {
+        visited.add(symName);
+        collectExtraTokens(normalized.evaluatedRules[symName], visited);
+      }
+      return;
     }
-    if (obj.rule) return findUnderlyingTokenValue(obj.rule);
-    if (obj.arg) return findUnderlyingTokenValue(obj.arg);
-    if (obj.children && obj.children.length === 1) return findUnderlyingTokenValue(obj.children[0]);
-    if (obj.args && obj.args.length === 1) return findUnderlyingTokenValue(obj.args[0]);
-    return undefined;
-  };
-  if (normalized.extras) {
-    for (const rule of normalized.extras) {
-      const meta = rule as unknown as LexerRuleMeta;
-      const rType = (rule.type || "").toUpperCase();
-      if (rType === "SYMBOL") {
-        const symName = meta.name || String(meta.value ?? "");
-        const evalRule = normalized.evaluatedRules[symName];
-        const tokVal = findUnderlyingTokenValue(evalRule);
-        if (tokVal !== undefined) {
-          let val = tokVal ? String(tokVal) : symName;
-          if (typeof tokVal === "string" && !(val.startsWith("/") && val.endsWith("/"))) {
-            val = `"${tokVal}"`;
+    if (t === "TOKEN") {
+      if (obj.value !== undefined) {
+        if (
+          typeof obj.value === "string" ||
+          obj.value instanceof RegExp ||
+          Object.prototype.toString.call(obj.value) === "[object RegExp]"
+        ) {
+          extraTokenPatterns.push(obj.value as string | RegExp);
+          let val = String(obj.value);
+          if (typeof obj.value === "string" && !(val.startsWith("/") && val.endsWith("/"))) {
+            val = `"${obj.value}"`;
           }
-          const mappedInt = normalized.symToInt.get(val) ?? normalized.symToInt.get(symName);
-          if (mappedInt !== undefined) {
-            lexerCode += `  store<u8>(is_extra_token + <u32>${mappedInt}, 1);\n`;
-          }
+          const id = normalized.symToInt.get(val);
+          if (id !== undefined) extraTerminalIds.add(id);
         }
-        const symInt = normalized.symToInt.get(symName);
-        if (symInt !== undefined) {
-          lexerCode += `  store<u8>(is_extra_token + <u32>${symInt}, 1);\n`;
-        }
-      } else {
-        const tokVal = findUnderlyingTokenValue(rule);
-        if (tokVal !== undefined) {
-          let val = tokVal ? String(tokVal) : "";
-          if (typeof tokVal === "string" && !(val.startsWith("/") && val.endsWith("/"))) {
-            val = `"${tokVal}"`;
+        return;
+      }
+      if (obj.children && obj.children.length > 0) {
+        const compiled = compileRuleToRegex(obj.children[0]);
+        if (compiled !== null && compiled.length > 0) {
+          const key = `/${compiled}/`;
+          try {
+            extraTokenPatterns.push(new RegExp(compiled));
+          } catch {
+            // ignore uncompilable JS regex
           }
-          const mappedInt =
-            normalized.symToInt.get(val) ?? (meta.name ? normalized.symToInt.get(meta.name) : undefined);
-          if (mappedInt !== undefined) {
-            lexerCode += `  store<u8>(is_extra_token + <u32>${mappedInt}, 1);\n`;
-          }
+          const id = normalized.symToInt.get(key);
+          if (id !== undefined) extraTerminalIds.add(id);
+          return;
         }
+        for (const c of obj.children) collectExtraTokens(c, visited);
+        return;
       }
     }
+    if (obj.rule) collectExtraTokens(obj.rule, visited);
+    if (obj.arg) collectExtraTokens(obj.arg, visited);
+    if (obj.child) collectExtraTokens(obj.child, visited);
+    if (obj.children) {
+      for (const c of obj.children) collectExtraTokens(c, visited);
+    }
+    if (obj.args) {
+      for (const c of obj.args) collectExtraTokens(c, visited);
+    }
+  };
+
+  if (normalized.extras) {
+    for (const rule of normalized.extras) {
+      collectExtraTokens(rule, new Set<string>());
+    }
+  }
+  for (const mappedInt of extraTerminalIds) {
+    lexerCode += `  store<u8>(is_extra_token + <u32>${mappedInt}, 1);\n`;
   }
   lexerCode += `}\n`;
 
@@ -306,32 +359,151 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   lexerCode += `  srcLexLen = 0;\n`;
   lexerCode += `  if (lexPos >= inputLength) { return 1023; } // EOF\n`;
 
-  // Inject External Scanner Custom State/Functions
-  if (grammar.scanner) {
-    lexerCode += `  // --- External Scanner --- \n`;
-    lexerCode += `  scanMarkedEnd = false;\n`;
-    lexerCode += `  let extToken = scanExternal(lexPos, currentScannerState);\n`;
-    lexerCode += `  if (extToken != 0) {\n`;
-    lexerCode += `    lexLen = srcLexLen;\n`;
-    lexerCode += `    lexPos = srcLexPos + lexLen;\n`;
-    lexerCode += `    scanMarkedEnd = false;\n`;
-    lexerCode += `    return extToken;\n`;
-    lexerCode += `  } else {\n`;
-    lexerCode += `    lexPos = pos;\n`;
-    lexerCode += `    srcLexPos = pos;\n`;
-    lexerCode += `    lexLen = 0;\n`;
-    lexerCode += `    srcLexLen = 0;\n`;
-    lexerCode += `    scanMarkedEnd = false;\n`;
-    lexerCode += `  }\n\n`;
+  const scannerRunAfterExtras = !!(
+    grammar.scanner &&
+    typeof grammar.scanner === "object" &&
+    "runAfterExtras" in grammar.scanner &&
+    (grammar.scanner as { runAfterExtras?: boolean }).runAfterExtras
+  );
+
+  const emitExternalScannerBlock = (rewindExpr: string): string => {
+    let block = `  // --- External Scanner --- \n`;
+    block += `  scanMarkedEnd = false;\n`;
+    block += `  let extToken = scanExternal(lexPos, currentScannerState);\n`;
+    block += `  if (extToken != 0) {\n`;
+    block += `    lexLen = srcLexLen;\n`;
+    block += `    lexPos = srcLexPos + lexLen;\n`;
+    block += `    scanMarkedEnd = false;\n`;
+    block += `    return extToken;\n`;
+    block += `  } else {\n`;
+    block += `    lexPos = ${rewindExpr};\n`;
+    block += `    srcLexPos = ${rewindExpr};\n`;
+    block += `    lexLen = 0;\n`;
+    block += `    srcLexLen = 0;\n`;
+    block += `    scanMarkedEnd = false;\n`;
+    block += `  }\n\n`;
+    return block;
+  };
+
+  // Inject External Scanner before extras by default (for scanners inspecting leading whitespace/newlines)
+  if (grammar.scanner && !scannerRunAfterExtras) {
+    lexerCode += emitExternalScannerBlock("pos");
   }
 
-  let hasWhitespaceExtra = false;
-  if (normalized.extras && normalized.extras.length > 0) {
-    hasWhitespaceExtra = true;
+  // Determine which whitespace code points are actually matched by declared `extras`
+  // so line-oriented grammars (e.g. `extras: () => [/[ \t]+/]`) do not have `\n`/`\r` silently eaten.
+  const extraMatchesChar = (ch: string): boolean => {
+    for (const pat of extraTokenPatterns) {
+      if (typeof pat === "string") {
+        if (pat.startsWith("/") && pat.lastIndexOf("/") > 0) {
+          const lastSlash = pat.lastIndexOf("/");
+          try {
+            if (new RegExp("^(?:" + pat.slice(1, lastSlash) + ")$", pat.slice(lastSlash + 1)).test(ch)) return true;
+          } catch {
+            // ignore
+          }
+        } else if (pat === ch) {
+          return true;
+        }
+      } else {
+        try {
+          if (new RegExp("^(?:" + pat.source + ")$", pat.flags).test(ch)) return true;
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return false;
+  };
+
+  const wsSkipCodePoints: number[] = [];
+  if (extraMatchesChar(" ")) wsSkipCodePoints.push(32, 0xfeff);
+  if (extraMatchesChar("\t")) wsSkipCodePoints.push(9);
+  if (extraMatchesChar("\n")) wsSkipCodePoints.push(10);
+  if (extraMatchesChar("\r")) wsSkipCodePoints.push(13);
+  const hasWhitespaceExtra = wsSkipCodePoints.length > 0;
+
+  const sp = (
+    grammar as LanguageOptions & {
+      primitives?: {
+        nestedComment?: { open: string; close: string };
+        lineComment?: string;
+        escapedIdent?: { quote: string; escape?: string };
+        stringLiteral?: { delim: string; escapes?: Record<string, number> };
+        multiWordKeywords?: string[];
+        layout?: { indent: string; dedent: string };
+      };
+    }
+  ).primitives;
+
+  // Python-style indentation layout scanner state (emitted only when `primitives.layout` is configured)
+  const layoutIndentId = sp?.layout
+    ? (normalized.symToInt.get(sp.layout.indent) ?? normalized.symToInt.get(`"${sp.layout.indent}"`))
+    : undefined;
+  const layoutDedentId = sp?.layout
+    ? (normalized.symToInt.get(sp.layout.dedent) ?? normalized.symToInt.get(`"${sp.layout.dedent}"`))
+    : undefined;
+  const hasLayoutPrimitive = layoutIndentId !== undefined && layoutDedentId !== undefined;
+  if (hasLayoutPrimitive) {
+    const indentEnum = idToEnumName.get(layoutIndentId!) ?? `T_${layoutIndentId}`;
+    const dedentEnum = idToEnumName.get(layoutDedentId!) ?? `T_${layoutDedentId}`;
+    lexerGlobals += `// Indentation Layout Scanner State\n`;
+    lexerGlobals += `const layoutIndentStack: StaticArray<u32> = new StaticArray<u32>(64);\n`;
+    lexerGlobals += `export let layoutIndentTop: i32 = 0;\n`;
+    lexerGlobals += `export let layoutPendingDedents: i32 = 0;\n`;
+    lexerGlobals += `export let layoutAtLineStart: bool = true;\n`;
+    lexerGlobals += `export function resetLayoutScanner(): void { layoutIndentTop = 0; layoutPendingDedents = 0; layoutAtLineStart = true; unchecked(layoutIndentStack[0] = 0); }\n\n`;
+
+    lexerCode += `  // --- Indentation Layout Primitive (INDENT / DEDENT) ---\n`;
+    lexerCode += `  if (pos == 0) { resetLayoutScanner(); }\n`;
+    lexerCode += `  if (layoutPendingDedents > 0) {\n`;
+    lexerCode += `    layoutPendingDedents--;\n`;
+    lexerCode += `    lexLen = 0; srcLexLen = 0;\n`;
+    lexerCode += `    return SyntaxType.${dedentEnum};\n`;
+    lexerCode += `  }\n`;
+    lexerCode += `  if (lexPos >= inputLength) {\n`;
+    lexerCode += `    if (layoutIndentTop > 0) {\n`;
+    lexerCode += `      layoutIndentTop--;\n`;
+    lexerCode += `      lexLen = 0; srcLexLen = 0;\n`;
+    lexerCode += `      return SyntaxType.${dedentEnum};\n`;
+    lexerCode += `    }\n`;
+    lexerCode += `    return 1023;\n`;
+    lexerCode += `  }\n`;
+    lexerCode += `  if (pos > 0 && peekPrevChar(pos) == 10) { layoutAtLineStart = true; }\n`;
+    lexerCode += `  if (layoutAtLineStart) {\n`;
+    lexerCode += `    let scanP = lexPos;\n`;
+    lexerCode += `    let col: u32 = 0;\n`;
+    lexerCode += `    while (scanP < inputLength) {\n`;
+    lexerCode += `      let ch = peekChar(scanP);\n`;
+    lexerCode += `      if (ch == 32) { col++; scanP += peekCharLen(scanP); }\n`;
+    lexerCode += `      else if (ch == 9) { col += 4; scanP += peekCharLen(scanP); }\n`;
+    lexerCode += `      else if (ch == 10 || ch == 13) { col = 0; scanP += peekCharLen(scanP); }\n`;
+    lexerCode += `      else { break; }\n`;
+    lexerCode += `    }\n`;
+    lexerCode += `    if (scanP < inputLength) {\n`;
+    lexerCode += `      let curIndent = unchecked(layoutIndentStack[layoutIndentTop]);\n`;
+    lexerCode += `      layoutAtLineStart = false;\n`;
+    lexerCode += `      if (col > curIndent && layoutIndentTop < 63) {\n`;
+    lexerCode += `        layoutIndentTop++;\n`;
+    lexerCode += `        unchecked(layoutIndentStack[layoutIndentTop] = col);\n`;
+    lexerCode += `        lexPos = scanP; srcLexPos = scanP; lexLen = 0; srcLexLen = 0;\n`;
+    lexerCode += `        return SyntaxType.${indentEnum};\n`;
+    lexerCode += `      } else if (col < curIndent) {\n`;
+    lexerCode += `        let popped: i32 = 0;\n`;
+    lexerCode += `        while (layoutIndentTop > 0 && unchecked(layoutIndentStack[layoutIndentTop]) > col) {\n`;
+    lexerCode += `          layoutIndentTop--;\n`;
+    lexerCode += `          popped++;\n`;
+    lexerCode += `        }\n`;
+    lexerCode += `        if (popped > 0) {\n`;
+    lexerCode += `          layoutPendingDedents = popped - 1;\n`;
+    lexerCode += `          lexPos = scanP; srcLexPos = scanP; lexLen = 0; srcLexLen = 0;\n`;
+    lexerCode += `          return SyntaxType.${dedentEnum};\n`;
+    lexerCode += `        }\n`;
+    lexerCode += `      }\n`;
+    lexerCode += `    }\n`;
+    lexerCode += `  }\n`;
   }
 
-  const sp = (grammar as LanguageOptions & { primitives?: { nestedComment?: unknown; lineComment?: unknown } })
-    .primitives;
   const hasComments = sp && (sp.nestedComment || sp.lineComment);
 
   if (hasWhitespaceExtra || hasComments) {
@@ -344,7 +516,8 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     lexerCode += `    let charLen: u32 = peekCharLen(lexPos);\n`;
 
     if (hasWhitespaceExtra) {
-      lexerCode += `    if (c == 32 || c == 9 || c == 10 || c == 13 || c == 0xFEFF) {\n`;
+      const wsCond = wsSkipCodePoints.map((cp) => (cp === 0xfeff ? "c == 0xFEFF" : `c == ${cp}`)).join(" || ");
+      lexerCode += `    if (${wsCond}) {\n`;
       lexerCode += `      lexPos += charLen;\n`;
       lexerCode += `      continue;\n`;
       lexerCode += `    }\n`;
@@ -404,7 +577,14 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   }
 
   lexerCode += `  srcLexPos = lexPos;\n`;
+  if (normalized.immediateTerminals.size > 0) {
+    lexerCode += `  let skippedExtras: bool = lexPos != pos;\n`;
+  }
   lexerCode += `  if (lexPos >= inputLength) return 1023; // EOF\n`;
+  if (grammar.scanner && scannerRunAfterExtras) {
+    lexerCode += `  let postExtrasPos: u32 = lexPos;\n`;
+    lexerCode += emitExternalScannerBlock("postExtrasPos");
+  }
 
   lexerCode += `  // --- Lexical State Machine (DFA) ---\n`;
   lexerCode += `  let char0: i32 = peekChar(lexPos);\n`;
@@ -438,7 +618,8 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     let identTokenStr = "ERROR";
     const wordKey = wordName ? [...regexTokens.keys()].find((k) => k === wordName) : undefined;
     const identKey = wordKey ?? findRegexTokenAccepting("x");
-    if (identKey !== undefined) identTokenStr = "T_" + normalized.symToInt.get(identKey);
+    const identSymId = identKey !== undefined ? normalized.symToInt.get(identKey) : undefined;
+    if (identSymId !== undefined) identTokenStr = idToEnumName.get(identSymId) ?? "T_" + identSymId;
     lexerCode += `      return SyntaxType.${identTokenStr}; // escaped identifier\n`;
     lexerCode += `    }\n`;
     lexerCode += `  }\n`;
@@ -448,13 +629,22 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   if (sp && sp.stringLiteral) {
     const sl = sp.stringLiteral;
     const d = sl.delim.codePointAt(0)!;
+    const escapeLeaders = new Set<number>([92]); // backslash by default
+    if (sl.escapes) {
+      for (const escSeq of Object.keys(sl.escapes)) {
+        if (escSeq.length > 0) escapeLeaders.add(escSeq.codePointAt(0)!);
+      }
+    }
+    const escCond = Array.from(escapeLeaders)
+      .map((cp) => `ch == ${cp}`)
+      .join(" || ");
     lexerCode += `  // String literal with escapes: ${sl.delim}...${sl.delim}\n`;
     lexerCode += `  if (char0 == ${d}) {\n`;
     lexerCode += `    let peek = lexPos + char0Len;\n`;
     lexerCode += `    while (peek < inputLength) {\n`;
     lexerCode += `      let ch = peekChar(peek);\n`;
     lexerCode += `      let chLen = peekCharLen(peek);\n`;
-    lexerCode += `      if (ch == 92 && peek + chLen < inputLength) { peek += chLen + peekCharLen(peek + chLen); continue; } // backslash escape\n`;
+    lexerCode += `      if ((${escCond}) && peek + chLen < inputLength) { peek += chLen + peekCharLen(peek + chLen); continue; } // escape\n`;
     lexerCode += `      if (ch == ${d}) { peek += chLen; break; }\n`;
     lexerCode += `      peek += chLen;\n`;
     lexerCode += `    }\n`;
@@ -462,10 +652,12 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     lexerCode += `    srcLexLen = lexLen;\n`;
     let strTokenStr = "ERROR";
     const strKey = findRegexTokenAccepting(`${sl.delim}a${sl.delim}`);
-    if (strKey !== undefined) strTokenStr = "T_" + normalized.symToInt.get(strKey);
+    const strSymId = strKey !== undefined ? normalized.symToInt.get(strKey) : undefined;
+    if (strSymId !== undefined) strTokenStr = idToEnumName.get(strSymId) ?? "T_" + strSymId;
     // Fallback: if there is a 'string' token, use it
-    if (strTokenStr === "ERROR" && normalized.symToInt.has("string")) {
-      strTokenStr = "T_" + normalized.symToInt.get("string");
+    const fallbackStrId = normalized.symToInt.get("string");
+    if (strTokenStr === "ERROR" && fallbackStrId !== undefined) {
+      strTokenStr = idToEnumName.get(fallbackStrId) ?? "T_" + fallbackStrId;
     }
     lexerCode += `    return SyntaxType.${strTokenStr}; // string with escapes\n`;
     lexerCode += `  }\n`;
@@ -482,10 +674,25 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
   const isWordCodePoint = (cp: number): boolean =>
     (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122) || (cp >= 48 && cp <= 57) || cp === 95;
 
+  // Build word-continuation character predicate derived from `wordRegex` when available
+  const extraWordCps: number[] = [];
+  if (wordRegex) {
+    for (const ch of ["-", "$", "!", "?", "@", "'"]) {
+      if (wordRegex.test("a" + ch)) {
+        extraWordCps.push(ch.codePointAt(0)!);
+      }
+    }
+  }
+  const wordCharExpr = (v: string): string => {
+    const extra = extraWordCps.map((cp) => ` || ${v} == ${cp}`).join("");
+    return `((${v} >= 65 && ${v} <= 90) || (${v} >= 97 && ${v} <= 122) || (${v} >= 48 && ${v} <= 57) || ${v} == 95${extra})`;
+  };
+
   for (const [key, val] of stringEntries) {
     const mappedInt = normalized.symToInt.get(`"${val}"`);
     if (!mappedInt) continue;
-    const safeName = "T_" + mappedInt;
+    const safeName = idToEnumName.get(mappedInt) ?? "T_" + mappedInt;
+    const isImmediate = normalized.immediateTerminals.has(`"${val}"`);
 
     const isWord = wordRegex ? wordRegex.test(val) : false;
 
@@ -499,20 +706,21 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
       }
     }
 
-    if (grammar.word && isWord && !isReserved) {
+    if (grammar.word && isWord && !isReserved && !isImmediate) {
       // Tree-sitter style keyword extraction: defer this literal to the identifier fallback!
       keywordTokens.set(val, key);
       continue;
     }
 
     const endsInWord = /[a-zA-Z0-9_]$/.test(val);
+    const immediateGuard = isImmediate ? "!skippedExtras && " : "";
     let wordBoundaryCheck = "";
     if (isWord || endsInWord) {
       wordBoundaryCheck = `
-        let isBoundary = true;
-        if (cPos < inputLength) {
+        let isBoundary = ${isImmediate ? "!skippedExtras" : "true"};
+        if (isBoundary && cPos < inputLength) {
             let nextChar = peekChar(cPos);
-            if ((nextChar >= 65 && nextChar <= 90) || (nextChar >= 97 && nextChar <= 122) || (nextChar >= 48 && nextChar <= 57) || nextChar == 95) {
+            if (${wordCharExpr("nextChar")}) {
                 isBoundary = false;
             }
         }
@@ -530,14 +738,16 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
       `;
     } else {
       wordBoundaryCheck = `
-        let matchLen: u32 = <u32>(cPos - lexPos);
-        if (expected_tokens == 0 || load<u8>(expected_tokens + <u32>SyntaxType.${safeName}) == 1) {
-            literalToken = SyntaxType.${safeName};
-            literalLen = matchLen;
-            break;
-        } else if (literalToken == 0) {
-            literalToken = SyntaxType.${safeName};
-            literalLen = matchLen;
+        if (${immediateGuard}true) {
+            let matchLen: u32 = <u32>(cPos - lexPos);
+            if (expected_tokens == 0 || load<u8>(expected_tokens + <u32>SyntaxType.${safeName}) == 1) {
+                literalToken = SyntaxType.${safeName};
+                literalLen = matchLen;
+                break;
+            } else if (literalToken == 0) {
+                literalToken = SyntaxType.${safeName};
+                literalLen = matchLen;
+            }
         }
       `;
     }
@@ -595,21 +805,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
     const mappedInt = normalized.symToInt.get(key);
     if (!mappedInt) continue;
 
-    // FIND THE ORIGINAL SYMBOL NAME!
-    let symName = "";
-    for (const [sym, id] of normalized.symToInt.entries()) {
-      if (id === mappedInt) {
-        symName = sym;
-        break;
-      }
-    }
-
-    let safeName = symName.replace(/[^a-zA-Z0-9]/g, "_");
-    if (symName.startsWith('"') || symName.startsWith("/")) {
-      safeName = "T_" + mappedInt;
-    } else {
-      safeName = safeName.toUpperCase();
-    }
+    const safeName = idToEnumName.get(mappedInt) ?? "T_" + mappedInt;
 
     let patternStr = val;
     let flagsStr = "";
@@ -619,6 +815,14 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
       flagsStr = val.substring(lastSlash + 1);
     }
     regexList.push({ pattern: patternStr, tokenName: safeName, flags: flagsStr });
+  }
+
+  const immediateEnumNames = new Set<string>();
+  for (const immSym of normalized.immediateTerminals) {
+    const immId = normalized.symToInt.get(immSym);
+    if (immId !== undefined) {
+      immediateEnumNames.add(idToEnumName.get(immId) ?? "T_" + immId);
+    }
   }
 
   if (regexList.length > 0) {
@@ -656,23 +860,38 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
 
     lexerCode += `    // Check accepting\n`;
     lexerCode += `    switch(dfaState) {\n`;
-    let hasAcceptingStates = false;
+    const regularAcceptStates: number[] = [];
+    const immediateOnlyAcceptStates: number[] = [];
     for (let s = 0; s < dfa.numStates; s++) {
-      if (dfa.accepts[s]) {
-        lexerCode += `      case ${s}:\n`;
-        hasAcceptingStates = true;
+      const acc = dfa.accepts[s];
+      if (!acc) continue;
+      if (immediateEnumNames.size > 0 && acc.every((tName) => immediateEnumNames.has(tName))) {
+        immediateOnlyAcceptStates.push(s);
+      } else {
+        regularAcceptStates.push(s);
       }
     }
-    if (hasAcceptingStates) {
+    if (regularAcceptStates.length > 0) {
+      for (const s of regularAcceptStates) {
+        lexerCode += `      case ${s}:\n`;
+      }
       lexerCode += `        lastAcceptingState = dfaState;\n`;
       lexerCode += `        lastAcceptingLen = dfaLexLen;\n`;
-      lexerCode += `        // console.log("Accepted state " + lastAcceptingState.toString() + " len " + lastAcceptingLen.toString());\n`;
+      lexerCode += `        break;\n`;
+    }
+    if (immediateOnlyAcceptStates.length > 0) {
+      for (const s of immediateOnlyAcceptStates) {
+        lexerCode += `      case ${s}:\n`;
+      }
+      lexerCode += `        if (!skippedExtras) {\n`;
+      lexerCode += `          lastAcceptingState = dfaState;\n`;
+      lexerCode += `          lastAcceptingLen = dfaLexLen;\n`;
+      lexerCode += `        }\n`;
       lexerCode += `        break;\n`;
     }
     lexerCode += `    }\n`;
     lexerCode += `  }\n`;
 
-    lexerCode += `  // console.log("Final lastAcceptingState " + lastAcceptingState.toString() + " len " + lastAcceptingLen.toString());\n`;
     lexerCode += `  // --- Decision: String Literal vs Regex DFA Maximal Munch ---\n`;
     lexerCode += `  if (literalLen > 0 && literalLen >= lastAcceptingLen) {\n`;
     lexerCode += `    let preferRegex = false;\n`;
@@ -683,7 +902,10 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
       if (dfa.accepts[s]) {
         const tokenNames = dfa.accepts[s]!;
         const conds = tokenNames
-          .map((tName) => `load<u8>(expected_tokens + <u32>SyntaxType.${tName}) == 1`)
+          .map((tName) => {
+            const base = `load<u8>(expected_tokens + <u32>SyntaxType.${tName}) == 1`;
+            return immediateEnumNames.has(tName) ? `(!skippedExtras && ${base})` : base;
+          })
           .join(" || ");
         lexerCode += `          case ${s}:\n`;
         lexerCode += `            if (${conds}) preferRegex = true;\n`;
@@ -798,36 +1020,41 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
         if (tokenNames.length > 1) {
           lexerCode += `        // Lexical tie-breaking\n`;
           for (const tName of tokenNames) {
-            lexerCode += `        if (expected_tokens != 0 && load<u8>(expected_tokens + <u32>SyntaxType.${tName}) == 1) return SyntaxType.${tName};\n`;
+            const immPrefix = immediateEnumNames.has(tName) ? "!skippedExtras && " : "";
+            lexerCode += `        if (${immPrefix}expected_tokens != 0 && load<u8>(expected_tokens + <u32>SyntaxType.${tName}) == 1) return SyntaxType.${tName};\n`;
           }
         }
 
-        // Reserved keywords overriding
-        let reservedKey = "";
-        for (const [key, _] of normalized.reservedKeywords.entries()) {
-          const kwTokenInt = normalized.symToInt.get(key);
-          if ("T_" + kwTokenInt === tokenName) {
-            reservedKey = key;
-            break;
-          }
-        }
-
-        if (reservedKey) {
-          const reservedTokens = normalized.reservedKeywords.get(reservedKey)!;
-          if (reservedTokens.size > 0) {
-            lexerCode += `        // Reserved keywords override (bucketed by length & first code point)\n`;
-            const rtByLen = new Map<number, { kwTokenInt: number | undefined; rtCps: number[] }[]>();
-            for (const rt of reservedTokens) {
-              const rtVal = rt.startsWith('"') ? rt.slice(1, -1) : rt;
-              const kwTokenInt = normalized.symToInt.get(rt);
+        // Reserved keywords overriding (global wordsets always override; contextual wordsets override when expected)
+        if (isWordToken && normalized.reservedKeywords.size > 0) {
+          const reservedEntries = new Map<
+            string,
+            { kwTokenInt: number; isGlobal: boolean; rtCps: number[]; len: number }
+          >();
+          for (const [wsName, reservedSet] of normalized.reservedKeywords.entries()) {
+            const isGlobal = wsName === "global" || !normalized.usedReservedWordsets.has(wsName);
+            for (const rt of reservedSet) {
+              const rtVal = rt.startsWith('"') && rt.endsWith('"') ? rt.slice(1, -1) : rt;
+              const kwTokenInt = normalized.symToInt.get(rt) ?? normalized.symToInt.get(`"${rtVal}"`);
+              if (kwTokenInt === undefined) continue;
               const rtCps = toCodePoints(rtVal);
               if (rtCps.length === 0) continue;
-              let bucket = rtByLen.get(rtVal.length);
+              const prev = reservedEntries.get(rtVal);
+              if (!prev || (isGlobal && !prev.isGlobal)) {
+                reservedEntries.set(rtVal, { kwTokenInt, isGlobal, rtCps, len: rtVal.length });
+              }
+            }
+          }
+          if (reservedEntries.size > 0) {
+            lexerCode += `        // Reserved keywords override (bucketed by length & first code point)\n`;
+            const rtByLen = new Map<number, { kwTokenInt: number; isGlobal: boolean; rtCps: number[] }[]>();
+            for (const entry of reservedEntries.values()) {
+              let bucket = rtByLen.get(entry.len);
               if (!bucket) {
                 bucket = [];
-                rtByLen.set(rtVal.length, bucket);
+                rtByLen.set(entry.len, bucket);
               }
-              bucket.push({ kwTokenInt, rtCps });
+              bucket.push(entry);
             }
             lexerCode += `        switch (lexLen) {\n`;
             for (const [len, bucket] of rtByLen.entries()) {
@@ -835,14 +1062,19 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
               lexerCode += `            let firstCp2 = peekChar(lexPos);\n`;
               lexerCode += `            let kwMatch2 = false;\n`;
               lexerCode += `            let cPos2: u32 = 0;\n`;
-              for (const { kwTokenInt, rtCps } of bucket) {
+              for (const { kwTokenInt, isGlobal, rtCps } of bucket) {
+                const rtEnum = idToEnumName.get(kwTokenInt) ?? `T_${kwTokenInt}`;
                 lexerCode += `            if (firstCp2 == ${rtCps[0]}) {\n`;
                 lexerCode += `              kwMatch2 = true; cPos2 = lexPos + peekCharLen(lexPos);\n`;
                 for (let i = 1; i < rtCps.length; i++) {
                   lexerCode += `              if (kwMatch2 && peekChar(cPos2) == ${rtCps[i]}) { cPos2 += peekCharLen(cPos2); } else { kwMatch2 = false; }\n`;
                 }
                 lexerCode += `              if (kwMatch2 && (cPos2 - lexPos == lexLen)) {\n`;
-                lexerCode += `                return SyntaxType.T_${kwTokenInt};\n`;
+                if (isGlobal) {
+                  lexerCode += `                return SyntaxType.${rtEnum};\n`;
+                } else {
+                  lexerCode += `                if (expected_tokens == 0 || load<u8>(expected_tokens + <u32>SyntaxType.${rtEnum}) == 1) return SyntaxType.${rtEnum};\n`;
+                }
                 lexerCode += `              }\n`;
                 lexerCode += `            }\n`;
               }
@@ -853,7 +1085,16 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
           }
         }
 
-        lexerCode += `        return SyntaxType.${tokenName};\n`;
+        if (immediateEnumNames.has(tokenName)) {
+          const fallbackNonImm = tokenNames.find((tName) => !immediateEnumNames.has(tName));
+          if (fallbackNonImm) {
+            lexerCode += `        return skippedExtras ? SyntaxType.${fallbackNonImm} : SyntaxType.${tokenName};\n`;
+          } else {
+            lexerCode += `        return SyntaxType.${tokenName};\n`;
+          }
+        } else {
+          lexerCode += `        return SyntaxType.${tokenName};\n`;
+        }
         lexerCode += `      }\n`;
       }
     }
@@ -916,7 +1157,7 @@ export function setCurrentScannerState(val: u32): void { currentScannerState = v
       }
       helpers += `      if (mMatch && rPos <= inputLength) {\n`;
       helpers += `        let afterCh = rPos < inputLength ? peekChar(rPos) : 0;\n`;
-      helpers += `        if (afterCh == 0 || !((afterCh >= 65 && afterCh <= 90) || (afterCh >= 97 && afterCh <= 122) || afterCh == 95 || (afterCh >= 48 && afterCh <= 57))) {\n`;
+      helpers += `        if (afterCh == 0 || !${wordCharExpr("afterCh")}) {\n`;
       helpers += `          lexLen = <u32>(rPos - startPos);\n`;
       helpers += `          srcLexLen = lexLen;\n`;
       helpers += `          return SyntaxType.T_${tokenInt};\n`;
@@ -1028,12 +1269,23 @@ export function scanIsEof(): boolean {
   }
 
   lexerCode += `
+@inline
+export function saveLexerAuxState(): u64 {
+  let state: u64 = 0;
+${grammar.scanner ? "  if (scanMarkedEnd) state |= 1;\n" : ""}${hasLayoutPrimitive ? "  state |= ((<u64>(layoutIndentTop & 0xff)) << 8) | ((<u64>(layoutPendingDedents & 0xff)) << 16) | (layoutAtLineStart ? (<u64>1 << 24) : 0);\n" : ""}  return state;
+}
+
+@inline
+export function restoreLexerAuxState(saved: u64): void {
+${grammar.scanner ? "  scanMarkedEnd = (saved & 1) != 0;\n" : ""}${hasLayoutPrimitive ? "  layoutIndentTop = <i32>((saved >> 8) & 0xff);\n  layoutPendingDedents = <i32>((saved >> 16) & 0xff);\n  layoutAtLineStart = ((saved >> 24) & 1) != 0;\n" : ""}}
+
 export function peekToken(pos: u32): i32 {
   let savedLexPos = lexPos;
   let savedLexLen = lexLen;
   let savedSrcLexPos = srcLexPos;
   let savedSrcLexLen = srcLexLen;
   let savedScannerState = currentScannerState;
+  let savedAux = saveLexerAuxState();
 
   let tok = lex(pos);
 
@@ -1042,7 +1294,7 @@ export function peekToken(pos: u32): i32 {
   srcLexPos = savedSrcLexPos;
   srcLexLen = savedSrcLexLen;
   currentScannerState = savedScannerState;
-
+  restoreLexerAuxState(savedAux);
   return tok;
 }
 `;

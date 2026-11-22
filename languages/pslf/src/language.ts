@@ -6,6 +6,7 @@
 
 import { cardDeckRules, language } from "@modelscript/dsl";
 import { formatPowerFlowReport, solvePowerFlow } from "@modelscript/psse";
+import { registerBuiltInPslfLibrarySync } from "./catalog/library-package-adapter.js";
 import { lintPslfEpc } from "./lints/index.js";
 import { parsePslfEpc } from "./parser/epc-parser.js";
 import { pslfEpcToPsseRaw } from "./projections/pslf-to-psse.js";
@@ -96,3 +97,6 @@ export const pslfLanguage = language({
 });
 
 export default pslfLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInPslfLibrarySync();

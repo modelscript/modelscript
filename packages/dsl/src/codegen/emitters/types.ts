@@ -4,20 +4,11 @@ import { NormalizedGrammar } from "../../dsl/grammar.js";
 import { LanguageOptions } from "../../dsl/language.js";
 
 /**
- * Generates AssemblyScript / TypeScript enum definitions (`SyntaxType`, `NodeFlag`, `FieldId`)
- * corresponding to the grammar's symbols, fields, and flag attributes.
- *
- * @param grammar The user-defined language DSL options object.
- * @param normalized The normalized grammar containing symbol-to-int mapping tables.
- * @returns The generated TypeScript/AssemblyScript source code string for enum definitions.
+ * Builds the canonical mapping from numeric symbol ID (`symToInt` value) to its generated
+ * `SyntaxType` enum member name. Shared between `generateTypes` and `generateLexer` so enum
+ * references are guaranteed to match even under name collisions or digit-prefixed symbols.
  */
-export function generateTypes(grammar: LanguageOptions, normalized: NormalizedGrammar): string {
-  let typeCode = `// Token and Node Types for ${grammar.name}\n`;
-
-  typeCode += `export enum SyntaxType {\n`;
-  typeCode += `  ERROR = 0,\n`;
-
-  // Create reverse mapping from integer ID to symbol string (preferring human-readable names)
+export function buildSymIntToEnumNameMap(normalized: NormalizedGrammar): Map<number, string> {
   const intToSym = new Map<number, string>();
   let maxSymId = 0;
   for (const [sym, i] of normalized.symToInt.entries()) {
@@ -34,24 +25,21 @@ export function generateTypes(grammar: LanguageOptions, normalized: NormalizedGr
     }
   }
 
-  // Output symbols in strict sequential ID order
   const emittedNames = new Set<string>();
+  const idToEnumName = new Map<number, string>();
   for (let i = 1; i <= maxSymId; i++) {
     const sym = intToSym.get(i);
     if (!sym) continue;
 
-    // Convert symbol strings (e.g. literals or regex) to safe C-style identifiers
     let safeName = sym.replace(/[^a-zA-Z0-9]/g, "_");
     if (sym.startsWith('"') || sym.startsWith("/")) {
-      safeName = "T_" + i; // Guarantee identifier uniqueness for terminal literals
+      safeName = "T_" + i;
     } else {
       safeName = safeName.toUpperCase();
     }
 
-    // Prepend underscore if identifier starts with a digit
     if (/^[0-9]/.test(safeName)) safeName = "_" + safeName;
 
-    // Deduplicate enum field names using numerical suffixing
     let finalName = safeName;
     let suffix = 1;
     while (emittedNames.has(finalName)) {
@@ -59,6 +47,29 @@ export function generateTypes(grammar: LanguageOptions, normalized: NormalizedGr
       suffix++;
     }
 
+    emittedNames.add(finalName);
+    idToEnumName.set(i, finalName);
+  }
+  return idToEnumName;
+}
+
+/**
+ * Generates AssemblyScript / TypeScript enum definitions (`SyntaxType`, `NodeFlag`, `FieldId`)
+ * corresponding to the grammar's symbols, fields, and flag attributes.
+ *
+ * @param grammar The user-defined language DSL options object.
+ * @param normalized The normalized grammar containing symbol-to-int mapping tables.
+ * @returns The generated TypeScript/AssemblyScript source code string for enum definitions.
+ */
+export function generateTypes(grammar: LanguageOptions, normalized: NormalizedGrammar): string {
+  let typeCode = `// Token and Node Types for ${grammar.name}\n`;
+
+  typeCode += `export enum SyntaxType {\n`;
+  typeCode += `  ERROR = 0,\n`;
+
+  const idToEnumName = buildSymIntToEnumNameMap(normalized);
+  const emittedNames = new Set<string>();
+  for (const [i, finalName] of idToEnumName.entries()) {
     typeCode += `  ${finalName} = ${i},\n`;
     emittedNames.add(finalName);
   }

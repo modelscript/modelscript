@@ -259,24 +259,47 @@ export function rocetsModelEvalDerivatives(
     const designFlow = Math.max(1e-3, getCon(slotPtr, conCount, 0, 50.0));
     const designHead = Math.max(1.0, getCon(slotPtr, conCount, 1, archetypeId == ARCH_INDUCER ? 180.0 : 1500.0));
     const designRpm = Math.max(100.0, getCon(slotPtr, conCount, 2, 30000.0));
-    const eta = clamp(getCon(slotPtr, conCount, 3, archetypeId == ARCH_INDUCER ? 0.68 : 0.78), 0.1, 0.98);
+    const etaDes = clamp(getCon(slotPtr, conCount, 3, archetypeId == ARCH_INDUCER ? 0.68 : 0.78), 0.1, 0.98);
     const shutoffRatio = Math.max(1.05, getCon(slotPtr, conCount, 4, 1.25));
-    const rho = rhoIo > 1.0 ? rhoIo : Math.max(1.0, getCon(slotPtr, conCount, 5, 1141.0));
+    const rhoDes = Math.max(1.0, getCon(slotPtr, conCount, 5, 1141.0));
+    const rho = rhoIo > 1.0 ? rhoIo : rhoDes;
     const cp = Math.max(100.0, getCon(slotPtr, conCount, 6, 1699.0));
 
     const rpm = speedRpm > 1.0 ? speedRpm : designRpm;
     const nRatio = rpm / designRpm;
-    const qRatio = Math.max(0.0, mdotIn) / (designFlow * Math.max(nRatio, 0.05));
-    const headCurve = clamp(shutoffRatio - (shutoffRatio - 1.0) * qRatio * qRatio, 0.1, shutoffRatio);
-    const headM = designHead * nRatio * nRatio * headCurve;
+    const omega = Math.max(1.0, rpm * TWO_PI_OVER_60);
 
+    // Dimensionless flow coefficient phi = (Q / Q_des) / (N / N_des)
+    const qVol = Math.max(0.0, mdotIn) / rho;
+    const qDes = designFlow / rhoDes;
+    const phi = qVol / (qDes * Math.max(nRatio, 0.05));
+
+    // 2D turbopump head coefficient map psi(phi): psi(0) = shutoffRatio, psi(1) = 1.0
+    const dPsi = shutoffRatio - 1.0;
+    const psi = clamp(shutoffRatio + 0.2 * dPsi * phi - 1.2 * dPsi * phi * phi, 0.05, shutoffRatio * 1.15);
+
+    // 2D turbopump efficiency map eta(phi): peaks at design flow phi = 1.0
+    const etaMap = clamp(etaDes * (1.0 - 0.65 * (phi - 1.0) * (phi - 1.0)), 0.15, 0.98);
+
+    // Cavitation suction-specific-speed NPSH check (NASA SP-8107 / Huzel & Huang Ch. 6)
+    // Available NPSH relative to cryogenic NBP vapor pressure (101.325 kPa)
+    const pVapor = P_REF_STD;
+    const npshAvail = Math.max(0.0, (pIn - pVapor) / (rho * G0));
+    const ssSi = archetypeId == ARCH_INDUCER ? 16.0 : 13.5; // dimensionless SI suction specific speed
+    const npshReq =
+      qVol > 1e-6 ? Math.pow((omega * Math.sqrt(qVol)) / ssSi, 4.0 / 3.0) / G0 : 0.0;
+    const cavFactor =
+      npshReq > 1e-6 && npshAvail < npshReq
+        ? clamp(Math.pow(npshAvail / npshReq, 1.5), 0.05, 1.0)
+        : 1.0;
+
+    const headM = designHead * nRatio * nRatio * psi * cavFactor;
     const dp = rho * G0 * headM;
     const pOut = pIn + dp;
     const pHyd = Math.max(0.0, mdotIn) * G0 * headM;
-    const pShaft = pHyd / eta;
-    const omega = Math.max(1.0, rpm * TWO_PI_OVER_60);
+    const pShaft = pHyd / etaMap;
     const torque = pShaft / omega;
-    const tOut = tIn + (G0 * headM * (1.0 - eta)) / (eta * cp);
+    const tOut = tIn + (G0 * headM * (1.0 - etaMap)) / (etaMap * cp);
 
     setIo(slotPtr, 1, pOut);
     setIo(slotPtr, 3, tOut);
@@ -290,18 +313,30 @@ export function rocetsModelEvalDerivatives(
 
   if (archetypeId == ARCH_TURBINE) {
     const prDesign = Math.max(1.05, getCon(slotPtr, conCount, 1, 1.85));
-    const eta = clamp(getCon(slotPtr, conCount, 2, 0.82), 0.1, 0.98);
+    const etaDes = clamp(getCon(slotPtr, conCount, 2, 0.82), 0.1, 0.98);
     const designRpm = Math.max(100.0, getCon(slotPtr, conCount, 3, 30000.0));
     const cpGas = Math.max(200.0, getCon(slotPtr, conCount, 4, 2800.0));
     const gamma = clamp(getCon(slotPtr, conCount, 5, 1.32), 1.05, 1.67);
 
     const pr = pOutIn > 1e3 && pIn > pOutIn ? pIn / pOutIn : prDesign;
     const exp = -(gamma - 1.0) / gamma;
-    const dTIsen = tIn * (1.0 - Math.pow(pr, exp));
-    const dTActual = eta * dTIsen;
+    const prTerm = Math.max(1e-4, 1.0 - Math.pow(pr, exp));
+    const prDesTerm = Math.max(1e-4, 1.0 - Math.pow(prDesign, exp));
+
+    const rpm = speedRpm > 1.0 ? speedRpm : designRpm;
+    const nRatio = rpm / designRpm;
+    // Normalized blade-speed-to-spouting-velocity ratio U/C0 relative to design point
+    const uOverC0 = nRatio / Math.sqrt(prTerm / prDesTerm);
+    const etaMap = clamp(
+      etaDes * (1.0 - 0.75 * (uOverC0 - 1.0) * (uOverC0 - 1.0) - 0.1 * (nRatio - 1.0) * (nRatio - 1.0)),
+      0.15,
+      0.98,
+    );
+
+    const dTIsen = tIn * prTerm;
+    const dTActual = etaMap * dTIsen;
     const tOut = Math.max(50.0, tIn - dTActual);
     const powerW = Math.max(0.0, mdotIn) * cpGas * dTActual;
-    const rpm = speedRpm > 1.0 ? speedRpm : designRpm;
     const omega = Math.max(1.0, rpm * TWO_PI_OVER_60);
     const torque = powerW / omega;
 
@@ -632,7 +667,7 @@ export function rocetsModelEvalDerivatives(
     return;
   }
 
-  // ─── Propellant Property Tables (NIST / NASA Cryogenic & Storable) ───────
+  // ─── Propellant Property Tables (NIST / NASA Real-Fluid Cryogenic & Storable EOS) ──
   if (
     archetypeId == ARCH_FLUID_LOX ||
     archetypeId == ARCH_FLUID_LH2 ||
@@ -645,20 +680,47 @@ export function rocetsModelEvalDerivatives(
     const rhoRef = Math.max(1.0, getCon(slotPtr, conCount, 1, 1141.0));
     const cp = Math.max(100.0, getCon(slotPtr, conCount, 2, 1699.0));
     const alphaT = getCon(slotPtr, conCount, 3, 0.0043);
-    const kappaP = getCon(slotPtr, conCount, 4, 1.5e-9);
+    const kappaP = Math.max(1e-12, getCon(slotPtr, conCount, 4, 1.5e-9));
     const hRef = getCon(slotPtr, conCount, 5, -133400.0);
 
     const pUse = pIn > 1e3 ? pIn : P_REF_STD;
     const tUse = getIo(slotPtr, 2) > 1.0 ? getIo(slotPtr, 2) : tRef;
-    const factor = clamp(1.0 - alphaT * (tUse - tRef) + kappaP * (pUse - P_REF_STD), 0.15, 2.0);
-    const rho = rhoRef * factor;
-    const enthalpy = hRef + cp * (tUse - tRef) + (pUse - P_REF_STD) / rho;
+    const dT = tUse - tRef;
+    const dP = pUse - P_REF_STD;
+
+    const isCryogenic =
+      archetypeId == ARCH_FLUID_LOX ||
+      archetypeId == ARCH_FLUID_LH2 ||
+      archetypeId == ARCH_FLUID_CH4;
+
+    let rho: f64;
+    let bEff: f64;
+    if (isCryogenic) {
+      // Nonlinear Tait real-fluid cryogenic liquid EOS:
+      // B(T) = (1 / kappa_P) * exp(-2.5 * alpha_T * dT), C_tait = 0.0894
+      const cTait: f64 = 0.0894;
+      const b0 = (1.0 / kappaP) * Math.exp(clamp(-2.5 * alphaT * dT, -2.5, 2.5));
+      const rhoSat = rhoRef * Math.exp(clamp(-alphaT * dT - 0.5 * alphaT * alphaT * dT * dT, -1.5, 0.6));
+      const pTerm = dP > 0.0 ? cTait * Math.log(1.0 + dP / (cTait * b0)) : dP / b0;
+      const denom = clamp(1.0 - pTerm, 0.35, 2.5);
+      rho = rhoSat / denom;
+      bEff = b0 * (1.0 + Math.max(0.0, dP) / (cTait * b0));
+    } else {
+      const factor = clamp(1.0 - alphaT * dT + kappaP * dP, 0.15, 2.0);
+      rho = rhoRef * factor;
+      bEff = 1.0 / kappaP;
+    }
+
+    // Exact thermodynamic Maxwell relation: (dh/dP)_T = (1 - alpha_T * T) / rho
+    const enthalpy = hRef + cp * dT + ((1.0 - alphaT * tUse) * dP) / rho;
+    const soundSpeed = Math.sqrt(bEff / Math.max(1.0, rho));
 
     setIo(slotPtr, 1, pUse);
     setIo(slotPtr, 3, tUse);
     setIo(slotPtr, 5, mdotIn);
     setIo(slotPtr, 10, rho);
     setIo(slotPtr, 11, enthalpy);
+    setIo(slotPtr, 15, soundSpeed);
     return;
   }
 }

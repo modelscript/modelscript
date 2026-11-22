@@ -44,15 +44,6 @@ import {
   type SignedComplianceAttestation,
 } from "./compliance/dhf-attestation.js";
 import {
-  buildRegulatoryDossier,
-  compileNercRsawDocument,
-  compileOscalAssessmentResults,
-  generateCeiiWatermarkHeader,
-  type CompiledRegulatoryDossier,
-  type DossierCompilationInput,
-  type RegulatoryDossierFinding,
-} from "./compliance/regulatory-dossier.js";
-import {
   createExportComplianceMiddleware,
   extractRequestCountry,
   extractRequestRegion,
@@ -65,6 +56,15 @@ import {
   type ExportControlAuditLogger,
   type GeoLocationLookupAdapter,
 } from "./compliance/export-control.js";
+import {
+  buildRegulatoryDossier,
+  compileNercRsawDocument,
+  compileOscalAssessmentResults,
+  generateCeiiWatermarkHeader,
+  type CompiledRegulatoryDossier,
+  type DossierCompilationInput,
+  type RegulatoryDossierFinding,
+} from "./compliance/regulatory-dossier.js";
 import {
   auditTelecomSupplyChain,
   evaluateFccPart4Outage,
@@ -86,6 +86,12 @@ import {
   type BlackboxFmuEntitlementResult,
   type EnterpriseDesktopAirgapReport,
 } from "./desktop/desktop-compliance.js";
+import {
+  ENTERPRISE_DESKTOP_BRIDGE_CONFIGS,
+  EnterpriseDesktopBridgeConnector,
+  registerEnterpriseDesktopConnectors,
+  type EnterpriseDesktopBridgeConfig,
+} from "./hil-plm/desktop-adapters.js";
 import {
   createEnterpriseHilPlmRouter,
   ENTERPRISE_HIL_TARGETS,
@@ -173,7 +179,6 @@ export {
   compileNercRsawDocument,
   compileOscalAssessmentResults,
   computeAttestationDigest,
-  generateCeiiWatermarkHeader,
   createAirgapSecurityHeadersMiddleware,
   createDhfAttestationRouter,
   createEnterpriseComplianceRouter,
@@ -184,12 +189,15 @@ export {
   createGatekeeperRouter,
   DEFAULT_ENTERPRISE_PUBLIC_KEY_PEM,
   defaultOidcService,
+  ENTERPRISE_DESKTOP_BRIDGE_CONFIGS,
   ENTERPRISE_HIL_TARGETS,
   ENTERPRISE_PLM_CONNECTORS,
+  EnterpriseDesktopBridgeConnector,
   evaluateFccPart4Outage,
   extractRequestCountry,
   extractRequestRegion,
   FCC_COVERED_LIST_VENDORS,
+  generateCeiiWatermarkHeader,
   generateDirsEmergencySnapshot,
   generateLicenseKeyPair,
   generateNorsFilingDossier,
@@ -205,6 +213,7 @@ export {
   OFAC_SANCTIONED_COUNTRIES,
   OFAC_SANCTIONED_REGIONS,
   OidcService,
+  registerEnterpriseDesktopConnectors,
   requireEnterpriseFeature,
   resolveActiveEnterpriseLicense,
   runGatekeeperScreeningPipeline,
@@ -223,8 +232,8 @@ export {
   type AttestationChainVerificationResult,
   type BlackboxFmuEntitlementResult,
   type CliEntitlementCheckResult,
-  type ComplianceAttestationPayload,
   type CompiledRegulatoryDossier,
+  type ComplianceAttestationPayload,
   type DirsSnapshotInput,
   type DirsSnapshotReport,
   type DossierCompilationInput,
@@ -233,6 +242,7 @@ export {
   type EnterpriseAuthRouters,
   type EnterpriseComplianceContext,
   type EnterpriseDesktopAirgapReport,
+  type EnterpriseDesktopBridgeConfig,
   type EnterpriseEntitlementCheck,
   type EnterpriseFeature,
   type EnterpriseHilTargetDescriptor,

@@ -8,12 +8,39 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInMlxtranLibraryRegistered, lookupMlxtranModelSchema } from "../catalog/library-package-adapter.js";
 import type { MlxtranDocument } from "../types.js";
 
 export interface MlxtranDaeOptions {
   builder?: DAEBuilder | undefined;
   modelName?: string | undefined;
   defaultDose?: number | undefined;
+}
+
+/**
+ * Resolves parameter defaults for an MLXTRAN model from `@modelscript/mlxtran-std-lib`,
+ * merging any user-specified named overrides over the cleanroom schema defaults.
+ */
+export function resolveMlxtranSchemaParamDefaults(
+  modelName: string,
+  overrides: Record<string, number> = {},
+): Record<string, number> {
+  ensureBuiltInMlxtranLibraryRegistered();
+  const resolved: Record<string, number> = {};
+  const schema = lookupMlxtranModelSchema(modelName);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (typeof p.defaultValue === "number" && Number.isFinite(p.defaultValue)) {
+        resolved[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (Number.isFinite(v)) {
+      resolved[k] = v;
+    }
+  }
+  return resolved;
 }
 
 export function tokenizeMlxtranExpr(expr: string): string[] {
@@ -76,6 +103,7 @@ export function tokenizeMlxtranExpr(expr: string): string[] {
 }
 
 export function lowerMlxtranToDae(doc: MlxtranDocument, options?: MlxtranDaeOptions): DAEBuilder {
+  ensureBuiltInMlxtranLibraryRegistered();
   const model = doc.model;
   const rawName = options?.modelName ?? model.name ?? "MlxtranModel";
   const modelName = rawName.replace(/[^a-zA-Z0-9_]/g, "_") || "MlxtranModel";

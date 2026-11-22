@@ -9,13 +9,16 @@ import { fileURLToPath } from "node:url";
 import {
   POWERFACTORY_MODEL_SPECS,
   PowerFactoryTocCurve,
+  assessPowerFactoryCables,
   createFmuPowerFactoryInstance,
   evalPowerFactoryTocTripTime,
   fmuToPowerFactoryDsl,
   getPowerFactorySchemasFromLibraries,
   instantiatePowerFactoryWasmModel,
   lookupPowerFactoryModelSchema,
+  lowerPowerFactoryToDae,
   registerBuiltInPowerFactoryLibrarySync,
+  type PowerFactoryModel,
 } from "../src/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -87,7 +90,7 @@ describe("@modelscript/powerfactory — Cleanroom Standard Library (modelscript.
     const excDrop = exc.doStep(0.02, 0.02, { ...baseIo, eterm: 0.92 });
     assert.ok(excDrop.efd > baseIo.efd, `Expected vco_ST1A to boost efd on voltage dip, got ${excDrop.efd}`);
 
-    // 3. Governor (gov_HYGOV): flat-start < 1e-6, reduces pmech on overspeed
+    // 3. Governor (gov_HYGOV): flat-start < 1e-6, reduces pmech on overspeed (after Tw water-hammer transient)
     const gov = instantiatePowerFactoryWasmModel({ modelType: "gov_HYGOV", name: "GOV1" });
     assert.ok(gov, "Expected gov_HYGOV WASM instance");
     gov.init(baseIo);
@@ -96,7 +99,7 @@ describe("@modelscript/powerfactory — Cleanroom Standard Library (modelscript.
       `Expected gov_HYGOV flat-start residual < 1e-6, got ${gov.checkFlatStart()}`,
     );
     let govOut = gov.doStep(0.05, 0.05, { ...baseIo, speedDev: 0.01 });
-    for (let k = 1; k < 20; k++) {
+    for (let k = 1; k < 60; k++) {
       govOut = gov.doStep(0.05 * (k + 1), 0.05, { ...baseIo, speedDev: 0.01 });
     }
     assert.ok(govOut.pmech < baseIo.pmech, `Expected gov_HYGOV to reduce pmech on overspeed, got ${govOut.pmech}`);
@@ -191,5 +194,146 @@ describe("@modelscript/powerfactory — Cleanroom Standard Library (modelscript.
     }));
     const out = fmuInst.doStep(0.02, 0.02, { eterm: 1.0, speedDev: 0.002, efd: 1.5, pmech: 0.8 });
     assert.ok(Math.abs(out.pmech - 0.75) < 1e-9);
+  });
+
+  it("automatically registers stdlib and resolves equipment defaults in DAE lowering and cable assessment", () => {
+    const model: PowerFactoryModel = {
+      name: "AutoCatalogGrid",
+      substations: new Map(),
+      bays: new Map(),
+      terminals: new Map([
+        ["T1", { id: "T1", loc_name: "Bus1", uknom: 0, fnom: 50 }],
+        ["T2", { id: "T2", loc_name: "Bus2", uknom: 110, fnom: 50 }],
+      ]),
+      lineTypes: new Map(),
+      lines: new Map([
+        ["L1", { id: "L1", loc_name: "Cable1", bus1Id: "T1", bus2Id: "T2", dline: 2.0, typId: "TypLne_OHL_110kV" }],
+      ]),
+      transformer2wTypes: new Map(),
+      transformers2w: new Map(),
+      transformer3wTypes: new Map(),
+      transformers3w: new Map(),
+      generatorTypes: new Map(),
+      generators: new Map([
+        ["G1", { id: "G1", loc_name: "Gen1", bus1Id: "T1", pgini: 50, qgini: 10, usetp: 0, typId: "TypSym_Thermal" }],
+      ]),
+      staticGenerators: new Map(),
+      loads: new Map(),
+      shunts: new Map(),
+      switches: new Map(),
+      graphics: new Map(),
+      desktops: new Map(),
+    };
+
+    const dae = lowerPowerFactoryToDae(model);
+    assert.ok(globalLibraryRegistry.getPackagesForLanguage("powerfactory").length > 0);
+    assert.notEqual(dae.lookupVariable("U_T1_nom"), -1);
+    assert.notEqual(dae.lookupVariable("U_set_G1"), -1);
+
+    const cables = assessPowerFactoryCables(model);
+    assert.equal(cables.length, 1);
+    assert.ok(cables[0]!.ratedContinuousAmpacityA > 0);
+  });
+
+  it("verifies full-order IEEE/WECC fidelity: 6-state TypSym_Thermal fault, gov_HYGOV water hammer, vco_ST1A lead-lag/rate-feedback, vco_EXAC1, pss_PSS2A", () => {
+    const baseIo = {
+      eterm: 1.0,
+      speedDev: 0.0,
+      efd: 1.5,
+      pmech: 0.8,
+      pelec: 0.8,
+      qelec: 0.2,
+      vr: 1.0,
+      vi: 0.0,
+      freqHz: 50.0,
+      iMeas: 0.5,
+      pref: 0.8,
+    };
+
+    // 1. 6-state TypSym_Thermal: exact flat-start < 1e-6 and subtransient 3-phase fault current surge
+    const sym = instantiatePowerFactoryWasmModel({ modelType: "TypSym_Thermal", name: "G_Thermal" });
+    assert.ok(sym, "Expected TypSym_Thermal WASM instance");
+    const nSymStates = sym.init(baseIo);
+    assert.equal(nSymStates, 6, `Expected 6 dynamic states for TypSym_Thermal, got ${nSymStates}`);
+    assert.ok(
+      sym.checkFlatStart() < 1e-6,
+      `Expected TypSym_Thermal flat-start residual < 1e-6, got ${sym.checkFlatStart()}`,
+    );
+    const preFault = sym.doStep(0.005, 0.005, baseIo);
+    const iPre = Math.hypot(preFault.irInj, preFault.iiInj);
+    const faultOut = sym.doStep(0.01, 0.005, { ...baseIo, eterm: 0.25, vr: 0.25, vi: 0.0 });
+    const iFault = Math.hypot(faultOut.irInj, faultOut.iiInj);
+    assert.ok(
+      iFault > iPre * 2.5,
+      `Expected subtransient fault current surge (>2.5x pre-fault), got ${iFault} vs ${iPre}`,
+    );
+    assert.ok(faultOut.pelec < baseIo.pmech, `Expected electrical power drop during fault, got ${faultOut.pelec}`);
+
+    // 2. gov_HYGOV: non-minimum-phase water-hammer inverse response on step frequency drop (dw = -0.01)
+    const gov = instantiatePowerFactoryWasmModel({ modelType: "gov_HYGOV", name: "HYGOV_1" });
+    assert.ok(gov, "Expected gov_HYGOV WASM instance");
+    assert.equal(gov.init(baseIo), 4);
+    assert.ok(gov.checkFlatStart() < 1e-6);
+    let minPmech = baseIo.pmech;
+    let finalPmech = baseIo.pmech;
+    for (let k = 0; k < 120; k++) {
+      const out = gov.doStep(0.05 * (k + 1), 0.05, { ...baseIo, speedDev: -0.01 });
+      if (k < 15 && out.pmech < minPmech) minPmech = out.pmech;
+      finalPmech = out.pmech;
+    }
+    assert.ok(
+      minPmech < baseIo.pmech - 0.005,
+      `Expected gov_HYGOV initial water-hammer inverse dip below ${baseIo.pmech}, got min=${minPmech}`,
+    );
+    assert.ok(
+      finalPmech > baseIo.pmech + 0.01,
+      `Expected gov_HYGOV steady rise above ${baseIo.pmech} after water accelerates, got final=${finalPmech}`,
+    );
+
+    // 3. vco_ST1A: lead-lag & rate-feedback damping (kf > 0 vs kf = 0)
+    const excNoFb = instantiatePowerFactoryWasmModel({
+      modelType: "vco_ST1A",
+      name: "AVR_NoFb",
+      params: { kf: 0.0, tf: 1.0 },
+    });
+    const excWithFb = instantiatePowerFactoryWasmModel({
+      modelType: "vco_ST1A",
+      name: "AVR_WithFb",
+      params: { kf: 0.08, tf: 1.0 },
+    });
+    assert.ok(excNoFb && excWithFb);
+    assert.equal(excNoFb.init(baseIo), 4);
+    assert.equal(excWithFb.init(baseIo), 4);
+    assert.ok(excNoFb.checkFlatStart() < 1e-6);
+    assert.ok(excWithFb.checkFlatStart() < 1e-6);
+    let efdNoFb = baseIo.efd;
+    let efdWithFb = baseIo.efd;
+    for (let k = 0; k < 10; k++) {
+      efdNoFb = excNoFb.doStep(0.01 * (k + 1), 0.01, { ...baseIo, eterm: 0.94 }).efd;
+      efdWithFb = excWithFb.doStep(0.01 * (k + 1), 0.01, { ...baseIo, eterm: 0.94 }).efd;
+    }
+    assert.ok(efdNoFb > baseIo.efd && efdWithFb > baseIo.efd);
+    assert.ok(
+      efdWithFb < efdNoFb,
+      `Expected rate feedback (kf=0.08) to damp vco_ST1A efd excursion (${efdWithFb} < ${efdNoFb})`,
+    );
+
+    // 4. vco_EXAC1 (AC1A with F_EX), vco_EXDC1, gov_TGOV1, pss_PSS2A
+    const ac1a = instantiatePowerFactoryWasmModel({ modelType: "vco_EXAC1", name: "AVR_AC1A" });
+    const dc1a = instantiatePowerFactoryWasmModel({ modelType: "vco_EXDC1", name: "AVR_DC1A" });
+    const tgov = instantiatePowerFactoryWasmModel({ modelType: "gov_TGOV1", name: "GOV_TGOV1" });
+    const pss = instantiatePowerFactoryWasmModel({ modelType: "pss_PSS2A", name: "PSS_2A" });
+    assert.ok(ac1a && dc1a && tgov && pss);
+    assert.equal(ac1a.init(baseIo), 5);
+    assert.equal(dc1a.init(baseIo), 5);
+    assert.equal(tgov.init(baseIo), 2);
+    assert.equal(pss.init(baseIo), 4);
+    assert.ok(ac1a.checkFlatStart() < 1e-6);
+    assert.ok(dc1a.checkFlatStart() < 1e-6);
+    assert.ok(tgov.checkFlatStart() < 1e-6);
+    assert.ok(pss.checkFlatStart() < 1e-6);
+
+    const pssStep = pss.doStep(0.02, 0.02, { ...baseIo, speedDev: 0.005 });
+    assert.ok(pssStep.vsPss > 0 && pssStep.vsPss <= 0.1, `Expected bounded pss_PSS2A output, got ${pssStep.vsPss}`);
   });
 });

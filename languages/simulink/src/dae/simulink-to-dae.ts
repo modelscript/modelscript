@@ -12,15 +12,52 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import {
+  ensureBuiltInSimulinkLibraryRegistered,
+  lookupSimulinkBlockSchema,
+} from "../catalog/library-package-adapter.js";
 import { parseVectorString } from "../lints/simulink-linters.js";
-import type { SimulinkModel, SimulinkSystem } from "../types.js";
+import type { SimulinkBlock, SimulinkModel, SimulinkSystem } from "../types.js";
 
 export interface SimulinkLoweringOptions {
   builder?: DAEBuilder | undefined;
   modelName?: string | undefined;
 }
 
+function getSchemaDefaultParam(blockType: string, paramKey: string): number | string | undefined {
+  const schema = lookupSimulinkBlockSchema(blockType);
+  if (!schema) return undefined;
+  const lowerKey = paramKey.toLowerCase();
+  const param = schema.parameters.find((p) => p.key.toLowerCase() === lowerKey);
+  const val = param?.defaultValue;
+  return typeof val === "boolean" ? undefined : val;
+}
+
+function resolveNumericParam(block: SimulinkBlock, paramKey: string, fallback: number, schemaKey?: string): number {
+  const raw = block.parameters.get(paramKey);
+  if (raw !== undefined) {
+    const parsed = Number.parseFloat(String(raw));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  const schemaDef = getSchemaDefaultParam(block.type, schemaKey ?? paramKey);
+  if (typeof schemaDef === "number" && Number.isFinite(schemaDef)) return schemaDef;
+  if (typeof schemaDef === "string") {
+    const parsed = Number.parseFloat(schemaDef);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function resolveStringParam(block: SimulinkBlock, paramKey: string, fallback: string, schemaKey?: string): string {
+  const raw = block.parameters.get(paramKey);
+  if (raw !== undefined) return String(raw);
+  const schemaDef = getSchemaDefaultParam(block.type, schemaKey ?? paramKey);
+  if (schemaDef !== undefined) return String(schemaDef);
+  return fallback;
+}
+
 export function lowerSimulinkToDae(model: SimulinkModel, options?: SimulinkLoweringOptions): DAEBuilder {
+  ensureBuiltInSimulinkLibraryRegistered();
   const name = options?.modelName ?? model.name ?? "SimulinkModel";
   const dae = options?.builder ?? new DAEBuilder(undefined, name);
 
@@ -64,8 +101,7 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""):
       const varType = VarType.Real;
       const variability = block.type === "Constant" ? Variability.Parameter : Variability.Continuous;
       const causality = block.type === "Inport" && !prefix ? Causality.Input : Causality.Local;
-      const startVal =
-        block.type === "Integrator" ? Number.parseFloat(String(block.parameters.get("InitialCondition") ?? "0")) : 0.0;
+      const startVal = block.type === "Integrator" ? resolveNumericParam(block, "InitialCondition", 0.0) : 0.0;
 
       dae.addVariable(varName, varType, variability, causality, Number.isFinite(startVal) ? startVal : 0.0);
       const varExpr = dae.addNameExpr(varName);
@@ -92,9 +128,8 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""):
       // Constant
       // -----------------------------------------------------------------------
       case "Constant": {
-        const valStr = String(block.parameters.get("Value") ?? "1.0");
-        const val = Number.parseFloat(valStr);
-        const valExpr = dae.addRealLiteral(Number.isFinite(val) ? val : 1.0);
+        const val = resolveNumericParam(block, "Value", 1.0);
+        const valExpr = dae.addRealLiteral(val);
         dae.addEquation(EqKind.Simple, outExpr, valExpr);
         break;
       }
@@ -113,9 +148,8 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""):
       // Gain: y = k * u
       // -----------------------------------------------------------------------
       case "Gain": {
-        const kStr = String(block.parameters.get("Gain") ?? "1.0");
-        const k = Number.parseFloat(kStr);
-        const kExpr = dae.addRealLiteral(Number.isFinite(k) ? k : 1.0);
+        const k = resolveNumericParam(block, "Gain", 1.0);
+        const kExpr = dae.addRealLiteral(k);
         const uExpr = getInputExpr(block.name, 1);
         const rhs = dae.addBinaryExpr(BinOp.Mul, kExpr, uExpr);
         dae.addEquation(EqKind.Simple, outExpr, rhs);
@@ -299,8 +333,8 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""):
       case "UnitDelay": {
         const uExpr = getInputExpr(block.name, 1);
         const xPrevName = `${qualify(block.name)}.x_prev`;
-        const x0 = Number.parseFloat(String(block.parameters.get("InitialCondition") ?? "0"));
-        const tsRaw = Number.parseFloat(String(block.parameters.get("SampleTime") ?? "0.05"));
+        const x0 = resolveNumericParam(block, "InitialCondition", 0.0);
+        const tsRaw = resolveNumericParam(block, "SampleTime", 0.05);
         const ts = Number.isFinite(tsRaw) && tsRaw > 0 ? tsRaw : 0.05;
         dae.addVariable(
           xPrevName,
@@ -326,13 +360,10 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""):
       // -----------------------------------------------------------------------
       case "PIDController": {
         const uExpr = getInputExpr(block.name, 1);
-        const kpRaw = Number.parseFloat(String(block.parameters.get("P") ?? "1.0"));
-        const kiRaw = Number.parseFloat(String(block.parameters.get("I") ?? "1.0"));
-        const kdRaw = Number.parseFloat(String(block.parameters.get("D") ?? "0.0"));
-        const nRaw = Number.parseFloat(String(block.parameters.get("N") ?? "100.0"));
-        const kp = Number.isFinite(kpRaw) ? kpRaw : 1.0;
-        const ki = Number.isFinite(kiRaw) ? kiRaw : 1.0;
-        const kd = Number.isFinite(kdRaw) ? kdRaw : 0.0;
+        const kp = resolveNumericParam(block, "P", 1.0);
+        const ki = resolveNumericParam(block, "I", 1.0);
+        const kd = resolveNumericParam(block, "D", 0.0);
+        const nRaw = resolveNumericParam(block, "N", 100.0);
         const nFilt = Number.isFinite(nRaw) && nRaw !== 0 ? nRaw : 100.0;
 
         const xiName = `${qualify(block.name)}.x_i`;
@@ -367,14 +398,16 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""):
       // -----------------------------------------------------------------------
       case "StateSpace": {
         const uExpr = getInputExpr(block.name, 1);
-        const aRows = parseMatrixParam(String(block.parameters.get("A") ?? "-1"));
-        const bRows = parseMatrixParam(String(block.parameters.get("B") ?? "1"));
-        const cRows = parseMatrixParam(String(block.parameters.get("C") ?? "1"));
-        const dRows = parseMatrixParam(String(block.parameters.get("D") ?? "0"));
+        const aRows = parseMatrixParam(resolveStringParam(block, "A", "-1"));
+        const bRows = parseMatrixParam(resolveStringParam(block, "B", "1"));
+        const cRows = parseMatrixParam(resolveStringParam(block, "C", "1"));
+        const dRows = parseMatrixParam(resolveStringParam(block, "D", "0"));
         const nStates = Math.max(1, aRows.length);
-        const x0Vec = parseVectorString(
-          String(block.parameters.get("X0") ?? block.parameters.get("InitialCondition") ?? "0"),
-        );
+        const x0Raw =
+          block.parameters.get("X0") ??
+          block.parameters.get("InitialCondition") ??
+          resolveStringParam(block, "X0", "0");
+        const x0Vec = parseVectorString(String(x0Raw));
 
         const stateExprs: number[] = [];
         for (let i = 0; i < nStates; i++) {
@@ -431,10 +464,10 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""):
       // -----------------------------------------------------------------------
       case "Saturation": {
         const uExpr = getInputExpr(block.name, 1);
-        const upper = Number.parseFloat(String(block.parameters.get("UpperLimit") ?? "0.5"));
-        const lower = Number.parseFloat(String(block.parameters.get("LowerLimit") ?? "-0.5"));
-        const uMax = dae.addRealLiteral(Number.isFinite(upper) ? upper : 0.5);
-        const uMin = dae.addRealLiteral(Number.isFinite(lower) ? lower : -0.5);
+        const upper = resolveNumericParam(block, "UpperLimit", 0.5);
+        const lower = resolveNumericParam(block, "LowerLimit", -0.5);
+        const uMax = dae.addRealLiteral(upper);
+        const uMin = dae.addRealLiteral(lower);
         const clampedLow = dae.addIfElse(dae.addBinaryExpr(BinOp.Lt, uExpr, uMin), uMin, uExpr);
         const clamped = dae.addIfElse(dae.addBinaryExpr(BinOp.Gt, uExpr, uMax), uMax, clampedLow);
         dae.addEquation(EqKind.Simple, outExpr, clamped);
@@ -446,10 +479,10 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""):
       // -----------------------------------------------------------------------
       case "DeadZone": {
         const uExpr = getInputExpr(block.name, 1);
-        const dzStart = Number.parseFloat(String(block.parameters.get("LowerValue") ?? "-0.5"));
-        const dzEnd = Number.parseFloat(String(block.parameters.get("UpperValue") ?? "0.5"));
-        const loExpr = dae.addRealLiteral(Number.isFinite(dzStart) ? dzStart : -0.5);
-        const hiExpr = dae.addRealLiteral(Number.isFinite(dzEnd) ? dzEnd : 0.5);
+        const dzStart = resolveNumericParam(block, "LowerValue", -0.5);
+        const dzEnd = resolveNumericParam(block, "UpperValue", 0.5);
+        const loExpr = dae.addRealLiteral(dzStart);
+        const hiExpr = dae.addRealLiteral(dzEnd);
         const zeroExpr = dae.addRealLiteral(0.0);
         const aboveHi = dae.addBinaryExpr(BinOp.Sub, uExpr, hiExpr);
         const belowLo = dae.addBinaryExpr(BinOp.Sub, uExpr, loExpr);
@@ -466,8 +499,8 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""):
         const u1 = getInputExpr(block.name, 1);
         const u2 = getInputExpr(block.name, 2);
         const u3 = getInputExpr(block.name, 3);
-        const thresh = Number.parseFloat(String(block.parameters.get("Threshold") ?? "0.0"));
-        const threshExpr = dae.addRealLiteral(Number.isFinite(thresh) ? thresh : 0.0);
+        const thresh = resolveNumericParam(block, "Threshold", 0.0);
+        const threshExpr = dae.addRealLiteral(thresh);
         const cond = dae.addBinaryExpr(BinOp.Gte, u2, threshExpr);
         dae.addEquation(EqKind.Simple, outExpr, dae.addIfElse(cond, u1, u3));
         break;
@@ -489,12 +522,9 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""):
       // Step / Ramp / Sine source blocks
       // -----------------------------------------------------------------------
       case "Step": {
-        const stepTimeRaw = Number.parseFloat(String(block.parameters.get("Time") ?? "1.0"));
-        const beforeRaw = Number.parseFloat(String(block.parameters.get("Before") ?? "0.0"));
-        const afterRaw = Number.parseFloat(String(block.parameters.get("After") ?? "1.0"));
-        const stepTime = dae.addRealLiteral(Number.isFinite(stepTimeRaw) ? stepTimeRaw : 1.0);
-        const beforeExpr = dae.addRealLiteral(Number.isFinite(beforeRaw) ? beforeRaw : 0.0);
-        const afterExpr = dae.addRealLiteral(Number.isFinite(afterRaw) ? afterRaw : 1.0);
+        const stepTime = dae.addRealLiteral(resolveNumericParam(block, "Time", 1.0));
+        const beforeExpr = dae.addRealLiteral(resolveNumericParam(block, "Before", 0.0));
+        const afterExpr = dae.addRealLiteral(resolveNumericParam(block, "After", 1.0));
         const timeExpr = dae.addNameExpr("time");
         const cond = dae.addBinaryExpr(BinOp.Gte, timeExpr, stepTime);
         dae.addEquation(EqKind.Simple, outExpr, dae.addIfElse(cond, afterExpr, beforeExpr));
@@ -502,12 +532,9 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""):
       }
 
       case "Ramp": {
-        const slopeRaw = Number.parseFloat(String(block.parameters.get("Slope") ?? "1.0"));
-        const startRaw = Number.parseFloat(String(block.parameters.get("Start") ?? "0.0"));
-        const initRaw = Number.parseFloat(String(block.parameters.get("InitialOutput") ?? "0.0"));
-        const slopeExpr = dae.addRealLiteral(Number.isFinite(slopeRaw) ? slopeRaw : 1.0);
-        const startExpr = dae.addRealLiteral(Number.isFinite(startRaw) ? startRaw : 0.0);
-        const initExpr = dae.addRealLiteral(Number.isFinite(initRaw) ? initRaw : 0.0);
+        const slopeExpr = dae.addRealLiteral(resolveNumericParam(block, "Slope", 1.0, "slope"));
+        const startExpr = dae.addRealLiteral(resolveNumericParam(block, "Start", 0.0, "start"));
+        const initExpr = dae.addRealLiteral(resolveNumericParam(block, "InitialOutput", 0.0, "X0"));
         const timeExpr = dae.addNameExpr("time");
         const activeRamp = dae.addBinaryExpr(
           BinOp.Add,
@@ -520,14 +547,10 @@ function lowerSystemToDae(system: SimulinkSystem, dae: DAEBuilder, prefix = ""):
       }
 
       case "Sine": {
-        const ampRaw = Number.parseFloat(String(block.parameters.get("Amplitude") ?? "1.0"));
-        const biasRaw = Number.parseFloat(String(block.parameters.get("Bias") ?? "0.0"));
-        const freqRaw = Number.parseFloat(String(block.parameters.get("Frequency") ?? "1.0"));
-        const phaseRaw = Number.parseFloat(String(block.parameters.get("Phase") ?? "0.0"));
-        const ampExpr = dae.addRealLiteral(Number.isFinite(ampRaw) ? ampRaw : 1.0);
-        const biasExpr = dae.addRealLiteral(Number.isFinite(biasRaw) ? biasRaw : 0.0);
-        const freqExpr = dae.addRealLiteral(Number.isFinite(freqRaw) ? freqRaw : 1.0);
-        const phaseExpr = dae.addRealLiteral(Number.isFinite(phaseRaw) ? phaseRaw : 0.0);
+        const ampExpr = dae.addRealLiteral(resolveNumericParam(block, "Amplitude", 1.0));
+        const biasExpr = dae.addRealLiteral(resolveNumericParam(block, "Bias", 0.0));
+        const freqExpr = dae.addRealLiteral(resolveNumericParam(block, "Frequency", 1.0));
+        const phaseExpr = dae.addRealLiteral(resolveNumericParam(block, "Phase", 0.0));
         const timeExpr = dae.addNameExpr("time");
         const argExpr = dae.addBinaryExpr(BinOp.Add, dae.addBinaryExpr(BinOp.Mul, freqExpr, timeExpr), phaseExpr);
         const sinExpr = dae.addCallExpr("sin", [argExpr]);

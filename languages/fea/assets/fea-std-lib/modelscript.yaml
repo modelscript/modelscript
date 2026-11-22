@@ -1,0 +1,11 @@
+name: "@modelscript/fea-std-lib"
+version: "0.1.0"
+license: "AGPL-3.0-or-later"
+description: "Cleanroom Abaqus & NASTRAN standard element, section, and constitutive material library (26 schemas, cleanroom SVG icons, AssemblyScript WASM runtime)"
+library:
+  category: library
+  language: fea
+  symbols: ./dist/symbols.json
+  diagrams: ./dist/diagrams.json
+  runtime:
+    wasm: ./dist/runtime.wasm

@@ -147,6 +147,43 @@ describe("@modelscript/gensys — Cleanroom Standard Library (modelscript.yaml, 
     assert.ok(Math.abs(frOut.fx - -7_000) < 10.0, `Expected Coulomb force ~ -7000 N, got ${frOut.fx}`);
   });
 
+  it("evaluates cleanroom Kalker FASTSIM 2D contact patch discretization in creep_kalker and wr_coupl_pe3", () => {
+    const kalker = instantiateGensysWasmModel({
+      name: "kk_1",
+      modelType: "creep_kalker",
+      params: { mu0: 0.36, a_hertz: 0.0065, b_hertz: 0.0045, g_steel: 8.2e10, c11: 4.12, c22: 3.67, c23: 1.47 },
+    });
+    assert.ok(kalker, "Expected creep_kalker WASM instance");
+    kalker.init();
+
+    const fn = 75_000;
+    const fMax = 0.36 * fn;
+
+    // 1. Small creepage matches Kalker linear theory
+    const linOut = kalker.eval(0.0, 0.001, { vx: 30.0, normalForce: fn, creepX: 1e-4, creepY: 0.0, spin: 0.0 });
+    const expectedFx = -8.2e10 * 0.0065 * 0.0045 * 4.12 * 1e-4;
+    assert.ok(
+      Math.abs(linOut.fx - expectedFx) / Math.abs(expectedFx) < 0.05,
+      `Expected FASTSIM linear Fx ~ ${expectedFx}, got ${linOut.fx}`,
+    );
+
+    // 2. High creepage saturates at Coulomb limit mu0 * Fn
+    const satOut = kalker.eval(0.001, 0.001, { vx: 30.0, normalForce: fn, creepX: 0.05, creepY: 0.0, spin: 0.0 });
+    assert.ok(
+      Math.abs(satOut.fx) > 0.9 * fMax && Math.abs(satOut.fx) <= fMax + 1e-6,
+      `Expected FASTSIM saturation near ${fMax} N, got ${Math.abs(satOut.fx)} N`,
+    );
+    assert.ok(satOut.aux1 > 0.9 && satOut.aux1 <= 1.0 + 1e-6, `Expected adhesion ratio near 1, got ${satOut.aux1}`);
+
+    // 3. Spin creepage produces opposing lateral force and spin moment Mz < 0 in wr_coupl_pe3
+    const pe3 = instantiateGensysWasmModel({ name: "pe3_spin", modelType: "wr_coupl_pe3" });
+    assert.ok(pe3, "Expected wr_coupl_pe3 WASM instance");
+    pe3.init();
+    const spinOut = pe3.eval(0.0, 0.001, { vx: 25.0, normalForce: fn, creepX: 0.0, creepY: 0.0, spin: 0.5 });
+    assert.ok(spinOut.fy < -100.0, `Expected resisting lateral force under positive spin, got ${spinOut.fy}`);
+    assert.ok(spinOut.mz < 0.0, `Expected opposing spin moment Mz < 0, got ${spinOut.mz}`);
+  });
+
   it("projects and links an FMI 2.0/3.0 active suspension FMU into GENSYS couplings", () => {
     const proj = fmuToGensysCoupling(
       {

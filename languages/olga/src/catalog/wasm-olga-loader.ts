@@ -41,6 +41,14 @@ export interface OlgaEvalOutput {
   oilFvf: number;
   temperatureOut: number;
   controlOut: number;
+  /** 3-field continuous liquid film holdup alpha_f (IO[11] for multiphase flow models). */
+  filmHoldup?: number | undefined;
+  /** 3-field entrained liquid droplet holdup alpha_d = 1 - alpha_g - alpha_f. */
+  dropletHoldup?: number | undefined;
+  /** 3-field droplet entrainment fraction E in [0, 1] (IO[12] for multiphase flow models). */
+  entrainmentFraction?: number | undefined;
+  /** 3-field interfacial shear stress tau_i [Pa] (IO[15] for multiphase flow models). */
+  interfacialShear?: number | undefined;
 }
 
 export interface OlgaLinkedModelInstance {
@@ -87,15 +95,23 @@ function writeIo(views: CachedMemoryViews, slotPtr: number, io: OlgaModelIO): vo
 
 function readOutput(views: CachedMemoryViews, slotPtr: number): OlgaEvalOutput {
   const base = (slotPtr + OFF_IO) >> 3;
+  const voidFraction = views.f64[base + 8] ?? 0;
+  const heatFlux = views.f64[base + 11] ?? 0;
+  const solutionGor = views.f64[base + 12] ?? 0;
+  const controlOut = views.f64[base + 15] ?? 0;
   return {
-    voidFraction: views.f64[base + 8] ?? 0,
+    voidFraction,
     pressureDrop: views.f64[base + 9] ?? 0,
     massFlowOut: views.f64[base + 10] ?? 0,
-    heatFlux: views.f64[base + 11] ?? 0,
-    solutionGor: views.f64[base + 12] ?? 0,
+    heatFlux,
+    solutionGor,
     oilFvf: views.f64[base + 13] ?? 0,
     temperatureOut: views.f64[base + 14] ?? 0,
-    controlOut: views.f64[base + 15] ?? 0,
+    controlOut,
+    filmHoldup: heatFlux,
+    dropletHoldup: Math.max(0, 1 - voidFraction - heatFlux),
+    entrainmentFraction: solutionGor,
+    interfacialShear: controlOut,
   };
 }
 

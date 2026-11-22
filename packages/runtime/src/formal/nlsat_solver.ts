@@ -330,8 +330,13 @@ export function isolateRealRoots(p: UnivariatePoly, eps = 1e-7, wasmExports?: Re
       }
     } else {
       const mid = (a + b) / 2;
-      queue.push({ a, b: mid });
-      queue.push({ a: mid, b });
+      // Guard against infinite subdivision when roots are closer than float64 precision or Sturm noise occurs
+      if (mid === a || mid === b || b - a <= Math.max(eps, 1e-13)) {
+        intervals.push({ a, b });
+      } else {
+        queue.push({ a, b: mid });
+        queue.push({ a: mid, b });
+      }
     }
   }
 

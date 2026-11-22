@@ -9,6 +9,7 @@
  * Enables guaranteed reachability tubes and safety verification over continuous physical dynamics.
  */
 
+import { addDown, addUp, nextUp, subDown, subUp } from "@modelscript/solve";
 import type { VerificationVerdict } from "../formal/verdict.js";
 import { MonomialBasis } from "./monomial_basis.js";
 import { ivAdd, ivMul, ivPowInt, ivSub } from "./outward_rounding.js";
@@ -244,11 +245,23 @@ export class TaylorModel {
     if (this.order === other.order && this.order === maxOrder) {
       const M = this.basis.totalMonomials;
       for (let i = 0; i < M; i++) {
-        const sum = this.coeffs[i]! + other.coeffs[i]!;
+        const a = this.coeffs[i]!;
+        const b = other.coeffs[i]!;
+        const sum = a + b;
         if (Math.abs(sum) < 1e-15) {
           if (sum !== 0) res.sweepIntoRemainderIndex(i, sum);
         } else {
           res.coeffs[i] = sum;
+        }
+        // Sweep exact TwoSum FP rounding error into remainder for outward-f64 soundness
+        if (a !== 0 && b !== 0) {
+          const err = Math.max(addUp(a, b) - sum, sum - addDown(a, b));
+          if (err > 0) {
+            const mRange = res.evaluateMonomialRangeIndex(i);
+            const maxAbsM = Math.max(Math.abs(mRange.lo), Math.abs(mRange.hi));
+            const remErr = nextUp(err * maxAbsM);
+            res.remainder = addInterval(res.remainder, new Interval(-remErr, remErr));
+          }
         }
       }
     } else {
@@ -288,11 +301,23 @@ export class TaylorModel {
     if (this.order === other.order && this.order === maxOrder) {
       const M = this.basis.totalMonomials;
       for (let i = 0; i < M; i++) {
-        const diff = this.coeffs[i]! - other.coeffs[i]!;
+        const a = this.coeffs[i]!;
+        const b = other.coeffs[i]!;
+        const diff = a - b;
         if (Math.abs(diff) < 1e-15) {
           if (diff !== 0) res.sweepIntoRemainderIndex(i, diff);
         } else {
           res.coeffs[i] = diff;
+        }
+        // Sweep exact TwoSum FP rounding error into remainder for outward-f64 soundness
+        if (a !== 0 && b !== 0) {
+          const err = Math.max(subUp(a, b) - diff, diff - subDown(a, b));
+          if (err > 0) {
+            const mRange = res.evaluateMonomialRangeIndex(i);
+            const maxAbsM = Math.max(Math.abs(mRange.lo), Math.abs(mRange.hi));
+            const remErr = nextUp(err * maxAbsM);
+            res.remainder = addInterval(res.remainder, new Interval(-remErr, remErr));
+          }
         }
       }
     } else {
@@ -327,8 +352,21 @@ export class TaylorModel {
   scale(c: number): TaylorModel {
     const res = new TaylorModel(this.numVars, this.order, this.domain, scaleInterval(this.remainder, c));
     const M = this.basis.totalMonomials;
+    let fpErrAcc = 0;
     for (let i = 0; i < M; i++) {
-      res.coeffs[i] = this.coeffs[i]! * c;
+      const ci = this.coeffs[i]!;
+      if (ci === 0) continue;
+      const p = ci * c;
+      res.coeffs[i] = p;
+      const absP = Math.abs(p);
+      if (absP > 0 && Number.isFinite(absP)) {
+        const ulp = nextUp(absP) - absP;
+        const mRange = res.evaluateMonomialRangeIndex(i);
+        fpErrAcc = addUp(fpErrAcc, nextUp(ulp * Math.max(Math.abs(mRange.lo), Math.abs(mRange.hi))));
+      }
+    }
+    if (fpErrAcc > 0) {
+      res.remainder = addInterval(res.remainder, new Interval(-fpErrAcc, fpErrAcc));
     }
     return res;
   }
@@ -617,20 +655,34 @@ export class TaylorModel {
     const divisorMap = this.basis.integrateDivisor[timeVarIndex]!;
     const M = this.basis.totalMonomials;
 
+    let divErrAcc = 0;
     for (let i = 0; i < M; i++) {
       const coeff = this.coeffs[i]!;
       if (coeff === 0) continue;
       const target = targetMap[i]!;
-      const newCoeff = coeff / divisorMap[i]!;
+      const div = divisorMap[i]!;
+      const newCoeff = coeff / div;
+      const absNew = Math.abs(newCoeff);
+      const divUlp = div > 1 && absNew > 0 && Number.isFinite(absNew) ? nextUp(absNew) - absNew : 0;
       if (target >= 0) {
         res.coeffs[target] = newCoeff;
+        if (divUlp > 0) {
+          const mRange = res.evaluateMonomialRangeIndex(target);
+          divErrAcc = addUp(divErrAcc, nextUp(divUlp * Math.max(Math.abs(mRange.lo), Math.abs(mRange.hi))));
+        }
       } else {
         const exps = this.basis.exponents[i]!;
         const newExps = [...exps];
         newExps[timeVarIndex] = newExps[timeVarIndex]! + 1;
         const mRange = this.evaluateMonomialRangeExponents(newExps);
         res.remainder = addInterval(res.remainder, scaleInterval(mRange, newCoeff));
+        if (divUlp > 0) {
+          divErrAcc = addUp(divErrAcc, nextUp(divUlp * Math.max(Math.abs(mRange.lo), Math.abs(mRange.hi))));
+        }
       }
+    }
+    if (divErrAcc > 0) {
+      res.remainder = addInterval(res.remainder, new Interval(-divErrAcc, divErrAcc));
     }
 
     // Remainder integration: [r] * domain[timeVarIndex]
@@ -897,7 +949,10 @@ export class TaylorModelFlowpipeSolver {
       } else {
         refreshEnclosure = currentEnclosure;
         refreshNominalInitial = [...currentNominal];
-        spatialDomain = refreshEnclosure.map((iv) => new Interval(-0.5 * iv.width, 0.5 * iv.width));
+        spatialDomain = refreshEnclosure.map((iv) => {
+          const halfW = nextUp(0.5 * subUp(iv.hi, iv.lo));
+          return new Interval(-halfW, halfW);
+        });
         stepDomain = [new Interval(0, currentDt), ...spatialDomain];
         stateTMs = [];
         for (let j = 0; j < nStates; j++) {

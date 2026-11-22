@@ -9,6 +9,7 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInGpromsLibraryRegistered, lookupGpromsModelSchema } from "../catalog/library-package-adapter.js";
 import { normalizeGpromsExprForEval } from "../solvers/gproms-solver.js";
 import type { GpromsDocument, GpromsModel, GpromsProcess } from "../types.js";
 
@@ -18,7 +19,34 @@ export interface GpromsDaeOptions {
   processName?: string | undefined;
 }
 
+/**
+ * Resolves parameter defaults for a gPROMS model from `@modelscript/gproms-std-lib`,
+ * merging any user-specified named overrides over the cleanroom schema defaults.
+ */
+export function resolveGpromsSchemaParamDefaults(
+  modelName: string,
+  overrides: Record<string, number> = {},
+): Record<string, number> {
+  ensureBuiltInGpromsLibraryRegistered();
+  const resolved: Record<string, number> = {};
+  const schema = lookupGpromsModelSchema(modelName);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (typeof p.defaultValue === "number" && Number.isFinite(p.defaultValue)) {
+        resolved[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (Number.isFinite(v)) {
+      resolved[k] = v;
+    }
+  }
+  return resolved;
+}
+
 export function lowerGpromsToDae(doc: GpromsDocument, options?: GpromsDaeOptions): DAEBuilder {
+  ensureBuiltInGpromsLibraryRegistered();
   let proc: GpromsProcess | undefined;
   if (options?.processName) {
     proc = doc.processes.get(options.processName);

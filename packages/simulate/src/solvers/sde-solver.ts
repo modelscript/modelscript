@@ -33,6 +33,7 @@
  */
 
 import { getDefaultWasmExports } from "@modelscript/runtime";
+import { WasmScratchPool, type WasmMemoryHost, type WasmScratchScope } from "@modelscript/solve";
 import type {
   SDEEnsembleResult,
   SDEOptions,
@@ -41,6 +42,16 @@ import type {
   SolverStats,
 } from "../core/problem-types.js";
 import { Xoshiro256pp } from "../uq/monte-carlo.js";
+
+const _sdeScratchPools = new WeakMap<object, WasmScratchPool>();
+function getSdePool(wasm: WasmMemoryHost): WasmScratchPool {
+  let pool = _sdeScratchPools.get(wasm);
+  if (!pool) {
+    pool = new WasmScratchPool(wasm, 65536);
+    _sdeScratchPools.set(wasm, pool);
+  }
+  return pool;
+}
 
 /**
  * Standard Normal Gaussian random variate generator.
@@ -115,83 +126,88 @@ export function eulerMaruyama(problem: SDEProblem, options: SDEOptions = {}): SD
     diffPtr = 0,
     dWPtr = 0,
     yNextPtr = 0;
+  let wasmScope: WasmScratchScope | null = null;
   if (useWasmEm && wasm?.__new) {
-    const alloc = (bytes: number): number => wasm.__new!(bytes, 0);
-    yPtr = alloc(n * 8);
-    driftPtr = alloc(n * 8);
-    diffPtr = alloc(n * 8);
-    dWPtr = alloc(n * 8);
-    yNextPtr = alloc(n * 8);
+    wasmScope = getSdePool(wasm).scope();
+    yPtr = wasmScope.allocF64(n).ptr;
+    driftPtr = wasmScope.allocF64(n).ptr;
+    diffPtr = wasmScope.allocF64(n).ptr;
+    dWPtr = wasmScope.allocF64(n).ptr;
+    yNextPtr = wasmScope.allocF64(n).ptr;
   }
 
-  for (let step = 0; step < steps; step++) {
-    // Generate Wiener increments dW_j = sqrt(dt) * xi_j
-    for (let j = 0; j < m; j++) {
-      dW[j] = sqrtDt * gaussian.sample();
-    }
+  try {
+    for (let step = 0; step < steps; step++) {
+      // Generate Wiener increments dW_j = sqrt(dt) * xi_j
+      for (let j = 0; j < m; j++) {
+        dW[j] = sqrtDt * gaussian.sample();
+      }
 
-    // Evaluate drift f(t, y)
-    const drift = problem.f(t, y, problem.p);
-    stats.fEvals++;
+      // Evaluate drift f(t, y)
+      const drift = problem.f(t, y, problem.p);
+      stats.fEvals++;
 
-    // Evaluate diffusion g(t, y)
-    const diffusion = problem.g(t, y, problem.p);
+      // Evaluate diffusion g(t, y)
+      const diffusion = problem.g(t, y, problem.p);
 
-    const yNext = new Array<number>(n);
-    if (noiseType === "diagonal") {
-      const gVec = diffusion as number[];
-      if (useWasmEm && wasm?.sde_euler_maruyama_step) {
-        const buf = wasm.memory.buffer;
-        const yV = new Float64Array(buf, yPtr, n);
-        const fV = new Float64Array(buf, driftPtr, n);
-        const gV = new Float64Array(buf, diffPtr, n);
-        const wV = new Float64Array(buf, dWPtr, n);
-        for (let i = 0; i < n; i++) {
-          yV[i] = y[i] ?? 0;
-          fV[i] = drift[i] ?? 0;
-          gV[i] = gVec[i] ?? 0;
-          wV[i] = dW[i] ?? 0;
+      const yNext = new Array<number>(n);
+      if (noiseType === "diagonal") {
+        const gVec = diffusion as number[];
+        if (useWasmEm && wasm?.sde_euler_maruyama_step) {
+          const buf = wasm.memory.buffer;
+          const yV = new Float64Array(buf, yPtr, n);
+          const fV = new Float64Array(buf, driftPtr, n);
+          const gV = new Float64Array(buf, diffPtr, n);
+          const wV = new Float64Array(buf, dWPtr, n);
+          for (let i = 0; i < n; i++) {
+            yV[i] = y[i] ?? 0;
+            fV[i] = drift[i] ?? 0;
+            gV[i] = gVec[i] ?? 0;
+            wV[i] = dW[i] ?? 0;
+          }
+          wasm.sde_euler_maruyama_step(n, yPtr, driftPtr, diffPtr, dWPtr, actualDt, yNextPtr);
+          const outV = new Float64Array(wasm.memory.buffer, yNextPtr, n);
+          for (let i = 0; i < n; i++) yNext[i] = outV[i]!;
+        } else {
+          for (let i = 0; i < n; i++) {
+            yNext[i] = (y[i] ?? 0) + (drift[i] ?? 0) * actualDt + (gVec[i] ?? 0) * (dW[i] ?? 0);
+          }
         }
-        wasm.sde_euler_maruyama_step(n, yPtr, driftPtr, diffPtr, dWPtr, actualDt, yNextPtr);
-        const outV = new Float64Array(wasm.memory.buffer, yNextPtr, n);
-        for (let i = 0; i < n; i++) yNext[i] = outV[i]!;
+      } else if (noiseType === "scalar") {
+        const gVal = typeof diffusion === "number" ? diffusion : ((diffusion as number[])[0] ?? 0);
+        const dW0 = dW[0] ?? 0;
+        for (let i = 0; i < n; i++) {
+          yNext[i] = (y[i] ?? 0) + (drift[i] ?? 0) * actualDt + gVal * dW0;
+        }
       } else {
+        // General matrix noise: diffusion is n x m
+        const gMat = diffusion as number[][];
         for (let i = 0; i < n; i++) {
-          yNext[i] = (y[i] ?? 0) + (drift[i] ?? 0) * actualDt + (gVec[i] ?? 0) * (dW[i] ?? 0);
+          let diffSum = 0;
+          const gRow = gMat[i] ?? [];
+          for (let j = 0; j < m; j++) {
+            diffSum += (gRow[j] ?? 0) * (dW[j] ?? 0);
+          }
+          yNext[i] = (y[i] ?? 0) + (drift[i] ?? 0) * actualDt + diffSum;
         }
       }
-    } else if (noiseType === "scalar") {
-      const gVal = typeof diffusion === "number" ? diffusion : ((diffusion as number[])[0] ?? 0);
-      const dW0 = dW[0] ?? 0;
-      for (let i = 0; i < n; i++) {
-        yNext[i] = (y[i] ?? 0) + (drift[i] ?? 0) * actualDt + gVal * dW0;
-      }
-    } else {
-      // General matrix noise: diffusion is n x m
-      const gMat = diffusion as number[][];
-      for (let i = 0; i < n; i++) {
-        let diffSum = 0;
-        const gRow = gMat[i] ?? [];
-        for (let j = 0; j < m; j++) {
-          diffSum += (gRow[j] ?? 0) * (dW[j] ?? 0);
-        }
-        yNext[i] = (y[i] ?? 0) + (drift[i] ?? 0) * actualDt + diffSum;
-      }
+
+      t += actualDt;
+      y = yNext;
+
+      times.push(t);
+      states.push([...y]);
     }
 
-    t += actualDt;
-    y = yNext;
-
-    times.push(t);
-    states.push([...y]);
+    return {
+      times,
+      states,
+      seed,
+      stats,
+    };
+  } finally {
+    wasmScope?.dispose();
   }
-
-  return {
-    times,
-    states,
-    seed,
-    stats,
-  };
 }
 
 /**
@@ -248,27 +264,60 @@ export function sriw1(problem: SDEProblem, options: SDEOptions = {}): SDESimulat
     return new Array<number>(n).fill(0);
   };
 
+  // Rejection Sampling with Memory (RSwM) Brownian-bridge stack:
+  // Preserves exact Wiener measure when adaptive steps are rejected and subdivided.
+  const futureIncrements: Array<{ dt: number; dW: Float64Array }> = [];
+
+  const drawIncrement = (dt: number): Float64Array => {
+    while (futureIncrements.length > 0) {
+      const top = futureIncrements.pop()!;
+      if (Math.abs(top.dt - dt) <= 1e-14) {
+        return top.dW;
+      }
+      if (top.dt > dt) {
+        // Exact Brownian bridge split of [t, t + top.dt] at t + dt
+        const ratio = dt / top.dt;
+        const bridgeStd = Math.sqrt(dt * (1.0 - ratio));
+        const dW1 = new Float64Array(n);
+        const dW2 = new Float64Array(n);
+        if (noiseType === "scalar") {
+          const z = gaussian.sample();
+          const w1 = ratio * top.dW[0]! + bridgeStd * z;
+          const w2 = top.dW[0]! - w1;
+          dW1.fill(w1);
+          dW2.fill(w2);
+        } else {
+          for (let i = 0; i < n; i++) {
+            const w1 = ratio * top.dW[i]! + bridgeStd * gaussian.sample();
+            dW1[i] = w1;
+            dW2[i] = top.dW[i]! - w1;
+          }
+        }
+        futureIncrements.push({ dt: top.dt - dt, dW: dW2 });
+        return dW1;
+      }
+      // top.dt < dt: consume top and accumulate remaining dt - top.dt
+      const rem = drawIncrement(dt - top.dt);
+      const combined = new Float64Array(n);
+      for (let i = 0; i < n; i++) combined[i] = top.dW[i]! + rem[i]!;
+      return combined;
+    }
+
+    const dW = new Float64Array(n);
+    const sqrtDt = Math.sqrt(dt);
+    if (noiseType === "scalar") {
+      dW.fill(sqrtDt * gaussian.sample());
+    } else {
+      for (let i = 0; i < n; i++) dW[i] = sqrtDt * gaussian.sample();
+    }
+    return dW;
+  };
+
   while (t < tEnd - 1e-14 && stats.acceptedSteps + stats.rejectedSteps < 100000) {
     if (t + h > tEnd) h = tEnd - t;
     const sqrtH = Math.sqrt(h);
 
-    // Generate normal increment dW and second-order space variable dZ
-    const dW = new Float64Array(n);
-    const dZ = new Float64Array(n);
-    if (noiseType === "scalar") {
-      const xi = gaussian.sample();
-      const dW0 = sqrtH * xi;
-      const dZ0 = 0.5 * Math.pow(h, 1.5) * (xi + gaussian.sample() / Math.sqrt(3));
-      dW.fill(dW0);
-      dZ.fill(dZ0);
-    } else {
-      for (let i = 0; i < n; i++) {
-        const xi = gaussian.sample();
-        dW[i] = sqrtH * xi;
-        // Truncated normal / space increment
-        dZ[i] = 0.5 * Math.pow(h, 1.5) * (xi + gaussian.sample() / Math.sqrt(3));
-      }
-    }
+    const dW = drawIncrement(h);
 
     // Stage 1
     const f0 = problem.f(t, y, problem.p);
@@ -284,31 +333,38 @@ export function sriw1(problem: SDEProblem, options: SDEOptions = {}): SDESimulat
     const f1 = problem.f(t + h, yStage2, problem.p);
     stats.fEvals++;
 
-    // Stage 3: Diffusion evaluation at y + (g0 * sqrt(h))
+    // Stage 3: Diffusion evaluation at y + g0 * sqrt(h) (Runge-Kutta Milstein derivative-free)
     const yStage3 = new Array<number>(n);
     for (let i = 0; i < n; i++) {
       yStage3[i] = (y[i] ?? 0) + (g0[i] ?? 0) * sqrtH;
     }
-    const g1Raw = problem.g(t + h, yStage3, problem.p);
+    const g1Raw = problem.g(t, yStage3, problem.p);
     const g1 = normalizeDiffusion(g1Raw);
 
-    // High-order update (order 1.5 strong)
+    // High-order update (Strong Order 1.0 derivative-free Itô-Milstein / Platen)
     const yHigh = new Array<number>(n);
-    // Low-order embedded estimate (Euler-Maruyama order 0.5 strong)
+    // Low-order embedded estimate (Euler-Maruyama strong order 0.5)
     const yLow = new Array<number>(n);
 
     let maxErrorRatio = 0.0;
     for (let i = 0; i < n; i++) {
       const dWi = dW[i] ?? 0;
       const fAvg = 0.5 * ((f0[i] ?? 0) + (f1[i] ?? 0));
-      const gAvg = 0.5 * ((g0[i] ?? 0) + (g1[i] ?? 0));
+      const g0i = g0[i] ?? 0;
+      const g1i = g1[i] ?? 0;
+      const milstein = sqrtH > 0 ? ((g1i - g0i) / (2.0 * sqrtH)) * (dWi * dWi - h) : 0;
 
-      yHigh[i] = (y[i] ?? 0) + h * fAvg + gAvg * dWi + ((g1[i] ?? 0) - (g0[i] ?? 0)) * ((dZ[i] ?? 0) / h);
-      yLow[i] = (y[i] ?? 0) + h * (f0[i] ?? 0) + (g0[i] ?? 0) * dWi;
+      yHigh[i] = (y[i] ?? 0) + h * fAvg + g0i * dWi + milstein;
+      yLow[i] = (y[i] ?? 0) + h * (f0[i] ?? 0) + g0i * dWi;
 
       const err = Math.abs(yHigh[i]! - yLow[i]!);
       const sc = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(yHigh[i]!));
-      maxErrorRatio = Math.max(maxErrorRatio, err / sc);
+      const ratio = err / sc;
+      if (!Number.isFinite(ratio)) {
+        maxErrorRatio = Infinity;
+        break;
+      }
+      maxErrorRatio = Math.max(maxErrorRatio, ratio);
     }
 
     if (maxErrorRatio <= 1.0 || h <= 1e-10) {
@@ -321,6 +377,8 @@ export function sriw1(problem: SDEProblem, options: SDEOptions = {}): SDESimulat
       const factor = Math.min(2.0, Math.max(0.5, 0.9 * Math.pow(Math.max(maxErrorRatio, 1e-4), -0.5)));
       h = Math.min(Math.abs(tEnd - t0) / 10, Math.max(1e-12, h * factor));
     } else {
+      // Push rejected increment back onto the Brownian-bridge stack (unbiased Wiener measure)
+      futureIncrements.push({ dt: h, dW });
       stats.rejectedSteps++;
       h = Math.max(1e-12, h * 0.5);
     }

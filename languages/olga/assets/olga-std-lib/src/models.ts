@@ -158,7 +158,140 @@ export function olgaModelInit(archetypeId: i32, slotPtr: usize, conCount: i32): 
     return 1;
   }
 
+  if (archetypeId == ARCH_FLOW_DRIFT_FLUX || archetypeId == ARCH_FLOW_TAITEL_DUKLER) {
+    // 3-field 1D conservation state:
+    // STATE[0] = alpha_g (gas void fraction; < 0 sentinel initializes to equilibrium on first eval)
+    // STATE[1] = alpha_f (continuous liquid film holdup)
+    // STATE[2] = alpha_d (entrained liquid droplet holdup)
+    // STATE[3] = E       (droplet entrainment fraction = alpha_d / (alpha_f + alpha_d))
+    // STATE[4] = tau_i   (interfacial shear stress [Pa])
+    // STATE[5] = tau_w   (wall shear stress [Pa])
+    setState(slotPtr, 0, -1.0);
+    setState(slotPtr, 1, 0.0);
+    setState(slotPtr, 2, 0.0);
+    setState(slotPtr, 3, 0.0);
+    setState(slotPtr, 4, 0.0);
+    setState(slotPtr, 5, 0.0);
+    return 4;
+  }
+
   return 0;
+}
+
+/**
+ * Ishii-Mishima (1989) equilibrium droplet entrainment fraction correlation for annular/3-field gas-liquid flow.
+ */
+@inline
+function equilibriumEntrainment(
+  jGas: f64,
+  jLiq: f64,
+  d: f64,
+  rhoG: f64,
+  rhoL: f64,
+  muL: f64,
+  sigma: f64,
+): f64 {
+  if (jGas <= 1e-6 || jLiq <= 1e-9) return 0.0;
+  const densityRatio = Math.max(1.0, (rhoL - rhoG) / Math.max(0.1, rhoG));
+  const weG = ((rhoG * jGas * jGas * d) / Math.max(1e-4, sigma)) * Math.pow(densityRatio, 1.0 / 3.0);
+  const reL = Math.max(1.0, (rhoL * jLiq * d) / Math.max(1e-6, muL));
+  const arg = 7.25e-7 * Math.pow(Math.max(0.0, weG), 1.25) * Math.pow(reL, 0.25);
+  return clamp(Math.tanh(arg), 0.0, 0.95);
+}
+
+/**
+ * Advances 3-field (gas / continuous liquid film / entrained liquid droplets) 1D conservation step
+ * and computes Wallis interfacial & wall shear pressure gradient.
+ * Writes `alpha_g -> IO[8]`, `dpDx -> IO[9]`, `mDot -> IO[10]`, `alpha_f -> IO[11]`,
+ * `E -> IO[12]`, `tau_i -> IO[15]`.
+ */
+function evalThreeFieldStep(
+  slotPtr: usize,
+  dt: f64,
+  alphaEq: f64,
+  jGas: f64,
+  jLiq: f64,
+  d: f64,
+  theta: f64,
+  rhoG: f64,
+  rhoL: f64,
+  muG: f64,
+  muL: f64,
+  eps: f64,
+  dx: f64,
+  sigma: f64,
+): f64 {
+  const jm = jGas + jLiq;
+  const eEq = equilibriumEntrainment(jGas, jLiq, d, rhoG, rhoL, muL, sigma);
+
+  let alphaG = getState(slotPtr, 0);
+  let eFrac = getState(slotPtr, 3);
+
+  if (alphaG < 0.0) {
+    // First evaluation after init(): anchor to algebraic equilibrium
+    alphaG = clamp(alphaEq, 0.0, 1.0);
+    eFrac = eEq;
+  } else if (dt > 0.0) {
+    // 1D semi-implicit conservation step for gas void fraction & droplet entrainment/deposition
+    const tauFlow = Math.max(1e-3, dx / Math.max(0.25, jm));
+    const kDep = Math.max(0.02, 0.02 * Math.sqrt(Math.max(0.1, getState(slotPtr, 4)) / Math.max(0.1, rhoG)));
+    const tauEd = Math.max(1e-3, d / kDep);
+
+    const aFlow = dt / tauFlow;
+    const aEd = dt / tauEd;
+    const prevAlpha = alphaG;
+    const prevE = eFrac;
+    alphaG = clamp((prevAlpha + aFlow * alphaEq) / (1.0 + aFlow), 0.0, 1.0);
+    eFrac = clamp((prevE + aEd * eEq) / (1.0 + aEd), 0.0, 0.95);
+    setDState(slotPtr, 0, (alphaG - prevAlpha) / dt);
+    setDState(slotPtr, 3, (eFrac - prevE) / dt);
+  }
+
+  const alphaLTotal = 1.0 - alphaG;
+  const alphaD = eFrac * alphaLTotal;
+  const alphaF = (1.0 - eFrac) * alphaLTotal;
+
+  // Phase velocities for 3-field momentum balance
+  const vGas = alphaG > 1e-4 ? jGas / alphaG : 0.0;
+  const vFilm = alphaF > 1e-4 ? ((1.0 - eFrac) * jLiq) / alphaF : 0.0;
+  const slipV = vGas - vFilm;
+
+  // Wall & Wallis (1969) interfacial friction factors
+  const reFilm = (rhoL * Math.abs(vFilm) * d) / Math.max(1e-6, muL);
+  const reGas = (rhoG * Math.abs(vGas) * d) / Math.max(1e-6, muG);
+  const fFilm = darcyFrictionFactor(reFilm, eps / d);
+  const fGas = darcyFrictionFactor(reGas, eps / d);
+  const filmRatio = 0.25 * (1.0 - Math.sqrt(clamp(1.0 - alphaF, 0.0, 1.0)));
+  const fInterfacial = fGas * (1.0 + 300.0 * filmRatio);
+
+  // Wall shear stress (wetted film + dry gas wall) and interfacial shear stress
+  const tauWallFilm = 0.125 * fFilm * rhoL * vFilm * Math.abs(vFilm);
+  const tauWallGas = 0.125 * fGas * rhoG * vGas * Math.abs(vGas);
+  const tauWall = (1.0 - alphaG) * tauWallFilm + alphaG * tauWallGas;
+  const tauInterfacial = 0.125 * fInterfacial * rhoG * slipV * Math.abs(slipV);
+
+  // Mixture density & 3-field pressure gradient (wall shear + interfacial drag + gravity)
+  const rhoMix = alphaG * rhoG + (alphaF + alphaD) * rhoL;
+  const dpDxWall = (4.0 * Math.abs(tauWall)) / d;
+  const dpDxInter = (4.0 * Math.sqrt(Math.max(0.0, alphaG)) * Math.abs(tauInterfacial)) / d;
+  const dpDxGrav = rhoMix * G_ACCEL * Math.sin(theta);
+  const dpDxTotal = dpDxWall + 0.5 * dpDxInter + dpDxGrav;
+
+  setState(slotPtr, 0, alphaG);
+  setState(slotPtr, 1, alphaF);
+  setState(slotPtr, 2, alphaD);
+  setState(slotPtr, 3, eFrac);
+  setState(slotPtr, 4, tauInterfacial);
+  setState(slotPtr, 5, tauWall);
+
+  setIo(slotPtr, 8, alphaG);
+  setIo(slotPtr, 9, dpDxTotal);
+  setIo(slotPtr, 10, rhoMix * jm * 0.25 * Math.PI * d * d);
+  setIo(slotPtr, 11, alphaF);
+  setIo(slotPtr, 12, eFrac);
+  setIo(slotPtr, 15, tauInterfacial);
+
+  return rhoMix;
 }
 
 /**
@@ -180,7 +313,7 @@ export function olgaModelEval(
   const jLiq = Math.max(0.0, getIo(slotPtr, 6));
   const opening = getIo(slotPtr, 7);
 
-  // ── 1. Zuber-Findlay Drift-Flux Kernel ─────────────────────────────────────
+  // ── 1. Zuber-Findlay Drift-Flux + 3-Field (Gas/Film/Droplet) Kernel ────────
   if (archetypeId == ARCH_FLOW_DRIFT_FLUX) {
     const c0 = Math.max(0.5, getCon(slotPtr, conCount, 0, 1.2));
     const vgj = Math.max(0.0, getCon(slotPtr, conCount, 1, 0.35));
@@ -189,20 +322,29 @@ export function olgaModelEval(
     const rhoG = Math.max(0.1, getCon(slotPtr, conCount, 4, 45.0));
     const rhoL = Math.max(100.0, getCon(slotPtr, conCount, 5, 820.0));
     const eps = Math.max(1e-7, getCon(slotPtr, conCount, 6, 4.5e-5));
+    const dx = Math.max(0.1, getCon(slotPtr, conCount, 7, 50.0));
+    const sigma = Math.max(1e-4, getCon(slotPtr, conCount, 8, 0.025));
 
     const jm = jGas + jLiq;
     const denom = c0 * jm + vgj;
-    const alpha = denom > 1e-12 ? clamp(jGas / denom, 0.0, 1.0) : 0.0;
-    const rhoMix = alpha * rhoG + (1.0 - alpha) * rhoL;
-    const muMix = alpha * 1.5e-5 + (1.0 - alpha) * 1.2e-3;
-    const re = (rhoMix * jm * d) / Math.max(1e-9, muMix);
-    const f = darcyFrictionFactor(re, eps / d);
-    const dpDxFric = (f * rhoMix * jm * jm) / (2.0 * d);
-    const dpDxGrav = rhoMix * G_ACCEL * Math.sin(theta);
+    const alphaEq = denom > 1e-12 ? clamp(jGas / denom, 0.0, 1.0) : 0.0;
+    const rhoMix = evalThreeFieldStep(
+      slotPtr,
+      dt,
+      alphaEq,
+      jGas,
+      jLiq,
+      d,
+      theta,
+      rhoG,
+      rhoL,
+      1.5e-5,
+      1.2e-3,
+      eps,
+      dx,
+      sigma,
+    );
 
-    setIo(slotPtr, 8, alpha);
-    setIo(slotPtr, 9, dpDxFric + dpDxGrav);
-    setIo(slotPtr, 10, rhoMix * jm * 0.25 * Math.PI * d * d);
     setIo(slotPtr, 13, rhoMix);
     setIo(slotPtr, 14, tIn);
     return;
@@ -291,7 +433,7 @@ export function olgaModelEval(
     return;
   }
 
-  // ── 3. Taitel-Dukler (1976) Mechanistic Flow Regime Kernel ─────────────────
+  // ── 3. Taitel-Dukler (1976) Mechanistic Regime + 3-Field Conservation Kernel
   if (archetypeId == ARCH_FLOW_TAITEL_DUKLER) {
     const d = Math.max(1e-3, getCon(slotPtr, conCount, 0, 0.25));
     const theta = getCon(slotPtr, conCount, 1, 0.0);
@@ -299,6 +441,8 @@ export function olgaModelEval(
     const rhoL = Math.max(100.0, getCon(slotPtr, conCount, 3, 820.0));
     const muG = Math.max(1e-6, getCon(slotPtr, conCount, 4, 1.5e-5));
     const muL = Math.max(1e-6, getCon(slotPtr, conCount, 5, 1.2e-3));
+    const dx = Math.max(0.1, getCon(slotPtr, conCount, 6, 50.0));
+    const sigma = Math.max(1e-4, getCon(slotPtr, conCount, 7, 0.025));
 
     const reL = (rhoL * Math.max(1e-6, jLiq) * d) / muL;
     const reG = (rhoG * Math.max(1e-6, jGas) * d) / muG;
@@ -308,9 +452,27 @@ export function olgaModelEval(
     const dpG = (fG * rhoG * jGas * jGas) / (2.0 * d);
     const xLM = dpG > 1e-12 ? Math.sqrt(dpL / dpG) : 100.0;
 
-    // Lockhart-Martinelli void fraction & Taitel-Dukler F parameter
-    const hl = clamp(1.0 / (1.0 + 1.0 / Math.max(1e-4, Math.pow(xLM, 0.8))), 0.0, 1.0);
-    const alpha = 1.0 - hl;
+    // Lockhart-Martinelli equilibrium void fraction & Taitel-Dukler F parameter
+    const hlEq = clamp(1.0 / (1.0 + 1.0 / Math.max(1e-4, Math.pow(xLM, 0.8))), 0.0, 1.0);
+    const alphaEq = 1.0 - hlEq;
+    evalThreeFieldStep(
+      slotPtr,
+      dt,
+      alphaEq,
+      jGas,
+      jLiq,
+      d,
+      theta,
+      rhoG,
+      rhoL,
+      muG,
+      muL,
+      1e-4 * d,
+      dx,
+      sigma,
+    );
+
+    const alphaNow = getIo(slotPtr, 8);
     const fCrit = Math.sqrt(rhoG / Math.max(1.0, rhoL - rhoG)) * (jGas / Math.sqrt(d * G_ACCEL * Math.max(0.1, Math.cos(theta))));
 
     // Regime code: 1=Stratified, 2=Intermittent/Slug, 3=Annular, 4=Dispersed Bubble
@@ -319,15 +481,10 @@ export function olgaModelEval(
       regime = 3.0; // Annular
     } else if (fCrit > 0.35 && xLM >= 1.6) {
       regime = 2.0; // Intermittent / Slug
-    } else if (jLiq > 2.5 && alpha < 0.3) {
+    } else if (jLiq > 2.5 && alphaNow < 0.3) {
       regime = 4.0; // Dispersed Bubble
     }
 
-    const rhoMix = alpha * rhoG + hl * rhoL;
-    const dpDx = dpL + dpG + 2.0 * Math.sqrt(dpL * dpG) + rhoMix * G_ACCEL * Math.sin(theta);
-
-    setIo(slotPtr, 8, alpha);
-    setIo(slotPtr, 9, dpDx);
     setIo(slotPtr, 13, regime);
     setIo(slotPtr, 14, tIn);
     return;

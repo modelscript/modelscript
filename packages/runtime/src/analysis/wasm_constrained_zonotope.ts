@@ -367,7 +367,8 @@ export class ConstrainedZonotope {
 
     const zeroObj = new Array<number>(this.numGenerators).fill(0);
     const res = solveBoundedLp(zeroObj, this.A, this.b, this.C, this.d);
-    return res.status === "OPTIMAL";
+    // Soundness: only return false when infeasibility is actually proven (never on TIMEOUT)
+    return res.status !== "INFEASIBLE";
   }
 
   /**
@@ -693,7 +694,9 @@ export function solveBoundedLp(w: number[], A: number[][], b: number[], C: numbe
     }
 
     let iter = 0;
-    while (iter++ < 200) {
+    let phase1TimedOut = false;
+    while (iter < 200) {
+      iter++;
       let enterCol = -1;
       let minCost = -1e-9;
       for (let c = 0; c < numStructuralVars; c++) {
@@ -718,9 +721,13 @@ export function solveBoundedLp(w: number[], A: number[][], b: number[], C: numbe
       }
       if (leaveRow === -1) break;
       pivot(leaveRow, enterCol);
+      if (iter === 200) phase1TimedOut = true;
     }
 
     if (T[numRows]![numCols]! < -1e-5) {
+      if (phase1TimedOut) {
+        return { status: "TIMEOUT", value: -Infinity, xi: [] };
+      }
       return { status: "INFEASIBLE", value: -Infinity, xi: [] };
     }
 

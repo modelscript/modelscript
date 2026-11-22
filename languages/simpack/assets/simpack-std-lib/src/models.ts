@@ -430,17 +430,20 @@ export function simpackModelEval(
   }
 
   // -------------------------------------------------------------------------
-  // 10. Kalker Linear / Saturated Wheel-Rail Creep Contact ($R_WheelRail_Kalker)
+  // 10. Kalker FASTSIM 2D Contact Patch Discretization ($R_WheelRail_Kalker)
+  //     Kalker (1982) Simplified Theory of Rolling Contact:
+  //     Discretizes Hertzian ellipse into Ny x Nx strips, marches tangential
+  //     shear traction from leading to trailing edge with local Coulomb
+  //     saturation |p_t(x,y)| <= mu * p_z(x,y), and integrates Fx, Fy, Mz.
   // -------------------------------------------------------------------------
   if (archetypeId == ARCH_WHEELRAIL_KALKER) {
     const mu = Math.max(0.01, getParam(slotPtr, paramCount, 0, 0.35));
     const a = Math.max(1e-4, getParam(slotPtr, paramCount, 1, 0.006));
     const b = Math.max(1e-4, getParam(slotPtr, paramCount, 2, 0.0045));
     const G = Math.max(1e9, getParam(slotPtr, paramCount, 3, 8.1e10));
-    const c11 = getParam(slotPtr, paramCount, 4, 4.12);
-    const c22 = getParam(slotPtr, paramCount, 5, 3.67);
-    const c23 = getParam(slotPtr, paramCount, 6, 1.47);
-    const c33 = getParam(slotPtr, paramCount, 7, 1.19);
+    const c11 = Math.max(0.5, getParam(slotPtr, paramCount, 4, 4.12));
+    const c22 = Math.max(0.5, getParam(slotPtr, paramCount, 5, 3.67));
+    const c23 = Math.max(0.1, getParam(slotPtr, paramCount, 6, 1.47));
 
     const xiX = disp;
     const xiY = vel;
@@ -449,29 +452,84 @@ export function simpackModelEval(
     const v0 = Math.max(0.1, aux2 > 0.0 ? aux2 : 20.0);
 
     const ab = a * b;
-    let fx = -G * ab * c11 * xiX;
-    let fy = -G * ab * (c22 * xiY + Math.sqrt(ab) * c23 * phi);
-    const tz = -G * ab * ab * c33 * phi;
+    setIo(slotPtr, 10, fn);
+    setIo(slotPtr, 14, G * ab * c11);
 
-    // Vermeulen-Johnson / Coulomb saturation at mu * fn
-    const fLin = Math.sqrt(fx * fx + fy * fy);
+    if (fn <= 1e-9) {
+      return;
+    }
+
+    // Kalker FASTSIM flexibility parameters L1, L2, L3 (Kalker 1982)
+    const l1 = (8.0 * a) / (3.0 * G * c11);
+    const l2 = (8.0 * a) / (3.0 * G * c22);
+    const l3 = (Math.PI * a * Math.sqrt(a / b)) / (4.0 * G * c23);
+
+    // Parabolic normal pressure peak p_z0 = 2 * Fn / (pi * a * b)
+    const pz0 = (2.0 * fn) / (Math.PI * ab);
+    const invA2 = 1.0 / (a * a);
+    const invB2 = 1.0 / (b * b);
+
+    const ny: i32 = 16;
+    const nx: i32 = 16;
+    const dy = (2.0 * b) / (<f64>ny);
+
+    let fx: f64 = 0.0;
+    let fy: f64 = 0.0;
+    let tz: f64 = 0.0;
+
+    for (let j: i32 = 0; j < ny; j++) {
+      const y = -b + (<f64>j + 0.5) * dy;
+      const yTerm = 1.0 - y * y * invB2;
+      if (yTerm <= 1e-12) continue;
+      const aj = a * Math.sqrt(yTerm);
+      const dx = (2.0 * aj) / (<f64>nx);
+      const dA = dx * dy;
+
+      // March from leading edge (x = +aj) to trailing edge (x = -aj) at cell midpoints
+      let px: f64 = 0.0;
+      let py: f64 = 0.0;
+      for (let i: i32 = 0; i < nx; i++) {
+        const x = aj - (<f64>i + 0.5) * dx;
+        const stepDx = i == 0 ? 0.5 * dx : dx;
+
+        // Elastic tangential shear traction increment
+        px -= (xiX / l1 - (phi * y) / l3) * stepDx;
+        py -= (xiY / l2 + (phi * x) / l3) * stepDx;
+
+        // Local parabolic Coulomb traction bound |p_t| <= mu * p_z(x, y)
+        const pz = pz0 * Math.max(0.0, yTerm - x * x * invA2);
+        const gMax = mu * pz;
+        const pMag = Math.sqrt(px * px + py * py);
+        if (pMag > gMax) {
+          if (gMax > 0.0 && pMag > 1e-18) {
+            const scale = gMax / pMag;
+            px *= scale;
+            py *= scale;
+          } else {
+            px = 0.0;
+            py = 0.0;
+          }
+        }
+
+        fx += px * dA;
+        fy += py * dA;
+        tz += (x * py - y * px) * dA;
+      }
+    }
+
+    // Guard against minor midpoint quadrature overshoot above mu * fn
     const fMax = mu * fn;
-    if (fLin > 1e-12 && fMax > 0.0) {
-      const u = fLin / fMax;
-      const scale = u < 3.0 ? (u - (u * u) / 3.0 + (u * u * u) / 27.0) / u : 1.0 / u;
-      fx *= scale;
-      fy *= scale;
-    } else if (fMax <= 0.0) {
-      fx = 0.0;
-      fy = 0.0;
+    const fMag = Math.sqrt(fx * fx + fy * fy);
+    if (fMag > fMax && fMag > 1e-12) {
+      const s = fMax / fMag;
+      fx *= s;
+      fy *= s;
     }
 
     setIo(slotPtr, 8, fx);
     setIo(slotPtr, 9, fy);
-    setIo(slotPtr, 10, fn);
     setIo(slotPtr, 13, tz);
-    setIo(slotPtr, 14, G * ab * c11);
-    setIo(slotPtr, 15, (Math.abs(fx * xiX) + Math.abs(fy * xiY)) * v0);
+    setIo(slotPtr, 15, (Math.abs(fx * xiX) + Math.abs(fy * xiY) + Math.abs(tz * phi)) * v0);
     return;
   }
 

@@ -563,6 +563,13 @@ export class ArenaSimulator {
       }
 
       if (!varName) return false;
+      // Fast-path `simulateVector` only integrates uncoupled `der(x) = -x` vector ODEs.
+      // Any other RHS must fall through to the general arena evaluator.
+      if (this.arena.getExprKind(rhs) !== ExprKind.Negate) return false;
+      const negInner = this.arena.getExprData1(rhs);
+      if (this.arena.getExprKind(negInner) !== ExprKind.Name) return false;
+      if (this.arena.interner.resolve(this.arena.getExprData1(negInner)) !== varName) return false;
+
       const varIdx = this.arena.getVarIdxByName(varName);
       if (varIdx < 0 || assignedVars.has(varIdx)) return false;
       if (this.arena.getVarVariability(varIdx) !== Variability.Continuous) return false;
@@ -6808,11 +6815,13 @@ export class ArenaSimulator {
       });
     } else if (solver === "radau5" || solver === "radau9") {
       const order = solver === "radau9" ? 9 : 5;
+      const adJacobian = buildAdJacobian(this.arena);
       const res = solveRadauIIA(
         {
           f: (_t: number, y: number[]) => rhsFn(_t, y),
           y0: Array.from(y0),
           tSpan: [startTime, stopTime],
+          ...(adJacobian ? { jac: adJacobian } : {}),
         },
         {
           order,

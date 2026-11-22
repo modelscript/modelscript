@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { cardDeckRules, language, type ActionExecutionContext } from "@modelscript/dsl";
+import { registerBuiltInRtdsLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerRtdsToDae } from "./dae/rtds-to-dae.js";
 import { canIndexRtds, indexRtdsDocument } from "./indexing.js";
 import { lintRtdsDraft } from "./lints/index.js";
@@ -101,3 +102,6 @@ export const rtdsLanguage = language({
 });
 
 export default rtdsLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInRtdsLibrarySync();

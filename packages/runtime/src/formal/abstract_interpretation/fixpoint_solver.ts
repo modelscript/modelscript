@@ -297,7 +297,7 @@ export class FixpointSolver {
 
         if (!this.domain.isBottom(joinedPreds)) {
           const currentIn = inStates.get(bId)!;
-          const narrowedIn = this.domain.meet(currentIn, joinedPreds);
+          const narrowedIn = this.domain.narrow(currentIn, joinedPreds);
           inStates.set(bId, narrowedIn);
 
           let currentOut = narrowedIn.clone();

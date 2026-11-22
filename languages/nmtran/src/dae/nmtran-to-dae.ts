@@ -8,6 +8,7 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInNmtranLibraryRegistered, lookupNmtranModelSchema } from "../catalog/library-package-adapter.js";
 import { inferMaxCompartments } from "../lints/nmtran-linter.js";
 import { tokenizeNmtranExpr } from "../solvers/pkpd-solver.js";
 import type { NmtranDocument } from "../types.js";
@@ -17,7 +18,21 @@ export interface NmtranDaeOptions {
   modelName?: string | undefined;
 }
 
+function getNmtranSchemaParamDefault(advan: string, keys: string[], fallback: number): number {
+  const schema = lookupNmtranModelSchema(advan);
+  if (!schema) return fallback;
+  for (const k of keys) {
+    const lower = k.toLowerCase();
+    const found = schema.parameters.find((p) => p.key.toLowerCase() === lower);
+    if (typeof found?.defaultValue === "number" && Number.isFinite(found.defaultValue)) {
+      return found.defaultValue;
+    }
+  }
+  return fallback;
+}
+
 export function lowerNmtranToDae(doc: NmtranDocument, options?: NmtranDaeOptions): DAEBuilder {
+  ensureBuiltInNmtranLibraryRegistered();
   const cs = doc.controlStream;
   const rawName = options?.modelName ?? (cs.problem || "NmtranPkPdModel");
   const modelName = rawName.replace(/[^a-zA-Z0-9_]/g, "_");
@@ -251,7 +266,7 @@ export function lowerNmtranToDae(doc: NmtranDocument, options?: NmtranDaeOptions
         const id = varMap.get(nm.toUpperCase());
         if (id !== undefined) return dae.addName(id);
       }
-      return dae.addRealLiteral(fallback);
+      return dae.addRealLiteral(getNmtranSchemaParamDefault(advan, names, fallback));
     };
 
     const getRateK = (vNames: string[]): number => {

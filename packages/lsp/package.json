@@ -173,6 +173,7 @@
     "@modelscript/lps": "*",
     "@modelscript/magicdraw": "*",
     "@modelscript/matpower": "*",
+    "@modelscript/mlxtran": "*",
     "@modelscript/modelica": "*",
     "@modelscript/modelscript": "*",
     "@modelscript/modflow": "*",

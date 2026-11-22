@@ -9,6 +9,7 @@
 
 import { choice, def, language, repeat, type QueryDB, type SymbolEntry, type SymbolId } from "@modelscript/dsl";
 import { formatPowerFlowReport, formatShortCircuitReport, solvePowerFlow } from "@modelscript/psse";
+import { registerBuiltInPowerFactoryLibrarySync } from "./catalog/library-package-adapter.js";
 import { parseDsl } from "./dsl/dsl-parser.js";
 import { transpileDslToModelica } from "./dsl/dsl-transpiler.js";
 import { lintPowerFactoryModel } from "./lints/index.js";
@@ -264,3 +265,6 @@ export const powerFactoryLanguage = language({
 });
 
 export default powerFactoryLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInPowerFactoryLibrarySync();

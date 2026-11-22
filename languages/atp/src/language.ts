@@ -6,6 +6,7 @@
 
 import { cardDeckRules, language } from "@modelscript/dsl";
 import { simulateAtpCase } from "./analysis/transient-solver.js";
+import { registerBuiltInAtpLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerAtpToDae } from "./dae/atp-to-dae.js";
 import { canIndexAtp, indexAtpDocument } from "./indexing.js";
 import { lintAtpCase } from "./lints/index.js";
@@ -149,3 +150,6 @@ export const atpLanguage = language({
 });
 
 export default atpLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInAtpLibrarySync();

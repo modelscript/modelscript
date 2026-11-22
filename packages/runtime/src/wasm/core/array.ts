@@ -86,7 +86,6 @@ export class ChunkedArray<T> {
     }
     let chunkBytes = CHUNK_SIZE() * sizeof<T>();
     let newChunk = atomicChunkAlloc(chunkBytes);
-    memory.fill(newChunk, 0, chunkBytes);
     store<usize>(this.directory + this.allocatedChunks * sizeof<usize>(), newChunk);
     this.allocatedChunks++;
   }
@@ -267,7 +266,7 @@ export class ChunkedArray<T> {
   @inline
   public copyToFlat(destPtr: usize): void {
     if (this.length == 0) return;
-    
+
     let chunks = (this.length + CHUNK_SIZE() - 1) >> CHUNK_BITS();
     for (let i: u32 = 0; i < chunks; i++) {
       let srcChunk = load<usize>(this.directory + i * sizeof<usize>());

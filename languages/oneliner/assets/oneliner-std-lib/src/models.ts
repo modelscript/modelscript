@@ -30,6 +30,12 @@
  *         IO[15] = xTotal (total positive-sequence reactance)
  */
 
+import {
+  evalDiff87Check,
+  evalInverseOvercurrentTripTime,
+  evalMhoZoneCheck,
+} from "../../../../../packages/runtime/assembly/physics/protection-tcc";
+
 const OFF_CON: usize = 0x080;
 const OFF_STATE: usize = 0x580;
 const OFF_IO: usize = 0x780;
@@ -80,6 +86,41 @@ function wrapAngleDeg(deg: f64): f64 {
   return a;
 }
 
+@inline
+function evalTocWithCoeffs(m: f64, timeDial: f64, a: f64, b: f64, p: f64, emMode: i32): f64 {
+  // Exact US Electromechanical 5-term curves (IEEE Committee Report 1979 / ASPEN OneLiner):
+  //   emMode == 1: Westinghouse CO-8 Inverse (TD scale 0.5..11)
+  //   emMode == 2: GE IAC-53 Very Inverse (TD scale 0.5..10)
+  if (emMode == 1) {
+    const mc = m - 0.14;
+    if (mc <= 1e-6) return NO_TRIP_TIME;
+    const base = 0.0274 + 2.2614 / mc - 4.1899 / (mc * mc) + 9.1272 / (mc * mc * mc);
+    return Math.max(0.01, (timeDial / 7.0) * base);
+  }
+  if (emMode == 2) {
+    const mc = m - 0.1;
+    if (mc <= 1e-6) return NO_TRIP_TIME;
+    const base = 0.09 + 0.7955 / mc - 1.2885 / (mc * mc) + 7.9586 / (mc * mc * mc);
+    return Math.max(0.01, (timeDial / 7.0) * base);
+  }
+
+  let curveId: i32 = -1;
+  if (a == 0.0515 && b == 0.114 && p == 0.02) curveId = 0;
+  else if (a == 19.61 && b == 0.491 && p == 2.0) curveId = 1;
+  else if (a == 28.2 && b == 0.1217 && p == 2.0) curveId = 2;
+  else if (a == 0.14 && b == 0.0 && p == 0.02) curveId = 3;
+  else if (a == 13.5 && b == 0.0 && p == 1.0) curveId = 4;
+  else if (a == 80.0 && b == 0.0 && p == 2.0) curveId = 5;
+  else if (a == 120.0 && b == 0.0 && p == 1.0) curveId = 6;
+  if (curveId >= 0) {
+    const t = evalInverseOvercurrentTripTime(curveId, m, timeDial);
+    return t >= 0.0 ? t : NO_TRIP_TIME;
+  }
+  // Exact IEEE C37.112 Annex A CO-8 (A=5.95, B=0.18, p=2.0) & IAC-53 (A=3.922, B=0.0982, p=2.0) and custom curves
+  const denom = Math.pow(m, p) - 1.0;
+  return denom > 1e-12 ? timeDial * (a / denom + b) : NO_TRIP_TIME;
+}
+
 /**
  * Returns first safe 64-byte-aligned linear-memory offset above AssemblyScript's static data.
  */
@@ -125,6 +166,7 @@ export function olModelEval(archetypeId: i32, slotPtr: usize, conCount: i32): i3
     const coeffB = getCon(slotPtr, conCount, 3, 0.114);
     const expP = getCon(slotPtr, conCount, 4, 0.02);
     const instMult = getCon(slotPtr, conCount, 6, 0.0);
+    const emMode = <i32>Math.round(getCon(slotPtr, conCount, 7, 0.0));
 
     const m = iFaultA / pickupA;
     setIo(slotPtr, 10, m);
@@ -138,8 +180,7 @@ export function olModelEval(archetypeId: i32, slotPtr: usize, conCount: i32): i3
     }
 
     if (m > 1.0) {
-      const denom = Math.pow(m, expP) - 1.0;
-      const tTrip = denom > 1e-12 ? timeDial * (coeffA / denom + coeffB) : NO_TRIP_TIME;
+      const tTrip = evalTocWithCoeffs(m, timeDial, coeffA, coeffB, expP, emMode);
       setIo(slotPtr, 8, 1.0);
       setIo(slotPtr, 9, tTrip);
       setState(slotPtr, 0, 1.0);
@@ -171,28 +212,64 @@ export function olModelEval(archetypeId: i32, slotPtr: usize, conCount: i32): i3
     return 0;
   }
 
-  // 3. ANSI 21 Mho Circle Distance Zone: |Z - Zr/2| <= |Zr|/2
+  // 3. ANSI 21 Mho Circle Distance Zone (Self-, Cross-, & Pos-Seq Memory-Polarized):
+  //    Operating torque: Re((Zr - Z) * conj(Z + k_pol * Zs)) >= 0
+  //    Equivalently: circle with diameter endpoints [-k_pol * Zs, Zr]
   if (archetypeId == ARCH_DISTANCE_MHO) {
     const r = getIo(slotPtr, 1);
     const x = getIo(slotPtr, 2);
     const reachMag = Math.max(1e-6, getCon(slotPtr, conCount, 0, 12.0));
     const mtaRad = getCon(slotPtr, conCount, 1, 78.0) * DEG_TO_RAD;
     const delaySec = Math.max(0.0, getCon(slotPtr, conCount, 2, 0.02));
+    const polMode = <i32>Math.round(getCon(slotPtr, conCount, 5, 0.0)); // 0=self, 1=cross, 2=pos-seq memory
+    const zSourceMag = Math.max(0.0, getCon(slotPtr, conCount, 6, 0.0));
+    const zSourceRad = getCon(slotPtr, conCount, 7, 85.0) * DEG_TO_RAD;
+    const polFactorParam = getCon(slotPtr, conCount, 8, -1.0);
 
-    const halfRadius = 0.5 * reachMag;
-    const cx = halfRadius * Math.cos(mtaRad);
-    const cy = halfRadius * Math.sin(mtaRad);
+    let kPol: f64 = 0.0;
+    if (polFactorParam >= 0.0) {
+      kPol = polFactorParam;
+    } else if (polMode == 1) {
+      kPol = 0.25; // Cross-polarized expansion
+    } else if (polMode == 2) {
+      kPol = 1.0; // Positive-sequence memory-polarized expansion
+    }
+
+    const zr = reachMag * Math.cos(mtaRad);
+    const zx = reachMag * Math.sin(mtaRad);
+    const zsr = kPol * zSourceMag * Math.cos(zSourceRad);
+    const zsx = kPol * zSourceMag * Math.sin(zSourceRad);
+
+    // Polarized Mho circle center Zc = 0.5 * (Zr - kPol*Zs), radius Rc = 0.5 * |Zr + kPol*Zs|
+    const cx = 0.5 * (zr - zsr);
+    const cy = 0.5 * (zx - zsx);
+    const diamR = zr + zsr;
+    const diamX = zx + zsx;
+    const radius = Math.max(1e-6, 0.5 * Math.sqrt(diamR * diamR + diamX * diamX));
     const dr = r - cx;
     const dx = x - cy;
     const dist = Math.sqrt(dr * dr + dx * dx);
-    const margin = (halfRadius - dist) / halfRadius;
+    const margin = (radius - dist) / radius;
     const zMag = Math.sqrt(r * r + x * x);
 
     setIo(slotPtr, 10, zMag / reachMag);
     setIo(slotPtr, 11, margin);
     setIo(slotPtr, 12, zMag);
 
-    if (dist <= halfRadius + 1e-9) {
+    let inside = false;
+    if (zsr == 0.0 && zsx == 0.0) {
+      inside = evalMhoZoneCheck(r, x, zr, zx) == 1;
+    } else {
+      // Phase comparator torque: Re((Zr - Z) * conj(Z + kPol*Zs)) >= 0
+      const opR = zr - r;
+      const opX = zx - x;
+      const polR = r + zsr;
+      const polX = x + zsx;
+      const torque = opR * polR + opX * polX;
+      inside = torque >= -1e-12;
+    }
+
+    if (inside) {
       setIo(slotPtr, 8, 1.0);
       setIo(slotPtr, 9, delaySec);
       setState(slotPtr, 0, 1.0);
@@ -257,12 +334,15 @@ export function olModelEval(archetypeId: i32, slotPtr: usize, conCount: i32): i3
       slopeThresh = slope1 * breakpoint + slope2 * (iRest - breakpoint);
     }
     const thresh = Math.max(iPickup, slopeThresh);
+    const effPickup = iRest <= breakpoint ? iPickup : thresh;
+    const effSlope = iRest <= breakpoint ? slope1 : 0.0;
+    const tripped = evalDiff87Check(iOp, iRest, effPickup, effSlope, harm2Pct, harm2Block) == 1;
     const blocked = harm2Block > 0.0 && harm2Pct >= harm2Block;
 
     setIo(slotPtr, 10, iOp / thresh);
     setIo(slotPtr, 11, blocked ? -1.0 : (iOp - thresh) / thresh);
 
-    if (!blocked && iOp >= thresh) {
+    if (tripped) {
       setIo(slotPtr, 8, 1.0);
       setIo(slotPtr, 9, delaySec);
       setState(slotPtr, 0, 1.0);
@@ -294,8 +374,7 @@ export function olModelEval(archetypeId: i32, slotPtr: usize, conCount: i32): i3
     setIo(slotPtr, 11, Math.cos(angDiff * DEG_TO_RAD) - Math.cos(halfAngleDeg * DEG_TO_RAD));
 
     if (isForward && m > 1.0) {
-      const denom = Math.pow(m, expP) - 1.0;
-      const tTrip = denom > 1e-12 ? timeDial * (coeffA / denom + coeffB) : NO_TRIP_TIME;
+      const tTrip = evalTocWithCoeffs(m, timeDial, coeffA, coeffB, expP, 0);
       setIo(slotPtr, 8, 1.0);
       setIo(slotPtr, 9, tTrip);
       setState(slotPtr, 0, 1.0);

@@ -19,8 +19,35 @@ import {
   Variability,
   VarType,
 } from "@modelscript/runtime";
+import { ensureBuiltInSpiceLibraryRegistered, lookupSpiceModelSchema } from "../catalog/library-package-adapter.js";
 import { flattenSpiceCircuit } from "../solvers/mna.js";
 import type { SpiceCircuit, SpiceComponent } from "../types.js";
+
+/**
+ * Resolves parameter defaults for a SPICE device model from `@modelscript/spice-std-lib`,
+ * merging any user-specified named overrides over the cleanroom schema defaults.
+ */
+export function resolveSpiceSchemaParamDefaults(
+  modelName: string,
+  overrides: Record<string, number> = {},
+): Record<string, number> {
+  ensureBuiltInSpiceLibraryRegistered();
+  const resolved: Record<string, number> = {};
+  const schema = lookupSpiceModelSchema(modelName);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (typeof p.defaultValue === "number" && Number.isFinite(p.defaultValue)) {
+        resolved[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (Number.isFinite(v)) {
+      resolved[k] = v;
+    }
+  }
+  return resolved;
+}
 
 const THERMAL_VOLTAGE_VT = 0.02585;
 const DEFAULT_DIODE_IS = 1e-14;
@@ -170,6 +197,7 @@ function buildSourceWaveformExpr(arena: DAEBuilder, interner: StringInterner, co
 }
 
 export function lowerSpiceToDae(circuit: SpiceCircuit, arenaTitle?: string): DAEBuilder {
+  ensureBuiltInSpiceLibraryRegistered();
   const title = arenaTitle ?? (circuit.title || "SpiceCircuit");
   const interner = new StringInterner();
   const arena = new DAEBuilder(interner, title);

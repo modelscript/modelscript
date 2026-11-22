@@ -71,6 +71,8 @@ export interface LraConstraint {
 
 export interface LraCheckResult {
   isSat: boolean;
+  /** True when the solver exhausted its pivot or branch-and-bound budget without proving SAT or UNSAT. */
+  isUnknown?: boolean | undefined;
   conflictLitIds?: number[] | undefined;
   model?: Map<string, number> | undefined;
 }
@@ -455,8 +457,8 @@ export class LraSimplexSolver {
       this.pivotAndUpdate(violatedBasic, chosenNonBasic, targetBound);
     }
 
-    // Pivot limit reached — conservatively treat as SAT (incomplete rather than unsound UNSAT)
-    return { isSat: true };
+    // Pivot limit reached — report unknown rather than claiming SAT without a valid model
+    return { isSat: false, isUnknown: true };
   }
 
   private integerVars = new Set<string>();
@@ -648,8 +650,8 @@ export class LraSimplexSolver {
       }
 
       if (nodesExplored >= maxNodes) {
-        // Conservatively return SAT (incomplete rather than unsound UNSAT) if budget exhausted
-        return { isSat: true, model: lraRes.model };
+        // Never return a fractional relaxation model as LIA-satisfiable; report unknown
+        return { isSat: false, isUnknown: true };
       }
 
       const floorVal = Math.floor(branchVal);

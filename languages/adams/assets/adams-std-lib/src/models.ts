@@ -487,7 +487,9 @@ export function adamsModelEval(
 
   // --- 3. Tires & Automotive ---
   if (archetypeId == ARCH_TIRE_PAC2002) {
-    // IO[0] = kappa (longitudinal slip), IO[1] = alpha (slip angle rad), IO[2] = Fz (vertical load N)
+    // Combined-Slip Pacejka Magic Formula 6.2 (MF 6.2)
+    // IO[0] = kappa (longitudinal slip), IO[1] = alpha (slip angle rad),
+    // IO[2] = Fz (vertical load N), IO[3] = gamma (camber angle rad)
     const Bx = getCon(slotPtr, conCount, 0, 10.0);
     const Cx = getCon(slotPtr, conCount, 1, 1.65);
     const muX = getCon(slotPtr, conCount, 2, 1.0);
@@ -497,12 +499,43 @@ export function adamsModelEval(
     const muY = getCon(slotPtr, conCount, 6, 0.95);
     const Ey = getCon(slotPtr, conCount, 7, -0.5);
     const fz0 = getCon(slotPtr, conCount, 8, 4000.0);
-    const trail = getCon(slotPtr, conCount, 9, 0.03);
+    const trail0 = getCon(slotPtr, conCount, 9, 0.03);
+    const rBx1 = getCon(slotPtr, conCount, 10, 12.0);
+    const rCx1 = getCon(slotPtr, conCount, 11, 1.0);
+    const rBy1 = getCon(slotPtr, conCount, 12, 10.0);
+    const rCy1 = getCon(slotPtr, conCount, 13, 1.0);
+    const kGamma = getCon(slotPtr, conCount, 14, 0.08);
+    const Bt = getCon(slotPtr, conCount, 15, 10.0);
+    const Ct = getCon(slotPtr, conCount, 16, 1.0);
+    const Et = getCon(slotPtr, conCount, 17, -0.5);
 
+    const kappa = x;
+    const alpha = xdot;
     const fz = dy > 0.0 ? dy : fz0;
-    const fx = evalMagicFormula(x, Bx, Cx, muX * fz, Ex);
-    const fy = evalMagicFormula(xdot, By, Cy, muY * fz, Ey);
-    const mz = -trail * fy;
+    const gamma = dz;
+
+    // 1. Pure-slip forces (with camber thrust & camber grip reduction on Fy0)
+    const fx0 = evalMagicFormula(kappa, Bx, Cx, muX * fz, Ex);
+    const muYEff = muY * Math.max(0.5, 1.0 - 0.15 * gamma * gamma);
+    const alphaEff = alpha + kGamma * gamma;
+    const fy0 = evalMagicFormula(alphaEff, By, Cy, muYEff * fz, Ey);
+
+    // 2. Combined-slip cosine weighting functions G_xalpha and G_ykappa (MF 6.2)
+    const bXa = rBx1 * Math.cos(Math.atan(5.0 * kappa));
+    const gXalpha = Math.cos(rCx1 * Math.atan(bXa * alpha));
+    const bYk = rBy1 * Math.cos(Math.atan(4.0 * alpha));
+    const gYkappa = Math.cos(rCy1 * Math.atan(bYk * kappa));
+
+    const fx = fx0 * gXalpha;
+    const fy = fy0 * gYkappa;
+
+    // 3. Pneumatic trail self-aligning torque Mz (with slip-dependent trail decay & camber residual)
+    const alphaT = Math.sqrt(alpha * alpha + kappa * kappa);
+    const btAt = Bt * alphaT;
+    const trailEff = trail0 * Math.cos(Ct * Math.atan(btAt - Et * (btAt - Math.atan(btAt))));
+    const mzr = 0.01 * fz * gamma * trail0;
+    const mz = -trailEff * fy + mzr;
+
     return writeWrench(slotPtr, fx, fy, fz, 0.0, 0.0, mz);
   }
 

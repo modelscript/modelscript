@@ -1,0 +1,1020 @@
+[
+  {
+    "namePath": "magicdraw:MD_Customization_for_SysML",
+    "aliases": [
+      "MD Customization for SysML",
+      "MD_Customization",
+      "SysMLCustomization"
+    ],
+    "label": "MD Customization for SysML Profile",
+    "category": "MD Customization",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Customizatio</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:MD_Block",
+    "aliases": [
+      "Block",
+      "sysml:Block"
+    ],
+    "label": "SysML Block",
+    "category": "MD Customization",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Block</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:MD_ConstraintBlock",
+    "aliases": [
+      "ConstraintBlock",
+      "sysml:ConstraintBlock"
+    ],
+    "label": "SysML ConstraintBlock",
+    "category": "MD Customization",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ConstraintBl</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:MD_FlowPort",
+    "aliases": [
+      "FlowPort",
+      "sysml:FlowPort"
+    ],
+    "label": "SysML FlowPort",
+    "category": "MD Customization",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FlowPort</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:MD_ProxyPort",
+    "aliases": [
+      "ProxyPort",
+      "sysml:ProxyPort"
+    ],
+    "label": "SysML ProxyPort",
+    "category": "MD Customization",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ProxyPort</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:MD_FullPort",
+    "aliases": [
+      "FullPort",
+      "sysml:FullPort"
+    ],
+    "label": "SysML FullPort",
+    "category": "MD Customization",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FullPort</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:MD_InterfaceBlock",
+    "aliases": [
+      "InterfaceBlock",
+      "sysml:InterfaceBlock"
+    ],
+    "label": "SysML InterfaceBlock",
+    "category": "MD Customization",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">InterfaceBlo</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:MD_ValueType",
+    "aliases": [
+      "ValueType",
+      "sysml:ValueType"
+    ],
+    "label": "SysML ValueType",
+    "category": "MD Customization",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ValueType</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:MD_Requirement",
+    "aliases": [
+      "Requirement",
+      "sysml:Requirement"
+    ],
+    "label": "SysML Requirement",
+    "category": "MD Customization",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Requirement</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:MD_ExtendedRequirement",
+    "aliases": [
+      "ExtendedRequirement",
+      "sysml:ExtendedRequirement"
+    ],
+    "label": "SysML ExtendedRequirement",
+    "category": "MD Customization",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ExtendedRequ</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:MD_TestCase",
+    "aliases": [
+      "TestCase",
+      "sysml:TestCase"
+    ],
+    "label": "SysML TestCase",
+    "category": "MD Customization",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TestCase</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:MD_PartProperty",
+    "aliases": [
+      "PartProperty",
+      "partProperty"
+    ],
+    "label": "MD PartProperty Stereotype",
+    "category": "MD Customization",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PartProperty</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:MD_ReferenceProperty",
+    "aliases": [
+      "ReferenceProperty",
+      "referenceProperty"
+    ],
+    "label": "MD ReferenceProperty Stereotype",
+    "category": "MD Customization",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYS</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ReferencePro</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:SI_Meter",
+    "aliases": [
+      "m",
+      "meter",
+      "metre",
+      "SI::metre"
+    ],
+    "label": "SI Meter (m)",
+    "category": "SI / QUDV ValueType",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">QUDV</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Meter</text></svg>",
+    "ports": [
+      {
+        "name": "raw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:SI_Kilogram",
+    "aliases": [
+      "kg",
+      "kilogram",
+      "SI::kilogram"
+    ],
+    "label": "SI Kilogram (kg)",
+    "category": "SI / QUDV ValueType",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">QUDV</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Kilogram</text></svg>",
+    "ports": [
+      {
+        "name": "raw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:SI_Second",
+    "aliases": [
+      "s",
+      "second",
+      "SI::second"
+    ],
+    "label": "SI Second (s)",
+    "category": "SI / QUDV ValueType",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">QUDV</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Second</text></svg>",
+    "ports": [
+      {
+        "name": "raw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:SI_Ampere",
+    "aliases": [
+      "A",
+      "ampere",
+      "SI::ampere"
+    ],
+    "label": "SI Ampere (A)",
+    "category": "SI / QUDV ValueType",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">QUDV</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Ampere</text></svg>",
+    "ports": [
+      {
+        "name": "raw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:SI_Kelvin",
+    "aliases": [
+      "K",
+      "kelvin",
+      "SI::kelvin"
+    ],
+    "label": "SI Kelvin (K)",
+    "category": "SI / QUDV ValueType",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">QUDV</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Kelvin</text></svg>",
+    "ports": [
+      {
+        "name": "raw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:SI_Newton",
+    "aliases": [
+      "N",
+      "newton",
+      "SI::newton"
+    ],
+    "label": "SI Newton (N)",
+    "category": "SI / QUDV ValueType",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">QUDV</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Newton</text></svg>",
+    "ports": [
+      {
+        "name": "raw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:SI_Pascal",
+    "aliases": [
+      "Pa",
+      "pascal",
+      "SI::pascal"
+    ],
+    "label": "SI Pascal (Pa)",
+    "category": "SI / QUDV ValueType",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">QUDV</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Pascal</text></svg>",
+    "ports": [
+      {
+        "name": "raw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:SI_Joule",
+    "aliases": [
+      "J",
+      "joule",
+      "SI::joule"
+    ],
+    "label": "SI Joule (J)",
+    "category": "SI / QUDV ValueType",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">QUDV</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Joule</text></svg>",
+    "ports": [
+      {
+        "name": "raw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:SI_Watt",
+    "aliases": [
+      "W",
+      "watt",
+      "SI::watt"
+    ],
+    "label": "SI Watt (W)",
+    "category": "SI / QUDV ValueType",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">QUDV</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Watt</text></svg>",
+    "ports": [
+      {
+        "name": "raw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:SI_Volt",
+    "aliases": [
+      "V",
+      "volt",
+      "SI::volt"
+    ],
+    "label": "SI Volt (V)",
+    "category": "SI / QUDV ValueType",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">QUDV</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Volt</text></svg>",
+    "ports": [
+      {
+        "name": "raw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:SI_Ohm",
+    "aliases": [
+      "ohm",
+      "Ohm",
+      "SI::ohm"
+    ],
+    "label": "SI Ohm (Ω)",
+    "category": "SI / QUDV ValueType",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">QUDV</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Ohm</text></svg>",
+    "ports": [
+      {
+        "name": "raw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:SI_Hertz",
+    "aliases": [
+      "Hz",
+      "hertz",
+      "SI::hertz"
+    ],
+    "label": "SI Hertz (Hz)",
+    "category": "SI / QUDV ValueType",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">QUDV</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Hertz</text></svg>",
+    "ports": [
+      {
+        "name": "raw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:QUDV_Unit",
+    "aliases": [
+      "Unit",
+      "QUDV::Unit",
+      "AffineConversionUnit",
+      "LinearConversionUnit"
+    ],
+    "label": "QUDV Conversion Unit",
+    "category": "SI / QUDV ValueType",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">QUDV</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Unit</text></svg>",
+    "ports": [
+      {
+        "name": "raw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:QUDV_QuantityKind",
+    "aliases": [
+      "QuantityKind",
+      "QUDV::QuantityKind"
+    ],
+    "label": "QUDV QuantityKind",
+    "category": "SI / QUDV ValueType",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">QUDV</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">QuantityKind</text></svg>",
+    "ports": [
+      {
+        "name": "raw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:CST_SimulationConfig",
+    "aliases": [
+      "SimulationConfig",
+      "CST::SimulationConfig"
+    ],
+    "label": "Cameo Simulation Configuration",
+    "category": "Cameo Simulation Toolkit",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CST</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SimulationCo</text></svg>",
+    "ports": [
+      {
+        "name": "lhs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "rhs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "result",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:CST_TimeSeriesChart",
+    "aliases": [
+      "TimeSeriesChart",
+      "CST::TimeSeriesChart"
+    ],
+    "label": "Cameo TimeSeriesChart Recorder",
+    "category": "Cameo Simulation Toolkit",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CST</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TimeSeriesCh</text></svg>",
+    "ports": [
+      {
+        "name": "lhs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "rhs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "result",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:CST_ConstraintEvaluator",
+    "aliases": [
+      "ConstraintEvaluator",
+      "CST::ConstraintEvaluator"
+    ],
+    "label": "Cameo Parametric Constraint Evaluator",
+    "category": "Cameo Simulation Toolkit",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CST</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ConstraintEv</text></svg>",
+    "ports": [
+      {
+        "name": "lhs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "rhs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "result",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:CST_RollupPattern",
+    "aliases": [
+      "RollupPattern",
+      "MassRollup",
+      "PowerRollup",
+      "CostRollup",
+      "CST::RollupPattern"
+    ],
+    "label": "Cameo Mass / Power / Cost Rollup Pattern",
+    "category": "Cameo Simulation Toolkit",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CST</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RollupPatter</text></svg>",
+    "ports": [
+      {
+        "name": "lhs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "rhs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "result",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:CST_MonteCarloConfig",
+    "aliases": [
+      "MonteCarloConfig",
+      "CST::MonteCarloConfig"
+    ],
+    "label": "Cameo Monte Carlo Analysis Configuration",
+    "category": "Cameo Simulation Toolkit",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CST</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MonteCarloCo</text></svg>",
+    "ports": [
+      {
+        "name": "lhs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "rhs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "result",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "magicdraw:UML_Standard_Profile",
+    "aliases": [
+      "StandardProfile",
+      "UML::StandardProfile"
+    ],
+    "label": "OMG UML 2.5.1 Standard Profile",
+    "category": "Cameo Simulation Toolkit",
+    "domain": "systems",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CST</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Standard_Pro</text></svg>",
+    "ports": [
+      {
+        "name": "lhs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "rhs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "result",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  }
+]

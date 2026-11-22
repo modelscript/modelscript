@@ -15,6 +15,7 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInLpsLibraryRegistered, lookupLpsModelSchema } from "../catalog/library-package-adapter.js";
 import type { LpsModel } from "../types.js";
 
 export interface LpsDaeOptions {
@@ -24,7 +25,34 @@ export interface LpsDaeOptions {
   gasDensity?: number | undefined; // kg/m3 (default: 45.0 kg/m3 at 60 bar)
 }
 
+/**
+ * Resolves parameter defaults for an LPS model from `@modelscript/lps-std-lib`,
+ * merging any user-specified named overrides over the cleanroom schema defaults.
+ */
+export function resolveLpsSchemaParamDefaults(
+  modelName: string,
+  overrides: Record<string, number> = {},
+): Record<string, number> {
+  ensureBuiltInLpsLibraryRegistered();
+  const resolved: Record<string, number> = {};
+  const schema = lookupLpsModelSchema(modelName);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (typeof p.defaultValue === "number" && Number.isFinite(p.defaultValue)) {
+        resolved[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (Number.isFinite(v)) {
+      resolved[k] = v;
+    }
+  }
+  return resolved;
+}
+
 export function lowerLpsToDae(model: LpsModel, options?: LpsDaeOptions): DAEBuilder {
+  ensureBuiltInLpsLibraryRegistered();
   const modelName = (options?.modelName ?? model.title ?? model.id ?? "PipelineNetwork").replace(/[^a-zA-Z0-9_]/g, "_");
   const dae = options?.builder ?? new DAEBuilder(undefined, modelName);
   const soundSpeed = options?.speedOfSound ?? 380.0;

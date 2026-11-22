@@ -7,8 +7,14 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  SEL_351_WORD_BIT_PRESETS,
+  SEL_421_WORD_BIT_PRESETS,
+  SEL_487_WORD_BIT_PRESETS,
   SEL_ELEMENT_SPECS,
+  SeLogicEngine,
   createFmuSelInstance,
+  createRelayWordBitPreset,
+  evalSeLogicExpression,
   fmuToSelSettings,
   getSelSchemasFromLibraries,
   instantiateSelWasmElement,
@@ -169,5 +175,50 @@ describe("@modelscript/sel — Cleanroom Standard Library (modelscript.yaml, WAS
     const out = fmuInst.evalStep(0.01, 0.01, { zReal: 1.0, zImag: 2.0 });
     assert.equal(out.trip, true);
     assert.equal(out.operateTimeSec, 0.016);
+  });
+
+  it("evaluates SELogic expressions (*, +, !, (), /, \\), SV_TIMER sequences, and SEL-421/487/351 presets", () => {
+    // 1. Standard Relay Word bit presets for SEL-421, SEL-487, SEL-351
+    assert.ok(SEL_421_WORD_BIT_PRESETS.includes("Z1P") && SEL_421_WORD_BIT_PRESETS.includes("85RIO"));
+    assert.ok(SEL_487_WORD_BIT_PRESETS.includes("87R") && SEL_487_WORD_BIT_PRESETS.includes("87BL2"));
+    assert.ok(SEL_351_WORD_BIT_PRESETS.includes("79LO") && SEL_351_WORD_BIT_PRESETS.includes("81D1T"));
+
+    const bits421 = createRelayWordBitPreset("SEL-421", { Z1P: true, "52A": true, LOP: false });
+    assert.equal(evalSeLogicExpression("Z1P * !LOP * (52A + 50P1)", bits421), true);
+    assert.equal(evalSeLogicExpression("Z1P * LOP + 50P1", bits421), false);
+
+    // 2. Rising edge '/' and falling edge '\' operators
+    const prev = { "50P1": false, "52A": true };
+    const curr = { "50P1": true, "52A": false };
+    assert.equal(evalSeLogicExpression("/50P1 * \\52A", curr, prev), true);
+    assert.equal(evalSeLogicExpression("/50P1", curr, curr), false, "Rising edge must clear on steady high");
+    assert.equal(evalSeLogicExpression("\\52A", curr, curr), false, "Falling edge must clear on steady low");
+
+    // 3. SeLogicEngine with SV_TIMER pickup/dropout delays + equations
+    const engine = new SeLogicEngine([
+      { name: "SV1T", inputExpr: "Z2P * !LOP", pickupDelaySec: 0.1, dropoutDelaySec: 0.05 },
+    ]);
+    const eqs = { TRIP: "Z1P + SV1T", EDGE_TRIP: "/TRIP" };
+
+    // Step 1 (0.06 s): Z2P asserted, SV1T not yet picked up
+    const s1 = engine.step(0.06, createRelayWordBitPreset("SEL-421", { Z2P: true }), eqs);
+    assert.equal(s1.wordBits["SV1T"], false);
+    assert.equal(s1.wordBits["TRIP"], false);
+
+    // Step 2 (0.06 s -> 0.12 s >= 0.10 s): SV1T picks up -> TRIP asserts -> /TRIP rising edge fires
+    const s2 = engine.step(0.06, createRelayWordBitPreset("SEL-421", { Z2P: true }), eqs);
+    assert.equal(s2.wordBits["SV1T"], true);
+    assert.equal(s2.wordBits["TRIP"], true);
+    assert.equal(s2.wordBits["EDGE_TRIP"], true);
+
+    // Step 3 (0.03 s): Z2P drops, SV1T holds during 0.05 s dropout delay, /TRIP clears
+    const s3 = engine.step(0.03, createRelayWordBitPreset("SEL-421", { Z2P: false }), eqs);
+    assert.equal(s3.wordBits["SV1T"], true);
+    assert.equal(s3.wordBits["EDGE_TRIP"], false);
+
+    // Step 4 (0.03 s -> 0.06 s >= 0.05 s): SV1T drops out
+    const s4 = engine.step(0.03, createRelayWordBitPreset("SEL-421", { Z2P: false }), eqs);
+    assert.equal(s4.wordBits["SV1T"], false);
+    assert.equal(s4.wordBits["TRIP"], false);
   });
 });

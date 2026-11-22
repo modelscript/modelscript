@@ -914,10 +914,13 @@ export class LspFacade {
   }
 
   /**
-   * Trigger 2: Checks if allocated memory exceeds high-water mark quota.
+   * Trigger 2: Checks if live allocated arena memory exceeds high-water mark quota.
    */
   public checkMemoryQuota(): void {
-    const allocatedBytes = this.wasmMemory?.buffer?.byteLength ?? 0;
+    const allocatedBytes =
+      typeof this.exports?.arena_getMemoryUsage === "function"
+        ? this.exports.arena_getMemoryUsage()
+        : (this.wasmMemory?.buffer?.byteLength ?? 0);
     if (allocatedBytes >= this._maxMemoryQuotaBytes) {
       this.gcCompact();
     }
@@ -1018,6 +1021,15 @@ export class LspFacade {
     const getInputBuf = this.exports.getInputBuffer || this.exports.lsp_getInputBuffer;
     if (!this.exports.parse || !getInputBuf) return 0;
 
+    // Multi-file safety: if the shared WASM input buffer currently holds another document's
+    // text, reload this document's previous text before applying an in-place edit.
+    if (uri && this._lastInputBufferUri !== uri) {
+      const cachedSrc = this.uriSourceCode.get(uri);
+      if (cachedSrc !== undefined) {
+        this.loadSource(cachedSrc);
+      }
+    }
+
     // Invalidate cached line starts on every edit.
     // The full rescan in getLineStarts() is O(N) but runs lazily once per edit.
     this._cachedLineStarts = null;
@@ -1057,13 +1069,7 @@ export class LspFacade {
     const lenBytesAlloc = maxLen * 2;
     const textPtr = this.exports.ensureInputBuffer ? this.exports.ensureInputBuffer(lenBytesAlloc) : oldTextPtr;
 
-    // If the buffer was reallocated, move the old text into it. `ensureInputBuffer` never
-    // frees the previous buffer, so its contents are still valid in linear memory; this
-    // avoids snapshotting the whole document on every keystroke.
-    if (oldTextPtr !== textPtr && oldTotalLength > 0) {
-      new Uint8Array(this.wasmMemory.buffer).copyWithin(textPtr, oldTextPtr, oldTextPtr + oldTotalLength * 2);
-    }
-
+    // `ensureInputBuffer` preserves existing input bytes across buffer reallocation before freeing the old buffer.
     const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
 
     if (changeText.length !== rangeLength) {
@@ -1169,6 +1175,13 @@ export class LspFacade {
     if (!this.exports.parse || !getInputBuf) return 0;
     if (!edits || edits.length === 0) return this.getDocumentRoot(uri);
 
+    if (uri && this._lastInputBufferUri !== uri) {
+      const cachedSrc = this.uriSourceCode.get(uri);
+      if (cachedSrc !== undefined) {
+        this.loadSource(cachedSrc);
+      }
+    }
+
     this._cachedLineStarts = null;
     this._childTailCache.clear();
 
@@ -1216,10 +1229,7 @@ export class LspFacade {
     const lenBytesAlloc = maxLen * 2;
     const textPtr = this.exports.ensureInputBuffer ? this.exports.ensureInputBuffer(lenBytesAlloc) : oldTextPtr;
 
-    // Old input buffers are never freed, so relocated text can be copied in place.
-    if (oldTextPtr !== textPtr && oldTotalLength > 0) {
-      new Uint8Array(this.wasmMemory.buffer).copyWithin(textPtr, oldTextPtr, oldTextPtr + oldTotalLength * 2);
-    }
+    // `ensureInputBuffer` preserves existing input bytes across reallocation before freeing the old buffer.
     const memArray16 = new Uint16Array(this.wasmMemory.buffer, textPtr, maxLen);
 
     // Sort edits in descending order so mutations at higher offsets do not shift lower offsets
@@ -1245,6 +1255,8 @@ export class LspFacade {
     this._cachedLineStarts = null;
 
     this.currentInputLength = newTotalLength;
+    this._lastInputBufferUri = uri;
+    this._lastInputBufferLength = Math.max(0, newTotalLength);
 
     this._inputEncoding = 1;
     const div = this.getEncodingDiv();
@@ -6440,7 +6452,7 @@ export class LspWorkspaceManager {
   indexFile(uri: string, content: string, keepAst: boolean = false): number {
     const fileId = this.getFileId(uri);
     this.facade.clearFileStubs(fileId);
-    const astRoot = this.facade.parse(content);
+    const astRoot = this.facade.parse(content, 0, 0, 0, uri);
 
     const symbols = this.facade.getDocumentSymbols(astRoot);
     for (let i = 0; i < symbols.length; i++) {

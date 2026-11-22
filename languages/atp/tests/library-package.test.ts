@@ -167,4 +167,54 @@ describe("@modelscript/atp — Cleanroom Standard Library (modelscript.yaml, WAS
     const tripped = fmuInst.doStep(0.002, 0.001, { ctrlIn: 750.0 });
     assert.equal(tripped.ctrlOut, 1.0);
   });
+
+  it("steps 2-pole VF convolution on LINE_JMARTI_FD / LINE_SEMLYEN_FD and Park d-q-0 flux linkages on MACH_SYNC_59", () => {
+    const dt = 50e-6;
+
+    // 1. LINE_JMARTI_FD & LINE_SEMLYEN_FD: 2-pole recursive exponential vector-fitting propagation convolution
+    for (const lineType of ["LINE_JMARTI_FD", "LINE_SEMLYEN_FD"] as const) {
+      const fd = instantiateAtpWasmModel({
+        modelType: lineType,
+        id: `${lineType}_1`,
+        params: [380.0, 250e-6, 1.5, 50e-6, 400e-6],
+      });
+      assert.ok(fd, `Expected ${lineType} WASM instance`);
+      fd.init();
+      let out = fd.doStep(dt, dt, { vNode1: 100000.0, vNode2: 0.0 });
+      assert.ok(Math.abs(out.iHist2) < 1e-9, "Expected zero receiving-end history before wave arrival");
+      for (let k = 2; k <= 12; k++) {
+        out = fd.doStep(k * dt, dt, { vNode1: 100000.0, vNode2: 0.0 });
+      }
+      assert.ok(
+        Math.abs(out.iHist2) > 10.0,
+        `Expected 2-pole VF convolved wave arrival on ${lineType}, got iHist2=${out.iHist2}`,
+      );
+      // Verify both fast & slow VF poles (aux2, aux3) contributed to end-2 convolution
+      assert.ok(Math.abs(out.aux2 ?? 0) > 1.0 && Math.abs(out.aux3 ?? 0) > 1.0);
+    }
+
+    // 2. MACH_SYNC_59: Full 3-phase Park d-q-0 synchronous machine with Ed', Eq', psi_kd, psi_kq
+    const mach = instantiateAtpWasmModel({
+      modelType: "MACH_SYNC_59",
+      id: "GEN59_1",
+      params: [20000.0, 60.0, 4.0, 0.2, 5.0e6],
+    });
+    assert.ok(mach, "Expected MACH_SYNC_59 WASM instance");
+    const nStates = mach.init();
+    assert.equal(nStates, 9, "Expected 9 Park d-q-0 synchronous machine states");
+
+    // Apply 3-phase bolted terminal fault (vNode1 = 0, vNode2 = 0) and observe subtransient flux decay
+    let mOut = mach.doStep(dt, dt, { vNode1: 0.0, vNode2: 0.0, ctrlIn: 1.05 });
+    const initialPsiKd = mOut.aux2 ?? 0;
+    for (let k = 2; k <= 400; k++) {
+      mOut = mach.doStep(k * dt, dt, { vNode1: 0.0, vNode2: 0.0, ctrlIn: 1.05 });
+    }
+    assert.ok(Number.isFinite(mOut.aux0) && Number.isFinite(mOut.aux1), "Expected finite Ed' and Eq'");
+    assert.ok(
+      (mOut.aux2 ?? 0) < initialPsiKd,
+      `Expected d-axis damper flux psi_kd to decay under fault: ${mOut.aux2} vs ${initialPsiKd}`,
+    );
+    assert.ok(mOut.flux > 0 && mOut.auxOut > 0, "Expected positive subtransient and transient flux magnitudes");
+    assert.ok(mOut.omegaRadS > 2.0 * Math.PI * 60.0, "Expected rotor acceleration during 3-phase fault");
+  });
 });

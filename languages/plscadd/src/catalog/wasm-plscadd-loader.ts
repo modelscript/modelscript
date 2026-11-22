@@ -29,6 +29,8 @@ export interface PlsCaddEvalInput {
   operatingCurrentA?: number | undefined;
   windSpeedMs?: number | undefined;
   lineAngleDeg?: number | undefined;
+  /** Conductor stress-strain mode: 0 = linear Hookean, 1 = 4th-order initial poly, 2 = 4th-order final after-creep poly */
+  stressStrainMode?: number | undefined;
 }
 
 export interface PlsCaddEvalOutput {
@@ -80,7 +82,7 @@ function writeIo(views: CachedMemoryViews, slotPtr: number, input: PlsCaddEvalIn
   views.f64[base + 4] = input.ambientTempC !== undefined ? input.ambientTempC : Number.NaN;
   views.f64[base + 5] = input.operatingCurrentA ?? 0.0;
   views.f64[base + 6] = input.windSpeedMs ?? 0.0;
-  views.f64[base + 7] = input.lineAngleDeg ?? 0.0;
+  views.f64[base + 7] = input.stressStrainMode !== undefined ? input.stressStrainMode : (input.lineAngleDeg ?? 0.0);
 }
 
 function readOutput(views: CachedMemoryViews, slotPtr: number): PlsCaddEvalOutput {

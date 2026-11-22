@@ -155,4 +155,154 @@ describe("@modelscript/eclipse — Cleanroom Standard Library (modelscript.yaml,
     const out = fmuInst.eval({ pressure: 3200, bhp: 2200 });
     assert.ok(Math.abs(out.out0 - 2500) < 1e-9);
   });
+
+  it("evaluates tabulated PVTO (undersaturated slopes), tabulated SWOF/SGOF, and 2D VFPPROD bilinear lookup", () => {
+    // 1. Tabulated PVTO with 4 saturated rows [P, Rs, Bo, muO] and undersaturated (co, cmu) above Pb=2500
+    const pvtoTab = instantiateEclipseWasmModel({
+      modelType: "PVTO_LIVE_OIL",
+      params: [
+        35.0,
+        0.75,
+        2500.0,
+        2.0e-5,
+        2.0, // CON[0..4]: api, gammaG, pb, co, muDead
+        4,
+        3.0e-5, // CON[5]=nRows, CON[6]=cmu (1/psi)
+        // Saturated table rows: [P_psia, Rs_scf_stb, Bo_rb_stb, muO_cP]
+        500.0,
+        120.0,
+        1.08,
+        1.4,
+        1000.0,
+        260.0,
+        1.14,
+        1.1,
+        2000.0,
+        560.0,
+        1.26,
+        0.7,
+        2500.0,
+        710.0,
+        1.32,
+        0.55,
+      ],
+    });
+    assert.ok(pvtoTab, "Expected tabulated PVTO_LIVE_OIL instance");
+    pvtoTab.init();
+
+    // Saturated midpoint P=1500 between 1000 and 2000
+    const satMid = pvtoTab.eval({ pressure: 1500.0 });
+    assert.ok(Math.abs(satMid.out0 - 410.0) < 1e-9, `Expected Rs=410, got ${satMid.out0}`);
+    assert.ok(Math.abs(satMid.out1 - 1.2) < 1e-9, `Expected Bo=1.20, got ${satMid.out1}`);
+    assert.ok(Math.abs(satMid.out2 - 0.9) < 1e-9, `Expected muO=0.90, got ${satMid.out2}`);
+
+    // Undersaturated P=3500 (dp = 1000 psi above Pb=2500)
+    const under = pvtoTab.eval({ pressure: 3500.0 });
+    const expectedBoUnder = 1.32 * Math.exp(-2.0e-5 * 1000.0);
+    const expectedMuUnder = 0.55 * (1.0 + 3.0e-5 * 1000.0);
+    assert.ok(Math.abs(under.out0 - 710.0) < 1e-9, `Expected constant Rs=710 above Pb, got ${under.out0}`);
+    assert.ok(Math.abs(under.out1 - expectedBoUnder) < 1e-9, `Expected Bo=${expectedBoUnder}, got ${under.out1}`);
+    assert.ok(Math.abs(under.out2 - expectedMuUnder) < 1e-9, `Expected muO=${expectedMuUnder}, got ${under.out2}`);
+
+    // 2. Tabulated SWOF piecewise-linear interpolation
+    const swofTab = instantiateEclipseWasmModel({
+      modelType: "SWOF_COREY",
+      params: [
+        0.2,
+        0.2,
+        0.8,
+        1.0,
+        2.0,
+        2.0,
+        10.0, // CON[0..6]
+        3, // CON[7] = nRows
+        0.2,
+        0.0,
+        1.0,
+        8.0,
+        0.5,
+        0.3,
+        0.4,
+        2.0,
+        0.8,
+        0.8,
+        0.0,
+        0.0,
+      ],
+    });
+    assert.ok(swofTab);
+    swofTab.init();
+    const swofMid = swofTab.eval({ sw: 0.35 });
+    assert.ok(Math.abs(swofMid.out0 - 0.15) < 1e-9, `Expected krw=0.15, got ${swofMid.out0}`);
+    assert.ok(Math.abs(swofMid.out1 - 0.7) < 1e-9, `Expected krow=0.70, got ${swofMid.out1}`);
+    assert.ok(Math.abs(swofMid.out2 - 5.0) < 1e-9, `Expected Pcow=5.0, got ${swofMid.out2}`);
+
+    // 3. Tabulated SGOF piecewise-linear interpolation
+    const sgofTab = instantiateEclipseWasmModel({
+      modelType: "SGOF_COREY",
+      params: [
+        0.05,
+        0.15,
+        0.2,
+        0.9,
+        1.0,
+        2.0,
+        2.5,
+        5.0, // CON[0..7]
+        3, // CON[8] = nRows
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.4,
+        0.4,
+        0.2,
+        2.0,
+        0.8,
+        0.9,
+        0.0,
+        6.0,
+      ],
+    });
+    assert.ok(sgofTab);
+    sgofTab.init();
+    const sgofMid = sgofTab.eval({ sg: 0.6 });
+    assert.ok(Math.abs(sgofMid.out0 - 0.65) < 1e-9, `Expected krg=0.65, got ${sgofMid.out0}`);
+    assert.ok(Math.abs(sgofMid.out1 - 0.1) < 1e-9, `Expected krog=0.10, got ${sgofMid.out1}`);
+    assert.ok(Math.abs(sgofMid.out2 - 4.0) < 1e-9, `Expected Pcog=4.0, got ${sgofMid.out2}`);
+
+    // 4. 2D VFPPROD bilinear BHP(rate, THP) lookup
+    const vfp = instantiateEclipseWasmModel({
+      modelType: "VFPPROD_LIFT",
+      params: [
+        8000.0,
+        0.35,
+        1.5e-5,
+        150.0, // CON[0..3]
+        3,
+        2, // nRate=3, nThp=2
+        500.0,
+        1500.0,
+        3000.0, // rate axis Q
+        150.0,
+        350.0, // THP axis
+        // BHP[iThp=0 (THP=150)]: Q=500, 1500, 3000
+        1800.0,
+        2100.0,
+        2700.0,
+        // BHP[iThp=1 (THP=350)]: Q=500, 1500, 3000
+        2050.0,
+        2400.0,
+        3050.0,
+      ],
+    });
+    assert.ok(vfp, "Expected tabulated VFPPROD_LIFT instance");
+    vfp.init();
+    // Midpoint Q=1000 (wq=0.5 between 500 and 1500), THP=250 (wt=0.5 between 150 and 350)
+    // row0 = 1950, row1 = 2225 => bilinear = 2087.5
+    const vfpOut = vfp.eval({ rateIn: 1000.0, pressure: 250.0 });
+    assert.ok(Math.abs(vfpOut.out0 - 250.0) < 1e-9);
+    assert.ok(Math.abs(vfpOut.out1 - 2087.5) < 1e-9, `Expected BHP=2087.5, got ${vfpOut.out1}`);
+    assert.ok(vfpOut.out3 > 0.3, `Expected positive dBHP/dQ slope, got ${vfpOut.out3}`);
+  });
 });

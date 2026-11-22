@@ -200,3 +200,47 @@ export function cleanroomSchemasToLibraryPayloads(schemas: readonly CleanroomMod
 
   return { symbols, diagrams };
 }
+
+/**
+ * Compiles user-authored AssemblyScript source into a sandboxed `runtime.wasm` binary
+ * for custom cleanroom user models (`S-Function`, `USER2`, `MODELS`, `UMAT`, `epcmod`, `USRMDL`, etc.).
+ * Uses dynamic `assemblyscript/asc` import so browser bundles remain lightweight.
+ */
+export async function compileAssemblyScriptCleanroomModel(
+  sourceTs: string,
+): Promise<{ wasmBytes?: Uint8Array; diagnostics: string[] }> {
+  const diagnostics: string[] = [];
+  try {
+    const ascSpec = "assemblyscript/asc";
+    const asc = (await import(/* @vite-ignore */ ascSpec)) as {
+      main(
+        argv: string[],
+        options: {
+          readFile(filename: string): string | null;
+          writeFile(filename: string, contents: Uint8Array | string): void;
+          listFiles(): string[];
+        },
+      ): Promise<{ error: Error | null; stderr?: { toString(): string } }>;
+    };
+    let outWasm: Uint8Array | undefined;
+    const { error, stderr } = await asc.main(
+      ["model.ts", "--outFile", "runtime.wasm", "--bindings", "raw", "--optimize", "--noAssert"],
+      {
+        readFile: (filename: string) => (filename === "model.ts" ? sourceTs : null),
+        writeFile: (filename: string, contents: Uint8Array | string) => {
+          if (filename === "runtime.wasm") {
+            outWasm = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
+          }
+        },
+        listFiles: () => [],
+      },
+    );
+    const errText = stderr?.toString?.() ?? "";
+    if (errText.trim().length > 0) diagnostics.push(errText.trim());
+    if (error) diagnostics.push(error.message);
+    return outWasm ? { wasmBytes: outWasm, diagnostics } : { diagnostics };
+  } catch (e) {
+    diagnostics.push(e instanceof Error ? e.message : String(e));
+    return { diagnostics };
+  }
+}

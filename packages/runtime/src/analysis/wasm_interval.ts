@@ -58,12 +58,29 @@ export interface WasmIntervalInstance {
   memory: WebAssembly.Memory;
 }
 
+import { WasmScratchPool } from "@modelscript/solve";
+
 /**
  * High-level TypeScript wrapper for WASM Interval Arithmetic, McCormick Relaxations,
  * and Spatial Branch-and-Bound solver.
  */
 export class WasmIntervalEngine {
+  private scratchPool: WasmScratchPool | null = null;
+
   constructor(private instance: WasmIntervalInstance | any) {}
+
+  private getPool(): WasmScratchPool {
+    if (!this.scratchPool) {
+      this.scratchPool = new WasmScratchPool(this.instance, 65536);
+    }
+    return this.scratchPool;
+  }
+
+  /** Releases backing linear-memory scratch slabs. */
+  dispose(): void {
+    this.scratchPool?.dispose();
+    this.scratchPool = null;
+  }
 
   /**
    * Evaluates forward interval bounds for all tape nodes in zero-copy linear memory.
@@ -79,31 +96,27 @@ export class WasmIntervalEngine {
     }
 
     const nVars = varBoundsLo.length;
-    const memF64 = new Float64Array(this.instance.memory.buffer);
+    const scope = this.getPool().scope();
+    try {
+      const varLoSlice = scope.allocF64(nVars);
+      const varHiSlice = scope.allocF64(nVars);
+      const outLoSlice = scope.allocF64(nodeCount);
+      const outHiSlice = scope.allocF64(nodeCount);
 
-    const varLoOffset = 1024 >> 3;
-    const varHiOffset = varLoOffset + nVars;
-    const outLoOffset = varHiOffset + nVars;
-    const outHiOffset = outLoOffset + nodeCount;
+      varLoSlice.view().set(varBoundsLo);
+      varHiSlice.view().set(varBoundsHi);
 
-    memF64.set(varBoundsLo, varLoOffset);
-    memF64.set(varBoundsHi, varHiOffset);
+      this.instance.tape_evaluateInterval(tapePtr, varLoSlice.ptr, varHiSlice.ptr, outLoSlice.ptr, outHiSlice.ptr);
 
-    this.instance.tape_evaluateInterval(
-      tapePtr,
-      varLoOffset << 3,
-      varHiOffset << 3,
-      outLoOffset << 3,
-      outHiOffset << 3,
-    );
+      const outLo = new Float64Array(nodeCount);
+      const outHi = new Float64Array(nodeCount);
+      outLo.set(outLoSlice.view());
+      outHi.set(outHiSlice.view());
 
-    const outMemF64 = new Float64Array(this.instance.memory.buffer);
-    const outLo = new Float64Array(nodeCount);
-    const outHi = new Float64Array(nodeCount);
-    outLo.set(outMemF64.subarray(outLoOffset, outLoOffset + nodeCount));
-    outHi.set(outMemF64.subarray(outHiOffset, outHiOffset + nodeCount));
-
-    return { lo: outLo, hi: outHi };
+      return { lo: outLo, hi: outHi };
+    } finally {
+      scope.dispose();
+    }
   }
 
   /**
@@ -121,43 +134,45 @@ export class WasmIntervalEngine {
     }
 
     const nVars = varVals.length;
-    const memF64 = new Float64Array(this.instance.memory.buffer);
+    const scope = this.getPool().scope();
+    try {
+      const varValsSlice = scope.allocF64(nVars);
+      const varLoSlice = scope.allocF64(nVars);
+      const varHiSlice = scope.allocF64(nVars);
+      const outCvSlice = scope.allocF64(nodeCount);
+      const outCcSlice = scope.allocF64(nodeCount);
+      const outLoSlice = scope.allocF64(nodeCount);
+      const outHiSlice = scope.allocF64(nodeCount);
 
-    const varValsOffset = 1024 >> 3;
-    const varLoOffset = varValsOffset + nVars;
-    const varHiOffset = varLoOffset + nVars;
-    const outCvOffset = varHiOffset + nVars;
-    const outCcOffset = outCvOffset + nodeCount;
-    const outLoOffset = outCcOffset + nodeCount;
-    const outHiOffset = outLoOffset + nodeCount;
+      varValsSlice.view().set(varVals);
+      varLoSlice.view().set(varBoundsLo);
+      varHiSlice.view().set(varBoundsHi);
 
-    memF64.set(varVals, varValsOffset);
-    memF64.set(varBoundsLo, varLoOffset);
-    memF64.set(varBoundsHi, varHiOffset);
+      this.instance.tape_evaluateMcCormick(
+        tapePtr,
+        varValsSlice.ptr,
+        varLoSlice.ptr,
+        varHiSlice.ptr,
+        outCvSlice.ptr,
+        outCcSlice.ptr,
+        outLoSlice.ptr,
+        outHiSlice.ptr,
+      );
 
-    this.instance.tape_evaluateMcCormick(
-      tapePtr,
-      varValsOffset << 3,
-      varLoOffset << 3,
-      varHiOffset << 3,
-      outCvOffset << 3,
-      outCcOffset << 3,
-      outLoOffset << 3,
-      outHiOffset << 3,
-    );
+      const cv = new Float64Array(nodeCount);
+      const cc = new Float64Array(nodeCount);
+      const lo = new Float64Array(nodeCount);
+      const hi = new Float64Array(nodeCount);
 
-    const outMemF64 = new Float64Array(this.instance.memory.buffer);
-    const cv = new Float64Array(nodeCount);
-    const cc = new Float64Array(nodeCount);
-    const lo = new Float64Array(nodeCount);
-    const hi = new Float64Array(nodeCount);
+      cv.set(outCvSlice.view());
+      cc.set(outCcSlice.view());
+      lo.set(outLoSlice.view());
+      hi.set(outHiSlice.view());
 
-    cv.set(outMemF64.subarray(outCvOffset, outCvOffset + nodeCount));
-    cc.set(outMemF64.subarray(outCcOffset, outCcOffset + nodeCount));
-    lo.set(outMemF64.subarray(outLoOffset, outLoOffset + nodeCount));
-    hi.set(outMemF64.subarray(outHiOffset, outHiOffset + nodeCount));
-
-    return { cv, cc, lo, hi };
+      return { cv, cc, lo, hi };
+    } finally {
+      scope.dispose();
+    }
   }
 
   /**
@@ -176,49 +191,53 @@ export class WasmIntervalEngine {
       throw new Error("WasmIntervalEngine: WASM bnb_solveGlobalMin not initialized");
     }
 
-    let memF64 = new Float64Array(this.instance.memory.buffer);
-    const initLoOffset = 1024 >> 3;
-    const initHiOffset = initLoOffset + nVars;
-    const outSolOffset = initHiOffset + nVars;
+    const scope = this.getPool().scope();
+    try {
+      const initLoSlice = scope.allocF64(nVars);
+      const initHiSlice = scope.allocF64(nVars);
+      const outSolSlice = scope.allocF64(nVars);
 
-    memF64.set(initBoundsLo, initLoOffset);
-    memF64.set(initBoundsHi, initHiOffset);
+      initLoSlice.view().set(initBoundsLo);
+      initHiSlice.view().set(initBoundsHi);
 
-    const bnbResultPtr = this.instance.bnb_solveGlobalMin(
-      tapePtr,
-      targetTapeNode,
-      nVars,
-      initLoOffset << 3,
-      initHiOffset << 3,
-      outSolOffset << 3,
-      maxIterations,
-      tol,
-    );
+      const bnbResultPtr = this.instance.bnb_solveGlobalMin(
+        tapePtr,
+        targetTapeNode,
+        nVars,
+        initLoSlice.ptr,
+        initHiSlice.ptr,
+        outSolSlice.ptr,
+        maxIterations,
+        tol,
+      );
 
-    memF64 = new Float64Array(this.instance.memory.buffer);
-    const bestSolution = new Float64Array(nVars);
-    bestSolution.set(memF64.subarray(outSolOffset, outSolOffset + nVars));
+      const bestSolution = new Float64Array(nVars);
+      bestSolution.set(outSolSlice.view());
 
-    // Read result structure from WASM memory if pointer returned
-    const memU32 = new Uint32Array(this.instance.memory.buffer);
-    let optimumValue = 0.0;
-    let iterations = 0;
-    let converged = false;
+      // Read result structure from WASM memory if pointer returned
+      const memF64 = new Float64Array(this.instance.memory.buffer);
+      const memU32 = new Uint32Array(this.instance.memory.buffer);
+      let optimumValue = 0.0;
+      let iterations = 0;
+      let converged = false;
 
-    if (bnbResultPtr > 0) {
-      const resOffsetF64 = bnbResultPtr >> 3;
-      const resOffsetU32 = bnbResultPtr >> 2;
-      optimumValue = memF64[resOffsetF64] ?? 0.0;
-      iterations = memU32[resOffsetU32 + 2] ?? 0;
-      converged = Boolean(memU32[resOffsetU32 + 3] ?? 0);
+      if (bnbResultPtr > 0) {
+        const resOffsetF64 = bnbResultPtr >> 3;
+        const resOffsetU32 = bnbResultPtr >> 2;
+        optimumValue = memF64[resOffsetF64] ?? 0.0;
+        iterations = memU32[resOffsetU32 + 2] ?? 0;
+        converged = Boolean(memU32[resOffsetU32 + 3] ?? 0);
+      }
+
+      return {
+        optimumValue,
+        iterations,
+        converged,
+        solution: bestSolution,
+      };
+    } finally {
+      scope.dispose();
     }
-
-    return {
-      optimumValue,
-      iterations,
-      converged,
-      solution: bestSolution,
-    };
   }
 }
 
@@ -697,7 +716,8 @@ export function solveSBB(
       }
     }
     const mcResult = evaluateTapeMcCormick(objectiveTape.ops, node.box, mid);
-    const mcLB = mcResult[objectiveTape.outputIndex]?.cv ?? node.lowerBound;
+    // Sound box lower bound: use the interval lower bound `lo` (NOT point evaluation `cv(mid)`!)
+    const mcLB = mcResult[objectiveTape.outputIndex]?.lo ?? node.lowerBound;
     const tighterLB = Math.max(node.lowerBound, mcLB);
 
     if (tighterLB >= upperBound - absTol) continue;

@@ -288,7 +288,7 @@ export const cfdLanguage = language({
     lineComment: "%",
   },
 
-  extras: () => [/[ \t\r\n]+/, /(?:%|\/\/|#)[^\r\n]*/, /\/\*[\s\S]*?\*\//],
+  extras: () => [/[ \t\r\n]+/, /(?:%|\/\/|#)[^\r\n]*/, /\/\*([^*]|\*+[^*/])*\*+\//],
 
   rules: {
     // Root configuration file rule exposing Salsa instantiation and name-resolution queries

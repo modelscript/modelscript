@@ -6,7 +6,8 @@
     "exports": [
       "CL",
       "V",
-      "F1"
+      "F1",
+      "ALAG1"
     ],
     "inherits": [],
     "metadata": {
@@ -41,6 +42,13 @@
           "defaultValue": 1,
           "unit": "1",
           "description": "Bioavailability fraction for compartment 1"
+        },
+        {
+          "key": "ALAG1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Dosing lag time for compartment 1"
         }
       ],
       "wasmKernel": "ADVAN1",
@@ -121,7 +129,8 @@
       "V1",
       "Q",
       "V2",
-      "F1"
+      "F1",
+      "ALAG1"
     ],
     "inherits": [],
     "metadata": {
@@ -170,6 +179,13 @@
           "defaultValue": 1,
           "unit": "1",
           "description": "Bioavailability fraction"
+        },
+        {
+          "key": "ALAG1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Dosing lag time for compartment 1"
         }
       ],
       "wasmKernel": "ADVAN3",

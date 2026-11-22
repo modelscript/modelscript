@@ -127,15 +127,24 @@ export function simaModelInit(archetypeId: i32, slotPtr: usize, _conCount: i32):
 
   if (archetypeId == ARCH_SIMO_BODY_6DOF) {
     // State 0: surge position x (m), State 1: surge velocity v (m/s)
+    // States 2..5: 4-state Prony exponential realization of Cummins radiation retardation kernel
     setState(slotPtr, 0, getIo(slotPtr, 0));
     setState(slotPtr, 1, getIo(slotPtr, 1));
-    return 2;
+    setState(slotPtr, 2, 0.0);
+    setState(slotPtr, 3, 0.0);
+    setState(slotPtr, 4, 0.0);
+    setState(slotPtr, 5, 0.0);
+    return 6;
   }
 
   if (archetypeId == ARCH_SIMO_ADDED_MASS_DAMPING) {
-    // State 0: radiation memory state
+    // States 0..3: 4-state Prony exponential realization of Cummins retardation convolution
+    // K(t) = w1*B*exp(-2*alpha*t) + w2*B*exp(-0.5*alpha*t) + w3*B*exp(-alpha*t)*cos(1.2*alpha*t)
     setState(slotPtr, 0, 0.0);
-    return 1;
+    setState(slotPtr, 1, 0.0);
+    setState(slotPtr, 2, 0.0);
+    setState(slotPtr, 3, 0.0);
+    return 4;
   }
 
   if (archetypeId == ARCH_SIMO_DP_CONTROLLER) {
@@ -145,6 +154,65 @@ export function simaModelInit(archetypeId: i32, slotPtr: usize, _conCount: i32):
   }
 
   return 0;
+}
+
+/**
+ * Advances a 4-state Prony exponential state-space realization of the Cummins
+ * radiation-retardation convolution integral `mu(t) = integral_0^t K(t - tau) * v(tau) dtau`
+ * using exact analytical matrix-exponential updates (unconditionally stable for any dt > 0).
+ *
+ * Modes stored at `STATE[baseIdx .. baseIdx + 3]`:
+ *   - z0: fast real exponential pole   lambda1 = 2.0 * alpha, steady weight 0.50 * bRad
+ *   - z1: slow real exponential pole   lambda2 = 0.5 * alpha, steady weight 0.25 * bRad
+ *   - (z2, z3): damped oscillatory pair (-alpha +/- i * 1.2 * alpha), steady weight 0.25 * bRad
+ * Total steady-state gain = (0.50 + 0.25 + 0.25) * bRad = bRad.
+ */
+function stepCumminsProny(slotPtr: usize, baseIdx: i32, bRad: f64, alpha: f64, vBody: f64, dt: f64): f64 {
+  let z0 = getState(slotPtr, baseIdx + 0);
+  let z1 = getState(slotPtr, baseIdx + 1);
+  let z2 = getState(slotPtr, baseIdx + 2);
+  let z3 = getState(slotPtr, baseIdx + 3);
+
+  const lam1 = 2.0 * alpha;
+  const lam2 = 0.5 * alpha;
+  const omegaR = 1.2 * alpha;
+
+  const u0 = 0.5 * lam1 * bRad * vBody;
+  const u1 = 0.25 * lam2 * bRad * vBody;
+  const oscScale = (alpha * alpha + omegaR * omegaR) / alpha;
+  const u2 = 0.25 * oscScale * bRad * vBody;
+
+  setDState(slotPtr, baseIdx + 0, -lam1 * z0 + u0);
+  setDState(slotPtr, baseIdx + 1, -lam2 * z1 + u1);
+  setDState(slotPtr, baseIdx + 2, -alpha * z2 - omegaR * z3 + u2);
+  setDState(slotPtr, baseIdx + 3, omegaR * z2 - alpha * z3);
+
+  if (dt > 0.0) {
+    const e1 = Math.exp(-lam1 * dt);
+    const z0Eq = 0.5 * bRad * vBody;
+    z0 = z0Eq + (z0 - z0Eq) * e1;
+
+    const e2 = Math.exp(-lam2 * dt);
+    const z1Eq = 0.25 * bRad * vBody;
+    z1 = z1Eq + (z1 - z1Eq) * e2;
+
+    const eOsc = Math.exp(-alpha * dt);
+    const cOsc = Math.cos(omegaR * dt);
+    const sOsc = Math.sin(omegaR * dt);
+    const z2Eq = 0.25 * bRad * vBody;
+    const z3Eq = (omegaR / alpha) * z2Eq;
+    const dz2 = z2 - z2Eq;
+    const dz3 = z3 - z3Eq;
+    z2 = z2Eq + eOsc * (cOsc * dz2 - sOsc * dz3);
+    z3 = z3Eq + eOsc * (sOsc * dz2 + cOsc * dz3);
+
+    setState(slotPtr, baseIdx + 0, z0);
+    setState(slotPtr, baseIdx + 1, z1);
+    setState(slotPtr, baseIdx + 2, z2);
+    setState(slotPtr, baseIdx + 3, z3);
+  }
+
+  return z0 + z1 + z2;
 }
 
 /**
@@ -398,7 +466,7 @@ export function simaModelEval(
   }
 
   // =========================================================================
-  // 7. SIMO_Body6DOF — Surge 1-DOF reduced step of 6-DOF Cummins body
+  // 7. SIMO_Body6DOF — Cummins Equation Body with Prony Radiation Memory
   // =========================================================================
   if (archetypeId == ARCH_SIMO_BODY_6DOF) {
     const m = Math.max(1.0, getCon(slotPtr, conCount, 0, 5.0e7));
@@ -410,7 +478,13 @@ export function simaModelEval(
     const fExt = getIo(slotPtr, 3);
     let x = getState(slotPtr, 0);
     let v = getState(slotPtr, 1);
-    const acc = (fExt - bLin * v - bQuad * Math.abs(v) * v - kRest * x) / (m + aInf);
+
+    // Split linear damping into radiation-memory convolution (60%) + instantaneous viscous (40%)
+    const bRad = 0.6 * bLin;
+    const bVisc = 0.4 * bLin;
+    const muRad = stepCumminsProny(slotPtr, 2, bRad, 0.35, v, dt);
+
+    const acc = (fExt - muRad - bVisc * v - bQuad * Math.abs(v) * v - kRest * x) / (m + aInf);
     if (dt > 0.0) {
       v += acc * dt;
       x += v * dt;
@@ -420,6 +494,8 @@ export function simaModelEval(
     setDState(slotPtr, 0, v);
     setDState(slotPtr, 1, acc);
     setIo(slotPtr, 8, acc);
+    setIo(slotPtr, 9, -muRad);
+    setIo(slotPtr, 10, -kRest * x);
     setIo(slotPtr, 11, x);
     setIo(slotPtr, 12, v);
     return;
@@ -472,7 +548,7 @@ export function simaModelEval(
   }
 
   // =========================================================================
-  // 10. SIMO_AddedMassDamping — Radiation Memory & Added Mass Force
+  // 10. SIMO_AddedMassDamping — Cummins Radiation-Retardation Convolution
   // =========================================================================
   if (archetypeId == ARCH_SIMO_ADDED_MASS_DAMPING) {
     const aInf = getCon(slotPtr, conCount, 0, 4.5e6);
@@ -481,15 +557,14 @@ export function simaModelEval(
 
     const vBody = getIo(slotPtr, 1);
     const aBody = getIo(slotPtr, 2);
-    let mem = getState(slotPtr, 0);
-    if (dt > 0.0) {
-      mem += (-alpha * mem + bRad * vBody) * dt;
-      setState(slotPtr, 0, mem);
-    }
-    const fRad = -aInf * aBody - mem;
+    const muRad = stepCumminsProny(slotPtr, 0, bRad, alpha, vBody, dt);
+    const fRad = -aInf * aBody - muRad;
+
     setIo(slotPtr, 8, fRad);
     setIo(slotPtr, 9, -aInf * aBody);
-    setIo(slotPtr, 10, -mem);
+    setIo(slotPtr, 10, -muRad);
+    setIo(slotPtr, 11, getState(slotPtr, 0));
+    setIo(slotPtr, 12, getState(slotPtr, 1));
     return;
   }
 
@@ -512,22 +587,37 @@ export function simaModelEval(
   }
 
   // =========================================================================
-  // 12. RIFLEX_BeamRiser — Euler-Bernoulli Riser Bending & MBR
+  // 12. RIFLEX_BeamRiser — Euler-Bernoulli Tensioned Riser Bending Stiffness
+  //     q_lat(z) = EI * d^4w/dz^4 - T * d^2w/dz^2  (DNV-OS-F201 / Sparks)
   // =========================================================================
   if (archetypeId == ARCH_RIFLEX_BEAM_RISER) {
-    const ei = getCon(slotPtr, conCount, 0, 2.5e7);
-    const ea = getCon(slotPtr, conCount, 1, 1.2e9);
+    const ei = Math.max(1.0, getCon(slotPtr, conCount, 0, 2.5e7));
+    const ea = Math.max(1.0, getCon(slotPtr, conCount, 1, 1.2e9));
     const mbr = Math.max(0.1, getCon(slotPtr, conCount, 3, 12.0));
 
     const strain = getIo(slotPtr, 0);
-    const curvature = getIo(slotPtr, 4);
-    const moment = ei * curvature;
-    const axial = ea * strain;
-    const mbrUtil = Math.abs(curvature) * mbr;
+    const w4In = getIo(slotPtr, 3); // optional direct d^4w/dz^4 (1/m^3)
+    const curvature = getIo(slotPtr, 4); // kappa = d^2w/dz^2 (1/m)
+    const kWaveIn = getIo(slotPtr, 5); // optional modal wavenumber k = pi/L (1/m)
+    const tOverride = getIo(slotPtr, 7); // optional direct effective tension T (N)
 
-    setIo(slotPtr, 8, axial);
+    const tEff = tOverride > 0.0 ? tOverride : ea * strain;
+    const kWave = kWaveIn > 1e-6 ? kWaveIn : Math.PI / 20.0;
+    // For harmonic/modal shape w ~ sin(k*z): d^4w/dz^4 = -k^2 * d^2w/dz^2
+    const w4 = w4In != 0.0 ? w4In : -(kWave * kWave) * curvature;
+
+    // Tensioned Euler-Bernoulli lateral restoring load per unit length: EI * w'''' - T * w''
+    const qLat = ei * w4 - tEff * curvature;
+    const moment = ei * curvature;
+    const mbrUtil = Math.abs(curvature) * mbr;
+    // Characteristic tensioned-riser bending boundary-layer length lambda_b = sqrt(EI / T)
+    const lambdaB = Math.sqrt(ei / Math.max(1.0, Math.abs(tEff)));
+
+    setIo(slotPtr, 8, tEff);
+    setIo(slotPtr, 9, qLat);
     setIo(slotPtr, 10, moment);
     setIo(slotPtr, 11, mbrUtil);
+    setIo(slotPtr, 12, lambdaB);
     if (mbrUtil > 1.0) setIo(slotPtr, 15, 1.0);
     return;
   }

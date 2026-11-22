@@ -498,6 +498,7 @@ export default defineConfig({
             { text: "CLI Overview", link: "/cli/overview" },
             { text: "CLI Command Reference", link: "/cli/commands" },
             { text: "Polyglot Languages Matrix", link: "/languages/overview" },
+            { text: "Cleanroom Standard Libraries", link: "/guide/cleanroom-standard-libraries" },
             { text: "Compiler Linter Rules", link: "/reference/linter-rules" },
             { text: "SysML v2 Lints & Formal", link: "/languages/sysml2-lints" },
             { text: "Radiology & Surgical CAS", link: "/reference/radiology-and-surgery" },

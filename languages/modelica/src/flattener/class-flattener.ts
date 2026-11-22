@@ -4266,6 +4266,26 @@ export class ModelicaFlattener {
                 });
               }
             }
+            const exEqDesc = dae.exports as unknown as {
+              flattener_getEqDescCount?: (wf: number) => number;
+              flattener_getEqDescEqIdx?: (wf: number, idx: number) => number;
+              flattener_getEqDescStrId?: (wf: number, idx: number) => number;
+            };
+            if (
+              this.options.omcCompatibility &&
+              !isOldInst &&
+              typeof exEqDesc.flattener_getEqDescCount === "function" &&
+              typeof exEqDesc.flattener_getEqDescEqIdx === "function" &&
+              typeof exEqDesc.flattener_getEqDescStrId === "function"
+            ) {
+              const descCount = exEqDesc.flattener_getEqDescCount(wasmFlattener);
+              for (let i = 0; i < descCount; i++) {
+                const eqIdx = exEqDesc.flattener_getEqDescEqIdx(wasmFlattener, i);
+                const strId = exEqDesc.flattener_getEqDescStrId(wasmFlattener, i);
+                const descStr = dae.interner.resolve(strId);
+                if (descStr) dae.setEqDescription(eqIdx, descStr);
+              }
+            }
             for (let i = 0; i < dae.eqCount; i++) {
               const rhsId = dae.getEqRhs(i);
               dae.setOrigEqRhs(i, rhsId);
@@ -6679,6 +6699,20 @@ export class ModelicaFlattener {
     const visited = new Set<SymbolId>();
     const queue: SymbolId[] = [rootClassId];
     this.enumTypeMap.clear();
+    const builtinEnums: Array<[string, string[]]> = [
+      ["AssertionLevel", ["warning", "error"]],
+      ["StateSelect", ["never", "avoid", "default", "prefer", "always"]],
+    ];
+    for (const [bName, bLits] of builtinEnums) {
+      this.enumTypeMap.set(bName, bLits);
+      if (typeof registerEnum === "function") {
+        for (let i = 0; i < bLits.length; i++) {
+          const lit = bLits[i];
+          const refId = dae.interner.intern(`${bName}.${lit}`);
+          registerEnum(wasmFlattener, refId, i + 1, refId);
+        }
+      }
+    }
     const skipCallBuiltins = new Set([
       "sin",
       "cos",

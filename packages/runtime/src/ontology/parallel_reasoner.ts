@@ -34,15 +34,53 @@ export interface ModuleClassificationResult {
  */
 export class ParallelOntologyReasoner {
   private concurrency: number;
+  private useWorkers: boolean;
 
-  constructor(options?: { concurrency?: number | undefined }) {
+  constructor(options?: { concurrency?: number | undefined; useWorkers?: boolean | undefined }) {
     this.concurrency = options?.concurrency ?? 4;
+    this.useWorkers = options?.useWorkers ?? false;
   }
 
   /**
-   * Classify a single ontology module asynchronously.
+   * Classify a single ontology module asynchronously (optionally offloaded to a Node worker thread).
    */
   async classifyModule(module: OntologyModule): Promise<ModuleClassificationResult> {
+    if (this.useWorkers && typeof process !== "undefined" && process.versions?.node) {
+      try {
+        const { Worker } = await import("node:worker_threads");
+        const moduleUrl = new URL("./wasm_ontology.js", import.meta.url).href;
+        const workerCode = `
+          import { parentPort, workerData } from "node:worker_threads";
+          import { WasmOntologyReasoner } from ${JSON.stringify(moduleUrl)};
+          const start = performance.now();
+          const reasoner = new WasmOntologyReasoner();
+          await reasoner.init();
+          reasoner.loadOntology(workerData.axioms);
+          reasoner.classify();
+          parentPort.postMessage({
+            moduleName: workerData.name,
+            consistency: reasoner.checkConsistency(),
+            taxonomy: reasoner.getTaxonomy(),
+            axiomCount: workerData.axioms.length,
+            executionTimeMs: performance.now() - start,
+          });
+        `;
+        return await new Promise<ModuleClassificationResult>((resolve, reject) => {
+          const worker = new Worker(workerCode, { eval: true, workerData: module });
+          worker.once("message", (res: ModuleClassificationResult) => {
+            void worker.terminate();
+            resolve(res);
+          });
+          worker.once("error", (err) => {
+            void worker.terminate();
+            reject(err);
+          });
+        });
+      } catch {
+        // Fall through to in-process execution when worker_threads or ESM eval is unavailable
+      }
+    }
+
     const start = performance.now();
     const reasoner = new WasmOntologyReasoner();
     await reasoner.init();

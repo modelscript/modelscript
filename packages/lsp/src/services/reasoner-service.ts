@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { Owl2TableauReasoner } from "@modelscript/owl2";
 import { getBfoIofCoreAxioms } from "@modelscript/runtime";
 import { OntologyBuilder, TableauReasoner } from "@modelscript/runtime/wasm_ontology.js";
 import { Connection } from "vscode-languageserver/browser.js";
@@ -78,8 +79,30 @@ export class ReasonerService {
 
       const endTime = performance.now();
 
-      // 3. Log or surface consistency results
-      const consistency = this.reasoner.checkConsistency();
+      // 3. Log or surface consistency results (with SROIQ(D) tableau fallback for expressive DL)
+      let consistency = this.reasoner.checkConsistency();
+      if (consistency.isConsistent && store?.axioms?.length) {
+        const hasExpressiveDl = store.axioms.some(
+          (a: { type: string }) =>
+            a.type === "QualifiedCardinality" ||
+            a.type === "ObjectOneOf" ||
+            a.type === "NominalClass" ||
+            a.type === "DisjunctiveClass" ||
+            a.type === "SubPropertyChainOf",
+        );
+        if (hasExpressiveDl) {
+          const tableau = new Owl2TableauReasoner(
+            store.axioms as unknown as ConstructorParameters<typeof Owl2TableauReasoner>[0],
+          );
+          const tRes = tableau.checkConsistency();
+          if (!tRes.consistent) {
+            consistency = {
+              isConsistent: false,
+              explanation: tRes.clashes[0] ?? "Logical contradiction detected by SROIQ(D) tableau reasoner.",
+            };
+          }
+        }
+      }
       this.connection.console.info(
         `[reasoner] Updated in ${(endTime - startTime).toFixed(2)}ms. Delta: +${delta.assertions.length} -${delta.retractions.length}. Consistent: ${consistency.isConsistent}`,
       );

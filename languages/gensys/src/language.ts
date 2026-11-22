@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { language } from "@modelscript/dsl";
+import { registerBuiltInGensysLibrarySync } from "./catalog/library-package-adapter.js";
 import { gensysDeckGrammar } from "./grammar/gensys-grammar.js";
 import { indexGensysDocument } from "./indexing.js";
 import { gensysPolyglotConfig } from "./tgg/index.js";
@@ -67,3 +68,6 @@ export const gensysLanguage = language({
 });
 
 export default gensysLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInGensysLibrarySync();

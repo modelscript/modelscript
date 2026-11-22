@@ -433,15 +433,24 @@ export function selModelEval(
     return bfTrip;
   }
 
-  // 11. SELogic Pickup / Dropout Timer (SV_TIMER)
+  // 11. SELogic Pickup / Dropout Timer (SV_TIMER) with optional rising/falling edge trigger
   if (archetypeId == ARCH_SELOGIC_TIMER) {
-    const inp = getIo(slotPtr, 9) > 0.5;
+    const rawInp = getIo(slotPtr, 9) > 0.5;
     const puDelay = Math.max(0.0, getCon(slotPtr, conCount, 0, 0.1));
     const doDelay = Math.max(0.0, getCon(slotPtr, conCount, 1, 0.05));
+    const edgeMode = getCon(slotPtr, conCount, 2, 0.0); // 0=level, >0.5=rising '/', <-0.5=falling '\'
 
     let puTimer = getState(slotPtr, 0);
     let doTimer = getState(slotPtr, 1);
     let outState = getState(slotPtr, 2) > 0.5;
+    const prevRaw = getState(slotPtr, 3) > 0.5;
+
+    let inp = rawInp;
+    if (edgeMode > 0.5) {
+      inp = rawInp && !prevRaw;
+    } else if (edgeMode < -0.5) {
+      inp = !rawInp && prevRaw;
+    }
 
     if (inp) {
       doTimer = 0.0;
@@ -465,6 +474,7 @@ export function selModelEval(
     setState(slotPtr, 0, puTimer);
     setState(slotPtr, 1, doTimer);
     setState(slotPtr, 2, outVal);
+    setState(slotPtr, 3, rawInp ? 1.0 : 0.0);
     setIo(slotPtr, 12, inp ? 1.0 : 0.0);
     setIo(slotPtr, 13, outVal);
     setIo(slotPtr, 14, outState ? doDelay : puDelay);

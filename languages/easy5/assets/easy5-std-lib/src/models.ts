@@ -182,7 +182,6 @@ function getStateCount(archetypeId: i32): i32 {
     archetypeId == ARCH_GP_INTEGRATOR ||
     archetypeId == ARCH_GP_LAG ||
     archetypeId == ARCH_GP_LEAD_LAG ||
-    archetypeId == ARCH_HC_PIPE ||
     archetypeId == ARCH_HC_ACCUMULATOR ||
     archetypeId == ARCH_HC_VALVE ||
     archetypeId == ARCH_HC_CAVITY ||
@@ -201,6 +200,7 @@ function getStateCount(archetypeId: i32): i32 {
   if (
     archetypeId == ARCH_GP_TRANSFER_FN ||
     archetypeId == ARCH_GP_PID ||
+    archetypeId == ARCH_HC_PIPE ||
     archetypeId == ARCH_GD_VOLUME ||
     archetypeId == ARCH_GD_CHAMBER ||
     archetypeId == ARCH_EC_DC_MOTOR ||
@@ -253,6 +253,16 @@ export function easy5ModelInit(archetypeId: i32, slotPtr: usize, conCount: i32):
     setState(slotPtr, 0, 0.0);
     setState(slotPtr, 1, getIo(slotPtr, 0));
     easy5ModelEvalDerivatives(archetypeId, 0.0, 0.01, slotPtr, conCount);
+    return 2;
+  }
+  if (archetypeId == ARCH_HC_PIPE) {
+    const u0 = getIo(slotPtr, 0);
+    const u1 = getIo(slotPtr, 1);
+    const p0 = u0 > 0.0 ? 0.5 * (u0 + (u1 > 0.0 ? u1 : u0)) : 1.0e6;
+    setState(slotPtr, 0, 0.0);
+    setState(slotPtr, 1, p0);
+    setIo(slotPtr, 4, 0.0);
+    setIo(slotPtr, 5, p0);
     return 2;
   }
   if (archetypeId == ARCH_HC_ACCUMULATOR) {
@@ -510,16 +520,38 @@ export function easy5ModelEvalDerivatives(
     return;
   }
   if (archetypeId == ARCH_HC_PIPE) {
+    // Coupled hydraulic transmission line: fluid inertance L_f = rho*L/A + bulk-modulus capacitance dP/dt = (beta/V)*(Q_in - Q_out)
     const length = Math.max(0.01, getCon(slotPtr, conCount, 0, 2.0));
     const diam = Math.max(1e-3, getCon(slotPtr, conCount, 1, 0.02));
     const rho = Math.max(1.0, getCon(slotPtr, conCount, 2, 850.0));
     const rf = Math.max(1.0, getCon(slotPtr, conCount, 3, 1e7));
+    const beta = Math.max(1e5, getCon(slotPtr, conCount, 4, 1.4e9));
     const area = 0.25 * Math.PI * diam * diam;
+    const vol = area * length;
     const inertance = (rho * length) / area;
     const q = getState(slotPtr, 0);
-    const dP = u0 - u1;
-    setDState(slotPtr, 0, (dP - rf * q) / inertance);
+    const pPipe = Math.max(0.0, getState(slotPtr, 1));
+
+    let dQdt: f64;
+    let dPdt: f64;
+    if (u2 != 0.0 || u3 != 0.0) {
+      // Direct bulk-modulus capacitance flow-boundary mode: u2 = Q_in, u3 = Q_out
+      dQdt = (u0 - u1 - rf * q) / inertance;
+      dPdt = (beta / vol) * (u2 - u3);
+    } else {
+      // Coupled T-section pressure-boundary mode: u0 = P_in, u1 = P_out
+      const halfRf = Math.max(1.0, 0.5 * rf);
+      dQdt = (u0 - pPipe - halfRf * q) / inertance;
+      const qOut = (pPipe - u1) / halfRf;
+      dPdt = (beta / vol) * (q - qOut);
+    }
+
+    setDState(slotPtr, 0, dQdt);
+    setDState(slotPtr, 1, dPdt);
     setIo(slotPtr, 4, q);
+    setIo(slotPtr, 5, pPipe);
+    setIo(slotPtr, 6, dPdt);
+    setIo(slotPtr, 7, Math.sqrt(beta / rho));
     return;
   }
   if (archetypeId == ARCH_HC_ACCUMULATOR || archetypeId == ARCH_HC_CAVITY) {
@@ -581,17 +613,41 @@ export function easy5ModelEvalDerivatives(
 
   // --- GD Gas Dynamics Library ---
   if (archetypeId == ARCH_GD_VOLUME || archetypeId == ARCH_GD_CHAMBER) {
+    // Real-gas open-system mass & first-law energy/pressure integration with Virial Z(P, T)
     const vol = Math.max(1e-5, getCon(slotPtr, conCount, 0, 0.05));
     const rGas = Math.max(10.0, getCon(slotPtr, conCount, 1, 287.05));
     const gamma = Math.max(1.05, getCon(slotPtr, conCount, 2, 1.4));
     const tauTh = archetypeId == ARCH_GD_CHAMBER ? Math.max(0.05, getCon(slotPtr, conCount, 5, 5.0)) : 10.0;
     const p = Math.max(1.0, getState(slotPtr, 0));
     const temp = Math.max(10.0, getState(slotPtr, 1));
-    const tAmb = u3 > 10.0 ? u3 : 300.0;
-    setDState(slotPtr, 0, ((gamma * rGas * temp) / vol) * (u0 - u1));
-    setDState(slotPtr, 1, (tAmb - temp) / tauTh);
+
+    // Real-gas Virial compressibility factor Z(P, T) (referenced to air/N2 critical point Tc=132.5 K, Pc=3.77 MPa)
+    const tRed = Math.max(0.5, temp / 132.5);
+    const pRed = p / 3.77e6;
+    const b0 = 0.083 - 0.422 / Math.pow(tRed, 1.6);
+    const zReal = clamp(1.0 + (b0 * pRed) / tRed, 0.35, 2.0);
+
+    const mIn = u0;
+    const mOut = u1;
+    const tIn = u2 > 10.0 ? u2 : temp;
+    const cv = rGas / (gamma - 1.0);
+    const cp = gamma * cv;
+    const mass = Math.max(1e-7, (p * vol) / (zReal * rGas * temp));
+
+    // Convective wall heat transfer (adiabatic when u3 <= 10 K)
+    const qWall = u3 > 10.0 ? (mass * cv * (u3 - temp)) / tauTh : 0.0;
+
+    // First-law open-system internal energy balance: m * cv * dT/dt = mIn*(cp*Tin - cv*T) - mOut*(cp*T - cv*T) + Q_wall
+    const dTdt = (mIn * (cp * tIn - cv * temp) - mOut * (rGas * temp) + qWall) / (mass * cv);
+    // Real-gas state equation derivative: dP/dt = (Z * R / V) * (T * dm/dt + m * dT/dt)
+    const dPdt = ((zReal * rGas) / vol) * (temp * (mIn - mOut) + mass * dTdt);
+
+    setDState(slotPtr, 0, dPdt);
+    setDState(slotPtr, 1, dTdt);
     setIo(slotPtr, 4, p);
+    setIo(slotPtr, 5, zReal);
     setIo(slotPtr, 6, temp);
+    setIo(slotPtr, 7, mass / vol);
     return;
   }
   if (archetypeId == ARCH_GD_ORIFICE || archetypeId == ARCH_GD_NOZZLE) {

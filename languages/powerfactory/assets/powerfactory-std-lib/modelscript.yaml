@@ -1,7 +1,7 @@
 name: "@modelscript/powerfactory-std-lib"
 version: "0.1.0"
 license: "AGPL-3.0-or-later"
-description: "Cleanroom DIgSILENT PowerFactory Global Library & DSL standard library (39 schemas, cleanroom SVG icons, AssemblyScript WASM runtime)"
+description: "Cleanroom DIgSILENT PowerFactory Global Library & DSL standard library (66 schemas, cleanroom SVG icons, AssemblyScript WASM runtime)"
 library:
   category: library
   language: powerfactory

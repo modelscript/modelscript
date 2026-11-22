@@ -117,6 +117,7 @@ export const NMTRAN_MODEL_SPECS: NmtranModelSpec[] = [
       ["CL", 5.0, "L/h", "Total systemic clearance"],
       ["V", 50.0, "L", "Central compartment volume of distribution"],
       ["F1", 1.0, "1", "Bioavailability fraction for compartment 1"],
+      ["ALAG1", 0.0, "h", "Dosing lag time for compartment 1"],
     ],
   },
   {
@@ -153,6 +154,7 @@ export const NMTRAN_MODEL_SPECS: NmtranModelSpec[] = [
       ["Q", 10.0, "L/h", "Inter-compartmental distributional clearance"],
       ["V2", 40.0, "L", "Peripheral compartment volume of distribution"],
       ["F1", 1.0, "1", "Bioavailability fraction"],
+      ["ALAG1", 0.0, "h", "Dosing lag time for compartment 1"],
     ],
   },
   {

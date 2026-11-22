@@ -329,20 +329,25 @@ export const owl2Language = language({
     PrefixDeclaration: ($) =>
       seq("Prefix", "(", field("name", optional($["PrefixName"]!)), "=", field("iri", $["FullIRI"]!), ")"),
 
-    IDENT: () => semanticToken("identifier", /[a-zA-Z_][a-zA-Z0-9_]*/),
+    IDENT: () => semanticToken("identifier", /[a-zA-Z_][a-zA-Z0-9_-]*/),
     INTEGER: () => semanticToken("number", /[0-9]+/),
     PrefixName: ($) => choice(seq($["IDENT"]!, ":"), ":"),
     FullIRI: () => /<[^>]*>/,
     AbbreviatedIRI: ($) => choice(seq($["IDENT"]!, ":", $["IDENT"]!), seq(":", $["IDENT"]!)),
     IRI: ($) => choice($["FullIRI"]!, $["AbbreviatedIRI"]!),
-    StringLiteral: () => /"[^"]*"(?:\^\^(?:<[^>]*>|[a-zA-Z_][a-zA-Z0-9_]*:[a-zA-Z_][a-zA-Z0-9_]*))?(?:@[a-zA-Z-]+)?/,
+    StringLiteral: () =>
+      /"(?:[^"\\]|\\.)*"(?:\^\^(?:<[^>]*>|[a-zA-Z_][a-zA-Z0-9_-]*:[a-zA-Z_][a-zA-Z0-9_-]*))?(?:@[a-zA-Z-]+)?/,
+
+    Annotation: ($) =>
+      seq("Annotation", "(", field("property", $["IRI"]!), field("value", choice($["IRI"]!, $["StringLiteral"]!)), ")"),
 
     Ontology: ($) =>
       seq(
         "Ontology",
         "(",
-        optional(field("iri", $["IRI"]!)),
+        optional(seq(field("iri", $["IRI"]!), optional(field("versionIri", $["IRI"]!)))),
         repeat(field("import", $["ImportDeclaration"]!)),
+        repeat(field("annotation", $["Annotation"]!)),
         repeat(field("axiom", $["_Axiom"]!)),
         ")",
       ),
@@ -353,14 +358,18 @@ export const owl2Language = language({
     _Axiom: ($) =>
       choice(
         $["Declaration"]!,
+        $["AnnotationAssertionAxiom"]!,
         $["SubClassOfAxiom"]!,
         $["EquivalentClassesAxiom"]!,
         $["DisjointClassesAxiom"]!,
         $["DisjointUnionAxiom"]!,
         $["SubObjectPropertyOfAxiom"]!,
+        $["EquivalentObjectPropertiesAxiom"]!,
         $["SubDataPropertyOfAxiom"]!,
+        $["EquivalentDataPropertiesAxiom"]!,
         $["InverseObjectPropertiesAxiom"]!,
         $["DisjointObjectPropertiesAxiom"]!,
+        $["DisjointDataPropertiesAxiom"]!,
         $["ObjectPropertyDomainAxiom"]!,
         $["ObjectPropertyRangeAxiom"]!,
         $["DataPropertyDomainAxiom"]!,
@@ -373,6 +382,7 @@ export const owl2Language = language({
         $["AsymmetricObjectPropertyAxiom"]!,
         $["TransitiveObjectPropertyAxiom"]!,
         $["FunctionalDataPropertyAxiom"]!,
+        $["HasKeyAxiom"]!,
         $["ObjectPropertyAssertionAxiom"]!,
         $["DataPropertyAssertionAxiom"]!,
         $["NegativeObjectPropertyAssertionAxiom"]!,
@@ -382,10 +392,28 @@ export const owl2Language = language({
         $["DifferentIndividualsAxiom"]!,
       ),
 
-    Declaration: ($) => seq("Declaration", "(", field("entity", $["_Entity"]!), ")"),
+    Declaration: ($) => seq("Declaration", "(", repeat($["Annotation"]!), field("entity", $["_Entity"]!), ")"),
+
+    AnnotationAssertionAxiom: ($) =>
+      seq(
+        "AnnotationAssertion",
+        "(",
+        repeat($["Annotation"]!),
+        field("property", $["IRI"]!),
+        field("subject", $["IRI"]!),
+        field("value", choice($["IRI"]!, $["StringLiteral"]!)),
+        ")",
+      ),
 
     _Entity: ($) =>
-      choice($["ClassEntity"]!, $["ObjectPropertyEntity"]!, $["DataPropertyEntity"]!, $["NamedIndividualEntity"]!),
+      choice(
+        $["ClassEntity"]!,
+        $["ObjectPropertyEntity"]!,
+        $["DataPropertyEntity"]!,
+        $["AnnotationPropertyEntity"]!,
+        $["DatatypeEntity"]!,
+        $["NamedIndividualEntity"]!,
+      ),
 
     ClassEntity: ($) => seq("Class", "(", field("iri", $["IRI"]!), ")"),
 
@@ -393,7 +421,15 @@ export const owl2Language = language({
 
     DataPropertyEntity: ($) => seq("DataProperty", "(", field("iri", $["IRI"]!), ")"),
 
+    AnnotationPropertyEntity: ($) => seq("AnnotationProperty", "(", field("iri", $["IRI"]!), ")"),
+
+    DatatypeEntity: ($) => seq("Datatype", "(", field("iri", $["IRI"]!), ")"),
+
     NamedIndividualEntity: ($) => seq("NamedIndividual", "(", field("iri", $["IRI"]!), ")"),
+
+    ObjectInverseOf: ($) => seq("ObjectInverseOf", "(", field("property", $["IRI"]!), ")"),
+
+    _ObjectPropertyExpression: ($) => choice($["IRI"]!, $["ObjectInverseOf"]!),
 
     // Propositional, existential/universal, nominal, and cardinality class expressions
     _ClassExpression: ($) =>
@@ -493,25 +529,35 @@ export const owl2Language = language({
       seq("DatatypeRestriction", "(", field("datatype", $["IRI"]!), repeat($["FacetRestriction"]!), ")"),
     DataIntersectionOf: ($) => seq("DataIntersectionOf", "(", repeat($["DataRange"]!), ")"),
     DataUnionOf: ($) => seq("DataUnionOf", "(", repeat($["DataRange"]!), ")"),
+    DataComplementOf: ($) => seq("DataComplementOf", "(", $["DataRange"]!, ")"),
     DataOneOf: ($) => seq("DataOneOf", "(", repeat($["StringLiteral"]!), ")"),
 
     DataRange: ($) =>
-      choice($["IRI"]!, $["DatatypeRestriction"]!, $["DataIntersectionOf"]!, $["DataUnionOf"]!, $["DataOneOf"]!),
+      choice(
+        $["IRI"]!,
+        $["DatatypeRestriction"]!,
+        $["DataIntersectionOf"]!,
+        $["DataUnionOf"]!,
+        $["DataComplementOf"]!,
+        $["DataOneOf"]!,
+      ),
 
     // TBox, RBox, and ABox axiom grammar rules
     SubClassOfAxiom: ($) =>
       seq(
         "SubClassOf",
         "(",
+        repeat($["Annotation"]!),
         field("subClass", $["_ClassExpression"]!),
         field("superClass", $["_ClassExpression"]!),
         ")",
       ),
 
     EquivalentClassesAxiom: ($) =>
-      seq("EquivalentClasses", "(", repeat(field("classExpr", $["_ClassExpression"]!)), ")"),
+      seq("EquivalentClasses", "(", repeat($["Annotation"]!), repeat(field("classExpr", $["_ClassExpression"]!)), ")"),
 
-    DisjointClassesAxiom: ($) => seq("DisjointClasses", "(", repeat(field("classExpr", $["_ClassExpression"]!)), ")"),
+    DisjointClassesAxiom: ($) =>
+      seq("DisjointClasses", "(", repeat($["Annotation"]!), repeat(field("classExpr", $["_ClassExpression"]!)), ")"),
 
     DisjointUnionAxiom: ($) =>
       seq("DisjointUnion", "(", field("class", $["IRI"]!), repeat(field("disjointClass", $["_ClassExpression"]!)), ")"),
@@ -522,19 +568,47 @@ export const owl2Language = language({
       seq(
         "SubObjectPropertyOf",
         "(",
-        field("subProperty", choice($["IRI"]!, $["ObjectPropertyChain"]!)),
-        field("superProperty", $["IRI"]!),
+        field("subProperty", choice($["_ObjectPropertyExpression"]!, $["ObjectPropertyChain"]!)),
+        field("superProperty", $["_ObjectPropertyExpression"]!),
         ")",
       ),
+
+    EquivalentObjectPropertiesAxiom: ($) =>
+      seq("EquivalentObjectProperties", "(", repeat(field("property", $["_ObjectPropertyExpression"]!)), ")"),
 
     SubDataPropertyOfAxiom: ($) =>
       seq("SubDataPropertyOf", "(", field("subProperty", $["IRI"]!), field("superProperty", $["IRI"]!), ")"),
 
+    EquivalentDataPropertiesAxiom: ($) =>
+      seq("EquivalentDataProperties", "(", repeat(field("property", $["IRI"]!)), ")"),
+
     InverseObjectPropertiesAxiom: ($) =>
-      seq("InverseObjectProperties", "(", field("property", $["IRI"]!), field("inverseProperty", $["IRI"]!), ")"),
+      seq(
+        "InverseObjectProperties",
+        "(",
+        field("property", $["_ObjectPropertyExpression"]!),
+        field("inverseProperty", $["_ObjectPropertyExpression"]!),
+        ")",
+      ),
 
     DisjointObjectPropertiesAxiom: ($) =>
-      seq("DisjointObjectProperties", "(", repeat(field("property", $["IRI"]!)), ")"),
+      seq("DisjointObjectProperties", "(", repeat(field("property", $["_ObjectPropertyExpression"]!)), ")"),
+
+    DisjointDataPropertiesAxiom: ($) => seq("DisjointDataProperties", "(", repeat(field("property", $["IRI"]!)), ")"),
+
+    HasKeyAxiom: ($) =>
+      seq(
+        "HasKey",
+        "(",
+        field("classExpr", $["_ClassExpression"]!),
+        "(",
+        repeat(field("objectProperty", $["_ObjectPropertyExpression"]!)),
+        ")",
+        "(",
+        repeat(field("dataProperty", $["IRI"]!)),
+        ")",
+        ")",
+      ),
 
     ObjectPropertyDomainAxiom: ($) =>
       seq("ObjectPropertyDomain", "(", field("property", $["IRI"]!), field("domain", $["_ClassExpression"]!), ")"),

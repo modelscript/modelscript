@@ -12,6 +12,7 @@ import { ensureBuiltInCymeLibraryRegistered, lookupCymeModelSchema } from "./lib
 
 const SLOT_STRIDE_BYTES = 2048;
 const OFF_CON = 0x080;
+const OFF_AUX = 0x680;
 const OFF_IO = 0x780;
 
 export interface CymeEquipmentDescriptor {
@@ -40,6 +41,8 @@ export interface CymeEvalOutput {
   tapRatio: number;
   pOutPu: number;
   qOutPu: number;
+  /** Full Kron-reduced 3x3 phase impedance matrix [R_ij, X_ij] in Ohms (row-major, 18 f64s) for conductors/cables. */
+  zAbc?: number[] | undefined;
 }
 
 export interface CymeLinkedEquipmentInstance {
@@ -85,6 +88,11 @@ function writeEvalInput(views: CachedMemoryViews, slotPtr: number, input: CymeEv
 
 function readEvalOutput(views: CachedMemoryViews, slotPtr: number): CymeEvalOutput {
   const base = (slotPtr + OFF_IO) >> 3;
+  const auxBase = (slotPtr + OFF_AUX) >> 3;
+  const zAbc: number[] = [];
+  for (let i = 0; i < 18; i++) {
+    zAbc.push(views.f64[auxBase + i] ?? 0);
+  }
   return {
     r1Ohm: views.f64[base + 8] ?? 0,
     x1Ohm: views.f64[base + 9] ?? 0,
@@ -94,6 +102,7 @@ function readEvalOutput(views: CachedMemoryViews, slotPtr: number): CymeEvalOutp
     tapRatio: views.f64[base + 13] ?? 1,
     pOutPu: views.f64[base + 14] ?? 0,
     qOutPu: views.f64[base + 15] ?? 0,
+    zAbc,
   };
 }
 

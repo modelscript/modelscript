@@ -161,6 +161,12 @@ export class OslcAlmConnector implements AlmConnector {
         (Array.isArray(payload) ? payload : [])) as Array<Record<string, unknown>>;
 
       for (const m of rawMembers) {
+        const memberType = asString(m["@type"] ?? m["type"]);
+        if (memberType.includes("trs:Deletion") || m["deleted"] === true) {
+          const delId = asString(m["dcterms:identifier"] ?? m["trs:changed"] ?? m["identifier"] ?? m["id"]);
+          if (delId) deletedIds.push(delId);
+          continue;
+        }
         upserted.push(parseOslcMember(m, spec.parsed.url, upserted.length));
         const srcId = asString(m["dcterms:identifier"] ?? m["identifier"] ?? m["id"]);
         if (!srcId) continue;

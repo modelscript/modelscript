@@ -35,7 +35,18 @@
  *   - Direct extraction of Gram matrix SOS witness certificates for Nelson-Oppen theory propagation.
  */
 
+import { WasmScratchPool } from "@modelscript/solve";
 import { getDefaultWasmExports } from "../dae/wasm_dae.js";
+
+const _sdpScratchPools = new WeakMap<object, WasmScratchPool>();
+function getSdpPool(wasm: any): WasmScratchPool {
+  let pool = _sdpScratchPools.get(wasm);
+  if (!pool) {
+    pool = new WasmScratchPool(wasm, 65536);
+    _sdpScratchPools.set(wasm, pool);
+  }
+  return pool;
+}
 
 export interface SdpProblem {
   /** Dimension of symmetric matrix X (n x n) */
@@ -56,6 +67,12 @@ export interface SdpResult {
   primalObj: number;
   iterations: number;
   residual: number;
+  /** Dual multiplier vector y (length m). */
+  dualY?: number[] | undefined;
+  /** Dual slack matrix S = C - sum(y_i A_i) >= 0. */
+  dualS?: number[][] | undefined;
+  /** Complementarity / duality gap <X, S>. */
+  dualityGap?: number | undefined;
 }
 
 export class SdpSolver {
@@ -112,25 +129,30 @@ export class SdpSolver {
     const n = X.length;
     const wasm: any = getDefaultWasmExports();
     if (wasm && typeof wasm.sdp_project_psd_cone === "function" && typeof wasm.__new === "function" && n > 0) {
-      const xPtr = wasm.__new(n * n * 8, 0);
-      const outPtr = wasm.__new(n * n * 8, 0);
-      const xView = new Float64Array(wasm.memory.buffer, xPtr, n * n);
-      for (let i = 0; i < n; i++) {
-        for (let j = 0; j < n; j++) {
-          xView[i * n + j] = X[i]?.[j] ?? 0;
+      const scope = getSdpPool(wasm).scope();
+      try {
+        const xSlice = scope.allocF64(n * n);
+        const outSlice = scope.allocF64(n * n);
+        const xView = xSlice.view();
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < n; j++) {
+            xView[i * n + j] = X[i]?.[j] ?? 0;
+          }
         }
-      }
-      wasm.sdp_project_psd_cone(n, xPtr, eps, outPtr);
-      const outView = new Float64Array(wasm.memory.buffer, outPtr, n * n);
-      const X_proj: number[][] = [];
-      for (let i = 0; i < n; i++) {
-        const row = new Array<number>(n);
-        for (let j = 0; j < n; j++) {
-          row[j] = outView[i * n + j]!;
+        wasm.sdp_project_psd_cone(n, xSlice.ptr, eps, outSlice.ptr);
+        const outView = outSlice.view();
+        const X_proj: number[][] = [];
+        for (let i = 0; i < n; i++) {
+          const row = new Array<number>(n);
+          for (let j = 0; j < n; j++) {
+            row[j] = outView[i * n + j]!;
+          }
+          X_proj.push(row);
         }
-        X_proj.push(row);
+        return X_proj;
+      } finally {
+        scope.dispose();
       }
-      return X_proj;
     }
 
     // Symmetrize input copy
@@ -243,11 +265,18 @@ export class SdpSolver {
   }
 
   /**
-   * Checks if matrix X is Positive Semidefinite (PSD).
+   * Checks if symmetric matrix X is Positive Semidefinite (PSD).
    */
-  public static isPsd(X: number[][], eps = 1e-8): boolean {
+  public static isPsd(X: number[][], eps = 0): boolean {
     const n = X.length;
-    // Add small diagonal regularization eps * I
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        if (Math.abs((X[i]?.[j] ?? 0) - (X[j]?.[i] ?? 0)) > 1e-8) return false;
+      }
+    }
+    if (eps === 0) {
+      return SdpSolver.cholesky(X) !== null;
+    }
     const regularized: number[][] = [];
     for (let i = 0; i < n; i++) {
       const row = [...X[i]!];
@@ -257,99 +286,280 @@ export class SdpSolver {
     return SdpSolver.cholesky(regularized) !== null;
   }
 
+  private static invertFromCholesky(L: number[][]): number[][] {
+    const n = L.length;
+    const invL: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
+    for (let i = 0; i < n; i++) {
+      invL[i]![i] = 1.0 / L[i]![i]!;
+      for (let j = 0; j < i; j++) {
+        let sum = 0;
+        for (let k = j; k < i; k++) sum += L[i]![k]! * invL[k]![j]!;
+        invL[i]![j] = -sum / L[i]![i]!;
+      }
+    }
+    const invS: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
+    for (let i = 0; i < n; i++) {
+      for (let j = i; j < n; j++) {
+        let sum = 0;
+        for (let k = j; k < n; k++) sum += invL[k]![i]! * invL[k]![j]!;
+        invS[i]![j] = sum;
+        invS[j]![i] = sum;
+      }
+    }
+    return invS;
+  }
+
+  private static matMul(A: number[][], B: number[][]): number[][] {
+    const n = A.length;
+    const out: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
+    for (let i = 0; i < n; i++) {
+      const Ai = A[i]!;
+      const Oi = out[i]!;
+      for (let k = 0; k < n; k++) {
+        const aik = Ai[k]!;
+        if (aik === 0) continue;
+        const Bk = B[k]!;
+        for (let j = 0; j < n; j++) Oi[j]! += aik * Bk[j]!;
+      }
+    }
+    return out;
+  }
+
+  private static solveLinearSystem(M: number[][], rhs: number[]): number[] | null {
+    const m = rhs.length;
+    if (m === 0) return [];
+    const A = M.map((row) => [...row]);
+    const b = [...rhs];
+    for (let k = 0; k < m; k++) {
+      let maxVal = Math.abs(A[k]![k]!);
+      let piv = k;
+      for (let i = k + 1; i < m; i++) {
+        const v = Math.abs(A[i]![k]!);
+        if (v > maxVal) {
+          maxVal = v;
+          piv = i;
+        }
+      }
+      if (maxVal < 1e-14) return null;
+      if (piv !== k) {
+        const tmpRow = A[k]!;
+        A[k] = A[piv]!;
+        A[piv] = tmpRow;
+        const tmpB = b[k]!;
+        b[k] = b[piv]!;
+        b[piv] = tmpB;
+      }
+      const diag = A[k]![k]!;
+      for (let i = k + 1; i < m; i++) {
+        const f = A[i]![k]! / diag;
+        if (f === 0) continue;
+        for (let j = k + 1; j < m; j++) A[i]![j]! -= f * A[k]![j]!;
+        b[i]! -= f * b[k]!;
+      }
+    }
+    const x = new Array<number>(m).fill(0);
+    for (let i = m - 1; i >= 0; i--) {
+      let sum = b[i]!;
+      for (let j = i + 1; j < m; j++) sum -= A[i]![j]! * x[j]!;
+      x[i] = sum / A[i]![i]!;
+    }
+    return x;
+  }
+
+  private static maxPdStep(M: number[][], dM: number[][]): number {
+    let alpha = 1.0;
+    const n = M.length;
+    const trial: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
+    for (let back = 0; back < 40; back++) {
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          trial[i]![j] = M[i]![j]! + alpha * dM[i]![j]!;
+        }
+      }
+      if (SdpSolver.cholesky(trial) !== null) return alpha;
+      alpha *= 0.5;
+    }
+    return 0;
+  }
+
   /**
-   * Solves the SDP problem using a regularized primal-dual interior point algorithm.
+   * Solves standard-form SDP using a Primal-Dual Interior-Point Method
+   * (Helmberg-Rendl-Vanderbei-Wolkowicz / KSH Schur-complement KKT Newton).
    */
   public static solve(problem: SdpProblem, maxIter = 50, tol = 1e-5): SdpResult {
     const { n, m, C, A, b } = problem;
+    if (n === 0) {
+      return {
+        status: "OPTIMAL",
+        X: [],
+        primalObj: 0,
+        iterations: 0,
+        residual: 0,
+        dualY: [],
+        dualS: [],
+        dualityGap: 0,
+      };
+    }
 
-    // Initialise X = I_n
-    let X: number[][] = [];
+    const Csym: number[][] = Array.from({ length: n }, (_, i) =>
+      Array.from({ length: n }, (_, j) => 0.5 * ((C[i]?.[j] ?? 0) + (C[j]?.[i] ?? 0))),
+    );
+    const Asym: number[][][] = A.map((Ak) =>
+      Array.from({ length: n }, (_, i) =>
+        Array.from({ length: n }, (_, j) => 0.5 * ((Ak[i]?.[j] ?? 0) + (Ak[j]?.[i] ?? 0))),
+      ),
+    );
+
+    let scale = 1.0;
+    for (let i = 0; i < m; i++) scale = Math.max(scale, Math.abs(b[i] ?? 0));
     for (let i = 0; i < n; i++) {
-      const row = new Array<number>(n).fill(0);
-      row[i] = 1.0;
-      X.push(row);
+      for (let j = 0; j < n; j++) scale = Math.max(scale, Math.abs(Csym[i]![j]!));
     }
+    const initDiag = Math.max(1.0, Math.sqrt(scale));
 
-    let cNorm = 0;
-    for (let i = 0; i < n; i++) {
-      for (let j = 0; j < n; j++) {
-        cNorm = Math.max(cNorm, Math.abs(C[i]?.[j] ?? 0));
-      }
-    }
-
-    // Precompute squared Frobenius norms of constraint matrices A_k for exact affine hyperplane projection
-    const aNormSq: number[] = [];
-    for (let k = 0; k < m; k++) {
-      aNormSq.push(Math.max(SdpSolver.innerProduct(A[k]!, A[k]!), 1e-12));
-    }
+    let X: number[][] = Array.from({ length: n }, (_, i) =>
+      Array.from({ length: n }, (_, j) => (i === j ? initDiag : 0)),
+    );
+    let S: number[][] = Array.from({ length: n }, (_, i) =>
+      Array.from({ length: n }, (_, j) => (i === j ? initDiag : 0)),
+    );
+    const y: number[] = new Array<number>(m).fill(0);
 
     let iterations = 0;
-    let residual = 1.0;
+    let primalRes = Infinity;
+    let dualRes = Infinity;
+    let gap = SdpSolver.innerProduct(X, S);
 
     for (let iter = 0; iter < maxIter; iter++) {
       iterations++;
 
-      // Compute primal constraint residuals: r_p,i = b_i - <A_i, X>
-      const rp: number[] = [];
-      let maxRp = 0;
+      const rp = new Array<number>(m);
+      primalRes = 0;
       for (let i = 0; i < m; i++) {
-        const val = b[i]! - SdpSolver.innerProduct(A[i]!, X);
-        rp.push(val);
-        maxRp = Math.max(maxRp, Math.abs(val));
+        const val = (b[i] ?? 0) - SdpSolver.innerProduct(Asym[i]!, X);
+        rp[i] = val;
+        primalRes = Math.max(primalRes, Math.abs(val));
       }
 
-      residual = maxRp;
-      if (residual < tol && SdpSolver.isPsd(X)) {
-        break;
-      }
-
-      // Objective gradient descent step before alternating affine/cone projections
-      const alpha = 0.5 / (1 + iter * 0.05);
-      const objStep = cNorm > 0 ? (0.01 * alpha) / ((1 + iter * 0.5) * cNorm) : 0;
-      if (objStep > 0) {
+      const Rd: number[][] = Array.from({ length: n }, (_, i) =>
+        Array.from({ length: n }, (_, j) => Csym[i]![j]! - S[i]![j]!),
+      );
+      for (let k = 0; k < m; k++) {
+        const yk = y[k]!;
+        if (yk === 0) continue;
+        const Ak = Asym[k]!;
         for (let i = 0; i < n; i++) {
-          for (let j = 0; j < n; j++) {
-            X[i]![j]! -= objStep * (C[i]?.[j] ?? 0);
-          }
+          for (let j = 0; j < n; j++) Rd[i]![j]! -= yk * Ak[i]![j]!;
+        }
+      }
+      dualRes = Math.sqrt(Math.max(0, SdpSolver.innerProduct(Rd, Rd)));
+
+      gap = Math.max(0, SdpSolver.innerProduct(X, S));
+      const mu = gap / n;
+
+      if (primalRes < tol && dualRes < tol && gap < tol * Math.max(1, n)) {
+        return {
+          status: "OPTIMAL",
+          X,
+          primalObj: SdpSolver.innerProduct(Csym, X),
+          iterations,
+          residual: primalRes,
+          dualY: y,
+          dualS: S,
+          dualityGap: gap,
+        };
+      }
+
+      const L = SdpSolver.cholesky(S);
+      if (!L) break;
+      const Sinv = SdpSolver.invertFromCholesky(L);
+
+      const T: number[][][] = new Array(m);
+      for (let j = 0; j < m; j++) {
+        T[j] = SdpSolver.matMul(SdpSolver.matMul(X, Asym[j]!), Sinv);
+      }
+
+      const M: number[][] = Array.from({ length: m }, () => new Array<number>(m).fill(0));
+      for (let i = 0; i < m; i++) {
+        for (let j = i; j < m; j++) {
+          const val = SdpSolver.innerProduct(Asym[i]!, T[j]!);
+          M[i]![j] = val;
+          M[j]![i] = val;
+        }
+        M[i]![i]! += 1e-10;
+      }
+
+      const sigma = primalRes < tol * 10 && dualRes < tol * 10 ? 0.1 : 0.25;
+      const XRdSinv = SdpSolver.matMul(SdpSolver.matMul(X, Rd), Sinv);
+      const Rterm: number[][] = Array.from({ length: n }, (_, i) =>
+        Array.from({ length: n }, (_, j) => sigma * mu * Sinv[i]![j]! - X[i]![j]! + XRdSinv[i]![j]!),
+      );
+      const rhs = new Array<number>(m);
+      for (let i = 0; i < m; i++) {
+        rhs[i] = rp[i]! - SdpSolver.innerProduct(Asym[i]!, Rterm);
+      }
+
+      const dy = SdpSolver.solveLinearSystem(M, rhs);
+      if (!dy) break;
+
+      const dS: number[][] = Rd.map((row) => [...row]);
+      for (let k = 0; k < m; k++) {
+        const dyk = dy[k]!;
+        if (dyk === 0) continue;
+        const Ak = Asym[k]!;
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < n; j++) dS[i]![j]! -= dyk * Ak[i]![j]!;
+        }
+      }
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          const avg = 0.5 * (dS[i]![j]! + dS[j]![i]!);
+          dS[i]![j] = avg;
+          dS[j]![i] = avg;
         }
       }
 
-      // Kaczmarz / Gauss-Seidel affine hyperplane projections <A_k, X> = b_k
-      for (let sweep = 0; sweep < 3; sweep++) {
-        for (let k = 0; k < m; k++) {
-          const r_k = b[k]! - SdpSolver.innerProduct(A[k]!, X);
-          const stepCoeff = r_k / aNormSq[k]!;
-          for (let i = 0; i < n; i++) {
-            for (let j = 0; j < n; j++) {
-              X[i]![j]! += stepCoeff * (A[k]![i]![j] ?? 0);
-            }
-          }
+      const XdSSinv = SdpSolver.matMul(SdpSolver.matMul(X, dS), Sinv);
+      const dXraw: number[][] = Array.from({ length: n }, (_, i) =>
+        Array.from({ length: n }, (_, j) => sigma * mu * Sinv[i]![j]! - X[i]![j]! - XdSSinv[i]![j]!),
+      );
+      const dX: number[][] = Array.from({ length: n }, (_, i) =>
+        Array.from({ length: n }, (_, j) => 0.5 * (dXraw[i]![j]! + dXraw[j]![i]!)),
+      );
+
+      const alphaP = Math.min(1.0, 0.98 * SdpSolver.maxPdStep(X, dX));
+      const alphaD = Math.min(1.0, 0.98 * SdpSolver.maxPdStep(S, dS));
+      if (alphaP < 1e-12 && alphaD < 1e-12) break;
+
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          X[i]![j]! += alphaP * dX[i]![j]!;
+          S[i]![j]! += alphaD * dS[i]![j]!;
         }
       }
-
-      // Robust spectral projection to positive semidefinite cone
-      X = SdpSolver.projectPsdCone(X, 1e-7);
+      for (let k = 0; k < m; k++) y[k]! += alphaD * dy[k]!;
     }
 
-    // Recompute final constraint residual after last cone projection
     let finalResidual = 0;
     for (let i = 0; i < m; i++) {
-      const val = b[i]! - SdpSolver.innerProduct(A[i]!, X);
+      const val = (b[i] ?? 0) - SdpSolver.innerProduct(Asym[i]!, X);
       finalResidual = Math.max(finalResidual, Math.abs(val));
     }
-    residual = finalResidual;
-
+    gap = Math.max(0, SdpSolver.innerProduct(X, S));
+    const primalObj = SdpSolver.innerProduct(Csym, X);
+    const isOptimal = finalResidual < tol && dualRes < tol && gap < tol * Math.max(1, n) && SdpSolver.isPsd(X);
     const isFeasible =
-      SdpSolver.isPsd(X) && Number.isFinite(residual) && (m === 0 || residual <= Math.max(tol * 10, 1e-4));
-    const primalObj = SdpSolver.innerProduct(C, X);
+      SdpSolver.isPsd(X) && Number.isFinite(finalResidual) && (m === 0 || finalResidual <= Math.max(tol * 10, 1e-4));
 
     return {
-      status: isFeasible ? "FEASIBLE" : "INFEASIBLE",
+      status: isOptimal ? "OPTIMAL" : isFeasible ? "FEASIBLE" : "INFEASIBLE",
       X,
       primalObj,
       iterations,
-      residual,
+      residual: finalResidual,
+      dualY: y,
+      dualS: S,
+      dualityGap: gap,
     };
   }
 }

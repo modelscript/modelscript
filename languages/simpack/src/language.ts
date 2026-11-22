@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, field, language, repeat, seq } from "@modelscript/dsl";
+import { registerBuiltInSimpackLibrarySync } from "./catalog/library-package-adapter.js";
 import { simpackIndexing } from "./indexing.js";
 import { simpackPolyglotConfig } from "./tgg/index.js";
 
@@ -109,3 +110,6 @@ export const simpackLanguage = language({
 });
 
 export default simpackLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInSimpackLibrarySync();

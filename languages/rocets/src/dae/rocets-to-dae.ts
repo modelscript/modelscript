@@ -2,9 +2,9 @@
 
 import { DAEBuilder } from "@modelscript/runtime";
 import type { RocetsEngineModel } from "../types.js";
-import { lowerRocetsToDae, type RocetsDaeLoweringResult } from "./lowering.js";
+import { lowerRocetsToDae, resolveRocetsSchemaParamDefaults, type RocetsDaeLoweringResult } from "./lowering.js";
 
-export { lowerRocetsToDae, type RocetsDaeLoweringResult };
+export { lowerRocetsToDae, resolveRocetsSchemaParamDefaults, type RocetsDaeLoweringResult };
 
 export interface RocetsToDaeOptions {
   modelName?: string;

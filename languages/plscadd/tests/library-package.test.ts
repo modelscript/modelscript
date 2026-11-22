@@ -173,4 +173,43 @@ describe("@modelscript/plscadd — Cleanroom Standard Library (modelscript.yaml,
     const out = fmuInst.eval({ spanM: 300.0, unitWeightNPerM: 16.0, horizontalTensionN: 30000.0 });
     assert.ok(Math.abs(out.sagM - 6.0) < 1e-9);
   });
+
+  it("evaluates 4th-order stress-strain & creep polynomial for initial vs final sag-tension on ACSR, AAAC, and ACSS", () => {
+    const spanM = 300.0;
+    const drake = instantiatePlsCaddWasmModel({ id: "DRAKE_CREEP", modelType: "WIR_ACSR_DRAKE_795" });
+    const greeley = instantiatePlsCaddWasmModel({ id: "AAAC_CREEP", modelType: "WIR_AAAC_GREELEY_927" });
+    const acss = instantiatePlsCaddWasmModel({ id: "ACSS_CREEP", modelType: "WIR_ACSS_DRAKE_795" });
+    assert.ok(drake && greeley && acss);
+
+    // ACSR Drake: compare initial (mode 1) vs final after-creep (mode 2) at 50 degC
+    drake.init({ spanM, horizontalTensionN: 28020.0, unitWeightNPerM: 15.965, ambientTempC: 15.0 });
+    const drakeInit = drake.eval({ spanM, unitWeightNPerM: 15.965, ambientTempC: 50.0, stressStrainMode: 1 });
+    const drakeFinal = drake.eval({ spanM, unitWeightNPerM: 15.965, ambientTempC: 50.0, stressStrainMode: 2 });
+    assert.ok(
+      drakeFinal.stateChangeTensionN < drakeInit.stateChangeTensionN,
+      `Expected creep to reduce final tension (${drakeFinal.stateChangeTensionN}) below initial (${drakeInit.stateChangeTensionN})`,
+    );
+    assert.ok(
+      drakeFinal.sagM > drakeInit.sagM,
+      `Expected creep to increase final sag (${drakeFinal.sagM}) above initial (${drakeInit.sagM})`,
+    );
+
+    // AAAC Greeley vs ACSS Drake HTLS: ACSS has lower creep strain than AAAC
+    greeley.init({ spanM, horizontalTensionN: 27140.0, unitWeightNPerM: 12.71, ambientTempC: 15.0 });
+    const aaacInit = greeley.eval({ spanM, unitWeightNPerM: 12.71, ambientTempC: 50.0, stressStrainMode: 1 });
+    const aaacFinal = greeley.eval({ spanM, unitWeightNPerM: 12.71, ambientTempC: 50.0, stressStrainMode: 2 });
+    assert.ok(aaacFinal.sagM > aaacInit.sagM);
+
+    acss.init({ spanM, horizontalTensionN: 23040.0, unitWeightNPerM: 15.965, ambientTempC: 15.0 });
+    const acssInit = acss.eval({ spanM, unitWeightNPerM: 15.965, ambientTempC: 50.0, stressStrainMode: 1 });
+    const acssFinal = acss.eval({ spanM, unitWeightNPerM: 15.965, ambientTempC: 50.0, stressStrainMode: 2 });
+    assert.ok(acssFinal.sagM > acssInit.sagM);
+
+    const aaacDeltaSag = aaacFinal.sagM - aaacInit.sagM;
+    const acssDeltaSag = acssFinal.sagM - acssInit.sagM;
+    assert.ok(
+      acssDeltaSag < aaacDeltaSag,
+      `Expected ACSS creep sag delta (${acssDeltaSag.toFixed(3)} m) < AAAC (${aaacDeltaSag.toFixed(3)} m)`,
+    );
+  });
 });

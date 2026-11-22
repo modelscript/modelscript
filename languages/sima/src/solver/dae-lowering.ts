@@ -9,6 +9,7 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, UnaryOp, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInSimaLibraryRegistered } from "../catalog/library-package-adapter.js";
 import type { SimaModel } from "../types.js";
 import { createRationalRealization } from "./cummins-state-space.js";
 
@@ -18,6 +19,7 @@ const DOF_NAMES = ["surge", "sway", "heave", "roll", "pitch", "yaw"] as const;
  * Lowers a SIMA marine model into a high-performance linear-memory DAEBuilder.
  */
 export function lowerSimaToDae(model: SimaModel): DAEBuilder {
+  ensureBuiltInSimaLibraryRegistered();
   const modelName = (model.title || model.vessels[0]?.name || "SimaMooredSystem").replace(/[^A-Za-z0-9_]/g, "_");
   const dae = new DAEBuilder(undefined, modelName);
 

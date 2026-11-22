@@ -802,10 +802,17 @@ export class DaeBltReachabilityEngine {
       });
       varBounds.set(varIdx, this.evaluator.getVarBound(varIdx));
     } else {
-      const g0Env = new Map(globalBounds);
-      g0Env.set(varIdx, new NumericalInterval(0, 0));
-      const g0Eval = this.evaluator.evaluateExpr(residualExpr, g0Env);
-      const computedY = g0Eval.interval.neg().div(dResEval.interval).result;
+      // Mean-Value Theorem expansion around midY inside [Y] (sound even when 0 is not in [Y])
+      const currY = globalBounds.get(varIdx) ?? this.evaluator.getVarBound(varIdx);
+      const midVal =
+        !currY.isBottom() && Number.isFinite(currY.low) && Number.isFinite(currY.high)
+          ? 0.5 * (currY.low + currY.high)
+          : 0;
+      const gMidEnv = new Map(globalBounds);
+      gMidEnv.set(varIdx, new NumericalInterval(midVal, midVal));
+      const gMidEval = this.evaluator.evaluateExpr(residualExpr, gMidEnv);
+      const stepDelta = gMidEval.interval.div(dResEval.interval).result;
+      const computedY = new NumericalInterval(midVal, midVal).sub(stepDelta);
       if (!computedY.isBottom() && !computedY.isTop()) {
         varBounds.set(varIdx, computedY);
         if (varName.startsWith("der(") && varName.endsWith(")")) {

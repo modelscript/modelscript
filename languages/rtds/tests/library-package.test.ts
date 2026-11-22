@@ -191,4 +191,68 @@ describe("@modelscript/rtds — Cleanroom Standard Library (modelscript.yaml, WA
     const out = fmuInst.doStep(50e-6, 50e-6, { va: 2.0 });
     assert.ok(Math.abs(out.ctrlOut - 1.0) < 1e-9);
   });
+
+  it("steps coupled 3-phase Dommel source/RLC, Clarke-modal VF rtds_fd_line, and MMC arm capacitor balancing", () => {
+    const dt = 50e-6;
+
+    // 1. Coupled 3-phase unbalanced Dommel source (rtds_3p_source)
+    const src = instantiateRtdsWasmModel({
+      name: "SRC3_UNBAL",
+      modelType: "rtds_3p_source",
+      params: [230000.0, 60.0, 0.0, 0.5, 0.005, 1.5, 0.015, 0.1],
+    });
+    assert.ok(src);
+    src.init();
+    const srcOut = src.doStep(dt, dt, { va2: 0.0, vb2: 0.0, vc2: 0.0 });
+    assert.ok(Math.abs(srcOut.ia) > 0 && Math.abs(srcOut.ib) > 0 && Math.abs(srcOut.ic) > 0);
+    assert.ok(Math.abs(srcOut.iHist) > 0 && Math.abs(srcOut.iHistB ?? 0) > 0 && Math.abs(srcOut.iHistC ?? 0) > 0);
+
+    // 2. Coupled 3-phase mutually-inductive Dommel RLC branch (rtds_rlc_branch)
+    const rlc3 = instantiateRtdsWasmModel({
+      name: "RLC3_1",
+      modelType: "rtds_rlc_branch",
+      params: [1.0, 0.01, 0.0, 0.3, 0.004, 1.0],
+    });
+    assert.ok(rlc3);
+    rlc3.init();
+    // Balanced positive-sequence excitation vs zero-sequence excitation
+    const rlcBal = rlc3.doStep(dt, dt, { va: 100.0, vb: -50.0, vc: -50.0, va2: 0.0, vb2: 0.0, vc2: 0.0 });
+    assert.ok(Math.abs(rlcBal.ia + rlcBal.ib + rlcBal.ic) < 1e-9, "Balanced 3-phase currents should sum to 0");
+    assert.ok(rlcBal.ia > 0 && rlcBal.ib < 0 && rlcBal.ic < 0);
+
+    // 3. 3-phase Clarke-modal + 2-pole VF exponential convolution FD line (rtds_fd_line)
+    const fdLine = instantiateRtdsWasmModel({
+      name: "FDLINE_1",
+      modelType: "rtds_fd_line",
+      params: [280.0, 200e-6, 1.5, 0.02, 450.0, 300e-6, 20000.0, 2000.0],
+    });
+    assert.ok(fdLine);
+    fdLine.init();
+    let fdOut = fdLine.doStep(dt, dt, { va: 1000.0, vb: -500.0, vc: -500.0, va2: 0.0, vb2: 0.0, vc2: 0.0 });
+    assert.ok(Math.abs(fdOut.ia2) < 1e-9, "Expected zero receiving-end current before aerial travel time");
+    for (let k = 2; k <= 10; k++) {
+      fdOut = fdLine.doStep(k * dt, dt, { va: 1000.0, vb: -500.0, vc: -500.0, va2: 0.0, vb2: 0.0, vc2: 0.0 });
+    }
+    assert.ok(Math.abs(fdOut.ia2) > 0.1, `Expected VF-convolved travelling wave arrival on phase A, got ${fdOut.ia2}`);
+    assert.ok(Math.abs(fdOut.ib2 ?? 0) > 0.05, "Expected 3-phase modal arrival on phase B");
+
+    // 4. MMC substep arm submodule capacitor voltage balancing (rtds_mmc_substep)
+    const mmc = instantiateRtdsWasmModel({
+      name: "MMC_1",
+      modelType: "rtds_mmc_substep",
+      params: { vdcNom: 640000.0, nSubmodules: 400.0, rArm: 1.2, lArm: 0.05, cSm: 0.01 },
+    });
+    assert.ok(mmc);
+    mmc.init();
+    let mmcOut = mmc.doStep(dt, dt, { vdc: 640000.0, va: 200000.0, ref: 0.8 });
+    for (let k = 2; k <= 40; k++) {
+      mmcOut = mmc.doStep(k * dt, dt, { vdc: 640000.0, va: 200000.0, ref: 0.8 });
+    }
+    assert.ok((mmcOut.vCapUpper ?? 0) > 0 && (mmcOut.vCapLower ?? 0) > 0, "Expected positive MMC submodule voltages");
+    assert.ok(
+      Math.abs((mmcOut.vCapUpper ?? 0) - 1600.0) > 1e-4 || Math.abs((mmcOut.vCapLower ?? 0) - 1600.0) > 1e-4,
+      "Expected MMC arm capacitor voltage dynamics to evolve from nominal 1600 V",
+    );
+    assert.ok(Math.abs((mmcOut.iArmUpper ?? 0) - (mmcOut.iArmLower ?? 0) - mmcOut.ia) < 1e-9);
+  });
 });

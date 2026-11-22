@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, field, language, optional, repeat, seq } from "@modelscript/dsl";
+import { registerBuiltInSimaLibrarySync } from "./catalog/library-package-adapter.js";
 import { simaIndexing } from "./indexing.js";
 import { SimaErrorCode } from "./lints/error-codes.js";
 import { simaPolyglotConfig } from "./tgg/index.js";
@@ -132,3 +133,6 @@ export const simaLanguage = language({
     Comment: () => /(?:!.*|\*.*|#.*|\/\/.*)/,
   },
 });
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInSimaLibrarySync();

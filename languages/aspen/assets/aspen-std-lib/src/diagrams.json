@@ -385,11 +385,9 @@
     "namePath": "aspen:Compr",
     "aliases": [
       "COMPR",
-      "COMPRESSOR",
-      "TURBINE",
-      "EXPANDER"
+      "COMPRESSOR"
     ],
-    "label": "Isentropic Compressor / Turbine (Compr)",
+    "label": "Isentropic Compressor (Compr)",
     "category": "Pressure Changer",
     "domain": "process",
     "width": 80,
@@ -1287,6 +1285,2194 @@
     "width": 80,
     "height": 48,
     "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BENZENE</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:Extract",
+    "aliases": [
+      "EXTRACT",
+      "LLE_COLUMN"
+    ],
+    "label": "Liquid-Liquid Extraction Column (Extract)",
+    "category": "Column",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">COL</text><rect x=\"58\" y=\"8\" width=\"14\" height=\"32\" rx=\"7\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" opacity=\"0.65\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">EXTRACT</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "distillate",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 12
+      },
+      {
+        "name": "bottoms",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:Decanter",
+    "aliases": [
+      "DECANTER",
+      "LL_SEPARATOR"
+    ],
+    "label": "Liquid-Liquid Gravity Decanter (Decanter)",
+    "category": "Separator",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b4d\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">SEP</text><rect x=\"58\" y=\"8\" width=\"14\" height=\"32\" rx=\"7\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"1.3\" opacity=\"0.65\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DECANTER</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "vapor",
+        "kind": "fluid",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "liquid",
+        "kind": "fluid",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:Absorber",
+    "aliases": [
+      "ABSORBER",
+      "GAS_ABSORBER"
+    ],
+    "label": "Countercurrent Gas Absorber (Absorber)",
+    "category": "Column",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">COL</text><rect x=\"58\" y=\"8\" width=\"14\" height=\"32\" rx=\"7\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" opacity=\"0.65\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ABSORBER</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "distillate",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 12
+      },
+      {
+        "name": "bottoms",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:Stripper",
+    "aliases": [
+      "STRIPPER",
+      "REBOILED_STRIPPER"
+    ],
+    "label": "Multistage Stripping Column (Stripper)",
+    "category": "Column",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">COL</text><rect x=\"58\" y=\"8\" width=\"14\" height=\"32\" rx=\"7\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" opacity=\"0.65\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">STRIPPER</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "distillate",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 12
+      },
+      {
+        "name": "bottoms",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:MultiFrac",
+    "aliases": [
+      "MULTIFRAC",
+      "INTERLINKED_COL"
+    ],
+    "label": "Interlinked Multicolumn Fractionation System (MultiFrac)",
+    "category": "Column",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">COL</text><rect x=\"58\" y=\"8\" width=\"14\" height=\"32\" rx=\"7\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" opacity=\"0.65\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MULTIFRA</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "distillate",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 12
+      },
+      {
+        "name": "bottoms",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:PetroFrac",
+    "aliases": [
+      "PETROFRAC",
+      "CRUDE_UNIT",
+      "FCC_MAIN_FRAC"
+    ],
+    "label": "Refinery Petroleum Fractionator (PetroFrac)",
+    "category": "Column",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">COL</text><rect x=\"58\" y=\"8\" width=\"14\" height=\"32\" rx=\"7\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" opacity=\"0.65\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PETROFRA</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "distillate",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 12
+      },
+      {
+        "name": "bottoms",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:MHeatX",
+    "aliases": [
+      "MHEATX",
+      "MULTI_STREAM_HX",
+      "COLD_BOX"
+    ],
+    "label": "Multi-Stream Plate-Fin Heat Exchanger (MHeatX)",
+    "category": "Heat Exchanger",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#431c1c\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">HTX</text><circle cx=\"64\" cy=\"24\" r=\"10\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\" opacity=\"0.65\"/><polyline points=\"56,24 61,19 67,29 72,24\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.2\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MHEATX</text></svg>",
+    "ports": [
+      {
+        "name": "hot_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "cold_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "hot_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "cold_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:HXFlux",
+    "aliases": [
+      "HXFLUX",
+      "HEAT_FLUX"
+    ],
+    "label": "Convective Heat Flux Transfer Block (HXFlux)",
+    "category": "Heat Exchanger",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#431c1c\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">HTX</text><circle cx=\"64\" cy=\"24\" r=\"10\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\" opacity=\"0.65\"/><polyline points=\"56,24 61,19 67,29 72,24\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.2\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">HXFLUX</text></svg>",
+    "ports": [
+      {
+        "name": "hot_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "cold_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "hot_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "cold_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:ClChngr",
+    "aliases": [
+      "CLCHNGR",
+      "CLASS_CHANGER"
+    ],
+    "label": "Stream Class Changer (ClChngr)",
+    "category": "Heat Exchanger",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#431c1c\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">HTX</text><circle cx=\"64\" cy=\"24\" r=\"10\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\" opacity=\"0.65\"/><polyline points=\"56,24 61,19 67,29 72,24\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.2\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CLCHNGR</text></svg>",
+    "ports": [
+      {
+        "name": "hot_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "cold_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "hot_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "cold_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:Turbine",
+    "aliases": [
+      "TURBINE",
+      "STEAM_TURBINE"
+    ],
+    "label": "Isentropic Steam / Gas Turbine (Turbine)",
+    "category": "Pressure Changer",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b234a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">PRC</text><polygon points=\"56,14 73,19 73,29 56,34\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.3\" opacity=\"0.65\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TURBINE</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "work",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:Expander",
+    "aliases": [
+      "EXPANDER",
+      "TURBOEXPANDER"
+    ],
+    "label": "Cryogenic Turboexpander (Expander)",
+    "category": "Pressure Changer",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b234a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">PRC</text><polygon points=\"56,14 73,19 73,29 56,34\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.3\" opacity=\"0.65\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">EXPANDER</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "work",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:Cyclone",
+    "aliases": [
+      "CYCLONE",
+      "GAS_CYCLONE"
+    ],
+    "label": "Gas-Solid Cyclone Separator (Cyclone)",
+    "category": "Separator",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b4d\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">SEP</text><rect x=\"58\" y=\"8\" width=\"14\" height=\"32\" rx=\"7\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"1.3\" opacity=\"0.65\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CYCLONE</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "vapor",
+        "kind": "fluid",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "liquid",
+        "kind": "fluid",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:Filter",
+    "aliases": [
+      "FILTER",
+      "CAKE_FILTER",
+      "ROTARY_FILTER"
+    ],
+    "label": "Solid-Liquid Cake Filter (Filter)",
+    "category": "Separator",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b4d\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">SEP</text><rect x=\"58\" y=\"8\" width=\"14\" height=\"32\" rx=\"7\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"1.3\" opacity=\"0.65\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FILTER</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "vapor",
+        "kind": "fluid",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "liquid",
+        "kind": "fluid",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:Crystallizer",
+    "aliases": [
+      "CRYSTALLIZER",
+      "MSMPR"
+    ],
+    "label": "Cooling / Evaporative Crystallizer (Crystallizer)",
+    "category": "Separator",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b4d\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">SEP</text><rect x=\"58\" y=\"8\" width=\"14\" height=\"32\" rx=\"7\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"1.3\" opacity=\"0.65\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CRYSTALL</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "vapor",
+        "kind": "fluid",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "liquid",
+        "kind": "fluid",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:RYield",
+    "aliases": [
+      "RYIELD",
+      "YIELD_REACTOR"
+    ],
+    "label": "Yield Distribution Reactor (RYield)",
+    "category": "Reactor",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422c14\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">RXN</text><rect x=\"57\" y=\"12\" width=\"16\" height=\"24\" rx=\"3\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\" opacity=\"0.65\"/><line x1=\"65\" y1=\"8\" x2=\"65\" y2=\"30\" stroke=\"#fbbf24\" stroke-width=\"1.1\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RYIELD</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "product",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "duty",
+        "kind": "thermal",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:RBatch",
+    "aliases": [
+      "RBATCH",
+      "BATCH_REACTOR"
+    ],
+    "label": "Dynamic Batch Chemical Reactor (RBatch)",
+    "category": "Reactor",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422c14\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">RXN</text><rect x=\"57\" y=\"12\" width=\"16\" height=\"24\" rx=\"3\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\" opacity=\"0.65\"/><line x1=\"65\" y1=\"8\" x2=\"65\" y2=\"30\" stroke=\"#fbbf24\" stroke-width=\"1.1\"/><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RBATCH</text></svg>",
+    "ports": [
+      {
+        "name": "feed",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "product",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "duty",
+        "kind": "thermal",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:PSRK",
+    "aliases": [
+      "PREDICTIVE_SRK"
+    ],
+    "label": "Predictive Soave-Redlich-Kwong EOS (PSRK)",
+    "category": "Property Method",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1a3636\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">EOS</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PSRK</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:PC_SAFT",
+    "aliases": [
+      "PC-SAFT",
+      "PCSAFT"
+    ],
+    "label": "Perturbed-Chain SAFT EOS (PC-SAFT)",
+    "category": "Property Method",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1a3636\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">EOS</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PC_SAFT</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:LEE_KESLER",
+    "aliases": [
+      "LK-PLOCK",
+      "LEE-KESLER",
+      "LKP"
+    ],
+    "label": "Lee-Kesler-Plocker Corresponding-States EOS (LK-PLOCK)",
+    "category": "Property Method",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1a3636\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">EOS</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">LEE_KESL</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:PR_BM",
+    "aliases": [
+      "PR-BM",
+      "PENG_ROB_BM"
+    ],
+    "label": "Peng-Robinson with Boston-Mathias Alpha (PR-BM)",
+    "category": "Property Method",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1a3636\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">EOS</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PR_BM</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_C4H10",
+    "aliases": [
+      "C4H10",
+      "N_BUTANE",
+      "BUTANE",
+      "106-97-8"
+    ],
+    "label": "n-Butane (C4H10)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">C4H10</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_C5H12",
+    "aliases": [
+      "C5H12",
+      "N_PENTANE",
+      "PENTANE",
+      "109-66-0"
+    ],
+    "label": "n-Pentane (C5H12)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">C5H12</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_C6H14",
+    "aliases": [
+      "C6H14",
+      "N_HEXANE",
+      "HEXANE",
+      "110-54-3"
+    ],
+    "label": "n-Hexane (C6H14)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">C6H14</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_TOLUENE",
+    "aliases": [
+      "TOLUENE",
+      "C7H8",
+      "108-88-3"
+    ],
+    "label": "Toluene (C7H8)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TOLUENE</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_CO",
+    "aliases": [
+      "CO",
+      "CARBON_MONOXIDE",
+      "630-08-0"
+    ],
+    "label": "Carbon Monoxide (CO)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CO</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_H2S",
+    "aliases": [
+      "H2S",
+      "HYDROGEN_SULFIDE",
+      "7783-06-4"
+    ],
+    "label": "Hydrogen Sulfide (H2S)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">H2S</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_SO2",
+    "aliases": [
+      "SO2",
+      "SULFUR_DIOXIDE",
+      "7446-09-5"
+    ],
+    "label": "Sulfur Dioxide (SO2)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SO2</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_HCL",
+    "aliases": [
+      "HCL",
+      "HYDROGEN_CHLORIDE",
+      "7647-01-0"
+    ],
+    "label": "Hydrogen Chloride (HCl)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">HCL</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_ACETONE",
+    "aliases": [
+      "ACETONE",
+      "C3H6O",
+      "67-64-1"
+    ],
+    "label": "Acetone (C3H6O)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ACETONE</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_ACETIC_ACID",
+    "aliases": [
+      "ACETIC_ACID",
+      "CH3COOH",
+      "64-19-7"
+    ],
+    "label": "Acetic Acid (CH3COOH)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ACETIC_A</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_ISOBUTANE",
+    "aliases": [
+      "ISOBUTANE",
+      "IC4H10",
+      "I-BUTANE",
+      "75-28-5"
+    ],
+    "label": "Isobutane (i-C4H10)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ISOBUTAN</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_ISOPENTANE",
+    "aliases": [
+      "ISOPENTANE",
+      "IC5H12",
+      "I-PENTANE",
+      "78-78-4"
+    ],
+    "label": "Isopentane (i-C5H12)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ISOPENTA</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_C7H16",
+    "aliases": [
+      "C7H16",
+      "N_HEPTANE",
+      "HEPTANE",
+      "142-82-5"
+    ],
+    "label": "n-Heptane (C7H16)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">C7H16</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_C8H18",
+    "aliases": [
+      "C8H18",
+      "N_OCTANE",
+      "OCTANE",
+      "111-65-9"
+    ],
+    "label": "n-Octane (C8H18)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">C8H18</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_C9H20",
+    "aliases": [
+      "C9H20",
+      "N_NONANE",
+      "NONANE",
+      "111-84-2"
+    ],
+    "label": "n-Nonane (C9H20)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">C9H20</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_C10H22",
+    "aliases": [
+      "C10H22",
+      "N_DECANE",
+      "DECANE",
+      "124-18-5"
+    ],
+    "label": "n-Decane (C10H22)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">C10H22</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_CYCLOHEXANE",
+    "aliases": [
+      "CYCLOHEXANE",
+      "C6H12",
+      "110-82-7"
+    ],
+    "label": "Cyclohexane (C6H12)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CYCLOHEX</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_METHYLCYCLOHEXANE",
+    "aliases": [
+      "METHYLCYCLOHEXANE",
+      "MCH",
+      "C7H14",
+      "108-87-2"
+    ],
+    "label": "Methylcyclohexane (C7H14)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">METHYLCY</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_ETHYLENE",
+    "aliases": [
+      "ETHYLENE",
+      "ETHENE",
+      "C2H4",
+      "74-85-1"
+    ],
+    "label": "Ethylene (C2H4)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ETHYLENE</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_PROPYLENE",
+    "aliases": [
+      "PROPYLENE",
+      "PROPENE",
+      "C3H6",
+      "115-07-1"
+    ],
+    "label": "Propylene (C3H6)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PROPYLEN</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_1_BUTENE",
+    "aliases": [
+      "1_BUTENE",
+      "BUTENE",
+      "C4H8",
+      "106-98-9"
+    ],
+    "label": "1-Butene (C4H8)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">1_BUTENE</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_1_3_BUTADIENE",
+    "aliases": [
+      "BUTADIENE",
+      "1_3_BUTADIENE",
+      "C4H6",
+      "106-99-0"
+    ],
+    "label": "1,3-Butadiene (C4H6)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">1_3_BUTA</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_ACETYLENE",
+    "aliases": [
+      "ACETYLENE",
+      "ETHYNE",
+      "C2H2",
+      "74-86-2"
+    ],
+    "label": "Acetylene (C2H2)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ACETYLEN</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_ETHYLBENZENE",
+    "aliases": [
+      "ETHYLBENZENE",
+      "EB",
+      "C8H10",
+      "100-41-4"
+    ],
+    "label": "Ethylbenzene (C8H10)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ETHYLBEN</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_O_XYLENE",
+    "aliases": [
+      "O_XYLENE",
+      "OXYLENE",
+      "ORTHO_XYLENE",
+      "95-47-6"
+    ],
+    "label": "o-Xylene (C8H10)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">O_XYLENE</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_M_XYLENE",
+    "aliases": [
+      "M_XYLENE",
+      "MXYLENE",
+      "META_XYLENE",
+      "108-38-3"
+    ],
+    "label": "m-Xylene (C8H10)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">M_XYLENE</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_P_XYLENE",
+    "aliases": [
+      "P_XYLENE",
+      "PXYLENE",
+      "PARA_XYLENE",
+      "106-42-3"
+    ],
+    "label": "p-Xylene (C8H10)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">P_XYLENE</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_STYRENE",
+    "aliases": [
+      "STYRENE",
+      "C8H8",
+      "100-42-5"
+    ],
+    "label": "Styrene (C8H8)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">STYRENE</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_CUMENE",
+    "aliases": [
+      "CUMENE",
+      "ISOPROPYLBENZENE",
+      "C9H12",
+      "98-82-8"
+    ],
+    "label": "Cumene (C9H12)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CUMENE</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_1_PROPANOL",
+    "aliases": [
+      "1_PROPANOL",
+      "N_PROPANOL",
+      "C3H8O",
+      "71-23-8"
+    ],
+    "label": "1-Propanol (C3H8O)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">1_PROPAN</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_ISOPROPANOL",
+    "aliases": [
+      "ISOPROPANOL",
+      "IPA",
+      "2_PROPANOL",
+      "67-63-0"
+    ],
+    "label": "Isopropanol (2-Propanol)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ISOPROPA</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_1_BUTANOL",
+    "aliases": [
+      "1_BUTANOL",
+      "N_BUTANOL",
+      "C4H10O",
+      "71-36-3"
+    ],
+    "label": "1-Butanol (C4H10O)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">1_BUTANO</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_ETHYLENE_GLYCOL",
+    "aliases": [
+      "ETHYLENE_GLYCOL",
+      "MEG",
+      "C2H6O2",
+      "107-21-1"
+    ],
+    "label": "Ethylene Glycol (MEG)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ETHYLENE</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_DIETHYL_ETHER",
+    "aliases": [
+      "DIETHYL_ETHER",
+      "ETHER",
+      "C4H10O_ETH",
+      "60-29-7"
+    ],
+    "label": "Diethyl Ether (C4H10O)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIETHYL_</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_MTBE",
+    "aliases": [
+      "MTBE",
+      "C5H12O",
+      "1634-04-4"
+    ],
+    "label": "Methyl tert-Butyl Ether (MTBE)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MTBE</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_FORMIC_ACID",
+    "aliases": [
+      "FORMIC_ACID",
+      "HCOOH",
+      "64-18-6"
+    ],
+    "label": "Formic Acid (HCOOH)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FORMIC_A</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_PROPIONIC_ACID",
+    "aliases": [
+      "PROPIONIC_ACID",
+      "C3H6O2",
+      "79-09-4"
+    ],
+    "label": "Propionic Acid (C3H6O2)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PROPIONI</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_ETHYL_ACETATE",
+    "aliases": [
+      "ETHYL_ACETATE",
+      "ETOAC",
+      "C4H8O2",
+      "141-78-6"
+    ],
+    "label": "Ethyl Acetate (C4H8O2)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ETHYL_AC</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_MEK",
+    "aliases": [
+      "MEK",
+      "2_BUTANONE",
+      "C4H8O",
+      "78-93-3"
+    ],
+    "label": "Methyl Ethyl Ketone (MEK)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MEK</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_ACETALDEHYDE",
+    "aliases": [
+      "ACETALDEHYDE",
+      "ETHANAL",
+      "C2H4O",
+      "75-07-0"
+    ],
+    "label": "Acetaldehyde (C2H4O)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ACETALDE</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_R134A",
+    "aliases": [
+      "R134A",
+      "HFC134A",
+      "C2H2F4",
+      "811-97-2"
+    ],
+    "label": "Refrigerant R-134a (C2H2F4)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">R134A</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_R32",
+    "aliases": [
+      "R32",
+      "HFC32",
+      "CH2F2",
+      "75-10-5"
+    ],
+    "label": "Refrigerant R-32 (CH2F2)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">R32</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_R125",
+    "aliases": [
+      "R125",
+      "HFC125",
+      "C2HF5",
+      "354-33-6"
+    ],
+    "label": "Refrigerant R-125 (C2HF5)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">R125</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_CHLOROFORM",
+    "aliases": [
+      "CHLOROFORM",
+      "CHCL3",
+      "67-66-3"
+    ],
+    "label": "Chloroform (CHCl3)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CHLOROFO</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_ARGON",
+    "aliases": [
+      "ARGON",
+      "AR",
+      "7440-37-1"
+    ],
+    "label": "Argon (Ar)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ARGON</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_HELIUM",
+    "aliases": [
+      "HELIUM",
+      "HE",
+      "7440-59-7"
+    ],
+    "label": "Helium (He)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">HELIUM</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_CL2",
+    "aliases": [
+      "CL2",
+      "CHLORINE",
+      "7782-50-5"
+    ],
+    "label": "Chlorine (Cl2)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CL2</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "aspen:COMP_MEA",
+    "aliases": [
+      "MEA",
+      "MONOETHANOLAMINE",
+      "C2H7NO",
+      "141-43-5"
+    ],
+    "label": "Monoethanolamine (MEA)",
+    "category": "Pure Component",
+    "domain": "process",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#282b47\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">CMP</text><text x=\"36\" y=\"35\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MEA</text></svg>",
     "ports": [
       {
         "name": "state_in",

@@ -8,6 +8,7 @@
  */
 
 import { cardDeckRules, language } from "@modelscript/dsl";
+import { registerBuiltInLpsLibrarySync } from "./catalog/library-package-adapter.js";
 import { lintLpsModel } from "./lints/index.js";
 import { parseLps } from "./parser/index.js";
 import { lpsToSysml2 } from "./projections/lps-to-sysml2.js";
@@ -301,3 +302,6 @@ export const lpsLanguage = language({
 });
 
 export default lpsLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInLpsLibrarySync();

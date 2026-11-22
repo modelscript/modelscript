@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, field, language, repeat, seq } from "@modelscript/dsl";
+import { registerBuiltInSimulinkLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerSimulinkToDae } from "./dae/simulink-to-dae.js";
 import { indexSimulinkFile } from "./indexing.js";
 import { lintSimulinkModel } from "./lints/simulink-linters.js";
@@ -188,3 +189,6 @@ export const simulinkLanguage = language({
 });
 
 export default simulinkLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInSimulinkLibrarySync();

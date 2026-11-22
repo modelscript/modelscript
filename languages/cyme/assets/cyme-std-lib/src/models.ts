@@ -22,6 +22,7 @@
 
 const OFF_CON: usize = 0x080;
 const OFF_STATE: usize = 0x580;
+const OFF_AUX: usize = 0x680;
 const OFF_IO: usize = 0x780;
 
 // Archetype IDs (must match `CymeArchetypeId` in cyme-std-schemas.ts)
@@ -54,6 +55,11 @@ function getCon(slotPtr: usize, conCount: i32, idx: i32, fallback: f64): f64 {
 @inline
 function setState(slotPtr: usize, idx: i32, v: f64): void {
   store<f64>(slotPtr + OFF_STATE + (<usize>idx << 3), v);
+}
+
+@inline
+function setAux(slotPtr: usize, idx: i32, v: f64): void {
+  store<f64>(slotPtr + OFF_AUX + (<usize>idx << 3), v);
 }
 
 @inline
@@ -139,27 +145,120 @@ export function cymeModelEval(archetypeId: i32, slotPtr: usize, conCount: i32): 
   const pAvailPu = isNaN(pAvailRaw) ? 1.0 : clamp(pAvailRaw, 0.0, 1.2);
   const closedFlag = getIo(slotPtr, 7);
 
-  // 1. Overhead Conductor & Underground Cable: Carson's sequence impedance equations (Kersting Ch. 4)
+  // 1. Overhead Conductor & Underground Cable: Full 3x3 Carson's Equations + Kron Neutral Reduction
+  //    Z_abc = Z_pp - Z_pn * Z_nn^-1 * Z_np (Kersting, Distribution System Modeling & Analysis Ch. 4)
   if (archetypeId == ARCH_OVERHEAD_CONDUCTOR || archetypeId == ARCH_UNDERGROUND_CABLE) {
     const rAc = getCon(slotPtr, conCount, 0, 0.19);
     const gmrMm = Math.max(0.1, getCon(slotPtr, conCount, 1, 7.4));
     const gmdMm = Math.max(gmrMm * 1.1, getCon(slotPtr, conCount, 2, 1200.0));
+    const isCable = archetypeId == ARCH_UNDERGROUND_CABLE;
+
+    // Neutral / concentric-screen conductor parameters (optional overrides in CON[6..8])
+    // Note: by Euclidean triangle inequality, a shared neutral for 3 phases separated by gmdMm
+    // must satisfy d_pn >= gmdMm / sqrt(3) (~0.5774 * gmdMm) for a positive-definite 4x4 L matrix.
+    const rNeut = Math.max(0.01, getCon(slotPtr, conCount, 6, isCable ? rAc * 1.6 : rAc * 1.4));
+    const gmrNeutMm = Math.max(0.1, getCon(slotPtr, conCount, 7, isCable ? gmrMm * 0.85 : gmrMm * 0.55));
+    const dPnBase = Math.max(gmdMm * 0.6, getCon(slotPtr, conCount, 8, isCable ? gmdMm * 0.72 : gmdMm * 1.25));
+
     const omega = 2.0 * Math.PI * freqHz;
     // mu0 / (2*pi) = 2e-4 H/km
     const coeff = omega * 2.0e-4;
-
-    const r1 = rAc * lengthKm;
-    const x1 = coeff * Math.log(gmdMm / gmrMm) * lengthKm;
-
-    // Carson earth-return resistance r_e = pi^2 * 1e-4 * f (Ohm/km) and depth D_e = 658.5 * sqrt(rho/f) m
+    // Carson earth-return resistance r_d = pi^2 * 1e-4 * f (Ohm/km) and depth D_e = 658.5 * sqrt(rho/f) m
     const rEarth = 0.00098696044 * freqHz;
     const deMm = 658500.0 * Math.sqrt(rhoOhmM / freqHz);
-    const screenFactor = archetypeId == ARCH_UNDERGROUND_CABLE ? 0.65 : 1.0;
 
-    const r0 = (rAc + 3.0 * rEarth * screenFactor) * lengthKm;
-    const x0PerKm =
-      coeff * (Math.log(deMm / gmrMm) + 2.0 * Math.log(deMm / gmdMm)) * screenFactor;
-    const x0 = Math.max(x1, x0PerKm * lengthKm);
+    // 3-phase conductor inter-phase distances (mm):
+    //   Overhead: horizontal flat crossarm (d_ab = d_bc = 2^(-1/3)*GMD, d_ac = 2*d_ab -> (d_ab*d_bc*d_ac)^(1/3) = GMD)
+    //   Underground: symmetric trefoil duct spacing (d_ab = d_bc = d_ac = GMD)
+    const dAb = isCable ? gmdMm : gmdMm * 0.7937005259840998;
+    const dBc = dAb;
+    const dAc = isCable ? gmdMm : 2.0 * dAb;
+
+    // Phase-to-neutral distances (mm)
+    const dAn = isCable ? dPnBase : dPnBase * 1.12;
+    const dBn = dPnBase;
+    const dCn = isCable ? dPnBase : dPnBase * 1.12;
+
+    // 4x4 Primitive Carson's impedance entries (Ohm/km)
+    const rSelf = rAc + rEarth;
+    const xSelf = coeff * Math.log(deMm / gmrMm);
+
+    const xAb = coeff * Math.log(deMm / dAb);
+    const xBc = coeff * Math.log(deMm / dBc);
+    const xAc = coeff * Math.log(deMm / dAc);
+
+    const rNn = rNeut + rEarth;
+    const xNn = coeff * Math.log(deMm / gmrNeutMm);
+    const zNnMagSq = Math.max(1e-12, rNn * rNn + xNn * xNn);
+    // y_nn = 1 / z_nn = yNnR + j * yNnX
+    const yNnR = rNn / zNnMagSq;
+    const yNnX = -xNn / zNnMagSq;
+
+    // Z_pn[i] = rEarth + j * xPn[i]
+    const xAn = coeff * Math.log(deMm / dAn);
+    const xBn = coeff * Math.log(deMm / dBn);
+    const xCn = coeff * Math.log(deMm / dCn);
+
+    // Compute Kron-reduced 3x3 phase impedance matrix Z_abc = Z_pp - Z_pn * y_nn * Z_np (Ohm/km)
+    // Store full 3x3 complex matrix (scaled by lengthKm) in AUX[0..17] (row-major [R, X])
+    let sumSelfR: f64 = 0.0;
+    let sumSelfX: f64 = 0.0;
+    let sumMutR: f64 = 0.0;
+    let sumMutX: f64 = 0.0;
+
+    for (let i: i32 = 0; i < 3; i++) {
+      const xPi = i == 0 ? xAn : i == 1 ? xBn : xCn;
+      // t = Z_pn[i] * y_nn
+      const tR = rEarth * yNnR - xPi * yNnX;
+      const tX = rEarth * yNnX + xPi * yNnR;
+
+      for (let j: i32 = 0; j < 3; j++) {
+        const xPj = j == 0 ? xAn : j == 1 ? xBn : xCn;
+        // k = (Z_pn[i] * y_nn) * Z_np[j]
+        const kR = tR * rEarth - tX * xPj;
+        const kX = tR * xPj + tX * rEarth;
+
+        let zPpR: f64 = rEarth;
+        let zPpX: f64 = xAb;
+        if (i == j) {
+          zPpR = rSelf;
+          zPpX = xSelf;
+        } else if ((i == 0 && j == 2) || (i == 2 && j == 0)) {
+          zPpX = xAc;
+        } else if ((i == 1 && j == 2) || (i == 2 && j == 1)) {
+          zPpX = xBc;
+        }
+
+        const zR = (zPpR - kR) * lengthKm;
+        const zX = (zPpX - kX) * lengthKm;
+
+        const auxIdx = (i * 3 + j) * 2;
+        setAux(slotPtr, auxIdx, zR);
+        setAux(slotPtr, auxIdx + 1, zX);
+
+        if (i == j) {
+          sumSelfR += zR;
+          sumSelfX += zX;
+        } else {
+          sumMutR += zR;
+          sumMutX += zX;
+        }
+      }
+    }
+
+    // Exact Fortescue symmetrical components from Kron-reduced 3x3 Z_abc:
+    //   Z_s_avg = (Z_aa + Z_bb + Z_cc) / 3
+    //   Z_m_avg = (Z_ab + Z_ba + Z_bc + Z_cb + Z_ac + Z_ca) / 6
+    //   Z_1 = Z_s_avg - Z_m_avg,   Z_0 = Z_s_avg + 2 * Z_m_avg
+    const zSelfAvgR = sumSelfR / 3.0;
+    const zSelfAvgX = sumSelfX / 3.0;
+    const zMutAvgR = sumMutR / 6.0;
+    const zMutAvgX = sumMutX / 6.0;
+
+    const r1 = zSelfAvgR - zMutAvgR;
+    const x1 = zSelfAvgX - zMutAvgX;
+    const r0 = zSelfAvgR + 2.0 * zMutAvgR;
+    const x0 = zSelfAvgX + 2.0 * zMutAvgX;
 
     setIo(slotPtr, 8, r1);
     setIo(slotPtr, 9, x1);

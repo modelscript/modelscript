@@ -118,6 +118,18 @@ describe("@modelscript/relap5 — Cleanroom Standard Library (modelscript.yaml, 
     // PWR primary pressure 15.5 MPa -> T_sat = 617.94 K
     const satPwr = steam.doStep(0.0, 0.01, { pressure: 15.5e6 });
     assert.ok(Math.abs(satPwr.tSat - 617.94) < 0.1, `Expected T_sat(15.5 MPa) ~ 617.94 K, got ${satPwr.tSat}`);
+    // Region 1 subcooled liquid enthalpy at 3 MPa, 300 K ~ 115.33 kJ/kg
+    const subcooled = steam.doStep(0.0, 0.01, { pressure: 3.0e6, temperature: 300.0 });
+    assert.ok(
+      Math.abs(subcooled.aux - 115.33) < 2.5,
+      `Expected IAPWS-IF97 Region 1 h(3 MPa, 300 K) ~ 115.33 kJ/kg, got ${subcooled.aux}`,
+    );
+    // Region 2 superheated steam enthalpy at 3 MPa, 700 K ~ 3294.7 kJ/kg
+    const superheated = steam.doStep(0.0, 0.01, { pressure: 3.0e6, temperature: 700.0 });
+    assert.ok(
+      Math.abs(superheated.aux - 3294.7) < 30.0,
+      `Expected IAPWS-IF97 Region 2 h(3 MPa, 700 K) ~ 3294.7 kJ/kg, got ${superheated.aux}`,
+    );
 
     // 5. Zuber Pool-Boiling CHF at 1 atm saturated water (~1.11 MW/m^2)
     const zuber = instantiateRelap5WasmModel({ componentId: 500, modelType: "CORR_ZUBER_CHF" });

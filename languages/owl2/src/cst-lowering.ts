@@ -396,12 +396,11 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
         const chainIris = getIris(chainNode, ctx);
         if (chainIris.length >= 2) {
           out.push({
-            type: "SubObjectPropertyChainOf" as unknown as "SubObjectPropertyOf",
-            subPropertyIri: chainIris[0]!,
+            type: "SubPropertyChainOf",
+            subPropertyChain: chainIris,
             superPropertyIri: iris[0]!,
-            propertyChainIris: chainIris,
             sourceLang: "owl2",
-          } as unknown as OWL2Axiom);
+          });
           return;
         }
       }
@@ -412,6 +411,40 @@ function walkForAxioms(node: GenericSyntaxNode, ctx: LoweringContext, out: OWL2A
           superPropertyIri: iris[1]!,
           sourceLang: "owl2",
         });
+      }
+      return;
+    }
+
+    case "EquivalentObjectPropertiesAxiom": {
+      const iris = getIris(node, ctx);
+      for (let i = 0; i < iris.length; i++) {
+        for (let j = 0; j < iris.length; j++) {
+          if (i !== j) {
+            out.push({
+              type: "SubObjectPropertyOf",
+              subPropertyIri: iris[i]!,
+              superPropertyIri: iris[j]!,
+              sourceLang: "owl2",
+            });
+          }
+        }
+      }
+      return;
+    }
+
+    case "EquivalentDataPropertiesAxiom": {
+      const iris = getIris(node, ctx);
+      for (let i = 0; i < iris.length; i++) {
+        for (let j = 0; j < iris.length; j++) {
+          if (i !== j) {
+            out.push({
+              type: "SubDataPropertyOf",
+              subPropertyIri: iris[i]!,
+              superPropertyIri: iris[j]!,
+              sourceLang: "owl2",
+            });
+          }
+        }
       }
       return;
     }
@@ -1077,6 +1110,7 @@ const AXIOM_KEYWORDS = new Set([
   ")",
   "=",
   ":",
+  "Annotation",
   "Prefix",
   "Ontology",
   "Import",

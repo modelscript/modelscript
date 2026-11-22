@@ -1,0 +1,899 @@
+[
+  {
+    "namePath": "fea:C3D4_TET4",
+    "aliases": [
+      "C3D4",
+      "TET4"
+    ],
+    "label": "4-Node Linear Tetrahedron (C3D4)",
+    "category": "Solid Element",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SOL</text><polygon points=\"56,8 70,12 70,22 56,18\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.2\"/><polyline points=\"56,8 63,5 70,12\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.1\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">C3D4_TET4</text></svg>",
+    "ports": [
+      {
+        "name": "nodes",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "section",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stiffness",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:C3D10_TET10",
+    "aliases": [
+      "C3D10",
+      "C3D10M",
+      "TET10"
+    ],
+    "label": "10-Node Quadratic Tetrahedron (C3D10)",
+    "category": "Solid Element",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SOL</text><polygon points=\"56,8 70,12 70,22 56,18\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.2\"/><polyline points=\"56,8 63,5 70,12\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.1\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">C3D10_TET1</text></svg>",
+    "ports": [
+      {
+        "name": "nodes",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "section",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stiffness",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:C3D8R_HEX8",
+    "aliases": [
+      "C3D8R",
+      "C3D8",
+      "C3D8I",
+      "HEX8"
+    ],
+    "label": "8-Node Reduced-Integration Brick (C3D8R)",
+    "category": "Solid Element",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SOL</text><polygon points=\"56,8 70,12 70,22 56,18\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.2\"/><polyline points=\"56,8 63,5 70,12\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.1\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">C3D8R_HEX8</text></svg>",
+    "ports": [
+      {
+        "name": "nodes",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "section",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stiffness",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:C3D20R_HEX20",
+    "aliases": [
+      "C3D20R",
+      "C3D20",
+      "HEX20"
+    ],
+    "label": "20-Node Quadratic Brick (C3D20R)",
+    "category": "Solid Element",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SOL</text><polygon points=\"56,8 70,12 70,22 56,18\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.2\"/><polyline points=\"56,8 63,5 70,12\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.1\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">C3D20R_HEX</text></svg>",
+    "ports": [
+      {
+        "name": "nodes",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "section",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stiffness",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:S4R_SHELL",
+    "aliases": [
+      "S4R",
+      "S4",
+      "S3",
+      "S3R"
+    ],
+    "label": "4-Node Finite-Strain Shell (S4R)",
+    "category": "Shell / Beam Element",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">SHL</text><polygon points=\"55,10 71,8 69,20 53,22\" fill=\"none\" stroke=\"#2dd4bf\" stroke-width=\"1.2\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">S4R_SHELL</text></svg>",
+    "ports": [
+      {
+        "name": "nodes",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "section",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stiffness",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:B31_BEAM",
+    "aliases": [
+      "B31",
+      "B32",
+      "B31H"
+    ],
+    "label": "2-Node Timoshenko 3D Beam (B31)",
+    "category": "Shell / Beam Element",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">SHL</text><polygon points=\"55,10 71,8 69,20 53,22\" fill=\"none\" stroke=\"#2dd4bf\" stroke-width=\"1.2\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">B31_BEAM</text></svg>",
+    "ports": [
+      {
+        "name": "nodes",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "section",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stiffness",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:CQUAD4_NASTRAN",
+    "aliases": [
+      "CQUAD4",
+      "CQUAD8",
+      "CQUADR"
+    ],
+    "label": "NASTRAN 4-Node Quad Shell (CQUAD4)",
+    "category": "Shell / Beam Element",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">SHL</text><polygon points=\"55,10 71,8 69,20 53,22\" fill=\"none\" stroke=\"#2dd4bf\" stroke-width=\"1.2\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">CQUAD4</text></svg>",
+    "ports": [
+      {
+        "name": "nodes",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "section",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stiffness",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:CTRIA3_NASTRAN",
+    "aliases": [
+      "CTRIA3",
+      "CTRIA6",
+      "CTRIAR"
+    ],
+    "label": "NASTRAN 3-Node Triangular Shell (CTRIA3)",
+    "category": "Shell / Beam Element",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">SHL</text><polygon points=\"55,10 71,8 69,20 53,22\" fill=\"none\" stroke=\"#2dd4bf\" stroke-width=\"1.2\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">CTRIA3</text></svg>",
+    "ports": [
+      {
+        "name": "nodes",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "section",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stiffness",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:CHEXA_NASTRAN",
+    "aliases": [
+      "CHEXA",
+      "CPENTA"
+    ],
+    "label": "NASTRAN 8/20-Node Hexahedron (CHEXA)",
+    "category": "Solid Element",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SOL</text><polygon points=\"56,8 70,12 70,22 56,18\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.2\"/><polyline points=\"56,8 63,5 70,12\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.1\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">CHEXA</text></svg>",
+    "ports": [
+      {
+        "name": "nodes",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "section",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stiffness",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:CTETRA_NASTRAN",
+    "aliases": [
+      "CTETRA"
+    ],
+    "label": "NASTRAN 4/10-Node Tetrahedron (CTETRA)",
+    "category": "Solid Element",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SOL</text><polygon points=\"56,8 70,12 70,22 56,18\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.2\"/><polyline points=\"56,8 63,5 70,12\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.1\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">CTETRA</text></svg>",
+    "ports": [
+      {
+        "name": "nodes",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "section",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stiffness",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:CBEAM_NASTRAN",
+    "aliases": [
+      "CBEAM",
+      "CBAR"
+    ],
+    "label": "NASTRAN 3D Tapered Beam (CBEAM)",
+    "category": "Shell / Beam Element",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">SHL</text><polygon points=\"55,10 71,8 69,20 53,22\" fill=\"none\" stroke=\"#2dd4bf\" stroke-width=\"1.2\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">CBEAM</text></svg>",
+    "ports": [
+      {
+        "name": "nodes",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "section",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stiffness",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:RBE2_RIGID",
+    "aliases": [
+      "RBE2",
+      "KINEMATIC_COUPLING"
+    ],
+    "label": "Rigid Body Kinematic Constraint (RBE2)",
+    "category": "Constraint / MPC",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">MPC</text><circle cx=\"63\" cy=\"14\" r=\"2.2\" fill=\"#fb923c\"/><line x1=\"55\" y1=\"8\" x2=\"63\" y2=\"14\" stroke=\"#fb923c\" stroke-width=\"1.1\"/><line x1=\"71\" y1=\"8\" x2=\"63\" y2=\"14\" stroke=\"#fb923c\" stroke-width=\"1.1\"/><line x1=\"63\" y1=\"14\" x2=\"63\" y2=\"22\" stroke=\"#fb923c\" stroke-width=\"1.1\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">RBE2_RIGID</text></svg>",
+    "ports": [
+      {
+        "name": "master",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "slaves",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:RBE3_INTERP",
+    "aliases": [
+      "RBE3",
+      "DISTRIBUTING_COUPLING"
+    ],
+    "label": "Weighted Interpolation Constraint (RBE3)",
+    "category": "Constraint / MPC",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">MPC</text><circle cx=\"63\" cy=\"14\" r=\"2.2\" fill=\"#fb923c\"/><line x1=\"55\" y1=\"8\" x2=\"63\" y2=\"14\" stroke=\"#fb923c\" stroke-width=\"1.1\"/><line x1=\"71\" y1=\"8\" x2=\"63\" y2=\"14\" stroke=\"#fb923c\" stroke-width=\"1.1\"/><line x1=\"63\" y1=\"14\" x2=\"63\" y2=\"22\" stroke=\"#fb923c\" stroke-width=\"1.1\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">RBE3_INTER</text></svg>",
+    "ports": [
+      {
+        "name": "master",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "slaves",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:MAT1_ISOTROPIC",
+    "aliases": [
+      "MAT1"
+    ],
+    "label": "NASTRAN Isotropic Elastic Material (MAT1)",
+    "category": "Elastic Material",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">ELA</text><polyline points=\"54,20 60,12 66,11 72,9\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">MAT1_ISOTR</text></svg>",
+    "ports": [
+      {
+        "name": "strain",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "temp",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stress",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:MAT8_ORTHOTROPIC",
+    "aliases": [
+      "MAT8"
+    ],
+    "label": "NASTRAN Shell Orthotropic Material (MAT8)",
+    "category": "Elastic Material",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">ELA</text><polyline points=\"54,20 60,12 66,11 72,9\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">MAT8_ORTHO</text></svg>",
+    "ports": [
+      {
+        "name": "strain",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "temp",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stress",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:MAT9_ANISOTROPIC",
+    "aliases": [
+      "MAT9"
+    ],
+    "label": "NASTRAN 3D Anisotropic Material (MAT9)",
+    "category": "Elastic Material",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">ELA</text><polyline points=\"54,20 60,12 66,11 72,9\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">MAT9_ANISO</text></svg>",
+    "ports": [
+      {
+        "name": "strain",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "temp",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stress",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:ABQ_ELASTIC",
+    "aliases": [
+      "*ELASTIC",
+      "ELASTIC"
+    ],
+    "label": "Abaqus Linear Elastic (*ELASTIC)",
+    "category": "Elastic Material",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">ELA</text><polyline points=\"54,20 60,12 66,11 72,9\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">ELASTIC</text></svg>",
+    "ports": [
+      {
+        "name": "strain",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "temp",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stress",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:ABQ_PLASTIC_J2",
+    "aliases": [
+      "*PLASTIC",
+      "PLASTIC",
+      "MATS1"
+    ],
+    "label": "Abaqus J2 von Mises Plasticity (*PLASTIC)",
+    "category": "Plasticity / Creep",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">PLS</text><polyline points=\"54,20 60,12 66,11 72,9\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">PLASTIC_J2</text></svg>",
+    "ports": [
+      {
+        "name": "strain",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "temp",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stress",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:ABQ_HYPERELASTIC_NEO_HOOKE",
+    "aliases": [
+      "*HYPERELASTIC, NEO HOOKE",
+      "NEO_HOOKE",
+      "MATHP_NH"
+    ],
+    "label": "Neo-Hookean Hyperelastic (*HYPERELASTIC)",
+    "category": "Hyperelastic Material",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">HYP</text><polyline points=\"54,20 60,12 66,11 72,9\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">HYPERELAST</text></svg>",
+    "ports": [
+      {
+        "name": "strain",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "temp",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stress",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:ABQ_HYPERELASTIC_MOONEY_RIVLIN",
+    "aliases": [
+      "*HYPERELASTIC, MOONEY-RIVLIN",
+      "MOONEY_RIVLIN",
+      "MATHP_MR"
+    ],
+    "label": "Mooney-Rivlin Hyperelastic (*HYPERELASTIC)",
+    "category": "Hyperelastic Material",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">HYP</text><polyline points=\"54,20 60,12 66,11 72,9\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">HYPERELAST</text></svg>",
+    "ports": [
+      {
+        "name": "strain",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "temp",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stress",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:ABQ_CREEP_NORTON",
+    "aliases": [
+      "*CREEP",
+      "CREEP",
+      "NORTON"
+    ],
+    "label": "Norton Power-Law Creep (*CREEP)",
+    "category": "Plasticity / Creep",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">PLS</text><polyline points=\"54,20 60,12 66,11 72,9\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">CREEP_NORT</text></svg>",
+    "ports": [
+      {
+        "name": "strain",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "temp",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "stress",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:ABQ_DENSITY",
+    "aliases": [
+      "*DENSITY",
+      "DENSITY"
+    ],
+    "label": "Abaqus Mass Density (*DENSITY)",
+    "category": "Thermal / Physical",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">PHY</text><polyline points=\"54,20 60,12 66,11 72,9\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">DENSITY</text></svg>",
+    "ports": [
+      {
+        "name": "temp",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "prop",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:ABQ_EXPANSION",
+    "aliases": [
+      "*EXPANSION",
+      "EXPANSION"
+    ],
+    "label": "Abaqus Thermal Expansion (*EXPANSION)",
+    "category": "Thermal / Physical",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">PHY</text><polyline points=\"54,20 60,12 66,11 72,9\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">EXPANSION</text></svg>",
+    "ports": [
+      {
+        "name": "temp",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "prop",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:PCOMP_LAMINATE",
+    "aliases": [
+      "PCOMP",
+      "PCOMPG",
+      "*SHELL SECTION, COMPOSITE"
+    ],
+    "label": "Composite Laminate Property (PCOMP)",
+    "category": "Section / Laminate",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">SEC</text><line x1=\"54\" y1=\"10\" x2=\"72\" y2=\"10\" stroke=\"#818cf8\" stroke-width=\"1.3\"/><line x1=\"54\" y1=\"14\" x2=\"72\" y2=\"14\" stroke=\"#818cf8\" stroke-width=\"1.3\"/><line x1=\"54\" y1=\"18\" x2=\"72\" y2=\"18\" stroke=\"#818cf8\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">PCOMP_LAMI</text></svg>",
+    "ports": [
+      {
+        "name": "material",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "element",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:PSHELL_SECTION",
+    "aliases": [
+      "PSHELL",
+      "*SHELL SECTION"
+    ],
+    "label": "Shell Section Property (PSHELL)",
+    "category": "Section / Laminate",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">SEC</text><line x1=\"54\" y1=\"10\" x2=\"72\" y2=\"10\" stroke=\"#818cf8\" stroke-width=\"1.3\"/><line x1=\"54\" y1=\"14\" x2=\"72\" y2=\"14\" stroke=\"#818cf8\" stroke-width=\"1.3\"/><line x1=\"54\" y1=\"18\" x2=\"72\" y2=\"18\" stroke=\"#818cf8\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">PSHELL_SEC</text></svg>",
+    "ports": [
+      {
+        "name": "material",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "element",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "fea:PSOLID_SECTION",
+    "aliases": [
+      "PSOLID",
+      "*SOLID SECTION"
+    ],
+    "label": "Solid Continuum Section (PSOLID)",
+    "category": "Section / Laminate",
+    "domain": "structural",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">SEC</text><line x1=\"54\" y1=\"10\" x2=\"72\" y2=\"10\" stroke=\"#818cf8\" stroke-width=\"1.3\"/><line x1=\"54\" y1=\"14\" x2=\"72\" y2=\"14\" stroke=\"#818cf8\" stroke-width=\"1.3\"/><line x1=\"54\" y1=\"18\" x2=\"72\" y2=\"18\" stroke=\"#818cf8\" stroke-width=\"1.3\"/><text x=\"40\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">PSOLID_SEC</text></svg>",
+    "ports": [
+      {
+        "name": "material",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "element",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  }
+]

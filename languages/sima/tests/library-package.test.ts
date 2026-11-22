@@ -189,6 +189,80 @@ describe("@modelscript/sima — Cleanroom Standard Library (modelscript.yaml, WA
     assert.ok(Math.abs(moving.tertiary - moving.primary) < 1e-3, "Expected thrust directed along +Y at 90 deg");
   });
 
+  it("evaluates Cummins Prony radiation-retardation memory and Euler-Bernoulli tensioned riser stiffness", () => {
+    // 1. SIMO_AddedMassDamping: 4-state Prony exponential retardation memory build-up and decay
+    const rad = instantiateSimaWasmModel({
+      id: "rad_1",
+      modelType: "SIMO_AddedMassDamping",
+      params: { addedMassInf: 4.5e6, radiationB: 3.5e5, retardationDecay: 0.5 },
+    });
+    assert.ok(rad, "Expected SIMO_AddedMassDamping WASM instance");
+    assert.equal(rad.init(), 4, "Expected 4 Prony radiation memory states");
+
+    // Excite with v = 1.0 m/s for 2 seconds -> radiation memory force builds up
+    let excited = rad.eval(0.0, 0.1, { velocity: 1.0, fluidVelocity: 0.0 });
+    for (let k = 1; k < 20; k++) {
+      excited = rad.eval(k * 0.1, 0.1, { velocity: 1.0, fluidVelocity: 0.0 });
+    }
+    const memPeak = Math.abs(excited.tertiary);
+    assert.ok(memPeak > 1.5e5, `Expected Cummins memory force build-up > 150 kN, got ${memPeak}`);
+
+    // Release velocity to 0 -> memory force persists immediately after step and decays monotonically
+    const afterZero1 = rad.eval(2.1, 0.1, { velocity: 0.0, fluidVelocity: 0.0 });
+    assert.ok(
+      Math.abs(afterZero1.tertiary) > 0.5 * memPeak,
+      `Expected persistent Cummins retardation memory at t+0.1s, got ${afterZero1.tertiary}`,
+    );
+    let decayed = afterZero1;
+    for (let k = 0; k < 60; k++) {
+      decayed = rad.eval(2.2 + k * 0.1, 0.1, { velocity: 0.0, fluidVelocity: 0.0 });
+    }
+    assert.ok(
+      Math.abs(decayed.tertiary) < 0.25 * memPeak,
+      `Expected Cummins retardation memory to decay over 6 s, got ${decayed.tertiary}`,
+    );
+
+    // 2. SIMO_Body6DOF: 6-state Cummins body with Prony radiation memory
+    const body = instantiateSimaWasmModel({ id: "fpso_1", modelType: "SIMO_Body6DOF" });
+    assert.ok(body, "Expected SIMO_Body6DOF WASM instance");
+    assert.equal(body.init({ displacement: 0.0, velocity: 0.0 }), 6, "Expected 6 states (x, v + 4 Prony modes)");
+    let bodyOut = body.eval(0.0, 0.1, { fluidAccel: 5.0e6 });
+    for (let k = 1; k < 15; k++) {
+      bodyOut = body.eval(k * 0.1, 0.1, { fluidAccel: 5.0e6 });
+    }
+    assert.ok(bodyOut.aux2 > 0, `Expected positive surge velocity under external force, got ${bodyOut.aux2}`);
+    assert.ok(bodyOut.secondary < 0, `Expected opposing Cummins radiation retardation force, got ${bodyOut.secondary}`);
+
+    // 3. RIFLEX_BeamRiser: Euler-Bernoulli tensioned riser stiffness q = EI * w'''' - T * w''
+    const riser = instantiateSimaWasmModel({
+      id: "riser_1",
+      modelType: "RIFLEX_BeamRiser",
+      params: { bendingStiffnessEI: 2.5e7, axialStiffnessEA: 1.2e9, outerDiameter: 0.35, minBendRadius: 12.0 },
+    });
+    assert.ok(riser, "Expected RIFLEX_BeamRiser WASM instance");
+    riser.init();
+
+    const w2 = 0.02; // curvature d^2w/dz^2 (1/m)
+    const w4 = -0.005; // d^4w/dz^4 (1/m^3)
+    const tensionLow = 1.0e6;
+    const tensionHigh = 5.0e6;
+    const outLow = riser.eval(0.0, 0.1, { fluidAccel: w4, command: w2, auxInput: tensionLow });
+    const outHigh = riser.eval(0.1, 0.1, { fluidAccel: w4, command: w2, auxInput: tensionHigh });
+    const expectedQLow = 2.5e7 * w4 - tensionLow * w2;
+    assert.ok(
+      Math.abs(outLow.secondary - expectedQLow) < 1e-3,
+      `Expected qLat = EI*w'''' - T*w'' = ${expectedQLow}, got ${outLow.secondary}`,
+    );
+    assert.ok(
+      Math.abs(outHigh.secondary) > Math.abs(outLow.secondary),
+      "Expected higher axial tension to increase lateral restoring stiffness",
+    );
+    assert.ok(
+      Math.abs(outLow.aux2 - Math.sqrt(2.5e7 / tensionLow)) < 1e-6,
+      `Expected characteristic bending length sqrt(EI/T) = 5.0 m, got ${outLow.aux2}`,
+    );
+  });
+
   it("projects and links an FMI 2.0/3.0 user-defined FMU alongside SIMA models", () => {
     const proj = fmuToSimaXml(
       {

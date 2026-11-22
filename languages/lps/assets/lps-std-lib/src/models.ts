@@ -22,6 +22,11 @@
  *       IO[7]  = powerW (W)             IO[15] = opening (0..1)
  */
 
+import {
+  evalAga8CompressibilityZ,
+  evalPengRobinsonZ,
+} from "../../../../../packages/runtime/assembly/physics/thermo-eos";
+
 const OFF_CON: usize = 0x080;
 const OFF_STATE: usize = 0x580;
 const OFF_DSTATE: usize = 0x680;
@@ -91,49 +96,6 @@ function getIo(slotPtr: usize, idx: i32): f64 {
 @inline
 function setIo(slotPtr: usize, idx: i32, v: f64): void {
   store<f64>(slotPtr + OFF_IO + (<usize>idx << 3), v);
-}
-
-/**
- * Papay correlation for natural gas compressibility factor Z(P, T)
- * matching ISO 20765-1 / AGA-8 across typical transmission pipeline pressures.
- */
-@inline
-function papayZ(pPa: f64, tK: f64, pPcPa: f64, tPcK: f64): f64 {
-  const pr = Math.max(0.0, pPa / Math.max(1.0e5, pPcPa));
-  const tr = Math.max(0.6, tK / Math.max(50.0, tPcK));
-  const z = 1.0 - (3.52 * pr) / Math.pow(10.0, 0.9813 * tr) + (0.274 * pr * pr) / Math.pow(10.0, 0.8157 * tr);
-  return clamp(z, 0.25, 2.5);
-}
-
-/**
- * Peng-Robinson (1976) cubic EOS vapor-phase compressibility factor Z(P, T)
- * solved via Newton-Raphson from Z0 = 1.0.
- */
-function pengRobinsonZ(pPa: f64, tK: f64, pcPa: f64, tcK: f64, omega: f64): f64 {
-  const tr = Math.max(0.4, tK / Math.max(50.0, tcK));
-  const pr = Math.max(1e-6, pPa / Math.max(1.0e5, pcPa));
-  const kappa = 0.37464 + 1.54226 * omega - 0.26992 * omega * omega;
-  const alphaSqrt = 1.0 + kappa * (1.0 - Math.sqrt(tr));
-  const alpha = alphaSqrt * alphaSqrt;
-
-  const A = (0.45724 * alpha * pr) / (tr * tr);
-  const B = (0.0778 * pr) / tr;
-
-  // Z^3 - (1 - B) Z^2 + (A - 3 B^2 - 2 B) Z - (A B - B^2 - B^3) = 0
-  const c2 = -(1.0 - B);
-  const c1 = A - 3.0 * B * B - 2.0 * B;
-  const c0 = -(A * B - B * B - B * B * B);
-
-  let z = 1.0;
-  for (let i = 0; i < 20; i++) {
-    const f = ((z + c2) * z + c1) * z + c0;
-    const df = (3.0 * z + 2.0 * c2) * z + c1;
-    if (Math.abs(df) < 1e-12) break;
-    const dz = f / df;
-    z -= dz;
-    if (Math.abs(dz) < 1e-10) break;
-  }
-  return clamp(z, 0.15, 2.5);
 }
 
 /**
@@ -208,7 +170,7 @@ export function lpsModelEval(archetypeId: i32, _t: f64, _dt: f64, slotPtr: usize
     const eff = clamp(getCon(slotPtr, conCount, 6, 0.95), 0.1, 1.0);
     const visc = Math.max(1e-7, getCon(slotPtr, conCount, 7, 1.15e-5));
 
-    const z = zParam > 0.05 ? zParam : papayZ(pin, tin, 4.64e6, 205.0);
+    const z = zParam > 0.05 ? zParam : evalAga8CompressibilityZ(pin * 1e-6, tin, molarMass / 28.9647, 0.01, 0.015, 0.0);
     const rSpec = R_UNIVERSAL / molarMass;
     const rho = (pin * molarMass) / (z * R_UNIVERSAL * tin);
     const area = 0.25 * Math.PI * diameter * diameter;
@@ -293,7 +255,7 @@ export function lpsModelEval(archetypeId: i32, _t: f64, _dt: f64, slotPtr: usize
     const zParam = getCon(slotPtr, conCount, 6, 0.88);
 
     const ratio = Math.min(rTarget, maxRatio);
-    const z = zParam > 0.05 ? zParam : papayZ(pin, tin, 4.64e6, 205.0);
+    const z = zParam > 0.05 ? zParam : evalAga8CompressibilityZ(pin * 1e-6, tin, molarMass / 28.9647, 0.01, 0.015, 0.0);
     const rSpec = R_UNIVERSAL / molarMass;
 
     // Polytropic exponent: (n - 1) / n = (gamma - 1) / (gamma * etaP)
@@ -479,21 +441,22 @@ export function lpsModelEval(archetypeId: i32, _t: f64, _dt: f64, slotPtr: usize
     let gamma: f64 = 1.3;
     let effMolarMass = molarMass;
 
+    const sg = molarMass / 28.9647;
     if (archetypeId == ARCH_EOS_PENG_ROBINSON) {
       const omega = getCon(slotPtr, conCount, 3, 0.0115);
       gamma = clamp(getCon(slotPtr, conCount, 4, 1.31), 1.05, 1.67);
-      z = pengRobinsonZ(pin, tin, pCrit, tCrit, omega);
+      z = clamp(evalPengRobinsonZ(tin, pin, tCrit, pCrit, omega), 0.15, 2.5);
     } else if (archetypeId == ARCH_EOS_GERG2008) {
       const h2Frac = clamp(getCon(slotPtr, conCount, 3, 0.0), 0.0, 1.0);
       gamma = clamp(getCon(slotPtr, conCount, 4, 1.31), 1.05, 1.67);
-      // Blend molar mass & compressibility toward H2 ideal-like behavior (Z_H2 >= 1)
       effMolarMass = molarMass * (1.0 - h2Frac) + 2.016 * h2Frac;
-      const zNat = papayZ(pin, tin, pCrit, tCrit);
-      const zH2 = 1.0 + 0.06 * (pin / 1.0e7);
-      z = zNat * (1.0 - h2Frac) + zH2 * h2Frac;
+      z = evalAga8CompressibilityZ(pin * 1e-6, tin, sg, 0.01, 0.015, h2Frac);
     } else {
       gamma = clamp(getCon(slotPtr, conCount, 3, 1.3), 1.05, 1.67);
-      z = papayZ(pin, tin, pCrit, tCrit);
+      const xCo2 = clamp(getCon(slotPtr, conCount, 4, 0.01), 0.0, 0.5);
+      const xN2 = clamp(getCon(slotPtr, conCount, 5, 0.015), 0.0, 0.5);
+      const xH2 = clamp(getCon(slotPtr, conCount, 6, 0.0), 0.0, 1.0);
+      z = evalAga8CompressibilityZ(pin * 1e-6, tin, sg, xCo2, xN2, xH2);
     }
 
     const rSpec = R_UNIVERSAL / effMolarMass;

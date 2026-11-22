@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
 import { choice, field, language, optional, repeat, seq } from "@modelscript/dsl";
+import { registerBuiltInRocetsLibrarySync } from "./catalog/library-package-adapter.js";
 import { rocetsIndexing } from "./indexing.js";
 import { RocetsErrorCode } from "./lints/index.js";
 import { rocetsPolyglotConfig } from "./tgg/index.js";
@@ -147,6 +148,9 @@ export const rocetsLanguage = language({
     NumberLiteral: () => /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/,
     StringLiteral: () => /"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'/,
     ArrayLiteral: ($) => seq("[", repeat(seq($["NumberLiteral"]!, optional(","))), "]"),
-    Comment: () => /(?:\/\/.*|\/\*[\s\S]*?\*\/|#.*|\*.*|\$.*)/,
+    Comment: () => /(?:\/\/.*|\/\*([^*]|\*+[^*/])*\*+\/|#.*|\*.*|\$.*)/,
   },
 });
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInRocetsLibrarySync();

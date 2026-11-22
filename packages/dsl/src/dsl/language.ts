@@ -363,7 +363,7 @@ export interface LanguageOptions<
   /** External scanner logic compiled down to zero-overhead AssemblyScript / WASM. */
   scanner?:
     | ExternalScannerFunction
-    | { scan: ExternalScannerFunction }
+    | { scan: ExternalScannerFunction; runAfterExtras?: boolean | undefined }
     | ((currentPos: number, scannerState: number) => number)
     | undefined;
 
@@ -387,6 +387,9 @@ export interface LanguageOptions<
 
   /** When true, any unwhitelisted grammar conflicts will throw a compilation error instead of logging a warning. */
   strictConflicts?: boolean | undefined;
+
+  /** When true, fatal static grammar diagnostics (`undefined-rule`, `nullable-repeat`, `unproductive-rule`) throw a compilation error. */
+  strictGrammar?: boolean | undefined;
 
   /** Default precedence/associativity matrices for conflict resolution. */
   precedences?:

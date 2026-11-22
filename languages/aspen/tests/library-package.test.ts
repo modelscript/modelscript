@@ -14,7 +14,10 @@ import {
   getAspenSchemasFromLibraries,
   instantiateAspenWasmModel,
   lookupAspenModelSchema,
+  lowerAspenToDae,
+  parseAspen,
   registerBuiltInAspenLibrarySync,
+  solveFlashRachfordRice,
 } from "../src/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -47,6 +50,7 @@ describe("@modelscript/aspen — Cleanroom Standard Library (modelscript.yaml, W
   it("supports zero-I/O sync registration and case-insensitive alias lookup", () => {
     registerBuiltInAspenLibrarySync();
     const schemas = getAspenSchemasFromLibraries();
+    assert.ok(schemas.length >= 100, `Expected 100+ Aspen schemas, got ${schemas.length}`);
     assert.ok(schemas.length >= ASPEN_MODEL_SPECS.length);
 
     assert.equal(lookupAspenModelSchema("FLASH2")?.name, "Flash2");
@@ -55,6 +59,9 @@ describe("@modelscript/aspen — Cleanroom Standard Library (modelscript.yaml, W
     assert.equal(lookupAspenModelSchema("H2O")?.name, "COMP_H2O");
     assert.equal(lookupAspenModelSchema("C6H6")?.name, "COMP_BENZENE");
     assert.equal(lookupAspenModelSchema("cstr")?.name, "RCSTR");
+    assert.equal(lookupAspenModelSchema("O_XYLENE")?.name, "COMP_O_XYLENE");
+    assert.equal(lookupAspenModelSchema("R134A")?.name, "COMP_R134A");
+    assert.equal(lookupAspenModelSchema("MEA")?.name, "COMP_MEA");
   });
 
   it("evaluates Flash2 (Rachford-Rice), Compr (isentropic work), HeatX (LMTD), PENG_ROB EOS, RCSTR, and Antoine in runtime.wasm", () => {
@@ -157,6 +164,28 @@ describe("@modelscript/aspen — Cleanroom Standard Library (modelscript.yaml, W
       Math.abs(pSat - 101325) / 101325 < 0.02,
       `Expected water Psat(373.15 K) within 2% of 101325 Pa, got ${pSat.toFixed(1)} Pa`,
     );
+
+    // 7. STEAM_TA: Exact IAPWS-IF97 P_sat(373.1243 K) ~ 101325 Pa
+    const steamTa = instantiateAspenWasmModel({ id: "STM1", modelType: "STEAM-TA" });
+    assert.ok(steamTa, "Expected STEAM_TA WASM instance");
+    steamTa.init();
+    const stmOut = steamTa.eval({ T_in: 373.1243, P_in: 101325 });
+    assert.equal(stmOut.status, 0);
+    assert.ok(
+      Math.abs(stmOut.fugacityOrY1OrPsat - 101325) < 50,
+      `Expected STEAM_TA IAPWS-IF97 P_sat(373.1243 K) ~ 101325 Pa, got ${stmOut.fugacityOrY1OrPsat}`,
+    );
+
+    // 8. RadFrac: Stage-by-stage MESH Thomas TDMA column enriches light key in distillate
+    const radFrac = instantiateAspenWasmModel({ id: "COL1", modelType: "RadFrac" });
+    assert.ok(radFrac, "Expected RadFrac WASM instance");
+    radFrac.init();
+    const colOut = radFrac.eval({ T_in: 368.15, P_in: 101325, F_in: 100, z1: 0.5 });
+    assert.equal(colOut.status, 0);
+    assert.ok(
+      colOut.fugacityOrY1OrPsat > 0.5 && colOut.compressibilityOrLmtd < 0.5,
+      `Expected RadFrac enrichment (xDist=${colOut.fugacityOrY1OrPsat}, xBot=${colOut.compressibilityOrLmtd})`,
+    );
   });
 
   it("projects and links FMI 2.0/3.0 FMUs via USER2 and CAPE-OPEN 1.1 unit operations", () => {
@@ -202,5 +231,35 @@ describe("@modelscript/aspen — Cleanroom Standard Library (modelscript.yaml, W
     assert.equal(out.P_out, 450000);
     assert.equal(out.vaporFraction, 0.35);
     assert.equal(out.status, 0);
+  });
+
+  it("automatically registers stdlib and falls back to schema defaults in DAE lowering and flash solver", () => {
+    // Flash2 and Heater omit TEMP/PRES parameters -> resolved from @modelscript/aspen-std-lib
+    const deck = parseAspen(`TITLE 'AUTO CATALOG DEFAULTS'
+COMPONENTS
+    BENZENE C6H6
+    TOLUENE C7H8
+FLOWSHEET
+    BLOCK H1 IN=FEED OUT=WARM
+    BLOCK F1 IN=WARM OUT=VAP LIQ
+STREAM FEED
+    SUBSTREAM MIXED TEMP=25.0 PRES=1.0 MOLE-FLOW=100.0
+    MOLE-FRAC BENZENE 0.5 / TOLUENE 0.5
+BLOCK H1 HEATER
+BLOCK F1 FLASH2
+`);
+    const dae = lowerAspenToDae(deck);
+    assert.ok(globalLibraryRegistry.getPackagesForLanguage("aspen").length > 0);
+    assert.equal(dae.variables().length, dae.equations().length);
+    assert.notEqual(dae.lookupVariable("psi_F1"), -1);
+
+    // Formula aliases (C6H6, H2O) resolve critical properties from cleanroom catalog in flash solver
+    const flash = solveFlashRachfordRice({
+      temperature: 90.0,
+      pressure: 1.01325,
+      components: ["C6H6", "H2O"],
+      moleFractions: [0.5, 0.5],
+    });
+    assert.ok(flash.kValues[0]! > flash.kValues[1]!, "Expected C6H6 to be more volatile than H2O");
   });
 });

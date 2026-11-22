@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { cardDeckRules, language, type ActionExecutionContext } from "@modelscript/dsl";
+import { registerBuiltInEclipseLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerEclipseToDae } from "./dae/eclipse-to-dae.js";
 import { canIndexEclipse, indexEclipseDocument } from "./indexing.js";
 import { lintEclipse } from "./lints/index.js";
@@ -178,3 +179,6 @@ export const eclipseLanguage = language({
 });
 
 export default eclipseLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInEclipseLibrarySync();

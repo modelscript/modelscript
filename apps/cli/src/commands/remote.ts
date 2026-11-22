@@ -48,7 +48,7 @@ const RemoteAddCommand: CommandModule<{}, RemoteAddArgs> = {
       })
       .positional("source", {
         description:
-          "Protocol URI (e.g. 'oslc+https://...', 'jama+https://...', 'codebeamer+https://...', 'polarion+https://...', 'jira+https://...')",
+          "Protocol URI (e.g. 'oslc+https://...', 'windchill+https://...', 'teamcenter+https://...', 'azdo+https://...', 'testrail+https://...', 'github+https://...', 'onshape+https://...', 'rest+https://...')",
         type: "string",
         demandOption: true,
       })
@@ -101,7 +101,7 @@ const RemoteAddCommand: CommandModule<{}, RemoteAddArgs> = {
     const parsedUri = parseProtocolUri(args.source);
     if (!parsedUri) {
       console.error(
-        `Error: Invalid remote URI "${args.source}". Expected '<protocol>+https://...' (e.g. oslc+https://, jama+https://, codebeamer+https://, polarion+https://, jira+https://).`,
+        `Error: Invalid remote URI "${args.source}". Expected '<protocol>+https://...' (known protocols: ${globalAlmConnectorRegistry.listProtocols().join(", ")}).`,
       );
       process.exit(1);
     }

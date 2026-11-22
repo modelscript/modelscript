@@ -34,7 +34,7 @@
     },
     "dependencies": {
       "type": "object",
-      "description": "Registry semver ranges, local file: archives, or protocol-prefixed ALM remotes (oslc+https://, jama+https://, codebeamer+https://, polarion+https://, jira+https://).",
+      "description": "Registry semver ranges, local file: archives, or protocol-prefixed ALM/PLM/CAD/DevOps remotes (oslc, jama, codebeamer, polarion, jira, azdo, testrail, xray, windchill, teamcenter, aras, github, gitlab, bitbucket, confluence, onshape, artifactory, airflow, genesys, twc, rhapsody, zuken, sql, excel, rest, plus EE desktop bridges creo, nx, solidworks, solidworks-pdm, doors-classic, volta, mathematica).",
       "additionalProperties": {
         "oneOf": [
           { "type": "string" },
@@ -67,7 +67,37 @@
                   "enum": ["verification", "links", "defects-on-fail", "artifacts"]
                 }
               },
-              "connector": { "type": "string" },
+              "connector": {
+                "type": "string",
+                "description": "Optional connector protocol override.",
+                "examples": [
+                  "oslc",
+                  "jama",
+                  "codebeamer",
+                  "polarion",
+                  "jira",
+                  "azdo",
+                  "testrail",
+                  "xray",
+                  "windchill",
+                  "teamcenter",
+                  "aras",
+                  "github",
+                  "gitlab",
+                  "bitbucket",
+                  "confluence",
+                  "onshape",
+                  "artifactory",
+                  "airflow",
+                  "genesys",
+                  "twc",
+                  "rhapsody",
+                  "zuken",
+                  "sql",
+                  "excel",
+                  "rest"
+                ]
+              },
               "options": {
                 "type": "object",
                 "additionalProperties": {

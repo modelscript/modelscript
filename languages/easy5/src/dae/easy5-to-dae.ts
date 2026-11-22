@@ -2,9 +2,9 @@
 
 import { DAEBuilder } from "@modelscript/runtime";
 import type { Easy5Model } from "../types.js";
-import { lowerEasy5ToDae, type Easy5DaeLoweringResult } from "./lowering.js";
+import { lowerEasy5ToDae, resolveEasy5SchemaParamDefaults, type Easy5DaeLoweringResult } from "./lowering.js";
 
-export { lowerEasy5ToDae, type Easy5DaeLoweringResult };
+export { lowerEasy5ToDae, resolveEasy5SchemaParamDefaults, type Easy5DaeLoweringResult };
 
 export interface Easy5ToDaeOptions {
   modelName?: string;

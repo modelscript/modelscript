@@ -173,18 +173,16 @@ function complexLuSolveFlat(
   br: Float64Array,
   bi: Float64Array,
 ): void {
+  // Apply final permutation vector piv (br_perm[k] = br[piv[k]])
+  const brPerm = new Float64Array(n);
+  const biPerm = new Float64Array(n);
   for (let k = 0; k < n; k++) {
     const p = piv[k]!;
-    if (p !== k) {
-      const tr = br[k]!;
-      br[k] = br[p]!;
-      br[p] = tr;
-
-      const ti = bi[k]!;
-      bi[k] = bi[p]!;
-      bi[p] = ti;
-    }
+    brPerm[k] = br[p]!;
+    biPerm[k] = bi[p]!;
   }
+  br.set(brPerm);
+  bi.set(biPerm);
 
   // Forward substitution: L * y = b
   for (let i = 0; i < n; i++) {
@@ -425,10 +423,17 @@ export class RadauIIASolver {
     let Z = new Float64Array(sn);
 
     // Right hand side evaluator
+    const isDaeProblem =
+      "yp0" in this.problem ||
+      "massMatrix" in this.problem ||
+      "differentialVars" in this.problem ||
+      this.problem.f.length >= 4;
     const evalF = (tEval: number, yEval: Float64Array, outF: Float64Array): void => {
       fEvals++;
       const problemP = (this.problem as unknown as { p?: number[] | Record<string, number> | undefined }).p;
-      const res = this.problem.f(tEval, Array.from(yEval), undefined, problemP);
+      const res = isDaeProblem
+        ? (this.problem as DAEProblem).f(tEval, Array.from(yEval), undefined, problemP)
+        : (this.problem as ODEProblem).f(tEval, Array.from(yEval), problemP);
       for (let i = 0; i < n; i++) outF[i] = res[i] ?? 0;
     };
 
@@ -479,6 +484,11 @@ export class RadauIIASolver {
     const dW1 = isDecoupled ? new Float64Array(n) : new Float64Array(0);
     const br = isDecoupled ? new Float64Array(n) : new Float64Array(0);
     const bi = isDecoupled ? new Float64Array(n) : new Float64Array(0);
+
+    // Cached Jacobian across steps (modified Newton reuse when h & convergence are stable)
+    const cachedJ = new Float64Array(n * n);
+    let hasValidJ = false;
+    let lastNewtonIters = 99;
 
     while (t < tEnd - 1e-13 && acceptedSteps < this.maxSteps) {
       if (t + h > tEnd) h = tEnd - t;
@@ -549,9 +559,12 @@ export class RadauIIASolver {
           Z_sol = jfnkRes.x as Float64Array<ArrayBuffer>;
         }
       } else {
-        // Evaluate system Jacobian at step start
-        const J = new Float64Array(n * n);
-        evalJ(t, y, J);
+        // Modified Newton Jacobian reuse: skip recomputing J when previous step converged quickly
+        if (!hasValidJ || lastNewtonIters > 3) {
+          evalJ(t, y, cachedJ);
+          hasValidJ = true;
+        }
+        const J = cachedJ;
 
         let fact: LUFactorizationFlat | null = null;
         let factReal: LUFactorizationFlat | null = null;
@@ -629,7 +642,8 @@ export class RadauIIASolver {
         for (let iter = 0; iter < this.maxNewtonIter; iter++) {
           const maxR = evalStageResidual(currentZ, R);
 
-          if (maxR < this.atol) {
+          const earlyResidualTol = 0.01 * this.atol * Math.min(1.0, Math.abs(h));
+          if (iter > 0 && maxR < earlyResidualTol) {
             stepConverged = true;
             Z_sol = currentZ;
             break;
@@ -693,18 +707,97 @@ export class RadauIIASolver {
 
           // Update Z
           let maxDelta = 0;
+          let maxState = 0;
           for (let k = 0; k < sn; k++) {
             currentZ[k] = currentZ[k]! + deltaZ[k]!;
             const absD = Math.abs(deltaZ[k]!);
             if (absD > maxDelta) maxDelta = absD;
+            const yMag = Math.abs(y[k % n]! + currentZ[k]!);
+            if (yMag > maxState) maxState = yMag;
           }
 
-          const tol = this.atol + this.rtol * maxDelta;
+          const tol = 0.1 * (this.atol + this.rtol * maxState);
           if (maxDelta < tol && maxR < tol * 10) {
             stepConverged = true;
+            lastNewtonIters = iter + 1;
             Z_sol = currentZ;
             break;
           }
+        }
+        if (!stepConverged) {
+          hasValidJ = false;
+          lastNewtonIters = this.maxNewtonIter;
+        }
+
+        if (stepConverged && isDecoupled && factReal) {
+          // Hairer & Wanner (IV.8, Eq. 8.19) stiff-filtered embedded error estimator for Radau5:
+          // (gamma * M - h * J) * err = h * f(t, y) + M * (e1 * Z1 + e2 * Z2 + e3 * Z3)
+          const sqrt6 = Math.sqrt(6.0);
+          const e1 = (-13.0 - 7.0 * sqrt6) / 3.0;
+          const e2 = (-13.0 + 7.0 * sqrt6) / 3.0;
+          const e3 = -1.0 / 3.0;
+          const f0Vec = new Float64Array(n);
+          evalF(t, y, f0Vec);
+          const eZ = new Float64Array(n);
+          for (let r = 0; r < n; r++) {
+            eZ[r] = e1 * Z_sol[r]! + e2 * Z_sol[n + r]! + e3 * Z_sol[2 * n + r]!;
+          }
+          const errRhs = new Float64Array(n);
+          const isDiffRow = new Uint8Array(n);
+          for (let r = 0; r < n; r++) {
+            let mEz = 0;
+            let rowNormM = 0;
+            const rowOff = r * n;
+            for (let c = 0; c < n; c++) {
+              const mrc = M[rowOff + c]!;
+              rowNormM += Math.abs(mrc);
+              mEz += mrc * eZ[c]!;
+            }
+            if (rowNormM > 0) {
+              isDiffRow[r] = 1;
+              errRhs[r] = h * f0Vec[r]! + mEz;
+            } else {
+              // Algebraic row (M[r,:] = 0): Newton convergence already enforces g(t, y) = 0
+              errRhs[r] = 0;
+            }
+          }
+          const errVec = new Float64Array(n);
+          luSolveFlat(factReal, errRhs, errVec);
+          let errSq = 0;
+          let diffCount = 0;
+          for (let r = 0; r < n; r++) {
+            if (!isDiffRow[r]) continue;
+            diffCount++;
+            const yNewR = y[r]! + Z_sol[(s - 1) * n + r]!;
+            const sc = this.atol + this.rtol * Math.max(Math.abs(y[r]!), Math.abs(yNewR));
+            const ratio = errVec[r]! / sc;
+            errSq += ratio * ratio;
+          }
+          const errNorm = diffCount > 0 ? Math.sqrt(errSq / diffCount) : 0;
+          const minAllowedStep = this.options.minStepSize ?? 1e-12;
+          if (!Number.isFinite(errNorm) || (errNorm > 1.0 && h > minAllowedStep * 2)) {
+            rejectedSteps++;
+            const fac = Number.isFinite(errNorm) ? Math.max(0.2, Math.min(0.8, 0.9 * Math.pow(errNorm, -0.25))) : 0.5;
+            h = Math.max(minAllowedStep, h * fac);
+            if (rejectedSteps > this.maxSteps) {
+              throw new Error(`RadauIIA failed error control after ${rejectedSteps} rejections`);
+            }
+            continue;
+          }
+          // Step accepted — compute PI-clamped next step size
+          acceptedSteps++;
+          t += h;
+          for (let r = 0; r < n; r++) {
+            y[r] = y[r]! + Z_sol[(s - 1) * n + r]!;
+          }
+          times.push(t);
+          states.push(Array.from(y));
+          Z = Z_sol;
+          const safeErr = Math.max(errNorm, 1e-6);
+          const scale = Math.min(4.0, Math.max(0.2, 0.9 * Math.pow(safeErr, -0.25)));
+          h = Math.min(tEnd - t, h * scale);
+          if (this.options.maxStepSize) h = Math.min(h, this.options.maxStepSize);
+          continue;
         }
       }
 

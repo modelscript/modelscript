@@ -13,7 +13,10 @@ import {
   getNmtranSchemasFromLibraries,
   instantiateNmtranWasmModel,
   lookupNmtranModelSchema,
+  lowerNmtranToDae,
+  parseNmtran,
   registerBuiltInNmtranLibrarySync,
+  solveNmtranPkPd,
 } from "../src/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -217,5 +220,107 @@ describe("@modelscript/nmtran — Cleanroom Standard Library (modelscript.yaml, 
     });
     const out = fmuInst.evalAt(0.0, { dose: 35.0 });
     assert.ok(Math.abs(out.conc - 10.0) < 1e-9);
+  });
+
+  it("automatically registers stdlib and falls back to PREDPP schema defaults in DAE lowering and PK/PD solver", () => {
+    // Minimal ADVAN2 control stream omitting CL, V, KA definitions in $PK
+    const minimalCtl = `$PROBLEM MINIMAL ADVAN2 SCHEMA DEFAULTS
+$SUBROUTINES ADVAN2 TRANS2
+$PK
+  F1 = 1
+`;
+    const doc = parseNmtran(minimalCtl);
+    const dae = lowerNmtranToDae(doc);
+    assert.ok(globalLibraryRegistry.getPackagesForLanguage("nmtran").length > 0);
+    assert.equal(dae.varCount, dae.eqCount);
+    assert.notEqual(dae.lookupVariable("A_1"), -1);
+    assert.notEqual(dae.lookupVariable("A_2"), -1);
+
+    const sim = solveNmtranPkPd(doc, { duration: 12.0, timeStep: 0.1 });
+    // ADVAN2 schema defaults: CL = 5.0, V = 50.0, KA = 1.2
+    assert.equal(sim.metrics.clearance, 5.0);
+    assert.equal(sim.metrics.centralVolume, 50.0);
+    assert.ok(sim.metrics.cMax > 0);
+  });
+
+  it("verifies ADVAN1/ADVAN2/ADVAN3 multi-dose superposition, zero-order infusion, ALAG1, F1, and analytical steady-state trough Css,min (< 1e-6)", () => {
+    const CL = 5.0;
+    const V = 50.0;
+    const F1 = 0.85;
+    const D = 200.0;
+    const tau = 12.0; // dosing interval II = 12 h
+    const k = CL / V; // 0.1 1/h
+    const expectedCssMin = ((F1 * D) / V) * (Math.exp(-k * tau) / (1.0 - Math.exp(-k * tau)));
+    const expectedCssMax = (F1 * D) / V / (1.0 - Math.exp(-k * tau));
+
+    // 1. ADVAN1: Multi-dose superposition after 25 doses (ADDL=24) at trough t = 25 * tau
+    const adv1Multi = instantiateNmtranWasmModel({ modelType: "ADVAN1", params: { CL, V, F1, ALAG1: 0.0 } });
+    assert.ok(adv1Multi);
+    adv1Multi.init({ dose: D });
+    const troughMulti = adv1Multi.evalAt(25 * tau, { amt: D, ii: tau, addl: 24, ss: 0 });
+    assert.ok(
+      Math.abs(troughMulti.conc - expectedCssMin) < 1e-6,
+      `ADVAN1 multi-dose trough mismatch: got ${troughMulti.conc}, expected ${expectedCssMin}`,
+    );
+
+    // 2. ADVAN1: Exact steady-state flag (SS=1) peak at t=0 and trough at t=tau
+    const adv1Ss = instantiateNmtranWasmModel({ modelType: "ADVAN1", params: { CL, V, F1 } });
+    assert.ok(adv1Ss);
+    adv1Ss.init({ dose: D });
+    const ssPeak = adv1Ss.evalAt(0.0, { amt: D, ii: tau, addl: 0, ss: 1 });
+    const ssTrough = adv1Ss.evalAt(tau, { amt: D, ii: tau, addl: 0, ss: 1 });
+    assert.ok(
+      Math.abs(ssPeak.conc - expectedCssMax) < 1e-10,
+      `ADVAN1 SS peak mismatch: ${ssPeak.conc} vs ${expectedCssMax}`,
+    );
+    assert.ok(
+      Math.abs(ssTrough.conc - expectedCssMin) < 1e-10,
+      `ADVAN1 SS trough mismatch: ${ssTrough.conc} vs ${expectedCssMin}`,
+    );
+
+    // 3. ADVAN1: Multi-dose zero-order infusion (RATE = 100 mg/h => Tinf = 2 h) SS periodicity
+    const rate = 100.0;
+    const tInf = D / rate;
+    const expectedInfPeak = ((F1 * rate) / CL) * ((1.0 - Math.exp(-k * tInf)) / (1.0 - Math.exp(-k * tau)));
+    const adv1Inf = instantiateNmtranWasmModel({ modelType: "ADVAN1", params: { CL, V, F1 } });
+    assert.ok(adv1Inf);
+    adv1Inf.init({ dose: D, rate });
+    const infPeakSs = adv1Inf.evalAt(tInf, { dose: D, rate, ii: tau, addl: 0, ss: 1 });
+    const infTrough0 = adv1Inf.evalAt(0.0, { dose: D, rate, ii: tau, addl: 0, ss: 1 });
+    const infTroughTau = adv1Inf.evalAt(tau, { dose: D, rate, ii: tau, addl: 0, ss: 1 });
+    assert.ok(Math.abs(infPeakSs.conc - expectedInfPeak) < 1e-9);
+    assert.ok(Math.abs(infTrough0.conc - infTroughTau.conc) < 1e-10);
+
+    // 4. ADVAN2: Oral multi-dose with ALAG1 = 0.5 h converges to SS=1 steady-state
+    const adv2Multi = instantiateNmtranWasmModel({ modelType: "ADVAN2", params: { CL, V, KA: 1.2, F1, ALAG1: 0.5 } });
+    const adv2Ss = instantiateNmtranWasmModel({ modelType: "ADVAN2", params: { CL, V, KA: 1.2, F1, ALAG1: 0.5 } });
+    assert.ok(adv2Multi && adv2Ss);
+    adv2Multi.init({ dose: D });
+    adv2Ss.init({ dose: D });
+    const oralMulti = adv2Multi.evalAt(24 * tau + 3.0, { dose: D, ii: tau, addl: 24, ss: 0 });
+    const oralSs = adv2Ss.evalAt(3.0, { dose: D, ii: tau, addl: 0, ss: 1 });
+    assert.ok(
+      Math.abs(oralMulti.conc - oralSs.conc) < 1e-6,
+      `ADVAN2 multi-dose vs SS mismatch: ${oralMulti.conc} vs ${oralSs.conc}`,
+    );
+
+    // 5. ADVAN3: 2-cpt IV multi-dose (ADDL=39) converges to SS=1 steady-state
+    const adv3Multi = instantiateNmtranWasmModel({
+      modelType: "ADVAN3",
+      params: { CL: 5.0, V1: 20.0, Q: 10.0, V2: 40.0, F1 },
+    });
+    const adv3Ss = instantiateNmtranWasmModel({
+      modelType: "ADVAN3",
+      params: { CL: 5.0, V1: 20.0, Q: 10.0, V2: 40.0, F1 },
+    });
+    assert.ok(adv3Multi && adv3Ss);
+    adv3Multi.init({ dose: D });
+    adv3Ss.init({ dose: D });
+    const twoCptMulti = adv3Multi.evalAt(40 * tau, { dose: D, ii: tau, addl: 39, ss: 0 });
+    const twoCptSs = adv3Ss.evalAt(tau, { dose: D, ii: tau, addl: 0, ss: 1 });
+    assert.ok(
+      Math.abs(twoCptMulti.conc - twoCptSs.conc) < 1e-6,
+      `ADVAN3 multi-dose vs SS trough mismatch: ${twoCptMulti.conc} vs ${twoCptSs.conc}`,
+    );
   });
 });

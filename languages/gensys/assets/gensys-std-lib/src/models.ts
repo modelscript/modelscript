@@ -134,6 +134,111 @@ export function gensysModelInit(archetypeId: i32, slotPtr: usize, conCount: i32)
 }
 
 /**
+ * Cleanroom Kalker FASTSIM (1982) 2D contact patch discretization solver.
+ * Discretizes the Hertzian contact ellipse into Ny x Nx strips, marches tangential
+ * shear traction from leading to trailing edge with Coulomb saturation |p_t| <= mu * p_z(x,y),
+ * and integrates longitudinal Fx, lateral Fy, spin moment Mz, adhesion ratio, and slip power.
+ */
+function evalKalkerFastsim(
+  slotPtr: usize,
+  mu: f64,
+  a: f64,
+  b: f64,
+  gSteel: f64,
+  c11: f64,
+  c22: f64,
+  c23: f64,
+  normalForce: f64,
+  creepX: f64,
+  creepY: f64,
+  spin: f64,
+  vForward: f64,
+): void {
+  if (normalForce <= 1e-6) {
+    setIo(slotPtr, 10, 0.0);
+    setIo(slotPtr, 11, 0.0);
+    setIo(slotPtr, 12, 0.0);
+    setIo(slotPtr, 13, 0.0);
+    setIo(slotPtr, 14, 0.0);
+    setIo(slotPtr, 15, 0.0);
+    return;
+  }
+
+  const ab = a * b;
+  const l1 = (8.0 * a) / (3.0 * gSteel * Math.max(0.5, c11));
+  const l2 = (8.0 * a) / (3.0 * gSteel * Math.max(0.5, c22));
+  const l3 = (Math.PI * a * Math.sqrt(a / b)) / (4.0 * gSteel * Math.max(0.1, c23));
+
+  const pz0 = (2.0 * normalForce) / (Math.PI * ab);
+  const invA2 = 1.0 / (a * a);
+  const invB2 = 1.0 / (b * b);
+
+  const ny: i32 = 16;
+  const nx: i32 = 16;
+  const dy = (2.0 * b) / (<f64>ny);
+
+  let fx: f64 = 0.0;
+  let fy: f64 = 0.0;
+  let mz: f64 = 0.0;
+
+  for (let j: i32 = 0; j < ny; j++) {
+    const y = -b + (<f64>j + 0.5) * dy;
+    const yTerm = 1.0 - y * y * invB2;
+    if (yTerm <= 1e-12) continue;
+    const aj = a * Math.sqrt(yTerm);
+    const dx = (2.0 * aj) / (<f64>nx);
+    const dA = dx * dy;
+
+    let px: f64 = 0.0;
+    let py: f64 = 0.0;
+    for (let i: i32 = 0; i < nx; i++) {
+      const x = aj - (<f64>i + 0.5) * dx;
+      const stepDx = i == 0 ? 0.5 * dx : dx;
+      px -= (creepX / l1 - (spin * y) / l3) * stepDx;
+      py -= (creepY / l2 + (spin * x) / l3) * stepDx;
+
+      const pz = pz0 * Math.max(0.0, yTerm - x * x * invA2);
+      const gMax = mu * pz;
+      const pMag = Math.sqrt(px * px + py * py);
+      if (pMag > gMax) {
+        if (gMax > 0.0 && pMag > 1e-18) {
+          const s = gMax / pMag;
+          px *= s;
+          py *= s;
+        } else {
+          px = 0.0;
+          py = 0.0;
+        }
+      }
+
+      fx += px * dA;
+      fy += py * dA;
+      mz += (x * py - y * px) * dA;
+    }
+  }
+
+  const fMax = mu * normalForce;
+  let fMag = Math.sqrt(fx * fx + fy * fy);
+  if (fMag > fMax && fMag > 1e-12) {
+    const s = fMax / fMag;
+    fx *= s;
+    fy *= s;
+    fMag = fMax;
+  }
+
+  const vRef = Math.abs(vForward) > 0.1 ? Math.abs(vForward) : 20.0;
+  const adhesion = fMax > 0.0 ? fMag / fMax : 0.0;
+  const power = (Math.abs(fx * creepX) + Math.abs(fy * creepY) + Math.abs(mz * spin)) * vRef;
+
+  setIo(slotPtr, 10, fx);
+  setIo(slotPtr, 11, fy);
+  setIo(slotPtr, 12, normalForce);
+  setIo(slotPtr, 13, mz);
+  setIo(slotPtr, 14, adhesion);
+  setIo(slotPtr, 15, power);
+}
+
+/**
  * Evaluates Polach (2005) nonlinear wheel-rail creep forces and Kalker spin moment.
  */
 function evalPolachCreep(
@@ -405,8 +510,25 @@ export function gensysModelEval(
     return;
   }
 
+  if (archetypeId == ARCH_WHEEL_RAIL_PE3) {
+    let normalF = nIn;
+    if (normalF <= 0.0 && dz > 0.0) {
+      const cHertz = getCon(slotPtr, conCount, 9, 9.5e10);
+      normalF = cHertz * dz * Math.sqrt(dz);
+    }
+    const mu0 = Math.max(0.01, getCon(slotPtr, conCount, 0, 0.36));
+    const a = Math.max(1e-4, getCon(slotPtr, conCount, 1, 0.0065));
+    const b = Math.max(1e-4, getCon(slotPtr, conCount, 2, 0.0045));
+    const gSteel = Math.max(1e9, getCon(slotPtr, conCount, 3, 8.2e10));
+    const ratio = a / b;
+    const c11 = 3.2893 + 0.975 / ratio - 0.012 / (ratio * ratio);
+    const c22 = 2.4014 + 1.3179 / ratio - 0.02 / (ratio * ratio);
+    const c23 = 0.4147 + 1.0184 / ratio + 0.056 / (ratio * ratio);
+    evalKalkerFastsim(slotPtr, mu0, a, b, gSteel, c11, c22, c23, normalF, creepX, creepY, spin, vx);
+    return;
+  }
+
   if (
-    archetypeId == ARCH_WHEEL_RAIL_PE3 ||
     archetypeId == ARCH_WHEEL_RAIL_PRA ||
     archetypeId == ARCH_WHEEL_RAIL_PE1 ||
     archetypeId == ARCH_CREEP_POLACH
@@ -445,27 +567,7 @@ export function gensysModelEval(
     const c11 = getCon(slotPtr, conCount, 4, 4.12);
     const c22 = getCon(slotPtr, conCount, 5, 3.67);
     const c23 = getCon(slotPtr, conCount, 6, 1.47);
-
-    const ab = a * b;
-    const sqrtAb = Math.sqrt(ab);
-    let fx = -gSteel * ab * c11 * creepX;
-    let fy = -gSteel * ab * (c22 * creepY + sqrtAb * c23 * spin);
-    const mz = -gSteel * ab * sqrtAb * c23 * creepY * 0.1;
-
-    const fMax = mu0 * Math.max(0.0, nIn);
-    const fNorm = Math.sqrt(fx * fx + fy * fy);
-    if (fMax > 0.0 && fNorm > fMax) {
-      const s = fMax / fNorm;
-      fx *= s;
-      fy *= s;
-    }
-
-    setIo(slotPtr, 10, fx);
-    setIo(slotPtr, 11, fy);
-    setIo(slotPtr, 12, nIn);
-    setIo(slotPtr, 13, mz);
-    setIo(slotPtr, 14, fMax > 0.0 ? Math.sqrt(fx * fx + fy * fy) / fMax : 0.0);
-    setIo(slotPtr, 15, 0.0);
+    evalKalkerFastsim(slotPtr, mu0, a, b, gSteel, c11, c22, c23, Math.max(0.0, nIn), creepX, creepY, spin, vx);
     return;
   }
 

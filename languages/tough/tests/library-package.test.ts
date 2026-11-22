@@ -122,6 +122,14 @@ describe("@modelscript/tough — Cleanroom Standard Library (modelscript.yaml, W
       water100.liquidDensity < water25.liquidDensity && water100.liquidDensity > 950,
       `Expected water density ~958 kg/m^3 at 100 C, got ${water100.liquidDensity}`,
     );
+    assert.ok(
+      Math.abs(water25.liquidEnthalpy - 104800.0) < 2500.0,
+      `Expected IAPWS-IF97 liquid enthalpy ~104.8 kJ/kg at 25 C, got ${water25.liquidEnthalpy}`,
+    );
+    assert.ok(
+      Math.abs(water100.liquidEnthalpy - 419500.0) < 6000.0,
+      `Expected IAPWS-IF97 liquid enthalpy ~419.5 kJ/kg at 100 C / 0.5 MPa, got ${water100.liquidEnthalpy}`,
+    );
 
     // 5. EOS9_RICHARDS (unsaturated hydraulic conductivity)
     const eos9 = instantiateToughWasmModel({ modelType: "EOS9_RICHARDS" });

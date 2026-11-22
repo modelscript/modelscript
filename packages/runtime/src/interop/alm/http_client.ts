@@ -157,3 +157,114 @@ export async function almFetch<T = unknown>(
     json: () => JSON.parse(text) as T,
   };
 }
+
+/**
+ * Extracts the `rel="next"` URL from an RFC 5988 HTTP `Link` header (GitHub, REST APIs).
+ */
+export function parseLinkHeaderNext(linkHeader: string | null | undefined): string | undefined {
+  if (!linkHeader) return undefined;
+  for (const part of linkHeader.split(",")) {
+    const match = /<([^>]+)>\s*;\s*rel=["']?next["']?/i.exec(part.trim());
+    if (match?.[1]) return match[1];
+  }
+  return undefined;
+}
+
+/**
+ * Acquires a PTC Windchill OData CSRF nonce (`GET /Windchill/servlet/odata/PTC/GetCSRFToken()`).
+ * Returns `undefined` if the server does not require or expose a CSRF endpoint.
+ */
+export async function fetchWindchillCsrfNonce(
+  origin: string,
+  auth: AuthContext,
+): Promise<{ key: string; value: string } | undefined> {
+  try {
+    const res = await almFetch<Record<string, unknown>>(`${origin}/Windchill/servlet/odata/PTC/GetCSRFToken()`, {
+      auth,
+    });
+    if (!res.ok) return undefined;
+    const data = res.json();
+    const value = data["NonceValue"] ?? data["CSRF_NONCE"];
+    const key = String(data["NonceKey"] ?? "CSRF_NONCE");
+    if (typeof value === "string" && value.length > 0) {
+      return { key, value };
+    }
+  } catch {
+    // Graceful fallback when CSRF endpoint is absent
+  }
+  return undefined;
+}
+
+/**
+ * Computes PTC Onshape HMAC-SHA256 authentication headers (`On-Nonce`, `Date`, `Authorization: On ...`).
+ * Works in both Node.js (`node:crypto`) and browsers (`crypto.subtle`).
+ */
+export async function buildOnshapeHmacHeaders(
+  method: string,
+  fullUrl: string,
+  accessKey: string,
+  secretKey: string,
+  contentType = "application/json",
+): Promise<Record<string, string>> {
+  const parsed = new URL(fullUrl);
+  const nonce = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 14)}`.slice(0, 25);
+  const dateStr = new Date().toUTCString();
+  const query = parsed.search ? parsed.search.slice(1) : "";
+  const canonical =
+    `${method.toUpperCase()}\n${nonce}\n${dateStr}\n${contentType}\n${parsed.pathname}\n${query}\n`.toLowerCase();
+
+  let signatureBase64: string;
+  if (globalThis.crypto?.subtle) {
+    const enc = new TextEncoder();
+    const key = await globalThis.crypto.subtle.importKey(
+      "raw",
+      enc.encode(secretKey),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const sig = await globalThis.crypto.subtle.sign("HMAC", key, enc.encode(canonical));
+    signatureBase64 =
+      typeof Buffer !== "undefined"
+        ? Buffer.from(sig).toString("base64")
+        : btoa(String.fromCharCode(...new Uint8Array(sig)));
+  } else {
+    const cryptoMod = await import("node:crypto");
+    signatureBase64 = cryptoMod.createHmac("sha256", secretKey).update(canonical).digest("base64");
+  }
+
+  return {
+    "On-Nonce": nonce,
+    Date: dateStr,
+    Authorization: `On ${accessKey}:HmacSHA256:${signatureBase64}`,
+  };
+}
+
+const xrayJwtCache = new Map<string, { token: string; expiresAtMs: number }>();
+
+/**
+ * Exchanges Xray Cloud `client_id` / `client_secret` for a short-lived Bearer JWT
+ * via `POST /api/v2/authenticate`.
+ */
+export async function exchangeXrayCloudJwt(
+  baseUrl: string,
+  clientId: string,
+  clientSecret: string,
+  auth: AuthContext,
+): Promise<string | undefined> {
+  const cacheKey = `${baseUrl}|${clientId}`;
+  const cached = xrayJwtCache.get(cacheKey);
+  if (cached && cached.expiresAtMs > Date.now() + 30_000) {
+    return cached.token;
+  }
+  const res = await almFetch<string>(`${baseUrl.replace(/\/+$/, "")}/authenticate`, {
+    method: "POST",
+    auth: { fetchImpl: auth.fetchImpl },
+    body: { client_id: clientId, client_secret: clientSecret },
+  });
+  if (!res.ok) return undefined;
+  const raw = res.text.trim().replace(/^"|"$/g, "");
+  if (!raw) return undefined;
+  xrayJwtCache.set(cacheKey, { token: raw, expiresAtMs: Date.now() + 50 * 60_000 });
+  return raw;
+}

@@ -1,0 +1,67 @@
+{
+  "name": "@modelscript/solve",
+  "version": "0.1.0",
+  "description": "Unified SciML-inspired solver, reachability, and formal verification foundation for ModelScript — canonical outward-rounded intervals, typed problems/algorithms, strict verification certificates, and scoped WASM scratch memory",
+  "keywords": [
+    "modelscript",
+    "sciml",
+    "solve",
+    "ode",
+    "dae",
+    "reachability",
+    "formal-verification",
+    "interval-arithmetic"
+  ],
+  "homepage": "https://modelscript.org",
+  "bugs": {
+    "url": "https://github.com/modelscript/modelscript/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modelscript/modelscript.git",
+    "directory": "packages/solve"
+  },
+  "license": "AGPL-3.0-or-later",
+  "author": "ModelScript Contributors",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./interval": {
+      "types": "./dist/outward-interval.d.ts",
+      "default": "./dist/outward-interval.js"
+    },
+    "./certificate": {
+      "types": "./dist/certificate.d.ts",
+      "default": "./dist/certificate.js"
+    },
+    "./wasm-pool": {
+      "types": "./dist/wasm-scratch-pool.d.ts",
+      "default": "./dist/wasm-scratch-pool.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "lint": "eslint src tests --no-warn-ignored",
+    "test": "node ../../scripts/test-runner.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  },
+  "modelscript": {
+    "tier": "beta",
+    "category": "core"
+  }
+}

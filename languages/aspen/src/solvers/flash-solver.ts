@@ -8,6 +8,8 @@
  *   f(psi) = sum_i [ z_i * (K_i - 1) / (1 + psi * (K_i - 1)) ] = 0
  */
 
+import { ensureBuiltInAspenLibraryRegistered, lookupAspenModelSchema } from "../catalog/library-package-adapter.js";
+
 export interface ComponentPhysicalConstants {
   name: string;
   formula: string;
@@ -342,11 +344,12 @@ export interface FlashCalculationResult {
  * Computes vapor-liquid equilibrium (VLE) flash for a multicomponent mixture.
  */
 export function solveFlashRachfordRice(input: FlashCalculationInput): FlashCalculationResult {
+  ensureBuiltInAspenLibraryRegistered();
   const { temperature, pressure, components, moleFractions, customProperties, propertyMethod, nrtlParams } = input;
   const F = input.totalFlow ?? 100.0;
   const n = components.length;
 
-  // 1. Calculate ideal K-values (Raoult / Wilson)
+  // 1. Calculate ideal K-values (Raoult / Wilson), falling back to @modelscript/aspen-std-lib pure component databank
   const baseKValues: number[] = [];
   const tKelvin = temperature + 273.15;
   const safeP = Math.max(pressure, 0.01);
@@ -355,7 +358,24 @@ export function solveFlashRachfordRice(input: FlashCalculationInput): FlashCalcu
     const compName = components[i]!.toUpperCase();
     const custom = customProperties?.[compName] ?? customProperties?.[components[i]!];
     const base = KNOWN_COMPONENTS[compName];
-    const props = custom ? { ...base, ...custom } : base;
+    let schemaProps: Partial<ComponentPhysicalConstants> | undefined;
+    if (!base) {
+      const schema = lookupAspenModelSchema(compName);
+      if (schema) {
+        const paramNum = (key: string): number | undefined => {
+          const p = schema.parameters.find((x) => x.key.toLowerCase() === key.toLowerCase());
+          return typeof p?.defaultValue === "number" && Number.isFinite(p.defaultValue) ? p.defaultValue : undefined;
+        };
+        const tc = paramNum("Tc");
+        const pcPa = paramNum("Pc");
+        const omega = paramNum("omega");
+        if (tc !== undefined && pcPa !== undefined) {
+          schemaProps = { Tc: tc, Pc: pcPa / 1e5, omega: omega ?? 0.2 };
+        }
+      }
+    }
+    const resolvedBase = base ?? schemaProps;
+    const props = custom ? { ...resolvedBase, ...custom } : resolvedBase;
 
     let Ki = 1.0;
     if (props?.antoine) {

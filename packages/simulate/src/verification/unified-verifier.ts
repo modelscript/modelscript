@@ -173,6 +173,8 @@ export interface VerificationStageResult {
   name: string;
   passed: boolean;
   certified?: boolean | undefined;
+  /** True when the stage was not executed (missing optional package or inapplicable inputs). */
+  skipped?: boolean | undefined;
   durationMs: number;
   summary: string;
   violations?: VerificationViolation[] | undefined;
@@ -427,6 +429,12 @@ export class UnifiedVerifier {
     }
 
     const overallPassed = failedStages === 0;
+    let skippedStages = 0;
+    for (const s of Object.values(stages)) {
+      if (s.skipped || s.summary.startsWith("Not evaluated:")) {
+        skippedStages++;
+      }
+    }
 
     const report: UnifiedVerificationReport = {
       timestamp: new Date().toISOString(),
@@ -436,7 +444,7 @@ export class UnifiedVerifier {
         passedStages,
         failedStages,
         certifiedStages,
-        skippedStages: 0,
+        skippedStages,
         totalViolations,
         durationMs,
         overallPassed,
@@ -472,9 +480,31 @@ export class UnifiedVerifier {
     const durPerStage = Math.max(1, Math.round(satRes.durationMs / 6));
     const stages: Record<string, VerificationStageResult> = {};
 
+    const registeredOracles = new Set<string>(
+      ((coordinator as unknown as { oracles?: Array<{ name?: string }> }).oracles ?? [])
+        .map((o) => o?.name)
+        .filter((n): n is string => typeof n === "string"),
+    );
+
     const addDomainStage = (stageKey: string, oracleName: string, displayName: string, passSummary: string) => {
+      const isRegistered =
+        registeredOracles.size === 0 ? oracleName !== "SafetyTheoryOracle" : registeredOracles.has(oracleName);
+      if (!isRegistered) {
+        stages[stageKey] = {
+          stage: stageKey,
+          name: displayName,
+          passed: false,
+          certified: false,
+          durationMs: 0,
+          summary: `Not evaluated: ${oracleName} was not registered in the theory coordinator.`,
+          violations: [],
+          details: { oracle: oracleName, status: "SKIPPED" },
+        };
+        return;
+      }
+
       const isCulprit = conflict != null && conflict.theoryName === oracleName;
-      const passed = !isCulprit;
+      const passed = satRes.isSat && !isCulprit;
       const violations: VerificationViolation[] = [];
 
       if (isCulprit && conflict) {
@@ -492,11 +522,15 @@ export class UnifiedVerifier {
         stage: stageKey,
         name: displayName,
         passed,
-        certified: passed,
+        certified: satRes.isSat && passed,
         durationMs: durPerStage,
-        summary: passed ? passSummary : conflict?.explanation || "Theory contradiction detected.",
+        summary: passed
+          ? passSummary
+          : isCulprit
+            ? conflict?.explanation || "Theory contradiction detected."
+            : "Unverified: another theory oracle reported a contradiction before convergence.",
         violations,
-        details: isCulprit ? conflict : { oracle: oracleName, status: "SAT" },
+        details: isCulprit ? conflict : { oracle: oracleName, status: satRes.isSat ? "SAT" : "UNKNOWN" },
       };
     };
 
@@ -1225,11 +1259,19 @@ export class UnifiedVerifier {
           return {
             stage: "barriers",
             name: "Sum-of-Squares Barrier Synthesizer",
-            passed: true,
+            passed: barrierRes.isCertifiedSafe,
             certified: barrierRes.isCertifiedSafe,
             durationMs: Date.now() - t0,
             summary: barrierRes.summary,
-            violations: [],
+            violations: barrierRes.isCertifiedSafe
+              ? []
+              : [
+                  {
+                    stage: "barriers",
+                    message: barrierRes.summary,
+                    severity: "warning",
+                  },
+                ],
             details: { ...barrierRes, stateNames, initialRadius, unsafeRadius },
           };
         }

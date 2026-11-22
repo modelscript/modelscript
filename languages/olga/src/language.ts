@@ -18,6 +18,7 @@ import {
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/dsl";
+import { registerBuiltInOlgaLibrarySync } from "./catalog/library-package-adapter.js";
 import { indexOlgaFile } from "./indexing.js";
 import { lintOlgaModel } from "./lints/index.js";
 import { parseOlga, serializeKeyDeck } from "./parser/index.js";
@@ -336,3 +337,6 @@ export const olgaLanguage = language({
 });
 
 export default olgaLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInOlgaLibrarySync();

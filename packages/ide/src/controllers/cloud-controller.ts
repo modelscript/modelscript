@@ -2,6 +2,7 @@
 
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser";
+import { AlmRemotesPanel } from "../alm-remotes-panel.js";
 import { CloudJobPanel } from "../cloud-job-panel.js";
 import type { ExperimentsTreeProvider } from "../experiments-tree.js";
 import { isFeatureEnabled } from "../utils/config.js";
@@ -52,6 +53,9 @@ export function registerCloudCommands(
     }),
     vscode.commands.registerCommand("modelscript.refreshExperiments", () => {
       experimentsTreeProvider?.refresh();
+    }),
+    vscode.commands.registerCommand("modelscript.openAlmRemotes", () => {
+      AlmRemotesPanel.createOrShow(context.extensionUri);
     }),
   ];
 }

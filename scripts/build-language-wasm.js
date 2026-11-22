@@ -4,6 +4,12 @@ import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const SHARED_PHYSICS_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../packages/runtime/assembly/physics",
+);
 
 /**
  * @typedef {Object} LanguageWasmBuildOptions
@@ -64,6 +70,7 @@ export function runLanguageWasmBuild(options) {
     hash.update(outWasmFile);
     hashPathInto(hash, asconfigPath);
     hashPathInto(hash, assemblyDir);
+    hashPathInto(hash, SHARED_PHYSICS_DIR);
     const entryFullPath = path.join(dir, entryFile);
     const entryDir = path.dirname(entryFullPath);
     if (entryDir !== assemblyDir && entryDir !== dir) {

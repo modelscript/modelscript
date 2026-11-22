@@ -16,6 +16,18 @@
  *   - SysML2 state machine verifier (guard mutual exclusion)
  */
 
+import { addUp, nextUp, WasmScratchPool } from "@modelscript/solve";
+
+const _octagonScratchPools = new WeakMap<object, WasmScratchPool>();
+function getOctagonPool(wasm: any): WasmScratchPool {
+  let pool = _octagonScratchPools.get(wasm);
+  if (!pool) {
+    pool = new WasmScratchPool(wasm, 65536);
+    _octagonScratchPools.set(wasm, pool);
+  }
+  return pool;
+}
+
 export const OCTAGON_INF = 0x3fffffff;
 
 /**
@@ -25,9 +37,6 @@ export const OCTAGON_INF = 0x3fffffff;
 export class OctagonDBM {
   public dim: number;
   public matrix: Int32Array;
-  private wasmPtr = 0;
-  private wasmByteCap = 0;
-  private wasmInstance: Record<string, any> | null = null;
 
   constructor(public readonly numVars: number) {
     this.dim = numVars * 2;
@@ -119,18 +128,15 @@ export class OctagonDBM {
   closeWithWasm(wasmExports: Record<string, any>): void {
     if (typeof wasmExports["octagon_close_i32"] === "function" && typeof wasmExports["__new"] === "function") {
       const dim = this.dim;
-      const bytes = dim * dim * 4;
-      if (this.wasmInstance !== wasmExports || this.wasmByteCap < bytes || this.wasmPtr === 0) {
-        this.wasmPtr = wasmExports["__new"](bytes, 0);
-        this.wasmByteCap = bytes;
-        this.wasmInstance = wasmExports;
+      const scope = getOctagonPool(wasmExports).scope();
+      try {
+        const slice = scope.allocI32(dim * dim);
+        slice.view().set(this.matrix);
+        wasmExports["octagon_close_i32"](slice.ptr, dim);
+        this.matrix.set(slice.view());
+      } finally {
+        scope.dispose();
       }
-      const mem = wasmExports["memory"] as WebAssembly.Memory;
-      const view = new Int32Array(mem.buffer, this.wasmPtr, dim * dim);
-      view.set(this.matrix);
-      wasmExports["octagon_close_i32"](this.wasmPtr, dim);
-      const outView = new Int32Array(mem.buffer, this.wasmPtr, dim * dim);
-      this.matrix.set(outView);
       return;
     }
     this.close();
@@ -365,9 +371,6 @@ export const OCTAGON_INF_F64 = 1e30;
 export class OctagonDBMF64 {
   public readonly dim: number;
   private matrix: Float64Array;
-  private wasmPtr = 0;
-  private wasmByteCap = 0;
-  private wasmInstance: Record<string, any> | null = null;
 
   constructor(public readonly numVars: number) {
     this.dim = numVars * 2;
@@ -403,6 +406,8 @@ export class OctagonDBMF64 {
     const dim = this.dim;
     const matrix = this.matrix;
 
+    // Miné (2006) floating-point octagon soundness: all shortest-path additions and
+    // strong-closure halvings MUST round toward +Infinity so bounds never tighten unsoundly.
     for (let k = 0; k < dim; k++) {
       const kRow = k * dim;
       for (let i = 0; i < dim; i++) {
@@ -413,7 +418,7 @@ export class OctagonDBMF64 {
         for (let j = 0; j < dim; j++) {
           const kj = matrix[kRow + j]!;
           if (kj < OCTAGON_INF_F64) {
-            const newBound = Math.max(-OCTAGON_INF_F64, ik + kj);
+            const newBound = Math.max(-OCTAGON_INF_F64, addUp(ik, kj));
             if (newBound < matrix[iRow + j]!) {
               matrix[iRow + j] = newBound;
             }
@@ -422,7 +427,7 @@ export class OctagonDBMF64 {
       }
     }
 
-    // Strong closure
+    // Strong closure with upward rounding
     for (let i = 0; i < dim; i++) {
       const iRow = i * dim;
       const ui = matrix[iRow + (i ^ 1)]!;
@@ -431,7 +436,9 @@ export class OctagonDBMF64 {
       for (let j = 0; j < dim; j++) {
         const uj = matrix[(j ^ 1) * dim + j]!;
         if (uj < OCTAGON_INF_F64) {
-          const strongBound = Math.max(-OCTAGON_INF_F64, (ui + uj) * 0.5);
+          const sumUp = addUp(ui, uj);
+          const half = sumUp * 0.5;
+          const strongBound = Math.max(-OCTAGON_INF_F64, Number.isFinite(half) ? nextUp(half) : half);
           if (strongBound < matrix[iRow + j]!) {
             matrix[iRow + j] = strongBound;
           }
@@ -443,18 +450,15 @@ export class OctagonDBMF64 {
   closeWithWasm(wasmExports: Record<string, any>): void {
     if (typeof wasmExports["octagon_close_f64"] === "function" && typeof wasmExports["__new"] === "function") {
       const dim = this.dim;
-      const bytes = dim * dim * 8;
-      if (this.wasmInstance !== wasmExports || this.wasmByteCap < bytes || this.wasmPtr === 0) {
-        this.wasmPtr = wasmExports["__new"](bytes, 0);
-        this.wasmByteCap = bytes;
-        this.wasmInstance = wasmExports;
+      const scope = getOctagonPool(wasmExports).scope();
+      try {
+        const slice = scope.allocF64(dim * dim);
+        slice.view().set(this.matrix);
+        wasmExports["octagon_close_f64"](slice.ptr, dim);
+        this.matrix.set(slice.view());
+      } finally {
+        scope.dispose();
       }
-      const mem = wasmExports["memory"] as WebAssembly.Memory;
-      const view = new Float64Array(mem.buffer, this.wasmPtr, dim * dim);
-      view.set(this.matrix);
-      wasmExports["octagon_close_f64"](this.wasmPtr, dim);
-      const outView = new Float64Array(mem.buffer, this.wasmPtr, dim * dim);
-      this.matrix.set(outView);
       return;
     }
     this.close();
@@ -523,8 +527,10 @@ export class OctagonDBMF64 {
 
   getInterval(varIdx: number): [number, number] {
     const p = varIdx * 2;
-    const upper = this.getBound(p, p + 1) / 2;
-    const lower = -this.getBound(p + 1, p) / 2;
+    const rawUpper = this.getBound(p, p + 1);
+    const rawLower = this.getBound(p + 1, p);
+    const upper = rawUpper >= OCTAGON_INF_F64 / 2 ? Infinity : rawUpper / 2;
+    const lower = rawLower >= OCTAGON_INF_F64 / 2 ? -Infinity : -rawLower / 2;
     return [lower, upper];
   }
 

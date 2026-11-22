@@ -207,31 +207,31 @@ interface KrylovWasmExports {
   __new(bytes: number, id: number): number;
   __pin?(ptr: number): void;
   ilu0FreeWasm?(iluPtr: number): void;
-  ilu0FactorWasm(colPtrPtr: number, rowPtr: number, valPtr: number, n: number, metaPtr: number): number;
+  ilu0FactorWasm(n: number, colPtrPtr: number, rowPtr: number, valPtr: number, metaPtr: number): number;
   ilu0SolveWasm(iluPtr: number, bPtr: number, xPtr: number): void;
   gmresCcsWasm(
+    n: number,
     colPtrPtr: number,
     rowPtr: number,
     valPtr: number,
     bPtr: number,
     xPtr: number,
-    n: number,
+    iluPtr: number,
     tol: number,
     maxIter: number,
     restart: number,
-    iluPtr: number,
     metaPtr: number,
   ): number;
   bicgstabCcsWasm(
+    n: number,
     colPtrPtr: number,
     rowPtr: number,
     valPtr: number,
     bPtr: number,
     xPtr: number,
-    n: number,
+    iluPtr: number,
     tol: number,
     maxIter: number,
-    iluPtr: number,
     metaPtr: number,
   ): number;
 }

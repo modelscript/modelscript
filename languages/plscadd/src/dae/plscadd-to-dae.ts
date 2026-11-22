@@ -5,14 +5,40 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInPlsCaddLibraryRegistered, lookupPlsCaddModelSchema } from "../catalog/library-package-adapter.js";
 import { computeParabolicSagM, computeSpanImpedanceOhms, computeSpanLengthM } from "../parser/plscadd-parser.js";
 import type { PlsCaddModel } from "../types.js";
+
+/**
+ * Resolves parameter defaults for a PLS-CADD conductor/structure model from `@modelscript/plscadd-std-lib`,
+ * merging any user-specified overrides over the cleanroom schema defaults.
+ */
+export function resolvePlsCaddSchemaParamDefaults(
+  modelType: string,
+  overrides: Record<string, number | string | boolean> = {},
+): Record<string, number | string | boolean> {
+  ensureBuiltInPlsCaddLibraryRegistered();
+  const out: Record<string, number | string | boolean> = {};
+  const schema = lookupPlsCaddModelSchema(modelType);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (p.defaultValue !== undefined) {
+        out[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
 
 function sanitize(id: string): string {
   return id.replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
 export function lowerPlsCaddToDae(model: PlsCaddModel, builder?: DAEBuilder): DAEBuilder {
+  ensureBuiltInPlsCaddLibraryRegistered();
   const dae = builder ?? new DAEBuilder(undefined, sanitize(model.lineName || "PlsCaddLine"));
 
   for (const span of model.spans) {

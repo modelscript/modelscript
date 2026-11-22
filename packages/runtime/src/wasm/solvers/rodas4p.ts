@@ -247,6 +247,7 @@ export function stepRodas4P(
     let sc = atol + rtol * maxY;
     if (sc < 1e-15) sc = 1e-15;
     let scaledErr = Math.abs(k6[i]) / sc;
+    if (!isFinite(scaledErr)) return false;
     if (scaledErr > maxErrNorm) maxErrNorm = scaledErr;
   }
 

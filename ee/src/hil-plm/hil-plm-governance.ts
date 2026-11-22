@@ -3,6 +3,7 @@
 import { Router, type Request, type Response } from "express";
 import { requireEnterpriseFeature } from "../license/middleware.js";
 import { resolveActiveEnterpriseLicense, type EnterpriseFeature } from "../license/verifier.js";
+import { registerEnterpriseDesktopConnectors } from "./desktop-adapters.js";
 
 export interface EnterpriseHilTargetDescriptor {
   id: string;
@@ -117,6 +118,139 @@ export const ENTERPRISE_PLM_CONNECTORS: readonly EnterprisePlmConnectorDescripto
     category: "plm-alm",
     feature: "plm_connectors",
     description: "Digital nameplate, submodel templates, and technical data package export.",
+  },
+  {
+    id: "windchill",
+    name: "PTC Windchill WRS OData v4 PLM Connector",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "Bidirectional eBOM/Part sync, external reference links, and Problem Report automation.",
+  },
+  {
+    id: "teamcenter",
+    name: "Siemens Teamcenter Active Workspace REST PLM Connector",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "ItemRevision and BOM structure sync with FND_TraceLink / IMAN_specification traceability.",
+  },
+  {
+    id: "aras",
+    name: "Aras Innovator OData v4 PLM Connector",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "Configurable ItemType and Part BOM sync with outbound trace-link and verification records.",
+  },
+  {
+    id: "azdo",
+    name: "Microsoft Azure DevOps REST v7.1 ALM Connector",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "WIQL work-item sync, JSON Patch hyperlink traceability, Test Runs, and defects-on-fail Bugs.",
+  },
+  {
+    id: "testrail",
+    name: "Gurock TestRail REST v2 Verification Connector",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "Test case sync and automated simulation verification result submission.",
+  },
+  {
+    id: "xray",
+    name: "SmartBear Xray Test Management REST v2 Connector",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "Xray Test sync and automated Test Execution import from ModelScript verification runs.",
+  },
+  {
+    id: "onshape",
+    name: "PTC Onshape Cloud CAD REST v6 Connector",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "Indented cloud CAD assembly BOM sync and part metadata traceability.",
+  },
+  {
+    id: "twc",
+    name: "Dassault Systèmes Teamwork Cloud (Cameo/MagicDraw) Connector",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "Revisioned OSMC SysML element and Satisfy/Verify relationship sync.",
+  },
+  {
+    id: "genesys",
+    name: "Vitech / Zuken GENESYS MBSE Connector",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "Project entity and MBSE relationship synchronization.",
+  },
+  {
+    id: "zuken",
+    name: "Zuken DS-CR (PCB) & DS-E3 (Wire Harness) ECAD Connector",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "ECAD board/harness BOM synchronization and traceability links.",
+  },
+  {
+    id: "artifactory",
+    name: "JFrog Artifactory Binary & FMU Provenance Connector",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "SHA-256 artifact inventory and verification attestation property tagging.",
+  },
+  {
+    id: "airflow",
+    name: "Apache Airflow REST v1 Digital Pipeline Connector",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "DAG inventory and automated DAG run triggering from verification evidence.",
+  },
+  {
+    id: "rest",
+    name: "Generic Declarative RESTful Repository Connector",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "Config-driven JSON dot-path adapter for custom COTS, GOTS, and internal REST APIs.",
+  },
+  {
+    id: "creo",
+    name: "PTC Creo Parametric Desktop Bridge (Enterprise)",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "Licensed J-Link / OTK local bridge for PTC Creo assemblies and parameters.",
+  },
+  {
+    id: "nx",
+    name: "Siemens NX Desktop Bridge (Enterprise)",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "Licensed NX Open local bridge for Siemens NX CAD parts and expressions.",
+  },
+  {
+    id: "solidworks",
+    name: "Dassault SOLIDWORKS & PDM Desktop Bridge (Enterprise)",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "Licensed COM / PDM Vault local bridge for SOLIDWORKS assemblies and bills of material.",
+  },
+  {
+    id: "doors-classic",
+    name: "IBM Rational DOORS Classic DXL Bridge (Enterprise)",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "Licensed DXL local bridge for legacy IBM Rational DOORS 9 modules.",
+  },
+  {
+    id: "volta",
+    name: "ESTECO VOLTA Optimization Bridge (Enterprise)",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "Licensed bridge for ESTECO VOLTA simulation data management and DOE studies.",
+  },
+  {
+    id: "mathematica",
+    name: "Wolfram Mathematica WSTP Bridge (Enterprise)",
+    category: "plm-alm",
+    feature: "plm_connectors",
+    description: "Licensed WSTP / Wolfram Engine bridge for Mathematica notebooks and symbolic models.",
   },
   {
     id: "simulink",
@@ -253,6 +387,7 @@ export function verifyEnterpriseCliCommand(commandName: string): CliEntitlementC
  * discovery and target authorization endpoints.
  */
 export function createEnterpriseHilPlmRouter(): Router {
+  registerEnterpriseDesktopConnectors();
   const router = Router();
 
   router.get("/ee/capabilities", (_req: Request, res: Response) => {

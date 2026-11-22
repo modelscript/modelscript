@@ -744,9 +744,13 @@ export function startNodeServer(input?: any, output?: any) {
     for (const u of new Set([uri, normUri, oneSlashUri])) {
       const oldTree = documentManager.documentTrees.get(u);
       if (oldTree) {
+        oldTree.tree?.facade?.removeDocument?.(u);
         oldTree.tree?.delete?.();
         documentManager.documentTrees.delete(u);
       }
+    }
+    if (closedLangId) {
+      parserService.getFacade(closedLangId)?.removeDocument?.(uri);
     }
     connection.sendDiagnostics({ uri, diagnostics: [] });
 

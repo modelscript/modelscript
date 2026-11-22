@@ -8,8 +8,22 @@
  * regimens, computing Cmax, Tmax, t1/2, and AUC(0->t) via trapezoidal integration.
  */
 
+import { ensureBuiltInNmtranLibraryRegistered, lookupNmtranModelSchema } from "../catalog/library-package-adapter.js";
 import { inferMaxCompartments } from "../lints/nmtran-linter.js";
 import type { DosingRecord, NmtranDocument } from "../types.js";
+
+function getNmtranSchemaParamDefault(advan: string, keys: string[], fallback: number): number {
+  const schema = lookupNmtranModelSchema(advan);
+  if (!schema) return fallback;
+  for (const k of keys) {
+    const lower = k.toLowerCase();
+    const found = schema.parameters.find((p) => p.key.toLowerCase() === lower);
+    if (typeof found?.defaultValue === "number" && Number.isFinite(found.defaultValue)) {
+      return found.defaultValue;
+    }
+  }
+  return fallback;
+}
 
 export interface PkPdSolverOptions {
   duration?: number | undefined; // simulation duration (default 24.0 h)
@@ -234,6 +248,7 @@ export function evaluateNmtranExpression(
 }
 
 export function solveNmtranPkPd(doc: NmtranDocument, options?: PkPdSolverOptions): PkPdSimulationResult {
+  ensureBuiltInNmtranLibraryRegistered();
   const cs = doc.controlStream;
   const duration = Math.max(0.1, options?.duration ?? 24.0);
   const timeStep = Math.max(1e-4, options?.timeStep ?? 0.05);
@@ -279,12 +294,19 @@ export function solveNmtranPkPd(doc: NmtranDocument, options?: PkPdSolverOptions
     if (c.defObs) centralCmt = c.index;
   }
 
-  // Determine central volume and clearance
+  // Determine central volume and clearance (falling back to cleanroom PREDPP schema defaults)
   const centralVolume =
-    env[`S${centralCmt}`] ?? env[`V${centralCmt}`] ?? env["V"] ?? env["V1"] ?? env["V2"] ?? env["VC"] ?? 1.0;
+    env[`S${centralCmt}`] ??
+    env[`V${centralCmt}`] ??
+    env["V"] ??
+    env["V1"] ??
+    env["V2"] ??
+    env["VC"] ??
+    getNmtranSchemaParamDefault(advan, [`V${centralCmt}`, "V", "V1", "V2"], 1.0);
   const safeCentralVol = Math.max(1e-9, centralVolume);
 
-  const clearance = env["CL"] ?? (env["K"] !== undefined ? env["K"] * safeCentralVol : 1.0);
+  const clearance =
+    env["CL"] ?? (env["K"] !== undefined ? env["K"] * safeCentralVol : getNmtranSchemaParamDefault(advan, ["CL"], 1.0));
 
   // 3. Expand dosing schedule (including II / ADDL multi-dose regimens, F_i bioavailability, ALAG_i)
   const rawDoses =
@@ -364,21 +386,25 @@ export function solveNmtranPkPd(doc: NmtranDocument, options?: PkPdSolverOptions
 
     if (advan === "ADVAN1") {
       const v1 = Math.max(1e-9, env["V"] ?? env["V1"] ?? env["S1"] ?? safeCentralVol);
-      const k = env["K"] ?? (env["CL"] !== undefined ? env["CL"] / v1 : 0.1);
+      const k = env["K"] ?? (env["CL"] !== undefined ? env["CL"] / v1 : clearance / v1);
       dA[0] = (dA[0] ?? 0) - k * a0;
     } else if (advan === "ADVAN2") {
       const v2 = Math.max(1e-9, env["V"] ?? env["V2"] ?? env["V1"] ?? env["S2"] ?? safeCentralVol);
-      const k = env["K"] ?? (env["CL"] !== undefined ? env["CL"] / v2 : 0.1);
-      const ka = env["KA"] ?? 1.0;
+      const k = env["K"] ?? (env["CL"] !== undefined ? env["CL"] / v2 : clearance / v2);
+      const ka = env["KA"] ?? getNmtranSchemaParamDefault(advan, ["KA"], 1.0);
       dA[0] = (dA[0] ?? 0) - ka * a0;
       if (compartmentCount >= 2) {
         dA[1] = (dA[1] ?? 0) + ka * a0 - k * a1;
       }
     } else if (advan === "ADVAN3") {
       const v1 = Math.max(1e-9, env["V1"] ?? env["V"] ?? env["S1"] ?? safeCentralVol);
-      const v2 = Math.max(1e-9, env["V2"] ?? (env["VSS"] !== undefined ? Math.max(1e-6, env["VSS"] - v1) : v1));
+      const v2 = Math.max(
+        1e-9,
+        env["V2"] ??
+          (env["VSS"] !== undefined ? Math.max(1e-6, env["VSS"] - v1) : getNmtranSchemaParamDefault(advan, ["V2"], v1)),
+      );
       const cl = env["CL"] ?? clearance;
-      const q = env["Q"] ?? 0.5;
+      const q = env["Q"] ?? getNmtranSchemaParamDefault(advan, ["Q"], 0.5);
       const k = env["K"] ?? cl / v1;
       const k12 = env["K12"] ?? q / v1;
       const k21 = env["K21"] ?? q / v2;
@@ -395,11 +421,11 @@ export function solveNmtranPkPd(doc: NmtranDocument, options?: PkPdSolverOptions
             ? Math.max(1e-6, env["VSS"] - v2)
             : env["V2"] !== undefined && env["V1"] !== undefined
               ? env["V2"]
-              : v2),
+              : getNmtranSchemaParamDefault(advan, ["V3"], v2)),
       );
       const cl = env["CL"] ?? clearance;
-      const q = env["Q"] ?? 0.5;
-      const ka = env["KA"] ?? 1.0;
+      const q = env["Q"] ?? getNmtranSchemaParamDefault(advan, ["Q"], 0.5);
+      const ka = env["KA"] ?? getNmtranSchemaParamDefault(advan, ["KA"], 1.0);
       const k = env["K"] ?? cl / v2;
       const k23 = env["K23"] ?? q / v2;
       const k32 = env["K32"] ?? q / v3;
@@ -412,17 +438,17 @@ export function solveNmtranPkPd(doc: NmtranDocument, options?: PkPdSolverOptions
       }
     } else if (advan === "ADVAN10") {
       const v1 = Math.max(1e-9, env["V"] ?? env["V1"] ?? env["S1"] ?? safeCentralVol);
-      const vm = env["VM"] ?? 1.0;
-      const km = Math.max(1e-9, env["KM"] ?? 1.0);
+      const vm = env["VM"] ?? getNmtranSchemaParamDefault(advan, ["VM"], 1.0);
+      const km = Math.max(1e-9, env["KM"] ?? getNmtranSchemaParamDefault(advan, ["KM"], 1.0));
       const c1 = a0 / v1;
       dA[0] = (dA[0] ?? 0) - (vm * c1) / (km + c1);
     } else if (advan === "ADVAN11") {
       const v1 = Math.max(1e-9, env["V1"] ?? env["V"] ?? env["S1"] ?? safeCentralVol);
-      const v2 = Math.max(1e-9, env["V2"] ?? v1);
-      const v3 = Math.max(1e-9, env["V3"] ?? v1);
+      const v2 = Math.max(1e-9, env["V2"] ?? getNmtranSchemaParamDefault(advan, ["V2"], v1));
+      const v3 = Math.max(1e-9, env["V3"] ?? getNmtranSchemaParamDefault(advan, ["V3"], v1));
       const cl = env["CL"] ?? clearance;
-      const q2 = env["Q2"] ?? env["Q"] ?? 0.5;
-      const q3 = env["Q3"] ?? 0.2;
+      const q2 = env["Q2"] ?? env["Q"] ?? getNmtranSchemaParamDefault(advan, ["Q2", "Q"], 0.5);
+      const q3 = env["Q3"] ?? getNmtranSchemaParamDefault(advan, ["Q3"], 0.2);
       const k = env["K"] ?? cl / v1;
       const k12 = env["K12"] ?? q2 / v1;
       const k21 = env["K21"] ?? q2 / v2;
@@ -433,12 +459,12 @@ export function solveNmtranPkPd(doc: NmtranDocument, options?: PkPdSolverOptions
       if (compartmentCount >= 3) dA[2] = (dA[2] ?? 0) + k13 * a0 - k31 * a2;
     } else if (advan === "ADVAN12") {
       const v2 = Math.max(1e-9, env["V2"] ?? env["V1"] ?? env["V"] ?? env["S2"] ?? safeCentralVol);
-      const v3 = Math.max(1e-9, env["V3"] ?? v2);
-      const v4 = Math.max(1e-9, env["V4"] ?? v2);
+      const v3 = Math.max(1e-9, env["V3"] ?? getNmtranSchemaParamDefault(advan, ["V3"], v2));
+      const v4 = Math.max(1e-9, env["V4"] ?? getNmtranSchemaParamDefault(advan, ["V4"], v2));
       const cl = env["CL"] ?? clearance;
-      const q3 = env["Q3"] ?? env["Q2"] ?? env["Q"] ?? 0.5;
-      const q4 = env["Q4"] ?? 0.2;
-      const ka = env["KA"] ?? 1.0;
+      const q3 = env["Q3"] ?? env["Q2"] ?? env["Q"] ?? getNmtranSchemaParamDefault(advan, ["Q3", "Q2", "Q"], 0.5);
+      const q4 = env["Q4"] ?? getNmtranSchemaParamDefault(advan, ["Q4"], 0.2);
+      const ka = env["KA"] ?? getNmtranSchemaParamDefault(advan, ["KA"], 1.0);
       const k = env["K"] ?? cl / v2;
       const k23 = env["K23"] ?? q3 / v2;
       const k32 = env["K32"] ?? q3 / v3;

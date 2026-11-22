@@ -116,16 +116,29 @@ export function gpModelInit(archetypeId: i32, slotPtr: usize, conCount: i32): i3
   const valveCmd = clamp(getIo(slotPtr, 7), 0.0, 1.0);
 
   // Zero unused state slots
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 16; i++) {
     setState(slotPtr, i, 0.0);
     setDState(slotPtr, i, 0.0);
   }
 
-  if (
-    archetypeId == ARCH_REACTOR_CSTR ||
-    archetypeId == ARCH_REACTOR_PFR ||
-    archetypeId == ARCH_REACTOR_BATCH
-  ) {
+  if (archetypeId == ARCH_REACTOR_PFR) {
+    // 1D Method-of-Lines Axial-Dispersion PFR: N = 8 finite-volume cells
+    // STATE[0..7] = C[0..7] (mol/m^3), STATE[8..15] = T[0..7] (K)
+    const vol = Math.max(1e-6, getCon(slotPtr, conCount, 0, 0.5));
+    for (let i: i32 = 0; i < 8; i++) {
+      setState(slotPtr, i, concIn);
+      setState(slotPtr, 8 + i, tempIn);
+    }
+    setIo(slotPtr, 8, flowIn);
+    setIo(slotPtr, 9, concIn);
+    setIo(slotPtr, 10, tempIn);
+    setIo(slotPtr, 11, pressureIn);
+    setIo(slotPtr, 14, vol);
+    setIo(slotPtr, 15, 0.0);
+    return 16;
+  }
+
+  if (archetypeId == ARCH_REACTOR_CSTR || archetypeId == ARCH_REACTOR_BATCH) {
     // State 0: C (mol/m^3), State 1: T (K)
     const vol = Math.max(1e-6, getCon(slotPtr, conCount, 0, 1.0));
     setState(slotPtr, 0, concIn);
@@ -254,11 +267,87 @@ export function gpModelEvalDerivatives(
   const measurement = getIo(slotPtr, 6);
   const valveCmd = clamp(getIo(slotPtr, 7), 0.0, 1.0);
 
-  if (
-    archetypeId == ARCH_REACTOR_CSTR ||
-    archetypeId == ARCH_REACTOR_PFR ||
-    archetypeId == ARCH_REACTOR_BATCH
-  ) {
+  if (archetypeId == ARCH_REACTOR_PFR) {
+    // 1D Method-of-Lines Axial-Dispersion PDE Discretization (N = 8 finite-volume cells):
+    //   dC_i/dt = -v*(C_i - C_{i-1})/dz + D_ax*(d^2 C / dz^2)_i - k(T_i)*C_i
+    //   dT_i/dt = -v*(T_i - T_{i-1})/dz + alpha_th*(d^2 T / dz^2)_i
+    //             + (-dHrxn)*k(T_i)*C_i/(rho*Cp) + (UA/(rho*Cp*V))*(T_cool - T_i)
+    // with Danckwerts boundary conditions (inlet total flux = v*C_in, outlet zero gradient).
+    const vol = Math.max(1e-6, getCon(slotPtr, conCount, 0, 0.5));
+    const aPre = Math.max(0.0, getCon(slotPtr, conCount, 1, 5.0e4));
+    const ea = Math.max(0.0, getCon(slotPtr, conCount, 2, 42000.0));
+    const dHrxn = getCon(slotPtr, conCount, 3, -40000.0);
+    const rho = Math.max(1.0, getCon(slotPtr, conCount, 4, 900.0));
+    const cp = Math.max(10.0, getCon(slotPtr, conCount, 5, 2500.0));
+    const ua = Math.max(0.0, getCon(slotPtr, conCount, 6, 800.0));
+    const length = Math.max(1e-3, getCon(slotPtr, conCount, 7, 2.0));
+    const dAx = Math.max(0.0, getCon(slotPtr, conCount, 8, 1.0e-3));
+    const alphaTh = Math.max(0.0, getCon(slotPtr, conCount, 9, dAx));
+
+    const nCells: i32 = 8;
+    const dz = length / <f64>nCells;
+    const invDz = 1.0 / dz;
+    const invDz2 = invDz * invDz;
+    const areaCross = vol / length;
+    const vAx = flowIn / Math.max(1e-9, areaCross);
+    const invRhoCp = 1.0 / (rho * cp);
+    const wallCoeff = (ua * invRhoCp) / vol;
+
+    let totalHeatDuty: f64 = 0.0;
+    for (let i: i32 = 0; i < nCells; i++) {
+      const c = Math.max(0.0, getState(slotPtr, i));
+      const temp = Math.max(150.0, getState(slotPtr, 8 + i));
+
+      const cUp = i == 0 ? concIn : Math.max(0.0, getState(slotPtr, i - 1));
+      const tUp = i == 0 ? tempIn : Math.max(150.0, getState(slotPtr, 8 + i - 1));
+
+      // Conservative Danckwerts axial dispersion stencil
+      let lapC: f64 = 0.0;
+      let lapT: f64 = 0.0;
+      if (i == 0) {
+        const cNext = Math.max(0.0, getState(slotPtr, 1));
+        const tNext = Math.max(150.0, getState(slotPtr, 9));
+        lapC = (cNext - c) * invDz2;
+        lapT = (tNext - temp) * invDz2;
+      } else if (i == nCells - 1) {
+        lapC = (cUp - c) * invDz2;
+        lapT = (tUp - temp) * invDz2;
+      } else {
+        const cNext = Math.max(0.0, getState(slotPtr, i + 1));
+        const tNext = Math.max(150.0, getState(slotPtr, 8 + i + 1));
+        lapC = (cNext - 2.0 * c + cUp) * invDz2;
+        lapT = (tNext - 2.0 * temp + tUp) * invDz2;
+      }
+
+      const kRate = arrheniusRate(aPre, ea, temp);
+      const rRate = kRate * c;
+
+      const dCdt = -vAx * (c - cUp) * invDz + dAx * lapC - rRate;
+      const dTdt =
+        -vAx * (temp - tUp) * invDz +
+        alphaTh * lapT +
+        ((-dHrxn) * rRate) * invRhoCp +
+        wallCoeff * (coolantTemp - temp);
+
+      setDState(slotPtr, i, dCdt);
+      setDState(slotPtr, 8 + i, dTdt);
+      totalHeatDuty += (ua / <f64>nCells) * (temp - coolantTemp);
+    }
+
+    const cOut = Math.max(0.0, getState(slotPtr, nCells - 1));
+    const tOut = Math.max(150.0, getState(slotPtr, 8 + nCells - 1));
+
+    setIo(slotPtr, 8, flowIn);
+    setIo(slotPtr, 9, cOut);
+    setIo(slotPtr, 10, tOut);
+    setIo(slotPtr, 11, pressureIn);
+    setIo(slotPtr, 12, totalHeatDuty);
+    setIo(slotPtr, 14, vol);
+    setIo(slotPtr, 15, concIn > 1e-12 ? clamp((concIn - cOut) / concIn, 0.0, 1.0) : 0.0);
+    return;
+  }
+
+  if (archetypeId == ARCH_REACTOR_CSTR || archetypeId == ARCH_REACTOR_BATCH) {
     const vol = Math.max(1e-6, getCon(slotPtr, conCount, 0, 1.0));
     const aPre = Math.max(0.0, getCon(slotPtr, conCount, 1, 1.0e5));
     const ea = Math.max(0.0, getCon(slotPtr, conCount, 2, 45000.0));
@@ -531,6 +620,33 @@ export function gpModelStep(
   slotPtr: usize,
   conCount: i32,
 ): void {
+  if (archetypeId == ARCH_REACTOR_PFR) {
+    // Zero-GC 16-state Heun RK2 using STATE[16..31] for y0 and DSTATE[16..31] for k1
+    for (let i: i32 = 0; i < 16; i++) {
+      setState(slotPtr, 16 + i, getState(slotPtr, i));
+    }
+
+    gpModelEvalDerivatives(archetypeId, t, dt, slotPtr, conCount);
+    for (let i: i32 = 0; i < 16; i++) {
+      const k1 = getDState(slotPtr, i);
+      setDState(slotPtr, 16 + i, k1);
+      const yPred = getState(slotPtr, 16 + i) + dt * k1;
+      setState(slotPtr, i, i < 8 ? Math.max(0.0, yPred) : Math.max(150.0, yPred));
+    }
+
+    gpModelEvalDerivatives(archetypeId, t + dt, dt, slotPtr, conCount);
+    for (let i: i32 = 0; i < 16; i++) {
+      const y0 = getState(slotPtr, 16 + i);
+      const k1 = getDState(slotPtr, 16 + i);
+      const k2 = getDState(slotPtr, i);
+      const yNext = y0 + 0.5 * dt * (k1 + k2);
+      setState(slotPtr, i, i < 8 ? Math.max(0.0, yNext) : Math.max(150.0, yNext));
+    }
+
+    gpModelEvalDerivatives(archetypeId, t + dt, dt, slotPtr, conCount);
+    return;
+  }
+
   const y0_0 = getState(slotPtr, 0);
   const y0_1 = getState(slotPtr, 1);
   const y0_2 = getState(slotPtr, 2);
@@ -567,8 +683,9 @@ export function gpModelStep(
  */
 export function gpModelCheckFlatStart(archetypeId: i32, slotPtr: usize, conCount: i32): f64 {
   gpModelEvalDerivatives(archetypeId, 0.0, 0.01, slotPtr, conCount);
+  const nStates: i32 = archetypeId == ARCH_REACTOR_PFR ? 16 : 4;
   let maxRes: f64 = 0.0;
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < nStates; i++) {
     const d = Math.abs(getDState(slotPtr, i));
     if (d > maxRes) maxRes = d;
   }

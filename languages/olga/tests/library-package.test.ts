@@ -151,4 +151,56 @@ describe("@modelscript/olga — Cleanroom Standard Library (modelscript.yaml, WA
     const out = fmuInst.eval(0.1, 0.1, { pressureIn: 6.0e6, opening: 0.6 });
     assert.ok(Math.abs(out.controlOut - 0.5) < 1e-9);
   });
+
+  it("advances 3-field (gas/film/droplet) 1D conservation step in FLOW_DRIFT_FLUX and FLOW_TAITEL_DUKLER", () => {
+    const df = instantiateOlgaWasmModel({
+      id: "DF_3F",
+      modelType: "FLOW_DRIFT_FLUX",
+      params: { c0: 1.2, v_gj: 0.35, diameter: 0.25 },
+    });
+    assert.ok(df);
+    assert.equal(df.init(), 4);
+
+    // Low gas velocity -> low droplet entrainment
+    const low = df.eval(0.0, 0.5, { jGas: 1.0, jLiq: 0.5 });
+    const sumLow = low.voidFraction + (low.filmHoldup ?? 0) + (low.dropletHoldup ?? 0);
+    assert.ok(Math.abs(sumLow - 1.0) < 1e-9, `Expected exact 3-field holdup sum = 1, got ${sumLow}`);
+    assert.ok(
+      (low.entrainmentFraction ?? 0) < 0.1,
+      `Expected low entrainment at jGas=1, got ${low.entrainmentFraction}`,
+    );
+
+    // Step up to high annular gas velocity (jGas=15 m/s) over multiple time steps
+    let high = low;
+    for (let k = 1; k <= 40; k++) {
+      high = df.eval(k * 0.5, 0.5, { jGas: 15.0, jLiq: 0.5 });
+    }
+    const sumHigh = high.voidFraction + (high.filmHoldup ?? 0) + (high.dropletHoldup ?? 0);
+    assert.ok(Math.abs(sumHigh - 1.0) < 1e-9, `Expected exact 3-field holdup sum = 1, got ${sumHigh}`);
+    assert.ok(
+      (high.entrainmentFraction ?? 0) > (low.entrainmentFraction ?? 0) + 0.15,
+      `Expected high droplet entrainment at jGas=15, got ${high.entrainmentFraction} vs ${low.entrainmentFraction}`,
+    );
+    assert.ok(
+      (high.interfacialShear ?? 0) > (low.interfacialShear ?? 0),
+      `Expected larger interfacial shear at high gas velocity: ${high.interfacialShear} vs ${low.interfacialShear}`,
+    );
+    assert.ok(high.pressureDrop > low.pressureDrop, "Expected larger pressure gradient at high gas velocity");
+
+    // Verify FLOW_TAITEL_DUKLER also conserves 3-field holdups & classifies annular regime
+    const td = instantiateOlgaWasmModel({
+      id: "TD_3F",
+      modelType: "FLOW_TAITEL_DUKLER",
+    });
+    assert.ok(td);
+    assert.equal(td.init(), 4);
+    const tdAnnular = td.eval(0.0, 0.5, { jGas: 14.0, jLiq: 0.3 });
+    const sumTd = tdAnnular.voidFraction + (tdAnnular.filmHoldup ?? 0) + (tdAnnular.dropletHoldup ?? 0);
+    assert.ok(Math.abs(sumTd - 1.0) < 1e-9, `Expected Taitel-Dukler 3-field sum = 1, got ${sumTd}`);
+    assert.equal(tdAnnular.oilFvf, 3.0, "Expected Annular regime code (3.0) at high gas velocity");
+    assert.ok(
+      (tdAnnular.entrainmentFraction ?? 0) > 0.1,
+      `Expected annular entrainment > 0.1, got ${tdAnnular.entrainmentFraction}`,
+    );
+  });
 });

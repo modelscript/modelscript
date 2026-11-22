@@ -171,4 +171,78 @@ describe("@modelscript/oneliner — Cleanroom Standard Library (modelscript.yaml
     assert.equal(out.tripped, true);
     assert.ok(Math.abs(out.tripTimeSec - 0.018) < 1e-9);
   });
+
+  it("evaluates cross-/memory-polarized Mho distance zones and US electromechanical CO-8 & IAC-53 curves", () => {
+    // 1. Positive-sequence memory-polarized DIST_MHO_Z1 (polMode=2, Zs=5 Ohm @ 85 deg)
+    const mhoSelf = instantiateOneLinerWasmModel({
+      modelType: "DIST_MHO_Z1",
+      params: { reachOhms: 10.0, mtaDeg: 75.0, delaySec: 0.02, polMode: 0, zSourceOhms: 0.0 },
+    });
+    const mhoMem = instantiateOneLinerWasmModel({
+      modelType: "DIST_MHO_Z1",
+      params: { reachOhms: 10.0, mtaDeg: 75.0, delaySec: 0.02, polMode: 2, zSourceOhms: 5.0, zSourceAngDeg: 85.0 },
+    });
+    const mhoCross = instantiateOneLinerWasmModel({
+      modelType: "DIST_MHO_Z2",
+      params: { reachOhms: 18.0, mtaDeg: 78.0, delaySec: 0.35, polMode: 1, zSourceOhms: 6.0, zSourceAngDeg: 85.0 },
+    });
+    assert.ok(mhoSelf && mhoMem && mhoCross);
+    mhoSelf.init();
+    mhoMem.init();
+    mhoCross.init();
+
+    // Close-in bolted fault at Z = 0: memory-polarized Mho has strictly positive margin (no dead zone)
+    const closeIn = mhoMem.evaluate({ rOhms: 0.0, xOhms: 0.0 });
+    assert.equal(closeIn.tripped, true);
+    assert.ok(
+      closeIn.margin > 0.2,
+      `Expected strong positive margin at Z=0 for memory-polarized Mho, got ${closeIn.margin}`,
+    );
+
+    // Resistive forward fault at R=6.5, X=2.0: outside self-polarized circle (dist 5.92 > 5.0) but inside memory-polarized expansion (dist 5.43 < 7.48)
+    const resSelf = mhoSelf.evaluate({ rOhms: 6.5, xOhms: 2.0 });
+    const resMem = mhoMem.evaluate({ rOhms: 6.5, xOhms: 2.0 });
+    assert.equal(resSelf.tripped, false, "Expected resistive fault outside self-polarized Mho");
+    assert.equal(resMem.tripped, true, "Expected resistive fault inside memory-polarized Mho");
+
+    // Reverse fault far behind relay (-2, -8) must NOT trip
+    assert.equal(mhoMem.evaluate({ rOhms: -2.0, xOhms: -8.0 }).tripped, false);
+    assert.equal(mhoCross.evaluate({ rOhms: 0.0, xOhms: 0.0 }).tripped, true);
+
+    // 2. Exact US Electromechanical CO-8 & IAC-53 inverse-time curves
+    const co8 = instantiateOneLinerWasmModel({
+      modelType: "OC_US_CO8",
+      params: { pickupA: 500, timeDial: 1.0 },
+    });
+    const iac53 = instantiateOneLinerWasmModel({
+      modelType: "OC_US_IAC53",
+      params: { pickupA: 500, timeDial: 1.0 },
+    });
+    assert.ok(co8 && iac53);
+    co8.init();
+    iac53.init();
+    const co8Out = co8.evaluate({ iFaultA: 2500 }); // M = 5
+    const iacOut = iac53.evaluate({ iFaultA: 2500 }); // M = 5
+    assert.ok(Math.abs(co8Out.tripTimeSec - (5.95 / 24.0 + 0.18)) < 1e-6);
+    assert.ok(Math.abs(iacOut.tripTimeSec - (3.922 / 24.0 + 0.0982)) < 1e-6);
+
+    // 5-term IEEE 1979 electromechanical CO-8 & IAC-53 curves (emMode=1, 2)
+    const co8Em = instantiateOneLinerWasmModel({
+      modelType: "OC_US_CO8",
+      params: [500, 7.0, 5.95, 0.18, 2.0, 240, 0, 1],
+    });
+    const iacEm = instantiateOneLinerWasmModel({
+      modelType: "OC_US_IAC53",
+      params: [500, 7.0, 3.922, 0.0982, 2.0, 240, 0, 2],
+    });
+    assert.ok(co8Em && iacEm);
+    co8Em.init();
+    iacEm.init();
+    const co8EmOut = co8Em.evaluate({ iFaultA: 2500 });
+    const iacEmOut = iacEm.evaluate({ iFaultA: 2500 });
+    assert.equal(co8EmOut.tripped, true);
+    assert.equal(iacEmOut.tripped, true);
+    assert.ok(co8EmOut.tripTimeSec > 0.2 && co8EmOut.tripTimeSec < 1.0);
+    assert.ok(iacEmOut.tripTimeSec > 0.1 && iacEmOut.tripTimeSec < 0.8);
+  });
 });

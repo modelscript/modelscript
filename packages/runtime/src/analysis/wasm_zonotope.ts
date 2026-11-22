@@ -15,8 +15,19 @@
  *   - Convex set enclosure and branching splits
  */
 
+import { addUp, subDown, WasmScratchPool } from "@modelscript/solve";
 import { getDefaultWasmExports } from "../dae/wasm_dae.js";
 import { Interval } from "./wasm_interval.js";
+
+const _zonotopeScratchPools = new WeakMap<object, WasmScratchPool>();
+function getZonotopePool(wasm: any): WasmScratchPool {
+  let pool = _zonotopeScratchPools.get(wasm);
+  if (!pool) {
+    pool = new WasmScratchPool(wasm, 65536);
+    _zonotopeScratchPools.set(wasm, pool);
+  }
+  return pool;
+}
 
 export class Zonotope {
   /**
@@ -81,27 +92,27 @@ export class Zonotope {
 
     const wasm: any = getDefaultWasmExports();
     if (wasm && typeof wasm.zonotope_bounds === "function" && typeof wasm.__new === "function" && n > 0 && p > 0) {
+      const scope = getZonotopePool(wasm).scope();
       try {
-        const cPtr = wasm.__new(n * 8, 0);
-        const gPtr = wasm.__new(n * p * 8, 0);
-        const outLoPtr = wasm.__new(n * 8, 0);
-        const outHiPtr = wasm.__new(n * 8, 0);
+        const cSlice = scope.allocF64(n);
+        const gSlice = scope.allocF64(n * p);
+        const outLoSlice = scope.allocF64(n);
+        const outHiSlice = scope.allocF64(n);
 
-        const mem = wasm.memory as WebAssembly.Memory;
-        const cView = new Float64Array(mem.buffer, cPtr, n);
+        const cView = cSlice.view();
         for (let i = 0; i < n; i++) cView[i] = this.center[i] ?? 0;
 
-        const gView = new Float64Array(mem.buffer, gPtr, n * p);
+        const gView = gSlice.view();
         for (let i = 0; i < n; i++) {
           for (let j = 0; j < p; j++) {
             gView[i * p + j] = this.generators[j]?.[i] ?? 0;
           }
         }
 
-        wasm.zonotope_bounds(n, p, cPtr, gPtr, outLoPtr, outHiPtr);
+        wasm.zonotope_bounds(n, p, cSlice.ptr, gSlice.ptr, outLoSlice.ptr, outHiSlice.ptr);
 
-        const loView = new Float64Array(mem.buffer, outLoPtr, n);
-        const hiView = new Float64Array(mem.buffer, outHiPtr, n);
+        const loView = outLoSlice.view();
+        const hiView = outHiSlice.view();
         const result: Interval[] = [];
         for (let i = 0; i < n; i++) {
           result.push(new Interval(loView[i]!, hiView[i]!));
@@ -109,6 +120,8 @@ export class Zonotope {
         return result;
       } catch {
         // Fallback to TS
+      } finally {
+        scope.dispose();
       }
     }
 
@@ -116,10 +129,10 @@ export class Zonotope {
     for (let i = 0; i < n; i++) {
       let r = 0;
       for (const g of this.generators) {
-        r += Math.abs(g[i] ?? 0);
+        r = addUp(r, Math.abs(g[i] ?? 0));
       }
       const c = this.center[i] ?? 0;
-      result.push(new Interval(c - r, c + r));
+      result.push(new Interval(subDown(c, r), addUp(c, r)));
     }
 
     return result;
@@ -143,37 +156,37 @@ export class Zonotope {
       n > 0 &&
       p > 0
     ) {
+      const scope = getZonotopePool(wasm).scope();
       try {
-        const matPtr = wasm.__new(n * n * 8, 0);
-        const cPtr = wasm.__new(n * 8, 0);
-        const gPtr = wasm.__new(n * p * 8, 0);
-        const outCPtr = wasm.__new(n * 8, 0);
-        const outGPtr = wasm.__new(n * p * 8, 0);
+        const matSlice = scope.allocF64(n * n);
+        const cSlice = scope.allocF64(n);
+        const gSlice = scope.allocF64(n * p);
+        const outCSlice = scope.allocF64(n);
+        const outGSlice = scope.allocF64(n * p);
 
-        const mem = wasm.memory as WebAssembly.Memory;
-        const matView = new Float64Array(mem.buffer, matPtr, n * n);
+        const matView = matSlice.view();
         for (let i = 0; i < n; i++) {
           for (let j = 0; j < n; j++) {
             matView[i * n + j] = A[i]?.[j] ?? 0;
           }
         }
 
-        const cView = new Float64Array(mem.buffer, cPtr, n);
+        const cView = cSlice.view();
         for (let i = 0; i < n; i++) cView[i] = this.center[i] ?? 0;
 
-        const gView = new Float64Array(mem.buffer, gPtr, n * p);
+        const gView = gSlice.view();
         for (let i = 0; i < n; i++) {
           for (let j = 0; j < p; j++) {
             gView[i * p + j] = this.generators[j]?.[i] ?? 0;
           }
         }
 
-        wasm.zonotope_linear_transform(n, p, matPtr, cPtr, gPtr, outCPtr, outGPtr);
+        wasm.zonotope_linear_transform(n, p, matSlice.ptr, cSlice.ptr, gSlice.ptr, outCSlice.ptr, outGSlice.ptr);
 
-        const outCView = new Float64Array(mem.buffer, outCPtr, n);
+        const outCView = outCSlice.view();
         const newCenter = Array.from(outCView);
 
-        const outGView = new Float64Array(mem.buffer, outGPtr, n * p);
+        const outGView = outGSlice.view();
         const newGenerators: number[][] = [];
         for (let j = 0; j < p; j++) {
           const col = new Array<number>(n);
@@ -186,6 +199,8 @@ export class Zonotope {
         return new Zonotope(newCenter, newGenerators);
       } catch {
         // Fallback to TS
+      } finally {
+        scope.dispose();
       }
     }
 
@@ -265,22 +280,22 @@ export class Zonotope {
       n > 0 &&
       p > 0
     ) {
+      const scope = getZonotopePool(wasm).scope();
       try {
-        const gensPtr = wasm.__new(n * p * 8, 0);
-        const outGPtr = wasm.__new(n * maxG * 8, 0);
-        const scratchPtr = wasm.__new(p * 16, 0);
+        const gensSlice = scope.allocF64(n * p);
+        const outGSlice = scope.allocF64(n * maxG);
+        const scratchSlice = scope.allocU8(p * 16);
 
-        const mem = wasm.memory as WebAssembly.Memory;
-        const gView = new Float64Array(mem.buffer, gensPtr, n * p);
+        const gView = gensSlice.view();
         for (let i = 0; i < n; i++) {
           for (let j = 0; j < p; j++) {
             gView[i * p + j] = this.generators[j]?.[i] ?? 0;
           }
         }
 
-        const finalCount = wasm.zonotope_reduce_girard(n, p, maxG, gensPtr, outGPtr, scratchPtr);
+        const finalCount = wasm.zonotope_reduce_girard(n, p, maxG, gensSlice.ptr, outGSlice.ptr, scratchSlice.ptr);
 
-        const outGView = new Float64Array(mem.buffer, outGPtr, n * finalCount);
+        const outGView = outGSlice.view();
         const newGenerators: number[][] = [];
         for (let j = 0; j < finalCount; j++) {
           const col = new Array<number>(n);
@@ -298,6 +313,8 @@ export class Zonotope {
         return new Zonotope([...this.center], newGenerators);
       } catch {
         // Fallback to TS
+      } finally {
+        scope.dispose();
       }
     }
 
@@ -425,7 +442,9 @@ export class Zonotope {
   }
 
   /**
-   * Encloses two zonotopes into a single conservative bounding zonotope.
+   * Encloses two zonotopes into a single conservative bounding zonotope (Girard/Althoff Prop. 2.2).
+   * Paired generators (i < min(p1, p2)) produce 0.5*(g1 + g2) and 0.5*(g1 - g2);
+   * unmatched generators are preserved at full scale so both Z1 and Z2 are strictly contained.
    */
   public static enclose(z1: Zonotope, z2: Zonotope): Zonotope {
     if (z1.dim !== z2.dim) {
@@ -440,11 +459,30 @@ export class Zonotope {
       deltaC[i] = 0.5 * ((z1.center[i] ?? 0) - (z2.center[i] ?? 0));
     }
 
-    const newGenerators: number[][] = [
-      ...z1.generators.map((g) => g.map((v) => 0.5 * v)),
-      ...z2.generators.map((g) => g.map((v) => 0.5 * v)),
-      deltaC,
-    ];
+    const p1 = z1.generators.length;
+    const p2 = z2.generators.length;
+    const m = Math.min(p1, p2);
+    const newGenerators: number[][] = [];
+
+    for (let j = 0; j < m; j++) {
+      const g1 = z1.generators[j]!;
+      const g2 = z2.generators[j]!;
+      const gSum = new Array<number>(n);
+      const gDiff = new Array<number>(n);
+      for (let i = 0; i < n; i++) {
+        gSum[i] = 0.5 * ((g1[i] ?? 0) + (g2[i] ?? 0));
+        gDiff[i] = 0.5 * ((g1[i] ?? 0) - (g2[i] ?? 0));
+      }
+      newGenerators.push(gSum, gDiff);
+    }
+
+    for (let j = m; j < p1; j++) {
+      newGenerators.push([...z1.generators[j]!]);
+    }
+    for (let j = m; j < p2; j++) {
+      newGenerators.push([...z2.generators[j]!]);
+    }
+    newGenerators.push(deltaC);
 
     return new Zonotope(c, newGenerators).reduce(8);
   }

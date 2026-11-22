@@ -44,6 +44,7 @@ COPY packages/react/package.json packages/react/
 COPY packages/runtime/package.json packages/runtime/
 COPY packages/sdk/package.json packages/sdk/
 COPY packages/simulate/package.json packages/simulate/
+COPY packages/solve/package.json packages/solve/
 
 # Languages manifests
 COPY languages/adams/package.json languages/adams/
@@ -109,6 +110,7 @@ COPY languages/opensim/package.json languages/opensim/
 COPY languages/optical/package.json languages/optical/
 COPY languages/oscal/package.json languages/oscal/
 COPY languages/owl2/package.json languages/owl2/
+COPY languages/sparql/package.json languages/sparql/
 COPY languages/pdb/package.json languages/pdb/
 COPY languages/phreeqc/package.json languages/phreeqc/
 COPY languages/plcopen/package.json languages/plcopen/

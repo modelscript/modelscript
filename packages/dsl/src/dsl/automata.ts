@@ -74,6 +74,8 @@ export class LRAutomaton {
     for (const term of this.grammar.terminals) {
       this.firstSets.set(term, new Set([term]));
     }
+    this.firstSets.set("EOF", new Set(["EOF"]));
+    this.firstSets.set("ERROR", new Set(["ERROR"]));
     for (const nonTerm of this.grammar.nonTerminals) {
       this.firstSets.set(nonTerm, new Set());
     }
@@ -95,8 +97,9 @@ export class LRAutomaton {
             const Y = prod.right[i]!;
             const Y_first = this.firstSets.get(Y);
             if (!Y_first) {
-              i++;
-              continue;
+              // Unknown/undefined symbol cannot derive epsilon
+              allEmpty = false;
+              break;
             }
             for (const sym of Y_first) {
               if (sym !== "") A_first.add(sym);
@@ -209,13 +212,6 @@ export class LRAutomaton {
       for (const [sym] of targetState.transitions) {
         if (!this.grammar.nonTerminals.has(sym)) {
           dr.add(sym);
-        } else {
-          const firstSet = this.firstSets.get(sym);
-          if (firstSet) {
-            for (const f of firstSet) {
-              if (f !== "") dr.add(f);
-            }
-          }
         }
       }
       drSets.set(ntKey(nt), dr);
@@ -739,20 +735,20 @@ export class GLRTable {
 
         // Find shortest path from state 0 to conflict.stateId
         const queue: { stateId: number; path: string[] }[] = [{ stateId: 0, path: [] }];
-        const visited = new Set<number>();
+        const visited = new Set<number>([0]);
         let prefixPath: string[] = [];
 
-        while (queue.length > 0) {
-          const curr = queue.shift()!;
+        for (let qHead = 0; qHead < queue.length; qHead++) {
+          const curr = queue[qHead]!;
           if (curr.stateId === group.stateId) {
             prefixPath = curr.path;
             break;
           }
-          if (visited.has(curr.stateId)) continue;
-          visited.add(curr.stateId);
 
           const s = this.automaton.states[curr.stateId]!;
           for (const [sym, nextState] of s.transitions) {
+            if (visited.has(nextState.id)) continue;
+            visited.add(nextState.id);
             queue.push({ stateId: nextState.id, path: [...curr.path, formatRule(sym)] });
           }
         }
@@ -848,61 +844,45 @@ export class GLRTable {
     }
     const list = actions.get(sym)!;
 
-    // Precedence resolution for Shift vs Reduce
-    for (let i = 0; i < list.length; i++) {
-      const exist = list[i]!;
-      if (action.prec !== undefined && exist.prec !== undefined) {
-        const actionPrec = action.prec;
-        const existPrec = exist.prec;
+    // Compare two actions under precedence/associativity:
+    // returns 1 if `a` beats `b`, -1 if `b` beats `a`, 0 if unresolved (keep both for GLR fork).
+    const compareActions = (a: Action, b: Action): number => {
+      if (a.prec === undefined || b.prec === undefined) return 0;
+      if (a.type === ActionType.REDUCE && b.type === ActionType.SHIFT) {
+        if (a.prec > b.prec) return 1;
+        if (a.prec < b.prec) return -1;
+        const assoc = a.assoc ?? b.assoc;
+        if (assoc === "left") return 1; // Left assoc -> Reduce wins
+        if (assoc === "right") return -1; // Right assoc -> Shift wins
+        return 0;
+      }
+      if (a.type === ActionType.SHIFT && b.type === ActionType.REDUCE) {
+        if (a.prec > b.prec) return 1;
+        if (a.prec < b.prec) return -1;
+        const assoc = b.assoc ?? a.assoc;
+        if (assoc === "left") return -1; // Left assoc -> Reduce wins
+        if (assoc === "right") return 1; // Right assoc -> Shift wins
+        return 0;
+      }
+      if (a.type === ActionType.REDUCE && b.type === ActionType.REDUCE) {
+        if (a.prec > b.prec) return 1;
+        if (a.prec < b.prec) return -1;
+        return 0;
+      }
+      return 0;
+    };
 
-        if (action.type === ActionType.REDUCE && exist.type === ActionType.SHIFT) {
-          if (actionPrec > existPrec) {
-            list.splice(i, 1);
-            i--;
-            continue;
-          } // Reduce wins
-          if (actionPrec < existPrec) {
-            return;
-          } // Shift wins
-          if (actionPrec === existPrec) {
-            if (action.assoc === "left") {
-              list.splice(i, 1);
-              i--;
-              continue;
-            } // Left assoc -> Reduce wins
-            if (action.assoc === "right") {
-              return;
-            } // Right assoc -> Shift wins
-          }
-        } else if (action.type === ActionType.SHIFT && exist.type === ActionType.REDUCE) {
-          if (actionPrec > existPrec) {
-            list.splice(i, 1);
-            i--;
-            continue;
-          } // Shift wins
-          if (actionPrec < existPrec) {
-            return;
-          } // Reduce wins
-          if (actionPrec === existPrec) {
-            if (exist.assoc === "left") {
-              return;
-            } // Left assoc -> Reduce wins
-            if (exist.assoc === "right") {
-              list.splice(i, 1);
-              i--;
-              continue;
-            } // Right assoc -> Shift wins
-          }
-        } else if (action.type === ActionType.REDUCE && exist.type === ActionType.REDUCE) {
-          if (actionPrec > existPrec) {
-            list.splice(i, 1);
-            i--;
-            continue;
-          }
-          if (actionPrec < existPrec) {
-            return;
-          }
-        }
+    // Pass 1: check if `action` loses to any surviving action (order-independent)
+    for (let i = 0; i < list.length; i++) {
+      if (compareActions(action, list[i]!) < 0) {
+        return;
+      }
+    }
+
+    // Pass 2: remove any existing actions beaten by `action`
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (compareActions(action, list[i]!) > 0) {
+        list.splice(i, 1);
       }
     }
 
@@ -1043,17 +1023,29 @@ function parseRegex(pattern: string, tokenName: string = "unknown", flags: strin
     if (pos < pattern.length) {
       if (pattern[pos] === "*") {
         pos++;
-        if (pos < pattern.length && pattern[pos] === "?") pos++;
+        if (pos < pattern.length && pattern[pos] === "?") {
+          throw new SyntaxError(
+            `Unsupported lazy quantifier '*?' in regex /${pattern}/ for token '${tokenName}'. DFA lexers use maximal munch; rewrite using negated character classes (e.g. /\\/\\*([^*]|\\*+[^*\\/])*\\*+\\//).`,
+          );
+        }
         return { type: "STAR", child };
       }
       if (pattern[pos] === "+") {
         pos++;
-        if (pos < pattern.length && pattern[pos] === "?") pos++;
+        if (pos < pattern.length && pattern[pos] === "?") {
+          throw new SyntaxError(
+            `Unsupported lazy quantifier '+?' in regex /${pattern}/ for token '${tokenName}'. DFA lexers use maximal munch; rewrite using negated character classes.`,
+          );
+        }
         return { type: "PLUS", child };
       }
       if (pattern[pos] === "?") {
         pos++;
-        if (pos < pattern.length && pattern[pos] === "?") pos++;
+        if (pos < pattern.length && pattern[pos] === "?") {
+          throw new SyntaxError(
+            `Unsupported lazy quantifier '??' in regex /${pattern}/ for token '${tokenName}'. DFA lexers use maximal munch.`,
+          );
+        }
         return { type: "OPT", child };
       }
       if (pattern[pos] === "{") {
@@ -1065,7 +1057,11 @@ function parseRegex(pattern: string, tokenName: string = "unknown", flags: strin
             const min = parseInt(parts[0]!, 10);
             const max = parts.length > 1 ? (parts[1]!.trim() === "" ? Infinity : parseInt(parts[1]!, 10)) : min;
             pos = endPos + 1;
-            if (pos < pattern.length && pattern[pos] === "?") pos++;
+            if (pos < pattern.length && pattern[pos] === "?") {
+              throw new SyntaxError(
+                `Unsupported lazy quantifier '{${rangeStr}}?' in regex /${pattern}/ for token '${tokenName}'. DFA lexers use maximal munch.`,
+              );
+            }
 
             let result: AST | null = null;
             // Add 'min' exact copies
@@ -1095,7 +1091,15 @@ function parseRegex(pattern: string, tokenName: string = "unknown", flags: strin
   function parseAtom(): AST {
     const ch = pattern[pos++];
     if (ch === "(") {
-      if (pattern[pos] === "?" && pattern[pos + 1] === ":") pos += 2;
+      if (pattern[pos] === "?") {
+        if (pattern[pos + 1] === ":") {
+          pos += 2;
+        } else {
+          throw new SyntaxError(
+            `Unsupported group construct '(?${pattern[pos + 1] ?? ""}' in regex /${pattern}/ for token '${tokenName}'. DFA lexers only support capturing '(...)' and non-capturing '(?:...)' groups.`,
+          );
+        }
+      }
       const inner = parseAlt();
       if (pattern[pos++] !== ")") throw new SyntaxError(`Unclosed '(' in regex /${pattern}/ for token '${tokenName}'`);
       return inner;
@@ -1166,9 +1170,7 @@ function parseRegex(pattern: string, tokenName: string = "unknown", flags: strin
               isClass: true,
               ranges: [
                 [32, 32],
-                [9, 9],
-                [10, 10],
-                [13, 13],
+                [9, 13],
               ],
             };
           } else if (esc === "S") {
@@ -1176,9 +1178,7 @@ function parseRegex(pattern: string, tokenName: string = "unknown", flags: strin
               isClass: true,
               ranges: invertRanges([
                 [32, 32],
-                [9, 9],
-                [10, 10],
-                [13, 13],
+                [9, 13],
               ]),
             };
           } else if (esc === "0") return { isClass: false, char: 0 };
@@ -1278,9 +1278,7 @@ function parseRegex(pattern: string, tokenName: string = "unknown", flags: strin
           type: "CLASS",
           ranges: [
             [32, 32],
-            [9, 9],
-            [10, 10],
-            [13, 13],
+            [9, 13],
           ],
           invert: false,
         };
@@ -1289,12 +1287,15 @@ function parseRegex(pattern: string, tokenName: string = "unknown", flags: strin
           type: "CLASS",
           ranges: invertRanges([
             [32, 32],
-            [9, 9],
-            [10, 10],
-            [13, 13],
+            [9, 13],
           ]),
           invert: false,
         };
+      if (esc >= "1" && esc <= "9") {
+        throw new SyntaxError(
+          `Unsupported backreference '\\${esc}' in regex /${pattern}/ for token '${tokenName}'. DFA lexers do not support backreferences.`,
+        );
+      }
       if (esc === "0") return { type: "CHAR", char: 0 };
       if (esc === "n") return { type: "CHAR", char: 10 };
       if (esc === "r") return { type: "CHAR", char: 13 };
@@ -1480,17 +1481,34 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string;
   const initialClosure = epsilonClosure([nfaStart]).sort((a, b) => a.id - b.id);
   const initialKey = initialClosure.map((s) => s.id).join(",");
 
-  // Determine accepts rules (all defined regexes that match)
+  // Pre-index regex declaration order for O(|closure|) accepting-token collection
+  const regexOrder = new Map<string, number>();
+  for (let i = 0; i < regexes.length; i++) {
+    const tName = regexes[i]!.tokenName;
+    if (!regexOrder.has(tName)) regexOrder.set(tName, i);
+  }
+
+  // Determine accepts rules (all defined regexes that match, in declaration order)
   function getAccepts(closure: NFAState[]): string[] | null {
-    const accepts: string[] = [];
-    for (const r of regexes) {
-      for (const s of closure) {
-        if (s.accepts === r.tokenName && !accepts.includes(r.tokenName)) {
-          accepts.push(r.tokenName);
+    let first: string | undefined;
+    let seen: Set<string> | undefined;
+    for (let i = 0; i < closure.length; i++) {
+      const acc = closure[i]!.accepts;
+      if (acc === undefined) continue;
+      if (first === undefined) {
+        first = acc;
+      } else if (acc !== first) {
+        if (!seen) {
+          seen = new Set<string>([first]);
         }
+        seen.add(acc);
       }
     }
-    return accepts.length > 0 ? accepts : null;
+    if (first === undefined) return null;
+    if (!seen) return [first];
+    const accepts = Array.from(seen);
+    accepts.sort((a, b) => (regexOrder.get(a) ?? 0) - (regexOrder.get(b) ?? 0));
+    return accepts;
   }
 
   dfaStates.push({ id: 0, accepts: getAccepts(initialClosure), transitions: new Map() });
@@ -1499,8 +1517,8 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string;
   const queue = [{ id: 0, closure: initialClosure }];
   let nextDfaId = 1;
 
-  while (queue.length > 0) {
-    const current = queue.shift()!;
+  for (let qHead = 0; qHead < queue.length; qHead++) {
+    const current = queue[qHead]!;
     const activeChars = new Set<number>();
     for (const s of current.closure) {
       for (const ch of s.transitions.keys()) {
@@ -1543,8 +1561,7 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string;
     P.push(pGroup);
   }
 
-  const W: Set<number>[] = [...P];
-  const inW = new Set<Set<number>>(W);
+  const W = new Set<Set<number>>(P);
   const invTrans = new Map<number, Map<number, number[]>>();
   for (const s of dfaStates) {
     for (const [ch, to] of s.transitions.entries()) {
@@ -1562,9 +1579,9 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string;
     }
   }
 
-  while (W.length > 0) {
-    const A = W.pop()!;
-    inW.delete(A);
+  while (W.size > 0) {
+    const A = W.values().next().value!;
+    W.delete(A);
     for (const byTarget of invTrans.values()) {
       const X = new Set<number>();
       for (const target of A) {
@@ -1588,17 +1605,12 @@ export function compileRegexToDFA(regexes: { pattern: string; tokenName: string;
 
         if (intersection.size > 0 && difference.size > 0) {
           newP.push(intersection, difference);
-          if (inW.has(Y)) {
-            inW.delete(Y);
-            const idx = W.indexOf(Y);
-            if (idx !== -1) W.splice(idx, 1);
-            W.push(intersection, difference);
-            inW.add(intersection);
-            inW.add(difference);
+          if (W.delete(Y)) {
+            W.add(intersection);
+            W.add(difference);
           } else {
             const smaller = intersection.size <= difference.size ? intersection : difference;
-            W.push(smaller);
-            inW.add(smaller);
+            W.add(smaller);
           }
         } else {
           newP.push(Y);

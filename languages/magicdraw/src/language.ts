@@ -9,6 +9,7 @@
  */
 
 import { language, xmlRules } from "@modelscript/dsl";
+import { registerBuiltInMagicDrawLibrarySync } from "./catalog/library-package-adapter.js";
 import { magicDrawDiagramConfig } from "./diagram.js";
 import { magicDrawIndexing } from "./indexing.js";
 import { magicDrawPolyglotConfig } from "./tgg/index.js";
@@ -110,3 +111,6 @@ export const magicDrawLanguage = language({
 });
 
 export default magicDrawLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInMagicDrawLibrarySync();

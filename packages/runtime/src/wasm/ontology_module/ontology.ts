@@ -81,6 +81,8 @@ export const PATH_OP_ALTERNATION: u32 = 7;   // | (prop1 | prop2)
 export const AXIOM_STRIDE: u32 = 6; // 24 bytes per axiom
 /** Wildcard sentinel value for triple pattern queries (`0xffffffff`). */
 export const WILDCARD_PATTERN: u32 = 0xffffffff;
+/** Flag bit marking an `AXIOM_OBJECT_SOME_VALUES_FROM` record as a left-hand-side existential (`∃R.E ⊑ F`). */
+export const AXIOM_FLAG_LHS_EXISTENTIAL: u32 = 2;
 
 const AXIOM_ACCESSOR_SLOTS: u32 = 16;
 const AXIOM_ACCESSOR_MASK: u32 = AXIOM_ACCESSOR_SLOTS - 1;
@@ -287,6 +289,15 @@ export class OntologyStore {
   bfsQueue: ChunkedUint32Array;
   /** Scratch buffer of distinct class hashes collected during interval indexing. */
   distinctClasses: ChunkedUint32Array;
+  /** Reusable scratch buffers to avoid linear-memory leaks on repeated queries/retractions. */
+  scratchA: ChunkedUint32Array;
+  scratchB: ChunkedUint32Array;
+  scratchC: ChunkedUint32Array;
+  scratchD: ChunkedUint32Array;
+  /** Reusable O(1) visited set for BFS / interval indexing to avoid O(V^2) linear scans. */
+  visitedMap: UnmanagedMap64;
+  /** Optional duplicate-triple suppression flag (default false for raw bulk ingestion parity). */
+  dedupEnabled: bool;
 
   // HDT-Style Compact Front-Coded String / IRI Dictionary
   /** Front-coded dictionary for compressed in-WASM IRI string storage. */
@@ -334,6 +345,11 @@ export class OntologyStore {
 
     this.bfsQueue = createChunkedUint32Array(256);
     this.distinctClasses = createChunkedUint32Array(256);
+    this.scratchA = createChunkedUint32Array(64);
+    this.scratchB = createChunkedUint32Array(64);
+    this.scratchC = createChunkedUint32Array(64);
+    this.scratchD = createChunkedUint32Array(64);
+    this.visitedMap = changetype<UnmanagedMap64>(createMap64());
 
     let dictPtr = atomicChunkAlloc(offsetof<FrontCodedDictionary>());
     this.iriDict = changetype<FrontCodedDictionary>(dictPtr);
@@ -346,6 +362,24 @@ export class OntologyStore {
     this.tempJoinBitmap = createRoaringBitmap();
     this.tempJoinBitmap2 = createRoaringBitmap();
     this.tempAxiomIdBuf = createChunkedUint32Array(256);
+    this.dedupEnabled = false;
+  }
+
+  /** Returns the existing active axiomId matching `(axiomType, s, p, o)`, or `0` if none exists. */
+  findExactActiveAxiom(axiomType: u32, subjectHash: u32, predicateHash: u32, objectHash: u32): u32 {
+    if (subjectHash != 0) {
+      let curr = this.spoHead.get(subjectHash as u64) as u32;
+      while (curr != 0) {
+        if (this.axiomActive.get(curr) != 0) {
+          let ax = AxiomAccessor.at(this.axiomTable, curr);
+          if (ax.axiomType == (axiomType as u16) && ax.predicate == predicateHash && ax.object == objectHash) {
+            return curr;
+          }
+        }
+        curr = this.nextSpo.get(curr);
+      }
+    }
+    return 0;
   }
 
   /** Retrieves or lazily creates a `RoaringBitmap` in `map` for `key`. */
@@ -392,6 +426,12 @@ export class OntologyStore {
    * Updates SPO, POS, and OSP index chains for fast relational queries.
    */
   addAxiom(axiomType: u32, sourceLangId: u32, subjectHash: u32, predicateHash: u32, objectHash: u32, flags: u32 = 0, extra: u32 = 0): u32 {
+    if (this.dedupEnabled && subjectHash != 0) {
+      let existing = this.findExactActiveAxiom(axiomType, subjectHash, predicateHash, objectHash);
+      if (existing != 0) {
+        return existing;
+      }
+    }
     let id = this.axiomCount++;
     let ax = AxiomAccessor.at(this.axiomTable, id);
     ax.setTypeAndLang(axiomType, sourceLangId);
@@ -469,37 +509,54 @@ export class OntologyStore {
       if (changetype<usize>(bm) != 0) bm.remove(axiomId);
     }
 
-    // Phase 1 (Over-deletion): If axiom was asserted, find inferred axioms that depended on it
-    let overDeleted = createChunkedUint32Array(16);
+    // Phase 1 (Over-deletion): Transitive worklist over affected entities so multi-hop
+    // inferred derivations (e.g., A ⊑ B ⊑ C ⊑ D when B ⊑ C is retracted) are properly
+    // over-deleted before Phase 2 rederivation.
+    let affectedEntities = this.scratchA;
+    affectedEntities.clear();
+    if (s != 0) affectedEntities.push(s);
+    if (o != 0 && o != s) affectedEntities.push(o);
 
-    for (let i: u32 = 1; i < this.axiomCount; i++) {
-      if (this.axiomActive.get(i) == 0) continue;
-      let ax = AxiomAccessor.at(this.axiomTable, i);
-      if (ax.flags == 1) { // Inferred axiom
-        let infS = ax.subject;
-        let infO = ax.object;
+    let entHead: u32 = 0;
+    while (entHead < affectedEntities.length) {
+      let ent = affectedEntities.get(entHead++);
+      for (let i: u32 = 1; i < this.axiomCount; i++) {
+        if (this.axiomActive.get(i) == 0) continue;
+        let ax = AxiomAccessor.at(this.axiomTable, i);
+        if (ax.flags == 1) { // Inferred axiom
+          let infS = ax.subject;
+          let infO = ax.object;
 
-        // If inferred relation directly references retracted endpoints, mark for over-deletion
-        if (infS == s || infS == o || infO == s || infO == o) {
-          let count = this.derivationCount.get(i);
-          if (count > 1) {
-            this.derivationCount.set(i, count - 1);
-          } else {
-            this.derivationCount.set(i, 0);
-            this.axiomActive.set(i, 0);
-            overDeleted.push(i);
+          if (infS == ent || infO == ent) {
+            let count = this.derivationCount.get(i);
+            if (count > 1) {
+              this.derivationCount.set(i, count - 1);
+            } else {
+              this.derivationCount.set(i, 0);
+              this.axiomActive.set(i, 0);
 
-            if (infS != 0) {
-              let bm = this.getRoaring(this.spoBitmaps, infS as u64);
-              if (changetype<usize>(bm) != 0) bm.remove(i);
-            }
-            if (ax.predicate != 0) {
-              let bm = this.getRoaring(this.posBitmaps, ax.predicate as u64);
-              if (changetype<usize>(bm) != 0) bm.remove(i);
-            }
-            if (infO != 0) {
-              let bm = this.getRoaring(this.ospBitmaps, infO as u64);
-              if (changetype<usize>(bm) != 0) bm.remove(i);
+              if (infS != 0) {
+                let bm = this.getRoaring(this.spoBitmaps, infS as u64);
+                if (changetype<usize>(bm) != 0) bm.remove(i);
+                let seenS = false;
+                for (let k: u32 = 0; k < affectedEntities.length; k++) {
+                  if (affectedEntities.get(k) == infS) { seenS = true; break; }
+                }
+                if (!seenS) affectedEntities.push(infS);
+              }
+              if (ax.predicate != 0) {
+                let bm = this.getRoaring(this.posBitmaps, ax.predicate as u64);
+                if (changetype<usize>(bm) != 0) bm.remove(i);
+              }
+              if (infO != 0) {
+                let bm = this.getRoaring(this.ospBitmaps, infO as u64);
+                if (changetype<usize>(bm) != 0) bm.remove(i);
+                let seenO = false;
+                for (let k: u32 = 0; k < affectedEntities.length; k++) {
+                  if (affectedEntities.get(k) == infO) { seenO = true; break; }
+                }
+                if (!seenO) affectedEntities.push(infO);
+              }
             }
           }
         }
@@ -653,8 +710,10 @@ export class OntologyStore {
 
   /** Copies asserted and inferred `ClassAssertion` types between two unified individuals. */
   propagateEquivalentIndividualTypes(ind1: u32, ind2: u32): void {
-    let types1 = createChunkedUint32Array(8);
-    let types2 = createChunkedUint32Array(8);
+    let types1 = this.scratchB;
+    let types2 = this.scratchC;
+    types1.clear();
+    types2.clear();
 
     for (let i: u32 = 1; i < this.axiomCount; i++) {
       if (this.axiomActive.get(i) == 0) continue;
@@ -855,11 +914,14 @@ export class OntologyStore {
       }
     }
 
-    // Exact fallback: Unmanaged ChunkedUint32Array for zero-GC BFS traversal without arbitrary depth limit
+    // Exact fallback: Unmanaged ChunkedUint32Array + O(1) visitedMap for zero-GC BFS traversal
     let queue = this.bfsQueue;
     queue.clear();
+    let visited = this.visitedMap;
+    visited.clear();
     let head: u32 = 0;
     queue.push(subClassHash);
+    visited.set(subClassHash as u64, 1);
 
     while (head < queue.length) {
       let current = queue.get(head++);
@@ -876,17 +938,9 @@ export class OntologyStore {
           if (axiomType == AXIOM_SUBCLASS_OF || axiomType == AXIOM_EQUIV_CLASS) {
             let targetHash = this.axiomTable.get(baseIdx + 3); // objectHash
             if (targetHash == superClassHash) return true;
-            if (targetHash != 0) {
-              let visited = false;
-              for (let k: u32 = 0; k < queue.length; k++) {
-                if (queue.get(k) == targetHash) {
-                  visited = true;
-                  break;
-                }
-              }
-              if (!visited) {
-                queue.push(targetHash);
-              }
+            if (targetHash != 0 && !visited.has(targetHash as u64)) {
+              visited.set(targetHash as u64, 1);
+              queue.push(targetHash);
             }
           }
         }
@@ -904,17 +958,9 @@ export class OntologyStore {
           if (axiomType == AXIOM_EQUIV_CLASS) {
             let targetHash = this.axiomTable.get(baseIdx + 1); // subjectHash
             if (targetHash == superClassHash) return true;
-            if (targetHash != 0) {
-              let visited = false;
-              for (let k: u32 = 0; k < queue.length; k++) {
-                if (queue.get(k) == targetHash) {
-                  visited = true;
-                  break;
-                }
-              }
-              if (!visited) {
-                queue.push(targetHash);
-              }
+            if (targetHash != 0 && !visited.has(targetHash as u64)) {
+              visited.set(targetHash as u64, 1);
+              queue.push(targetHash);
             }
           }
         }
@@ -934,7 +980,8 @@ export class OntologyStore {
     if (class1Hash == class2Hash) return false;
 
     // Collect all superclasses & equivalents of class1
-    let ancestors1 = createChunkedUint32Array(32);
+    let ancestors1 = this.scratchA;
+    ancestors1.clear();
     let head: u32 = 0;
     ancestors1.push(class1Hash);
 
@@ -944,23 +991,25 @@ export class OntologyStore {
       // 1. Check outgoing DisjointClasses via SPO
       let axiomId = this.spoHead.get(current as u64) as u32;
       while (axiomId != 0) {
-        let baseIdx = axiomId * AXIOM_STRIDE;
-        let typeAndLang = this.axiomTable.get(baseIdx + 0);
-        let axiomType = (typeAndLang & 0xffff) as u16;
+        if (this.axiomActive.get(axiomId) != 0) {
+          let baseIdx = axiomId * AXIOM_STRIDE;
+          let typeAndLang = this.axiomTable.get(baseIdx + 0);
+          let axiomType = (typeAndLang & 0xffff) as u16;
 
-        if (axiomType == AXIOM_DISJOINT_CLASSES) {
-          let disjointPartner = this.axiomTable.get(baseIdx + 3);
-          if (disjointPartner == class2Hash || this.isSubClassOf(class2Hash, disjointPartner)) {
-            return true;
-          }
-        } else if (axiomType == AXIOM_SUBCLASS_OF || axiomType == AXIOM_EQUIV_CLASS) {
-          let targetHash = this.axiomTable.get(baseIdx + 3);
-          if (targetHash != 0) {
-            let visited = false;
-            for (let k: u32 = 0; k < ancestors1.length; k++) {
-              if (ancestors1.get(k) == targetHash) { visited = true; break; }
+          if (axiomType == AXIOM_DISJOINT_CLASSES) {
+            let disjointPartner = this.axiomTable.get(baseIdx + 3);
+            if (disjointPartner == class2Hash || this.isSubClassOf(class2Hash, disjointPartner)) {
+              return true;
             }
-            if (!visited) ancestors1.push(targetHash);
+          } else if (axiomType == AXIOM_SUBCLASS_OF || axiomType == AXIOM_EQUIV_CLASS) {
+            let targetHash = this.axiomTable.get(baseIdx + 3);
+            if (targetHash != 0) {
+              let visited = false;
+              for (let k: u32 = 0; k < ancestors1.length; k++) {
+                if (ancestors1.get(k) == targetHash) { visited = true; break; }
+              }
+              if (!visited) ancestors1.push(targetHash);
+            }
           }
         }
         axiomId = this.nextSpo.get(axiomId);
@@ -969,23 +1018,25 @@ export class OntologyStore {
       // 2. Check incoming DisjointClasses and EquivalentClasses via OSP
       let ospAxiomId = this.ospHead.get(current as u64) as u32;
       while (ospAxiomId != 0) {
-        let baseIdx = ospAxiomId * AXIOM_STRIDE;
-        let typeAndLang = this.axiomTable.get(baseIdx + 0);
-        let axiomType = (typeAndLang & 0xffff) as u16;
+        if (this.axiomActive.get(ospAxiomId) != 0) {
+          let baseIdx = ospAxiomId * AXIOM_STRIDE;
+          let typeAndLang = this.axiomTable.get(baseIdx + 0);
+          let axiomType = (typeAndLang & 0xffff) as u16;
 
-        if (axiomType == AXIOM_DISJOINT_CLASSES) {
-          let disjointPartner = this.axiomTable.get(baseIdx + 1);
-          if (disjointPartner == class2Hash || this.isSubClassOf(class2Hash, disjointPartner)) {
-            return true;
-          }
-        } else if (axiomType == AXIOM_EQUIV_CLASS) {
-          let targetHash = this.axiomTable.get(baseIdx + 1);
-          if (targetHash != 0) {
-            let visited = false;
-            for (let k: u32 = 0; k < ancestors1.length; k++) {
-              if (ancestors1.get(k) == targetHash) { visited = true; break; }
+          if (axiomType == AXIOM_DISJOINT_CLASSES) {
+            let disjointPartner = this.axiomTable.get(baseIdx + 1);
+            if (disjointPartner == class2Hash || this.isSubClassOf(class2Hash, disjointPartner)) {
+              return true;
             }
-            if (!visited) ancestors1.push(targetHash);
+          } else if (axiomType == AXIOM_EQUIV_CLASS) {
+            let targetHash = this.axiomTable.get(baseIdx + 1);
+            if (targetHash != 0) {
+              let visited = false;
+              for (let k: u32 = 0; k < ancestors1.length; k++) {
+                if (ancestors1.get(k) == targetHash) { visited = true; break; }
+              }
+              if (!visited) ancestors1.push(targetHash);
+            }
           }
         }
         ospAxiomId = this.nextOsp.get(ospAxiomId);
@@ -1004,14 +1055,16 @@ export class OntologyStore {
 
     let axiomId = this.spoHead.get(individualHash as u64) as u32;
     while (axiomId != 0) {
-      let baseIdx = axiomId * AXIOM_STRIDE;
-      let typeAndLang = this.axiomTable.get(baseIdx + 0);
-      let axiomType = (typeAndLang & 0xffff) as u16;
+      if (this.axiomActive.get(axiomId) != 0) {
+        let baseIdx = axiomId * AXIOM_STRIDE;
+        let typeAndLang = this.axiomTable.get(baseIdx + 0);
+        let axiomType = (typeAndLang & 0xffff) as u16;
 
-      if (axiomType == AXIOM_CLASS_ASSERT) {
-        let directTypeHash = this.axiomTable.get(baseIdx + 3); // objectHash is class
-        if (directTypeHash == classHash || this.isSubClassOf(directTypeHash, classHash)) {
-          return true;
+        if (axiomType == AXIOM_CLASS_ASSERT) {
+          let directTypeHash = this.axiomTable.get(baseIdx + 3); // objectHash is class
+          if (directTypeHash == classHash || this.isSubClassOf(directTypeHash, classHash)) {
+            return true;
+          }
         }
       }
       axiomId = this.nextSpo.get(axiomId);
@@ -1027,7 +1080,8 @@ export class OntologyStore {
   getTransitiveClosure(propertyHash: u32, sourceHash: u32, outBuffer: ChunkedUint32Array): u32 {
     if (sourceHash == 0) return 0;
 
-    let queue = createChunkedUint32Array(32);
+    let queue = this.scratchA;
+    queue.clear();
     let head: u32 = 0;
     queue.push(sourceHash);
 
@@ -1038,25 +1092,27 @@ export class OntologyStore {
 
       let axiomId = this.spoHead.get(current as u64) as u32;
       while (axiomId != 0) {
-        let baseIdx = axiomId * AXIOM_STRIDE;
-        let typeAndLang = this.axiomTable.get(baseIdx + 0);
-        let axiomType = (typeAndLang & 0xffff) as u16;
-        let p = this.axiomTable.get(baseIdx + 2);
+        if (this.axiomActive.get(axiomId) != 0) {
+          let baseIdx = axiomId * AXIOM_STRIDE;
+          let typeAndLang = this.axiomTable.get(baseIdx + 0);
+          let axiomType = (typeAndLang & 0xffff) as u16;
+          let p = this.axiomTable.get(baseIdx + 2);
 
-        if (axiomType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
-          let target = this.axiomTable.get(baseIdx + 3);
-          if (target != 0) {
-            let visited = false;
-            for (let k: u32 = 0; k < queue.length; k++) {
-              if (queue.get(k) == target) {
-                visited = true;
-                break;
+          if (axiomType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
+            let target = this.axiomTable.get(baseIdx + 3);
+            if (target != 0) {
+              let visited = false;
+              for (let k: u32 = 0; k < queue.length; k++) {
+                if (queue.get(k) == target) {
+                  visited = true;
+                  break;
+                }
               }
-            }
-            if (!visited) {
-              queue.push(target);
-              outBuffer.push(target);
-              matchCount++;
+              if (!visited) {
+                queue.push(target);
+                outBuffer.push(target);
+                matchCount++;
+              }
             }
           }
         }
@@ -1076,9 +1132,12 @@ export class OntologyStore {
     if (subClassHash == 0 || superClassHash == 0) return 0;
     if (subClassHash == superClassHash) return 0;
 
-    let queue = createChunkedUint32Array(64);
-    let parentAxiom = createChunkedUint32Array(64);
-    let parentNode = createChunkedUint32Array(64);
+    let queue = this.scratchA;
+    queue.clear();
+    let parentAxiom = this.scratchB;
+    parentAxiom.clear();
+    let parentNode = this.scratchC;
+    parentNode.clear();
     let head: u32 = 0;
 
     queue.push(subClassHash);
@@ -1098,27 +1157,29 @@ export class OntologyStore {
       // 1. Traverse outgoing SubClassOf and EquivalentClasses via SPO
       let axiomId = this.spoHead.get(current as u64) as u32;
       while (axiomId != 0) {
-        let baseIdx = axiomId * AXIOM_STRIDE;
-        let typeAndLang = this.axiomTable.get(baseIdx + 0);
-        let axiomType = (typeAndLang & 0xffff) as u16;
+        if (this.axiomActive.get(axiomId) != 0) {
+          let baseIdx = axiomId * AXIOM_STRIDE;
+          let typeAndLang = this.axiomTable.get(baseIdx + 0);
+          let axiomType = (typeAndLang & 0xffff) as u16;
 
-        if (axiomType == AXIOM_SUBCLASS_OF || axiomType == AXIOM_EQUIV_CLASS) {
-          let targetHash = this.axiomTable.get(baseIdx + 3); // objectHash
-          if (targetHash != 0) {
-            let visited = false;
-            for (let k: u32 = 0; k < queue.length; k++) {
-              if (queue.get(k) == targetHash) {
-                visited = true;
-                break;
+          if (axiomType == AXIOM_SUBCLASS_OF || axiomType == AXIOM_EQUIV_CLASS) {
+            let targetHash = this.axiomTable.get(baseIdx + 3); // objectHash
+            if (targetHash != 0) {
+              let visited = false;
+              for (let k: u32 = 0; k < queue.length; k++) {
+                if (queue.get(k) == targetHash) {
+                  visited = true;
+                  break;
+                }
               }
-            }
-            if (!visited) {
-              queue.push(targetHash);
-              parentAxiom.push(axiomId);
-              parentNode.push(currentIdx);
-              if (targetHash == superClassHash) {
-                targetQueueIdx = (queue.length - 1) as i32;
-                break;
+              if (!visited) {
+                queue.push(targetHash);
+                parentAxiom.push(axiomId);
+                parentNode.push(currentIdx);
+                if (targetHash == superClassHash) {
+                  targetQueueIdx = (queue.length - 1) as i32;
+                  break;
+                }
               }
             }
           }
@@ -1130,27 +1191,29 @@ export class OntologyStore {
       // 2. Traverse incoming EquivalentClasses via OSP
       let ospAxiomId = this.ospHead.get(current as u64) as u32;
       while (ospAxiomId != 0) {
-        let baseIdx = ospAxiomId * AXIOM_STRIDE;
-        let typeAndLang = this.axiomTable.get(baseIdx + 0);
-        let axiomType = (typeAndLang & 0xffff) as u16;
+        if (this.axiomActive.get(ospAxiomId) != 0) {
+          let baseIdx = ospAxiomId * AXIOM_STRIDE;
+          let typeAndLang = this.axiomTable.get(baseIdx + 0);
+          let axiomType = (typeAndLang & 0xffff) as u16;
 
-        if (axiomType == AXIOM_EQUIV_CLASS) {
-          let targetHash = this.axiomTable.get(baseIdx + 1); // subjectHash
-          if (targetHash != 0) {
-            let visited = false;
-            for (let k: u32 = 0; k < queue.length; k++) {
-              if (queue.get(k) == targetHash) {
-                visited = true;
-                break;
+          if (axiomType == AXIOM_EQUIV_CLASS) {
+            let targetHash = this.axiomTable.get(baseIdx + 1); // subjectHash
+            if (targetHash != 0) {
+              let visited = false;
+              for (let k: u32 = 0; k < queue.length; k++) {
+                if (queue.get(k) == targetHash) {
+                  visited = true;
+                  break;
+                }
               }
-            }
-            if (!visited) {
-              queue.push(targetHash);
-              parentAxiom.push(ospAxiomId);
-              parentNode.push(currentIdx);
-              if (targetHash == superClassHash) {
-                targetQueueIdx = (queue.length - 1) as i32;
-                break;
+              if (!visited) {
+                queue.push(targetHash);
+                parentAxiom.push(ospAxiomId);
+                parentNode.push(currentIdx);
+                if (targetHash == superClassHash) {
+                  targetQueueIdx = (queue.length - 1) as i32;
+                  break;
+                }
               }
             }
           }
@@ -1163,7 +1226,8 @@ export class OntologyStore {
     if (targetQueueIdx < 0) return 0;
 
     // Backtrack path
-    let path = createChunkedUint32Array(16);
+    let path = this.scratchD;
+    path.clear();
     let curr = targetQueueIdx;
     while (curr > 0) {
       let ax = parentAxiom.get(curr);
@@ -1457,26 +1521,29 @@ export class OntologyStore {
   classifyIndividual(individualHash: u32, outBuffer: ChunkedUint32Array): u32 {
     if (individualHash == 0) return 0;
 
-    let allTypes = createChunkedUint32Array(32);
+    let allTypes = this.scratchA;
+    allTypes.clear();
 
     // 1. Find all asserted types via SPO
     let axiomId = this.spoHead.get(individualHash as u64) as u32;
     while (axiomId != 0) {
-      let baseIdx = axiomId * AXIOM_STRIDE;
-      let typeAndLang = this.axiomTable.get(baseIdx + 0);
-      let axiomType = (typeAndLang & 0xffff) as u16;
+      if (this.axiomActive.get(axiomId) != 0) {
+        let baseIdx = axiomId * AXIOM_STRIDE;
+        let typeAndLang = this.axiomTable.get(baseIdx + 0);
+        let axiomType = (typeAndLang & 0xffff) as u16;
 
-      if (axiomType == AXIOM_CLASS_ASSERT) {
-        let typeHash = this.axiomTable.get(baseIdx + 3);
-        if (typeHash != 0) {
-          let found = false;
-          for (let k: u32 = 0; k < allTypes.length; k++) {
-            if (allTypes.get(k) == typeHash) {
-              found = true;
-              break;
+        if (axiomType == AXIOM_CLASS_ASSERT) {
+          let typeHash = this.axiomTable.get(baseIdx + 3);
+          if (typeHash != 0) {
+            let found = false;
+            for (let k: u32 = 0; k < allTypes.length; k++) {
+              if (allTypes.get(k) == typeHash) {
+                found = true;
+                break;
+              }
             }
+            if (!found) allTypes.push(typeHash);
           }
-          if (!found) allTypes.push(typeHash);
         }
       }
       axiomId = this.nextSpo.get(axiomId);
@@ -1488,20 +1555,22 @@ export class OntologyStore {
       let curr = allTypes.get(head++);
       let axId = this.spoHead.get(curr as u64) as u32;
       while (axId != 0) {
-        let bIdx = axId * AXIOM_STRIDE;
-        let tLang = this.axiomTable.get(bIdx + 0);
-        let aType = (tLang & 0xffff) as u16;
-        if (aType == AXIOM_SUBCLASS_OF || aType == AXIOM_EQUIV_CLASS) {
-          let sup = this.axiomTable.get(bIdx + 3);
-          if (sup != 0) {
-            let exists = false;
-            for (let k: u32 = 0; k < allTypes.length; k++) {
-              if (allTypes.get(k) == sup) {
-                exists = true;
-                break;
+        if (this.axiomActive.get(axId) != 0) {
+          let bIdx = axId * AXIOM_STRIDE;
+          let tLang = this.axiomTable.get(bIdx + 0);
+          let aType = (tLang & 0xffff) as u16;
+          if (aType == AXIOM_SUBCLASS_OF || aType == AXIOM_EQUIV_CLASS) {
+            let sup = this.axiomTable.get(bIdx + 3);
+            if (sup != 0) {
+              let exists = false;
+              for (let k: u32 = 0; k < allTypes.length; k++) {
+                if (allTypes.get(k) == sup) {
+                  exists = true;
+                  break;
+                }
               }
+              if (!exists) allTypes.push(sup);
             }
-            if (!exists) allTypes.push(sup);
           }
         }
         axId = this.nextSpo.get(axId);
@@ -1509,7 +1578,8 @@ export class OntologyStore {
     }
 
     // 3. Filter direct types (types that are not superclasses of any other type in allTypes)
-    let directTypes = createChunkedUint32Array(16);
+    let directTypes = this.scratchB;
+    directTypes.clear();
     for (let i: u32 = 0; i < allTypes.length; i++) {
       let candidate = allTypes.get(i);
       let isStrictSuper = false;
@@ -1545,41 +1615,46 @@ export class OntologyStore {
   getTransitiveClosureWithPath(propertyHash: u32, sourceHash: u32, outBuffer: ChunkedUint32Array): u32 {
     if (sourceHash == 0) return 0;
 
-    let queue = createChunkedUint32Array(32);
+    let queue = this.scratchA;
+    queue.clear();
     let head: u32 = 0;
     queue.push(sourceHash);
 
-    let reachable = createChunkedUint32Array(32);
-    let pathEdges = createChunkedUint32Array(64); // pairs: subject, object
+    let reachable = this.scratchB;
+    reachable.clear();
+    let pathEdges = this.scratchC; // pairs: subject, object
+    pathEdges.clear();
 
     while (head < queue.length) {
       let current = queue.get(head++);
 
       let axiomId = this.spoHead.get(current as u64) as u32;
       while (axiomId != 0) {
-        let baseIdx = axiomId * AXIOM_STRIDE;
-        let typeAndLang = this.axiomTable.get(baseIdx + 0);
-        let axiomType = (typeAndLang & 0xffff) as u16;
-        let p = this.axiomTable.get(baseIdx + 2);
+        if (this.axiomActive.get(axiomId) != 0) {
+          let baseIdx = axiomId * AXIOM_STRIDE;
+          let typeAndLang = this.axiomTable.get(baseIdx + 0);
+          let axiomType = (typeAndLang & 0xffff) as u16;
+          let p = this.axiomTable.get(baseIdx + 2);
 
-        if (
-          axiomType == AXIOM_OBJ_PROP_ASSERT &&
-          (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)
-        ) {
-          let target = this.axiomTable.get(baseIdx + 3);
-          if (target != 0) {
-            let visited = false;
-            for (let k: u32 = 0; k < queue.length; k++) {
-              if (queue.get(k) == target) {
-                visited = true;
-                break;
+          if (
+            axiomType == AXIOM_OBJ_PROP_ASSERT &&
+            (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)
+          ) {
+            let target = this.axiomTable.get(baseIdx + 3);
+            if (target != 0) {
+              let visited = false;
+              for (let k: u32 = 0; k < queue.length; k++) {
+                if (queue.get(k) == target) {
+                  visited = true;
+                  break;
+                }
               }
-            }
-            if (!visited) {
-              queue.push(target);
-              reachable.push(target);
-              pathEdges.push(current);
-              pathEdges.push(target);
+              if (!visited) {
+                queue.push(target);
+                reachable.push(target);
+                pathEdges.push(current);
+                pathEdges.push(target);
+              }
             }
           }
         }
@@ -1604,9 +1679,11 @@ export class OntologyStore {
    * Serializes all unique class nodes in the ontology with their direct supers, direct subs, and equivalents.
    */
   getTaxonomy(outBuffer: ChunkedUint32Array): u32 {
-    let classes = createChunkedUint32Array(64);
+    let classes = this.scratchA;
+    classes.clear();
 
     for (let i: u32 = 1; i < this.axiomCount; i++) {
+      if (this.axiomActive.get(i) == 0) continue;
       let baseIdx = i * AXIOM_STRIDE;
       let typeAndLang = this.axiomTable.get(baseIdx + 0);
       let axiomType = (typeAndLang & 0xffff) as u16;
@@ -1653,36 +1730,44 @@ export class OntologyStore {
 
     outBuffer.push(classes.length);
 
+    let supers = this.scratchB;
+    let subs = this.scratchC;
+    let equivs = this.scratchD;
+
     for (let i: u32 = 0; i < classes.length; i++) {
       let c = classes.get(i);
       outBuffer.push(c);
 
-      let supers = createChunkedUint32Array(8);
-      let subs = createChunkedUint32Array(8);
-      let equivs = createChunkedUint32Array(8);
+      supers.clear();
+      subs.clear();
+      equivs.clear();
 
       let axId = this.spoHead.get(c as u64) as u32;
       while (axId != 0) {
-        let bIdx = axId * AXIOM_STRIDE;
-        let tLang = this.axiomTable.get(bIdx + 0);
-        let aType = (tLang & 0xffff) as u16;
-        let tgt = this.axiomTable.get(bIdx + 3);
-        if (tgt != 0) {
-          if (aType == AXIOM_SUBCLASS_OF) supers.push(tgt);
-          else if (aType == AXIOM_EQUIV_CLASS) equivs.push(tgt);
+        if (this.axiomActive.get(axId) != 0) {
+          let bIdx = axId * AXIOM_STRIDE;
+          let tLang = this.axiomTable.get(bIdx + 0);
+          let aType = (tLang & 0xffff) as u16;
+          let tgt = this.axiomTable.get(bIdx + 3);
+          if (tgt != 0) {
+            if (aType == AXIOM_SUBCLASS_OF) supers.push(tgt);
+            else if (aType == AXIOM_EQUIV_CLASS) equivs.push(tgt);
+          }
         }
         axId = this.nextSpo.get(axId);
       }
 
       let ospId = this.ospHead.get(c as u64) as u32;
       while (ospId != 0) {
-        let bIdx = ospId * AXIOM_STRIDE;
-        let tLang = this.axiomTable.get(bIdx + 0);
-        let aType = (tLang & 0xffff) as u16;
-        let src = this.axiomTable.get(bIdx + 1);
-        if (src != 0) {
-          if (aType == AXIOM_SUBCLASS_OF) subs.push(src);
-          else if (aType == AXIOM_EQUIV_CLASS) equivs.push(src);
+        if (this.axiomActive.get(ospId) != 0) {
+          let bIdx = ospId * AXIOM_STRIDE;
+          let tLang = this.axiomTable.get(bIdx + 0);
+          let aType = (tLang & 0xffff) as u16;
+          let src = this.axiomTable.get(bIdx + 1);
+          if (src != 0) {
+            if (aType == AXIOM_SUBCLASS_OF) subs.push(src);
+            else if (aType == AXIOM_EQUIV_CLASS) equivs.push(src);
+          }
         }
         ospId = this.nextOsp.get(ospId);
       }
@@ -1709,9 +1794,11 @@ export class OntologyStore {
     this.intervalLeft.clear();
     this.intervalRight.clear();
 
-    // 1. Collect all distinct classes across all active axioms
+    // 1. Collect all distinct classes across all active axioms in O(N) using visitedMap
     let classes = this.distinctClasses;
     classes.clear();
+    let seenClasses = this.visitedMap;
+    seenClasses.clear();
     for (let i: u32 = 1; i < this.axiomCount; i++) {
       if (this.axiomActive.get(i) == 0) continue;
       let baseIdx = i * AXIOM_STRIDE;
@@ -1726,19 +1813,13 @@ export class OntologyStore {
       ) {
         let sub = this.axiomTable.get(baseIdx + 1);
         let obj = this.axiomTable.get(baseIdx + 3);
-        if (sub != 0) {
-          let found = false;
-          for (let k: u32 = 0; k < classes.length; k++) {
-            if (classes.get(k) == sub) { found = true; break; }
-          }
-          if (!found) classes.push(sub);
+        if (sub != 0 && !seenClasses.has(sub as u64)) {
+          seenClasses.set(sub as u64, 1);
+          classes.push(sub);
         }
-        if (obj != 0 && (axiomType == AXIOM_SUBCLASS_OF || axiomType == AXIOM_EQUIV_CLASS)) {
-          let found = false;
-          for (let k: u32 = 0; k < classes.length; k++) {
-            if (classes.get(k) == obj) { found = true; break; }
-          }
-          if (!found) classes.push(obj);
+        if (obj != 0 && (axiomType == AXIOM_SUBCLASS_OF || axiomType == AXIOM_EQUIV_CLASS) && !seenClasses.has(obj as u64)) {
+          seenClasses.set(obj as u64, 1);
+          classes.push(obj);
         }
       }
     }
@@ -1833,18 +1914,21 @@ export class OntologyStore {
   ): u32 {
     if (sourceHash == 0) return 0;
 
-    let reachable = createChunkedUint32Array(32);
+    let reachable = this.scratchA;
+    reachable.clear();
 
     switch (pathOp) {
       case PATH_OP_DIRECT: {
         let axId = this.spoHead.get(sourceHash as u64) as u32;
         while (axId != 0) {
-          let bIdx = axId * AXIOM_STRIDE;
-          let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
-          let p = this.axiomTable.get(bIdx + 2);
-          if (aType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
-            let o = this.axiomTable.get(bIdx + 3);
-            if (o != 0) reachable.push(o);
+          if (this.axiomActive.get(axId) != 0) {
+            let bIdx = axId * AXIOM_STRIDE;
+            let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
+            let p = this.axiomTable.get(bIdx + 2);
+            if (aType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
+              let o = this.axiomTable.get(bIdx + 3);
+              if (o != 0) reachable.push(o);
+            }
           }
           axId = this.nextSpo.get(axId);
         }
@@ -1854,12 +1938,14 @@ export class OntologyStore {
       case PATH_OP_INVERSE: {
         let axId = this.ospHead.get(sourceHash as u64) as u32;
         while (axId != 0) {
-          let bIdx = axId * AXIOM_STRIDE;
-          let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
-          let p = this.axiomTable.get(bIdx + 2);
-          if (aType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
-            let s = this.axiomTable.get(bIdx + 1);
-            if (s != 0) reachable.push(s);
+          if (this.axiomActive.get(axId) != 0) {
+            let bIdx = axId * AXIOM_STRIDE;
+            let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
+            let p = this.axiomTable.get(bIdx + 2);
+            if (aType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
+              let s = this.axiomTable.get(bIdx + 1);
+              if (s != 0) reachable.push(s);
+            }
           }
           axId = this.nextOsp.get(axId);
         }
@@ -1871,7 +1957,8 @@ export class OntologyStore {
         if (pathOp == PATH_OP_STAR) {
           reachable.push(sourceHash);
         }
-        let queue = createChunkedUint32Array(32);
+        let queue = this.scratchB;
+        queue.clear();
         let head: u32 = 0;
         queue.push(sourceHash);
 
@@ -1879,19 +1966,21 @@ export class OntologyStore {
           let curr = queue.get(head++);
           let axId = this.spoHead.get(curr as u64) as u32;
           while (axId != 0) {
-            let bIdx = axId * AXIOM_STRIDE;
-            let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
-            let p = this.axiomTable.get(bIdx + 2);
-            if (aType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
-              let tgt = this.axiomTable.get(bIdx + 3);
-              if (tgt != 0) {
-                let visited = false;
-                for (let k: u32 = 0; k < reachable.length; k++) {
-                  if (reachable.get(k) == tgt) { visited = true; break; }
-                }
-                if (!visited) {
-                  reachable.push(tgt);
-                  queue.push(tgt);
+            if (this.axiomActive.get(axId) != 0) {
+              let bIdx = axId * AXIOM_STRIDE;
+              let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
+              let p = this.axiomTable.get(bIdx + 2);
+              if (aType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
+                let tgt = this.axiomTable.get(bIdx + 3);
+                if (tgt != 0) {
+                  let visited = false;
+                  for (let k: u32 = 0; k < reachable.length; k++) {
+                    if (reachable.get(k) == tgt) { visited = true; break; }
+                  }
+                  if (!visited) {
+                    reachable.push(tgt);
+                    queue.push(tgt);
+                  }
                 }
               }
             }
@@ -1902,7 +1991,8 @@ export class OntologyStore {
       }
 
       case PATH_OP_INVERSE_PLUS: {
-        let queue = createChunkedUint32Array(32);
+        let queue = this.scratchB;
+        queue.clear();
         let head: u32 = 0;
         queue.push(sourceHash);
 
@@ -1910,19 +2000,21 @@ export class OntologyStore {
           let curr = queue.get(head++);
           let axId = this.ospHead.get(curr as u64) as u32;
           while (axId != 0) {
-            let bIdx = axId * AXIOM_STRIDE;
-            let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
-            let p = this.axiomTable.get(bIdx + 2);
-            if (aType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
-              let src = this.axiomTable.get(bIdx + 1);
-              if (src != 0) {
-                let visited = false;
-                for (let k: u32 = 0; k < reachable.length; k++) {
-                  if (reachable.get(k) == src) { visited = true; break; }
-                }
-                if (!visited) {
-                  reachable.push(src);
-                  queue.push(src);
+            if (this.axiomActive.get(axId) != 0) {
+              let bIdx = axId * AXIOM_STRIDE;
+              let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
+              let p = this.axiomTable.get(bIdx + 2);
+              if (aType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
+                let src = this.axiomTable.get(bIdx + 1);
+                if (src != 0) {
+                  let visited = false;
+                  for (let k: u32 = 0; k < reachable.length; k++) {
+                    if (reachable.get(k) == src) { visited = true; break; }
+                  }
+                  if (!visited) {
+                    reachable.push(src);
+                    queue.push(src);
+                  }
                 }
               }
             }
@@ -1933,15 +2025,18 @@ export class OntologyStore {
       }
 
       case PATH_OP_SEQUENCE: {
-        let intermediate = createChunkedUint32Array(16);
+        let intermediate = this.scratchB;
+        intermediate.clear();
         let axId = this.spoHead.get(sourceHash as u64) as u32;
         while (axId != 0) {
-          let bIdx = axId * AXIOM_STRIDE;
-          let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
-          let p = this.axiomTable.get(bIdx + 2);
-          if (aType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
-            let tgt = this.axiomTable.get(bIdx + 3);
-            if (tgt != 0) intermediate.push(tgt);
+          if (this.axiomActive.get(axId) != 0) {
+            let bIdx = axId * AXIOM_STRIDE;
+            let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
+            let p = this.axiomTable.get(bIdx + 2);
+            if (aType == AXIOM_OBJ_PROP_ASSERT && (propertyHash == 0 || propertyHash == WILDCARD_PATTERN || p == propertyHash)) {
+              let tgt = this.axiomTable.get(bIdx + 3);
+              if (tgt != 0) intermediate.push(tgt);
+            }
           }
           axId = this.nextSpo.get(axId);
         }
@@ -1950,17 +2045,19 @@ export class OntologyStore {
           let inter = intermediate.get(i);
           let axId2 = this.spoHead.get(inter as u64) as u32;
           while (axId2 != 0) {
-            let bIdx2 = axId2 * AXIOM_STRIDE;
-            let aType2 = (this.axiomTable.get(bIdx2 + 0) & 0xffff) as u16;
-            let p2 = this.axiomTable.get(bIdx2 + 2);
-            if (aType2 == AXIOM_OBJ_PROP_ASSERT && (stepPropertyHash2 == 0 || stepPropertyHash2 == WILDCARD_PATTERN || p2 == stepPropertyHash2)) {
-              let tgt2 = this.axiomTable.get(bIdx2 + 3);
-              if (tgt2 != 0) {
-                let visited = false;
-                for (let k: u32 = 0; k < reachable.length; k++) {
-                  if (reachable.get(k) == tgt2) { visited = true; break; }
+            if (this.axiomActive.get(axId2) != 0) {
+              let bIdx2 = axId2 * AXIOM_STRIDE;
+              let aType2 = (this.axiomTable.get(bIdx2 + 0) & 0xffff) as u16;
+              let p2 = this.axiomTable.get(bIdx2 + 2);
+              if (aType2 == AXIOM_OBJ_PROP_ASSERT && (stepPropertyHash2 == 0 || stepPropertyHash2 == WILDCARD_PATTERN || p2 == stepPropertyHash2)) {
+                let tgt2 = this.axiomTable.get(bIdx2 + 3);
+                if (tgt2 != 0) {
+                  let visited = false;
+                  for (let k: u32 = 0; k < reachable.length; k++) {
+                    if (reachable.get(k) == tgt2) { visited = true; break; }
+                  }
+                  if (!visited) reachable.push(tgt2);
                 }
-                if (!visited) reachable.push(tgt2);
               }
             }
             axId2 = this.nextSpo.get(axId2);
@@ -1972,17 +2069,19 @@ export class OntologyStore {
       case PATH_OP_ALTERNATION: {
         let axId = this.spoHead.get(sourceHash as u64) as u32;
         while (axId != 0) {
-          let bIdx = axId * AXIOM_STRIDE;
-          let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
-          let p = this.axiomTable.get(bIdx + 2);
-          if (aType == AXIOM_OBJ_PROP_ASSERT && (p == propertyHash || p == stepPropertyHash2)) {
-            let tgt = this.axiomTable.get(bIdx + 3);
-            if (tgt != 0) {
-              let visited = false;
-              for (let k: u32 = 0; k < reachable.length; k++) {
-                if (reachable.get(k) == tgt) { visited = true; break; }
+          if (this.axiomActive.get(axId) != 0) {
+            let bIdx = axId * AXIOM_STRIDE;
+            let aType = (this.axiomTable.get(bIdx + 0) & 0xffff) as u16;
+            let p = this.axiomTable.get(bIdx + 2);
+            if (aType == AXIOM_OBJ_PROP_ASSERT && (p == propertyHash || p == stepPropertyHash2)) {
+              let tgt = this.axiomTable.get(bIdx + 3);
+              if (tgt != 0) {
+                let visited = false;
+                for (let k: u32 = 0; k < reachable.length; k++) {
+                  if (reachable.get(k) == tgt) { visited = true; break; }
+                }
+                if (!visited) reachable.push(tgt);
               }
-              if (!visited) reachable.push(tgt);
             }
           }
           axId = this.nextSpo.get(axId);
@@ -2043,8 +2142,10 @@ export class OntologyStore {
           }
         }
 
-        // CR2: C ⊑ ∃R.D ∧ D ⊑ E ∧ ∃R.E ⊑ F ⇒ C ⊑ F
-        else if (aType1 == AXIOM_OBJECT_SOME_VALUES_FROM) {
+        // CR2: C ⊑ ∃R.D ∧ D ⊑ E ∧ (∃R.E ⊑ F) ⇒ C ⊑ F
+        // Only fires when the first axiom is an RHS existential (flags & AXIOM_FLAG_LHS_EXISTENTIAL == 0)
+        // and the second axiom is explicitly marked as an LHS existential (flags & AXIOM_FLAG_LHS_EXISTENTIAL != 0).
+        else if (aType1 == AXIOM_OBJECT_SOME_VALUES_FROM && (this.axiomTable.get(bIdx1 + 4) & AXIOM_FLAG_LHS_EXISTENTIAL) == 0) {
           let c = this.axiomTable.get(bIdx1 + 1);
           let r = this.axiomTable.get(bIdx1 + 2);
           let d = this.axiomTable.get(bIdx1 + 3);
@@ -2053,7 +2154,10 @@ export class OntologyStore {
             if (this.axiomActive.get(j) == 0) continue;
             let bIdx2 = j * AXIOM_STRIDE;
             let aType2 = (this.axiomTable.get(bIdx2 + 0) & 0xffff) as u16;
-            if (aType2 == AXIOM_OBJECT_SOME_VALUES_FROM) {
+            if (
+              aType2 == AXIOM_OBJECT_SOME_VALUES_FROM &&
+              (this.axiomTable.get(bIdx2 + 4) & AXIOM_FLAG_LHS_EXISTENTIAL) != 0
+            ) {
               let exClass = this.axiomTable.get(bIdx2 + 1);
               let r2 = this.axiomTable.get(bIdx2 + 2);
               let e = this.axiomTable.get(bIdx2 + 3);
@@ -2108,8 +2212,9 @@ export class OntologyStore {
           }
         }
 
-        // CR4: Universal Range Restraints: ⊤ ⊑ ∀R.D ∧ C ⊑ ∃R.E ⇒ E ⊑ D
+        // CR4: Universal Range Restraints: (C ⊑ ∀R.D ∧ C' ⊑ ∃R.E ∧ (C = ⊤ ∨ C' ⊑ C)) ⇒ E ⊑ D
         else if (aType1 == AXIOM_UNIVERSAL_RESTRICTION) {
+          let cls = this.axiomTable.get(bIdx1 + 1);
           let r = this.axiomTable.get(bIdx1 + 2);
           let target = this.axiomTable.get(bIdx1 + 3);
           if (r != 0 && target != 0) {
@@ -2117,9 +2222,16 @@ export class OntologyStore {
               if (this.axiomActive.get(j) == 0) continue;
               let jIdx = j * AXIOM_STRIDE;
               if (((this.axiomTable.get(jIdx + 0) & 0xffff) as u16) == AXIOM_OBJECT_SOME_VALUES_FROM) {
+                let cCand = this.axiomTable.get(jIdx + 1);
                 let rCand = this.axiomTable.get(jIdx + 2);
                 let e = this.axiomTable.get(jIdx + 3);
-                if (rCand == r && e != 0 && e != target && !this.hasDirectSubclass(e, target)) {
+                if (
+                  rCand == r &&
+                  e != 0 &&
+                  e != target &&
+                  (cls == 0 || cCand == cls || (cCand != 0 && this.isSubClassOf(cCand, cls))) &&
+                  !this.hasDirectSubclass(e, target)
+                ) {
                   this.addAxiom(AXIOM_SUBCLASS_OF, 0, e, 0, target, 1);
                   newInferences++;
                   changed = true;
@@ -2617,6 +2729,11 @@ export class OntologyStore {
     this.hasIntervalIndex = false;
     this.bfsQueue.clear();
     this.distinctClasses.clear();
+    this.scratchA.clear();
+    this.scratchB.clear();
+    this.scratchC.clear();
+    this.scratchD.clear();
+    this.visitedMap.clear();
   }
 }
 
@@ -2645,6 +2762,12 @@ export function ensureOntologyStore(): void {
     t_ontologyQueryFlatCapacity = 1024;
     t_ontologyQueryFlatPtr = atomicChunkAlloc(t_ontologyQueryFlatCapacity * sizeof<u32>());
   }
+}
+
+/** C-ABI export: Enables (`1`) or disables (`0`) duplicate-triple suppression in `ontology_addAxiom`. */
+export function ontology_setDedup(enabled: u32): void {
+  ensureOntologyStore();
+  t_ontologyStore.dedupEnabled = enabled != 0;
 }
 
 /** C-ABI export: Inserts a 32-bit hashed OWL 2 axiom into the global ontology store. */

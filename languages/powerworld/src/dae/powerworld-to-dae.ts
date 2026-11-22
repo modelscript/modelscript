@@ -8,6 +8,10 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import {
+  ensureBuiltInPowerWorldLibraryRegistered,
+  lookupPowerWorldModelSchema,
+} from "../catalog/library-package-adapter.js";
 import type { PowerWorldAuxModel } from "../types.js";
 
 export interface PowerWorldDaeOptions {
@@ -17,9 +21,28 @@ export interface PowerWorldDaeOptions {
 }
 
 /**
+ * Resolves parameter defaults for a PowerWorld dynamic model from `@modelscript/powerworld-std-lib`,
+ * merging any user-specified positional overrides over the cleanroom schema defaults.
+ */
+export function resolvePowerWorldModelParamDefaults(modelType: string, overrides: number[] = []): number[] {
+  ensureBuiltInPowerWorldLibraryRegistered();
+  const schema = lookupPowerWorldModelSchema(modelType);
+  if (!schema) return overrides.slice();
+  const count = Math.max(schema.parameters.length, overrides.length);
+  const out: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const ov = overrides[i];
+    const defVal = schema.parameters[i]?.defaultValue;
+    out.push(ov !== undefined && Number.isFinite(ov) ? ov : typeof defVal === "number" ? defVal : 0.0);
+  }
+  return out;
+}
+
+/**
  * Lower a PowerWorldAuxModel into a linear-memory DAEBuilder arena.
  */
 export function lowerPowerWorldToDae(model: PowerWorldAuxModel, options?: PowerWorldDaeOptions): DAEBuilder {
+  ensureBuiltInPowerWorldLibraryRegistered();
   const modelName = (options?.modelName ?? "PowerWorldGrid").replace(/[^a-zA-Z0-9_]/g, "_");
   const dae = options?.builder ?? new DAEBuilder(undefined, modelName);
   const baseMva = options?.baseMva ?? 100.0;

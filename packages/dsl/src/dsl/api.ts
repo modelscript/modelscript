@@ -88,6 +88,8 @@ export interface BuildResult {
   grammarDiagnostics?: GrammarDiagnostic[] | undefined;
   /** Static TS-to-AssemblyScript subset diagnostics for `queries`, `lints`, and `scanner`. */
   queryDiagnostics?: TranspileSubsetDiagnostic[] | undefined;
+  /** Declared supertype-to-subtype mappings from `LanguageOptions.supertypes`. */
+  supertypes?: Record<string, string[]> | undefined;
   /** Compiled Model Context Protocol (MCP) tool and resource manifest. */
   mcpManifest?: McpManifest | undefined;
   /** Generated AssemblyScript & TypeScript artifacts for `kind: "binary"` entries in `languageDef.formats`. */
@@ -177,6 +179,7 @@ export function buildParser(languageDef: LanguageOptions, options?: BuildOptions
     conflicts: result.table.diagnostics || [],
     grammarDiagnostics: result.grammar.diagnostics,
     queryDiagnostics: validateLanguageQueries(languageDef),
+    supertypes: result.grammar.supertypes.size > 0 ? Object.fromEntries(result.grammar.supertypes) : undefined,
     mcpManifest,
     binaryCodecs,
   };

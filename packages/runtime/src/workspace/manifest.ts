@@ -25,7 +25,32 @@ export type PushCapability = "verification" | "links" | "defects-on-fail" | "art
 
 export type MaterializeFormat = "sysml2" | "modelscript" | "reqif";
 
-export type KnownAlmProtocol = "oslc" | "jama" | "codebeamer" | "polarion" | "jira";
+export type KnownAlmProtocol =
+  | "oslc"
+  | "jama"
+  | "codebeamer"
+  | "polarion"
+  | "jira"
+  | "azdo"
+  | "testrail"
+  | "windchill"
+  | "teamcenter"
+  | "aras"
+  | "rest"
+  | "github"
+  | "gitlab"
+  | "confluence"
+  | "xray"
+  | "onshape"
+  | "artifactory"
+  | "bitbucket"
+  | "airflow"
+  | "genesys"
+  | "twc"
+  | "zuken"
+  | "sql"
+  | "excel"
+  | "rhapsody";
 
 export interface RemoteDependencySpec {
   /** Protocol-prefixed URI, e.g. `oslc+https://...`, `jama+https://...`, `jira+https://...`. */

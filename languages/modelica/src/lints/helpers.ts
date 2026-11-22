@@ -672,16 +672,46 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: any): u16 {
       }
     }
 
+    // 1a-if. If expression: if <cond> then <thenExpr> [elseif ... then ...]* else <elseExpr>
+    if (db.ast.textEquals(c1, "if")) {
+      let curr = c1;
+      let checkNext = false;
+      let resultType = TYPE_UNKNOWN;
+      while (curr != 0) {
+        if (checkNext) {
+          const branchType = inferExprType(db, curr, $);
+          if (branchType == TYPE_REAL) return TYPE_REAL;
+          if (branchType != TYPE_UNKNOWN && resultType == TYPE_UNKNOWN) {
+            resultType = branchType;
+          }
+          checkNext = false;
+        }
+        if (db.ast.textEquals(curr, "then") || db.ast.textEquals(curr, "else")) {
+          checkNext = true;
+        }
+        curr = db.ast.getNextSibling(curr);
+      }
+      if (resultType != TYPE_UNKNOWN) return resultType;
+    }
+
     // 1b. If node has an `operand` field (e.g. unary minus `-x` or `not b`)
     const operandChild = db.ast.getChildByFieldId(unwrapped, "operand");
     if (operandChild != 0) {
       const op = db.ast.getFirstChild(unwrapped);
-      if (op != 0 && (db.ast.textEquals(op, "not") || db.ast.getType(op) == 77)) {
+      if (op != 0 && db.ast.textEquals(op, "not")) {
         const operandType = inferExprType(db, operandChild, $);
         if (operandType >= 0x8000) return operandType;
         return TYPE_BOOLEAN;
       }
-      return inferExprType(db, operandChild, $);
+      if (
+        op != 0 &&
+        (db.ast.textEquals(op, "-") ||
+          db.ast.textEquals(op, "+") ||
+          db.ast.textEquals(op, ".-") ||
+          db.ast.textEquals(op, ".+"))
+      ) {
+        return inferExprType(db, operandChild, $);
+      }
     }
 
     const c2 = db.ast.getNextSibling(c1);
@@ -772,36 +802,6 @@ export function inferExprType(db: CodeGraph, exprNode: u32, $: any): u16 {
       if (lType != TYPE_UNKNOWN) return lType;
       if (rType != TYPE_UNKNOWN) return rType;
     }
-  }
-
-  // 1c. If expression: if ... then ... else ...
-  const fcIf = db.ast.getFirstChild(unwrapped);
-  const fcType = fcIf != 0 ? db.ast.getType(fcIf) : 0;
-  if (
-    fcType == 58 ||
-    (fcIf != 0 && db.ast.textEquals(fcIf, "if")) ||
-    db.ast.startsWith(unwrapped, "if") ||
-    db.ast.textEquals(unwrapped, "if")
-  ) {
-    let curr = fcIf;
-    let checkNext = false;
-    let resultType = TYPE_UNKNOWN;
-    while (curr != 0) {
-      if (checkNext) {
-        const branchType = inferExprType(db, curr, $);
-        if (branchType == TYPE_REAL) return TYPE_REAL;
-        if (branchType != TYPE_UNKNOWN && resultType == TYPE_UNKNOWN) {
-          resultType = branchType;
-        }
-        checkNext = false;
-      }
-      const currType = db.ast.getType(curr);
-      if (currType == 65 || currType == 67 || db.ast.textEquals(curr, "then") || db.ast.textEquals(curr, "else")) {
-        checkNext = true;
-      }
-      curr = db.ast.getNextSibling(curr);
-    }
-    if (resultType != TYPE_UNKNOWN) return resultType;
   }
 
   // 2. Built-in functions & function calls (sample, sin, cos, pre, etc.)
@@ -1242,27 +1242,19 @@ export function resolveFunctionReturnType(db: CodeGraph, funcNameNode: u32, $: a
  */
 export function isElementProtected(db: CodeGraph, node: u32, $: any): boolean {
   if (node == 0) return false;
-  let elList: u32 = 0;
-  let elListParent: u32 = 0;
   for (const anc of db.ast.getAncestors(node, 0)) {
-    if (elList != 0) {
-      elListParent = anc;
-      break;
-    }
-    if ($.element_list != 0 && db.ast.getType(anc) == $.element_list) {
-      elList = anc;
-    }
-  }
-  if (elList == 0 || elListParent == 0) return false;
-
-  const fc = db.ast.getFirstChild(elListParent);
-  if (fc != 0) {
-    const t = db.ast.getType(fc);
-    if (t == 41 || ($.protected != 0 && t == $.protected) || db.ast.textEquals(fc, "protected")) {
-      return true;
+    const ancType = db.ast.getType(anc);
+    if (ancType == $.class_definition || ancType == $.composition) break;
+    const fc = db.ast.getFirstChild(anc);
+    if (fc != 0) {
+      if (($.protected != 0 && db.ast.getType(fc) == $.protected) || db.ast.textEquals(fc, "protected")) {
+        return true;
+      }
+      if (db.ast.textEquals(fc, "public")) {
+        return false;
+      }
     }
   }
-
   return false;
 }
 

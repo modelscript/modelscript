@@ -199,10 +199,10 @@ export class CallbackDispatcher {
       }
     }
 
-    // 3. Check periodic callbacks
+    // 3. Check periodic callbacks (while loop prevents drift/drops when dt > interval)
     for (const item of this.periodic) {
-      if (t >= item.nextTime - 1e-9) {
-        item.cb.affect(t, y, controls);
+      while (t >= item.nextTime - 1e-9) {
+        item.cb.affect(item.nextTime, y, controls);
         item.nextTime += item.cb.interval;
         if (controls.terminated) return controls;
       }
@@ -210,7 +210,14 @@ export class CallbackDispatcher {
 
     // 4. Enforce manifold projections
     for (const cb of this.manifold) {
+      const before = Float64Array.from(y);
       cb.project(t, y);
+      for (let i = 0; i < y.length; i++) {
+        if (Math.abs(y[i]! - before[i]!) > 1e-12) {
+          controls.discontinuityOccurred = true;
+          break;
+        }
+      }
     }
 
     return controls;

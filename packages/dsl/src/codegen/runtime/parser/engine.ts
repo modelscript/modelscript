@@ -54,10 +54,12 @@ import {
   prod_right_offsets as _prod_right_offsets,
   prod_right_symbols as _prod_right_symbols,
   token_insert_costs as _token_insert_costs,
+  type_is_structural as _type_is_structural,
   token_delete_costs as _token_delete_costs,
   token_is_word as _token_is_word,
   reachability_matrix as _reachability_matrix,
   precomputed_repairs as _precomputed_repairs,
+  precomputed_nt_repairs as _precomputed_nt_repairs,
   token_string_offsets as _token_string_offsets,
   token_string_bytes as _token_string_bytes,
   type_fields as _type_fields,
@@ -189,14 +191,18 @@ export let goto_data: StaticTable = changetype<StaticTable>(0);
 export let mrd_data: StaticByteTable = changetype<StaticByteTable>(0);
 /** Per-terminal insertion penalty cost used during single/multi-token error repair. */
 export let token_insert_costs: StaticByteTable = changetype<StaticByteTable>(0);
+/** Boolean byte table (`1` = declared structural scope rule penalized on stack unwind). */
+export let type_is_structural: StaticByteTable = changetype<StaticByteTable>(0);
 /** Per-terminal deletion penalty cost (`u16`) used during panic/error recovery. */
 export let token_delete_costs: StaticU16Table = changetype<StaticU16Table>(0);
 /** Boolean byte table (`1` = identifier/keyword word token, `0` = punctuation/operator). */
 export let token_is_word: StaticByteTable = changetype<StaticByteTable>(0);
 /** Bit-packed 0-distance terminal reachability matrix (`state * (MAX_TERMINAL_ID + 1) + tok`). */
 export let reachability_matrix: StaticByteTable = changetype<StaticByteTable>(0);
-/** Precomputed minimum-cost repair sequences per `(state, lookahead)` pair. */
+/** Precomputed minimum-cost terminal repair per `(state, lookahead)` pair. */
 export let precomputed_repairs: StaticU16Table = changetype<StaticU16Table>(0);
+/** Precomputed distance-0 non-terminal placeholder (`GOTO`) repair per `(state, lookahead)` pair. */
+export let precomputed_nt_repairs: StaticU16Table = changetype<StaticU16Table>(0);
 /** Per-token start offset into `token_string_bytes` for human-readable token names. */
 export let token_string_offsets: StaticTable = changetype<StaticTable>(0);
 /** UTF-8 byte pool of human-readable terminal/non-terminal symbol names for diagnostics. */
@@ -243,10 +249,12 @@ export function initStaticTables(): void {
   goto_data = changetype<StaticTable>(_goto_data);
   mrd_data = changetype<StaticByteTable>(_mrd_data);
   token_insert_costs = changetype<StaticByteTable>(_token_insert_costs);
+  type_is_structural = changetype<StaticByteTable>(_type_is_structural);
   token_delete_costs = changetype<StaticU16Table>(_token_delete_costs);
   token_is_word = changetype<StaticByteTable>(_token_is_word);
   reachability_matrix = changetype<StaticByteTable>(_reachability_matrix);
   precomputed_repairs = changetype<StaticU16Table>(_precomputed_repairs);
+  precomputed_nt_repairs = changetype<StaticU16Table>(_precomputed_nt_repairs);
   token_string_offsets = changetype<StaticTable>(_token_string_offsets);
   token_string_bytes = changetype<StaticTable>(_token_string_bytes);
   prod_lengths = changetype<StaticByteTable>(_prod_lengths);

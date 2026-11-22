@@ -813,6 +813,95 @@ export class PagedStorageEngine {
   }
 
   /**
+   * Browser OPFS (Origin Private File System) persistence: flushes all active 4KB pages
+   * and serialized Node Table into a single binary snapshot in OPFS.
+   */
+  public async flushToOpfs(fileName: string): Promise<number> {
+    const storage = (globalThis as any)?.navigator?.storage;
+    if (!storage || typeof storage.getDirectory !== "function") {
+      throw new Error("Origin Private File System (navigator.storage.getDirectory) is unavailable in this environment");
+    }
+    this._wasm.paged_flush?.();
+    const pageCount = this._wasm.paged_getPageCount?.() ?? 0;
+    const exPtr = this._wasm.paged_getExchangeBufferPtr?.() ?? 0;
+    const mem = this._wasm.memory;
+    if (!mem || !exPtr || !this._wasm.paged_readPageToExchange) return 0;
+
+    const dictBuf = this._serializeNodeTable();
+    const headerSize = 32;
+    const totalBytes = headerSize + pageCount * PAGE_SIZE + dictBuf.byteLength;
+    const out = new Uint8Array(totalBytes);
+    const dv = new DataView(out.buffer);
+    dv.setUint32(0, SUPERBLOCK_MAGIC_0, true);
+    dv.setUint32(4, SUPERBLOCK_MAGIC_1, true);
+    dv.setUint32(8, this._wasm.paged_getCommittedTxId?.() ?? 1, true);
+    dv.setUint32(12, this._wasm.paged_getSpoRoot?.() ?? 1, true);
+    dv.setUint32(16, this._wasm.paged_getPosRoot?.() ?? 2, true);
+    dv.setUint32(20, this._wasm.paged_getOspRoot?.() ?? 3, true);
+    dv.setUint32(24, this._wasm.paged_getCommittedTotalTriples?.() ?? 0, true);
+    dv.setUint32(28, pageCount, true);
+
+    for (let pid = 1; pid <= pageCount; pid++) {
+      this._wasm.paged_readPageToExchange(pid);
+      const pageView = new Uint8Array(mem.buffer, exPtr, PAGE_SIZE);
+      out.set(pageView, headerSize + (pid - 1) * PAGE_SIZE);
+    }
+    out.set(dictBuf, headerSize + pageCount * PAGE_SIZE);
+
+    const rootDir = await storage.getDirectory();
+    const fileHandle = await rootDir.getFileHandle(fileName, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(out);
+    await writable.close();
+    return pageCount;
+  }
+
+  /**
+   * Browser OPFS recovery: loads a previously flushed OPFS binary snapshot back into
+   * the WASM 4KB B+Tree buffer pool and restores the Node Table.
+   */
+  public async recoverFromOpfs(fileName: string): Promise<boolean> {
+    const storage = (globalThis as any)?.navigator?.storage;
+    if (!storage || typeof storage.getDirectory !== "function") {
+      throw new Error("Origin Private File System (navigator.storage.getDirectory) is unavailable in this environment");
+    }
+    const rootDir = await storage.getDirectory();
+    const fileHandle = await rootDir.getFileHandle(fileName);
+    const file = await fileHandle.getFile();
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (bytes.byteLength < 32) return false;
+
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (dv.getUint32(0, true) !== SUPERBLOCK_MAGIC_0 || dv.getUint32(4, true) !== SUPERBLOCK_MAGIC_1) {
+      return false;
+    }
+    const txId = dv.getUint32(8, true);
+    const spoRoot = dv.getUint32(12, true);
+    const posRoot = dv.getUint32(16, true);
+    const ospRoot = dv.getUint32(20, true);
+    const totalTriples = dv.getUint32(24, true);
+    const pageCount = dv.getUint32(28, true);
+
+    const exPtr = this._wasm.paged_getExchangeBufferPtr?.() ?? 0;
+    const mem = this._wasm.memory;
+    if (!mem || !exPtr || !this._wasm.paged_writeExchangeToPage) return false;
+
+    for (let pid = 1; pid <= pageCount; pid++) {
+      const start = 32 + (pid - 1) * PAGE_SIZE;
+      const pageSlice = bytes.subarray(start, start + PAGE_SIZE);
+      new Uint8Array(mem.buffer, exPtr, PAGE_SIZE).set(pageSlice);
+      this._wasm.paged_writeExchangeToPage(pid);
+    }
+    this._wasm.paged_restoreSuperblock?.(txId, spoRoot, posRoot, ospRoot, totalTriples, pageCount + 1);
+
+    const dictStart = 32 + pageCount * PAGE_SIZE;
+    if (dictStart < bytes.byteLength) {
+      this._deserializeNodeTable(Buffer.from(bytes.subarray(dictStart)));
+    }
+    return true;
+  }
+
+  /**
    * Closes attached backing file descriptor.
    */
   public close(): void {

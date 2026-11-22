@@ -143,7 +143,7 @@ describe("@modelscript/adams — Cleanroom Standard Library (modelscript.yaml, W
     assert.ok(Math.abs(bOut.ty - 20.0) < 1e-12);
     assert.ok(Math.abs(bOut.tz - -15.0) < 1e-12);
 
-    // 6. PAC2002_TIRE: Pacejka Magic Formula F = D * sin(C * atan(B*x - E*(B*x - atan(B*x))))
+    // 6. PAC2002_TIRE: Combined-Slip Pacejka Magic Formula 6.2 (pure-slip parity + friction ellipse + camber + trail Mz)
     const tire = instantiateAdamsWasmModel({
       modelType: "PAC2002_TIRE",
       params: { Bx: 10.0, Cx: 1.65, Dx: 1.0, Ex: 0.1, By: 8.5, Cy: 1.3, Dy: 0.95, Ey: -0.5, fz0: 4000.0, trail: 0.03 },
@@ -153,18 +153,39 @@ describe("@modelscript/adams — Cleanroom Standard Library (modelscript.yaml, W
     const kappa = 0.08;
     const alpha = 0.05;
     const fz = 5000.0;
-    const tireOut = tire.evaluate({ x: kappa, xdot: alpha, dy: fz });
 
     const mf = (u: number, B: number, C: number, D: number, E: number) =>
       D * Math.sin(C * Math.atan(B * u - E * (B * u - Math.atan(B * u))));
-    const expectedFx = mf(kappa, 10.0, 1.65, 1.0 * fz, 0.1);
-    const expectedFy = mf(alpha, 8.5, 1.3, 0.95 * fz, -0.5);
-    const expectedMz = -0.03 * expectedFy;
+    const expectedFx0 = mf(kappa, 10.0, 1.65, 1.0 * fz, 0.1);
+    const expectedFy0 = mf(alpha, 8.5, 1.3, 0.95 * fz, -0.5);
 
-    assert.ok(Math.abs(tireOut.fx - expectedFx) < 1e-9, `Expected Fx=${expectedFx}, got ${tireOut.fx}`);
-    assert.ok(Math.abs(tireOut.fy - expectedFy) < 1e-9, `Expected Fy=${expectedFy}, got ${tireOut.fy}`);
-    assert.ok(Math.abs(tireOut.fz - fz) < 1e-9);
-    assert.ok(Math.abs(tireOut.mz - expectedMz) < 1e-9, `Expected Mz=${expectedMz}, got ${tireOut.mz}`);
+    // Pure longitudinal slip (alpha = 0, gamma = 0) and pure lateral slip (kappa = 0, gamma = 0)
+    const pureLong = tire.evaluate({ x: kappa, xdot: 0.0, dy: fz, dz: 0.0 });
+    const pureLat = tire.evaluate({ x: 0.0, xdot: alpha, dy: fz, dz: 0.0 });
+    assert.ok(Math.abs(pureLong.fx - expectedFx0) < 1e-9, `Expected pure Fx=${expectedFx0}, got ${pureLong.fx}`);
+    assert.ok(Math.abs(pureLat.fy - expectedFy0) < 1e-9, `Expected pure Fy=${expectedFy0}, got ${pureLat.fy}`);
+    assert.ok(Math.abs(pureLat.fz - fz) < 1e-9);
+    assert.ok(
+      pureLat.mz < 0 && Math.abs(pureLat.mz) < 0.03 * Math.abs(pureLat.fy),
+      "Expected pneumatic-trail self-aligning torque Mz",
+    );
+
+    // Combined braking + cornering: friction-ellipse force reduction via G_xalpha and G_ykappa
+    const pureBrake = tire.evaluate({ x: -0.12, xdot: 0.0, dy: fz, dz: 0.0 });
+    const pureCorner = tire.evaluate({ x: 0.0, xdot: 0.1, dy: fz, dz: 0.0 });
+    const combined = tire.evaluate({ x: -0.12, xdot: 0.1, dy: fz, dz: 0.0 });
+    assert.ok(
+      Math.abs(combined.fx) < Math.abs(pureBrake.fx) * 0.85,
+      `Expected friction-ellipse reduction in braking Fx: combined=${combined.fx}, pure=${pureBrake.fx}`,
+    );
+    assert.ok(
+      Math.abs(combined.fy) < Math.abs(pureCorner.fy) * 0.85,
+      `Expected friction-ellipse reduction in cornering Fy: combined=${combined.fy}, pure=${pureCorner.fy}`,
+    );
+
+    // Camber thrust at zero slip angle (alpha = 0, gamma = 0.05 rad)
+    const camberOnly = tire.evaluate({ x: 0.0, xdot: 0.0, dy: fz, dz: 0.05 });
+    assert.ok(camberOnly.fy > 50.0, `Expected positive camber thrust Fy at gamma=0.05 rad, got ${camberOnly.fy}`);
   });
 
   it("projects and links an FMI 2.0/3.0 user-defined FMU via MSC Adams GSE", () => {

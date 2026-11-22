@@ -117,10 +117,29 @@ export function gtModelInit(archetypeId: i32, slotPtr: usize, conCount: i32): i3
   const tIn = getIo(slotPtr, 1) > 1.0 ? getIo(slotPtr, 1) : 300.0;
 
   if (archetypeId == ARCH_PIPE_1D) {
-    // State 0: pMid (Pa), State 1: mdot (kg/s)
-    setState(slotPtr, 0, pIn);
-    setState(slotPtr, 1, getIo(slotPtr, 4));
-    return 2;
+    // 1D Finite-Volume Euler wave-action discretization: N = 8 cells x 3 conserved vars (rho, rho*u, rho*E)
+    const diam = Math.max(1e-4, getCon(slotPtr, conCount, 0, 0.05));
+    const area = 0.25 * Math.PI * diam * diam;
+    const gamma: f64 = 1.4;
+    const rGas: f64 = 287.05;
+    const rho0 = pIn / (rGas * tIn);
+    const mdot0 = getIo(slotPtr, 4);
+    const u0 = mdot0 / (rho0 * area);
+    const mom0 = rho0 * u0;
+    const e0 = pIn / (gamma - 1.0) + 0.5 * rho0 * u0 * u0;
+
+    for (let c: i32 = 0; c < 8; c++) {
+      setState(slotPtr, c * 3 + 0, rho0);
+      setState(slotPtr, c * 3 + 1, mom0);
+      setState(slotPtr, c * 3 + 2, e0);
+      setDState(slotPtr, c * 3 + 0, 0.0);
+      setDState(slotPtr, c * 3 + 1, 0.0);
+      setDState(slotPtr, c * 3 + 2, 0.0);
+    }
+    setIo(slotPtr, 2, pIn);
+    setIo(slotPtr, 3, tIn);
+    setIo(slotPtr, 15, pIn);
+    return 24;
   }
 
   if (archetypeId == ARCH_FLOW_SPLIT) {
@@ -249,17 +268,31 @@ export function gtModelEvalDerivatives(
     return;
   }
 
-  // 3. Compressor isentropic enthalpy rise
+  // 3. Compressor with 2D corrected-speed / pressure-ratio efficiency map
   if (archetypeId == ARCH_COMPRESSOR) {
     const prParam = Math.max(1.001, getCon(slotPtr, conCount, 0, 2.0));
-    const etaC = clamp(getCon(slotPtr, conCount, 1, 0.75), 0.1, 1.0);
+    const etaDes = clamp(getCon(slotPtr, conCount, 1, 0.75), 0.1, 1.0);
     const gamma = Math.max(1.05, getCon(slotPtr, conCount, 2, 1.4));
     const cp = Math.max(100.0, getCon(slotPtr, conCount, 3, 1005.0));
-    const mdot = mdotIn > 1e-9 ? mdotIn : getCon(slotPtr, conCount, 4, 0.15);
+    const designMassFlow = Math.max(1e-6, getCon(slotPtr, conCount, 4, 0.15));
+    const mdot = mdotIn > 1e-9 ? mdotIn : designMassFlow;
 
     const pr = pOutRaw > pIn ? pOutRaw / pIn : prParam;
+    const rpmIn = getIo(slotPtr, 9);
+    const nDes: f64 = 100000.0;
+    const nCorrNorm = rpmIn > 1.0 ? (rpmIn * Math.sqrt(300.0 / tIn)) / nDes : 1.0;
+    const prNorm = (pr - 1.0) / Math.max(0.05, prParam - 1.0);
+    const mCorr = mdot * (Math.sqrt(tIn / 300.0) / (pIn / 100000.0));
+    const mCorrNorm = mCorr / designMassFlow;
+
+    // 2D elliptic compressor map efficiency island centered on design ridge PR_opt ~ N_corr^2
+    const dN = nCorrNorm - 1.0;
+    const dPr = prNorm - nCorrNorm * nCorrNorm;
+    const dM = mCorrNorm - nCorrNorm;
+    const etaMap = clamp(etaDes * Math.exp(-0.45 * dN * dN - 0.35 * dPr * dPr - 0.2 * dM * dM), 0.25, 0.95);
+
     const t2s = tIn * Math.pow(pr, (gamma - 1.0) / gamma);
-    const t2 = tIn + (t2s - tIn) / etaC;
+    const t2 = tIn + (t2s - tIn) / etaMap;
     const deltaH = cp * (t2 - tIn);
     const powerW = mdot * deltaH;
 
@@ -270,17 +303,32 @@ export function gtModelEvalDerivatives(
     return;
   }
 
-  // 4. Turbine isentropic enthalpy drop
+  // 4. Turbine with 2D corrected-speed / expansion-ratio efficiency map
   if (archetypeId == ARCH_TURBINE) {
     const erParam = Math.max(1.001, getCon(slotPtr, conCount, 0, 2.0));
-    const etaT = clamp(getCon(slotPtr, conCount, 1, 0.72), 0.1, 1.0);
+    const etaDes = clamp(getCon(slotPtr, conCount, 1, 0.72), 0.1, 1.0);
     const gamma = Math.max(1.05, getCon(slotPtr, conCount, 2, 1.34));
     const cp = Math.max(100.0, getCon(slotPtr, conCount, 3, 1150.0));
     const mdot = mdotIn > 1e-9 ? mdotIn : getCon(slotPtr, conCount, 4, 0.15);
 
     const er = pOutRaw > 1.0 && pIn > pOutRaw ? pIn / pOutRaw : erParam;
-    const t2s = tIn * Math.pow(er, -(gamma - 1.0) / gamma);
-    const t2 = tIn - etaT * (tIn - t2s);
+    const exp = -(gamma - 1.0) / gamma;
+    const erTerm = Math.max(1e-4, 1.0 - Math.pow(er, exp));
+    const erDesTerm = Math.max(1e-4, 1.0 - Math.pow(erParam, exp));
+
+    const rpmIn = getIo(slotPtr, 9);
+    const nDes: f64 = 100000.0;
+    const nCorrNorm = rpmIn > 1.0 ? (rpmIn * Math.sqrt(300.0 / tIn)) / nDes : 1.0;
+    // Normalized blade-speed ratio U/C0 relative to design point
+    const uOverC0 = nCorrNorm / Math.sqrt(erTerm / erDesTerm);
+    const etaMap = clamp(
+      etaDes * (1.0 - 0.65 * (uOverC0 - 1.0) * (uOverC0 - 1.0) - 0.15 * (nCorrNorm - 1.0) * (nCorrNorm - 1.0)),
+      0.2,
+      0.95,
+    );
+
+    const t2s = tIn * Math.pow(er, exp);
+    const t2 = tIn - etaMap * (tIn - t2s);
     const deltaH = cp * (tIn - t2);
     const powerW = mdot * deltaH;
 
@@ -359,22 +407,148 @@ export function gtModelEvalDerivatives(
     return;
   }
 
-  // 8. 1D Pipe (Darcy-Weisbach friction pressure drop)
+  // 8. 1D Finite-Volume Euler Wave-Action Pipe (N = 8 cells, HLL Riemann flux)
   if (archetypeId == ARCH_PIPE_1D) {
     const diam = Math.max(1e-4, getCon(slotPtr, conCount, 0, 0.05));
     const length = Math.max(1e-4, getCon(slotPtr, conCount, 1, 0.5));
-    const f = Math.max(0.0, getCon(slotPtr, conCount, 2, 0.02));
+    const fDarcy = Math.max(0.0, getCon(slotPtr, conCount, 2, 0.02));
     const area = 0.25 * Math.PI * diam * diam;
-    const rho = pIn / (287.05 * tIn);
-    const vel = mdotIn / (rho * area);
-    const dp = f * (length / diam) * 0.5 * rho * vel * Math.abs(vel);
-    const pMid = getState(slotPtr, 0);
-    const pTarget = Math.max(1.0, pIn - dp);
-    setDState(slotPtr, 0, (pTarget - pMid) / 0.01);
-    setDState(slotPtr, 1, 0.0);
-    setIo(slotPtr, 2, pMid);
-    setIo(slotPtr, 3, tIn);
-    setIo(slotPtr, 15, dp);
+    const dx = length / 8.0;
+    const gamma: f64 = 1.4;
+    const gm1: f64 = gamma - 1.0;
+    const rGas: f64 = 287.05;
+
+    // Left boundary ghost cell (subsonic pressure/temperature inlet)
+    const rhoC0 = Math.max(1e-5, getState(slotPtr, 0));
+    const uC0 = getState(slotPtr, 1) / rhoC0;
+    const rhoL = Math.max(1e-5, pIn / (rGas * tIn));
+    const uL = Math.abs(mdotIn) > 1e-9 ? mdotIn / (rhoL * area) : uC0;
+    const mL = rhoL * uL;
+    const eL = pIn / gm1 + 0.5 * rhoL * uL * uL;
+
+    // Right boundary ghost cell (subsonic pressure outlet)
+    const rhoC7 = Math.max(1e-5, getState(slotPtr, 21));
+    const mC7 = getState(slotPtr, 22);
+    const eC7 = getState(slotPtr, 23);
+    const uC7 = mC7 / rhoC7;
+    const pC7 = Math.max(100.0, gm1 * (eC7 - 0.5 * mC7 * uC7));
+    const pR = pOutRaw > 1.0 ? pOutRaw : 101325.0;
+    const rhoR = Math.max(1e-5, rhoC7 * Math.pow(pR / pC7, 1.0 / gamma));
+    const uR = uC7;
+    const mR = rhoR * uR;
+    const eR = pR / gm1 + 0.5 * rhoR * uR * uR;
+
+    // Zero cell derivatives before accumulating HLL interface fluxes
+    for (let c: i32 = 0; c < 24; c++) {
+      setDState(slotPtr, c, 0.0);
+    }
+
+    // Loop over all 9 interfaces (face 0 = L|0, faces 1..7 = internal, face 8 = 7|R)
+    for (let face: i32 = 0; face <= 8; face++) {
+      let r1: f64;
+      let m1: f64;
+      let e1: f64;
+      if (face == 0) {
+        r1 = rhoL;
+        m1 = mL;
+        e1 = eL;
+      } else {
+        const idxL = (face - 1) * 3;
+        r1 = Math.max(1e-5, getState(slotPtr, idxL + 0));
+        m1 = getState(slotPtr, idxL + 1);
+        e1 = getState(slotPtr, idxL + 2);
+      }
+
+      let r2: f64;
+      let m2: f64;
+      let e2: f64;
+      if (face == 8) {
+        r2 = rhoR;
+        m2 = mR;
+        e2 = eR;
+      } else {
+        const idxR = face * 3;
+        r2 = Math.max(1e-5, getState(slotPtr, idxR + 0));
+        m2 = getState(slotPtr, idxR + 1);
+        e2 = getState(slotPtr, idxR + 2);
+      }
+
+      const u1 = m1 / r1;
+      const p1 = Math.max(100.0, gm1 * (e1 - 0.5 * m1 * u1));
+      const c1 = Math.sqrt((gamma * p1) / r1);
+
+      const u2 = m2 / r2;
+      const p2 = Math.max(100.0, gm1 * (e2 - 0.5 * m2 * u2));
+      const c2 = Math.sqrt((gamma * p2) / r2);
+
+      // Physical Euler fluxes
+      const f1_0 = m1;
+      const f1_1 = m1 * u1 + p1;
+      const f1_2 = u1 * (e1 + p1);
+
+      const f2_0 = m2;
+      const f2_1 = m2 * u2 + p2;
+      const f2_2 = u2 * (e2 + p2);
+
+      // HLL approximate Riemann solver wave speeds
+      const sL = Math.min(u1 - c1, u2 - c2);
+      const sR = Math.max(u1 + c1, u2 + c2);
+
+      let fh0: f64;
+      let fh1: f64;
+      let fh2: f64;
+      if (sL >= 0.0) {
+        fh0 = f1_0;
+        fh1 = f1_1;
+        fh2 = f1_2;
+      } else if (sR <= 0.0) {
+        fh0 = f2_0;
+        fh1 = f2_1;
+        fh2 = f2_2;
+      } else {
+        const invDen = 1.0 / Math.max(1e-9, sR - sL);
+        fh0 = (sR * f1_0 - sL * f2_0 + sL * sR * (r2 - r1)) * invDen;
+        fh1 = (sR * f1_1 - sL * f2_1 + sL * sR * (m2 - m1)) * invDen;
+        fh2 = (sR * f1_2 - sL * f2_2 + sL * sR * (e2 - e1)) * invDen;
+      }
+
+      const invDx = 1.0 / dx;
+      if (face > 0) {
+        const idxL = (face - 1) * 3;
+        setDState(slotPtr, idxL + 0, getDState(slotPtr, idxL + 0) - fh0 * invDx);
+        setDState(slotPtr, idxL + 1, getDState(slotPtr, idxL + 1) - fh1 * invDx);
+        setDState(slotPtr, idxL + 2, getDState(slotPtr, idxL + 2) - fh2 * invDx);
+      }
+      if (face < 8) {
+        const idxR = face * 3;
+        setDState(slotPtr, idxR + 0, getDState(slotPtr, idxR + 0) + fh0 * invDx);
+        setDState(slotPtr, idxR + 1, getDState(slotPtr, idxR + 1) + fh1 * invDx);
+        setDState(slotPtr, idxR + 2, getDState(slotPtr, idxR + 2) + fh2 * invDx);
+      }
+    }
+
+    // Add Darcy-Weisbach wall friction source term to momentum equation in each cell
+    for (let c: i32 = 0; c < 8; c++) {
+      const idx = c * 3;
+      const rc = Math.max(1e-5, getState(slotPtr, idx + 0));
+      const mc = getState(slotPtr, idx + 1);
+      const uc = mc / rc;
+      const sFric = -(fDarcy / (2.0 * diam)) * rc * uc * Math.abs(uc);
+      setDState(slotPtr, idx + 1, getDState(slotPtr, idx + 1) + sFric);
+    }
+
+    // Read midpoint cell (cell 3) and outlet cell (cell 7) pressures & temperatures
+    const rhoMid = Math.max(1e-5, getState(slotPtr, 9));
+    const mMid = getState(slotPtr, 10);
+    const eMid = getState(slotPtr, 11);
+    const uMid = mMid / rhoMid;
+    const pMid = Math.max(100.0, gm1 * (eMid - 0.5 * mMid * uMid));
+
+    const tOutCell = pC7 / (rhoC7 * rGas);
+    setIo(slotPtr, 2, pC7);
+    setIo(slotPtr, 3, tOutCell);
+    setIo(slotPtr, 4, mC7 * area);
+    setIo(slotPtr, 15, pMid);
     return;
   }
 
@@ -514,7 +688,9 @@ export function gtModelEvalDerivatives(
 }
 
 /**
- * Advances a GT-SUITE component slot by `dt` seconds using 2nd-order Heun integration.
+ * Advances a GT-SUITE component slot by `dt` seconds.
+ * Uses CFL-substepped 1D Finite-Volume HLL integration for `ARCH_PIPE_1D` (24 conserved states),
+ * and 2nd-order Heun integration for lumped ODE archetypes.
  */
 export function gtModelStep(
   archetypeId: i32,
@@ -523,6 +699,57 @@ export function gtModelStep(
   slotPtr: usize,
   conCount: i32,
 ): void {
+  if (archetypeId == ARCH_PIPE_1D) {
+    if (dt <= 0.0) {
+      gtModelEvalDerivatives(archetypeId, t, dt, slotPtr, conCount);
+      return;
+    }
+    // Preserve caller boundary conditions across substeps (eval overwrites IO[2..4] with outlet cell values)
+    const pOutBc = getIo(slotPtr, 2);
+    const mdotBc = getIo(slotPtr, 4);
+    const length = Math.max(1e-4, getCon(slotPtr, conCount, 1, 0.5));
+    const dx = length / 8.0;
+    const gamma: f64 = 1.4;
+    const gm1: f64 = gamma - 1.0;
+
+    // Compute maximum acoustic wave speed |u| + c across cells for CFL stability (CFL <= 0.4)
+    let maxWave: f64 = 350.0;
+    for (let c: i32 = 0; c < 8; c++) {
+      const idx = c * 3;
+      const rc = Math.max(1e-5, getState(slotPtr, idx + 0));
+      const mc = getState(slotPtr, idx + 1);
+      const ec = getState(slotPtr, idx + 2);
+      const uc = mc / rc;
+      const pc = Math.max(100.0, gm1 * (ec - 0.5 * mc * uc));
+      const cc = Math.sqrt((gamma * pc) / rc);
+      const w = Math.abs(uc) + cc;
+      if (w > maxWave) maxWave = w;
+    }
+    const dtCfl = (0.35 * dx) / maxWave;
+    let nSub = <i32>Math.ceil(dt / dtCfl);
+    if (nSub < 1) nSub = 1;
+    if (nSub > 250) nSub = 250;
+    const subDt = dt / (<f64>nSub);
+
+    for (let s: i32 = 0; s < nSub; s++) {
+      setIo(slotPtr, 2, pOutBc);
+      setIo(slotPtr, 4, mdotBc);
+      gtModelEvalDerivatives(archetypeId, t + (<f64>s) * subDt, subDt, slotPtr, conCount);
+      for (let k: i32 = 0; k < 24; k++) {
+        let nextVal = getState(slotPtr, k) + subDt * getDState(slotPtr, k);
+        // Enforce positive density and total energy
+        if (k % 3 == 0 && nextVal < 1e-5) nextVal = 1e-5;
+        if (k % 3 == 2 && nextVal < 100.0) nextVal = 100.0;
+        setState(slotPtr, k, nextVal);
+      }
+    }
+    // Final output sync
+    setIo(slotPtr, 2, pOutBc);
+    setIo(slotPtr, 4, mdotBc);
+    gtModelEvalDerivatives(archetypeId, t + dt, dt, slotPtr, conCount);
+    return;
+  }
+
   const y0_0 = getState(slotPtr, 0);
   const y0_1 = getState(slotPtr, 1);
   const y0_2 = getState(slotPtr, 2);
@@ -559,8 +786,9 @@ export function gtModelStep(
  */
 export function gtModelCheckFlatStart(archetypeId: i32, slotPtr: usize, conCount: i32): f64 {
   gtModelEvalDerivatives(archetypeId, 0.0, 0.01, slotPtr, conCount);
+  const nCheck: i32 = archetypeId == ARCH_PIPE_1D ? 24 : 4;
   let maxRes: f64 = 0.0;
-  for (let i = 0; i < 4; i++) {
+  for (let i: i32 = 0; i < nCheck; i++) {
     const d = Math.abs(getDState(slotPtr, i));
     if (d > maxRes) maxRes = d;
   }

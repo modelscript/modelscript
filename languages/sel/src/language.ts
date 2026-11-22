@@ -6,6 +6,7 @@
 
 import { cardDeckRules, language } from "@modelscript/dsl";
 import { evaluateRelayProtection } from "./analysis/selogic-evaluator.js";
+import { registerBuiltInSelLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerSELToDae } from "./dae/sel-to-dae.js";
 import { selIndexing } from "./indexing.js";
 import { lintSELSettings } from "./lints/index.js";
@@ -188,3 +189,6 @@ export const selLanguage = language({
 });
 
 export default selLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInSelLibrarySync();

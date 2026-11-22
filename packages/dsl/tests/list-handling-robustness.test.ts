@@ -214,8 +214,8 @@ describe("List Handling & Subtree Reuse Robustness", () => {
     // Verify the tree spans the entire source
     const tree = new TreeClass(activeFacade, ast, code);
     expect(tree.rootNode).toBeTruthy();
-    // endIndex should be at or near the end of the source
-    expect(tree.rootNode.endIndex).toBe(code.trimEnd().length);
+    // endIndex should span the full source (including trailing whitespace, matching parseLR)
+    expect(tree.rootNode.endIndex).toBe(code.length);
   });
 
   // -----------------------------------------------------------------------

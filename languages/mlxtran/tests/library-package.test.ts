@@ -163,4 +163,64 @@ describe("@modelscript/mlxtran — Cleanroom Standard Library (modelscript.yaml,
     const expected = (90.0 / 45.0) * Math.exp(-1.0);
     assert.ok(Math.abs(out.concOut - expected) < 1e-9);
   });
+
+  it("verifies bolus_1cpt_VCl, oral1_1cpt_kaVCl, and infusion_1cpt_VCl multi-dose superposition & analytical steady-state trough Css,min (< 1e-6)", () => {
+    const V = 25.0;
+    const Cl = 2.5;
+    const F = 0.9;
+    const D = 150.0;
+    const tau = 12.0; // II = 12 h
+    const k = Cl / V; // 0.1 1/h
+    const expectedCssMin = ((F * D) / V) * (Math.exp(-k * tau) / (1.0 - Math.exp(-k * tau)));
+
+    // 1. bolus_1cpt_VCl: Multi-dose superposition (25 doses, ADDL=24) trough at t = 25 * tau
+    const ivMulti = instantiateMlxtranWasmModel("bolus_1cpt_VCl", { V, Cl, F });
+    assert.ok(ivMulti);
+    ivMulti.init({ dose: D });
+    const ivTroughMulti = ivMulti.eval(25 * tau, 0.0, { amt: D, ii: tau, addl: 24, ss: 0 });
+    assert.ok(
+      Math.abs(ivTroughMulti.concOut - expectedCssMin) < 1e-6,
+      `bolus_1cpt_VCl multi-dose trough mismatch: got ${ivTroughMulti.concOut}, expected ${expectedCssMin}`,
+    );
+
+    // 2. bolus_1cpt_VCl: Steady-state flag SS=1 trough at t = tau matches Css,min exactly
+    const ivSs = instantiateMlxtranWasmModel("bolus_1cpt_VCl", { V, Cl, F });
+    assert.ok(ivSs);
+    ivSs.init({ dose: D });
+    const ivTroughSs = ivSs.eval(tau, 0.0, { amt: D, ii: tau, addl: 0, ss: 1 });
+    assert.ok(
+      Math.abs(ivTroughSs.concOut - expectedCssMin) < 1e-10,
+      `bolus_1cpt_VCl SS trough mismatch: got ${ivTroughSs.concOut}, expected ${expectedCssMin}`,
+    );
+
+    // 3. oral1_1cpt_kaVCl: Multi-dose with absorption lag time ALAG = 0.5 h converges to SS=1
+    const oralMulti = instantiateMlxtranWasmModel("oral1_1cpt_kaVCl", { ka: 1.5, V, Cl, F, Tlag: 0.5 });
+    const oralSs = instantiateMlxtranWasmModel("oral1_1cpt_kaVCl", { ka: 1.5, V, Cl, F, Tlag: 0.5 });
+    assert.ok(oralMulti && oralSs);
+    oralMulti.init({ dose: D });
+    oralSs.init({ dose: D });
+    const cOralMulti = oralMulti.eval(24 * tau + 4.0, 0.0, { dose: D, ii: tau, addl: 24, ss: 0 });
+    const cOralSs = oralSs.eval(4.0, 0.0, { dose: D, ii: tau, addl: 0, ss: 1 });
+    assert.ok(
+      Math.abs(cOralMulti.concOut - cOralSs.concOut) < 1e-6,
+      `oral1_1cpt_kaVCl multi-dose vs SS mismatch: ${cOralMulti.concOut} vs ${cOralSs.concOut}`,
+    );
+
+    // 4. infusion_1cpt_VCl: Multi-dose zero-order infusion (RATE = 75 mg/h => Tinf = 2 h) converges to SS=1
+    const rate = 75.0;
+    const tInf = D / rate;
+    const expectedInfPeak = ((F * rate) / Cl) * ((1.0 - Math.exp(-k * tInf)) / (1.0 - Math.exp(-k * tau)));
+    const infMulti = instantiateMlxtranWasmModel("infusion_1cpt_VCl", { V, Cl, F });
+    const infSs = instantiateMlxtranWasmModel("infusion_1cpt_VCl", { V, Cl, F });
+    assert.ok(infMulti && infSs);
+    infMulti.init({ dose: D, rate });
+    infSs.init({ dose: D, rate });
+    const cInfMulti = infMulti.eval(24 * tau + tInf, 0.0, { dose: D, rate, ii: tau, addl: 24, ss: 0 });
+    const cInfSs = infSs.eval(tInf, 0.0, { dose: D, rate, ii: tau, addl: 0, ss: 1 });
+    assert.ok(Math.abs(cInfSs.concOut - expectedInfPeak) < 1e-9);
+    assert.ok(
+      Math.abs(cInfMulti.concOut - cInfSs.concOut) < 1e-6,
+      `infusion_1cpt_VCl multi-dose vs SS peak mismatch: ${cInfMulti.concOut} vs ${cInfSs.concOut}`,
+    );
+  });
 });

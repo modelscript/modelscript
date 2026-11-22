@@ -146,6 +146,45 @@ describe("@modelscript/simpack — Cleanroom Standard Library (modelscript.yaml,
     );
   });
 
+  it("evaluates cleanroom Kalker FASTSIM 2D contact patch discretization ($R_WheelRail_Kalker)", () => {
+    const kalker = instantiateSimpackWasmModel("$R_WheelRail_Kalker", {
+      mu: 0.35,
+      a: 0.006,
+      b: 0.0045,
+      G: 8.1e10,
+      c11: 4.12,
+      c22: 3.67,
+      c23: 1.47,
+    });
+    assert.ok(kalker, "Expected $R_WheelRail_Kalker WASM instance");
+    kalker.init();
+
+    const fn = 80000.0;
+    const fMax = 0.35 * fn;
+
+    // 1. Small-creepage linear regime matches Kalker linear theory Fx ~ -G * a * b * c11 * xi_x
+    const xiSmall = 1e-4;
+    const linOut = kalker.eval(0.01, 0.01, { disp: xiSmall, vel: 0.0, normalLoad: fn, aux1: 0.0, aux2: 25.0 });
+    const expectedLinFx = -8.1e10 * 0.006 * 0.0045 * 4.12 * xiSmall;
+    assert.ok(
+      Math.abs(linOut.fx - expectedLinFx) / Math.abs(expectedLinFx) < 0.05,
+      `Expected FASTSIM linear Fx ~ ${expectedLinFx}, got ${linOut.fx}`,
+    );
+
+    // 2. High-creepage Coulomb saturation |Fx| -> mu * Fn
+    const satOut = kalker.eval(0.02, 0.01, { disp: 0.05, vel: 0.0, normalLoad: fn, aux1: 0.0, aux2: 25.0 });
+    assert.ok(satOut.fx < 0, `Expected negative longitudinal creep force, got ${satOut.fx}`);
+    assert.ok(
+      Math.abs(satOut.fx) > 0.9 * fMax && Math.abs(satOut.fx) <= fMax + 1e-6,
+      `Expected FASTSIM Coulomb saturation near ${fMax} N, got ${Math.abs(satOut.fx)} N`,
+    );
+
+    // 3. Pure spin creepage generates opposing lateral force Fy < 0 and spin moment Mz < 0
+    const spinOut = kalker.eval(0.03, 0.01, { disp: 0.0, vel: 0.0, normalLoad: fn, aux1: 0.5, aux2: 25.0 });
+    assert.ok(spinOut.fy < -100.0, `Expected resisting lateral force from positive spin, got ${spinOut.fy}`);
+    assert.ok(spinOut.tz < 0.0, `Expected opposing spin moment Mz < 0 for positive spin, got ${spinOut.tz}`);
+  });
+
   it("projects and links an FMI 2.0/3.0 user-defined FMU as a SIMPACK co-simulation element", () => {
     const proj = fmuToSimpackElement(
       {

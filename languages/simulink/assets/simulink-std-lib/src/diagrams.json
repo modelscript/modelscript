@@ -972,10 +972,12 @@
     "namePath": "simulink:Lookup_nD",
     "aliases": [
       "simulink/Lookup Tables/1-D Lookup Table",
+      "simulink/Lookup Tables/2-D Lookup Table",
+      "Lookup2D",
       "Prelookup",
       "Interpolation_nD"
     ],
-    "label": "1-D / n-D Linear Lookup Table",
+    "label": "1-D / 2-D / n-D Linear Lookup Table",
     "category": "Lookup Tables",
     "domain": "control",
     "width": 80,
@@ -1245,15 +1247,1361 @@
   {
     "namePath": "simulink:S-Function",
     "aliases": [
-      "simulink/User-Defined Functions/S-Function",
-      "Chart"
+      "simulink/User-Defined Functions/S-Function"
     ],
-    "label": "User-Defined S-Function / Stateflow Chart",
+    "label": "User-Defined S-Function",
     "category": "Subsystems & Stateflow",
     "domain": "control",
     "width": 80,
     "height": 48,
     "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#312e81\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#818cf8\">SUB</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">S-Functio</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:Chart",
+    "aliases": [
+      "stateflow/Chart",
+      "StateflowChart"
+    ],
+    "label": "Stateflow Finite-State Machine Chart",
+    "category": "Subsystems & Stateflow",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#312e81\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#818cf8\">SUB</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">Chart</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 32
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 16
+      },
+      {
+        "name": "out2",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 32
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:SecondOrderIntegrator",
+    "aliases": [
+      "simulink/Continuous/Integrator, Second-Order",
+      "Second-Order Integrator"
+    ],
+    "label": "Second-Order Continuous Integrator (1/s^2)",
+    "category": "Continuous",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#60a5fa\">CONT</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">SecondOrd</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 16
+      },
+      {
+        "name": "out2",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 32
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:TransportDelay",
+    "aliases": [
+      "simulink/Continuous/Transport Delay"
+    ],
+    "label": "Continuous Transport Delay (e^-sT)",
+    "category": "Continuous",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#60a5fa\">CONT</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">Transport</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:VariableTransportDelay",
+    "aliases": [
+      "simulink/Continuous/Variable Transport Delay",
+      "VariableTimeDelay"
+    ],
+    "label": "Variable Transport Delay",
+    "category": "Continuous",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#60a5fa\">CONT</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">VariableT</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 32
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:FirstOrderHold",
+    "aliases": [
+      "simulink/Discrete/First-Order Hold"
+    ],
+    "label": "First-Order Hold (FOH)",
+    "category": "Discrete",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#2e1f47\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#a78bfa\">DISC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">FirstOrde</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:DiscreteStateSpace",
+    "aliases": [
+      "simulink/Discrete/Discrete State-Space"
+    ],
+    "label": "Discrete State-Space (A, B, C, D)",
+    "category": "Discrete",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#2e1f47\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#a78bfa\">DISC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">DiscreteS</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:DiscreteZeroPole",
+    "aliases": [
+      "simulink/Discrete/Discrete Zero-Pole"
+    ],
+    "label": "Discrete Zero-Pole-Gain H(z)",
+    "category": "Discrete",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#2e1f47\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#a78bfa\">DISC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">DiscreteZ</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:Difference",
+    "aliases": [
+      "simulink/Discrete/Difference"
+    ],
+    "label": "Discrete Backward Difference (u[k] - u[k-1])",
+    "category": "Discrete",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#2e1f47\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#a78bfa\">DISC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">Differenc</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:TappedDelay",
+    "aliases": [
+      "simulink/Discrete/Tapped Delay"
+    ],
+    "label": "Tapped Delay Line",
+    "category": "Discrete",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#2e1f47\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#a78bfa\">DISC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">TappedDel</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:DotProduct",
+    "aliases": [
+      "simulink/Math Operations/Dot Product"
+    ],
+    "label": "Vector Dot Product",
+    "category": "Math Operations",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#34d399\">MATH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">DotProduc</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 32
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:Polynomial",
+    "aliases": [
+      "simulink/Math Operations/Polynomial"
+    ],
+    "label": "Polynomial Evaluation P(u)",
+    "category": "Math Operations",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#34d399\">MATH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">Polynomia</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:Rounding",
+    "aliases": [
+      "simulink/Math Operations/Rounding Function"
+    ],
+    "label": "Rounding Function (floor/ceil/round/fix)",
+    "category": "Math Operations",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#34d399\">MATH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">Rounding</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:ReciprocalSqrt",
+    "aliases": [
+      "simulink/Math Operations/Reciprocal Sqrt"
+    ],
+    "label": "Reciprocal Square Root 1/sqrt(u)",
+    "category": "Math Operations",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#34d399\">MATH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">Reciproca</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:UnaryMinus",
+    "aliases": [
+      "simulink/Math Operations/Unary Minus"
+    ],
+    "label": "Unary Minus (-u)",
+    "category": "Math Operations",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#34d399\">MATH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">UnaryMinu</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:SliderGain",
+    "aliases": [
+      "simulink/Math Operations/Slider Gain"
+    ],
+    "label": "Interactive Slider Gain",
+    "category": "Math Operations",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#34d399\">MATH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">SliderGai</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:Backlash",
+    "aliases": [
+      "simulink/Discontinuities/Backlash"
+    ],
+    "label": "Mechanical Backlash (Play)",
+    "category": "Discontinuities",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#fb923c\">NL</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">Backlash</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:CoulombViscousFriction",
+    "aliases": [
+      "simulink/Discontinuities/Coulomb & Viscous Friction"
+    ],
+    "label": "Coulomb & Viscous Friction",
+    "category": "Discontinuities",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#fb923c\">NL</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">CoulombVi</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:HitCrossing",
+    "aliases": [
+      "simulink/Discontinuities/Hit Crossing"
+    ],
+    "label": "Zero / Threshold Crossing Detector",
+    "category": "Discontinuities",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#fb923c\">NL</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">HitCrossi</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:WrapToZero",
+    "aliases": [
+      "simulink/Discontinuities/Wrap To Zero"
+    ],
+    "label": "Wrap To Zero",
+    "category": "Discontinuities",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#fb923c\">NL</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">WrapToZer</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:SaturationDynamic",
+    "aliases": [
+      "simulink/Discontinuities/Saturation Dynamic"
+    ],
+    "label": "Dynamic Saturation Clamp",
+    "category": "Discontinuities",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#fb923c\">NL</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">Saturatio</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 12
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "in3",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:BitwiseOperator",
+    "aliases": [
+      "simulink/Logic and Bit Operations/Bitwise Operator"
+    ],
+    "label": "Bitwise Logical Operator (AND/OR/XOR/NAND/NOR/NOT)",
+    "category": "Logic & Bit Operations",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#f87171\">LOG</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">BitwiseOp</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 32
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:BitShift",
+    "aliases": [
+      "simulink/Logic and Bit Operations/Shift Arithmetic"
+    ],
+    "label": "Arithmetic Bit Shift",
+    "category": "Logic & Bit Operations",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#f87171\">LOG</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">BitShift</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:BitClear",
+    "aliases": [
+      "simulink/Logic and Bit Operations/Bit Clear"
+    ],
+    "label": "Bit Clear",
+    "category": "Logic & Bit Operations",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#f87171\">LOG</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">BitClear</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:BitSet",
+    "aliases": [
+      "simulink/Logic and Bit Operations/Bit Set"
+    ],
+    "label": "Bit Set",
+    "category": "Logic & Bit Operations",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#f87171\">LOG</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">BitSet</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:CompareToZero",
+    "aliases": [
+      "simulink/Logic and Bit Operations/Compare To Zero"
+    ],
+    "label": "Compare To Zero",
+    "category": "Logic & Bit Operations",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#f87171\">LOG</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">CompareTo</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:DetectChange",
+    "aliases": [
+      "simulink/Logic and Bit Operations/Detect Change"
+    ],
+    "label": "Detect Signal Change",
+    "category": "Logic & Bit Operations",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#f87171\">LOG</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">DetectCha</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:DetectIncrease",
+    "aliases": [
+      "simulink/Logic and Bit Operations/Detect Increase"
+    ],
+    "label": "Detect Signal Increase",
+    "category": "Logic & Bit Operations",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#f87171\">LOG</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">DetectInc</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:DetectDecrease",
+    "aliases": [
+      "simulink/Logic and Bit Operations/Detect Decrease"
+    ],
+    "label": "Detect Signal Decrease",
+    "category": "Logic & Bit Operations",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#f87171\">LOG</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">DetectDec</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:DataTypeConversion",
+    "aliases": [
+      "simulink/Signal Attributes/Data Type Conversion"
+    ],
+    "label": "Data Type Conversion",
+    "category": "Signal Routing",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#2dd4bf\">RTE</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">DataTypeC</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:Selector",
+    "aliases": [
+      "simulink/Signal Routing/Selector"
+    ],
+    "label": "Vector / Matrix Selector",
+    "category": "Signal Routing",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#2dd4bf\">RTE</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">Selector</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:Concatenate",
+    "aliases": [
+      "simulink/Signal Routing/Vector Concatenate",
+      "MatrixConcatenate"
+    ],
+    "label": "Vector / Matrix Concatenate",
+    "category": "Signal Routing",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#2dd4bf\">RTE</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">Concatena</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 32
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:ManualSwitch",
+    "aliases": [
+      "simulink/Signal Routing/Manual Switch"
+    ],
+    "label": "Manual Two-Way Switch",
+    "category": "Signal Routing",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#2dd4bf\">RTE</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">ManualSwi</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 32
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:EnvironmentController",
+    "aliases": [
+      "simulink/Signal Routing/Environment Controller"
+    ],
+    "label": "Simulation / Codegen Environment Controller",
+    "category": "Signal Routing",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#2dd4bf\">RTE</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">Environme</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 32
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:IndexVector",
+    "aliases": [
+      "simulink/Signal Routing/Index Vector"
+    ],
+    "label": "Index Vector Multiplexer",
+    "category": "Signal Routing",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#2dd4bf\">RTE</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">IndexVect</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 12
+      },
+      {
+        "name": "in2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "in3",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:FromWorkspace",
+    "aliases": [
+      "simulink/Sources/From Workspace"
+    ],
+    "label": "From Workspace Signal Replay",
+    "category": "Sources",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#38bdf8\">SRC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">FromWorks</text></svg>",
+    "ports": [
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:SignalBuilder",
+    "aliases": [
+      "simulink/Sources/Signal Builder",
+      "SignalEditor"
+    ],
+    "label": "Piecewise-Linear Signal Builder",
+    "category": "Sources",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#38bdf8\">SRC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">SignalBui</text></svg>",
+    "ports": [
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:Chirp",
+    "aliases": [
+      "simulink/Sources/Chirp Signal"
+    ],
+    "label": "Swept-Frequency Chirp Signal",
+    "category": "Sources",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#38bdf8\">SRC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">Chirp</text></svg>",
+    "ports": [
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:UniformRandomNumber",
+    "aliases": [
+      "simulink/Sources/Uniform Random Number",
+      "RandomNumber"
+    ],
+    "label": "Uniform Random Number Source",
+    "category": "Sources",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#38bdf8\">SRC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">UniformRa</text></svg>",
+    "ports": [
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:RepeatingSequence",
+    "aliases": [
+      "simulink/Sources/Repeating Sequence"
+    ],
+    "label": "Repeating Periodic Sequence",
+    "category": "Sources",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#38bdf8\">SRC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">Repeating</text></svg>",
+    "ports": [
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:CounterFreeRunning",
+    "aliases": [
+      "simulink/Sources/Counter Free-Running",
+      "CounterLimited"
+    ],
+    "label": "Free-Running Digital Counter",
+    "category": "Sources",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#38bdf8\">SRC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">CounterFr</text></svg>",
+    "ports": [
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:SimscapeResistor",
+    "aliases": [
+      "fl_lib/Electrical/Electrical Elements/Resistor",
+      "ee_lib/Passive/Resistor"
+    ],
+    "label": "Simscape Electrical Resistor (V = R * I)",
+    "category": "Simscape",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1f2937\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#22d3ee\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#22d3ee\">PHYS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">SimscapeR</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:SimscapeCapacitor",
+    "aliases": [
+      "fl_lib/Electrical/Electrical Elements/Capacitor",
+      "ee_lib/Passive/Capacitor"
+    ],
+    "label": "Simscape Electrical Capacitor (C * dv/dt = i)",
+    "category": "Simscape",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1f2937\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#22d3ee\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#22d3ee\">PHYS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">SimscapeC</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:SimscapeInductor",
+    "aliases": [
+      "fl_lib/Electrical/Electrical Elements/Inductor",
+      "ee_lib/Passive/Inductor"
+    ],
+    "label": "Simscape Electrical Inductor (L * di/dt = v)",
+    "category": "Simscape",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1f2937\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#22d3ee\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#22d3ee\">PHYS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">SimscapeI</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:SimscapeDamper",
+    "aliases": [
+      "fl_lib/Mechanical/Translational Elements/Translational Damper"
+    ],
+    "label": "Simscape Translational Damper (F = D * v)",
+    "category": "Simscape",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1f2937\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#22d3ee\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#22d3ee\">PHYS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">SimscapeD</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:SimscapeSpring",
+    "aliases": [
+      "fl_lib/Mechanical/Translational Elements/Translational Spring"
+    ],
+    "label": "Simscape Translational Spring (dF/dt = k * v)",
+    "category": "Simscape",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1f2937\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#22d3ee\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#22d3ee\">PHYS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">SimscapeS</text></svg>",
+    "ports": [
+      {
+        "name": "in1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "simulink:SimscapeMass",
+    "aliases": [
+      "fl_lib/Mechanical/Translational Elements/Mass"
+    ],
+    "label": "Simscape Translational Mass (m * dv/dt = F)",
+    "category": "Simscape",
+    "domain": "control",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"5\" fill=\"#1f2937\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#22d3ee\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" fill=\"#22d3ee\">PHYS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">SimscapeM</text></svg>",
     "ports": [
       {
         "name": "in1",

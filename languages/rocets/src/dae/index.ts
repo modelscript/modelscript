@@ -2,6 +2,7 @@
 
 export {
   lowerRocetsToDae,
+  resolveRocetsSchemaParamDefaults,
   rocetsToDae,
   type RocetsDaeLoweringResult,
   type RocetsToDaeOptions,

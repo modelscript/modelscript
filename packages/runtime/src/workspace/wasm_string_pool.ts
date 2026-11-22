@@ -45,6 +45,7 @@ export class WasmStringPool implements IStringInterner {
 
   private wasmExports: any = null;
   public poolPtr: number = 0;
+  private ownsPool = false;
 
   private utf8Encoder = new TextEncoder();
   private utf8Decoder = new TextDecoder("utf-8");
@@ -58,17 +59,22 @@ export class WasmStringPool implements IStringInterner {
   // Reusable WASM scratch buffer pointer for string transfer
   private scratchPtr = 0;
   private scratchCapacity = 0;
+  private scratchFreeFn: ((ptr: number) => void) | null = null;
   private _scratchView: Uint8Array | null = null;
 
   constructor(wasmExports?: any, poolPtr?: number) {
     if (wasmExports && (wasmExports.stringPool_internUtf8 || wasmExports.dae_createBuilder)) {
       this.wasmExports = wasmExports;
-      this.poolPtr =
-        poolPtr && poolPtr !== 0
-          ? poolPtr
-          : this.wasmExports.stringPool_create
-            ? this.wasmExports.stringPool_create()
-            : 0;
+      if (poolPtr && poolPtr !== 0) {
+        this.poolPtr = poolPtr;
+        this.ownsPool = false;
+      } else if (this.wasmExports.stringPool_create) {
+        this.poolPtr = this.wasmExports.stringPool_create();
+        this.ownsPool = this.poolPtr !== 0;
+      } else {
+        this.poolPtr = 0;
+        this.ownsPool = false;
+      }
     }
 
     // Initialize ID 0 as empty string
@@ -201,29 +207,91 @@ export class WasmStringPool implements IStringInterner {
     this.shortTable.set(s, expectedId);
   }
 
+  private static _resolveAllocPair(
+    exports: any,
+  ): { alloc: (n: number) => number; free: ((ptr: number) => void) | null } | null {
+    if (!exports) return null;
+    if (typeof exports.atomicChunkAlloc === "function") {
+      return {
+        alloc: (n: number) => exports.atomicChunkAlloc(n) >>> 0,
+        free: typeof exports.atomicChunkFree === "function" ? (p: number) => exports.atomicChunkFree(p) : null,
+      };
+    }
+    if (typeof exports.arena_alloc === "function") {
+      return {
+        alloc: (n: number) => exports.arena_alloc(n) >>> 0,
+        free:
+          typeof exports.arena_free === "function"
+            ? (p: number) => exports.arena_free(p)
+            : typeof exports.atomicChunkFree === "function"
+              ? (p: number) => exports.atomicChunkFree(p)
+              : null,
+      };
+    }
+    if (typeof exports.alloc === "function") {
+      return {
+        alloc: (n: number) => exports.alloc(n) >>> 0,
+        free: typeof exports.free === "function" ? (p: number) => exports.free(p) : null,
+      };
+    }
+    if (typeof exports.dae_alloc === "function") {
+      return {
+        alloc: (n: number) => exports.dae_alloc(n) >>> 0,
+        free: typeof exports.dae_free === "function" ? (p: number) => exports.dae_free(p) : null,
+      };
+    }
+    if (typeof exports.__new === "function") {
+      return {
+        alloc: (n: number) => {
+          const p = exports.__new(n, 0) >>> 0;
+          if (p && typeof exports.__pin === "function") exports.__pin(p);
+          return p;
+        },
+        free: typeof exports.__unpin === "function" ? (p: number) => exports.__unpin(p) : null,
+      };
+    }
+    return null;
+  }
+
   private _ensureScratch(size: number): number {
-    const allocFn =
-      this.wasmExports?.alloc ??
-      this.wasmExports?.dae_alloc ??
-      this.wasmExports?.arena_alloc ??
-      this.wasmExports?.atomicChunkAlloc ??
-      (typeof this.wasmExports?.__new === "function" ? (n: number) => this.wasmExports.__new(n, 0) : undefined);
-    if (!allocFn || !this.wasmExports?.memory) return 0;
+    const pair = WasmStringPool._resolveAllocPair(this.wasmExports);
+    if (!pair || !this.wasmExports?.memory) return 0;
     if (
       this.scratchCapacity < size ||
       !this._scratchView ||
       this._scratchView.buffer !== this.wasmExports.memory.buffer
     ) {
       if (this.scratchCapacity < size) {
-        if (this.scratchPtr && this.wasmExports.free) {
-          this.wasmExports.free(this.scratchPtr);
+        if (this.scratchPtr && this.scratchFreeFn) {
+          this.scratchFreeFn(this.scratchPtr);
         }
         this.scratchCapacity = Math.max(size, 256);
-        this.scratchPtr = allocFn(this.scratchCapacity) >>> 0;
+        this.scratchPtr = pair.alloc(this.scratchCapacity);
+        this.scratchFreeFn = pair.free;
       }
       this._scratchView = new Uint8Array(this.wasmExports.memory.buffer, this.scratchPtr >>> 0, this.scratchCapacity);
     }
     return this.scratchPtr;
+  }
+
+  /** Releases any WASM scratch buffer and owned `ArenaStringPool` allocation. */
+  public dispose(): void {
+    if (this.scratchPtr && this.scratchFreeFn) {
+      try {
+        this.scratchFreeFn(this.scratchPtr);
+      } catch {}
+    }
+    this.scratchPtr = 0;
+    this.scratchCapacity = 0;
+    this.scratchFreeFn = null;
+    this._scratchView = null;
+    if (this.ownsPool && this.poolPtr && typeof this.wasmExports?.stringPool_dispose === "function") {
+      try {
+        this.wasmExports.stringPool_dispose(this.poolPtr);
+      } catch {}
+      this.poolPtr = 0;
+      this.ownsPool = false;
+    }
   }
 
   /**
@@ -410,44 +478,42 @@ export class WasmStringPool implements IStringInterner {
     }
     if (startId >= totalCount) return;
 
-    const allocFn =
-      exports.alloc ??
-      exports.dae_alloc ??
-      exports.arena_alloc ??
-      exports.atomicChunkAlloc ??
-      (typeof exports.__new === "function" ? (n: number) => exports.__new(n, 0) : undefined);
-    if (!allocFn) return;
+    const pair = WasmStringPool._resolveAllocPair(exports);
+    if (!pair) return;
 
     let scratchCap = 1024;
-    let scratchPtr = allocFn(scratchCap) >>> 0;
+    let scratchPtr = pair.alloc(scratchCap);
     let scratchView = new Uint8Array(exports.memory.buffer, scratchPtr >>> 0, scratchCap);
 
-    for (let id = startId; id < totalCount; id++) {
-      let s = this.reverse[id];
-      if (s === undefined) {
-        s = this.resolve(id);
+    try {
+      for (let id = startId; id < totalCount; id++) {
+        let s = this.reverse[id];
+        if (s === undefined) {
+          s = this.resolve(id);
+        }
+        if (s === undefined) continue;
+        const maxLen = s.length * 3 + 1;
+        if (maxLen > scratchCap) {
+          if (pair.free) pair.free(scratchPtr);
+          scratchCap = Math.max(maxLen, scratchCap * 2);
+          scratchPtr = pair.alloc(scratchCap);
+          scratchView = new Uint8Array(exports.memory.buffer, scratchPtr >>> 0, scratchCap);
+        } else if (scratchView.buffer !== exports.memory.buffer) {
+          scratchView = new Uint8Array(exports.memory.buffer, scratchPtr >>> 0, scratchCap);
+        }
+        let written: number;
+        if (this.utf8Encoder.encodeInto) {
+          written = this.utf8Encoder.encodeInto(s, scratchView).written;
+        } else {
+          const encoded = this.utf8Encoder.encode(s);
+          written = encoded.length;
+          scratchView.set(encoded, 0);
+        }
+        exports.stringPool_internUtf8(targetPoolPtr, scratchPtr, written);
       }
-      if (s === undefined) continue;
-      const maxLen = s.length * 3 + 1;
-      if (maxLen > scratchCap) {
-        if (exports.free) exports.free(scratchPtr);
-        scratchCap = Math.max(maxLen, scratchCap * 2);
-        scratchPtr = allocFn(scratchCap) >>> 0;
-        scratchView = new Uint8Array(exports.memory.buffer, scratchPtr >>> 0, scratchCap);
-      } else if (scratchView.buffer !== exports.memory.buffer) {
-        scratchView = new Uint8Array(exports.memory.buffer, scratchPtr >>> 0, scratchCap);
-      }
-      let written: number;
-      if (this.utf8Encoder.encodeInto) {
-        written = this.utf8Encoder.encodeInto(s, scratchView).written;
-      } else {
-        const encoded = this.utf8Encoder.encode(s);
-        written = encoded.length;
-        scratchView.set(encoded, 0);
-      }
-      exports.stringPool_internUtf8(targetPoolPtr, scratchPtr, written);
+    } finally {
+      if (pair.free && scratchPtr) pair.free(scratchPtr);
     }
-    if (exports.free) exports.free(scratchPtr);
     this.syncedCountByPool.set(targetPoolPtr, totalCount - 1);
   }
 

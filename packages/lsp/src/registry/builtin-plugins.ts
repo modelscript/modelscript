@@ -176,6 +176,7 @@ import {
   getDocumentSymbols as getMatpowerDocumentSymbols,
   matpowerLanguage,
 } from "@modelscript/matpower";
+import { getMlxtranDocumentSymbols, getMlxtranHover, mlxtranLanguage, validateMlxtran } from "@modelscript/mlxtran";
 import {
   formatModelicaTree,
   getModelicaCodeLenses,
@@ -2317,6 +2318,19 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     languageDef: plscaddLanguage,
     symbols: getPlsCaddDocumentSymbols,
     validate: getPlsCaddDiagnostics,
+  });
+
+  // 92. Monolix MLXTRAN
+  registerStandardPlugin({
+    id: "mlxtran",
+    name: "MLXTRAN",
+    extensions: [".mlxtran"],
+    languageDef: mlxtranLanguage,
+    symbols: getMlxtranDocumentSymbols,
+    validate: validateMlxtran,
+    customHandlers: {
+      hover: (offset: number, text: string) => getMlxtranHover(text, offsetToPosition(text, offset)),
+    },
   });
 
   if (

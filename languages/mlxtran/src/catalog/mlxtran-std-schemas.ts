@@ -125,6 +125,8 @@ export const MLXTRAN_MODEL_SPECS: MlxtranModelSpec[] = [
     params: [
       ["V", 10.0, "L", "Central volume of distribution"],
       ["Cl", 1.0, "L/h", "Systemic clearance"],
+      ["F", 1.0, "1", "Bioavailability fraction"],
+      ["Tlag", 0.0, "h", "Dosing lag time"],
     ],
   },
   {
@@ -176,6 +178,8 @@ export const MLXTRAN_MODEL_SPECS: MlxtranModelSpec[] = [
     params: [
       ["V", 10.0, "L", "Central volume of distribution"],
       ["Cl", 1.0, "L/h", "Systemic clearance"],
+      ["F", 1.0, "1", "Bioavailability fraction"],
+      ["Tlag", 0.0, "h", "Dosing lag time"],
     ],
   },
   {
@@ -193,6 +197,7 @@ export const MLXTRAN_MODEL_SPECS: MlxtranModelSpec[] = [
       ["V", 10.0, "L", "Apparent central volume of distribution (V/F)"],
       ["Cl", 1.0, "L/h", "Apparent clearance (Cl/F)"],
       ["F", 1.0, "1", "Oral bioavailability fraction"],
+      ["Tlag", 0.0, "h", "Absorption lag time"],
     ],
   },
   {

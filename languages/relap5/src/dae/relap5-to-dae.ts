@@ -11,6 +11,7 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInRelap5LibraryRegistered, lookupRelap5ModelSchema } from "../catalog/library-package-adapter.js";
 import type { Relap5Deck } from "../types.js";
 
 export interface Relap5DaeOptions {
@@ -18,7 +19,34 @@ export interface Relap5DaeOptions {
   modelName?: string | undefined;
 }
 
+/**
+ * Resolves parameter defaults for a RELAP5 model from `@modelscript/relap5-std-lib`,
+ * merging any user-specified named overrides over the cleanroom schema defaults.
+ */
+export function resolveRelap5SchemaParamDefaults(
+  modelName: string,
+  overrides: Record<string, number> = {},
+): Record<string, number> {
+  ensureBuiltInRelap5LibraryRegistered();
+  const resolved: Record<string, number> = {};
+  const schema = lookupRelap5ModelSchema(modelName);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (typeof p.defaultValue === "number" && Number.isFinite(p.defaultValue)) {
+        resolved[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (Number.isFinite(v)) {
+      resolved[k] = v;
+    }
+  }
+  return resolved;
+}
+
 export function lowerRelap5ToDae(deck: Relap5Deck, options?: Relap5DaeOptions): DAEBuilder {
+  ensureBuiltInRelap5LibraryRegistered();
   const modelName = (options?.modelName ?? (deck.title || "Relap5NuclearPlant")).replace(/[^a-zA-Z0-9_]/g, "_");
   const dae = options?.builder ?? new DAEBuilder(undefined, modelName);
 

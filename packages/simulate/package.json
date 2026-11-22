@@ -120,7 +120,8 @@
     "@modelscript/cfd": "*",
     "@modelscript/dsl": "*",
     "@modelscript/fea": "*",
-    "@modelscript/runtime": "*"
+    "@modelscript/runtime": "*",
+    "@modelscript/solve": "*"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",
@@ -140,7 +141,8 @@
           "@modelscript/cfd:build",
           "@modelscript/dsl:build",
           "@modelscript/fea:build",
-          "@modelscript/runtime:build"
+          "@modelscript/runtime:build",
+          "@modelscript/solve:build"
         ]
       },
       "test": {

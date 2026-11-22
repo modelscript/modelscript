@@ -452,16 +452,23 @@ export function affineDiv(a: AffineForm, b: AffineForm, pool: AffineNoisePool, o
     let ivA = getScratchInterval();
     let res = getScratchInterval();
     affineToInterval(a, pool, ivA);
-    res.set(ivA.lo / ivB.hi, ivA.hi / ivB.lo);
+    let r1 = ivA.lo / ivB.lo;
+    let r2 = ivA.lo / ivB.hi;
+    let r3 = ivA.hi / ivB.lo;
+    let r4 = ivA.hi / ivB.hi;
+    let lo = Math.min(Math.min(r1, r2), Math.min(r3, r4));
+    let hi = Math.max(Math.max(r1, r2), Math.max(r3, r4));
+    res.set(lo, hi);
     out.set(res.mid(), 0.5 * res.width(), 0, 0);
     resetScratchInterval(markIv);
     return;
   }
 
   // Reciprocal approximation: 1 / b ~ (1 / midB) - (1 / midB^2) * (b - midB)
+  // Exact remainder bound: |(b - m)^2 / (b * m^2)| <= (|alpha| * radB^2) / (|midB| - radB)
   let alpha = -1.0 / (midB * midB);
   let gamma = invMidB - alpha * midB;
-  let delta = (alpha * alpha * radB * radB) / (Math.abs(midB) - radB);
+  let delta = (Math.abs(alpha) * radB * radB) / (Math.abs(midB) - radB);
 
   let markAff = markScratchAffine();
   let invB = getScratchAffine();

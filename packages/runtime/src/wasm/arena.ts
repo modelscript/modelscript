@@ -4,10 +4,10 @@
 
 import {
   ChunkedArray, ChunkedUint8Array, ChunkedUint32Array, ChunkedFloat64Array, ChunkedInt32Array, UnmanagedUint32Array, UnmanagedUint8Array, UnmanagedUint16Array,
-  createChunkedUint8Array, createChunkedUint32Array, createChunkedFloat64Array, createChunkedInt32Array, atomicChunkAlloc
+  createChunkedUint8Array, createChunkedUint32Array, createChunkedFloat64Array, createChunkedInt32Array, atomicChunkAlloc, atomicChunkFree
 } from "./core/array";
-export { atomicChunkAlloc };
-import { UnmanagedMap64 } from "./core/hashmap";
+export { atomicChunkAlloc, atomicChunkFree };
+import { UnmanagedMap64, UnmanagedMap64To64 } from "./core/hashmap";
 import { inputEncoding } from "./parser";
 export { inputEncoding };
 
@@ -258,18 +258,25 @@ export function S(): SharedState {
     state.gen1_chunk_count = 1;
     let c1 = allocAlignedAstChunk();
     state.gen1_chunks[0] = c1;
+    state.gen1_offset = c1;
+    state.gen1_endLimit = c1 + AST_CHUNK_SIZE;
+    state.arenaOffset = c1;
     stampChunkPages(c1, 1, ++state.chunkSequence);
 
     state.gen0_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
     state.gen0_chunk_count = 1;
     let c0 = allocAlignedAstChunk();
     state.gen0_chunks[0] = c0;
+    state.gen0_offset = c0;
+    state.gen0_endLimit = c0 + AST_CHUNK_SIZE;
     stampChunkPages(c0, 0, ++state.chunkSequence);
 
     state.gen2_chunks = changetype<UnmanagedUint32Array>(atomicChunkAlloc(8192 * 4));
     state.gen2_chunk_count = 1;
     let c2 = allocAlignedAstChunk();
     state.gen2_chunks[0] = c2;
+    state.gen2_offset = c2;
+    state.gen2_endLimit = c2 + AST_CHUNK_SIZE;
     stampChunkPages(c2, 2, ++state.chunkSequence);
 
     state.activeGeneration = 1;
@@ -314,6 +321,14 @@ export function stampChunkPages(chunkStart: u32, gen: u8, seq: u32): void {
 
 export function arena_alloc(size: u32): u32 {
   return atomicChunkAlloc(size);
+}
+
+export function arena_free(ptr: u32): void {
+  atomicChunkFree(ptr as usize);
+}
+
+export function arena_freeSnapshot(snapshotPtr: u32): void {
+  atomicChunkFree(snapshotPtr as usize);
 }
 
 /**
@@ -410,6 +425,12 @@ export function resetGeneration(gen: u8): void {
   if (gen == 1) {
     S().freeNodeHead = 0; // Clear free list to prevent handing out old pointers after reset
     S().fatPaddingCount = 0; // Reset fat padding arena on full re-parse
+    if (activeDocChunkCount == 0) {
+      resetSideTables();
+      if (stringArenaPtr != 0) stringArenaOffset = 4;
+      if (tensorArenaPtr != 0) tensorArenaOffset = 16;
+      if (changetype<usize>(scopeArenaPtr) != 0) scopeArenaOffset = 0;
+    }
     if (S().gen1_chunk_count > 0) {
       let maxChunk1 = S().gen1_active_chunk < S().gen1_chunk_count ? S().gen1_active_chunk : S().gen1_chunk_count - 1;
       for (let i: u32 = 0; i <= maxChunk1; i++) {
@@ -426,6 +447,7 @@ export function resetGeneration(gen: u8): void {
       stampChunkPages(S().gen1_chunks[0], 1, ++S().chunkSequence);
     }
   } else if (gen == 0) {
+    freeOversizedList(0);
     if (S().gen0_chunk_count > 0) {
       let maxChunk0 = S().gen0_active_chunk < S().gen0_chunk_count ? S().gen0_active_chunk : S().gen0_chunk_count - 1;
       for (let i: u32 = 0; i <= maxChunk0; i++) {
@@ -442,6 +464,7 @@ export function resetGeneration(gen: u8): void {
     }
   } else if (gen == 2) {
     replayUndoLog();
+    freeOversizedList(2);
     if (S().gen2_chunk_count > 0) {
       let maxChunk2 = S().gen2_active_chunk < S().gen2_chunk_count ? S().gen2_active_chunk : S().gen2_chunk_count - 1;
       for (let i: u32 = 0; i <= maxChunk2; i++) {
@@ -470,14 +493,19 @@ export function ensureInputBuffer(size: u32): usize {
   // a cache-line-aligned offset, keeping metadata out of the hot input path.
   let required = size + 64;
   if (required > S().currentInputBufferSize) {
-    let newCap = S().currentInputBufferSize;
+    let oldCap = S().currentInputBufferSize;
+    let oldBuf = S().arenaBuffer;
+    let newCap = oldCap;
     if (newCap == 0) newCap = 4 * 1024 * 1024; // fallback to 4MB just in case
     while (newCap < required) newCap *= 2;
-    
-    // We intentionally don't free the old buffer since atomicChunkAlloc pointer alignment 
-    // makes it unsafe for heap.free(). Exponential growth limits leaked memory to ~2N.
+
+    let newBuf = atomicChunkAlloc(newCap);
+    if (oldBuf != 0 && oldCap > 64) {
+      memory.copy((newBuf + 64) as usize, (oldBuf + 64) as usize, (oldCap - 64) as usize);
+      atomicChunkFree(oldBuf as usize);
+    }
     S().currentInputBufferSize = newCap;
-    S().arenaBuffer = atomicChunkAlloc(S().currentInputBufferSize);
+    S().arenaBuffer = newBuf;
   }
   return S().arenaBuffer + 64;
 }
@@ -517,7 +545,6 @@ let fatPaddingCapacity: u32 = 100000; // Grows dynamically if exhausted
 function ensureFatPaddingArena(): void {
   if (changetype<u32>(S().fatPaddingArenaPtr) == 0) {
     S().fatPaddingArenaPtr = changetype<UnmanagedUint32Array>(atomicChunkAlloc(fatPaddingCapacity * 4));
-    memory.fill(changetype<usize>(S().fatPaddingArenaPtr), 0, fatPaddingCapacity * 4);
   }
 }
 
@@ -589,9 +616,6 @@ export function initArena(sizeBytes: u32): void {
 
   s.activeGeneration = 1;
   s.arenaOffset = s.gen1_offset;
-
-  // Eagerly initialize fat padding arena (avoids per-allocNode null check)
-  ensureFatPaddingArena();
 }
 
 /**
@@ -606,6 +630,34 @@ export function initArena(sizeBytes: u32): void {
  */
 let freeChunkHead: u32 = 0;
 let freeChunkCount: u32 = 0;
+let activeDocChunkCount: u32 = 0;
+
+let gen0OversizedHead: usize = 0;
+let gen2OversizedHead: usize = 0;
+
+function freeOversizedList(gen: u8): void {
+  let curr = gen == 2 ? gen2OversizedHead : gen0OversizedHead;
+  if (gen == 2) gen2OversizedHead = 0;
+  else gen0OversizedHead = 0;
+  while (curr != 0) {
+    let next = load<usize>(curr);
+    atomicChunkFree(curr);
+    curr = next;
+  }
+}
+
+function clearChunkPages(chunkStart: u32): void {
+  let s = S();
+  let table = s.pageStampTable;
+  if (changetype<usize>(table) == 0) return;
+  let startPage = chunkStart >>> 16;
+  let endPage = (chunkStart + AST_CHUNK_SIZE - 1) >>> 16;
+  for (let p = startPage; p <= endPage; p++) {
+    if (p < PAGE_STAMP_CAPACITY) {
+      table[p] = 0;
+    }
+  }
+}
 
 let currentDocFileId: u32 = 0;
 let docActiveChunk: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
@@ -631,16 +683,25 @@ export function getAllocDocument(): u32 {
 export function evictDocumentArena(fileId: u32): void {
   if (fileId == 0 || changetype<usize>(docChunkHead) == 0) return;
   let chunk = docChunkHead.get(fileId as u64);
+  let activeChunk = docActiveChunk.get(fileId as u64);
+  let activeOffset = docActiveOffset.get(fileId as u64);
+  let hasAnySideTable = hasAnySideTableEntries();
   while (chunk != 0) {
     let next = load<u32>(chunk as usize);
+    if (hasAnySideTable) {
+      let endOff = chunk == activeChunk ? activeOffset : (chunk + AST_CHUNK_SIZE);
+      clearSideTablesForRange(chunk + 32, endOff);
+    }
+    clearChunkPages(chunk);
     store<u32>(chunk as usize, freeChunkHead);
     freeChunkHead = chunk;
     freeChunkCount++;
+    if (activeDocChunkCount > 0) activeDocChunkCount--;
     chunk = next;
   }
-  docChunkHead.set(fileId as u64, 0);
-  docActiveChunk.set(fileId as u64, 0);
-  docActiveOffset.set(fileId as u64, 0);
+  docChunkHead.delete(fileId as u64);
+  docActiveChunk.delete(fileId as u64);
+  docActiveOffset.delete(fileId as u64);
 }
 
 export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHash: u32, isTainted: boolean = false, startState: u32 = 0): u32 {
@@ -662,6 +723,8 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
       } else {
         newChunk = allocAlignedAstChunk();
       }
+      activeDocChunkCount++;
+      stampChunkPages(newChunk, 1, ++s.chunkSequence);
       let headChunk = docChunkHead.get(currentDocFileId as u64);
       store<u32>(newChunk as usize, headChunk);
       store<u32>((newChunk + 4) as usize, currentDocFileId);
@@ -686,10 +749,10 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
       let isGen2 = s.activeGeneration == 2;
       // 3.1 Acquire spinlock to safely handle the rollover and prevent data corruption
       s.acquireLock();
-      
+
       let currentPtrLoc = s.atomicLoadOffset();
       let currentEndLimit = isGen0 ? s.gen0_endLimit : (isGen2 ? s.gen2_endLimit : s.gen1_endLimit);
-      
+
       if (currentPtrLoc + NODE_SIZE > currentEndLimit) {
         // 3.2 Chunk is genuinely exhausted, we must allocate a new one
         let activeChunk = isGen0 ? s.gen0_active_chunk : (isGen2 ? s.gen2_active_chunk : s.gen1_active_chunk);
@@ -737,7 +800,7 @@ export function allocNode(type: u16, paddingLength: u32, byteLength: u32, envHas
         // 3.3 Another thread already rolled over the chunk while we were spinning.
         ptr = s.atomicAddOffset(NODE_SIZE);
       }
-      
+
       // 3.4 Release spinlock
       s.releaseLock();
     }
@@ -1121,6 +1184,21 @@ export function allocGen0(sizeBytes: u32): u32 {
   if (rem != 0) sizeBytes += 4 - rem;
 
   let isGen2 = S().activeGeneration == 2;
+
+  // Oversized allocations (> AST_CHUNK_SIZE) go on a separate freed-on-reset list
+  // so gen0_chunks / gen2_chunks remain uniformly AST_CHUNK_SIZE.
+  if (sizeBytes > AST_CHUNK_SIZE) {
+    let raw = atomicChunkAlloc(sizeBytes + 16) as usize;
+    if (isGen2) {
+      store<usize>(raw, gen2OversizedHead);
+      gen2OversizedHead = raw;
+    } else {
+      store<usize>(raw, gen0OversizedHead);
+      gen0OversizedHead = raw;
+    }
+    return (raw + 16) as u32;
+  }
+
   let ptrLoc: usize = changetype<usize>(S()) + (isGen2 ? offsetof<SharedState>("gen2_offset") : offsetof<SharedState>("gen0_offset"));
 
   // Atomically claim the size
@@ -1131,16 +1209,14 @@ export function allocGen0(sizeBytes: u32): u32 {
   // Request a new chunk if the current chunk is exhausted
   if (ptr + sizeBytes > endLimit) {
     let lockLoc = changetype<usize>(S()) + offsetof<SharedState>("allocLock");
-    
+
     // Acquire spinlock to handle rollover safely across threads
     while (atomic.cmpxchg<u32>(lockLoc, 0, 1) != 0) { /* spin */ }
-    
+
     let currentPtrLoc: u32 = atomic.load<u32>(ptrLoc);
     let currentEndLimit = isGen2 ? S().gen2_endLimit : S().gen0_endLimit;
-    
-    if (currentPtrLoc + sizeBytes > currentEndLimit) {
-      let allocSize = sizeBytes > AST_CHUNK_SIZE ? sizeBytes : AST_CHUNK_SIZE;
 
+    if (currentPtrLoc + sizeBytes > currentEndLimit) {
       let activeChunk = isGen2 ? S().gen2_active_chunk : S().gen0_active_chunk;
       let chunkCount = isGen2 ? S().gen2_chunk_count : S().gen0_chunk_count;
 
@@ -1148,11 +1224,11 @@ export function allocGen0(sizeBytes: u32): u32 {
       let usingRecycled = false;
 
       let chunkArray = isGen2 ? S().gen2_chunks : S().gen0_chunks;
-      if (activeChunk + 1 < chunkCount && allocSize <= AST_CHUNK_SIZE) {
+      if (activeChunk + 1 < chunkCount) {
         newChunk = chunkArray[activeChunk + 1];
         usingRecycled = true;
       } else {
-        newChunk = atomicChunkAlloc(allocSize);
+        newChunk = atomicChunkAlloc(AST_CHUNK_SIZE);
       }
 
       if (isGen2) {
@@ -1161,14 +1237,14 @@ export function allocGen0(sizeBytes: u32): u32 {
           S().gen2_chunks[S().gen2_chunk_count] = newChunk;
           S().gen2_chunk_count++;
         }
-        S().gen2_endLimit = newChunk + allocSize;
+        S().gen2_endLimit = newChunk + AST_CHUNK_SIZE;
       } else {
         S().gen0_active_chunk++;
         if (!usingRecycled && S().gen0_chunk_count < 8192) {
           S().gen0_chunks[S().gen0_chunk_count] = newChunk;
           S().gen0_chunk_count++;
         }
-        S().gen0_endLimit = newChunk + allocSize;
+        S().gen0_endLimit = newChunk + AST_CHUNK_SIZE;
       }
       atomic.store<u32>(ptrLoc, newChunk + sizeBytes);
       ptr = newChunk;
@@ -1176,7 +1252,7 @@ export function allocGen0(sizeBytes: u32): u32 {
       // Another thread successfully rolled over the chunk. Grab a new slot.
       ptr = atomic.add<u32>(ptrLoc, sizeBytes);
     }
-    
+
     atomic.store<u32>(lockLoc, 0); // Release spinlock
   }
 
@@ -1551,39 +1627,39 @@ export function cloneNode(nodeId: u32, deep: boolean): u32 {
 
 function cloneNodeInner(nodeId: u32, deep: boolean, depth: i32): u32 {
   if (nodeId == 0 || depth > 256) return 0;
-  
+
   let type = getNodeType(nodeId);
   let padding = getNodePadding(nodeId);
   let byteLen = getNodeByteLength(nodeId);
   let envHash = getNodeEnvHash(nodeId);
-  
+
   let newPtr = allocNode(type, padding, byteLen, envHash, false, getNodeStartState(nodeId));
   setNodeReductionLookahead(newPtr, getNodeReductionLookahead(nodeId));
-  
+
   // Preserve structural ASTNode flags (FLAG_IS_LIST, FLAG_INVISIBLE, FLAG_LIST_BOUNDARY)
   // while marking it as a shadow/extracted node so it doesn't get cleared by incremental GC
   let structuralFlags = (getNodeFlags(nodeId) | FLAG_EXTRACTED) & ~(FLAG_GC_MARK | FLAG_LSP_VISITED | FLAG_LSP_TRAVERSED);
   setNodeFlags(newPtr, structuralFlags);
-  
+
   // Map origin provenance for accurate diagnostics
   let origin = ast_getProvenance(nodeId);
-  nodeProvenance.set(newPtr >> 5, origin != 0 ? origin : nodeId);
+  setNodeProvenance(newPtr, origin != 0 ? origin : nodeId);
 
-  let typeOverride = nodeOverrideType.get(nodeId >> 5);
+  let typeOverride = getNodeOverrideType(nodeId);
   if (typeOverride != OVERRIDE_NONE) {
-    nodeOverrideType.set(newPtr >> 5, typeOverride);
-    if (typeOverride == OVERRIDE_STRING) nodeOverrideStrings.set(newPtr >> 5, nodeOverrideStrings.get(nodeId >> 5));
-    else if (typeOverride == OVERRIDE_FLOAT) nodeOverrideFloats.set(newPtr >> 5, nodeOverrideFloats.get(nodeId >> 5));
-    else if (typeOverride == OVERRIDE_INT) nodeOverrideInts.set(newPtr >> 5, nodeOverrideInts.get(nodeId >> 5));
-    else if (typeOverride == OVERRIDE_TENSOR) nodeTensorHandles.set(newPtr >> 5, nodeTensorHandles.get(nodeId >> 5));
-    else if (typeOverride == OVERRIDE_NODEREF) nodeOverrideRefs.set(newPtr >> 5, nodeOverrideRefs.get(nodeId >> 5));
+    setNodeOverrideType(newPtr, typeOverride);
+    if (typeOverride == OVERRIDE_STRING) setNodeOverrideString(newPtr, getNodeOverrideString(nodeId));
+    else if (typeOverride == OVERRIDE_FLOAT) setNodeOverrideFloat(newPtr, getNodeOverrideFloat(nodeId));
+    else if (typeOverride == OVERRIDE_INT) setNodeOverrideInt(newPtr, getNodeOverrideInt(nodeId));
+    else if (typeOverride == OVERRIDE_TENSOR) setNodeTensorHandle(newPtr, getNodeTensorHandle(nodeId));
+    else if (typeOverride == OVERRIDE_NODEREF) setNodeOverrideRef(newPtr, getNodeOverrideRef(nodeId));
   }
-  
-  let currentFlags = nodeFlags.get(nodeId >> 5);
+
+  let currentFlags = getNodeSideFlags(nodeId);
   if (currentFlags != 0) {
-    nodeFlags.set(newPtr >> 5, currentFlags);
+    setNodeSideFlags(newPtr, currentFlags);
   }
-  
+
   if (deep) {
     let child = getNodeFirstChild(nodeId);
     let prevNewChild: u32 = 0;
@@ -1599,7 +1675,7 @@ function cloneNodeInner(nodeId: u32, deep: boolean, depth: i32): u32 {
       child = getNodeNextSibling(child);
     }
   }
-  
+
   return newPtr;
 }
 
@@ -1615,62 +1691,213 @@ export function ast_markDirty(ptr: u32): void {
   // If mutation tracking is needed in the future, use the external nodeFlags chunked array.
 }
 
-export const OVERRIDE_NONE = 0;
+export const OVERRIDE_NONE: u8 = 0;
 export const OVERRIDE_STRING: u8 = 1;
 export const OVERRIDE_FLOAT: u8 = 2;
 export const OVERRIDE_INT: u8 = 3;
-export const OVERRIDE_TENSOR = 4;
-export const OVERRIDE_NODEREF = 5;
+export const OVERRIDE_TENSOR: u8 = 4;
+export const OVERRIDE_NODEREF: u8 = 5;
 
-export const nodeOverrideType = createChunkedUint8Array();
-export const nodeOverrideStrings = createChunkedUint32Array();
-export const nodeOverrideFloats = createChunkedFloat64Array();
-export const nodeOverrideInts = createChunkedInt32Array();
-export const nodeOverrideRefs = createChunkedUint32Array();
+// Sparse side-tables keyed by node pointer (eliminates dense address-space OOM & enables O(1) eviction cleanup)
+let _nodeOverrideType: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
+let _nodeOverrideStrings: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
+let _nodeOverrideFloats: UnmanagedMap64To64 = changetype<UnmanagedMap64To64>(0);
+let _nodeOverrideInts: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
+let _nodeOverrideRefs: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
+let _nodeFlags: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
+let _nodeProvenance: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
+let _nodeTensorHandles: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
+let _nodeScopes: UnmanagedMap64 = changetype<UnmanagedMap64>(0);
 
-export const nodeFlags = createChunkedUint32Array();
-export const nodeProvenance = createChunkedUint32Array();
+@inline function getNodeOverrideType(ptr: u32): u8 {
+  return changetype<usize>(_nodeOverrideType) == 0 ? 0 : (_nodeOverrideType.get(ptr as u64) as u8);
+}
+@inline function setNodeOverrideType(ptr: u32, val: u8): void {
+  if (val == 0) {
+    if (changetype<usize>(_nodeOverrideType) != 0) _nodeOverrideType.delete(ptr as u64);
+    return;
+  }
+  if (changetype<usize>(_nodeOverrideType) == 0) _nodeOverrideType = changetype<UnmanagedMap64>(UnmanagedMap64.create());
+  _nodeOverrideType.set(ptr as u64, val as u32);
+}
+
+@inline function getNodeOverrideString(ptr: u32): u32 {
+  return changetype<usize>(_nodeOverrideStrings) == 0 ? 0 : _nodeOverrideStrings.get(ptr as u64);
+}
+@inline function setNodeOverrideString(ptr: u32, val: u32): void {
+  if (val == 0) {
+    if (changetype<usize>(_nodeOverrideStrings) != 0) _nodeOverrideStrings.delete(ptr as u64);
+    return;
+  }
+  if (changetype<usize>(_nodeOverrideStrings) == 0) _nodeOverrideStrings = changetype<UnmanagedMap64>(UnmanagedMap64.create());
+  _nodeOverrideStrings.set(ptr as u64, val);
+}
+
+@inline function getNodeOverrideFloat(ptr: u32): f64 {
+  return changetype<usize>(_nodeOverrideFloats) == 0 ? 0.0 : reinterpret<f64>(_nodeOverrideFloats.get(ptr as u64));
+}
+@inline function setNodeOverrideFloat(ptr: u32, val: f64): void {
+  if (changetype<usize>(_nodeOverrideFloats) == 0) _nodeOverrideFloats = changetype<UnmanagedMap64To64>(UnmanagedMap64To64.create());
+  _nodeOverrideFloats.set(ptr as u64, reinterpret<u64>(val));
+}
+
+@inline function getNodeOverrideInt(ptr: u32): i32 {
+  return changetype<usize>(_nodeOverrideInts) == 0 ? 0 : (_nodeOverrideInts.get(ptr as u64) as i32);
+}
+@inline function setNodeOverrideInt(ptr: u32, val: i32): void {
+  if (changetype<usize>(_nodeOverrideInts) == 0) _nodeOverrideInts = changetype<UnmanagedMap64>(UnmanagedMap64.create());
+  _nodeOverrideInts.set(ptr as u64, val as u32);
+}
+
+@inline function getNodeOverrideRef(ptr: u32): u32 {
+  return changetype<usize>(_nodeOverrideRefs) == 0 ? 0 : _nodeOverrideRefs.get(ptr as u64);
+}
+@inline function setNodeOverrideRef(ptr: u32, val: u32): void {
+  if (val == 0) {
+    if (changetype<usize>(_nodeOverrideRefs) != 0) _nodeOverrideRefs.delete(ptr as u64);
+    return;
+  }
+  if (changetype<usize>(_nodeOverrideRefs) == 0) _nodeOverrideRefs = changetype<UnmanagedMap64>(UnmanagedMap64.create());
+  _nodeOverrideRefs.set(ptr as u64, val);
+}
+
+@inline function getNodeSideFlags(ptr: u32): u32 {
+  return changetype<usize>(_nodeFlags) == 0 ? 0 : _nodeFlags.get(ptr as u64);
+}
+@inline function setNodeSideFlags(ptr: u32, val: u32): void {
+  if (val == 0) {
+    if (changetype<usize>(_nodeFlags) != 0) _nodeFlags.delete(ptr as u64);
+    return;
+  }
+  if (changetype<usize>(_nodeFlags) == 0) _nodeFlags = changetype<UnmanagedMap64>(UnmanagedMap64.create());
+  _nodeFlags.set(ptr as u64, val);
+}
+
+@inline function getNodeProvenance(ptr: u32): u32 {
+  return changetype<usize>(_nodeProvenance) == 0 ? 0 : _nodeProvenance.get(ptr as u64);
+}
+@inline function setNodeProvenance(ptr: u32, val: u32): void {
+  if (val == 0) {
+    if (changetype<usize>(_nodeProvenance) != 0) _nodeProvenance.delete(ptr as u64);
+    return;
+  }
+  if (changetype<usize>(_nodeProvenance) == 0) _nodeProvenance = changetype<UnmanagedMap64>(UnmanagedMap64.create());
+  _nodeProvenance.set(ptr as u64, val);
+}
+
+@inline function getNodeTensorHandle(ptr: u32): u32 {
+  return changetype<usize>(_nodeTensorHandles) == 0 ? 0 : _nodeTensorHandles.get(ptr as u64);
+}
+@inline function setNodeTensorHandle(ptr: u32, val: u32): void {
+  if (val == 0) {
+    if (changetype<usize>(_nodeTensorHandles) != 0) _nodeTensorHandles.delete(ptr as u64);
+    return;
+  }
+  if (changetype<usize>(_nodeTensorHandles) == 0) _nodeTensorHandles = changetype<UnmanagedMap64>(UnmanagedMap64.create());
+  _nodeTensorHandles.set(ptr as u64, val);
+}
+
+@inline function getNodeScopeOffset(ptr: u32): u32 {
+  return changetype<usize>(_nodeScopes) == 0 ? 0 : _nodeScopes.get(ptr as u64);
+}
+@inline function setNodeScopeOffset(ptr: u32, val: u32): void {
+  if (val == 0) {
+    if (changetype<usize>(_nodeScopes) != 0) _nodeScopes.delete(ptr as u64);
+    return;
+  }
+  if (changetype<usize>(_nodeScopes) == 0) _nodeScopes = changetype<UnmanagedMap64>(UnmanagedMap64.create());
+  _nodeScopes.set(ptr as u64, val);
+}
+
+function hasAnySideTableEntries(): boolean {
+  return (
+    (changetype<usize>(_nodeOverrideType) != 0 && _nodeOverrideType.size > 0) ||
+    (changetype<usize>(_nodeFlags) != 0 && _nodeFlags.size > 0) ||
+    (changetype<usize>(_nodeProvenance) != 0 && _nodeProvenance.size > 0) ||
+    (changetype<usize>(_nodeTensorHandles) != 0 && _nodeTensorHandles.size > 0) ||
+    (changetype<usize>(_nodeScopes) != 0 && _nodeScopes.size > 0)
+  );
+}
+
+function clearSideTablesForRange(startPtr: u32, endPtr: u32): void {
+  let hasOv = changetype<usize>(_nodeOverrideType) != 0 && _nodeOverrideType.size > 0;
+  let hasStr = changetype<usize>(_nodeOverrideStrings) != 0 && _nodeOverrideStrings.size > 0;
+  let hasFlt = changetype<usize>(_nodeOverrideFloats) != 0 && _nodeOverrideFloats.size > 0;
+  let hasInt = changetype<usize>(_nodeOverrideInts) != 0 && _nodeOverrideInts.size > 0;
+  let hasRef = changetype<usize>(_nodeOverrideRefs) != 0 && _nodeOverrideRefs.size > 0;
+  let hasFlg = changetype<usize>(_nodeFlags) != 0 && _nodeFlags.size > 0;
+  let hasPrv = changetype<usize>(_nodeProvenance) != 0 && _nodeProvenance.size > 0;
+  let hasTns = changetype<usize>(_nodeTensorHandles) != 0 && _nodeTensorHandles.size > 0;
+  let hasScp = changetype<usize>(_nodeScopes) != 0 && _nodeScopes.size > 0;
+
+  for (let p = startPtr; p < endPtr; p += NODE_SIZE) {
+    let k = p as u64;
+    if (hasOv) _nodeOverrideType.delete(k);
+    if (hasStr) _nodeOverrideStrings.delete(k);
+    if (hasFlt) _nodeOverrideFloats.delete(k);
+    if (hasInt) _nodeOverrideInts.delete(k);
+    if (hasRef) _nodeOverrideRefs.delete(k);
+    if (hasFlg) _nodeFlags.delete(k);
+    if (hasPrv) _nodeProvenance.delete(k);
+    if (hasTns) _nodeTensorHandles.delete(k);
+    if (hasScp) _nodeScopes.delete(k);
+  }
+}
+
+export function resetSideTables(): void {
+  if (changetype<usize>(_nodeOverrideType) != 0) _nodeOverrideType.clear();
+  if (changetype<usize>(_nodeOverrideStrings) != 0) _nodeOverrideStrings.clear();
+  if (changetype<usize>(_nodeOverrideFloats) != 0) _nodeOverrideFloats.clear();
+  if (changetype<usize>(_nodeOverrideInts) != 0) _nodeOverrideInts.clear();
+  if (changetype<usize>(_nodeOverrideRefs) != 0) _nodeOverrideRefs.clear();
+  if (changetype<usize>(_nodeFlags) != 0) _nodeFlags.clear();
+  if (changetype<usize>(_nodeProvenance) != 0) _nodeProvenance.clear();
+  if (changetype<usize>(_nodeTensorHandles) != 0) _nodeTensorHandles.clear();
+  if (changetype<usize>(_nodeScopes) != 0) _nodeScopes.clear();
+}
 
 export function ast_getProvenance(nodeId: u32): u32 {
   if (nodeId == 0) return 0;
-  let origin = nodeProvenance.get(nodeId >> 5);
+  let origin = getNodeProvenance(nodeId);
   return origin != 0 ? origin : nodeId;
 }
 
 export function ast_setNodeFlag(nodeId: u32, flag: u32): void {
   if (nodeId != 0) {
-    logSideTableMutation(nodeId, 5, nodeFlags.get(nodeId >> 5));
-    nodeFlags.set(nodeId >> 5, nodeFlags.get(nodeId >> 5) | flag);
+    let prev = getNodeSideFlags(nodeId);
+    logSideTableMutation(nodeId, 5, prev);
+    setNodeSideFlags(nodeId, prev | flag);
     ast_markDirty(nodeId);
   }
 }
 
 export function ast_clearNodeFlag(nodeId: u32, flag: u32): void {
   if (nodeId != 0) {
-    logSideTableMutation(nodeId, 5, nodeFlags.get(nodeId >> 5));
-    nodeFlags.set(nodeId >> 5, nodeFlags.get(nodeId >> 5) & ~flag);
+    let prev = getNodeSideFlags(nodeId);
+    logSideTableMutation(nodeId, 5, prev);
+    setNodeSideFlags(nodeId, prev & ~flag);
     ast_markDirty(nodeId);
   }
 }
 
 export function ast_hasNodeFlag(nodeId: u32, flag: u32): boolean {
   if (nodeId == 0) return false;
-  return (nodeFlags.get(nodeId >> 5) & flag) !== 0;
+  return (getNodeSideFlags(nodeId) & flag) !== 0;
 }
 
 export function ast_setLiteralNodeRef(ptr: u32, targetId: u32): void {
   if (ptr != 0) {
-    logSideTableMutation(ptr, 1, nodeOverrideType.get(ptr >> 5));
-    logSideTableMutation(ptr, 4, nodeOverrideRefs.get(ptr >> 5));
-    nodeOverrideRefs.set(ptr >> 5, targetId);
-    nodeOverrideType.set(ptr >> 5, <u8>OVERRIDE_NODEREF);
+    logSideTableMutation(ptr, 1, getNodeOverrideType(ptr));
+    logSideTableMutation(ptr, 4, getNodeOverrideRef(ptr));
+    setNodeOverrideRef(ptr, targetId);
+    setNodeOverrideType(ptr, OVERRIDE_NODEREF);
     ast_markDirty(ptr);
   }
 }
 
 export function ast_getLiteralNodeRef(ptr: u32): u32 {
-  if (nodeOverrideType.get(ptr >> 5) != OVERRIDE_NODEREF) return 0;
-  return nodeOverrideRefs.get(ptr >> 5);
+  if (getNodeOverrideType(ptr) != OVERRIDE_NODEREF) return 0;
+  return getNodeOverrideRef(ptr);
 }
 
 export let stringArenaPtr: usize = 0;
@@ -1683,29 +1910,31 @@ export function ensureStringArena(bytesNeeded: u32 = 4096): void {
     stringArenaOffset = 4;
   }
   if (stringArenaOffset + bytesNeeded > stringArenaCapacity) {
+    let oldPtr = stringArenaPtr;
     let newCapacity = stringArenaCapacity * 2;
     while (stringArenaOffset + bytesNeeded > newCapacity) newCapacity *= 2;
     let newPtr = atomicChunkAlloc(newCapacity);
-    memory.copy(newPtr, stringArenaPtr, stringArenaOffset);
+    memory.copy(newPtr, oldPtr, stringArenaOffset);
+    atomicChunkFree(oldPtr);
     stringArenaPtr = newPtr;
     stringArenaCapacity = newCapacity;
   }
 }
 
 export function ast_extractLiteralString(ptr: u32, sourcePtr: usize, lenBytes: u32, encoding: u8): void {
-  if (ptr != 0 && nodeOverrideType.get(ptr >> 5) != OVERRIDE_STRING) {
+  if (ptr != 0 && getNodeOverrideType(ptr) != OVERRIDE_STRING) {
     let byteSize = 4 + lenBytes;
     ensureStringArena(byteSize);
-    
+
     let handle = stringArenaOffset;
     // Set the highest bit to 1 if encoding == 0 (UTF-8), otherwise 0 (UTF-16)
     let headerLen = encoding == 0 ? (lenBytes | 0x80000000) : lenBytes;
     store<u32>(stringArenaPtr + handle, headerLen);
     memory.copy(stringArenaPtr + handle + 4, sourcePtr, lenBytes);
     stringArenaOffset += byteSize;
-    
-    nodeOverrideStrings.set(ptr >> 5, handle);
-    nodeOverrideType.set(ptr >> 5, OVERRIDE_STRING);
+
+    setNodeOverrideString(ptr, handle);
+    setNodeOverrideType(ptr, OVERRIDE_STRING);
     ast_markDirty(ptr);
   }
 }
@@ -1717,19 +1946,19 @@ export function ast_extractLiteralString(ptr: u32, sourcePtr: usize, lenBytes: u
  */
 export function ast_setLiteralString(ptr: u32, val: string): void {
   if (ptr != 0) {
-    logSideTableMutation(ptr, 1, nodeOverrideType.get(ptr >> 5));
-    logSideTableMutation(ptr, 2, nodeOverrideStrings.get(ptr >> 5));
+    logSideTableMutation(ptr, 1, getNodeOverrideType(ptr));
+    logSideTableMutation(ptr, 2, getNodeOverrideString(ptr));
     let lenBytes = val.length << 1;
     let byteSize = 4 + lenBytes;
     ensureStringArena(byteSize);
-    
+
     let handle = stringArenaOffset;
     store<u32>(stringArenaPtr + handle, lenBytes); // UTF-16 from JS string, highest bit is 0
     memory.copy(stringArenaPtr + handle + 4, changetype<usize>(val), lenBytes);
     stringArenaOffset += byteSize;
-    
-    nodeOverrideStrings.set(ptr >> 5, handle);
-    nodeOverrideType.set(ptr >> 5, OVERRIDE_STRING);
+
+    setNodeOverrideString(ptr, handle);
+    setNodeOverrideType(ptr, OVERRIDE_STRING);
     ast_markDirty(ptr);
   }
 }
@@ -1763,20 +1992,20 @@ export function arena_allocStringBytesUtf8(srcPtr: usize, lenBytes: u32): u32 {
 
 export function ast_setLiteralFloat(ptr: u32, val: f64): void {
   if (ptr != 0) {
-    logSideTableMutation(ptr, 1, nodeOverrideType.get(ptr >> 5));
-    logFloatMutation(ptr, nodeOverrideFloats.get(ptr >> 5));
-    nodeOverrideFloats.set(ptr >> 5, val);
-    nodeOverrideType.set(ptr >> 5, OVERRIDE_FLOAT);
+    logSideTableMutation(ptr, 1, getNodeOverrideType(ptr));
+    logFloatMutation(ptr, getNodeOverrideFloat(ptr));
+    setNodeOverrideFloat(ptr, val);
+    setNodeOverrideType(ptr, OVERRIDE_FLOAT);
     ast_markDirty(ptr);
   }
 }
 
 export function ast_setLiteralInt(ptr: u32, val: i32): void {
   if (ptr != 0) {
-    logSideTableMutation(ptr, 1, nodeOverrideType.get(ptr >> 5));
-    logSideTableMutation(ptr, 3, nodeOverrideInts.get(ptr >> 5) as u32);
-    nodeOverrideInts.set(ptr >> 5, val);
-    nodeOverrideType.set(ptr >> 5, OVERRIDE_INT);
+    logSideTableMutation(ptr, 1, getNodeOverrideType(ptr));
+    logSideTableMutation(ptr, 3, getNodeOverrideInt(ptr) as u32);
+    setNodeOverrideInt(ptr, val);
+    setNodeOverrideType(ptr, OVERRIDE_INT);
     ast_markDirty(ptr);
   }
 }
@@ -1787,21 +2016,21 @@ export function ast_setLiteralInt(ptr: u32, val: i32): void {
  */
 export function ast_getTextSpan(ptr: u32, absoluteStart: u32 = 0xFFFFFFFF): u64 {
   if (ptr == 0) return 0;
-  
-  let type = nodeOverrideType.get(ptr >> 5);
+
+  let type = getNodeOverrideType(ptr);
   if (type == OVERRIDE_STRING) {
-    let handle = nodeOverrideStrings.get(ptr >> 5);
+    let handle = getNodeOverrideString(ptr);
     let lenBytes = load<u32>(stringArenaPtr + handle) & 0x7FFFFFFF;
     let start = stringArenaPtr + handle + 4;
     return (u64(start) << 32) | u64(lenBytes);
   }
-  
+
   if (absoluteStart != 0xFFFFFFFF) {
     let len = getNodeByteLength(ptr);
     if (len == 0) return 0;
     return (u64(absoluteStart) << 32) | u64(len);
   }
-  
+
   return 0;
 }
 
@@ -1821,9 +2050,15 @@ function cacheNodeStringsInner(nodeId: u32, absoluteStart: u32, depth: i32): voi
 
   // 1. If it's a leaf node and has byteLength > 0, extract the text!
   if (child == 0 && getNodeByteLength(nodeId) > 0) {
-    let ptr = getInputBuffer() + ((absoluteStart as usize) << 1);
-    let len = getNodeByteLength(nodeId) << 1;
-    ast_extractLiteralString(nodeId, ptr, len, 1);
+    if (inputEncoding == 0) {
+      let ptr = getInputBuffer() + (absoluteStart as usize);
+      let len = getNodeByteLength(nodeId);
+      ast_extractLiteralString(nodeId, ptr, len, 0);
+    } else {
+      let ptr = getInputBuffer() + ((absoluteStart as usize) << 1);
+      let len = getNodeByteLength(nodeId) << 1;
+      ast_extractLiteralString(nodeId, ptr, len, 1);
+    }
   }
 
   // 2. Compute offset distribution for children
@@ -1986,7 +2221,7 @@ export function isNodeGen2(ptr: u32): boolean {
 
 export function assertGen(parent: u32, child: u32): void {
   if (parent == 0 || child == 0) return;
-  if (S().activeGeneration != 2) return; 
+  if (S().activeGeneration != 2) return;
   if (!isNodeGen2(parent) && isNodeGen2(child)) {
     debugLog(999999, parent, child, getNodeType(parent));
     // unreachable(); // Cross-generation pointer violation
@@ -2014,7 +2249,7 @@ export function logFloatMutation(nodeId: u32, oldValue: f64): void {
 
 export function replayUndoLog(): void {
   if (changetype<usize>(t_sideTableUndoLog) == 0) return;
-  
+
   let len = t_sideTableUndoLog.length;
   // Replay backwards
   while (len >= 3) {
@@ -2022,17 +2257,17 @@ export function replayUndoLog(): void {
     let oldValue = t_sideTableUndoLog.get(len + 2);
     let tableId = t_sideTableUndoLog.get(len + 1);
     let nodeId = t_sideTableUndoLog.get(len);
-    
-    if (tableId == 1) nodeOverrideType.set(nodeId >> 5, oldValue as u8);
-    else if (tableId == 2) nodeOverrideStrings.set(nodeId >> 5, oldValue);
-    else if (tableId == 3) nodeOverrideInts.set(nodeId >> 5, oldValue as i32);
-    else if (tableId == 4) nodeOverrideRefs.set(nodeId >> 5, oldValue);
-    else if (tableId == 5) nodeFlags.set(nodeId >> 5, oldValue);
-    else if (tableId == 6) nodeProvenance.set(nodeId >> 5, oldValue);
-    else if (tableId == 7) nodeTensorHandles.set(nodeId >> 5, oldValue);
-    else if (tableId == 8) nodeOverrideFloats.set(nodeId >> 5, t_floatUndoLog.get(oldValue));
+
+    if (tableId == 1) setNodeOverrideType(nodeId, oldValue as u8);
+    else if (tableId == 2) setNodeOverrideString(nodeId, oldValue);
+    else if (tableId == 3) setNodeOverrideInt(nodeId, oldValue as i32);
+    else if (tableId == 4) setNodeOverrideRef(nodeId, oldValue);
+    else if (tableId == 5) setNodeSideFlags(nodeId, oldValue);
+    else if (tableId == 6) setNodeProvenance(nodeId, oldValue);
+    else if (tableId == 7) setNodeTensorHandle(nodeId, oldValue);
+    else if (tableId == 8) setNodeOverrideFloat(nodeId, t_floatUndoLog.get(oldValue));
   }
-  
+
   t_sideTableUndoLog.clear();
   t_floatUndoLog.clear();
 }
@@ -2065,10 +2300,13 @@ export function registerRoot(rootPtr: u32): void {
   }
 
   if (S().activeRootCount >= S().activeRootsCapacity) {
-    let newCap = S().activeRootsCapacity == 0 ? 1024 : S().activeRootsCapacity * 2;
+    let oldPtr = changetype<usize>(S().activeRootsPtr);
+    let oldCap = S().activeRootsCapacity;
+    let newCap = oldCap == 0 ? 1024 : oldCap * 2;
     let newPtr = atomicChunkAlloc(newCap * 4);
-    if (S().activeRootsCapacity > 0 && changetype<usize>(S().activeRootsPtr) != 0) {
-      memory.copy(newPtr, changetype<usize>(S().activeRootsPtr), S().activeRootsCapacity * 4);
+    if (oldCap > 0 && oldPtr != 0) {
+      memory.copy(newPtr, oldPtr, oldCap * 4);
+      atomicChunkFree(oldPtr);
     }
     S().activeRootsPtr = changetype<UnmanagedUint32Array>(newPtr);
     S().activeRootsCapacity = newCap;
@@ -2077,7 +2315,7 @@ export function registerRoot(rootPtr: u32): void {
 }
 
 /**
- * Returns total allocated heap bytes across generations and text buffers.
+ * Returns total allocated heap bytes across generations, active document slabs, and text buffers.
  */
 export function arena_getMemoryUsage(): u32 {
   let total: u32 = 0;
@@ -2085,6 +2323,7 @@ export function arena_getMemoryUsage(): u32 {
   total += s.gen0_chunk_count * AST_CHUNK_SIZE;
   total += s.gen1_chunk_count * AST_CHUNK_SIZE;
   total += s.gen2_chunk_count * AST_CHUNK_SIZE;
+  total += activeDocChunkCount * AST_CHUNK_SIZE;
   total += s.currentInputBufferSize;
   total += stringArenaCapacity;
   return total;
@@ -2119,9 +2358,11 @@ function ensureGcStack(): void {
 @inline
 function pushGcStack(val: u32, stackTop: u32): u32 {
   if (stackTop >= S().gcStackCapacity) {
+    let oldPtr = changetype<usize>(S().gcStackPtr);
     let newCap = S().gcStackCapacity * 2;
     let newPtr = heap.alloc(newCap * 4);
-    memory.copy(newPtr, changetype<usize>(S().gcStackPtr), S().gcStackCapacity * 4);
+    memory.copy(newPtr, oldPtr, S().gcStackCapacity * 4);
+    if (oldPtr != 0) heap.free(oldPtr);
     S().gcStackPtr = changetype<UnmanagedUint32Array>(newPtr);
     S().gcStackCapacity = newCap;
   }
@@ -2242,19 +2483,20 @@ function ensureTensorArena(bytesNeeded: u32): void {
     tensorArenaPtr = atomicChunkAlloc(tensorArenaCapacity);
   }
   if (tensorArenaOffset + bytesNeeded > tensorArenaCapacity) {
+    let oldPtr = tensorArenaPtr;
     let newCapacity = tensorArenaCapacity * 2;
     while (tensorArenaOffset + bytesNeeded > newCapacity) {
       newCapacity *= 2;
     }
     let newPtr = atomicChunkAlloc(newCapacity);
-    memory.copy(newPtr, tensorArenaPtr, tensorArenaOffset);
+    memory.copy(newPtr, oldPtr, tensorArenaOffset);
+    atomicChunkFree(oldPtr);
     tensorArenaPtr = newPtr;
     tensorArenaCapacity = newCapacity;
   }
 }
 
-/** Chunked array mapping node index (`nodePtr >> 5`) to its `tensorArena` byte handle offset. */
-export const nodeTensorHandles = createChunkedUint32Array();
+/** Sparse map from AST node pointer to its `tensorArena` byte handle offset (defined in side-tables above). */
 
 /** Element data type tag stored in `TensorHeader.type` within the linear-memory tensor arena. */
 export enum TensorType {
@@ -2344,23 +2586,23 @@ export function ast_createTensor(type: u32, rank: u32, elementCount: u32): u32 {
   // align base handle to 16 bytes for safe WebGPU and SIMD access
   tensorArenaOffset = (tensorArenaOffset + 15) & ~15;
   let handle = tensorArenaOffset;
-  
+
   // Calculate header size: 16 bytes for metadata (type, rank, count, dataOffset) + shape array
   let headerSize = 16 + (rank * 4);
-  
+
   // Align data payload start to 16 bytes (critical for WebGPU Uniform/Storage buffers)
   let alignedHeaderSize = (headerSize + 15) & ~15;
-  
+
   let elementSize = getElementSize(type);
   let byteSize = alignedHeaderSize + (elementCount * elementSize);
   ensureTensorArena(byteSize);
-  
+
   let th = TensorHeader.at(tensorArenaPtr + handle);
   th.type = type;
   th.rank = rank;
   th.elementCount = elementCount;
   th.alignedHeaderSize = alignedHeaderSize; // Store data payload offset
-  
+
   tensorArenaOffset += byteSize;
   return handle;
 }
@@ -2416,18 +2658,18 @@ export function ast_getTensorBool(h: u32, i: u32): boolean { return load<u8>(get
 /** Binds a Tensor Handle to an AST Node using the O(1) side-table */
 export function ast_setLiteralTensor(nodeId: u32, handle: u32): void {
   if (nodeId != 0) {
-    logSideTableMutation(nodeId, 1, nodeOverrideType.get(nodeId >> 5));
-    logSideTableMutation(nodeId, 7, nodeTensorHandles.get(nodeId >> 5));
-    nodeTensorHandles.set(nodeId >> 5, handle);
-    nodeOverrideType.set(nodeId >> 5, <u8>OVERRIDE_TENSOR);
+    logSideTableMutation(nodeId, 1, getNodeOverrideType(nodeId));
+    logSideTableMutation(nodeId, 7, getNodeTensorHandle(nodeId));
+    setNodeTensorHandle(nodeId, handle);
+    setNodeOverrideType(nodeId, OVERRIDE_TENSOR);
     ast_markDirty(nodeId);
   }
 }
 
 /** Retrieves the Tensor Handle bound to an AST Node, or 0 if none */
 export function ast_getLiteralTensor(nodeId: u32): u32 {
-  if (nodeOverrideType.get(nodeId >> 5) != OVERRIDE_TENSOR) return 0;
-  return nodeTensorHandles.get(nodeId >> 5);
+  if (getNodeOverrideType(nodeId) != OVERRIDE_TENSOR) return 0;
+  return getNodeTensorHandle(nodeId);
 }
 
 // ----------------------------------------------------------------------------
@@ -2435,25 +2677,25 @@ export function ast_getLiteralTensor(nodeId: u32): u32 {
 // ----------------------------------------------------------------------------
 
 export function ast_getTensorType(nodeId: u32): u32 {
-  let handle = nodeTensorHandles.get(nodeId >> 5);
+  let handle = getNodeTensorHandle(nodeId);
   if (handle == 0) return 0; // defaults to Float64
   return TensorHeader.at(tensorArenaPtr + handle).type;
 }
 
 export function ast_getTensorDimensions(nodeId: u32): u32 {
-  let handle = nodeTensorHandles.get(nodeId >> 5);
+  let handle = getNodeTensorHandle(nodeId);
   if (handle == 0) return 0;
   return TensorHeader.at(tensorArenaPtr + handle).rank;
 }
 
 export function ast_getTensorShapePtr(nodeId: u32): usize {
-  let handle = nodeTensorHandles.get(nodeId >> 5);
+  let handle = getNodeTensorHandle(nodeId);
   if (handle == 0) return 0;
   return tensorArenaPtr + handle + 16;
 }
 
 export function ast_getTensorDataPtr(nodeId: u32): usize {
-  let handle = nodeTensorHandles.get(nodeId >> 5);
+  let handle = getNodeTensorHandle(nodeId);
   if (handle == 0) return 0;
   return tensorArenaPtr + handle + TensorHeader.at(tensorArenaPtr + handle).alignedHeaderSize;
 }
@@ -2472,20 +2714,18 @@ export function ast_getChildCount(nodeId: u32): u32 {
 }
 
 // ----------------------------------------------------------------------------
-// O(1) Zero-GC Symbol Hash Table
+// O(1) Zero-GC Symbol Hash Table (sparse map `_nodeScopes` defined in side-tables above)
 // ----------------------------------------------------------------------------
-
-export const nodeScopes = createChunkedUint32Array();
 
 // FNV-1a hash functions for memory spans
 export function ast_hashSpan(span: u64, hash: u32 = 2166136261): u32 {
   if (span == 0) return hash;
   let ptr = (span >> 32) as u32;
   let len = (span & 0xFFFFFFFF) as u32;
-  
+
   let isOverride = (stringArenaPtr != 0 && ptr >= (stringArenaPtr as u32) && ptr < (stringArenaPtr as u32) + (stringArenaCapacity as u32));
   let encoding: u8 = 1;
-  
+
   if (isOverride) {
     let rawLen = load<u32>(ptr - 4);
     encoding = (rawLen & 0x80000000) != 0 ? 0 : 1;
@@ -2551,7 +2791,7 @@ export function ast_hashSpan(span: u64, hash: u32 = 2166136261): u32 {
       hash = hash * 16777619;
     }
   }
-  
+
   return hash;
 }
 
@@ -2569,10 +2809,12 @@ function ensureScopeArena(bytesNeeded: u32): void {
     scopeArenaPtr = changetype<UnmanagedUint32Array>(atomicChunkAlloc(scopeArenaCapacity));
   }
   if (scopeArenaOffset + bytesNeeded > scopeArenaCapacity) {
+    let oldPtr = changetype<usize>(scopeArenaPtr);
     let newCapacity = scopeArenaCapacity * 2;
     while (scopeArenaOffset + bytesNeeded > newCapacity) newCapacity *= 2;
     let newPtr = atomicChunkAlloc(newCapacity);
-    memory.copy(newPtr as usize, changetype<usize>(scopeArenaPtr), scopeArenaOffset);
+    memory.copy(newPtr as usize, oldPtr, scopeArenaOffset);
+    atomicChunkFree(oldPtr);
     scopeArenaPtr = changetype<UnmanagedUint32Array>(newPtr);
     scopeArenaCapacity = newCapacity;
   }
@@ -2581,13 +2823,13 @@ function ensureScopeArena(bytesNeeded: u32): void {
 /** Binds a child node to a specific 32-bit hash in the parent's symbol table. */
 export function ast_bindChildHash(parentId: u32, hash: u32, childId: u32): void {
   if (parentId == 0 || childId == 0) return;
-  
+
   if (hash == 0) hash = 1; // Reserve 0 for empty slot
-  
-  let tableOffset = nodeScopes.get(parentId >> 5);
+
+  let tableOffset = getNodeScopeOffset(parentId);
   if (tableOffset == 0) {
     // Initialize a new linear open-addressing hash table for this parent.
-    // Memory layout: 
+    // Memory layout:
     // offset + 0: capacity (u32)
     // offset + 4: count (u32)
     // offset + 8: slots array (capacity * 8 bytes). Each slot is [hash(u32), childId(u32)]
@@ -2599,12 +2841,12 @@ export function ast_bindChildHash(parentId: u32, hash: u32, childId: u32): void 
     scopeArenaPtr[(tableOffset + 4) >> 2] = 0;
     memory.fill(changetype<usize>(scopeArenaPtr) + tableOffset + 8, 0, cap * 8);
     scopeArenaOffset += byteSize;
-    nodeScopes.set(parentId >> 5, tableOffset);
+    setNodeScopeOffset(parentId, tableOffset);
   }
-  
+
   let capacity = scopeArenaPtr[(tableOffset) >> 2];
   let count = scopeArenaPtr[(tableOffset + 4) >> 2];
-  
+
   // Resize if load factor >= 0.75
   if (count * 4 >= capacity * 3) {
     let newCap = capacity * 2;
@@ -2615,7 +2857,7 @@ export function ast_bindChildHash(parentId: u32, hash: u32, childId: u32): void 
     scopeArenaPtr[(newTableOffset + 4) >> 2] = count;
     memory.fill(changetype<usize>(scopeArenaPtr) + newTableOffset + 8, 0, newCap * 8);
     scopeArenaOffset += newByteSize;
-    
+
     // Rehash
     for (let i: u32 = 0; i < capacity; i++) {
       let oldSlot = tableOffset + 8 + (i * 8);
@@ -2636,10 +2878,10 @@ export function ast_bindChildHash(parentId: u32, hash: u32, childId: u32): void 
       }
     }
     tableOffset = newTableOffset;
-    nodeScopes.set(parentId >> 5, tableOffset);
+    setNodeScopeOffset(parentId, tableOffset);
     capacity = newCap;
   }
-  
+
   // Insert
   let mask = capacity - 1;
   let idx = hash & mask;
@@ -2666,20 +2908,20 @@ export function ast_bindChildNode(parentId: u32, nameNodeId: u32, childId: u32, 
 /** Resolves a child node by its exact 32-bit hash in O(1) time. */
 export function ast_resolveChildByHash(parentId: u32, hash: u32): u32 {
   if (parentId == 0) return 0;
-  let tableOffset = nodeScopes.get(parentId >> 5);
+  let tableOffset = getNodeScopeOffset(parentId);
   if (tableOffset == 0) return 0;
-  
+
   if (hash == 0) hash = 1;
-  
+
   let capacity = scopeArenaPtr[(tableOffset) >> 2];
   let mask = capacity - 1;
   let idx = hash & mask;
-  
+
   while (true) {
     let slot = tableOffset + 8 + (idx * 8);
     let slotHash = scopeArenaPtr[(slot) >> 2];
     if (slotHash == 0) return 0; // Not found
-    
+
     if (slotHash == hash) {
       return scopeArenaPtr[(slot + 4) >> 2];
     }

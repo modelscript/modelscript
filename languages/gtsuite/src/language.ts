@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, field, language, optional, repeat, seq } from "@modelscript/dsl";
+import { registerBuiltInGtSuiteLibrarySync } from "./catalog/library-package-adapter.js";
 import { GtSuiteErrorCode } from "./lints/index.js";
 import { parseGtmModel } from "./parser/gtm-parser.js";
 import { gtsuitePolyglotConfig } from "./tgg/index.js";
@@ -143,6 +144,9 @@ export const gtsuiteLanguage = language({
     Identifier: () => /[A-Za-z_][A-Za-z0-9_]*/,
     NumberLiteral: () => /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/,
     StringLiteral: () => /"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'/,
-    Comment: () => /(?:\/\/.*|\/\*[\s\S]*?\*\/|#.*)/,
+    Comment: () => /(?:\/\/.*|\/\*([^*]|\*+[^*/])*\*+\/|#.*)/,
   },
 });
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInGtSuiteLibrarySync();

@@ -5,6 +5,7 @@
  */
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { registerBuiltInPowerWorldLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerPowerWorldToDae } from "./dae/powerworld-to-dae.js";
 import { powerworldGrammar } from "./grammar/powerworld-grammar.js";
 import { canIndexPowerWorldAux, indexPowerWorldAuxDocument } from "./indexing.js";
@@ -116,3 +117,6 @@ export const powerworldLanguage = language({
 });
 
 export default powerworldLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInPowerWorldLibrarySync();

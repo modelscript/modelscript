@@ -17,7 +17,32 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, UnaryOp, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInAdamsLibraryRegistered, lookupAdamsModelSchema } from "../catalog/library-package-adapter.js";
 import type { AdamsDataset, AdamsJoint, AdamsMarker, Vector3D } from "../types.js";
+
+/**
+ * Resolves parameter defaults for an MSC Adams element model from `@modelscript/adams-std-lib`,
+ * merging any user-specified overrides over the cleanroom schema defaults.
+ */
+export function resolveAdamsSchemaParamDefaults(
+  modelType: string,
+  overrides: Record<string, number | string | boolean> = {},
+): Record<string, number | string | boolean> {
+  ensureBuiltInAdamsLibraryRegistered();
+  const out: Record<string, number | string | boolean> = {};
+  const schema = lookupAdamsModelSchema(modelType);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (p.defaultValue !== undefined) {
+        out[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
 
 export interface AdamsDaeOptions {
   /** Constraint stabilization method: "baumgarte" | "algebraic". Default: "baumgarte". */
@@ -797,6 +822,7 @@ export function evaluateAdamsFunction(
 // ============================================================================
 
 export function lowerAdamsToDae(dataset: AdamsDataset, builder?: DAEBuilder, options?: AdamsDaeOptions): DAEBuilder {
+  ensureBuiltInAdamsLibraryRegistered();
   const dae = builder ?? new DAEBuilder(undefined, dataset.title);
   const isBaumgarte = options?.stabilization !== "algebraic"; // Default to baumgarte for stability
   const omegaN = options?.baumgarteOmega ?? options?.baumgarteBeta ?? 50.0;

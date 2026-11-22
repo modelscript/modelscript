@@ -4,6 +4,7 @@ export * from "./catalog/index.js";
 export {
   gtsuiteToDae,
   lowerGtSuiteToDae,
+  resolveGtSuiteSchemaParamDefaults,
   simulateGtSuiteTransient,
   type GtDaeLoweringResult,
   type GtSimulateOptions,

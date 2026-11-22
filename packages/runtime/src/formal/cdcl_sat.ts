@@ -350,6 +350,7 @@ export class CdclSatSolver {
   private reasonClause: Map<VarId, number> = new Map(); // var -> clauseIdx that forced assignment
   private trail: LitId[] = [];
   private trailLim: number[] = []; // indices in trail for each decision level
+  private qhead = 0; // incremental propagation queue head into trail
 
   private activity: Map<VarId, number> = new Map();
   private varInc = 1.0;
@@ -526,12 +527,8 @@ export class CdclSatSolver {
    * Returns conflicting clause index or -1 if no conflict.
    */
   private propagate(): number {
-    let head = this.trailLim.length > 0 ? this.trailLim[this.trailLim.length - 1]! : 0;
-    if (this.currentLevel === 0) head = 0;
-
-    let pIdx = head;
-    while (pIdx < this.trail.length) {
-      const lit = this.trail[pIdx++]!;
+    while (this.qhead < this.trail.length) {
+      const lit = this.trail[this.qhead++]!;
       const falseLit = -lit; // clauses watching falseLit need new watchers
       const watchList = this.watchers.get(falseLit);
       if (!watchList) continue;
@@ -686,6 +683,7 @@ export class CdclSatSolver {
 
     this.trailLim.length = level;
     this.currentLevel = level;
+    this.qhead = this.trail.length;
   }
 
   private bumpVarActivity(v: VarId): void {

@@ -169,7 +169,7 @@ export const cLanguage = language({
     ],
   ],
 
-  extras: () => [/[ \t\r\n]+/, /\/\/[^\n]*/, /\/\*[\s\S]*?\*\//],
+  extras: () => [/[ \t\r\n]+/, /\/\/[^\n]*/, /\/\*([^*]|\*+[^*/])*\*+\//],
 
   rules: {
     SourceFile: ($) => repeat(choice($["FunctionDefinition"]!, $["Declaration"]!, $["_EmptyStatement"]!)),

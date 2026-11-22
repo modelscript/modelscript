@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { choice, language, repeat, seq } from "@modelscript/dsl";
+import { registerBuiltInAspenLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerAspenToDae } from "./dae/aspen-to-dae.js";
 import { canIndexAspen, indexAspenDocument } from "./indexing.js";
 import { lintAspen } from "./lints/index.js";
@@ -210,3 +211,6 @@ export const aspenLanguage = language({
 });
 
 export default aspenLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInAspenLibrarySync();

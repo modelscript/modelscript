@@ -30,6 +30,13 @@
  *         IO[15] = effectiveConductivity (K_eff, m/s)
  */
 
+import {
+  evalIapws97LiquidDensity,
+  evalIapws97LiquidEnthalpyKJkg,
+  evalIapws97PsatMPa,
+  evalIapws97SteamEnthalpyKJkg,
+} from "../../../../../packages/runtime/assembly/physics/thermo-eos";
+
 const OFF_CON: usize = 0x080;
 const OFF_STATE: usize = 0x580;
 const OFF_DSTATE: usize = 0x680;
@@ -98,46 +105,17 @@ function setIo(slotPtr: usize, idx: i32, v: f64): void {
 /**
  * IAPWS-IF97 Region 4 saturation pressure P_sat(T) in Pa for 273.15 K <= T_K <= 647.096 K.
  */
+@inline
 function iapwsSatPressurePa(tempC: f64): f64 {
-  const tk = clamp(tempC + 273.15, 273.16, 647.096);
-  const n1: f64 = 0.11670521452767e4;
-  const n2: f64 = -0.72421316703206e6;
-  const n3: f64 = -0.17073846940092e2;
-  const n4: f64 = 0.12020824702470e5;
-  const n5: f64 = -0.32325550322333e7;
-  const n6: f64 = 0.14915108613530e2;
-  const n7: f64 = -0.48232657361591e4;
-  const n8: f64 = 0.40511340542057e6;
-  const n9: f64 = -0.23855557567849;
-  const n10: f64 = 0.65017534844798e3;
-
-  const theta = tk + n9 / (tk - n10);
-  const theta2 = theta * theta;
-  const A = theta2 + n1 * theta + n2;
-  const B = n3 * theta2 + n4 * theta + n5;
-  const C = n6 * theta2 + n7 * theta + n8;
-  const disc = Math.max(0.0, B * B - 4.0 * A * C);
-  const ratio = (2.0 * C) / (-B + Math.sqrt(disc));
-  const r2 = ratio * ratio;
-  return r2 * r2 * 1.0e6;
+  return evalIapws97PsatMPa(tempC + 273.15) * 1.0e6;
 }
 
 /**
- * Cleanroom IAPWS-IF97 / Kell liquid water density rho_l(P, T) in kg/m^3.
+ * Cleanroom IAPWS-IF97 Region 1 compressed liquid water density rho_l(P, T) in kg/m^3.
  */
-function waterLiquidDensity(pressurePa: f64, tempC: f64, betaT: f64): f64 {
-  const t = clamp(tempC, 0.0, 350.0);
-  // Saturated liquid water density correlation accurate to ~0.3% from 0..300 degC
-  const rhoSat =
-    999.842594 +
-    6.793952e-2 * t -
-    9.09529e-3 * t * t +
-    1.001685e-4 * t * t * t -
-    1.120083e-6 * t * t * t * t +
-    6.536332e-9 * t * t * t * t * t;
-  const pSat = iapwsSatPressurePa(t);
-  const dp = Math.max(0.0, pressurePa - pSat);
-  return Math.max(550.0, rhoSat * (1.0 + betaT * dp));
+@inline
+function waterLiquidDensity(pressurePa: f64, tempC: f64, _betaT: f64): f64 {
+  return evalIapws97LiquidDensity(pressurePa * 1.0e-6, tempC + 273.15);
 }
 
 /**
@@ -389,16 +367,18 @@ export function toughModelEval(archetypeId: i32, slotPtr: usize, conCount: i32):
   // ── Equation-of-State (EOS) Modules ────────────────────────────────────────
   if (archetypeId == ARCH_EOS1_WATER) {
     const betaT = getCon(slotPtr, conCount, 2, 4.5e-10);
-    const cpWater = getCon(slotPtr, conCount, 3, 4184.0);
     const tk = clamp(tempC + 273.15, 273.15, 647.096);
+    const pMPa = pressurePa * 1.0e-6;
     const pSat = iapwsSatPressurePa(tempC);
     const rhoL = waterLiquidDensity(pressurePa, tempC, betaT);
     const muL = waterLiquidViscosity(tempC);
     // Steam density via compressibility-corrected ideal gas law (R_v = 461.52 J/(kg*K))
     const zSteam = clamp(1.0 - 0.18 * (pressurePa / 2.2064e7) * (647.096 / tk), 0.55, 1.0);
     const rhoG = pressurePa / (zSteam * 461.52 * tk);
-    const hL = cpWater * tempC;
+    const hL = evalIapws97LiquidEnthalpyKJkg(pMPa, tk) * 1000.0;
+    const hG = evalIapws97SteamEnthalpyKJkg(pMPa, tk) * 1000.0;
 
+    setState(slotPtr, 6, hG);
     setIo(slotPtr, 9, rhoL);
     setIo(slotPtr, 10, rhoG);
     setIo(slotPtr, 11, muL);
@@ -473,7 +453,7 @@ export function toughModelEval(archetypeId: i32, slotPtr: usize, conCount: i32):
     setIo(slotPtr, 10, rhoCo2);
     setIo(slotPtr, 11, muBrine);
     setIo(slotPtr, 12, pSat);
-    setIo(slotPtr, 13, 4184.0 * tempC * (1.0 - 0.8 * xs));
+    setIo(slotPtr, 13, evalIapws97LiquidEnthalpyKJkg(pressurePa * 1.0e-6, tk) * 1000.0 * (1.0 - 0.8 * xs));
     setIo(slotPtr, 14, xCo2Aq);
     return 0;
   }
@@ -516,7 +496,7 @@ export function toughModelEval(archetypeId: i32, slotPtr: usize, conCount: i32):
     setIo(slotPtr, 10, rhoG);
     setIo(slotPtr, 11, muL);
     setIo(slotPtr, 12, pSat);
-    setIo(slotPtr, 13, 4184.0 * tempC);
+    setIo(slotPtr, 13, evalIapws97LiquidEnthalpyKJkg(pressurePa * 1.0e-6, tk) * 1000.0);
     return 0;
   }
 

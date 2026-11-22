@@ -33,6 +33,8 @@
       ],
       "@modelscript/simulate": ["./packages/simulate/src/index.ts"],
       "@modelscript/simulate/*": ["./packages/simulate/src/*", "./packages/simulate/src/*/index.ts"],
+      "@modelscript/solve": ["./packages/solve/src/index.ts"],
+      "@modelscript/solve/*": ["./packages/solve/src/*", "./packages/solve/src/*/index.ts"],
       "@modelscript/diagram": ["./packages/diagram/src/index.ts"],
       "@modelscript/diagram/builder": [
         "./packages/diagram/src/builder.ts",
@@ -196,6 +198,9 @@
       "@modelscript/owl2": ["./languages/owl2/src/index.ts"],
       "@modelscript/owl2/parser": ["./languages/owl2/src-gen/bindings.js"],
       "@modelscript/owl2/*": ["./languages/owl2/src/*"],
+      "@modelscript/sparql": ["./languages/sparql/src/index.ts"],
+      "@modelscript/sparql/parser": ["./languages/sparql/src-gen/bindings.js"],
+      "@modelscript/sparql/*": ["./languages/sparql/src/*"],
       "@modelscript/pdb": ["./languages/pdb/src/index.ts"],
       "@modelscript/pdb/*": ["./languages/pdb/src/*"],
       "@modelscript/phreeqc": ["./languages/phreeqc/src/index.ts"],

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { registerBuiltInNmtranLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerNmtranToDae } from "./dae/nmtran-to-dae.js";
 import { nmtranGrammar } from "./grammar/nmtran-grammar.js";
 import { lintNmtran } from "./lints/index.js";
@@ -324,3 +325,6 @@ export const nmtranLanguage = language({
     },
   ],
 });
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInNmtranLibrarySync();

@@ -48,14 +48,20 @@ export function createFmuSimulinkBlockInstance(
   modelName: string,
   stepFn: (tSec: number, dtSec: number, inputs: readonly number[]) => number,
 ): SimulinkLinkedBlockInstance {
+  let lastOutput = 0.0;
   return {
     blockType: modelName,
     archetypeId: 0,
     init() {
+      lastOutput = 0.0;
       return 0;
     },
     step(tSec, dtSec, inputs = []) {
-      return stepFn(tSec, dtSec, inputs);
+      lastOutput = stepFn(tSec, dtSec, inputs);
+      return lastOutput;
+    },
+    getOutput(index = 0) {
+      return index === 0 ? lastOutput : 0.0;
     },
   };
 }

@@ -14,6 +14,7 @@ import {
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/dsl";
+import { registerBuiltInFeaLibrarySync } from "./catalog/library-package-adapter.js";
 import { canIndexFea, indexFeaDocument } from "./indexing.js";
 import { feaPolyglotConfig } from "./tgg/index.js";
 import type { MaterializeOptions } from "./types.js";
@@ -403,3 +404,6 @@ export const feaLanguage = language({
     STRING: () => /"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'/,
   },
 });
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInFeaLibrarySync();

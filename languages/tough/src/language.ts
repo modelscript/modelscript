@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { iniSectionRules, language, type ActionExecutionContext } from "@modelscript/dsl";
+import { registerBuiltInToughLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerToughToDae } from "./dae/index.js";
 import { canIndexToughFile, indexToughFile } from "./indexing.js";
 import { lintTough } from "./lints/index.js";
@@ -106,3 +107,6 @@ export const toughLanguage = language({
 });
 
 export default toughLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInToughLibrarySync();

@@ -2,4 +2,4 @@
 
 export { simulateGtSuiteTransient, type GtSimulateOptions } from "./cylinder-dae.js";
 export { gtsuiteToDae, type GtSuiteToDaeOptions } from "./gtsuite-to-dae.js";
-export { lowerGtSuiteToDae, type GtDaeLoweringResult } from "./mvem-dae.js";
+export { lowerGtSuiteToDae, resolveGtSuiteSchemaParamDefaults, type GtDaeLoweringResult } from "./mvem-dae.js";

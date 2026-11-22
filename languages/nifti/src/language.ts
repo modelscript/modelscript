@@ -22,7 +22,7 @@ export const niftiLanguage = language({
   fileExtensions: [".nii.json", ".nii.gz", ".nii", ".nrrd", ".nhdr"],
   maturity: "beta",
   word: ($) => $["Identifier"]!,
-  extras: () => [/[ \t\r\n]+/, /(?:#|\/\/)[^\r\n]*/, /<!--[\s\S]*?-->/, /<\?[\s\S]*?\?>/],
+  extras: () => [/[ \t\r\n]+/, /(?:#|\/\/)[^\r\n]*/, /<!--([^-]|-[^-]|--[^>])*-->/, /<\?([^?]|\?+[^?>])*\?+>/],
   lsp: {
     fileExtensions: [".nii.json", ".nii.gz", ".nii", ".nrrd", ".nhdr"],
     folding: ["JsonObject", "JsonArray", "NrrdDocument", "DslDocument"],

@@ -338,6 +338,18 @@ export function generateParserTables(
     }
   }
 
+  const defaultBracketsForCosts: [string, string][] = [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"],
+  ];
+  const declaredBracketsForCosts: [string, string][] =
+    originalGrammar.brackets && originalGrammar.brackets.length > 0
+      ? originalGrammar.brackets
+      : defaultBracketsForCosts;
+  const closeBracketSet = new Set<string>(declaredBracketsForCosts.map(([, close]) => close));
+  const recoveryDelimSet = new Set<string>(originalGrammar.recovery?.delimiters ?? []);
+
   const tokenInsertCosts: number[] = new Array(maxTerminalId + 1).fill(50);
   tokenInsertCosts[0] = 255; // ERROR token (0) forbidden from insertion
 
@@ -348,11 +360,26 @@ export function generateParserTables(
 
     if (cleanSym === ";" || cleanSym === "," || cleanSym === ":") {
       tokenInsertCosts[symId] = 1; // Low cost strictly for structural punctuation and list separators ; , :
+    } else if (closeBracketSet.has(cleanSym)) {
+      tokenInsertCosts[symId] = 2; // Low cost for closing delimiters ), ], } to localize unclosed scopes
+    } else if (recoveryDelimSet.has(cleanSym) || recoveryDelimSet.has(term)) {
+      tokenInsertCosts[symId] = 3; // Declared recovery delimiters (e.g., end, then, done)
     } else {
-      tokenInsertCosts[symId] = 50; // Restricted insertion cost (50) for operators (=, +, -, etc.), keywords, types, block delimiters, and data terminals
+      tokenInsertCosts[symId] = 50; // Restricted insertion cost (50) for operators, keywords, types, and data terminals
     }
   }
   code += generateStaticByteArray(tokenInsertCosts, "token_insert_costs");
+
+  const typeIsStructural: number[] = new Array(maxSymbolId + 1).fill(0);
+  if (originalGrammar.recovery?.structuralRules) {
+    for (const ruleName of originalGrammar.recovery.structuralRules) {
+      const symId = symToInt.get(ruleName);
+      if (symId !== undefined && symId <= maxSymbolId) {
+        typeIsStructural[symId] = 1;
+      }
+    }
+  }
+  code += generateStaticByteArray(typeIsStructural, "type_is_structural");
 
   const tokenIsWord = new Array(maxSymbolId + 1).fill(0);
   for (const [sym, symId] of symToInt.entries()) {
@@ -362,7 +389,7 @@ export function generateParserTables(
         tokenIsWord[symId] = 1;
       }
     } else if (sym.startsWith("/")) {
-      if (sym.includes("a-z") || sym.includes("A-Z") || sym.includes("_")) {
+      if (sym.includes("a-z") || sym.includes("A-Z") || sym.includes("_") || sym.includes("\\w")) {
         tokenIsWord[symId] = 1;
       }
     }
@@ -435,20 +462,22 @@ export function generateParserTables(
   );
 
   // Build reverse transition index (targetState:sym -> predecessor states) to find exact post-reduction GOTO targets
-  const reverseTransitions = new Map<string, number[]>();
+  const reverseTransitions = new Map<string, Set<number>>();
+  const addReverseTrans = (key: string, fromState: number) => {
+    let set = reverseTransitions.get(key);
+    if (!set) {
+      set = new Set<number>();
+      reverseTransitions.set(key, set);
+    }
+    set.add(fromState);
+  };
   for (let s = 0; s < table.actionTable.size; s++) {
     const actions = table.actionTable.get(s);
     if (actions) {
       for (const [sym, acts] of actions.entries()) {
         for (const act of acts) {
           if (act.type === 0 && act.target !== undefined) {
-            const key = `${act.target}:${sym}`;
-            let list = reverseTransitions.get(key);
-            if (!list) {
-              list = [];
-              reverseTransitions.set(key, list);
-            }
-            if (!list.includes(s)) list.push(s);
+            addReverseTrans(`${act.target}:${sym}`, s);
           }
         }
       }
@@ -456,13 +485,7 @@ export function generateParserTables(
     const gotos = table.gotoTable.get(s);
     if (gotos) {
       for (const [sym, target] of gotos.entries()) {
-        const key = `${target}:${sym}`;
-        let list = reverseTransitions.get(key);
-        if (!list) {
-          list = [];
-          reverseTransitions.set(key, list);
-        }
-        if (!list.includes(s)) list.push(s);
+        addReverseTrans(`${target}:${sym}`, s);
       }
     }
   }
@@ -475,30 +498,29 @@ export function generateParserTables(
     const cached = reduceGotoTargets.get(cacheKey);
     if (cached) return cached;
     const prod = table.grammar.productions[prodIdx]!;
-    let currStates = [stateId];
+    let currStates = new Set<number>([stateId]);
     // Walk RHS symbols in reverse order to simulate popping `prod.right.length` states off the LR automaton stack.
     for (let i = prod.right.length - 1; i >= 0; i--) {
       const rhsSym = prod.right[i];
-      const prevStates: number[] = [];
+      const prevStates = new Set<number>();
       for (const st of currStates) {
         const preds = reverseTransitions.get(`${st}:${rhsSym}`);
         if (preds) {
-          for (const p of preds) {
-            if (!prevStates.includes(p)) prevStates.push(p);
-          }
+          for (const p of preds) prevStates.add(p);
         }
       }
       currStates = prevStates;
-      if (currStates.length === 0) break;
+      if (currStates.size === 0) break;
     }
     // From each reachable stack bottom state, follow the non-terminal GOTO transition for `prod.left`.
-    const targets: number[] = [];
+    const targetSet = new Set<number>();
     for (const sourceState of currStates) {
       const nextState = table.gotoTable.get(sourceState)?.get(prod.left);
-      if (nextState !== undefined && !targets.includes(nextState)) {
-        targets.push(nextState);
+      if (nextState !== undefined) {
+        targetSet.add(nextState);
       }
     }
+    const targets = Array.from(targetSet);
     reduceGotoTargets.set(cacheKey, targets);
     return targets;
   };
@@ -631,37 +653,67 @@ export function generateParserTables(
 
     if (!matrixChanged) break;
   }
-  // Build Precomputed 1-Token Repair Table (Phase 2)
+  // Build Cost-Aware Precomputed 1-Token Repair Table & Non-Terminal Placeholder Table
   const precomputedRepairs = new Uint16Array(table.actionTable.size * (maxTerminalId + 1));
+  const precomputedNtRepairs = new Uint16Array(table.actionTable.size * (maxTerminalId + 1));
   for (let stateId = 0; stateId < table.actionTable.size; stateId++) {
     const actions = table.actionTable.get(stateId);
-    if (!actions) continue;
-
-    const validShiftSyms: { symId: number; targetState: number }[] = [];
-    for (const [sym, acts] of actions.entries()) {
-      const symId = symToInt.get(sym);
-      if (symId !== undefined && symId <= maxTerminalId) {
-        for (const act of acts) {
-          if (act.type === 0 && act.target !== undefined) {
-            validShiftSyms.push({ symId, targetState: act.target });
+    const validShiftSyms: { symId: number; targetState: number; insCost: number }[] = [];
+    if (actions) {
+      for (const [sym, acts] of actions.entries()) {
+        const symId = symToInt.get(sym);
+        if (symId !== undefined && symId <= maxTerminalId) {
+          const insCost = tokenInsertCosts[symId] ?? 50;
+          for (const act of acts) {
+            if (act.type === 0 && act.target !== undefined) {
+              validShiftSyms.push({ symId, targetState: act.target, insCost });
+            }
           }
         }
       }
     }
 
+    const gotos = table.gotoTable.get(stateId);
+    const validGotoNts: { symId: number; targetState: number; ntScore: number }[] = [];
+    if (gotos) {
+      for (const [ntSym, nextState] of gotos.entries()) {
+        const symId = symToInt.get(ntSym);
+        if (symId === undefined || symId <= 0 || symId > maxSymbolId) continue;
+        // Prefer named non-terminals over synthetic `_`-prefixed helpers, and smaller minimal yield
+        const yieldLen = minYieldMap.get(ntSym)?.length ?? 50;
+        const ntScore = (ntSym.startsWith("_") ? 1000 : 0) + yieldLen;
+        validGotoNts.push({ symId, targetState: nextState, ntScore });
+      }
+    }
+
+    const rowOffset = stateId * (maxTerminalId + 1);
     for (let unexpectedTok = 1; unexpectedTok <= maxTerminalId; unexpectedTok++) {
       let bestRepairTok = 0;
-      let minCost = 254;
+      let minScore = 254 * 100 + 255;
 
-      for (const { symId, targetState } of validShiftSyms) {
-        const cost = reachabilityMatrix[targetState * (maxTerminalId + 1) + unexpectedTok]!;
-        if (cost < minCost) {
-          minCost = cost;
+      for (const { symId, targetState, insCost } of validShiftSyms) {
+        const dist = reachabilityMatrix[targetState * (maxTerminalId + 1) + unexpectedTok]!;
+        if (dist >= 254) continue;
+        const score = dist * 100 + insCost;
+        if (score < minScore || (score === minScore && (bestRepairTok === 0 || symId < bestRepairTok))) {
+          minScore = score;
           bestRepairTok = symId;
         }
       }
+      precomputedRepairs[rowOffset + unexpectedTok] = bestRepairTok;
 
-      precomputedRepairs[stateId * (maxTerminalId + 1) + unexpectedTok] = bestRepairTok;
+      let bestNtSym = 0;
+      let minNtScore = 1000000;
+      for (const { symId, targetState, ntScore } of validGotoNts) {
+        // Strictly require distance-0 acceptance of unexpectedTok from GOTO(stateId, NT)
+        if (reachabilityMatrix[targetState * (maxTerminalId + 1) + unexpectedTok] === 0) {
+          if (ntScore < minNtScore || (ntScore === minNtScore && (bestNtSym === 0 || symId < bestNtSym))) {
+            minNtScore = ntScore;
+            bestNtSym = symId;
+          }
+        }
+      }
+      precomputedNtRepairs[rowOffset + unexpectedTok] = bestNtSym;
     }
   }
   // At runtime in WASM, only distance-0 reachability (`isReachableZeroDist`) is queried.
@@ -675,6 +727,7 @@ export function generateParserTables(
   }
   code += generateStaticByteArray(reachabilityBitset, "reachability_matrix");
   code += generateStaticU16Array(precomputedRepairs, "precomputed_repairs");
+  code += generateStaticU16Array(precomputedNtRepairs, "precomputed_nt_repairs");
 
   // Literal terminal strings for keyword/symbol similarity matching
   const tokenStringOffsets: number[] = new Array(maxSymbolId + 1).fill(-1);
@@ -898,23 +951,36 @@ export function generateParserTables(
 
   const typeSemantics: number[] = new Array(maxSymbolId + 1).fill(-1);
   const typeSemanticData: number[] = [];
+  const semanticsBySymId = new Map<number, Map<number, { type: number; bitmask: number }>>();
 
-  for (let symId = 1; symId <= maxSymbolId; symId++) {
-    const semanticsList = new Map<number, { type: number; bitmask: number }>();
-    for (const p of sortedProds) {
-      if ((symToInt.get(p.left) || 0) === symId && p.semantics) {
-        for (const s of p.semantics) {
-          let bitmask = 0;
-          const mods = Array.isArray(s.modifiers) ? s.modifiers : Object.keys(s.modifiers || {});
-          for (const m of mods) {
-            bitmask |= 1 << tokenModifiersMap.get(m)!;
-          }
-          semanticsList.set(s.index, { type: tokenTypesMap.get(s.type)!, bitmask });
-        }
+  for (const p of sortedProds) {
+    if (!p.semantics) continue;
+    const symId = symToInt.get(p.left) || 0;
+    if (symId < 1 || symId > maxSymbolId) continue;
+    let semanticsList = semanticsBySymId.get(symId);
+    if (!semanticsList) {
+      semanticsList = new Map<number, { type: number; bitmask: number }>();
+      semanticsBySymId.set(symId, semanticsList);
+    }
+    for (const s of p.semantics) {
+      let bitmask = 0;
+      const mods = Array.isArray(s.modifiers) ? s.modifiers : Object.keys(s.modifiers || {});
+      for (const m of mods) {
+        bitmask |= 1 << tokenModifiersMap.get(m)!;
+      }
+      const typeIdx = tokenTypesMap.get(s.type)!;
+      const existing = semanticsList.get(s.index);
+      if (!existing) {
+        semanticsList.set(s.index, { type: typeIdx, bitmask });
+      } else if (existing.type === typeIdx) {
+        existing.bitmask |= bitmask;
       }
     }
+  }
 
-    if (semanticsList.size > 0) {
+  for (let symId = 1; symId <= maxSymbolId; symId++) {
+    const semanticsList = semanticsBySymId.get(symId);
+    if (semanticsList && semanticsList.size > 0) {
       typeSemantics[symId] = typeSemanticData.length;
       typeSemanticData.push(semanticsList.size);
       for (const [index, sem] of semanticsList.entries()) {
@@ -1110,10 +1176,12 @@ export function generateParserTables(
       "goto_data",
       "mrd_data",
       "token_insert_costs",
+      "type_is_structural",
       "token_delete_costs",
       "token_is_word",
       "reachability_matrix",
       "precomputed_repairs",
+      "precomputed_nt_repairs",
       "token_string_offsets",
       "token_string_bytes",
       "prod_lengths",
@@ -1246,7 +1314,7 @@ export function generateParserTables(
 
   let engineCodeTemplate = engineCode;
 
-  const hasToken = (str: string) => Array.from(symToInt.keys()).includes(`"${str}"`);
+  const hasToken = (str: string) => symToInt.has(`"${str}"`);
   engineCodeTemplate = engineCodeTemplate
     .replace("export const CHAR_LBRACE: u8 = 123;", `export const CHAR_LBRACE: u8 = ${hasToken("{") ? 123 : 0};`)
     .replace("export const CHAR_RBRACE: u8 = 125;", `export const CHAR_RBRACE: u8 = ${hasToken("}") ? 125 : 0};`)

@@ -5,7 +5,9 @@
     "namePath": "mlxtran:bolus_1cpt_VCl",
     "exports": [
       "V",
-      "Cl"
+      "Cl",
+      "F",
+      "Tlag"
     ],
     "inherits": [],
     "metadata": {
@@ -33,6 +35,20 @@
           "defaultValue": 1,
           "unit": "L/h",
           "description": "Systemic clearance"
+        },
+        {
+          "key": "F",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Bioavailability fraction"
+        },
+        {
+          "key": "Tlag",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Dosing lag time"
         }
       ],
       "wasmKernel": "bolus_1cpt_VCl",
@@ -172,7 +188,9 @@
     "namePath": "mlxtran:infusion_1cpt_VCl",
     "exports": [
       "V",
-      "Cl"
+      "Cl",
+      "F",
+      "Tlag"
     ],
     "inherits": [],
     "metadata": {
@@ -199,6 +217,20 @@
           "defaultValue": 1,
           "unit": "L/h",
           "description": "Systemic clearance"
+        },
+        {
+          "key": "F",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Bioavailability fraction"
+        },
+        {
+          "key": "Tlag",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Dosing lag time"
         }
       ],
       "wasmKernel": "infusion_1cpt_VCl",
@@ -213,7 +245,8 @@
       "ka",
       "V",
       "Cl",
-      "F"
+      "F",
+      "Tlag"
     ],
     "inherits": [],
     "metadata": {
@@ -255,6 +288,13 @@
           "defaultValue": 1,
           "unit": "1",
           "description": "Oral bioavailability fraction"
+        },
+        {
+          "key": "Tlag",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Absorption lag time"
         }
       ],
       "wasmKernel": "oral1_1cpt_kaVCl",

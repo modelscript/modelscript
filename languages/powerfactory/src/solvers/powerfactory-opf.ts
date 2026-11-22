@@ -15,11 +15,8 @@ import {
   type OpfOptions,
   type OpfSolution,
 } from "@modelscript/simulate/opf";
-import {
-  runQuasiDynamicSimulation,
-  type QdslOptions,
-  type QdslResult,
-} from "@modelscript/simulate/powerflow";
+import { runQuasiDynamicSimulation, type QdslOptions, type QdslResult } from "@modelscript/simulate/powerflow";
+import { ensureBuiltInPowerFactoryLibraryRegistered } from "../catalog/library-package-adapter.js";
 import { powerFactoryToPsse } from "../projections/powerfactory-to-psse.js";
 import type { PowerFactoryModel } from "../types.js";
 
@@ -30,6 +27,7 @@ export function powerFactoryToGenericPowerCase(
   model: PowerFactoryModel,
   customCosts?: Map<string, GeneratorCostCurve> | undefined,
 ): GenericPowerCase {
+  ensureBuiltInPowerFactoryLibraryRegistered();
   const { psseCase, termToBusMap } = powerFactoryToPsse(model);
 
   // Build generator economic cost curves
@@ -51,7 +49,8 @@ export function powerFactoryToGenericPowerCase(
       if (customCosts.has(key)) assignedCost = customCosts.get(key);
       else if (customCosts.has(busKey)) assignedCost = customCosts.get(busKey);
       else if (pfGen && customCosts.has(`${gen.i}_${pfGen.id}`)) assignedCost = customCosts.get(`${gen.i}_${pfGen.id}`);
-      else if (pfGen && customCosts.has(`${gen.i}_${pfGen.loc_name}`)) assignedCost = customCosts.get(`${gen.i}_${pfGen.loc_name}`);
+      else if (pfGen && customCosts.has(`${gen.i}_${pfGen.loc_name}`))
+        assignedCost = customCosts.get(`${gen.i}_${pfGen.loc_name}`);
       else if (pfGen && customCosts.has(pfGen.id)) assignedCost = customCosts.get(pfGen.id);
       else if (pfGen && customCosts.has(pfGen.loc_name)) assignedCost = customCosts.get(pfGen.loc_name);
     }
@@ -94,10 +93,7 @@ export function powerFactoryToGenericPowerCase(
  * @param options OPF options (formulation: 'ac' | 'dc', enforceThermalLimits, generatorCosts)
  * @returns OpfSolution with optimal dispatch, LMPs ($/MWh), and branch loadings
  */
-export function solvePowerFactoryOpf(
-  model: PowerFactoryModel,
-  options: OpfOptions = {},
-): OpfSolution {
+export function solvePowerFactoryOpf(model: PowerFactoryModel, options: OpfOptions = {}): OpfSolution {
   const powerCase = powerFactoryToGenericPowerCase(model, options.generatorCosts);
   const formulation = options.formulation ?? "dc";
 
@@ -114,10 +110,7 @@ export function solvePowerFactoryOpf(
  * @param options QDSL options (timeStepHours, durationHours, loadProfiles, generationProfiles)
  * @returns QdslResult with time-series profiles and aggregate energy metrics
  */
-export function solvePowerFactoryQdsl(
-  model: PowerFactoryModel,
-  options: QdslOptions = {},
-): QdslResult {
+export function solvePowerFactoryQdsl(model: PowerFactoryModel, options: QdslOptions = {}): QdslResult {
   const powerCase = powerFactoryToGenericPowerCase(model);
   return runQuasiDynamicSimulation(powerCase, options);
 }

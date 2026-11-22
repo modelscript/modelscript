@@ -306,7 +306,7 @@ export declare class LspFacade {
    */
   scheduleCompaction(immediate?: boolean): void;
   /**
-   * Trigger 2: Checks if allocated memory exceeds high-water mark quota.
+   * Trigger 2: Checks if live allocated arena memory exceeds high-water mark quota.
    */
   checkMemoryQuota(): void;
   /**
@@ -1613,14 +1613,14 @@ export declare enum SyntaxKind {
   annotation_clause = 185,
   START = 186,
   _START = 186,
-  Identifier = 351,
-  identifier = 351,
-  StringLiteral = 352,
-  string_literal = 352,
-  UnsignedInteger = 353,
-  unsigned_integer = 353,
-  UnsignedReal = 354,
-  unsigned_real = 354,
+  Identifier = 332,
+  identifier = 332,
+  StringLiteral = 333,
+  string_literal = 333,
+  UnsignedInteger = 334,
+  unsigned_integer = 334,
+  UnsignedReal = 335,
+  unsigned_real = 335,
   EOF = 1023,
 }
 
@@ -2298,6 +2298,8 @@ export declare namespace Cst {
     typePrefixList(node: SyntaxNode | null | undefined): SyntaxNode[];
     typeSpecifier(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeSpecifierList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    componentDeclaration(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    componentDeclarationList(node: SyntaxNode | null | undefined): SyntaxNode[];
     componentList(node: SyntaxNode | null | undefined): SyntaxNode | null;
     componentListList(node: SyntaxNode | null | undefined): SyntaxNode[];
     arraySubscripts(node: SyntaxNode | null | undefined): SyntaxNode | null;

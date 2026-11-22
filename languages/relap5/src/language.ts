@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { language, type ActionExecutionContext } from "@modelscript/dsl";
+import { registerBuiltInRelap5LibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerRelap5ToDae } from "./dae/relap5-to-dae.js";
 import { relap5DeckGrammar } from "./grammar/relap5-grammar.js";
 import { relap5Indexing } from "./indexing.js";
@@ -179,3 +180,6 @@ export const relap5Language = language({
 });
 
 export default relap5Language;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInRelap5LibrarySync();

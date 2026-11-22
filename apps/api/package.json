@@ -45,8 +45,6 @@
     "watch": "tsc --watch"
   },
   "dependencies": {
-    "@comunica/query-sparql": "^5.1.3",
-    "@comunica/query-sparql-rdfjs": "^5.1.3",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@modelscript/aspen": "*",
     "@modelscript/automationml": "*",
@@ -78,6 +76,7 @@
     "@modelscript/sbml": "*",
     "@modelscript/sima": "*",
     "@modelscript/simulate": "*",
+    "@modelscript/sparql": "*",
     "@modelscript/step": "*",
     "@modelscript/swmm": "*",
     "@modelscript/sysml2": "*",

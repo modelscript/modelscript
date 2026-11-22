@@ -588,4 +588,25 @@ describe("WasmQueryEngine correctness & hardening regressions", () => {
     assert.equal(qe2.query("qBeta", 1), "beta:Node");
     assert.equal(qe2.query("qAlpha", 1), "alpha:Node");
   });
+
+  it("detects in-place updateIndex(engine.index) metadata and offset mutations without explicit changedIds", () => {
+    const index = makeIndex([
+      makeEntry(1, "Resistor", { startOffset: 0, endOffset: 20, metadata: { variability: "continuous" } }),
+    ]);
+    const qe = new WasmQueryEngine(
+      index,
+      new Map([["class_definition", { getVar: (_db, self) => `${self.metadata?.["variability"]}:${self.endOffset}` }]]),
+    );
+
+    assert.equal(qe.query("getVar", 1), "continuous:20");
+
+    // Mutate the same `index` instance in-place without renaming and without passing explicitChangedIds
+    index.symbols.set(
+      1,
+      makeEntry(1, "Resistor", { startOffset: 0, endOffset: 25, metadata: { variability: "parameter" } }),
+    );
+    qe.updateIndex(index);
+
+    assert.equal(qe.query("getVar", 1), "parameter:25");
+  });
 });

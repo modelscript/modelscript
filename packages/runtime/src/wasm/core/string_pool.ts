@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { ChunkedUint8Array, createChunkedUint8Array, ChunkedUint32Array, createChunkedUint32Array, atomicChunkAlloc } from "./array";
+import { ChunkedUint8Array, createChunkedUint8Array, ChunkedUint32Array, createChunkedUint32Array, atomicChunkAlloc, atomicChunkFree } from "./array";
 import { UnmanagedMap64 } from "./hashmap";
 
 @inline
@@ -777,6 +777,40 @@ export class ArenaStringPool {
     }
     return -1;
   }
+
+  dispose(): void {
+    if (changetype<usize>(this.charBuffer) != 0) {
+      this.charBuffer.dispose();
+      atomicChunkFree(changetype<usize>(this.charBuffer));
+      this.charBuffer = changetype<ChunkedUint8Array>(0);
+    }
+    if (changetype<usize>(this.stringOffsets) != 0) {
+      this.stringOffsets.dispose();
+      atomicChunkFree(changetype<usize>(this.stringOffsets));
+      this.stringOffsets = changetype<ChunkedUint32Array>(0);
+    }
+    if (changetype<usize>(this.stringLengths) != 0) {
+      this.stringLengths.dispose();
+      atomicChunkFree(changetype<usize>(this.stringLengths));
+      this.stringLengths = changetype<ChunkedUint32Array>(0);
+    }
+    if (this.stringMapPtr != 0) {
+      let sm = changetype<UnmanagedMap64>(this.stringMapPtr);
+      if (sm.keys != 0) atomicChunkFree(sm.keys);
+      if (sm.values != 0) atomicChunkFree(sm.values);
+      atomicChunkFree(this.stringMapPtr);
+      this.stringMapPtr = 0;
+    }
+    if (this.pathMapPtr != 0) {
+      let pm = changetype<UnmanagedMap64>(this.pathMapPtr);
+      if (pm.keys != 0) atomicChunkFree(pm.keys);
+      if (pm.values != 0) atomicChunkFree(pm.values);
+      atomicChunkFree(this.pathMapPtr);
+      this.pathMapPtr = 0;
+    }
+    this.charOffset = 0;
+    this.stringCount = 0;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -788,6 +822,12 @@ export function stringPool_create(): usize {
   let pool = changetype<ArenaStringPool>(ptr);
   pool.init();
   return ptr;
+}
+
+export function stringPool_dispose(poolPtr: usize): void {
+  if (poolPtr == 0) return;
+  changetype<ArenaStringPool>(poolPtr).dispose();
+  atomicChunkFree(poolPtr);
 }
 
 export function stringPool_internUtf8(poolPtr: usize, strPtr: usize, len: u32): u32 {

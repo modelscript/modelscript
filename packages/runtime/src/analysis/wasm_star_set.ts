@@ -175,7 +175,7 @@ export class StarSet {
       let singleAlphaIdx = -1;
       let nonZeroCount = 0;
       for (let j = 0; j < m; j++) {
-        if (Math.abs(row[j] ?? 0) > 1e-12) {
+        if ((row[j] ?? 0) !== 0) {
           singleAlphaIdx = j;
           nonZeroCount++;
           if (nonZeroCount > 1) break;
@@ -190,6 +190,9 @@ export class StarSet {
           b.hi = Math.min(b.hi, alphaLimit);
         } else {
           b.lo = Math.max(b.lo, alphaLimit);
+        }
+        if (b.lo > b.hi) {
+          return Array.from({ length: n }, () => new Interval(Infinity, -Infinity));
         }
       }
     }

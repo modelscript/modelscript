@@ -977,16 +977,19 @@ export class ConservativeLinearizationSolver {
 
     const durationMs = performance.now() - tStart;
     let verdict: VerificationVerdict;
-    const isCertifiedSafe = !hasWitnessViolation && !hasLimitCrossing && !timedOut;
+    const concreteWitness = violations.find((v) => v.isConcreteWitness) ?? violations[0];
+    // Strict rigor contract: ConservativeLinearizationSolver currently bounds Lagrange
+    // remainders on start-of-step boxes without outward rounding; do not certify as proven.
+    const isCertifiedSafe = false;
 
-    if (hasWitnessViolation) {
+    if (hasWitnessViolation && concreteWitness) {
       verdict = {
         kind: "violated",
         witness: {
-          time: violations[0]!.time,
-          state: { [violations[0]!.stateIndex]: violations[0]!.worstCaseValue },
+          time: concreteWitness.time,
+          state: { [concreteWitness.stateIndex]: concreteWitness.worstCaseValue },
         },
-        detail: violations[0]!.reason,
+        detail: concreteWitness.reason,
       };
     } else if (timedOut) {
       verdict = {
@@ -1002,9 +1005,10 @@ export class ConservativeLinearizationSolver {
       };
     } else {
       verdict = {
-        kind: "proven",
-        rigor: "float-sound",
-        detail: `Certified safe across ${steps.length} steps up to t=${tSpan[1]}s with conservative linearization zonotopes and continuous curvature bounds.`,
+        kind: "unknown",
+        reason: "not-rigorous",
+        rigor: "heuristic",
+        detail: `No requirement breach detected across ${steps.length} steps up to t=${tSpan[1]}s (unrounded start-of-step linearization; not formally certified).`,
       };
     }
 

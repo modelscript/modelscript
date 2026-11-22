@@ -5,13 +5,39 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInCymeLibraryRegistered, lookupCymeModelSchema } from "../catalog/library-package-adapter.js";
 import type { CymeNetwork } from "../types.js";
+
+/**
+ * Resolves parameter defaults for a CYME equipment/device model from `@modelscript/cyme-std-lib`,
+ * merging any user-specified overrides over the cleanroom schema defaults.
+ */
+export function resolveCymeSchemaParamDefaults(
+  modelType: string,
+  overrides: Record<string, number | string | boolean> = {},
+): Record<string, number | string | boolean> {
+  ensureBuiltInCymeLibraryRegistered();
+  const out: Record<string, number | string | boolean> = {};
+  const schema = lookupCymeModelSchema(modelType);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (p.defaultValue !== undefined) {
+        out[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
 
 function sanitize(id: string): string {
   return id.replace(/[^a-zA-Z0-9_]/g, "_");
 }
 
 export function lowerCymeToDae(net: CymeNetwork, builder?: DAEBuilder): DAEBuilder {
+  ensureBuiltInCymeLibraryRegistered();
   const dae = builder ?? new DAEBuilder(undefined, sanitize(net.networkId || "CymeNetwork"));
   const omega = 2 * Math.PI * (net.frequencyHz || 60);
   const sourceNodeIds = new Set(net.sources.map((s) => s.nodeId));

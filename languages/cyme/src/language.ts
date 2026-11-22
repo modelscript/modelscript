@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { cardDeckRules, language, type ActionExecutionContext } from "@modelscript/dsl";
+import { registerBuiltInCymeLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerCymeToDae } from "./dae/cyme-to-dae.js";
 import { canIndexCyme, indexCymeDocument } from "./indexing.js";
 import { lintCymeNetwork } from "./lints/index.js";
@@ -101,3 +102,6 @@ export const cymeLanguage = language({
 });
 
 export default cymeLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInCymeLibrarySync();

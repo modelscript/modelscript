@@ -56,6 +56,7 @@ import {
   type SymbolId,
   type SymbolIndex,
 } from "../runtime.js";
+import { LinearRevisionStore } from "./linear_revision_store.js";
 import {
   checkAlgebraicLoopsForSymbol,
   checkEquationBalanceForSymbol,
@@ -270,6 +271,20 @@ class DependencyTracker {
     this.domains.push(domain);
   }
 
+  /** Resets this tracker for zero-allocation reuse from `WasmQueryEngine.trackerPool`. */
+  reset(): void {
+    this.inputCount = 0;
+    this.inputSet = undefined;
+    this.queries = undefined;
+    this.queryKeySet = undefined;
+    this.byNames = undefined;
+    this.byNameSet = undefined;
+    this.domains = undefined;
+    this.domainSet = undefined;
+    this.durability = Durability.High;
+    this.readsAllEntries = false;
+  }
+
   /** Returns true if at least one direct symbol input dependency was recorded. */
   hasInputs(): boolean {
     return this.inputCount > 0;
@@ -468,8 +483,10 @@ export class WasmQueryEngine {
    * When `lastChangedAt[memo.durability] <= memo.verified_at`, the memo verifies in O(1) without `deepVerify`.
    */
   private lastChangedAt: [Revision, Revision, Revision] = [0, 0, 0];
-  /** Per-symbol durability override table (defaults to `Durability.Low`). */
-  private inputDurabilities = new Map<SymbolId, Durability>();
+  /** Zero-GC dense typed-array SoA store for per-symbol revisions and durability overrides. */
+  private revisionStore = new LinearRevisionStore();
+  /** Pre-allocated reusable pool of `DependencyTracker` frames to eliminate per-`execute()` GC churn. */
+  private trackerPool: DependencyTracker[] = [];
   /** Per-domain durability override table (defaults to `Durability.Low`). */
   private domainDurabilities = new Map<LanguageDomainId, Durability>();
   /** Global structure revision bumped whenever symbols are added or removed (tracks `db.allEntries()`). */
@@ -498,7 +515,7 @@ export class WasmQueryEngine {
 
   /** Assigns a Salsa durability tier (`Low`, `Medium`, `High`) to a specific symbol input. */
   public setInputDurability(symbolId: SymbolId, durability: Durability): void {
-    this.inputDurabilities.set(symbolId, durability);
+    this.revisionStore.setDurability(symbolId, durability);
   }
 
   /** Returns true when `resourceId` belongs to an immutable standard library or registry bundle. */
@@ -516,7 +533,7 @@ export class WasmQueryEngine {
 
   /** Returns the Salsa durability tier of a symbol input (auto-classifies stdlib resources as `High`). */
   public getInputDurability(symbolId: SymbolId): Durability {
-    const explicit = this.inputDurabilities.get(symbolId);
+    const explicit = this.revisionStore.getExplicitDurability(symbolId);
     if (explicit !== undefined) return explicit;
     const entry = this.index.symbols.get(symbolId);
     if (entry?.resourceId && WasmQueryEngine.isStdlibResourceId(entry.resourceId)) {
@@ -534,13 +551,13 @@ export class WasmQueryEngine {
     const byRes = this.index.symbolsByResource?.get(resourceId);
     if (byRes) {
       for (const id of byRes) {
-        this.inputDurabilities.set(id, durability);
+        this.revisionStore.setDurability(id, durability);
       }
       return;
     }
     for (const [id, entry] of this.index.symbols) {
       if (entry.resourceId === resourceId) {
-        this.inputDurabilities.set(id, durability);
+        this.revisionStore.setDurability(id, durability);
       }
     }
   }
@@ -578,6 +595,61 @@ export class WasmQueryEngine {
   private byNameRevisions = new Map<string, Revision>();
   /** Snapshot of the last known name for each `SymbolId` to detect renames during `updateIndex`/`invalidate`. */
   private symbolNames = new Map<SymbolId, string>();
+  /** Lightweight 32-bit structural fingerprint per `SymbolId` to detect in-place `updateIndex(this.index)` edits. */
+  private symbolFingerprints = new Map<SymbolId, number>();
+
+  /** Computes a fast 32-bit FNV-1a structural fingerprint of a `SymbolEntry` for in-place diff detection. */
+  private static computeSymbolFingerprint(entry: SymbolEntry): number {
+    let h = 0x811c9dc5;
+    const mixNum = (n: number) => {
+      h ^= n | 0;
+      h = Math.imul(h, 0x01000193) >>> 0;
+    };
+    const mixStr = (s: string | null | undefined) => {
+      mixNum(0x1f);
+      if (!s) return;
+      for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 0x01000193) >>> 0;
+      }
+    };
+    mixNum(entry.startOffset);
+    mixNum(entry.endOffset);
+    mixNum(entry.parentId ?? -0x7fffffff);
+    mixStr(entry.name);
+    mixStr(entry.kind);
+    mixStr(entry.ruleName);
+    mixStr(entry.fieldName);
+    mixStr(entry.resourceId);
+    if (entry.exports) {
+      mixNum(entry.exports.length);
+      for (let i = 0; i < entry.exports.length; i++) mixStr(entry.exports[i]);
+    }
+    if (entry.inherits) {
+      mixNum(entry.inherits.length);
+      for (let i = 0; i < entry.inherits.length; i++) mixStr(entry.inherits[i]);
+    }
+    if (entry.metadata) {
+      const keys = Object.keys(entry.metadata);
+      mixNum(keys.length);
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i]!;
+        mixStr(k);
+        const v = entry.metadata[k];
+        if (typeof v === "string") mixStr(v);
+        else if (typeof v === "number") mixNum(v);
+        else if (typeof v === "boolean") mixNum(v ? 1 : 0);
+        else if (v !== null && v !== undefined) {
+          try {
+            mixStr(JSON.stringify(v));
+          } catch {
+            mixStr(String(v));
+          }
+        }
+      }
+    }
+    return h >>> 0;
+  }
   /** Structured failure records from any `lint__*` hooks that threw during `runLints`. */
   private lintFailuresBySymbol = new Map<
     SymbolId,
@@ -922,8 +994,6 @@ export class WasmQueryEngine {
     }
   }
 
-  /** Per-symbol revision counter recording the last `currentRevision` at which each `SymbolId` was modified. */
-  private inputRevisions = new Map<SymbolId, Revision>();
   /** Per-domain revision counter tracking modifications across polyglot `LanguageDomainId` partitions. */
   private domainRevisions = new Map<LanguageDomainId, Revision>();
 
@@ -956,7 +1026,7 @@ export class WasmQueryEngine {
     }
     for (const id of this.index.symbols.keys()) {
       if (getSymbolDomain(id) === domain) {
-        this.inputRevisions.set(id, this.currentRevision);
+        this.revisionStore.setRevision(id, this.currentRevision);
         for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
           cacheDirtySet.add(id);
         }
@@ -1035,8 +1105,9 @@ export class WasmQueryEngine {
     this.maxMemos = options?.maxMemos ?? 2_000_000;
 
     for (const [id, entry] of this.index.symbols.entries()) {
-      this.inputRevisions.set(id, 0);
+      this.revisionStore.setRevision(id, 0);
       this.symbolNames.set(id, entry.name);
+      this.symbolFingerprints.set(id, WasmQueryEngine.computeSymbolFingerprint(entry));
       this.registerSymbolDomain(id);
     }
   }
@@ -1400,9 +1471,11 @@ export class WasmQueryEngine {
           if (prevName) changedNames.add(prevName);
         }
       }
-      // 3. Detect newly added symbols or existing symbols whose span, kind, parent, rule, name, or metadata changed.
+      // 3. Detect newly added symbols or existing symbols whose span, kind, parent, rule, name, or metadata changed
+      // (including in-place `this.index === newIndex` mutations via `symbolFingerprints`).
+      const sameIndex = this.index === newIndex;
       for (const [id, entry] of newIndex.symbols) {
-        const old = this.index !== newIndex ? this.index.symbols.get(id) : undefined;
+        const old = sameIndex ? undefined : this.index.symbols.get(id);
         const prevName = old?.name ?? this.symbolNames.get(id);
         if (!old && prevName === undefined) {
           changedIds.add(id);
@@ -1420,7 +1493,8 @@ export class WasmQueryEngine {
               !shallowEqual(old.metadata, entry.metadata) ||
               !shallowEqual(old.exports, entry.exports) ||
               !shallowEqual(old.inherits, entry.inherits))) ||
-          (prevName !== undefined && prevName !== entry.name)
+          (prevName !== undefined && prevName !== entry.name) ||
+          (sameIndex && this.symbolFingerprints.get(id) !== WasmQueryEngine.computeSymbolFingerprint(entry))
         ) {
           changedIds.add(id);
           if (entry.name) changedNames.add(entry.name);
@@ -1502,7 +1576,7 @@ export class WasmQueryEngine {
             if (
               this.index.symbols.has(polyId) ||
               this.symbolNames.has(polyId) ||
-              this.inputRevisions.has(polyId) ||
+              this.revisionStore.hasRevision(polyId) ||
               this.inputReverseDependencies.has(polyId)
             ) {
               ids.add(polyId);
@@ -1518,7 +1592,7 @@ export class WasmQueryEngine {
               if (
                 this.index.symbols.has(polyId) ||
                 this.symbolNames.has(polyId) ||
-                this.inputRevisions.has(polyId) ||
+                this.revisionStore.hasRevision(polyId) ||
                 this.inputReverseDependencies.has(polyId)
               ) {
                 structIds.add(polyId);
@@ -1558,7 +1632,7 @@ export class WasmQueryEngine {
     let structureChanged = false;
     for (const id of ids) {
       this.registerSymbolDomain(id);
-      this.inputRevisions.set(id, this.currentRevision);
+      this.revisionStore.setRevision(id, this.currentRevision);
       const idDur = this.getInputDurability(id);
       if (idDur > maxChangedDurability) maxChangedDurability = idDur;
       const domain = getSymbolDomain(id);
@@ -1576,10 +1650,12 @@ export class WasmQueryEngine {
           if (prevName) this.invalidateByName(prevName);
         }
         this.symbolNames.set(id, entry.name);
+        this.symbolFingerprints.set(id, WasmQueryEngine.computeSymbolFingerprint(entry));
       } else if (prevName) {
         structureChanged = true;
         this.invalidateByName(prevName);
         this.symbolNames.delete(id);
+        this.symbolFingerprints.delete(id);
       }
     }
 
@@ -2018,7 +2094,7 @@ export class WasmQueryEngine {
     this.globalStructureRevision = rev;
     let maxDur: Durability = Durability.Low;
     for (const [id, entry] of disposedEntries) {
-      this.inputRevisions.set(id, rev);
+      this.revisionStore.setRevision(id, rev);
       const idDur = this.getInputDurability(id);
       if (idDur > maxDur) maxDur = idDur;
       const dependentKeys = this.inputReverseDependencies.get(id);
@@ -2033,6 +2109,7 @@ export class WasmQueryEngine {
         this.invalidateByName(entry.name);
       }
       this.symbolNames.delete(id);
+      this.symbolFingerprints.delete(id);
       for (const cacheDirtySet of this.dirtyLintSymbols.values()) {
         cacheDirtySet.add(id);
       }
@@ -2158,14 +2235,9 @@ export class WasmQueryEngine {
         return false;
       }
 
-      // 1. Vectorized input check: tight contiguous integer loop over symbol IDs
-      if (memo.inputs) {
-        const inputs = memo.inputs;
-        const len = inputs.length;
-        for (let i = 0; i < len; i++) {
-          const rev = this.inputRevisions.get(inputs[i]!) ?? 0;
-          if (rev > verifiedAt) return false;
-        }
+      // 1. Zero-GC vectorized input check over dense Uint32Array revision slab
+      if (memo.inputs && this.revisionStore.hasAnyInputChangedSince(memo.inputs, verifiedAt)) {
+        return false;
       }
 
       // 2. Name table lookup check
@@ -2215,7 +2287,7 @@ export class WasmQueryEngine {
       if (memo.dependencies && memo.dependencies.length > 0 && !memo.inputs && !memo.queries) {
         for (const dep of memo.dependencies) {
           if (dep.kind === "input") {
-            const rev = this.inputRevisions.get(dep.symbolId) ?? 0;
+            const rev = this.revisionStore.getRevision(dep.symbolId);
             if (rev > verifiedAt) return false;
           } else if (dep.kind === "byName") {
             const rev = this.byNameRevisions.get(dep.name) ?? 0;
@@ -2310,36 +2382,54 @@ export class WasmQueryEngine {
       }
     }
 
-    // Push execution frame and install a fresh DependencyTracker to record all inputs and sub-queries read.
+    // Push execution frame and install a pooled DependencyTracker (zero per-call GC allocation).
     const execFrame = { key, queryName, symbolId, inCycle: false, isCycleHead: false };
     this.executionStack.push(execFrame);
     const prevTracker = this.activeTracker;
-    const tracker = new DependencyTracker();
+    const tracker = this.trackerPool.pop() ?? new DependencyTracker();
+    tracker.reset();
     this.activeTracker = tracker;
 
     let result: unknown;
+    let inputs: Int32Array | undefined;
+    let queries: QueryDependencyRecord[] | undefined;
+    let byNames: string[] | undefined;
+    let domains: LanguageDomainId[] | undefined;
+    let baseDurability: Durability = Durability.High;
+    let readsAllEntries = false;
     try {
       const db = this.createTrackedDB();
       result = queryFn(db, entry, args);
+
+      this.stats.recomputes++;
+
+      // Deterministic cycle handling: do not memoize cycle-participating frames, because their
+      // values depend on which participant broke the cycle. Non-cyclic callers outside the cycle
+      // are still memoized normally, and querying any cycle participant in any order is deterministic.
+      if (execFrame.inCycle) {
+        return result;
+      }
+
+      // If a leaf query read `entry` (`self`) directly without invoking any tracked `db.*` methods,
+      // record `symbolId` as its input dependency so edits to `symbolId` still invalidate it
+      // without breaking early cut-off (backdating) for derived queries on the same symbol.
+      if (!tracker.hasInputs() && !tracker.queries && !tracker.byNames && !tracker.domains) {
+        tracker.recordInput(symbolId);
+      }
+
+      inputs = tracker.finishInputs();
+      queries = tracker.queries;
+      byNames = tracker.byNames;
+      domains = tracker.domains;
+      baseDurability = tracker.durability;
+      readsAllEntries = tracker.readsAllEntries;
     } finally {
       this.activeTracker = prevTracker;
       this.executionStack.pop();
-    }
-
-    this.stats.recomputes++;
-
-    // Deterministic cycle handling: do not memoize cycle-participating frames, because their
-    // values depend on which participant broke the cycle. Non-cyclic callers outside the cycle
-    // are still memoized normally, and querying any cycle participant in any order is deterministic.
-    if (execFrame.inCycle) {
-      return result;
-    }
-
-    // If a leaf query read `entry` (`self`) directly without invoking any tracked `db.*` methods,
-    // record `symbolId` as its input dependency so edits to `symbolId` still invalidate it
-    // without breaking early cut-off (backdating) for derived queries on the same symbol.
-    if (!tracker.hasInputs() && !tracker.queries && !tracker.byNames && !tracker.domains) {
-      tracker.recordInput(symbolId);
+      tracker.reset();
+      if (this.trackerPool.length < 64) {
+        this.trackerPool.push(tracker);
+      }
     }
 
     // Backdating: if the newly computed result is shallow-equal to the previous memoized value,
@@ -2351,10 +2441,8 @@ export class WasmQueryEngine {
       this.stats.backdateHits++;
     }
 
-    const inputs = tracker.finishInputs();
-
     // Compute transitive minimum durability across all recorded inputs, domains, and sub-queries.
-    let durability: Durability = tracker.durability;
+    let durability: Durability = baseDurability;
     if (durability > Durability.Low && inputs) {
       for (let i = 0; i < inputs.length; i++) {
         const d = this.getInputDurability(inputs[i]!);
@@ -2364,8 +2452,8 @@ export class WasmQueryEngine {
         }
       }
     }
-    if (durability > Durability.Low && tracker.domains) {
-      for (const dom of tracker.domains) {
+    if (durability > Durability.Low && domains) {
+      for (const dom of domains) {
         const d = this.domainDurabilities.get(dom) ?? Durability.Low;
         if (d < durability) {
           durability = d;
@@ -2373,8 +2461,8 @@ export class WasmQueryEngine {
         }
       }
     }
-    if (durability > Durability.Low && tracker.queries) {
-      for (const q of tracker.queries) {
+    if (durability > Durability.Low && queries) {
+      for (const q of queries) {
         const depKey = q.key ?? this.memoKey(q.queryName, q.symbolId, q.argsHash);
         const depDur = this.memos.get(depKey)?.durability ?? Durability.Low;
         if (depDur < durability) {
@@ -2389,14 +2477,14 @@ export class WasmQueryEngine {
       verified_at: this.currentRevision,
       changed_at: changedAt,
       durability,
-      readsAllEntries: tracker.readsAllEntries || undefined,
+      readsAllEntries: readsAllEntries || undefined,
       queryName,
       symbolId,
       argsHash,
       inputs,
-      queries: tracker.queries,
-      byNames: tracker.byNames,
-      domains: tracker.domains,
+      queries,
+      byNames,
+      domains,
     };
 
     // Enforce bounded memo table capacity via durability-aware LRU eviction before storing the new memo,
@@ -2453,7 +2541,7 @@ export class WasmQueryEngine {
     this.specializationArgs.set(virtualId, args as SpecializationArgs);
     this.specializationBases.set(virtualId, baseId);
     this.specializeCache.set(cacheKey, virtualId);
-    this.inputRevisions.set(virtualId, this.currentRevision);
+    this.revisionStore.setRevision(virtualId, this.currentRevision);
 
     return virtualId;
   }

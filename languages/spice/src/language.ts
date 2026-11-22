@@ -9,6 +9,7 @@
  */
 
 import { language } from "@modelscript/dsl";
+import { registerBuiltInSpiceLibrarySync } from "./catalog/library-package-adapter.js";
 import { spiceNetlistGrammar } from "./grammar/spice-grammar.js";
 import { canIndexSpiceFile, indexSpiceFile } from "./indexing.js";
 import { lintSpiceCircuit } from "./lints/rules.js";
@@ -295,3 +296,6 @@ export const spiceLanguage = language({
 });
 
 export default spiceLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInSpiceLibrarySync();

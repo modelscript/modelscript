@@ -24,7 +24,11 @@ export interface NmtranModelDescriptor {
 
 export interface NmtranEvalIO {
   dose?: number | undefined;
+  amt?: number | undefined;
   rate?: number | undefined;
+  ii?: number | undefined;
+  addl?: number | undefined;
+  ss?: number | boolean | undefined;
   conc?: number | undefined;
   ipred?: number | undefined;
   eps1?: number | undefined;
@@ -78,13 +82,19 @@ export function resolveNmtranStdLibWasmBytes(): Uint8Array {
 function writeIo(views: CachedMemoryViews, slotPtr: number, io?: NmtranEvalIO): void {
   if (!io) return;
   const base = (slotPtr + OFF_IO) >> 3;
-  if (io.dose !== undefined) views.f64[base + 1] = io.dose;
+  const doseVal = io.dose ?? io.amt;
+  if (doseVal !== undefined) views.f64[base + 1] = doseVal;
   if (io.rate !== undefined) views.f64[base + 2] = io.rate;
   if (io.conc !== undefined) views.f64[base + 3] = io.conc;
   if (io.ipred !== undefined) views.f64[base + 9] = io.ipred;
   if (io.eps1 !== undefined) views.f64[base + 11] = io.eps1;
   if (io.eps2 !== undefined) views.f64[base + 12] = io.eps2;
   if (io.dt !== undefined) views.f64[base + 13] = io.dt;
+  if (io.ii !== undefined) views.f64[base + 14] = io.ii;
+  if (io.addl !== undefined) views.f64[base + 15] = io.addl;
+  if (io.ss !== undefined) {
+    views.i32[slotPtr >> 2] = io.ss === true || (typeof io.ss === "number" && io.ss !== 0) ? 1 : 0;
+  }
 }
 
 function readOutput(views: CachedMemoryViews, slotPtr: number, value: number, stateCount: number): NmtranEvalOutput {

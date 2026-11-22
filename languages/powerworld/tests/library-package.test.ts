@@ -13,7 +13,10 @@ import {
   getPowerWorldSchemasFromLibraries,
   instantiatePowerWorldWasmModel,
   lookupPowerWorldModelSchema,
+  lowerPowerWorldToDae,
+  parsePowerWorldAux,
   registerBuiltInPowerWorldLibrarySync,
+  resolvePowerWorldModelParamDefaults,
 } from "../src/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -75,13 +78,13 @@ describe("@modelscript/powerworld — Cleanroom Standard Library (modelscript.ya
     const excDrop = exc.doStep(0.02, 0.02, { ...baseIo, eterm: 0.92 });
     assert.ok(excDrop.efd > baseIo.efd, `Expected EXST1 to boost efd on voltage dip, got ${excDrop.efd}`);
 
-    // 2. Governor (HYGOV): flat-start residual ~ 0, then reduces pmech on overspeed
+    // 2. Governor (HYGOV): flat-start residual ~ 0, then reduces pmech on overspeed (after Tw water-hammer transient)
     const gov = instantiatePowerWorldWasmModel({ modelType: "HYGOV", busNum: 1, id: "1", params: [] });
     assert.ok(gov, "Expected HYGOV WASM instance");
     gov.init(baseIo);
     assert.ok(gov.checkFlatStart() < 1e-6, `Expected HYGOV flat-start residual < 1e-6, got ${gov.checkFlatStart()}`);
     let govOut = gov.doStep(0.05, 0.05, { ...baseIo, speedDev: 0.01 });
-    for (let k = 1; k < 20; k++) {
+    for (let k = 1; k < 60; k++) {
       govOut = gov.doStep(0.05 * (k + 1), 0.05, { ...baseIo, speedDev: 0.01 });
     }
     assert.ok(govOut.pmech < baseIo.pmech, `Expected HYGOV to reduce pmech on overspeed, got ${govOut.pmech}`);
@@ -133,5 +136,132 @@ describe("@modelscript/powerworld — Cleanroom Standard Library (modelscript.ya
     }));
     const out = fmuInst.doStep(0.02, 0.02, { eterm: 1.0, speedDev: 0.002, efd: 1.5, pmech: 0.8 });
     assert.ok(Math.abs(out.pmech - 0.75) < 1e-9);
+  });
+
+  it("automatically registers stdlib in lowerPowerWorldToDae and resolves omitted model parameter defaults", () => {
+    const aux = `
+DATA (Bus, [BusNum, BusName, BusNomVolt, BusSlack])
+{
+  1 "Slack" 230.0 YES
+  2 "Load" 230.0 NO
+}
+DATA (Branch, [BusNumFrom, BusNumTo, LineCircuit, LineR, LineX, LineAMVA])
+{
+  1 2 "1" 0.01 0.05 200.0
+}
+`;
+    const dae = lowerPowerWorldToDae(parsePowerWorldAux(aux));
+    assert.ok(globalLibraryRegistry.getPackagesForLanguage("powerworld").length > 0);
+    assert.notEqual(dae.lookupVariable("V_bus_1"), -1);
+
+    const genrouDefaults = resolvePowerWorldModelParamDefaults("GENROU", [7.0]);
+    assert.equal(genrouDefaults[0], 7.0);
+    assert.ok(genrouDefaults.length >= 10);
+    assert.ok((genrouDefaults[4] ?? 0) > 0, "Expected schema default for inertia H");
+  });
+
+  it("verifies full-order IEEE/WECC fidelity: 6-state GENROU fault, HYGOV water hammer, EXST1 lead-lag/rate-feedback, ESAC1A, PSS2A, CMPLDW", () => {
+    const baseIo = {
+      eterm: 1.0,
+      speedDev: 0.0,
+      efd: 1.5,
+      pmech: 0.8,
+      pelec: 0.8,
+      qelec: 0.2,
+      vr: 1.0,
+      vi: 0.0,
+      freqHz: 60.0,
+      pref: 0.8,
+    };
+
+    // 1. 6-state GENROU: exact flat-start < 1e-6 and subtransient 3-phase fault current surge
+    const gen = instantiatePowerWorldWasmModel({ modelType: "GENROU", busNum: 1, id: "1", params: [] });
+    assert.ok(gen, "Expected GENROU WASM instance");
+    const nGenStates = gen.init(baseIo);
+    assert.equal(nGenStates, 6, `Expected 6 dynamic states for GENROU, got ${nGenStates}`);
+    assert.ok(gen.checkFlatStart() < 1e-6, `Expected GENROU flat-start residual < 1e-6, got ${gen.checkFlatStart()}`);
+    const preFault = gen.doStep(0.005, 0.005, baseIo);
+    const iPre = Math.hypot(preFault.irInj, preFault.iiInj);
+    const faultOut = gen.doStep(0.01, 0.005, { ...baseIo, eterm: 0.25, vr: 0.25, vi: 0.0 });
+    const iFault = Math.hypot(faultOut.irInj, faultOut.iiInj);
+    assert.ok(
+      iFault > iPre * 2.5,
+      `Expected subtransient fault current surge (>2.5x pre-fault), got ${iFault} vs ${iPre}`,
+    );
+    assert.ok(faultOut.pelec < baseIo.pmech, `Expected electrical power drop during fault, got ${faultOut.pelec}`);
+
+    // 2. HYGOV: non-minimum-phase water-hammer inverse response on step frequency drop (dw = -0.01)
+    const gov = instantiatePowerWorldWasmModel({ modelType: "HYGOV", busNum: 1, id: "1", params: [] });
+    assert.ok(gov, "Expected HYGOV WASM instance");
+    assert.equal(gov.init(baseIo), 4);
+    assert.ok(gov.checkFlatStart() < 1e-6);
+    let minPmech = baseIo.pmech;
+    let finalPmech = baseIo.pmech;
+    for (let k = 0; k < 120; k++) {
+      const out = gov.doStep(0.05 * (k + 1), 0.05, { ...baseIo, speedDev: -0.01 });
+      if (k < 15 && out.pmech < minPmech) minPmech = out.pmech;
+      finalPmech = out.pmech;
+    }
+    assert.ok(
+      minPmech < baseIo.pmech - 0.005,
+      `Expected HYGOV initial water-hammer inverse dip below ${baseIo.pmech}, got min=${minPmech}`,
+    );
+    assert.ok(
+      finalPmech > baseIo.pmech + 0.01,
+      `Expected HYGOV steady rise above ${baseIo.pmech} after water accelerates, got final=${finalPmech}`,
+    );
+
+    // 3. EXST1: lead-lag & rate-feedback damping (Kf > 0 vs Kf = 0)
+    const excNoFb = instantiatePowerWorldWasmModel({
+      modelType: "EXST1",
+      busNum: 1,
+      id: "1",
+      params: [0.02, 0.5, -0.5, 1.0, 10.0, 200.0, 0.05, 5.0, -4.5, 0.05, 0.0, 1.0],
+    });
+    const excWithFb = instantiatePowerWorldWasmModel({
+      modelType: "EXST1",
+      busNum: 1,
+      id: "2",
+      params: [0.02, 0.5, -0.5, 1.0, 10.0, 200.0, 0.05, 5.0, -4.5, 0.05, 0.08, 1.0],
+    });
+    assert.ok(excNoFb && excWithFb);
+    assert.equal(excNoFb.init(baseIo), 4);
+    assert.equal(excWithFb.init(baseIo), 4);
+    assert.ok(excNoFb.checkFlatStart() < 1e-6);
+    assert.ok(excWithFb.checkFlatStart() < 1e-6);
+    let efdNoFb = baseIo.efd;
+    let efdWithFb = baseIo.efd;
+    for (let k = 0; k < 10; k++) {
+      efdNoFb = excNoFb.doStep(0.01 * (k + 1), 0.01, { ...baseIo, eterm: 0.94 }).efd;
+      efdWithFb = excWithFb.doStep(0.01 * (k + 1), 0.01, { ...baseIo, eterm: 0.94 }).efd;
+    }
+    assert.ok(efdNoFb > baseIo.efd && efdWithFb > baseIo.efd);
+    assert.ok(
+      efdWithFb < efdNoFb,
+      `Expected rate feedback (Kf=0.08) to damp EXST1 efd excursion (${efdWithFb} < ${efdNoFb})`,
+    );
+
+    // 4. ESAC1A (AC1A with F_EX), ESDC1A, TGOV1, PSS2A, CMPLDW
+    const ac1a = instantiatePowerWorldWasmModel({ modelType: "ESAC1A", busNum: 1, id: "1", params: [] });
+    const dc1a = instantiatePowerWorldWasmModel({ modelType: "ESDC1A", busNum: 1, id: "1", params: [] });
+    const tgov = instantiatePowerWorldWasmModel({ modelType: "TGOV1", busNum: 1, id: "1", params: [] });
+    const pss = instantiatePowerWorldWasmModel({ modelType: "PSS2A", busNum: 1, id: "1", params: [] });
+    const cmpldw = instantiatePowerWorldWasmModel({ modelType: "CMPLDW", busNum: 2, id: "1", params: [] });
+    assert.ok(ac1a && dc1a && tgov && pss && cmpldw);
+    assert.equal(ac1a.init(baseIo), 5);
+    assert.equal(dc1a.init(baseIo), 5);
+    assert.equal(tgov.init(baseIo), 2);
+    assert.equal(pss.init(baseIo), 4);
+    assert.equal(cmpldw.init(baseIo), 3);
+    assert.ok(ac1a.checkFlatStart() < 1e-6);
+    assert.ok(dc1a.checkFlatStart() < 1e-6);
+    assert.ok(tgov.checkFlatStart() < 1e-6);
+    assert.ok(pss.checkFlatStart() < 1e-6);
+    assert.ok(cmpldw.checkFlatStart() < 1e-6);
+
+    const pssStep = pss.doStep(0.02, 0.02, { ...baseIo, speedDev: 0.005 });
+    assert.ok(pssStep.vsPss > 0 && pssStep.vsPss <= 0.1, `Expected bounded PSS2A output, got ${pssStep.vsPss}`);
+    const loadSag = cmpldw.doStep(0.05, 0.05, { ...baseIo, eterm: 0.55 });
+    assert.ok(loadSag.pelec < baseIo.pelec, `Expected CMPLDW active load drop on voltage sag, got ${loadSag.pelec}`);
   });
 });

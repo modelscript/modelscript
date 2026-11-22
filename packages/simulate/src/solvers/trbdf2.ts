@@ -192,7 +192,7 @@ export function trbdf2(
 
   const gamma = TRBDF2_GAMMA;
   const d = TRBDF2_D;
-  const w = Math.SQRT2 / 4.0; // weighting for error estimation
+  const kErr = (1.0 - 3.0 * d) / (3.0 * gamma * (1.0 - gamma)); // Hosea-Shampine error scale
 
   const delta = new Float64Array(n);
   const yGamma = new Array<number>(n);
@@ -327,22 +327,24 @@ export function trbdf2(
     }
 
     // ── Local Error Estimation ──
-    // Error est = 2 * w * (d * f0 - (1/gamma)*fGamma + (1/(2-gamma))*fNew) * h
+    // Hosea & Shampine (1996) / Bank et al. (1985) divided-difference error estimate:
+    // weights ((1 - gamma), -1, gamma) sum to 0, giving exact zero error on constant derivatives.
     const fGammaFinal = f(tGamma, yGamma);
     const fNewFinal = f(tNew, yNew);
     stats.fEvals += 2;
 
+    const kErrScale = Math.abs(h) * kErr;
     let maxErrorRatio = 0.0;
     for (let i = 0; i < n; i++) {
       const err_i =
-        2.0 *
-        w *
-        h *
-        Math.abs(
-          d * (f0[i] ?? 0) - (1.0 / gamma) * (fGammaFinal[i] ?? 0) + (1.0 / (2.0 - gamma)) * (fNewFinal[i] ?? 0),
-        );
+        kErrScale * Math.abs((1.0 - gamma) * (f0[i] ?? 0) - (fGammaFinal[i] ?? 0) + gamma * (fNewFinal[i] ?? 0));
       const tol = atol + rtol * Math.max(Math.abs(y[i] ?? 0), Math.abs(yNew[i] ?? 0));
-      maxErrorRatio = Math.max(maxErrorRatio, err_i / tol);
+      const ratio = err_i / tol;
+      if (!Number.isFinite(ratio)) {
+        maxErrorRatio = Infinity;
+        break;
+      }
+      maxErrorRatio = Math.max(maxErrorRatio, ratio);
     }
 
     const acceptedByTol = Number.isFinite(maxErrorRatio) && maxErrorRatio <= 1.0;

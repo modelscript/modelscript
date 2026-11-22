@@ -938,6 +938,26 @@ function convertExplicitAxiom(props: Record<string, unknown>, axiomType: string)
 // SPARQL 1.1 Property Path Parser & DSL Query Helpers
 // ---------------------------------------------------------------------------
 
+/** Splits `expr` by single-character `delim` only outside `<...>` full IRI brackets. */
+function splitOutsideAngleBrackets(expr: string, delim: string): string[] {
+  const parts: string[] = [];
+  let inAngle = false;
+  let start = 0;
+  for (let i = 0; i < expr.length; i++) {
+    const ch = expr[i]!;
+    if (ch === "<") {
+      inAngle = true;
+    } else if (ch === ">") {
+      inAngle = false;
+    } else if (ch === delim && !inAngle) {
+      parts.push(expr.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  parts.push(expr.slice(start).trim());
+  return parts;
+}
+
 /**
  * Parses a SPARQL 1.1 property path expression into an IRI, path operator, and optional second step IRI.
  */
@@ -948,21 +968,21 @@ export function parsePropertyPathExpression(expr: string): {
 } {
   const trimmed = expr.trim();
 
-  if (trimmed.includes("/")) {
-    const parts = trimmed.split("/").map((s) => s.trim());
+  const seqParts = splitOutsideAngleBrackets(trimmed, "/");
+  if (seqParts.length > 1) {
     return {
-      iri: parts[0] || trimmed,
+      iri: seqParts[0] || trimmed,
       pathOp: "sequence",
-      stepPropertyIri2: parts[1] || "",
+      stepPropertyIri2: seqParts[1] || "",
     };
   }
 
-  if (trimmed.includes("|")) {
-    const parts = trimmed.split("|").map((s) => s.trim());
+  const altParts = splitOutsideAngleBrackets(trimmed, "|");
+  if (altParts.length > 1) {
     return {
-      iri: parts[0] || trimmed,
+      iri: altParts[0] || trimmed,
       pathOp: "alternation",
-      stepPropertyIri2: parts[1] || "",
+      stepPropertyIri2: altParts[1] || "",
     };
   }
 
@@ -1484,306 +1504,345 @@ export class WasmOntologyReasoner implements IOWLReasoner {
       }
     }
 
-    // Saturate SubObjectPropertyOf and SubDataPropertyOf hierarchies
-    if (this.subObjectPropertyEdges.size > 0) {
-      let propChanged = true;
-      let propPasses = 0;
-      while (propChanged && propPasses < 25) {
-        propChanged = false;
-        propPasses++;
-        for (const [subP, superSet] of this.subObjectPropertyEdges) {
-          const subEdges = this.objectPropertyAssertions.get(subP);
-          if (!subEdges || subEdges.length === 0) continue;
-          for (const supP of superSet) {
-            const supEdges = this.objectPropertyAssertions.get(supP) ?? [];
-            for (const e of subEdges) {
-              if (!supEdges.some((ex) => ex.subjectIri === e.subjectIri && ex.objectIri === e.objectIri)) {
-                supEdges.push({ subjectIri: e.subjectIri, objectIri: e.objectIri });
-                propChanged = true;
+    // Outer interleaved fixpoint loop so inferences from sub-properties, inverses,
+    // symmetric properties, domains/ranges, functional unification, universal restrictions,
+    // property chains, nominals, and SWRL rules feed back into each other.
+    let outerChanged = true;
+    let outerRounds = 0;
+    while (outerChanged && outerRounds < 10) {
+      outerChanged = false;
+      outerRounds++;
+
+      // Saturate SubObjectPropertyOf and SubDataPropertyOf hierarchies
+      if (this.subObjectPropertyEdges.size > 0) {
+        let propChanged = true;
+        let propPasses = 0;
+        while (propChanged && propPasses < 25) {
+          propChanged = false;
+          propPasses++;
+          for (const [subP, superSet] of this.subObjectPropertyEdges) {
+            const subEdges = this.objectPropertyAssertions.get(subP);
+            if (!subEdges || subEdges.length === 0) continue;
+            for (const supP of superSet) {
+              const supEdges = this.objectPropertyAssertions.get(supP) ?? [];
+              for (const e of subEdges) {
+                if (!supEdges.some((ex) => ex.subjectIri === e.subjectIri && ex.objectIri === e.objectIri)) {
+                  supEdges.push({ subjectIri: e.subjectIri, objectIri: e.objectIri });
+                  propChanged = true;
+                  outerChanged = true;
+                }
               }
+              this.objectPropertyAssertions.set(supP, supEdges);
             }
-            this.objectPropertyAssertions.set(supP, supEdges);
           }
         }
       }
-    }
 
-    if (this.subDataPropertyEdges.size > 0) {
-      let dataPropChanged = true;
-      let dataPropPasses = 0;
-      while (dataPropChanged && dataPropPasses < 25) {
-        dataPropChanged = false;
-        dataPropPasses++;
-        for (const [subP, superSet] of this.subDataPropertyEdges) {
-          const subAsserts = this.dataPropertyAssertions.get(subP);
-          if (!subAsserts || subAsserts.length === 0) continue;
-          for (const supP of superSet) {
-            const supAsserts = this.dataPropertyAssertions.get(supP) ?? [];
-            for (const a of subAsserts) {
-              if (!supAsserts.some((ex) => ex.subjectIri === a.subjectIri && ex.value === a.value)) {
-                supAsserts.push({ subjectIri: a.subjectIri, value: a.value });
-                dataPropChanged = true;
+      if (this.subDataPropertyEdges.size > 0) {
+        let dataPropChanged = true;
+        let dataPropPasses = 0;
+        while (dataPropChanged && dataPropPasses < 25) {
+          dataPropChanged = false;
+          dataPropPasses++;
+          for (const [subP, superSet] of this.subDataPropertyEdges) {
+            const subAsserts = this.dataPropertyAssertions.get(subP);
+            if (!subAsserts || subAsserts.length === 0) continue;
+            for (const supP of superSet) {
+              const supAsserts = this.dataPropertyAssertions.get(supP) ?? [];
+              for (const a of subAsserts) {
+                if (!supAsserts.some((ex) => ex.subjectIri === a.subjectIri && ex.value === a.value)) {
+                  supAsserts.push({ subjectIri: a.subjectIri, value: a.value });
+                  dataPropChanged = true;
+                  outerChanged = true;
+                }
               }
-            }
-            this.dataPropertyAssertions.set(supP, supAsserts);
-          }
-        }
-      }
-    }
-
-    // Reflexive object properties: R(x, x) for all known individuals x
-    for (const propIri of this.reflexiveProperties) {
-      const edges = this.objectPropertyAssertions.get(propIri) ?? [];
-      for (const indIri of this.individualTypes.keys()) {
-        if (!edges.some((e) => e.subjectIri === indIri && e.objectIri === indIri)) {
-          edges.push({ subjectIri: indIri, objectIri: indIri });
-        }
-      }
-      this.objectPropertyAssertions.set(propIri, edges);
-    }
-
-    // Functional property unification
-    for (const propIri of this.functionalObjectProperties) {
-      const edges = this.objectPropertyAssertions.get(propIri) ?? [];
-      const bySubject = new Map<string, string[]>();
-      for (const e of edges) {
-        const list = bySubject.get(e.subjectIri) ?? [];
-        list.push(e.objectIri);
-        bySubject.set(e.subjectIri, list);
-      }
-      for (const [, objs] of bySubject) {
-        if (objs.length > 1) {
-          for (let i = 0; i < objs.length; i++) {
-            for (let j = i + 1; j < objs.length; j++) {
-              const o1 = objs[i]!;
-              const o2 = objs[j]!;
-              this.unifyIndividuals(o1, o2);
+              this.dataPropertyAssertions.set(supP, supAsserts);
             }
           }
         }
       }
-    }
 
-    // InverseFunctional property unification
-    for (const propIri of this.inverseFunctionalObjectProperties) {
-      const edges = this.objectPropertyAssertions.get(propIri) ?? [];
-      const byObject = new Map<string, string[]>();
-      for (const e of edges) {
-        const list = byObject.get(e.objectIri) ?? [];
-        list.push(e.subjectIri);
-        byObject.set(e.objectIri, list);
-      }
-      for (const [, subjs] of byObject) {
-        if (subjs.length > 1) {
-          for (let i = 0; i < subjs.length; i++) {
-            for (let j = i + 1; j < subjs.length; j++) {
-              const s1 = subjs[i]!;
-              const s2 = subjs[j]!;
-              this.unifyIndividuals(s1, s2);
-            }
+      // Reflexive object properties: R(x, x) for all known individuals x
+      for (const propIri of this.reflexiveProperties) {
+        const edges = this.objectPropertyAssertions.get(propIri) ?? [];
+        for (const indIri of this.individualTypes.keys()) {
+          if (!edges.some((e) => e.subjectIri === indIri && e.objectIri === indIri)) {
+            edges.push({ subjectIri: indIri, objectIri: indIri });
+            outerChanged = true;
           }
         }
+        this.objectPropertyAssertions.set(propIri, edges);
       }
-    }
 
-    // ObjectPropertyDomain, ObjectPropertyRange, DataPropertyDomain propagation
-    for (const [propIri, domains] of this.objectPropertyDomains) {
-      const edges = this.objectPropertyAssertions.get(propIri) ?? [];
-      for (const e of edges) {
-        const types = this.individualTypes.get(e.subjectIri) ?? new Set();
-        for (const domIri of domains) types.add(domIri);
-        this.individualTypes.set(e.subjectIri, types);
-      }
-    }
-    for (const [propIri, ranges] of this.objectPropertyRanges) {
-      const edges = this.objectPropertyAssertions.get(propIri) ?? [];
-      for (const e of edges) {
-        const types = this.individualTypes.get(e.objectIri) ?? new Set();
-        for (const rngIri of ranges) types.add(rngIri);
-        this.individualTypes.set(e.objectIri, types);
-      }
-    }
-    for (const [propIri, domains] of this.dataPropertyDomains) {
-      const asserts = this.dataPropertyAssertions.get(propIri) ?? [];
-      for (const a of asserts) {
-        const types = this.individualTypes.get(a.subjectIri) ?? new Set();
-        for (const domIri of domains) types.add(domIri);
-        this.individualTypes.set(a.subjectIri, types);
-      }
-    }
-
-    // Restrictions propagation
-    for (const axiom of this._axioms) {
-      if (axiom.type === "SymmetricObjectProperty") {
-        const edges = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
-        const toAdd: PropertyEdge[] = [];
+      // Functional property unification
+      for (const propIri of this.functionalObjectProperties) {
+        const edges = this.objectPropertyAssertions.get(propIri) ?? [];
+        const bySubject = new Map<string, string[]>();
         for (const e of edges) {
-          if (!edges.some((ex) => ex.subjectIri === e.objectIri && ex.objectIri === e.subjectIri)) {
-            toAdd.push({ subjectIri: e.objectIri, objectIri: e.subjectIri });
+          const list = bySubject.get(e.subjectIri) ?? [];
+          list.push(e.objectIri);
+          bySubject.set(e.subjectIri, list);
+        }
+        for (const [, objs] of bySubject) {
+          if (objs.length > 1) {
+            for (let i = 0; i < objs.length; i++) {
+              for (let j = i + 1; j < objs.length; j++) {
+                const o1 = objs[i]!;
+                const o2 = objs[j]!;
+                if (this.unifyIndividuals(o1, o2)) outerChanged = true;
+              }
+            }
           }
         }
-        for (const add of toAdd) edges.push(add);
-        this.objectPropertyAssertions.set(axiom.propertyIri, edges);
-      } else if (axiom.type === "InverseObjectProperty") {
-        const edgesR = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
-        const edgesS = this.objectPropertyAssertions.get(axiom.inversePropertyIri) ?? [];
-        for (const e of edgesR) {
-          if (!edgesS.some((ex) => ex.subjectIri === e.objectIri && ex.objectIri === e.subjectIri)) {
-            edgesS.push({ subjectIri: e.objectIri, objectIri: e.subjectIri });
-          }
-        }
-        for (const e of edgesS) {
-          if (!edgesR.some((ex) => ex.subjectIri === e.objectIri && ex.objectIri === e.subjectIri)) {
-            edgesR.push({ subjectIri: e.objectIri, objectIri: e.subjectIri });
-          }
-        }
-        this.objectPropertyAssertions.set(axiom.propertyIri, edgesR);
-        this.objectPropertyAssertions.set(axiom.inversePropertyIri, edgesS);
-      } else if (axiom.type === "UniversalRestriction") {
-        const edges = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
+      }
+
+      // InverseFunctional property unification
+      for (const propIri of this.inverseFunctionalObjectProperties) {
+        const edges = this.objectPropertyAssertions.get(propIri) ?? [];
+        const byObject = new Map<string, string[]>();
         for (const e of edges) {
-          if (!axiom.classIri || (this.individualTypes.get(e.subjectIri)?.has(axiom.classIri) ?? false)) {
-            const types = this.individualTypes.get(e.objectIri) ?? new Set();
-            types.add(axiom.targetClassIri);
-            this.individualTypes.set(e.objectIri, types);
-          }
+          const list = byObject.get(e.objectIri) ?? [];
+          list.push(e.subjectIri);
+          byObject.set(e.objectIri, list);
         }
-      } else if (axiom.type === "SelfRestriction") {
-        for (const [indIri, types] of this.individualTypes) {
-          if (types.has(axiom.classIri)) {
-            const edges = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
-            if (!edges.some((e) => e.subjectIri === indIri && e.objectIri === indIri)) {
-              edges.push({ subjectIri: indIri, objectIri: indIri });
-              this.objectPropertyAssertions.set(axiom.propertyIri, edges);
-            }
-          }
-        }
-      }
-    }
-
-    // Property chains saturation: R1 o R2 o ... o Rn SubPropertyOf S
-    if (this.subPropertyChains.length > 0) {
-      let chainChanged = true;
-      let chainPasses = 0;
-      while (chainChanged && chainPasses < 50) {
-        chainChanged = false;
-        chainPasses++;
-
-        for (const chainAxiom of this.subPropertyChains) {
-          const chain = chainAxiom.subPropertyChain;
-          if (chain.length < 2) continue;
-
-          let currPairs: { subjectIri: string; objectIri: string }[] = (
-            this.objectPropertyAssertions.get(chain[0]!) ?? []
-          ).map((e) => ({ ...e }));
-
-          for (let step = 1; step < chain.length; step++) {
-            const nextEdges = this.objectPropertyAssertions.get(chain[step]!) ?? [];
-            const nextPairs: { subjectIri: string; objectIri: string }[] = [];
-
-            for (const p of currPairs) {
-              for (const e of nextEdges) {
-                if (p.objectIri === e.subjectIri) {
-                  nextPairs.push({ subjectIri: p.subjectIri, objectIri: e.objectIri });
-                }
-              }
-            }
-            currPairs = nextPairs;
-            if (currPairs.length === 0) break;
-          }
-
-          const targetEdges = this.objectPropertyAssertions.get(chainAxiom.superPropertyIri) ?? [];
-          for (const pair of currPairs) {
-            if (!targetEdges.some((te) => te.subjectIri === pair.subjectIri && te.objectIri === pair.objectIri)) {
-              targetEdges.push({ subjectIri: pair.subjectIri, objectIri: pair.objectIri });
-              chainChanged = true;
-            }
-          }
-          this.objectPropertyAssertions.set(chainAxiom.superPropertyIri, targetEdges);
-        }
-      }
-    }
-
-    // Propagate individual types
-    for (const [, types] of this.individualTypes) {
-      const inferredTypes = new Set(types);
-      for (const typeIri of types) {
-        const node = this.classes.get(typeIri);
-        if (node?.allSuperClasses) {
-          for (const superIri of node.allSuperClasses) {
-            inferredTypes.add(superIri);
-          }
-        }
-      }
-      for (const t of inferredTypes) types.add(t);
-    }
-
-    // ObjectOneOf / Nominal reasoning
-    if (this.objectOneOfMap.size > 0) {
-      let nomChanged = true;
-      let nomPasses = 0;
-      while (nomChanged && nomPasses < 10) {
-        nomChanged = false;
-        nomPasses++;
-
-        for (const [classIri, nominals] of this.objectOneOfMap) {
-          const nominalArr = Array.from(nominals);
-          // 1. Singleton nominal: C = {a} => any instance x of C is identical to a
-          if (nominalArr.length === 1) {
-            const singletonNominal = nominalArr[0]!;
-            for (const [ind, types] of this.individualTypes) {
-              if (types.has(classIri) && ind !== singletonNominal) {
-                const group = this.sameIndividualGroups.get(ind);
-                if (!group || !group.has(singletonNominal)) {
-                  this.unifyIndividuals(ind, singletonNominal);
-                  nomChanged = true;
-                }
-              }
-            }
-          }
-
-          // 2. Unit resolution / Negative elimination:
-          // If ind has type C, and ind is DifferentFrom k-1 nominals, ind must be the remaining one!
-          if (nominalArr.length > 1) {
-            for (const [ind, types] of this.individualTypes) {
-              if (!types.has(classIri)) continue;
-              if (nominals.has(ind)) continue;
-
-              const differentNominals: string[] = [];
-              for (const nom of nominalArr) {
-                if (this.isDifferent(ind, nom)) {
-                  differentNominals.push(nom);
-                }
-              }
-
-              if (differentNominals.length === nominalArr.length - 1) {
-                const remaining = nominalArr.find((n) => !differentNominals.includes(n))!;
-                const group = this.sameIndividualGroups.get(ind);
-                if (!group || !group.has(remaining)) {
-                  this.unifyIndividuals(ind, remaining);
-                  nomChanged = true;
-                }
+        for (const [, subjs] of byObject) {
+          if (subjs.length > 1) {
+            for (let i = 0; i < subjs.length; i++) {
+              for (let j = i + 1; j < subjs.length; j++) {
+                const s1 = subjs[i]!;
+                const s2 = subjs[j]!;
+                if (this.unifyIndividuals(s1, s2)) outerChanged = true;
               }
             }
           }
         }
       }
-    }
 
-    // SWRL rule saturation
-    if (this.swrlRules.length > 0) {
-      let swrlChanged = true;
-      let swrlPasses = 0;
-      while (swrlChanged && swrlPasses < 25) {
-        swrlChanged = false;
-        swrlPasses++;
+      // ObjectPropertyDomain, ObjectPropertyRange, DataPropertyDomain propagation
+      for (const [propIri, domains] of this.objectPropertyDomains) {
+        const edges = this.objectPropertyAssertions.get(propIri) ?? [];
+        for (const e of edges) {
+          const types = this.individualTypes.get(e.subjectIri) ?? new Set();
+          for (const domIri of domains) {
+            if (!types.has(domIri)) {
+              types.add(domIri);
+              outerChanged = true;
+            }
+          }
+          this.individualTypes.set(e.subjectIri, types);
+        }
+      }
+      for (const [propIri, ranges] of this.objectPropertyRanges) {
+        const edges = this.objectPropertyAssertions.get(propIri) ?? [];
+        for (const e of edges) {
+          const types = this.individualTypes.get(e.objectIri) ?? new Set();
+          for (const rngIri of ranges) {
+            if (!types.has(rngIri)) {
+              types.add(rngIri);
+              outerChanged = true;
+            }
+          }
+          this.individualTypes.set(e.objectIri, types);
+        }
+      }
+      for (const [propIri, domains] of this.dataPropertyDomains) {
+        const asserts = this.dataPropertyAssertions.get(propIri) ?? [];
+        for (const a of asserts) {
+          const types = this.individualTypes.get(a.subjectIri) ?? new Set();
+          for (const domIri of domains) {
+            if (!types.has(domIri)) {
+              types.add(domIri);
+              outerChanged = true;
+            }
+          }
+          this.individualTypes.set(a.subjectIri, types);
+        }
+      }
 
-        for (const rule of this.swrlRules) {
-          const bindings = this.evaluateSwrlBody(rule.body);
-          for (const env of bindings) {
-            for (const headAtom of rule.head) {
-              if (this.applySwrlHeadAtom(headAtom, env)) {
-                swrlChanged = true;
+      // Restrictions propagation
+      for (const axiom of this._axioms) {
+        if (axiom.type === "SymmetricObjectProperty") {
+          const edges = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
+          const toAdd: PropertyEdge[] = [];
+          for (const e of edges) {
+            if (!edges.some((ex) => ex.subjectIri === e.objectIri && ex.objectIri === e.subjectIri)) {
+              toAdd.push({ subjectIri: e.objectIri, objectIri: e.subjectIri });
+            }
+          }
+          for (const add of toAdd) {
+            edges.push(add);
+            outerChanged = true;
+          }
+          this.objectPropertyAssertions.set(axiom.propertyIri, edges);
+        } else if (axiom.type === "InverseObjectProperty") {
+          const edgesR = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
+          const edgesS = this.objectPropertyAssertions.get(axiom.inversePropertyIri) ?? [];
+          for (const e of edgesR) {
+            if (!edgesS.some((ex) => ex.subjectIri === e.objectIri && ex.objectIri === e.subjectIri)) {
+              edgesS.push({ subjectIri: e.objectIri, objectIri: e.subjectIri });
+              outerChanged = true;
+            }
+          }
+          for (const e of edgesS) {
+            if (!edgesR.some((ex) => ex.subjectIri === e.objectIri && ex.objectIri === e.subjectIri)) {
+              edgesR.push({ subjectIri: e.objectIri, objectIri: e.subjectIri });
+              outerChanged = true;
+            }
+          }
+          this.objectPropertyAssertions.set(axiom.propertyIri, edgesR);
+          this.objectPropertyAssertions.set(axiom.inversePropertyIri, edgesS);
+        } else if (axiom.type === "UniversalRestriction") {
+          const edges = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
+          for (const e of edges) {
+            if (!axiom.classIri || (this.individualTypes.get(e.subjectIri)?.has(axiom.classIri) ?? false)) {
+              const types = this.individualTypes.get(e.objectIri) ?? new Set();
+              if (!types.has(axiom.targetClassIri)) {
+                types.add(axiom.targetClassIri);
+                outerChanged = true;
+              }
+              this.individualTypes.set(e.objectIri, types);
+            }
+          }
+        } else if (axiom.type === "SelfRestriction") {
+          for (const [indIri, types] of this.individualTypes) {
+            if (types.has(axiom.classIri)) {
+              const edges = this.objectPropertyAssertions.get(axiom.propertyIri) ?? [];
+              if (!edges.some((e) => e.subjectIri === indIri && e.objectIri === indIri)) {
+                edges.push({ subjectIri: indIri, objectIri: indIri });
+                this.objectPropertyAssertions.set(axiom.propertyIri, edges);
+                outerChanged = true;
+              }
+            }
+          }
+        }
+      }
+
+      // Property chains saturation: R1 o R2 o ... o Rn SubPropertyOf S
+      if (this.subPropertyChains.length > 0) {
+        let chainChanged = true;
+        let chainPasses = 0;
+        while (chainChanged && chainPasses < 50) {
+          chainChanged = false;
+          chainPasses++;
+
+          for (const chainAxiom of this.subPropertyChains) {
+            const chain = chainAxiom.subPropertyChain;
+            if (chain.length < 2) continue;
+
+            let currPairs: { subjectIri: string; objectIri: string }[] = (
+              this.objectPropertyAssertions.get(chain[0]!) ?? []
+            ).map((e) => ({ ...e }));
+
+            for (let step = 1; step < chain.length; step++) {
+              const nextEdges = this.objectPropertyAssertions.get(chain[step]!) ?? [];
+              const nextPairs: { subjectIri: string; objectIri: string }[] = [];
+
+              for (const p of currPairs) {
+                for (const e of nextEdges) {
+                  if (p.objectIri === e.subjectIri) {
+                    nextPairs.push({ subjectIri: p.subjectIri, objectIri: e.objectIri });
+                  }
+                }
+              }
+              currPairs = nextPairs;
+              if (currPairs.length === 0) break;
+            }
+
+            const targetEdges = this.objectPropertyAssertions.get(chainAxiom.superPropertyIri) ?? [];
+            for (const pair of currPairs) {
+              if (!targetEdges.some((te) => te.subjectIri === pair.subjectIri && te.objectIri === pair.objectIri)) {
+                targetEdges.push({ subjectIri: pair.subjectIri, objectIri: pair.objectIri });
+                chainChanged = true;
+                outerChanged = true;
+              }
+            }
+            this.objectPropertyAssertions.set(chainAxiom.superPropertyIri, targetEdges);
+          }
+        }
+      }
+
+      // Propagate individual types along class hierarchy
+      for (const [, types] of this.individualTypes) {
+        const inferredTypes = new Set(types);
+        for (const typeIri of types) {
+          const node = this.classes.get(typeIri);
+          if (node?.allSuperClasses) {
+            for (const superIri of node.allSuperClasses) {
+              inferredTypes.add(superIri);
+            }
+          }
+        }
+        for (const t of inferredTypes) {
+          if (!types.has(t)) {
+            types.add(t);
+            outerChanged = true;
+          }
+        }
+      }
+
+      // ObjectOneOf / Nominal reasoning
+      if (this.objectOneOfMap.size > 0) {
+        let nomChanged = true;
+        let nomPasses = 0;
+        while (nomChanged && nomPasses < 10) {
+          nomChanged = false;
+          nomPasses++;
+
+          for (const [classIri, nominals] of this.objectOneOfMap) {
+            const nominalArr = Array.from(nominals);
+            if (nominalArr.length === 1) {
+              const singletonNominal = nominalArr[0]!;
+              for (const [ind, types] of this.individualTypes) {
+                if (types.has(classIri) && ind !== singletonNominal) {
+                  if (this.unifyIndividuals(ind, singletonNominal)) {
+                    nomChanged = true;
+                    outerChanged = true;
+                  }
+                }
+              }
+            }
+
+            if (nominalArr.length > 1) {
+              for (const [ind, types] of this.individualTypes) {
+                if (!types.has(classIri)) continue;
+                if (nominals.has(ind)) continue;
+
+                const differentNominals: string[] = [];
+                for (const nom of nominalArr) {
+                  if (this.isDifferent(ind, nom)) {
+                    differentNominals.push(nom);
+                  }
+                }
+
+                if (differentNominals.length === nominalArr.length - 1) {
+                  const remaining = nominalArr.find((n) => !differentNominals.includes(n))!;
+                  if (this.unifyIndividuals(ind, remaining)) {
+                    nomChanged = true;
+                    outerChanged = true;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // SWRL rule saturation
+      if (this.swrlRules.length > 0) {
+        let swrlChanged = true;
+        let swrlPasses = 0;
+        while (swrlChanged && swrlPasses < 25) {
+          swrlChanged = false;
+          swrlPasses++;
+
+          for (const rule of this.swrlRules) {
+            const bindings = this.evaluateSwrlBody(rule.body);
+            for (const env of bindings) {
+              for (const headAtom of rule.head) {
+                if (this.applySwrlHeadAtom(headAtom, env)) {
+                  swrlChanged = true;
+                  outerChanged = true;
+                }
               }
             }
           }
@@ -1812,19 +1871,34 @@ export class WasmOntologyReasoner implements IOWLReasoner {
   }
 
   /** Unifies two individuals into the same equivalence group and merges their class assertions. */
-  private unifyIndividuals(ind1: string, ind2: string): void {
-    if (ind1 === ind2) return;
-    const group = this.sameIndividualGroups.get(ind1) ?? new Set([ind1]);
-    group.add(ind2);
-    this.sameIndividualGroups.set(ind1, group);
-    this.sameIndividualGroups.set(ind2, group);
+  private unifyIndividuals(ind1: string, ind2: string): boolean {
+    if (ind1 === ind2) return false;
+    const group1 = this.sameIndividualGroups.get(ind1) ?? new Set([ind1]);
+    const group2 = this.sameIndividualGroups.get(ind2) ?? new Set([ind2]);
+    if (group1 === group2) return false;
 
-    const types1 = this.individualTypes.get(ind1) ?? new Set();
-    const types2 = this.individualTypes.get(ind2) ?? new Set();
-    for (const t of types1) types2.add(t);
-    for (const t of types2) types1.add(t);
-    this.individualTypes.set(ind1, types1);
-    this.individualTypes.set(ind2, types2);
+    const merged = new Set<string>(group1);
+    for (const m of group2) merged.add(m);
+    for (const m of merged) {
+      this.sameIndividualGroups.set(m, merged);
+    }
+
+    const mergedTypes = new Set<string>();
+    for (const m of merged) {
+      const t = this.individualTypes.get(m);
+      if (t) {
+        for (const cls of t) mergedTypes.add(cls);
+      }
+    }
+    for (const m of merged) {
+      let t = this.individualTypes.get(m);
+      if (!t) {
+        t = new Set<string>();
+        this.individualTypes.set(m, t);
+      }
+      for (const cls of mergedTypes) t.add(cls);
+    }
+    return true;
   }
 
   /** Checks whether two individuals (or their equivalence representatives) are asserted `DifferentIndividuals`. */
@@ -5252,11 +5326,13 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return this._entityIriMap.get(entityId);
   }
 
+  private static readonly _textEncoder = new TextEncoder();
+  private static readonly _textDecoder = new TextDecoder();
+
   /** Interns a UTF-8 string into the WASM prefix-compressed Front-Coding string arena. */
   public internStringWasm(str: string): number {
     if (!this._wasmInstance?.ontology_internString || !this._wasmInstance.memory) return 0;
-    const encoder = new TextEncoder();
-    const bytes = encoder.encode(str);
+    const bytes = WasmOntologyStore._textEncoder.encode(str);
     const { lo, hi } = hashIri64(str);
     let ptr = 0;
     if (this._wasmInstance.alloc) {
@@ -5289,8 +5365,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
       : this._wasmInstance.ontology_extractString(id, ptr);
     const safeLen = Math.min(len, maxLen);
     const mem8 = new Uint8Array(this._wasmInstance.memory.buffer, ptr, safeLen);
-    const decoder = new TextDecoder();
-    const str = decoder.decode(mem8);
+    const str = WasmOntologyStore._textDecoder.decode(mem8);
     if (this._wasmInstance.alloc && this._wasmInstance.free) {
       this._wasmInstance.free(ptr);
     }
@@ -5468,6 +5543,31 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     return delta;
   }
 
+  /** Rebuilds the attached WASM ontology store from `_axiomsBySource` to guarantee JS/WASM parity. */
+  private _resyncWasmStore(): void {
+    if (!this._wasmInstance?.ontology_clear || !this._wasmInstance.ontology_addAxiom64) return;
+    this._wasmInstance.ontology_clear();
+    this._entityIriMap.clear();
+    this._iriEntityMap.clear();
+    for (const [srcLang, langAxioms] of this._axiomsBySource) {
+      const langId = srcLang === "modelica" ? 1 : srcLang === "sysml2" ? 2 : srcLang === "step" ? 3 : 0;
+      for (const ax of langAxioms) {
+        const mapped = axiomToTypeAndIris(ax);
+        if (mapped) {
+          this.addAxiomDirect64(
+            mapped.type,
+            langId,
+            mapped.sIri,
+            mapped.pIri,
+            mapped.oIri,
+            mapped.flags ?? 0,
+            mapped.extra ?? 0,
+          );
+        }
+      }
+    }
+  }
+
   /** Replaces all axioms for `sourceLang` with `axioms` and returns the resulting delta. */
   setAxioms(sourceLang: string, axioms: OWL2Axiom[]): OWL2AxiomDelta {
     const previousAxioms = this._axiomsBySource.get(sourceLang) ?? [];
@@ -5481,6 +5581,7 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
     const delta = computeDelta(previousAxioms, axioms);
     this._axioms = allAxioms;
     this._lastDelta = delta;
+    this._resyncWasmStore();
     this._revision++;
     return delta;
   }
@@ -5497,6 +5598,15 @@ export class WasmOntologyStore implements IOWL2OntologyStore {
       allAxioms.push(...langAxioms);
     }
     this._axioms = allAxioms;
+    if (this._wasmInstance?.ontology_clear) {
+      if (this._axiomsBySource.size === 0) {
+        this._wasmInstance.ontology_clear();
+        this._entityIriMap.clear();
+        this._iriEntityMap.clear();
+      } else {
+        this._resyncWasmStore();
+      }
+    }
     this._revision++;
   }
 

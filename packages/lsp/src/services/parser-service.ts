@@ -411,6 +411,9 @@ export class ParserService {
                 while (lazyLibTrees.size > MAX_LAZY_LIB_TREES) {
                   const oldest = lazyLibTrees.keys().next().value;
                   if (oldest === undefined) break;
+                  const evicted = lazyLibTrees.get(oldest);
+                  evicted?.tree?.facade?.removeDocument?.(oldest);
+                  evicted?.tree?.delete?.();
                   lazyLibTrees.delete(oldest);
                 }
               }
@@ -502,6 +505,9 @@ export class ParserService {
                   while (lazyLibTrees.size > MAX_LAZY_LIB_TREES) {
                     const oldest = lazyLibTrees.keys().next().value;
                     if (oldest === undefined) break;
+                    const evicted = lazyLibTrees.get(oldest);
+                    evicted?.tree?.facade?.removeDocument?.(oldest);
+                    evicted?.tree?.delete?.();
                     lazyLibTrees.delete(oldest);
                   }
                 }

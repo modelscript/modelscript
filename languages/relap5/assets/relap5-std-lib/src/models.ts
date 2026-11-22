@@ -20,6 +20,14 @@
  *       IO[14] = decayFraction (-)      IO[15] = aux (stemPos / head / etc.)
  */
 
+import {
+  evalIapws97LiquidDensity,
+  evalIapws97LiquidEnthalpyKJkg,
+  evalIapws97PsatMPa,
+  evalIapws97SteamEnthalpyKJkg,
+  evalIapws97TsatK,
+} from "../../../../../packages/runtime/assembly/physics/thermo-eos";
+
 const OFF_CON: usize = 0x080;
 const OFF_STATE: usize = 0x580;
 const OFF_DSTATE: usize = 0x680;
@@ -101,30 +109,9 @@ function setIo(slotPtr: usize, idx: i32, v: f64): void {
  * Exact IAPWS-IF97 Region 4 backward saturation temperature T_sat(P) in Kelvin.
  * Valid for 611.213 Pa <= P <= 22.064 MPa (Wagner et al., 2000, Eq. 31).
  */
+@inline
 function iapws97TsatFromPressure(pressurePa: f64): f64 {
-  const pClamped = clamp(pressurePa, 611.213, 22.064e6);
-  const pMpa = pClamped * 1e-6;
-  const beta = Math.pow(pMpa, 0.25);
-  const beta2 = beta * beta;
-
-  const n1: f64 = 0.11670521452767e4;
-  const n2: f64 = -0.72421316703206e6;
-  const n3: f64 = -0.17073846940092e2;
-  const n4: f64 = 0.12020824702470e5;
-  const n5: f64 = -0.32325550322333e7;
-  const n6: f64 = 0.14915108613530e2;
-  const n7: f64 = -0.48232657361591e4;
-  const n8: f64 = 0.40511340542057e6;
-  const n9: f64 = -0.23855557567849;
-  const n10: f64 = 0.65017534844798e3;
-
-  const E = beta2 + n3 * beta + n6;
-  const F = n1 * beta2 + n4 * beta + n7;
-  const G = n2 * beta2 + n5 * beta + n8;
-
-  const D = (2.0 * G) / (-F - Math.sqrt(F * F - 4.0 * E * G));
-  const disc = (n10 + D) * (n10 + D) - 4.0 * (n9 + n10 * D);
-  return 0.5 * (n10 + D - Math.sqrt(disc > 0.0 ? disc : 0.0));
+  return evalIapws97TsatK(pressurePa * 1e-6);
 }
 
 /**
@@ -321,8 +308,19 @@ export function r5ModelEvalDerivatives(
 
   if (archetypeId == ARCH_STEAM_IAPWS_IF97) {
     const p = getIo(slotPtr, 0) > 1.0 ? getIo(slotPtr, 0) : 101325.0;
+    const pMPa = p * 1e-6;
     const tSat = iapws97TsatFromPressure(p);
+    const temp = getIo(slotPtr, 2) > 273.15 ? getIo(slotPtr, 2) : tSat;
+    const pSatPa = evalIapws97PsatMPa(temp) * 1.0e6;
+    const hLiq = evalIapws97LiquidEnthalpyKJkg(pMPa, temp);
+    const hVap = evalIapws97SteamEnthalpyKJkg(pMPa, temp);
+    const rhoLiq = evalIapws97LiquidDensity(pMPa, temp);
+    setState(slotPtr, 0, pSatPa);
+    setState(slotPtr, 1, hLiq);
+    setState(slotPtr, 2, hVap);
+    setState(slotPtr, 3, rhoLiq);
     setIo(slotPtr, 9, tSat);
+    setIo(slotPtr, 15, temp < tSat ? hLiq : hVap);
     return;
   }
 

@@ -1,7 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInGensysLibraryRegistered, lookupGensysModelSchema } from "../catalog/library-package-adapter.js";
 import type { GensysModel } from "../types.js";
+
+/**
+ * Resolves parameter defaults for a GENSYS rail vehicle/suspension element from `@modelscript/gensys-std-lib`,
+ * merging any user-specified overrides over the cleanroom schema defaults.
+ */
+export function resolveGensysSchemaParamDefaults(
+  modelType: string,
+  overrides: Record<string, number | string | boolean> = {},
+): Record<string, number | string | boolean> {
+  ensureBuiltInGensysLibraryRegistered();
+  const out: Record<string, number | string | boolean> = {};
+  const schema = lookupGensysModelSchema(modelType);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (p.defaultValue !== undefined) {
+        out[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
 
 /**
  * Lowers a GENSYS vehicle model directly into ModelScript's DAE linear memory arena.
@@ -12,6 +37,7 @@ import type { GensysModel } from "../types.js";
  *      m * der(v) = sum(F_couplings) + F_gravity
  */
 export function lowerGensysToDae(model: GensysModel, builder?: DAEBuilder): DAEBuilder {
+  ensureBuiltInGensysLibraryRegistered();
   const dae = builder ?? new DAEBuilder(undefined, model.name);
 
   // 1. Emit state variables for each body: position (x, y, z), velocity (vx, vy, vz)

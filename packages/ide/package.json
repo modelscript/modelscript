@@ -22,6 +22,10 @@
       {
         "command": "modelscript.runCompilerLints",
         "title": "ModelScript: Run WASM Compiler Lints"
+      },
+      {
+        "command": "modelscript.openAlmRemotes",
+        "title": "ModelScript: Open ALM & PLM Remotes"
       }
     ]
   },

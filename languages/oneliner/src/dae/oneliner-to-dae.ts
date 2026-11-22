@@ -8,6 +8,10 @@
  */
 
 import { Causality, DAEBuilder, EqKind, ExprKind, StringInterner, Variability, VarType } from "@modelscript/runtime";
+import {
+  ensureBuiltInOneLinerLibraryRegistered,
+  lookupOneLinerModelSchema,
+} from "../catalog/library-package-adapter.js";
 import type { OneLinerCase } from "../types.js";
 
 export interface OneLinerDaeOptions {
@@ -16,9 +20,34 @@ export interface OneLinerDaeOptions {
 }
 
 /**
+ * Resolves parameter defaults for an ASPEN OneLiner equipment/relay model from `@modelscript/oneliner-std-lib`,
+ * merging any user-specified overrides over the cleanroom schema defaults.
+ */
+export function resolveOneLinerSchemaParamDefaults(
+  modelType: string,
+  overrides: Record<string, number | string | boolean> = {},
+): Record<string, number | string | boolean> {
+  ensureBuiltInOneLinerLibraryRegistered();
+  const out: Record<string, number | string | boolean> = {};
+  const schema = lookupOneLinerModelSchema(modelType);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (p.defaultValue !== undefined) {
+        out[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
+
+/**
  * Lowers a OneLinerCase directly into a DAEBuilder linear-memory arena.
  */
 export function lowerOneLinerToDae(onelinerCase: OneLinerCase, options?: OneLinerDaeOptions): DAEBuilder {
+  ensureBuiltInOneLinerLibraryRegistered();
   const rawName = options?.modelName ?? onelinerCase.title;
   const modelName = rawName.replace(/[^a-zA-Z0-9_]/g, "_");
   const interner = new StringInterner();

@@ -270,7 +270,10 @@ export class DaeBuilder {
     this.startTimeExprId = 0xffffffff;
     this.finalTimeExprId = 0xffffffff;
     if (changetype<usize>(this.nameIndex) != 0) {
-      this.getNameIndex().init(512);
+      this.getNameIndex().clear();
+    }
+    if (changetype<usize>(this.stringPool) != 0) {
+      this.stringPool.reset();
     }
   }
 
@@ -314,25 +317,9 @@ export class DaeBuilder {
     }
     let spPtr = changetype<usize>(this.stringPool);
     if (spPtr != 0) {
-      if (changetype<usize>(this.stringPool.charBuffer) != 0) {
-        this.stringPool.charBuffer.dispose();
-        atomicChunkFree(changetype<usize>(this.stringPool.charBuffer));
-      }
-      if (changetype<usize>(this.stringPool.stringOffsets) != 0) {
-        this.stringPool.stringOffsets.dispose();
-        atomicChunkFree(changetype<usize>(this.stringPool.stringOffsets));
-      }
-      if (changetype<usize>(this.stringPool.stringLengths) != 0) {
-        this.stringPool.stringLengths.dispose();
-        atomicChunkFree(changetype<usize>(this.stringPool.stringLengths));
-      }
-      if (this.stringPool.stringMapPtr != 0) {
-        atomicChunkFree(this.stringPool.stringMapPtr);
-      }
-      if (this.stringPool.pathMapPtr != 0) {
-        atomicChunkFree(this.stringPool.pathMapPtr);
-      }
+      this.stringPool.dispose();
       atomicChunkFree(spPtr);
+      this.stringPool = changetype<ArenaStringPool>(0);
     }
   }
 
@@ -349,7 +336,7 @@ export class DaeBuilder {
   ): u32 {
     let idx = this.varCount++;
     let offset = idx * VAR_STRIDE;
-    
+
     let startBits = i64.reinterpret_f64(startValue) as u64;
     let startHi = (startBits >> 32) as i32;
     let startLo = (startBits & 0xffffffff) as i32;
@@ -1038,11 +1025,11 @@ export class DaeBuilder {
         idxMap.set(nameId, i + 1);
       }
     }
-    
+
     this.eqCount = this.snapshotEqCount;
     this.getEqData().length = this.eqCount * EQ_STRIDE;
     this.getEqClockMap().length = this.eqCount;
-    
+
     this.exprCount = this.snapshotExprCount;
     this.getExprData().length = this.exprCount * EXPR_STRIDE;
 

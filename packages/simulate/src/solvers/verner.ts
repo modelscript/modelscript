@@ -189,6 +189,13 @@ function solveHighOrderERK(problem: ODEProblem, order: 7 | 9, options: VernerOpt
     }
     const errNorm = Math.sqrt(errSq / Math.max(1, n));
 
+    if (!Number.isFinite(errNorm)) {
+      rejectedSteps++;
+      hAbs = Math.max(minStep, hAbs * 0.25);
+      if (rejectedSteps > maxSteps * 4 || hAbs <= minStep) break;
+      continue;
+    }
+
     if (errNorm <= 1.0 || hAbs <= minStep) {
       // Accept step
       acceptedSteps++;

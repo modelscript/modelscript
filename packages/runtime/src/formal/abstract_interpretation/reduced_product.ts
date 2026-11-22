@@ -232,15 +232,66 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
   }
 
   isTop(state: ReducedProductState): boolean {
-    return this.intervalDomain.isTop(state.intervals);
+    if (state.isBottom()) return false;
+    return this.intervalDomain.isTop(state.intervals) && this.tvpiDomain.isTop(state.tvpi);
+  }
+
+  /**
+   * Aligns two ReducedProductState octagons into a single shared variable-index space
+   * so that matrix-level join/meet/widen/narrow/isLeq never merge unrelated variables
+   * when branches allocate variables in different orders.
+   */
+  private alignOctagons(
+    a: ReducedProductState,
+    b: ReducedProductState,
+  ): {
+    octA: OctagonDBM | Float64OctagonDBM;
+    octB: OctagonDBM | Float64OctagonDBM;
+    mergedIndices: Map<string, number>;
+  } {
+    const mergedIndices = new Map<string, number>();
+    let nextIdx = 0;
+    for (const k of a.varIndices.keys()) {
+      mergedIndices.set(k, nextIdx++);
+    }
+    for (const k of b.varIndices.keys()) {
+      if (!mergedIndices.has(k)) mergedIndices.set(k, nextIdx++);
+    }
+
+    const useF64 = a.octagon instanceof Float64OctagonDBM || b.octagon instanceof Float64OctagonDBM;
+    const totalVars = Math.max(this.maxVars, nextIdx);
+
+    const remap = (src: ReducedProductState): OctagonDBM | Float64OctagonDBM => {
+      const dst = useF64 ? new Float64OctagonDBM(totalVars) : new OctagonDBM(totalVars);
+      const srcInf = src.octagon instanceof Float64OctagonDBM ? OCTAGON_INF_F64 : OCTAGON_INF;
+      const entries = Array.from(src.varIndices.entries());
+      for (const [varI, oldI] of entries) {
+        const newI = mergedIndices.get(varI)!;
+        for (const [varJ, oldJ] of entries) {
+          const newJ = mergedIndices.get(varJ)!;
+          for (let si = 0; si < 2; si++) {
+            for (let sj = 0; sj < 2; sj++) {
+              const val = src.octagon.getBound(oldI * 2 + si, oldJ * 2 + sj);
+              if (val < srcInf) {
+                dst.setBound(newI * 2 + si, newJ * 2 + sj, val);
+              }
+            }
+          }
+        }
+      }
+      return dst;
+    };
+
+    return { octA: remap(a), octB: remap(b), mergedIndices };
   }
 
   isLeq(a: ReducedProductState, b: ReducedProductState): boolean {
     if (a.isBottom()) return true;
     if (b.isBottom()) return false;
+    const { octA, octB } = this.alignOctagons(a, b);
     return (
       this.intervalDomain.isLeq(a.intervals, b.intervals) &&
-      (a.octagon as any).isLeq(b.octagon) &&
+      (octA as any).isLeq(octB) &&
       this.tvpiDomain.isLeq(a.tvpi, b.tvpi)
     );
   }
@@ -250,7 +301,8 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
     if (b.isBottom()) return a.clone();
 
     const joinedIntervals = this.intervalDomain.join(a.intervals, b.intervals);
-    const joinedOctagon = (a.octagon as any).join(b.octagon);
+    const { octA, octB, mergedIndices } = this.alignOctagons(a, b);
+    const joinedOctagon = (octA as any).join(octB);
     const joinedTvpi = this.tvpiDomain.join(a.tvpi, b.tvpi);
 
     // Merge array segment states
@@ -260,11 +312,6 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
       const aArr = a.arraySegments.get(k) ?? ArraySegmentState.top();
       const bArr = b.arraySegments.get(k) ?? ArraySegmentState.top();
       joinedArrays.set(k, aArr.join(bArr));
-    }
-
-    const mergedIndices = new Map(a.varIndices);
-    for (const [k, v] of b.varIndices) {
-      if (!mergedIndices.has(k)) mergedIndices.set(k, v);
     }
 
     const res = new ReducedProductState(joinedIntervals, joinedOctagon, mergedIndices, joinedArrays, false, joinedTvpi);
@@ -277,7 +324,8 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
     const meetIntervals = this.intervalDomain.meet(a.intervals, b.intervals);
     if (this.intervalDomain.isBottom(meetIntervals)) return this.bottom();
 
-    const meetOctagon = (a.octagon as any).meet(b.octagon);
+    const { octA, octB, mergedIndices } = this.alignOctagons(a, b);
+    const meetOctagon = (octA as any).meet(octB);
     if (meetOctagon.hasNegativeCycle()) return this.bottom();
 
     const meetTvpi = this.tvpiDomain.meet(a.tvpi, b.tvpi);
@@ -293,11 +341,6 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
       meetArrays.set(k, m);
     }
 
-    const mergedIndices = new Map(a.varIndices);
-    for (const [k, v] of b.varIndices) {
-      if (!mergedIndices.has(k)) mergedIndices.set(k, v);
-    }
-
     const res = new ReducedProductState(meetIntervals, meetOctagon, mergedIndices, meetArrays, false, meetTvpi);
     return res.reduce();
   }
@@ -307,7 +350,8 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
     if (b.isBottom()) return a.clone();
 
     const widenedIntervals = this.intervalDomain.widen(a.intervals, b.intervals, thresholds);
-    const widenedOctagon = (a.octagon as any).widenWithThresholds(b.octagon, thresholds);
+    const { octA, octB, mergedIndices } = this.alignOctagons(a, b);
+    const widenedOctagon = (octA as any).widenWithThresholds(octB, thresholds);
     const widenedTvpi = this.tvpiDomain.widen(a.tvpi, b.tvpi, thresholds);
 
     const widenedArrays = new Map<string, ArraySegmentState>();
@@ -318,11 +362,6 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
       widenedArrays.set(k, aArr.widen(bArr, thresholds));
     }
 
-    const mergedIndices = new Map(a.varIndices);
-    for (const [k, v] of b.varIndices) {
-      if (!mergedIndices.has(k)) mergedIndices.set(k, v);
-    }
-
     return new ReducedProductState(widenedIntervals, widenedOctagon, mergedIndices, widenedArrays, false, widenedTvpi);
   }
 
@@ -330,14 +369,15 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
     if (a.isBottom() || b.isBottom()) return this.bottom();
 
     const narrowedIntervals = this.intervalDomain.narrow(a.intervals, b.intervals);
-    const narrowedOctagon = (a.octagon as any).narrow(b.octagon);
+    const { octA, octB, mergedIndices } = this.alignOctagons(a, b);
+    const narrowedOctagon = (octA as any).narrow(octB);
     const narrowedTvpi = this.tvpiDomain.narrow(a.tvpi, b.tvpi);
 
     return new ReducedProductState(
       narrowedIntervals,
       narrowedOctagon,
-      a.varIndices,
-      a.arraySegments,
+      mergedIndices,
+      new Map(a.arraySegments),
       false,
       narrowedTvpi,
     ).reduce();
@@ -350,6 +390,10 @@ export class ReducedProductDomain implements AbstractDomain<ReducedProductState>
   equals(a: ReducedProductState, b: ReducedProductState): boolean {
     if (a.isBottom() && b.isBottom()) return true;
     if (a.isBottom() !== b.isBottom()) return false;
-    return this.intervalDomain.equals(a.intervals, b.intervals);
+    if (!this.intervalDomain.equals(a.intervals, b.intervals)) return false;
+    if (!this.tvpiDomain.equals(a.tvpi, b.tvpi)) return false;
+    const { octA, octB } = this.alignOctagons(a, b);
+    if (!((octA as any).isLeq(octB) && (octB as any).isLeq(octA))) return false;
+    return true;
   }
 }

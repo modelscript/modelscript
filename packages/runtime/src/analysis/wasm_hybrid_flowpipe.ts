@@ -298,8 +298,53 @@ export class HybridFlowpipeSolver {
     let zenoDetected = false;
     let lastJumpTime = -Infinity;
     let rapidJumpStreak = 0;
+    let branchBudgetExceeded = false;
 
-    while (currentTime < tEnd - 1e-12 && totalSteps < maxStepsGuard) {
+    // Multi-branch worklist: preserves competing outgoing transitions, non-jumping trajectories
+    // (when guardRange.hi > 0), and earliest crossing times (tLo instead of midpoint collapse).
+    interface HybridBranch {
+      modeId: string;
+      time: number;
+      enclosure: Interval[];
+      nominal: number[];
+      cz: ConstrainedZonotope | null;
+      stepDt: number;
+      segStartTime: number;
+      segSteps: FlowpipeStepResult[];
+    }
+    const pendingBranches: HybridBranch[] = [];
+    let branchesExplored = 1;
+    const maxExploredBranches = Math.max(1, maxBranches * 4);
+
+    const advanceOrPopBranch = (): boolean => {
+      if (currentSegmentSteps.length > 0) {
+        const modeObj = modeMap.get(currentModeId);
+        segments.push({
+          modeId: currentModeId,
+          modeName: modeObj?.name,
+          startTime: currentSegmentStartTime,
+          endTime: currentTime,
+          steps: currentSegmentSteps,
+        });
+      }
+      const next = pendingBranches.shift();
+      if (!next) return false;
+      currentModeId = next.modeId;
+      currentTime = next.time;
+      currentEnclosure = next.enclosure;
+      currentNominal = next.nominal;
+      currentCZ = next.cz;
+      currentDt = next.stepDt;
+      currentSegmentStartTime = next.segStartTime;
+      currentSegmentSteps = next.segSteps;
+      return true;
+    };
+
+    while (totalSteps < maxStepsGuard) {
+      if (currentTime >= tEnd - 1e-12) {
+        if (!advanceOrPopBranch()) break;
+        continue;
+      }
       const mode = modeMap.get(currentModeId);
       if (!mode) {
         throw new Error(`HybridFlowpipeSolver: Mode '${currentModeId}' not found in automaton.`);
@@ -387,18 +432,19 @@ export class HybridFlowpipeSolver {
         }
       }
 
-      // 3. Check outgoing discrete transitions
+      // 3. Check ALL outgoing discrete transitions (multi-branch, no greedy break)
       const outgoing = transitionsBySource.get(currentModeId) ?? [];
-      let triggeredTransition: HybridTransition | null = null;
-      let crossingTimeInterval: Interval | null = null;
-      let crossingDeltaInterval: Interval | null = null;
+      const enabledTransitions: Array<{
+        tr: HybridTransition;
+        crossingTimeInterval: Interval;
+        crossingDeltaInterval: Interval;
+        mustJump: boolean;
+      }> = [];
 
       for (const tr of outgoing) {
-        // Evaluate guard TaylorModel
         const guardTM = tr.guard(picardTMs);
         const guardRange = guardTM.evaluateRange();
 
-        // Check point guard on nominal state
         let pointTriggered = false;
         if (tr.guardPoint) {
           const valNomStart = tr.guardPoint(currentNominal);
@@ -409,9 +455,7 @@ export class HybridFlowpipeSolver {
           }
         }
 
-        // Guard crossing condition: 0 in guardRange or guard range is <= 0 or pointTriggered
         if (pointTriggered || (guardRange.lo <= 0 && guardRange.hi >= 0) || guardRange.hi <= 0) {
-          // Refine crossing time using Interval Newton
           const guardTMTimeDeriv = guardTM.differentiateVariable(0);
           const evalGuardAtDeltaT = (dtInv: Interval) => {
             const subDomain = [dtInv, ...stepDomain.slice(1)];
@@ -419,7 +463,6 @@ export class HybridFlowpipeSolver {
             const val = subTM.evaluateRange();
             const dSubTM = guardTMTimeDeriv.withDomain(subDomain);
             const deriv = dSubTM.evaluateRange();
-
             return {
               value: val,
               deriv: new Interval(deriv.lo - 1e-4, deriv.hi + 1e-4),
@@ -433,10 +476,56 @@ export class HybridFlowpipeSolver {
             1e-5,
           );
 
-          triggeredTransition = tr;
-          crossingDeltaInterval = refinedLocalDt;
-          crossingTimeInterval = new Interval(currentTime + refinedLocalDt.lo, currentTime + refinedLocalDt.hi);
-          break;
+          enabledTransitions.push({
+            tr,
+            crossingDeltaInterval: refinedLocalDt,
+            crossingTimeInterval: new Interval(currentTime + refinedLocalDt.lo, currentTime + refinedLocalDt.hi),
+            mustJump: guardRange.hi <= 0,
+          });
+        }
+      }
+
+      // Queue any secondary/competing transitions as independent branches
+      const primaryEnabled = enabledTransitions[0] ?? null;
+      const triggeredTransition = primaryEnabled?.tr ?? null;
+      const crossingTimeInterval = primaryEnabled?.crossingTimeInterval ?? null;
+      const crossingDeltaInterval = primaryEnabled?.crossingDeltaInterval ?? null;
+      const allTrajectoriesMustJump = enabledTransitions.some((e) => e.mustJump);
+
+      if (enabledTransitions.length > 1) {
+        for (let ti = 1; ti < enabledTransitions.length; ti++) {
+          if (branchesExplored >= maxExploredBranches) {
+            branchBudgetExceeded = true;
+            break;
+          }
+          const alt = enabledTransitions[ti]!;
+          const altDtLo = Math.max(0, alt.crossingDeltaInterval.lo);
+          const altDtHi = Math.min(currentDt, alt.crossingDeltaInterval.hi);
+          const altDomain = [new Interval(altDtLo, altDtHi), ...stepDomain.slice(1)];
+          const altPre = picardTMs.map((tm) => tm.withDomain(altDomain).evaluateRange());
+          const altPost = alt.tr.reset ? alt.tr.reset(altPre) : altPre.map((iv) => new Interval(iv.lo, iv.hi));
+          const altNom = alt.tr.resetPoint
+            ? alt.tr.resetPoint(altPre.map((iv) => iv.mid))
+            : altPost.map((iv) => iv.mid);
+          const altStartTime = currentTime + altDtLo;
+          branchesExplored++;
+          pendingBranches.push({
+            modeId: alt.tr.targetModeId,
+            time: altStartTime,
+            enclosure: altPost,
+            nominal: altNom,
+            cz: useConstrainedZonotopes ? ConstrainedZonotope.fromZonotope(Zonotope.fromIntervals(altPost)) : null,
+            stepDt: dt,
+            segStartTime: altStartTime,
+            segSteps: [
+              {
+                stepIndex: totalSteps,
+                time: altStartTime,
+                tubes: altPost.map((inv) => new Interval(inv.lo, inv.hi)),
+                nominal: [...altNom],
+              },
+            ],
+          });
         }
       }
 
@@ -578,6 +667,43 @@ export class HybridFlowpipeSolver {
           postJumpNominal,
         });
 
+        // If some trajectories in the enclosure did NOT cross the guard (guardRange.hi > 0),
+        // queue the non-jumping continuation in `currentModeId` so staying trajectories are also verified.
+        if (!allTrajectoriesMustJump && currentTime + currentDt < tEnd - 1e-12) {
+          if (branchesExplored < maxExploredBranches) {
+            const stayDomain = [new Interval(currentDt, currentDt), ...stepDomain.slice(1)];
+            const stayEnclosure = picardTMs.map((tm) => tm.withDomain(stayDomain).evaluateRange());
+            const stayNominal = picardTMs.map((tm) => tm.evaluateAt([currentDt, ...new Array(nStates).fill(0)]));
+            const stayTime = currentTime + currentDt;
+            branchesExplored++;
+            pendingBranches.push({
+              modeId: currentModeId,
+              time: stayTime,
+              enclosure: stayEnclosure,
+              nominal: stayNominal,
+              cz: useConstrainedZonotopes
+                ? ConstrainedZonotope.fromZonotope(Zonotope.fromIntervals(stayEnclosure))
+                : null,
+              stepDt: currentDt,
+              segStartTime: stayTime,
+              segSteps: [
+                {
+                  stepIndex: totalSteps,
+                  time: stayTime,
+                  tubes: stayEnclosure.map((inv) => new Interval(inv.lo, inv.hi)),
+                  nominal: [...stayNominal],
+                },
+              ],
+            });
+          } else {
+            branchBudgetExceeded = true;
+          }
+        }
+
+        // Preserve earliest possible crossing time (tLo) so early-jumping trajectories
+        // are verified all the way to tEnd (never collapse to midpoint).
+        const nextBranchTime = Math.min(crossingTimeInterval.lo, crossingTime);
+
         // Switch to target mode
         currentModeId = triggeredTransition.targetModeId;
         currentEnclosure = postJumpEnclosure;
@@ -585,14 +711,14 @@ export class HybridFlowpipeSolver {
           currentCZ = ConstrainedZonotope.fromZonotope(Zonotope.fromIntervals(postJumpEnclosure));
         }
         currentNominal = postJumpNominal;
-        currentTime = crossingTime;
+        currentTime = nextBranchTime;
 
         // Initialize new mode segment
-        currentSegmentStartTime = crossingTime;
+        currentSegmentStartTime = nextBranchTime;
         currentSegmentSteps = [
           {
             stepIndex: totalSteps,
-            time: crossingTime,
+            time: nextBranchTime,
             tubes: currentEnclosure.map((inv) => new Interval(inv.lo, inv.hi)),
             nominal: [...currentNominal],
           },
@@ -706,11 +832,13 @@ export class HybridFlowpipeSolver {
     let verdict: VerificationVerdict;
     if (nonconvergent) {
       verdict = { kind: "unknown", reason: "nonconvergent", detail: `Picard validation failed at t=${currentTime}.` };
-    } else if (zenoDetected) {
+    } else if (zenoDetected || branchBudgetExceeded) {
       verdict = {
         kind: "unknown",
         reason: "budget",
-        detail: `Suspected Zeno execution or exceeded maximum discrete jump limit (${maxJumps}) at t=${currentTime}.`,
+        detail: zenoDetected
+          ? `Suspected Zeno execution or exceeded maximum discrete jump limit (${maxJumps}) at t=${currentTime}.`
+          : `Hybrid branch budget (${maxExploredBranches}) exceeded while exploring competing/non-jumping trajectories.`,
       };
     } else if (!coveredHorizon) {
       verdict = { kind: "unknown", reason: "budget", detail: `Step budget exhausted at t=${currentTime}.` };
@@ -734,14 +862,20 @@ export class HybridFlowpipeSolver {
         rigor: "heuristic",
         detail: "Clustered set branching is heuristic.",
       };
+    } else if (jumps.length > 0) {
+      // Strict rigor contract: single-path guard crossing and midpoint crossing-time collapse
+      // do not explore non-jumping or competing trajectories, so jumped runs are heuristic only.
+      verdict = {
+        kind: "unknown",
+        reason: "not-rigorous",
+        rigor: "heuristic",
+        detail: `Hybrid run took ${jumps.length} discrete jump(s) using single-path guard crossing; non-jumping/competing branches are not exhaustively verified.`,
+      };
     } else {
       verdict = {
         kind: "proven",
         rigor: "float-sound",
-        detail:
-          jumps.length > 0
-            ? `Certified safe across ${segments.length} mode segment(s) with ${jumps.length} validated guard crossing jump(s).`
-            : "No mode switch; validated continuous flowpipe.",
+        detail: "No mode switch; validated continuous flowpipe.",
       };
     }
     const isCertifiedSafe = verdict.kind === "proven";

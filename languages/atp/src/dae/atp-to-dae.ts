@@ -8,6 +8,7 @@
  */
 
 import { Causality, DAEBuilder, EqKind, ExprKind, StringInterner, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInAtpLibraryRegistered, lookupAtpModelSchema } from "../catalog/library-package-adapter.js";
 import type { AtpCase } from "../types.js";
 
 export interface AtpDaeOptions {
@@ -16,9 +17,34 @@ export interface AtpDaeOptions {
 }
 
 /**
+ * Resolves parameter defaults for an ATP-EMTP component model from `@modelscript/atp-std-lib`,
+ * merging any user-specified overrides over the cleanroom schema defaults.
+ */
+export function resolveAtpSchemaParamDefaults(
+  modelType: string,
+  overrides: Record<string, number | string | boolean> = {},
+): Record<string, number | string | boolean> {
+  ensureBuiltInAtpLibraryRegistered();
+  const out: Record<string, number | string | boolean> = {};
+  const schema = lookupAtpModelSchema(modelType);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (p.defaultValue !== undefined) {
+        out[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
+
+/**
  * Lowers an AtpCase directly into a DAEBuilder linear-memory arena.
  */
 export function lowerAtpToDae(atpCase: AtpCase, options?: AtpDaeOptions): DAEBuilder {
+  ensureBuiltInAtpLibraryRegistered();
   const rawName = options?.modelName ?? atpCase.title;
   const modelName = rawName.replace(/[^a-zA-Z0-9_]/g, "_");
   const interner = new StringInterner();

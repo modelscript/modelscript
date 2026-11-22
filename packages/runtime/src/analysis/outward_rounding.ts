@@ -18,31 +18,13 @@
  * widen the literal themselves).
  */
 
+import { addDown, addUp, nextDown, nextUp, subDown, subUp } from "@modelscript/solve";
 import { Interval } from "./wasm_interval.js";
 
 /** ulps of slack applied around libm (`Math.*`) results. */
 export const LIBM_SLACK_ULPS = 2;
 
-const f64 = new Float64Array(1);
-const u64 = new BigUint64Array(f64.buffer);
-
-/** Smallest double strictly greater than x (x itself for NaN and +Infinity). */
-export function nextUp(x: number): number {
-  if (Number.isNaN(x) || x === Infinity) return x;
-  if (x === 0) return Number.MIN_VALUE;
-  f64[0] = x;
-  u64[0] = x > 0 ? u64[0]! + 1n : u64[0]! - 1n;
-  return f64[0]!;
-}
-
-/** Largest double strictly less than x (x itself for NaN and -Infinity). */
-export function nextDown(x: number): number {
-  if (Number.isNaN(x) || x === -Infinity) return x;
-  if (x === 0) return -Number.MIN_VALUE;
-  f64[0] = x;
-  u64[0] = x > 0 ? u64[0]! - 1n : u64[0]! + 1n;
-  return f64[0]!;
-}
+export { addDown, addUp, nextDown, nextUp, subDown, subUp };
 
 function upN(x: number, n: number): number {
   for (let i = 0; i < n; i++) x = nextUp(x);
@@ -52,32 +34,6 @@ function upN(x: number, n: number): number {
 function downN(x: number, n: number): number {
   for (let i = 0; i < n; i++) x = nextDown(x);
   return x;
-}
-
-/** Rounded-toward +Infinity a + b. */
-export function addUp(a: number, b: number): number {
-  const s = a + b;
-  if (!Number.isFinite(s)) return s === -Infinity && Number.isFinite(a) && Number.isFinite(b) ? -Number.MAX_VALUE : s;
-  const bb = s - a;
-  const err = a - (s - bb) + (b - bb); // exact: a + b = s + err (TwoSum)
-  return err > 0 ? nextUp(s) : s;
-}
-
-/** Rounded-toward -Infinity a + b. */
-export function addDown(a: number, b: number): number {
-  const s = a + b;
-  if (!Number.isFinite(s)) return s === Infinity && Number.isFinite(a) && Number.isFinite(b) ? Number.MAX_VALUE : s;
-  const bb = s - a;
-  const err = a - (s - bb) + (b - bb);
-  return err < 0 ? nextDown(s) : s;
-}
-
-export function subUp(a: number, b: number): number {
-  return addUp(a, -b);
-}
-
-export function subDown(a: number, b: number): number {
-  return addDown(a, -b);
 }
 
 const SPLIT = 134217729; // 2^27 + 1 (Veltkamp)

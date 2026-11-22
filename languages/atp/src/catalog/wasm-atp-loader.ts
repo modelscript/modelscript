@@ -12,6 +12,7 @@ import { ensureBuiltInAtpLibraryRegistered, lookupAtpModelSchema } from "./libra
 
 const SLOT_STRIDE_BYTES = 2048;
 const OFF_CON = 0x080;
+const OFF_AUX = 0x680;
 const OFF_IO = 0x780;
 
 export interface AtpComponentSpecInput {
@@ -42,6 +43,10 @@ export interface AtpComponentStepOutput {
   omegaRadS: number;
   torqueNm: number;
   auxOut: number;
+  aux0?: number | undefined;
+  aux1?: number | undefined;
+  aux2?: number | undefined;
+  aux3?: number | undefined;
 }
 
 export interface AtpLinkedComponentInstance {
@@ -85,6 +90,7 @@ function writeIo(views: CachedMemoryViews, slotPtr: number, io?: AtpComponentIO)
 
 function readOutput(views: CachedMemoryViews, slotPtr: number): AtpComponentStepOutput {
   const base = (slotPtr + OFF_IO) >> 3;
+  const auxBase = (slotPtr + OFF_AUX) >> 3;
   return {
     iBranch: views.f64[base + 2] ?? 0,
     gEq: views.f64[base + 3] ?? 0,
@@ -98,6 +104,10 @@ function readOutput(views: CachedMemoryViews, slotPtr: number): AtpComponentStep
     omegaRadS: views.f64[base + 12] ?? 0,
     torqueNm: views.f64[base + 13] ?? 0,
     auxOut: views.f64[base + 15] ?? 0,
+    aux0: views.f64[auxBase + 0] ?? 0,
+    aux1: views.f64[auxBase + 1] ?? 0,
+    aux2: views.f64[auxBase + 2] ?? 0,
+    aux3: views.f64[auxBase + 3] ?? 0,
   };
 }
 

@@ -1,6 +1,6 @@
 # Package Manifest & ALM / API Integration
 
-ModelScript uses a self-contained, Git-native project layout that unifies local engineering libraries, registry packages, and live API/protocol-based ALM systems (**IBM DOORS Next Generation**, **Jama Connect**, **PTC Codebeamer**, **Siemens Polarion**, and **Jira**):
+ModelScript uses a self-contained, Git-native project layout that unifies local engineering libraries, registry packages, and **25 built-in API/protocol connectors** across ALM, PLM, MBSE, Test Management, DevOps, Cloud CAD, ECAD, SQL/Excel, and Generic RESTful repositories (plus **7 Enterprise-only licensed desktop bridges** in `@modelscript/ee`):
 
 ```text
 my-ev-battery/
@@ -126,9 +126,32 @@ When `modelscript.yaml` declares remote ALM dependencies, `msx lint` automatical
 
 ---
 
+## Supported Protocols
+
+### Built-In Connectors (`@modelscript/runtime` — 25 Protocols)
+
+| Domain                       | Protocols (Aliases)                                                                                    | Notes                                                                                                    |
+| :--------------------------- | :----------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------- |
+| **ALM & Requirements**       | `oslc` (DOORS Next), `jama`, `codebeamer`, `polarion`, `jira`, `azdo` (`azure-devops`, `ado`)          | Incremental sync, baselines/working-sets, bidirectional `upsertArtifacts()`, verification & defect push. |
+| **PLM & BOM**                | `windchill` (`ptc-windchill`), `teamcenter` (`tc`), `aras` (`aras-innovator`)                          | OData v4 / REST part & eBOM hierarchy pull, trace-link push, bidirectional `upsertArtifacts()`.          |
+| **Test Management**          | `testrail`, `xray`                                                                                     | Pull test cases & requirement links; push ModelScript simulation verification runs as test executions.   |
+| **MBSE & Architecture**      | `twc` (`teamwork-cloud`, `cameo-twc`), `rhapsody` (`rmm`), `genesys` (`vitech`)                        | Revisioned SysML/UML elements, OSLC AM, and `satisfies`/`verifies` relationship sync.                    |
+| **Cloud CAD & ECAD**         | `onshape`, `zuken` (`ds-cr`, `ds-e3`)                                                                  | Indented Onshape cloud CAD BOMs; Zuken PCB & wire-harness BOMs.                                          |
+| **DevOps, Docs & Pipelines** | `github` (`gh`), `gitlab` (`gl`), `bitbucket` (`bb`), `confluence`, `artifactory` (`jfrog`), `airflow` | Issue/PR/page sync, SHA-256 FMU artifact tagging, commit build status, and Airflow DAG triggers.         |
+| **Tabular & Generic REST**   | `sql` (`postgres`, `mysql`, `jdbc`), `excel` (`xlsx`, `sheets`), `rest` (`http`, `openapi`)            | SQL-over-HTTP, Excel/Sheets `values[][]` tables, and declarative dot-path JSON REST mapping.             |
+
+### Enterprise Desktop & Licensed Tool Bridges (`@modelscript/ee` — 7 Bridges)
+
+Desktop-only and commercial-SDK integrations require a ModelScript Enterprise Edition license with the `plm_connectors` entitlement (`registerEnterpriseDesktopConnectors()` from `@modelscript/ee`):
+
+- **CAD / PDM:** `creo` (PTC Creo J-Link/OTK), `nx` (Siemens NX Open), `solidworks` (COM), `solidworks-pdm` (Vault API)
+- **Legacy RM & Simulation:** `doors-classic` (IBM DOORS 9 DXL), `volta` (ESTECO VOLTA), `mathematica` (Wolfram WSTP)
+
+---
+
 ## Custom Connectors, IDE & MCP Integration
 
 - **Custom Connectors:** Drop any `.js` / `.mjs` module exporting an `AlmConnector` (or `register(registry)`) into `.modelscript/connectors/` to support proprietary in-house PLM/ALM APIs.
 - **LSP Hover & CodeActions:** Hovering over any `@external`-annotated synced item displays status, priority, revision, and a clickable deep link into the ALM web UI, with CodeActions for **Open in ALM Web UI** and **Sync ALM remote**.
-- **MCP Tools (Offline):** AI agents can call `alm_list_requirements`, `alm_trace_coverage`, and `alm_blast_radius` against the local synced workspace without needing live ALM credentials.
+- **MCP Tools:** AI agents can call `alm_list_requirements`, `alm_trace_coverage`, `alm_blast_radius` (100% offline), plus `alm_list_protocols` and `alm_discover_remote`.
 - **Web IDE Proxy (`/api/v1/alm`):** Browser workspaces route `discover`, `pull`, and `push` through `apps/api`'s `/api/v1/alm` proxy while keeping in-browser WASM compilation 100% file-based.

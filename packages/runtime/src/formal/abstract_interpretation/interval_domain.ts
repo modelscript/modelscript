@@ -149,10 +149,11 @@ export class NumericalInterval {
 
   mul(other: NumericalInterval): NumericalInterval {
     if (this.isBottom() || other.isBottom()) return NumericalInterval.BOTTOM;
-    const p1 = this.low * other.low;
-    const p2 = this.low * other.high;
-    const p3 = this.high * other.low;
-    const p4 = this.high * other.high;
+    const safeMul = (a: number, b: number) => (a === 0 || b === 0 ? 0 : a * b);
+    const p1 = safeMul(this.low, other.low);
+    const p2 = safeMul(this.low, other.high);
+    const p3 = safeMul(this.high, other.low);
+    const p4 = safeMul(this.high, other.high);
     return new NumericalInterval(Math.min(p1, p2, p3, p4), Math.max(p1, p2, p3, p4));
   }
 
@@ -176,23 +177,33 @@ export class NumericalInterval {
     }
     const possibleZero = other.canBeZero();
 
-    let nonZeroOther = other;
     if (possibleZero) {
-      if (other.low === 0) {
-        nonZeroOther = new NumericalInterval(1e-15, other.high);
-      } else if (other.high === 0) {
-        nonZeroOther = new NumericalInterval(other.low, -1e-15);
-      } else {
+      if (other.low === 0 && other.high > 0) {
+        if (this.low === 0 && this.high === 0) return { result: NumericalInterval.ZERO, divisionByZero: "possible" };
+        if (this.low >= 0)
+          return { result: new NumericalInterval(this.low / other.high, Infinity), divisionByZero: "possible" };
+        if (this.high <= 0)
+          return { result: new NumericalInterval(-Infinity, this.high / other.high), divisionByZero: "possible" };
         return { result: NumericalInterval.TOP, divisionByZero: "possible" };
       }
+      if (other.high === 0 && other.low < 0) {
+        if (this.low === 0 && this.high === 0) return { result: NumericalInterval.ZERO, divisionByZero: "possible" };
+        if (this.low >= 0)
+          return { result: new NumericalInterval(-Infinity, this.low / other.low), divisionByZero: "possible" };
+        if (this.high <= 0)
+          return { result: new NumericalInterval(this.high / other.low, Infinity), divisionByZero: "possible" };
+        return { result: NumericalInterval.TOP, divisionByZero: "possible" };
+      }
+      return { result: NumericalInterval.TOP, divisionByZero: "possible" };
     }
 
-    const d1 = this.low / nonZeroOther.low;
-    const d2 = this.low / nonZeroOther.high;
-    const d3 = this.high / nonZeroOther.low;
-    const d4 = this.high / nonZeroOther.high;
+    const safeDiv = (a: number, b: number) => (a === 0 ? 0 : !Number.isFinite(b) ? 0 : a / b);
+    const d1 = safeDiv(this.low, other.low);
+    const d2 = safeDiv(this.low, other.high);
+    const d3 = safeDiv(this.high, other.low);
+    const d4 = safeDiv(this.high, other.high);
     const res = new NumericalInterval(Math.min(d1, d2, d3, d4), Math.max(d1, d2, d3, d4));
-    return { result: res, divisionByZero: possibleZero ? "possible" : "never" };
+    return { result: res, divisionByZero: "never" };
   }
 
   sqrt(): { result: NumericalInterval; domainViolation: "never" | "possible" | "definite" } {
@@ -222,8 +233,7 @@ export class NumericalInterval {
     if (this.isBottom()) return { result: NumericalInterval.BOTTOM, domainViolation: "never" };
     if (this.high <= 0) return { result: NumericalInterval.BOTTOM, domainViolation: "definite" };
     const possibleNonPos = this.low <= 0;
-    const safeLow = Math.max(1e-15, this.low);
-    const l = safeLow === 0 ? -Infinity : Math.log(safeLow);
+    const l = this.low <= 0 ? -Infinity : Math.log(this.low);
     const h = this.high === Infinity ? Infinity : Math.log(this.high);
     return {
       result: new NumericalInterval(l, h),
@@ -258,12 +268,13 @@ export class NumericalInterval {
   tan(): { result: NumericalInterval; domainViolation: "never" | "possible" | "definite" } {
     if (this.isBottom()) return { result: NumericalInterval.BOTTOM, domainViolation: "never" };
     if (this.high - this.low >= Math.PI) {
-      return { result: NumericalInterval.TOP, domainViolation: "definite" };
+      return { result: NumericalInterval.TOP, domainViolation: "possible" };
     }
-    const k = Math.floor((this.low - Math.PI / 2) / Math.PI) + 1;
+    const k = Math.ceil((this.low - Math.PI / 2) / Math.PI);
     const crit = Math.PI / 2 + k * Math.PI;
-    if (crit > this.low && crit < this.high) {
-      return { result: NumericalInterval.TOP, domainViolation: "definite" };
+    if (crit >= this.low - 1e-15 && crit <= this.high + 1e-15) {
+      const isPointPole = this.low === this.high && Math.abs(this.low - crit) <= 1e-15;
+      return { result: NumericalInterval.TOP, domainViolation: isPointPole ? "definite" : "possible" };
     }
     return {
       result: new NumericalInterval(Math.tan(this.low), Math.tan(this.high)),
@@ -314,11 +325,19 @@ export class NumericalInterval {
         };
       }
     }
-    if (this.high < 0) {
+    if (this.high < 0 || (exponent < 0 && this.high <= 0)) {
       return { result: NumericalInterval.BOTTOM, domainViolation: "definite" };
     }
-    const possibleNeg = this.low < 0;
+    const possibleNeg = exponent < 0 ? this.low <= 0 : this.low < 0;
     const safeLow = Math.max(0, this.low);
+    if (exponent < 0) {
+      const lo = this.high === Infinity ? 0 : Math.pow(this.high, exponent);
+      const hi = safeLow === 0 ? Infinity : Math.pow(safeLow, exponent);
+      return {
+        result: new NumericalInterval(lo, hi),
+        domainViolation: possibleNeg ? "possible" : "never",
+      };
+    }
     return {
       result: new NumericalInterval(Math.pow(safeLow, exponent), Math.pow(this.high, exponent)),
       domainViolation: possibleNeg ? "possible" : "never",
@@ -424,10 +443,10 @@ export class IntervalDomain implements AbstractDomain<IntervalEnvironment> {
     if (a.isBottomState) return b.clone();
     if (b.isBottomState) return a.clone();
 
-    const res = new IntervalEnvironment();
+    let res = new IntervalEnvironment();
     const allKeys = new Set<string>([...a.keys(), ...b.keys()]);
     for (const k of allKeys) {
-      res.set(k, a.get(k).join(b.get(k)));
+      res = res.set(k, a.get(k).join(b.get(k)));
     }
     return res;
   }
@@ -435,12 +454,12 @@ export class IntervalDomain implements AbstractDomain<IntervalEnvironment> {
   meet(a: IntervalEnvironment, b: IntervalEnvironment): IntervalEnvironment {
     if (a.isBottomState || b.isBottomState) return IntervalEnvironment.bottom();
 
-    const res = new IntervalEnvironment();
+    let res = new IntervalEnvironment();
     const allKeys = new Set<string>([...a.keys(), ...b.keys()]);
     for (const k of allKeys) {
       const m = a.get(k).meet(b.get(k));
       if (m.isBottom()) return IntervalEnvironment.bottom();
-      res.set(k, m);
+      res = res.set(k, m);
     }
     return res;
   }
@@ -449,10 +468,10 @@ export class IntervalDomain implements AbstractDomain<IntervalEnvironment> {
     if (a.isBottomState) return b.clone();
     if (b.isBottomState) return a.clone();
 
-    const res = new IntervalEnvironment();
+    let res = new IntervalEnvironment();
     const allKeys = new Set<string>([...a.keys(), ...b.keys()]);
     for (const k of allKeys) {
-      res.set(k, a.get(k).widen(b.get(k), thresholds));
+      res = res.set(k, a.get(k).widen(b.get(k), thresholds));
     }
     return res;
   }
@@ -460,10 +479,10 @@ export class IntervalDomain implements AbstractDomain<IntervalEnvironment> {
   narrow(a: IntervalEnvironment, b: IntervalEnvironment): IntervalEnvironment {
     if (a.isBottomState || b.isBottomState) return IntervalEnvironment.bottom();
 
-    const res = new IntervalEnvironment();
+    let res = new IntervalEnvironment();
     const allKeys = new Set<string>([...a.keys(), ...b.keys()]);
     for (const k of allKeys) {
-      res.set(k, a.get(k).narrow(b.get(k)));
+      res = res.set(k, a.get(k).narrow(b.get(k)));
     }
     return res;
   }

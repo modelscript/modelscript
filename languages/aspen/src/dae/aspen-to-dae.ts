@@ -13,6 +13,7 @@
  */
 
 import { BinOp, Causality, DAEBuilder, EqKind, Variability, VarType } from "@modelscript/runtime";
+import { ensureBuiltInAspenLibraryRegistered, lookupAspenModelSchema } from "../catalog/library-package-adapter.js";
 import { solveFlashRachfordRice } from "../solvers/flash-solver.js";
 import type { AspenDeck } from "../types.js";
 
@@ -21,7 +22,16 @@ export interface AspenDaeOptions {
   modelName?: string | undefined;
 }
 
+function getAspenSchemaDefault(modelType: string, paramKey: string, fallback: number): number {
+  const schema = lookupAspenModelSchema(modelType);
+  if (!schema) return fallback;
+  const keyLower = paramKey.toLowerCase();
+  const param = schema.parameters.find((p) => p.key.toLowerCase() === keyLower);
+  return typeof param?.defaultValue === "number" && Number.isFinite(param.defaultValue) ? param.defaultValue : fallback;
+}
+
 export function lowerAspenToDae(deck: AspenDeck, options?: AspenDaeOptions): DAEBuilder {
+  ensureBuiltInAspenLibraryRegistered();
   const modelName = (options?.modelName ?? (deck.title || "ChemicalFlowsheet")).replace(/[^a-zA-Z0-9_]/g, "_");
   const dae = options?.builder ?? new DAEBuilder(undefined, modelName);
 
@@ -121,9 +131,11 @@ export function lowerAspenToDae(deck: AspenDeck, options?: AspenDaeOptions): DAE
       const vapStream = entry.outlets[0] ?? `${blockId}_VAP`;
       const liqStream = entry.outlets[1] ?? `${blockId}_LIQ`;
 
-      const tFlashC = Number(block?.params["TEMP"] ?? 75.0);
+      const defaultTFlashC = getAspenSchemaDefault(bType, "T_spec", 348.15) - 273.15;
+      const defaultPFlashBar = getAspenSchemaDefault(bType, "P_spec", 120000.0) / 1e5;
+      const tFlashC = block?.params["TEMP"] != null ? Number(block.params["TEMP"]) : defaultTFlashC;
       const tFlash = tFlashC + 273.15;
-      const pFlash = Number(block?.params["PRES"] ?? 1.2);
+      const pFlash = block?.params["PRES"] != null ? Number(block.params["PRES"]) : defaultPFlashBar;
 
       // Compute equilibrium VLE flash K-values and vapor fraction
       const feedDef = deck.streams.get(inStream);
@@ -205,7 +217,8 @@ export function lowerAspenToDae(deck: AspenDeck, options?: AspenDaeOptions): DAE
       const inStream = entry.inlets[0] ?? `${blockId}_IN`;
       const outStream = entry.outlets[0] ?? `${blockId}_OUT`;
 
-      const presTarget = Number(block?.params["PRES"] ?? 3.0);
+      const defaultPOutBar = getAspenSchemaDefault(bType, "P_out", 300000.0) / 1e5;
+      const presTarget = block?.params["PRES"] != null ? Number(block.params["PRES"]) : defaultPOutBar;
       const deltaP = Number(block?.params["DELTAP"] ?? 2.0);
 
       const fIn = dae.lookupVariable(`F_${inStream}`);
@@ -258,8 +271,11 @@ export function lowerAspenToDae(deck: AspenDeck, options?: AspenDaeOptions): DAE
         assignEq(wPump, dae.addName(wPump), dae.addRealLiteral(15.0));
       }
     } else if (bType === "RADFRAC") {
-      const nStages = block?.nStages ?? 15;
-      const rr = Number(block?.colSpecs?.["RR"] ?? 2.5);
+      const nStages = block?.nStages ?? Math.round(getAspenSchemaDefault("RadFrac", "N_stages", 15));
+      const rr =
+        block?.colSpecs?.["RR"] != null
+          ? Number(block.colSpecs["RR"])
+          : getAspenSchemaDefault("RadFrac", "reflux_ratio", 2.5);
 
       const inStream = entry.inlets[0] ?? "FEED";
       const distStream = entry.outlets[0] ?? "DISTIL";
@@ -386,7 +402,8 @@ export function lowerAspenToDae(deck: AspenDeck, options?: AspenDaeOptions): DAE
         assignEq(fOut, dae.addName(fOut), dae.addName(fIn));
       }
 
-      const tTarget = block?.params["TEMP"] != null ? Number(block.params["TEMP"]) + 273.15 : 350.0;
+      const defaultHeaterTargetK = getAspenSchemaDefault(bType, "T_out_spec", 350.0);
+      const tTarget = block?.params["TEMP"] != null ? Number(block.params["TEMP"]) + 273.15 : defaultHeaterTargetK;
       if (tOut !== -1) {
         assignEq(tOut, dae.addName(tOut), dae.addRealLiteral(tTarget));
       }

@@ -6,6 +6,7 @@
 
 import { cardDeckRules, language } from "@modelscript/dsl";
 import { calculateBusFaultCurrents, calculateOvercurrentTripTime } from "./analysis/fault-solver.js";
+import { registerBuiltInOneLinerLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerOneLinerToDae } from "./dae/oneliner-to-dae.js";
 import { indexOneLinerFile } from "./indexing.js";
 import { lintOneLinerCase } from "./lints/index.js";
@@ -192,3 +193,6 @@ export const onelinerLanguage = language({
 });
 
 export default onelinerLanguage;
+
+// Auto-register cleanroom standard library in globalLibraryRegistry (zero-I/O).
+registerBuiltInOneLinerLibrarySync();

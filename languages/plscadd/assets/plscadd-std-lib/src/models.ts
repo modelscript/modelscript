@@ -121,6 +121,99 @@ function isInsulator(archetypeId: i32): bool {
 }
 
 /**
+ * Evaluates a 4th-order PLS-CADD `.wir` stress-strain polynomial:
+ *   sigma(eps) = a0 + a1*eps + a2*eps^2 + a3*eps^3 + a4*eps^4  (Pa)
+ */
+export function plsEvalStressStrainPoly(
+  eps: f64,
+  a0: f64,
+  a1: f64,
+  a2: f64,
+  a3: f64,
+  a4: f64,
+): f64 {
+  return a0 + eps * (a1 + eps * (a2 + eps * (a3 + eps * a4)));
+}
+
+/**
+ * Inverts the 4th-order stress-strain polynomial `sigma(eps) = targetSigma` for strain `eps`
+ * via safeguarded Newton-Raphson.
+ */
+function invertStressStrainPoly(
+  targetSigmaPa: f64,
+  a0: f64,
+  a1: f64,
+  a2: f64,
+  a3: f64,
+  a4: f64,
+): f64 {
+  const eNom = Math.max(1e9, a1);
+  let eps = Math.max(0.0, (targetSigmaPa - a0) / eNom);
+  for (let iter = 0; iter < 30; iter++) {
+    const f = plsEvalStressStrainPoly(eps, a0, a1, a2, a3, a4) - targetSigmaPa;
+    const df = Math.max(
+      0.1 * eNom,
+      a1 + eps * (2.0 * a2 + eps * (3.0 * a3 + eps * 4.0 * a4)),
+    );
+    const step = f / df;
+    eps -= step;
+    if (eps < 0.0) eps = 0.0;
+    if (eps > 0.05) eps = 0.05;
+    if (Math.abs(step) <= 1e-12) break;
+  }
+  return eps;
+}
+
+/**
+ * Solves ruling-span sag-tension state-change using 4th-order stress-strain & creep polynomials:
+ *   w2^2*S^2/(24*H2^2) - eps2(H2/A) - alpha*(T2 - T1) - epsCreep
+ *     = w1^2*S^2/(24*H1^2) - eps1(H1/A)
+ * where `eps1` uses the initial stress-strain polynomial and `eps2` uses either initial (mode 1)
+ * or final after-creep (mode 2) 4th-order stress-strain polynomial.
+ */
+function solvePolyStateChangeTension(
+  h1: f64,
+  w1: f64,
+  t1: f64,
+  w2: f64,
+  t2: f64,
+  spanM: f64,
+  areaM2: f64,
+  alpha: f64,
+  epsCreep: f64,
+  a0Init: f64,
+  a1Init: f64,
+  a2Init: f64,
+  a3Init: f64,
+  a4Init: f64,
+  a0Tgt: f64,
+  a1Tgt: f64,
+  a2Tgt: f64,
+  a3Tgt: f64,
+  a4Tgt: f64,
+): f64 {
+  const s2 = spanM * spanM;
+  const eps1 = invertStressStrainPoly(h1 / areaM2, a0Init, a1Init, a2Init, a3Init, a4Init);
+  const rhs = (s2 * w1 * w1) / (24.0 * h1 * h1) - eps1 + alpha * (t2 - t1) + epsCreep;
+
+  // Monotone decreasing function g(H) = (S^2 * w2^2)/(24*H^2) - eps2(H/A) - rhs = 0
+  let lo: f64 = 100.0;
+  let hi: f64 = Math.max(h1 * 4.0, 5.0e6);
+  for (let iter = 0; iter < 60; iter++) {
+    const mid = 0.5 * (lo + hi);
+    const eps2 = invertStressStrainPoly(mid / areaM2, a0Tgt, a1Tgt, a2Tgt, a3Tgt, a4Tgt);
+    const g = (s2 * w2 * w2) / (24.0 * mid * mid) - eps2 - rhs;
+    if (g > 0.0) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+    if (hi - lo <= 1e-6 * Math.max(1.0, mid)) break;
+  }
+  return 0.5 * (lo + hi);
+}
+
+/**
  * Solves the ruling-span thermal-elastic state-change cubic equation:
  *   H2^3 + A * H2^2 - B = 0
  * where:
@@ -310,8 +403,68 @@ export function plsModelEval(archetypeId: i32, slotPtr: usize, conCount: i32): i
     const wRef = getState(slotPtr, 1);
     const tRef = getState(slotPtr, 2);
 
+    // Stress-strain polynomial mode via IO[7]:
+    //   0 = classical linear Hookean ruling-span (default)
+    //   1 = 4th-order initial stress-strain polynomial sigma_init(eps)
+    //   2 = 4th-order final (after-creep) stress-strain polynomial sigma_final(eps) + eps_creep
+    const ssMode = <i32>Math.round(getIo(slotPtr, 7));
+
     let h2: f64;
-    if (
+    if (ssMode == 1 || ssMode == 2) {
+      const h1 = hRef > 1e-6 ? hRef : (hIn > 1e-6 ? hIn : 0.2 * rtsN);
+      const w1 = wRef > 1e-6 ? wRef : wBare;
+      const t1 = hRef > 1e-6 ? tRef : ta;
+
+      // Default ASTM B232 / B399 / B856 4th-order stress-strain polynomial coefficients (Pa)
+      // sigma(eps) = a0 + a1*eps + a2*eps^2 + a3*eps^3 + a4*eps^4
+      const eInitDef =
+        archetypeId == ARCH_CONDUCTOR_ACSS
+          ? modulusPa * 0.85
+          : archetypeId == ARCH_CONDUCTOR_AAAC
+            ? modulusPa * 0.92
+            : modulusPa * 0.9;
+      const a0Init = getCon(slotPtr, conCount, 10, 0.0);
+      const a1Init = getCon(slotPtr, conCount, 11, eInitDef);
+      const a2Init = getCon(slotPtr, conCount, 12, -2.2e12);
+      const a3Init = getCon(slotPtr, conCount, 13, 1.8e14);
+      const a4Init = getCon(slotPtr, conCount, 14, -6.0e15);
+
+      const a0Fin = getCon(slotPtr, conCount, 15, 0.0);
+      const a1Fin = getCon(slotPtr, conCount, 16, modulusPa);
+      const a2Fin = getCon(slotPtr, conCount, 17, -0.6e12);
+      const a3Fin = getCon(slotPtr, conCount, 18, 0.4e14);
+      const a4Fin = getCon(slotPtr, conCount, 19, -1.0e15);
+
+      const defaultCreep =
+        archetypeId == ARCH_CONDUCTOR_ACSS
+          ? 1.5e-4
+          : archetypeId == ARCH_CONDUCTOR_AAAC
+            ? 6.0e-4
+            : 4.5e-4;
+      const epsCreep = ssMode == 2 ? getCon(slotPtr, conCount, 20, defaultCreep) : 0.0;
+
+      h2 = solvePolyStateChangeTension(
+        h1,
+        w1,
+        t1,
+        w2,
+        ta,
+        spanM,
+        areaM2,
+        alpha,
+        epsCreep,
+        a0Init,
+        a1Init,
+        a2Init,
+        a3Init,
+        a4Init,
+        ssMode == 2 ? a0Fin : a0Init,
+        ssMode == 2 ? a1Fin : a1Init,
+        ssMode == 2 ? a2Fin : a2Init,
+        ssMode == 2 ? a3Fin : a3Init,
+        ssMode == 2 ? a4Fin : a4Init,
+      );
+    } else if (
       hRef > 1e-6 &&
       wRef > 1e-6 &&
       (Math.abs(w2 - wRef) > 1e-9 || Math.abs(ta - tRef) > 1e-9)

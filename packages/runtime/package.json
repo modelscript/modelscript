@@ -304,6 +304,7 @@
   },
   "dependencies": {
     "@modelscript/dsl": "*",
+    "@modelscript/solve": "*",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
@@ -320,7 +321,8 @@
     "targets": {
       "build": {
         "dependsOn": [
-          "@modelscript/dsl:build"
+          "@modelscript/dsl:build",
+          "@modelscript/solve:build"
         ]
       }
     }

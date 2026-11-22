@@ -10,6 +10,7 @@
  */
 
 import { BinOp, Causality, EqKind, type IDaeBuilder, VarType, Variability } from "@modelscript/runtime";
+import { ensureBuiltInRocetsLibraryRegistered, lookupRocetsModelSchema } from "../catalog/library-package-adapter.js";
 import { lowerRocetsRoutineToDae } from "../script/user-routines.js";
 import type { RocetsEngineModel } from "../types.js";
 
@@ -19,7 +20,32 @@ export interface RocetsDaeLoweringResult {
   variableMap: Map<string, number>;
 }
 
+/**
+ * Resolves parameter defaults for a ROCETS propulsion module from `@modelscript/rocets-std-lib`,
+ * merging any user-specified overrides over the cleanroom schema defaults.
+ */
+export function resolveRocetsSchemaParamDefaults(
+  modelType: string,
+  overrides: Record<string, number | string | boolean> = {},
+): Record<string, number | string | boolean> {
+  ensureBuiltInRocetsLibraryRegistered();
+  const out: Record<string, number | string | boolean> = {};
+  const schema = lookupRocetsModelSchema(modelType);
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (p.defaultValue !== undefined) {
+        out[p.key] = p.defaultValue;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
+
 export function lowerRocetsToDae(builder: IDaeBuilder, model: RocetsEngineModel): RocetsDaeLoweringResult {
+  ensureBuiltInRocetsLibraryRegistered();
   const variableMap = new Map<string, number>();
   const stateVarIndices: number[] = [];
   let equationCount = 0;

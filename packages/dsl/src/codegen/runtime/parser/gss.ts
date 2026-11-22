@@ -671,10 +671,29 @@ export function betterVersionExists(candidate: ParseHead, frontier: UnmanagedUin
  * Prunes dominated existing heads in the frontier when a new decisively superior head is added.
  */
 export function pruneDominatedHeads(newHead: ParseHead, frontier: UnmanagedUint32Array, count: u32, isNext: bool = false): void {
+  if (count <= 1) return;
+  let s = isNext ? t_nextSummary : t_activeSummary;
   let healthyCount: u32 = 0;
-  for (let i: u32 = 0; i < count; i++) {
-    let h = changetype<ParseHead>(frontier[i]);
-    if (!h.isDead && !h.inErrorState) healthyCount++;
+  if (changetype<usize>(s) != 0) {
+    // O(1) fast-exit for error-free GLR parsing: when no heads are in error, none are paused,
+    // and all healthy heads share the same minimum cost as newHead, nothing can be dominated.
+    if (
+      !s.hasOverflow &&
+      !newHead.inErrorState &&
+      !newHead.isPaused &&
+      s.inErrorCount == 0 &&
+      s.nonPausedCount == s.healthyCount &&
+      s.paretoHealthyCount <= 1 &&
+      (s.paretoHealthyCount == 0 || s.getParetoHealthyCost(0) == newHead.errorCost)
+    ) {
+      return;
+    }
+    healthyCount = s.healthyCount;
+  } else {
+    for (let i: u32 = 0; i < count; i++) {
+      let h = changetype<ParseHead>(frontier[i]);
+      if (!h.isDead && !h.inErrorState) healthyCount++;
+    }
   }
 
   let anyKilled = false;
@@ -1059,7 +1078,16 @@ export function gssMergeHeads(existingHead: ParseHead, newHead: ParseHead): void
       existingHead.consecutiveInsertions = newHead.consecutiveInsertions;
       gssAddPredecessor(existingHead, oldPrev, oldNode, shiftDelta);
     } else {
-      gssAddPredecessor(existingHead, newHead.prev, newHead.astNode, newPrec - existingHead.dynamicPrec);
+      // Self-predecessor epsilon reduction with higher dynamic precedence: preserve the winning score
+      // and shift existing edge deltas relative to the updated dynamicPrec.
+      let shiftDelta = oldPrec - newPrec;
+      let existingEdgePtr = existingHead.firstEdge;
+      while (existingEdgePtr != 0) {
+        let existingEdge = changetype<GssEdge>(existingEdgePtr);
+        existingEdge.dynamicPrec += shiftDelta;
+        existingEdgePtr = existingEdge.nextEdge;
+      }
+      existingHead.dynamicPrec = newPrec;
     }
   } else {
     gssAddPredecessor(existingHead, newHead.prev, newHead.astNode, newPrec - oldPrec);
