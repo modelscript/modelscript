@@ -109,6 +109,9 @@ importers:
       expect:
         specifier: ^30.5.2
         version: 30.5.2
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       glob:
         specifier: ^14.0.3
         version: 14.0.6
@@ -343,6 +346,9 @@ importers:
       xml-formatter:
         specifier: ^3.6.7
         version: 3.7.1
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.1
       yauzl:
         specifier: ^3.3.0
         version: 3.4.0
@@ -3586,6 +3592,9 @@ importers:
       '@types/ws':
         specifier: ^8.18.0
         version: 8.18.2
+      assemblyscript:
+        specifier: ^0.28.19
+        version: 0.28.20
       rimraf:
         specifier: ^6.1.0
         version: 6.1.4
@@ -4226,6 +4235,9 @@ importers:
       '@modelscript/solve':
         specifier: workspace:*
         version: link:../solve
+      pako:
+        specifier: ^2.1.0
+        version: 2.2.0
       yaml:
         specifier: ^2.9.0
         version: 2.9.1
@@ -4233,6 +4245,9 @@ importers:
       '@types/node':
         specifier: ^25.3.2
         version: 25.9.9
+      '@types/pako':
+        specifier: ^2.0.4
+        version: 2.0.4
       assemblyscript:
         specifier: ^0.28.19
         version: 0.28.20

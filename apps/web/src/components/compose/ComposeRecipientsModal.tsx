@@ -2,7 +2,6 @@
 
 import { Button, Dialog, Heading } from "@primer/react";
 import React from "react";
-import { getAvatarUrl } from "../../util/avatar";
 import Box from "../Box";
 
 export interface ComposeRecipientsModalProps {
@@ -37,31 +36,80 @@ export const ComposeRecipientsModal: React.FC<ComposeRecipientsModalProps> = ({
 
   const others = allMentionedUsers.filter((u) => u !== authorUsername);
 
-  const rawAvatarSrc = getAvatarUrl(authorUsername.replace(/[^a-zA-Z0-9_.-]/g, ""), avatarUrl);
-  const safeAvatarSrc =
-    /^(?:https?:\/\/|\/(?!\/)|data:image\/(?:png|jpeg|jpg|gif|webp|avif|svg\+xml);base64,[a-zA-Z0-9+/=]+$)/.test(
-      rawAvatarSrc,
-    )
-      ? rawAvatarSrc
-      : undefined;
+  const safeAvatarSrc = (() => {
+    if (typeof avatarUrl !== "string") return undefined;
+    const trimmed = avatarUrl.trim();
+    const dataMatch = /^data:image\/(png|jpeg|jpg|gif|webp|avif);base64,([a-zA-Z0-9+/=]+)$/i.exec(trimmed);
+    if (dataMatch) {
+      return `data:image/${dataMatch[1]!.toLowerCase()};base64,${dataMatch[2]!}`;
+    }
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      try {
+        const parsed = new URL(trimmed);
+        if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+          return parsed.href;
+        }
+      } catch {
+        return undefined;
+      }
+    }
+    if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
+      try {
+        const origin = typeof window !== "undefined" ? window.location.origin : "https://ansatz.social";
+        const parsed = new URL(trimmed, origin);
+        if (parsed.origin === origin) {
+          return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+        }
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  })();
+  const avatarInitials =
+    (authorUsername || displayName || "?")
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .slice(0, 2)
+      .toUpperCase() || "?";
 
   return (
     <Dialog title="Replying to" width="medium" onClose={onClose}>
       <Box display="flex" flexDirection="column" maxHeight="70vh" overflowY="auto">
         <Box display="flex" alignItems="center" mb={3}>
-          <img
-            src={safeAvatarSrc}
-            alt="avatar"
-            style={{
-              width: "40px",
-              height: "40px",
-              borderRadius: "50%",
-              flexShrink: 0,
-              objectFit: "cover",
-              backgroundColor: "var(--ms-surface-subtle, rgba(255, 255, 255, 0.05))",
-              marginRight: "12px",
-            }}
-          />
+          {safeAvatarSrc ? (
+            <img
+              src={safeAvatarSrc}
+              alt="avatar"
+              style={{
+                width: "40px",
+                height: "40px",
+                borderRadius: "50%",
+                flexShrink: 0,
+                objectFit: "cover",
+                backgroundColor: "var(--ms-surface-subtle, rgba(255, 255, 255, 0.05))",
+                marginRight: "12px",
+              }}
+            />
+          ) : (
+            <div
+              aria-hidden="true"
+              style={{
+                width: "40px",
+                height: "40px",
+                borderRadius: "50%",
+                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 600,
+                fontSize: "14px",
+                backgroundColor: "var(--ms-surface-subtle, rgba(255, 255, 255, 0.08))",
+                marginRight: "12px",
+              }}
+            >
+              {avatarInitials}
+            </div>
+          )}
           <Box flex={1}>
             <div style={{ fontWeight: "bold" }}>{displayName || authorUsername}</div>
             {authorUsername && (

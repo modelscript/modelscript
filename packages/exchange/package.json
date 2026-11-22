@@ -123,6 +123,7 @@
     "@types/node": "^25.3.2",
     "@types/pako": "^2.0.4",
     "@types/ws": "^8.18.0",
+    "assemblyscript": "^0.28.19",
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3"
   },

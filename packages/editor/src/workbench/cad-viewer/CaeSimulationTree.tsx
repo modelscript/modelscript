@@ -114,7 +114,7 @@ export function buildCaeSimulationModel(code: string, externalGeometries?: CaeGe
         materials.push({ id: `mat:${name}:${lineNo}`, label: name, line: lineNo, targetSet: name, status: "ok" });
       } else if (upper.startsWith("*CONTACT") || upper.startsWith("*TIE") || upper.startsWith("*SURFACE INTERACTION")) {
         section = "none";
-        const name = /\bNAME\s*=\s*([^,\s]+)/i.exec(t)?.[1] ?? t.split(",")[0]!.replace("*", "").trim();
+        const name = /\bNAME\s*=\s*([^,\s]+)/i.exec(t)?.[1] ?? t.split(",")[0]!.replaceAll("*", "").trim();
         contacts.push({ id: `contact:${lineNo}`, label: name, line: lineNo, status: "ok" });
       } else if (upper.startsWith("*INITIAL CONDITIONS")) {
         section = "ic";
@@ -139,7 +139,7 @@ export function buildCaeSimulationModel(code: string, externalGeometries?: CaeGe
         upper.startsWith("*RADIATE")
       ) {
         section = "load";
-        const kind = t.split(",")[0]!.replace("*", "").trim();
+        const kind = t.split(",")[0]!.replaceAll("*", "").trim();
         boundaryConditions.push({
           id: `load:${lineNo}`,
           label: `${kind}`,
@@ -153,13 +153,13 @@ export function buildCaeSimulationModel(code: string, externalGeometries?: CaeGe
       } else if (upper.startsWith("*STATIC") || upper.startsWith("*DYNAMIC") || upper.startsWith("*FREQUENCY")) {
         hasStructural = true;
         section = "none";
-        const kind = t.split(",")[0]!.replace("*", "").trim();
+        const kind = t.split(",")[0]!.replaceAll("*", "").trim();
         simulationControl.push({ id: `ctrl:${lineNo}`, label: `${kind} Step`, line: lineNo, status: "ok" });
       } else if (upper.startsWith("*STEP") || upper.startsWith("*CONTROLS")) {
         section = "none";
         numerics.push({
           id: `num:${lineNo}`,
-          label: t.split(",")[0]!.replace("*", "").trim(),
+          label: t.split(",")[0]!.replaceAll("*", "").trim(),
           line: lineNo,
           status: "ok",
         });
@@ -282,14 +282,12 @@ export interface CaeSimulationTreeProps {
   runs?: CaeSimulationRunEntry[] | undefined;
   activeField?: string | undefined;
   jobStatus?:
-    | { state: "idle" | "meshing" | "solving" | "finished" | "error"; label: string; progress?: number }
-    | undefined;
+    { state: "idle" | "meshing" | "solving" | "finished" | "error"; label: string; progress?: number } | undefined;
   dark?: boolean | undefined;
   selectedItemId?: string | null | undefined;
   onSelectItem?: ((item: { id: string; line?: number; targetSet?: string }) => void) | undefined;
   onInsertSnippet?:
-    | ((section: "materials" | "initialConditions" | "boundaryConditions", snippet: string) => void)
-    | undefined;
+    ((section: "materials" | "initialConditions" | "boundaryConditions", snippet: string) => void) | undefined;
   onSelectField?: ((field: string) => void) | undefined;
   onOpenPostView?: ((view: "convergence" | "log" | "fields", runId: string) => void) | undefined;
   onTriggerRun?: (() => void) | undefined;

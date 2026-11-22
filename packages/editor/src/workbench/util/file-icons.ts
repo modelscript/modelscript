@@ -92,11 +92,15 @@ export function getAvailableFileIcons(): ReadonlyMap<string, string> {
  * language name (explicit or inferred from filename), preferring `.svg` with `.png`
  * fallback and defaulting to `default.svg` (or `default.png`).
  */
+const SAFE_ICON_FILENAME_RE = /^[a-z0-9._-]+\.(?:svg|png)$/i;
+
 export function getFileIconPath(fileName: string, language?: string | null): string {
   const lang = (language?.trim() || inferDialectFromFilename(fileName) || "").toLowerCase();
   const matched = lang ? AVAILABLE_FILE_ICONS.get(lang) : undefined;
-  if (matched) {
-    return `/file-icons/${matched}`;
+  if (matched && SAFE_ICON_FILENAME_RE.test(matched)) {
+    return `/file-icons/${encodeURIComponent(matched)}`;
   }
-  return `/file-icons/${AVAILABLE_FILE_ICONS.get("default") ?? "default.svg"}`;
+  const fallback = AVAILABLE_FILE_ICONS.get("default");
+  const safeFallback = fallback && SAFE_ICON_FILENAME_RE.test(fallback) ? fallback : "default.svg";
+  return `/file-icons/${encodeURIComponent(safeFallback)}`;
 }
